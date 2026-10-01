@@ -4,6 +4,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   getMaxPresignedUploadBytes,
   getR2PresignTtlSeconds,
+  downloadBuffer as downloadR2Buffer,
   headObject as headR2Object,
   uploadBuffer as uploadR2Buffer,
 } from '@/server/storage/r2'
@@ -45,9 +46,7 @@ export async function deleteObject(key: string): Promise<void> {
 }
 
 export async function deleteObjects(keys: string[]): Promise<void> {
-  for (const key of keys) {
-    await deleteObject(key)
-  }
+  await Promise.all(keys.map((key) => deleteObject(key)))
 }
 
 export async function headObject(
@@ -70,6 +69,16 @@ export async function uploadBuffer(
     return objectStore.uploadBuffer(key, body, mimeType)
   }
   return uploadR2Buffer(key, body, mimeType)
+}
+
+/** Reads an object through the configured store (R2 or S3-compatible). */
+export async function downloadBuffer(key: string, maximumBytes?: number): Promise<Uint8Array | null> {
+  const objectStore = getOverlayServerContext().objectStore
+  if (typeof objectStore.downloadBuffer === 'function') {
+    return await objectStore.downloadBuffer(key, maximumBytes).catch((_error) => null)
+  }
+  const bytes = await downloadR2Buffer(key)
+  return bytes ? new Uint8Array(bytes) : null
 }
 
 function isHeadableObjectStore(value: unknown): value is HeadableObjectStore {

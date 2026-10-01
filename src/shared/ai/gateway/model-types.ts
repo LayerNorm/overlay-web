@@ -58,7 +58,7 @@ export interface VideoModel {
 export const FREE_TIER_AUTO_MODEL_ID = 'openrouter/free'
 /** @deprecated Alias for {@link FREE_TIER_AUTO_MODEL_ID}. */
 export const FREE_TIER_DEFAULT_MODEL_ID = FREE_TIER_AUTO_MODEL_ID
-export const PAID_TIER_DEFAULT_MODEL_ID = 'moonshotai/kimi-k2.6' as const
+export const PAID_TIER_DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-flash-0731' as const
 export const KIMI_K3_MODEL_ID = 'moonshotai/kimi-k3' as const
 
 export function isKimiK3ModelId(modelId: string | undefined): boolean {
@@ -74,28 +74,11 @@ export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
   'openrouter/minimax/minimax-m2.5:free',
   'openrouter/arcee-ai/trinity-large-thinking:free',
   'openrouter/openai/gpt-oss-120b:free',
-] as const
-
-export const NVIDIA_NIM_MODEL_IDS = [
+  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
   'stepfun-ai/step-3.5-flash',
 ] as const
 
-export const FREE_TIER_OPENROUTER_MODEL_IDS = [
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
-] as const
-
-export type FreeTierChatModelId =
-  | typeof FREE_TIER_AUTO_MODEL_ID
-  | (typeof NVIDIA_NIM_MODEL_IDS)[number]
-  | (typeof FREE_TIER_OPENROUTER_MODEL_IDS)[number]
-
-export function isNvidiaNimChatModelId(modelId: string): boolean {
-  return (NVIDIA_NIM_MODEL_IDS as readonly string[]).includes(modelId)
-}
-
-export function isFreeTierOpenRouterChatModelId(modelId: string): boolean {
-  return (FREE_TIER_OPENROUTER_MODEL_IDS as readonly string[]).includes(modelId)
-}
+export type FreeTierChatModelId = typeof FREE_TIER_AUTO_MODEL_ID
 
 export function isLegacyFreeTierDefaultModelId(modelId: string | undefined): modelId is string {
   return Boolean(modelId && (FREE_TIER_LEGACY_DEFAULT_MODEL_IDS as readonly string[]).includes(modelId))
@@ -104,12 +87,7 @@ export function isLegacyFreeTierDefaultModelId(modelId: string | undefined): mod
 export function isFreeTierChatModelId(
   modelId: string | undefined,
 ): modelId is FreeTierChatModelId {
-  return Boolean(
-    modelId &&
-      (modelId === FREE_TIER_AUTO_MODEL_ID ||
-        isNvidiaNimChatModelId(modelId) ||
-        isFreeTierOpenRouterChatModelId(modelId)),
-  )
+  return modelId === FREE_TIER_AUTO_MODEL_ID
 }
 
 export function resolveFreeTierChatModelId(modelId: string | undefined): string | undefined {

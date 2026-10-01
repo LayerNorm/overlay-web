@@ -3,7 +3,7 @@ import 'server-only'
 import type { CapabilityCheck } from '@overlay/app-core'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 
-export type AppDataProvider = 'convex' | 'postgres'
+export type AppDataProvider = 'convex'
 
 export interface AppDataCapabilities {
   provider: AppDataProvider
@@ -61,85 +61,21 @@ export const CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
   requiresConvexClient: true,
 }
 
-export const POSTGRES_APP_DATA_V1_CAPABILITIES: AppDataCapabilities = {
-  provider: 'postgres',
-  supportsRealtime: true,
-  supportsStreamResume: true,
-  supportsChatPersistence: true,
-  supportsFileMetadata: true,
-  supportsFileUploads: true,
-  supportsNotes: true,
-  // Connector account state is Convex-backed until the Postgres parity phase.
-  // Keep the capability false so the app shell and server gates agree.
-  supportsIntegrations: false,
-  supportsSkills: true,
-  supportsMcpServers: true,
-  supportsSettings: true,
-  supportsOnboarding: true,
-  supportsUsageAccounting: true,
-  supportsBillingRecords: true,
-  supportsVectorSearch: false,
-  supportsAutomations: true,
-  supportsWebhooks: true,
-  supportsApiKeys: true,
-  supportsAccountDeletion: true,
-  supportsBackgroundMaintenance: true,
-  supportsManagedScheduler: true,
-  supportsPersistentIdempotency: true,
-  supportsServiceAuthReplayStore: true,
-  supportsConnectedAgents: true,
-  requiresConvexClient: false,
-}
-
 export function deriveAppDataCapabilities(
-  runtimeConfig: OverlayRuntimeConfig | null,
+  _runtimeConfig: OverlayRuntimeConfig | null,
 ): AppDataCapabilities {
-  const provider = selectedDatabaseProvider(runtimeConfig)
-  if (provider !== 'postgres') return CONVEX_APP_DATA_CAPABILITIES
-  const vectorProvider = runtimeConfig?.providers.vectorSearch?.provider
-  const backgroundRuntimeEnabled =
-    runtimeConfig?.database.postgres.backgroundRuntimeEnabled === true
-  const serviceAuthConfigured = Boolean(
-    runtimeConfig?.database.internalServiceAuthSecret?.trim(),
-  )
-  return {
-    ...POSTGRES_APP_DATA_V1_CAPABILITIES,
-    supportsAutomations: backgroundRuntimeEnabled && serviceAuthConfigured,
-    supportsWebhooks: backgroundRuntimeEnabled,
-    supportsVectorSearch:
-      runtimeConfig?.capabilities.vectorSearch === true && vectorProvider === 'pgvector',
-  }
+  return CONVEX_APP_DATA_CAPABILITIES
 }
 
 export function applyAppDataCapabilitiesToOverlayCapabilities(
   capabilities: CapabilityCheck,
-  appData: AppDataCapabilities,
+  _appData: AppDataCapabilities,
 ): CapabilityCheck {
-  if (appData.provider === 'convex') return capabilities
-  return {
-    ...capabilities,
-    apiKeys: capabilities.apiKeys && appData.supportsApiKeys,
-    automations: capabilities.automations && appData.supportsAutomations,
-    files: capabilities.files && appData.supportsFileMetadata,
-    integrations: capabilities.integrations && appData.supportsIntegrations,
-    knowledge: capabilities.knowledge && (
-      appData.supportsFileMetadata ||
-      appData.supportsNotes ||
-      appData.supportsVectorSearch
-    ),
-    memory: capabilities.memory && appData.supportsVectorSearch,
-    mcpServers: capabilities.mcpServers && appData.supportsMcpServers,
-    skills: capabilities.skills && appData.supportsSkills,
-    vectorSearch: capabilities.vectorSearch && appData.supportsVectorSearch,
-    webhooks: capabilities.webhooks && appData.supportsWebhooks,
-  }
+  return capabilities
 }
 
 export function selectedDatabaseProvider(
-  runtimeConfig: OverlayRuntimeConfig | null,
+  _runtimeConfig: OverlayRuntimeConfig | null,
 ): AppDataProvider {
-  const provider = runtimeConfig
-    ? runtimeConfig.providers.database?.provider ?? runtimeConfig.database.provider
-    : 'convex'
-  return provider === 'postgres' ? 'postgres' : 'convex'
+  return 'convex'
 }

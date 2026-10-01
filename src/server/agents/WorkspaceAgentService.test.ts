@@ -3,7 +3,9 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type {
+  WorkspaceAgentAutomation,
   WorkspaceAgentDirectoryItem,
+  WorkspaceAgentThread,
   WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
@@ -83,15 +85,29 @@ function serviceFor(
   role: WorkspaceMembershipRole,
   seed: WorkspaceAgentDirectoryItem[] = [],
   principals: Record<string, { type: 'human' | 'agent'; agentId?: string }> = {},
+  options: {
+    threads?: Array<WorkspaceAgentThread & { agentId: string }>
+    automations?: Array<WorkspaceAgentAutomation & { agentId: string }>
+    deleteThreadError?: string
+    resolveThreadError?: string
+    archivedThreadAgentIds?: string[]
+  } = {},
 ) {
   const store = new Map(seed.map((agent) => [agent.id, agent]))
   const created: CreateWorkspaceAgentRecord[] = []
   const updated: UpdateWorkspaceAgentRecord[] = []
   const archived: Array<{ agentId: string; workspaceId: string }> = []
+  const unarchived: Array<{ agentId: string; workspaceId: string }> = []
+  const threadStore = [...(options.threads ?? [])]
+  const automationStore = [...(options.automations ?? [])]
+  const deletedThreads: string[] = []
+  const archivedThreads: Array<{ conversationId: string; archived: boolean }> = []
   let idCounter = 0
   const service = new WorkspaceAgentService(
     {
-      async list() { return [...store.values()] },
+      async list({ includeArchived }: { includeArchived?: boolean } = {}) {
+        return [...store.values()].filter((agent) => includeArchived || !agent.archivedAt)
+      },
       async get({ agentId }: { agentId: string }) { return store.get(agentId) ?? null },
       async create(input: CreateWorkspaceAgentRecord) {
         created.push(input)
@@ -123,14 +139,60 @@ function serviceFor(
       },
       async archive({ agentId, workspaceId }: { agentId: string; workspaceId: string }) {
         archived.push({ agentId, workspaceId })
+        const agent = store.get(agentId)
+        if (agent) agent.archivedAt = NOW
         return true
+      },
+      async unarchive({ agentId, workspaceId }: { agentId: string; workspaceId: string }) {
+        unarchived.push({ agentId, workspaceId })
+        const agent = store.get(agentId)
+        if (agent) delete agent.archivedAt
+        return true
+      },
+      async resolveMainThread({ agentId }: { agentId: string; userId: string }) {
+        if (options.resolveThreadError) throw new Error(options.resolveThreadError)
+        const mine = threadStore
+          .filter((thread) => thread.agentId === agentId)
+          .sort((a, b) => a.createdAt - b.createdAt)
+        const main = mine[0]
+        return main
+          ? { conversationId: main.conversationId, title: main.title }
+          : { conversationId: `conv-${agentId}-main`, title: 'Main' }
+      },
+      async createThread({ agentId, title }: { agentId: string; userId: string; title?: string }) {
+        const thread: WorkspaceAgentThread & { agentId: string } = {
+          conversationId: `conv-${++idCounter}`,
+          agentId,
+          title: title ?? 'New thread',
+          lastModified: NOW,
+          createdAt: NOW,
+          isMain: threadStore.every((thread) => thread.agentId !== agentId),
+        }
+        threadStore.push(thread)
+        return { conversationId: thread.conversationId, title: thread.title }
+      },
+      async listThreads({ agentId }: { agentId: string; userId: string }) {
+        return threadStore.filter((thread) => thread.agentId === agentId)
+      },
+      async listAgentAutomations({ agentId }: { agentId: string; userId: string }) {
+        return automationStore.filter((automation) => automation.agentId === agentId)
+      },
+      async listArchivedAgentIds() {
+        return [...options.archivedThreadAgentIds ?? []]
+      },
+      async setThreadArchived({ conversationId, archived }: { conversationId: string; archived: boolean }) {
+        archivedThreads.push({ conversationId, archived })
+      },
+      async deleteThread({ conversationId }: { conversationId: string }) {
+        if (options.deleteThreadError) throw new Error(options.deleteThreadError)
+        deletedThreads.push(conversationId)
       },
     } as unknown as WorkspaceAgentRepository,
     mockWorkspaces(principalId, role, principals),
     () => `generated-${++idCounter}`,
     () => NOW,
   )
-  return { service, created, updated, archived }
+  return { service, created, updated, archived, unarchived, deletedThreads, archivedThreads }
 }
 
 async function serviceError(promise: Promise<unknown>): Promise<WorkspaceAgentServiceError> {
@@ -320,4 +382,122 @@ test('DM targets leave humans, unknown principals, and workspace agents alone', 
     workspaceId: WORKSPACE_ID,
     principalIds: [DM_SHARED_AGENT_PRINCIPAL_ID, 'principal-human', 'principal-unknown'],
   })
+})
+
+test('list excludes archived agents unless includeArchived is set', async () => {
+  const seed = [
+    defaultAgentFixture(),
+    agentFixture({ id: 'agent-live' }),
+    agentFixture({ id: 'agent-archived', archivedAt: NOW }),
+  ]
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, {
+    archivedThreadAgentIds: ['agent-live'],
+  })
+  const live = await service.list({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID })
+  assert.deepEqual(live.agents.map((agent) => agent.id).sort(), ['agent-default', 'agent-live'])
+  const all = await service.list({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    includeArchived: true,
+  })
+  assert.deepEqual(
+    all.agents.map((agent) => agent.id).sort(),
+    ['agent-archived', 'agent-default', 'agent-live'],
+  )
+  assert.deepEqual(all.archivedThreadAgentIds, ['agent-live'])
+  assert.deepEqual(live.archivedThreadAgentIds, [])
+})
+
+test('unarchive restores an archived agent for its creator', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-archived', archivedAt: NOW })]
+  const { service, unarchived } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  await service.unarchive({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-archived' })
+  assert.deepEqual(unarchived, [{ agentId: 'agent-archived', workspaceId: WORKSPACE_ID }])
+})
+
+test('unarchive refuses a live agent and an invisible archived agent', async () => {
+  const seed = [
+    defaultAgentFixture(),
+    agentFixture({ id: 'agent-live' }),
+    agentFixture({ id: 'agent-archived', archivedAt: NOW, visibility: 'creator' }),
+  ]
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', seed)
+  const liveError = await serviceError(service.unarchive({
+    actorUserId: 'user-other', workspaceId: WORKSPACE_ID, agentId: 'agent-live',
+  }))
+  assert.equal(liveError.code, 'not_found')
+  const hiddenError = await serviceError(service.unarchive({
+    actorUserId: 'user-other', workspaceId: WORKSPACE_ID, agentId: 'agent-archived',
+  }))
+  assert.equal(hiddenError.code, 'not_found')
+})
+
+test('listBundle returns the caller-facing threads and automations for a visible agent', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-shared' })]
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', seed, {}, {
+    threads: [
+      { agentId: 'agent-shared', conversationId: 'conv-1', title: 'Main', lastModified: NOW, createdAt: NOW, isMain: true },
+    ],
+    automations: [
+      { agentId: 'agent-shared', automationId: 'auto-1', name: 'Digest', enabled: true },
+      { agentId: 'agent-private', automationId: 'auto-2', name: 'Other', enabled: true },
+    ],
+  })
+  const bundle = await service.listBundle({
+    actorUserId: 'user-other', workspaceId: WORKSPACE_ID, agentId: 'agent-shared',
+  })
+  assert.equal(bundle.threads.length, 1)
+  assert.deepEqual(bundle.automations.map((automation) => automation.automationId), ['auto-1'])
+})
+
+test('listBundle still serves an archived agent but createThread refuses it', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-archived', archivedAt: NOW })]
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  const bundle = await service.listBundle({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-archived',
+  })
+  assert.deepEqual(bundle, { threads: [], automations: [] })
+  const error = await serviceError(service.createThread({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-archived',
+  }))
+  assert.equal(error.code, 'not_found')
+})
+
+test('resolveMainThread serves an archived agent its existing main thread', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-archived', archivedAt: NOW })]
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, {
+    threads: [
+      { agentId: 'agent-archived', conversationId: 'conv-main', title: 'Main', lastModified: NOW, createdAt: NOW, isMain: true },
+    ],
+  })
+  const thread = await service.resolveMainThread({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-archived',
+  })
+  assert.equal(thread.conversationId, 'conv-main')
+})
+
+test('resolveMainThread maps a backend AGENT_ARCHIVED failure to conflict', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-archived', archivedAt: NOW })]
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, {
+    resolveThreadError: 'AGENT_ARCHIVED',
+  })
+  const error = await serviceError(service.resolveMainThread({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-archived',
+  }))
+  assert.equal(error.code, 'conflict')
+})
+
+test('deleteThread maps AGENT_LAST_THREAD to conflict and THREAD_NOT_FOUND to not_found', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-shared' })]
+  const last = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, { deleteThreadError: 'AGENT_LAST_THREAD' })
+  const conflict = await serviceError(last.service.deleteThread({
+    actorUserId: 'user-creator', agentId: 'agent-shared', conversationId: 'conv-1',
+  }))
+  assert.equal(conflict.code, 'conflict')
+
+  const missing = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, { deleteThreadError: 'THREAD_NOT_FOUND' })
+  const notFound = await serviceError(missing.service.deleteThread({
+    actorUserId: 'user-creator', agentId: 'agent-shared', conversationId: 'conv-gone',
+  }))
+  assert.equal(notFound.code, 'not_found')
 })

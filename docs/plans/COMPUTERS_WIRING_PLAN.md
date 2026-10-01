@@ -243,10 +243,9 @@ computers: defineTable({
 
 - `npx tsc --noEmit`
 - `npx eslint src/server/computers src/server/app-data convex/computers`
-- `npm run app-db:up && npm run app-db:migrate` then
-  `NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/computers/postgres-computers.test.ts src/server/computers/ComputerService.test.ts`
-- `npm run test:app-data-contracts:postgres` (full suite incl. new computers block)
-- `npm run check:on-prem-parity` (parity-matrix + route-support ownership)
+- `NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/computers/ComputerService.test.ts`
+- `npm run test:app-data-contracts:convex` (full suite incl. new computers block)
+- `npm run check:on-prem-convex-boundaries` (route inventory + Convex runtime tracking)
 - `npm run convex:push:dev` **only from the dedicated staging worktree** — the
   schema change must reach the shared dev deployment before the Convex
   contract test runs locally (per `docs/develop/convex-workflow.mdx`).

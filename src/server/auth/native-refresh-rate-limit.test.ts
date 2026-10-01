@@ -3,9 +3,7 @@ import 'server-only'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const { getNativeRefreshTokenBucketKey } = await import(
-  new URL('./native-refresh-rate-limit.ts', import.meta.url).href
-)
+import { getNativeRefreshTokenBucketKey } from './native-refresh-rate-limit.ts'
 
 test('native refresh rate limit bucket is keyed by refresh token hash', () => {
   const tokenA = 'refresh-token-a'

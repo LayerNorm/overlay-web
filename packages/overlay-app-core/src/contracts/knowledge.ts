@@ -10,6 +10,8 @@ export interface KnowledgeFile {
   content?: string
   textContent?: string
   previewText?: string
+  /** Text too large to keep inline: the full text is the stored object and `content` is a prefix. */
+  textInObjectStore?: boolean
   mimeType?: string
   extension?: string
   sizeBytes?: number

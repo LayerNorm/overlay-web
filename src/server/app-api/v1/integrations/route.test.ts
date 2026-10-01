@@ -4,12 +4,16 @@ import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AuthorizationService } from '@/server/authorization'
 import type { IntegrationService } from '@/server/integrations'
+import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
 import { GET, POST } from './route'
 
 const context = {
   auth: {
     authType: 'session',
     userId: 'user_1',
+  },
+  workspace: {
+    workspace: { id: 'workspace_1', kind: 'team' },
   },
   authorization: {
     evaluation: {
@@ -40,6 +44,23 @@ function authorization(allowedIds: readonly string[]): AuthorizationService {
   } as unknown as AuthorizationService
 }
 
+// Both connectors are mapped to the active workspace, so only the catalog
+// policy decides what the route exposes.
+function workspaceConnectors(): WorkspaceConnectorRepository {
+  const mapping = (providerKey: string) => ({
+    connectedAccountId: `account_${providerKey}`,
+    providerKey,
+    userId: 'user_1',
+    workspaceId: 'workspace_1',
+  })
+  return {
+    insert: async () => undefined,
+    listByUser: async () => [mapping('gmail'), mapping('slack')],
+    listByWorkspace: async () => [mapping('gmail'), mapping('slack')],
+    remove: async () => undefined,
+  } as unknown as WorkspaceConnectorRepository
+}
+
 function integrations() {
   const connected: string[] = []
   return {
@@ -62,8 +83,8 @@ function integrations() {
       }),
       listConnected: async () => ({
         connections: [
-          { providerKey: 'gmail' },
-          { providerKey: 'slack' },
+          { id: 'account_gmail', providerKey: 'gmail' },
+          { id: 'account_slack', providerKey: 'slack' },
         ],
         items: [
           integration('gmail', 'Gmail'),
@@ -79,6 +100,7 @@ test('integration catalog and connected state omit connectors withheld by policy
   const dependencies = {
     authorization: authorization(['gmail']),
     service: fixture.service,
+    workspaceConnectors: workspaceConnectors(),
   }
 
   const searchResponse = await GET(
@@ -109,6 +131,7 @@ test('connector policy rejects direct connection attempts server-side', async ()
   const dependencies = {
     authorization: authorization(['gmail']),
     service: fixture.service,
+    workspaceConnectors: workspaceConnectors(),
   }
   const denied = await POST(
     jsonRequest({ providerKey: 'slack' }),

@@ -9,9 +9,10 @@ import {
   filterGatewayCompatibleToolSet,
 } from './tool-schema-compat'
 import {
-  parallelSearchInputSchema,
-  perplexitySearchInputSchema,
-} from './gateway-search-tools'
+  deepSearchInputSchema,
+  webFetchInputSchema,
+  webSearchInputSchema,
+} from '@/server/tools/tools/web-search'
 
 function noopTool(schema: ToolSet[string]['inputSchema']): ToolSet[string] {
   return tool({
@@ -23,10 +24,11 @@ function noopTool(schema: ToolSet[string]['inputSchema']): ToolSet[string] {
 
 const candidateToolSets: Array<[string, ToolSet]> = [
   [
-    'gateway_search_function_wrappers',
+    'web_search_function_wrappers',
     {
-      perplexity_search: noopTool(perplexitySearchInputSchema),
-      parallel_search: noopTool(parallelSearchInputSchema),
+      web_search: noopTool(webSearchInputSchema),
+      deep_search: noopTool(deepSearchInputSchema),
+      web_fetch: noopTool(webFetchInputSchema),
     },
   ],
   [

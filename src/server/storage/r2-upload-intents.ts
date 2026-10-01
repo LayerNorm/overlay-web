@@ -10,12 +10,6 @@ type ExpiredUploadIntent = {
   r2Key: string
 }
 
-export type R2UploadIntent = {
-  _id: Id<'r2UploadIntents'>
-  declaredSizeBytes: number
-  mimeType?: string
-  expiresAt: number
-}
 
 export async function cleanupExpiredR2UploadIntents(params: {
   userId: string

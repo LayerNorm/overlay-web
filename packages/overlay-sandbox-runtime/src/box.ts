@@ -49,7 +49,7 @@ const CAPABILITIES: SandboxCapabilities = {
   credentialBrokering: false,
   hardTimeout: true,
   idleStop: false,
-  usage: false,
+  usage: true,
   desktop: true,
 }
 
@@ -111,6 +111,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     this.apiKey = apiKey
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
     this.fetch = options.fetch ?? (async (input, init) => {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch(input, init)
       return { status: response.status, json: () => response.json() }
     })
@@ -204,10 +205,11 @@ export class BoxSandboxRuntime implements SandboxRuntime {
 
   /** Poll an instance until it reaches one of the target box states. */
   async pollBox(boxId: string, targets: BoxState[], timeoutMs: number): Promise<BoxInfo> {
+    const targetStates = new Set(targets)
     const deadline = Date.now() + timeoutMs
     for (;;) {
       const info = await this.getBox(boxId)
-      if (targets.includes(info.state)) return info
+      if (targetStates.has(info.state)) return info
       if (info.state === 'error') {
         throw new BoxApiError(409, 'box_error', `box ${boxId} entered error state`)
       }
@@ -223,6 +225,43 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     if (!response.box) throw new BoxApiError(500, 'invalid_json_response', 'box info returned no box')
     return response.box
   }
+
+  /**
+   * Account-level capacity and balance. `canStart === false` means new boxes
+   * are refused (billing, suspension, or plan ceilings); `remainingSeconds`
+   * is subscription + credit machine time left. Fleet alerting consumes this.
+   */
+  async limits(): Promise<BoxLimits> {
+    const response = await this.request<{
+      canStart?: boolean
+      blockedReason?: string | null
+      subscriptionRemainingSeconds?: number
+      creditBalanceSeconds?: number
+      packBalanceSeconds?: number
+      last24hUsageSeconds?: number
+      activeSandboxes?: number
+      maxActiveSandboxes?: number
+    }>('GET', '/limits')
+    return {
+      canStart: response.canStart !== false,
+      blockedReason: response.blockedReason ?? null,
+      remainingSeconds: Math.max(0,
+        finite(response.subscriptionRemainingSeconds) + finite(response.creditBalanceSeconds)),
+      last24hUsageSeconds: finite(response.last24hUsageSeconds),
+      activeSandboxes: finite(response.activeSandboxes),
+      maxActiveSandboxes: finite(response.maxActiveSandboxes),
+    }
+  }
+}
+
+export type BoxLimits = {
+  canStart: boolean
+  blockedReason: string | null
+  /** Subscription + credit-pack machine seconds remaining (multiplier-adjusted pool). */
+  remainingSeconds: number
+  last24hUsageSeconds: number
+  activeSandboxes: number
+  maxActiveSandboxes: number
 }
 
 class BoxSandboxInstance implements DesktopSandboxInstance {
@@ -351,11 +390,10 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>): Promise<void> {
-    for (const file of files) {
-      await this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
+    await Promise.all(files.map((file) =>
+      this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
         body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })
-    }
+      })))
   }
 
   async readFile(path: string): Promise<Uint8Array | null> {
@@ -434,8 +472,36 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     }
   }
 
+  /**
+   * Provider-reported billing for this box. `seconds` is billable machine
+   * time with the size multiplier already applied (a `large` running ten
+   * minutes reports 1200), so it is mapped to `wallTimeMs` — the meter bills
+   * deltas of it. `dollars` is the list-price equivalent and is carried in
+   * `providerMetrics.reportedUsd` so `sandboxCostUsd` can prefer the
+   * provider's own accounting over an estimated rate card.
+   */
   async usage(): Promise<SandboxUsage> {
-    return {}
+    const response = await this.runtime.request<{
+      seconds?: number
+      dollars?: number
+      secondsPerDollar?: number
+      billingMultiplier?: number
+      running?: boolean
+    }>('GET', `/boxes/${this.reference}/usage`)
+    const seconds = finite(response.seconds)
+    return {
+      wallTimeMs: Math.max(0, seconds) * 1_000,
+      providerMetrics: {
+        // Absent (not zero) when the API predates dollar reporting — the
+        // cost path falls back to the seconds rate card only then.
+        ...(typeof response.dollars === 'number' && Number.isFinite(response.dollars)
+          ? { reportedUsd: Math.max(0, response.dollars) }
+          : {}),
+        running: response.running === true,
+        ...(response.secondsPerDollar !== undefined ? { secondsPerDollar: response.secondsPerDollar } : {}),
+        ...(response.billingMultiplier !== undefined ? { billingMultiplier: response.billingMultiplier } : {}),
+      },
+    }
   }
 
   rawProviderDiagnosticHandle(): unknown {
@@ -584,6 +650,10 @@ function boxSize(resources?: SandboxResources): string {
   if (vcpus <= 2) return 'small'
   if (vcpus <= 4) return 'default'
   return 'large'
+}
+
+function finite(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 function shellQuote(value: string): string {

@@ -6,4 +6,3 @@ export type {
   UpdateProviderConnectionInput,
 } from './ProviderConnectionRepository'
 export { ConvexProviderConnectionRepository } from './ConvexProviderConnectionRepository'
-export { PostgresProviderConnectionRepository } from './PostgresProviderConnectionRepository'

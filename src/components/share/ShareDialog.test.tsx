@@ -7,7 +7,8 @@ import type {
   WorkspaceShareDirectoryEntry,
   WorkspaceShareImpact,
 } from '@overlay/workspace-contracts'
-import { ShareDialogContent } from './ShareDialog'
+import { shareRoleOptions } from '@/shared/share/share-access-policy'
+import { ShareDialogContent, shareDirectoryGroups } from './ShareDialog'
 
 // Package components compile with the classic JSX runtime under the app's
 // tsconfig, so they resolve React from the global.
@@ -84,26 +85,27 @@ test('share dialog renders loading, empty, and populated access states', () => {
   assert.match(populated, /Everyone on this team, including people added later/)
 })
 
+// The pickers use the shared listbox Select, which renders its options only
+// when opened, so these assert the option data the pickers are built from.
 test('share dialog groups people, agents, teams, and rooms in one picker', () => {
-  const html = render()
-  for (const label of ['People &amp; agents', 'Teams', 'Rooms']) {
-    assert.match(html, new RegExp(label))
-  }
-  assert.match(html, /Add a person, agent, team, or room/)
+  assert.match(render(), /aria-label="Add a person, agent, team, or room"/)
+  const groups = shareDirectoryGroups(DIRECTORY)
+  assert.deepEqual(groups.map(({ label }) => label), ['People & agents', 'Teams', 'Rooms'])
+  for (const { entries } of groups) assert.ok(entries.length > 0)
+  assert.equal(groups.flatMap(({ entries }) => entries).length, DIRECTORY.length)
 })
 
 test('share dialog offers only permissions the API accepts for the resource', () => {
-  const file = render()
-  assert.match(file, /Can view/)
-  assert.match(file, /Can edit/)
-  assert.doesNotMatch(file, /Can run/)
+  const labels = (type: Parameters<typeof shareRoleOptions>[0]) =>
+    shareRoleOptions(type).map(({ label }) => label)
+  assert.match(render(), /Can view/)
 
-  const automation = render({ resourceType: 'automation' })
-  assert.match(automation, /Can run/)
-
-  const conversation = render({ resourceType: 'conversation' })
-  assert.match(conversation, /Can view/)
-  assert.doesNotMatch(conversation, /Can edit/)
+  assert.ok(labels('file').includes('Can view'))
+  assert.ok(labels('file').includes('Can edit'))
+  assert.ok(!labels('file').includes('Can run'))
+  assert.ok(labels('automation').includes('Can run'))
+  assert.ok(labels('conversation').includes('Can view'))
+  assert.ok(!labels('conversation').includes('Can edit'))
 })
 
 test('share dialog discloses who gains access before a dynamic grant exists', () => {

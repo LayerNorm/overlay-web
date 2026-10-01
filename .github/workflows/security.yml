@@ -162,14 +162,19 @@ jobs:
       - name: Verify core route contracts
         run: npm run test:route-characterization
 
+      # Every tracked *.test.* file, each with the runner it needs
+      # (scripts/ci/run-all-tests.mjs). Nothing runs outside this gate.
+      - name: Run the full test suite
+        run: npm run test:all
+
       - name: Verify migration and endpoint safety rails
         run: npm run check:config && npm run test:release-safety
 
       - name: Verify tenant boundary guard
         run: npm run check:tenant-boundaries
 
-      - name: Verify on-prem parity matrix
-        run: npm run check:on-prem-parity
+      - name: Verify on-prem Convex boundaries
+        run: npm run check:on-prem-convex-boundaries
 
       - name: Verify public documentation health
         run: npm run docs:health

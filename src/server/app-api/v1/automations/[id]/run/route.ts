@@ -75,8 +75,9 @@ export async function POST(request: NextRequest, context?: AppApiRouteContext) {
       instructions: (automation as { instructions?: string; instructionsMarkdown?: string }).instructions ||
         (automation as { instructionsMarkdown?: string }).instructionsMarkdown || '',
       modelId: (automation as { modelId?: string }).modelId,
-      conversationId: (automation as { conversationId?: string; sourceConversationId?: string }).conversationId ||
-        (automation as { sourceConversationId?: string }).sourceConversationId,
+      // Runs only target the automation-owned thread; the source
+      // conversation is provenance, never an execution target.
+      conversationId: (automation as { conversationId?: string }).conversationId,
       schedule: (automation as { schedule?: AutomationScheduleWorkflowInput['schedule'] }).schedule ??
         { kind: 'interval' as const, intervalMinutes: 60 },
       oneShot: true,

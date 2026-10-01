@@ -19,7 +19,7 @@ import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.5'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.6'
 
 assertSupportedNodeVersion()
 
@@ -117,8 +117,10 @@ if (command === 'connect') {
 async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[]) {
   const adapters = prebuiltAdapters ?? buildAdapters(config.adapters)
   if (!config.credential) throw new Error(`agent host credential is missing from ${config.credentialEnv} and local connection state`)
-  const keys = await loadOrCreateDeviceKeyPair(config.stateDirectory)
-  const stored = await loadStoredConnection(config.stateDirectory)
+  const [keys, stored] = await Promise.all([
+    loadOrCreateDeviceKeyPair(config.stateDirectory),
+    loadStoredConnection(config.stateDirectory),
+  ])
   const logger = new StructuredLogger()
   const state = new SqliteHostStateStore(join(config.stateDirectory, 'host.sqlite'), {
     environmentId: config.environmentId,

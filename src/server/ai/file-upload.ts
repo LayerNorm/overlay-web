@@ -39,7 +39,32 @@ export async function tryUploadFileToProvider(args: {
     // Fetch the file data from the URL (could be a data: URL or https: URL).
     const response = await fetch(url)
     if (!response.ok) return null
-    const data = new Uint8Array(await response.arrayBuffer())
+
+    const maxBytes = 20 * 1024 * 1024
+    const contentLength = Number(response.headers.get('content-length'))
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) return null
+    if (!response.body) return null
+
+    const chunks: Uint8Array[] = []
+    let totalBytes = 0
+    const reader = response.body.getReader()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+
+    const data = new Uint8Array(totalBytes)
+    let offset = 0
+    for (const chunk of chunks) {
+      data.set(chunk, offset)
+      offset += chunk.byteLength
+    }
 
     const filesApi = resolveProviderFilesApi(provider)
     if (!filesApi) return null
@@ -108,24 +133,27 @@ export async function uploadFilePartsForModel(
   }>,
   modelId: string,
 ): Promise<void> {
-  for (const message of messages) {
-    if (message.role !== 'user' || !message.parts) continue
-    for (const part of message.parts) {
-      if (part.type !== 'file' || !part.url || !part.mediaType || part.providerReference) continue
-      // Skip data: URLs that are small (< 100KB) — inline is cheaper for small files.
-      if (part.url.startsWith('data:') && part.url.length < 100_000) continue
-
-      const result = await tryUploadFileToProvider({
-        modelId,
-        url: part.url,
-        mediaType: part.mediaType,
-        fileName: part.fileName ?? part.filename,
-      })
-      if (result) {
-        // AI SDK v7 reads provider references from this dedicated field.
-        // Keep the original URL as a fallback for providers that do not use it.
-        part.providerReference = result.providerReference
-      }
+  const uploadableParts = messages.flatMap((message) =>
+    message.role !== 'user' || !message.parts
+      ? []
+      : message.parts.filter((part) =>
+          part.type === 'file'
+          && Boolean(part.url)
+          && Boolean(part.mediaType)
+          && !part.providerReference
+          // Skip data: URLs that are small (< 100KB) — inline is cheaper for small files.
+          && !(part.url!.startsWith('data:') && part.url!.length < 100_000)))
+  await Promise.all(uploadableParts.map(async (part) => {
+    const result = await tryUploadFileToProvider({
+      modelId,
+      url: part.url!,
+      mediaType: part.mediaType!,
+      fileName: part.fileName ?? part.filename,
+    })
+    if (result) {
+      // AI SDK v7 reads provider references from this dedicated field.
+      // Keep the original URL as a fallback for providers that do not use it.
+      part.providerReference = result.providerReference
     }
-  }
+  }))
 }

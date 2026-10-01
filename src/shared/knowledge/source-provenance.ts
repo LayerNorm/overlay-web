@@ -2,8 +2,8 @@
  * Where a knowledge source came from, and how fresh its index is.
  *
  * Provenance is stored inside `KnowledgeSource.metadata` under `provenance` so it
- * works identically on Postgres and Convex without a schema change per origin
- * type. Freshness is derived, never stored, so it cannot go stale itself.
+ * works without a schema change per origin type. Freshness is derived, never
+ * stored, so it cannot go stale itself.
  */
 
 export const KNOWLEDGE_SOURCE_ORIGINS = [

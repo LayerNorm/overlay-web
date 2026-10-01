@@ -3,13 +3,6 @@ import { internal } from './_generated/api'
 
 const crons = cronJobs()
 
-// Daytona webhooks may later accelerate reconciliation, but this cron remains the billing truth.
-crons.interval(
-  'daytona workspace reconciliation',
-  { minutes: 1 },
-  internal.ai.sandbox.daytonaReconcile.runMinuteTick,
-)
-
 // Claims due automation runs every minute and dispatches each to the BFF,
 // which executes it as a durable one-shot automation workflow. Sleep()-based
 // per-automation scheduling workflows could not survive in the current
@@ -150,6 +143,28 @@ crons.interval(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).imports.slackRunner.runMinuteTick,
   {},
+)
+
+// knowledgeChunks have no tombstone — a chunk is dead when its source row is.
+// Interrupted purges can strand retrievable chunks; a daily whole-table scan
+// deletes provable orphans (missing source row, tombstoned memory). The action
+// pages the table and self-reschedules until done, so one tick kicks a
+// resumable chain rather than timing out on large stores.
+crons.daily(
+  'knowledge orphan-chunk sweep',
+  { hourUTC: 4, minuteUTC: 30 },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).knowledge.knowledge.sweepOrphanedChunks,
+  {},
+)
+
+// Chat SDK dedupe keys, locks, and queue entries carry TTLs; reads already
+// ignore expired rows, so this only bounds table growth.
+crons.interval(
+  'surface chat state expiry sweep',
+  { minutes: 15 },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (internal as any).surfaces.chatState.pruneExpired,
 )
 
 export default crons

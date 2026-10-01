@@ -68,9 +68,7 @@ export const cleanupExpiredReplayNoncesByServer = mutation({
       .withIndex('by_expiresAt', (q) => q.lt('expiresAt', now))
       .take(limit)
 
-    for (const row of expired) {
-      await ctx.db.delete(row._id)
-    }
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)))
 
     return { deleted: expired.length }
   },
@@ -90,9 +88,7 @@ export const cleanupExpiredReplayNoncesInternal = internalMutation({
       .withIndex('by_expiresAt', (q) => q.lt('expiresAt', now))
       .take(limit)
 
-    for (const row of expired) {
-      await ctx.db.delete(row._id)
-    }
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)))
 
     return { deleted: expired.length }
   },

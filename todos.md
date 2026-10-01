@@ -51,10 +51,6 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   claude-code/codex/opencode/pi/hermes with providers vercel+daytona; OpenCode
   provisioning 201 (test sandbox destroyed via reset-harness; orphan env row
   `overlay-harness-dc2ff13a` left for reconcile).
-- [ ] **Hermes live turn before picker exposure** — `harness-acp@1.0.40`
-  constructs fine but `hermes acp` hasn't run a real turn in-sandbox; verify
-  before enabling it in the create-agent UI (Phase 3 ships it in the catalog —
-  consider policy-allowlisting it out until verified).
 - [x] **Set the managed-harness feature flags** — `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`
   is set on staging. `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` defaults to
   `general`, so every staging workspace passes the rollout gate; narrow it to
@@ -129,18 +125,6 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   resumes the same workflow (check the reply continues on the same turn), and
   denying produces a `tool-output-denied` part in the transcript. Also verify
   stop-button cancellation while the workflow is parked.
-- [ ] **Daytona managed provider — deferred for now** (owner call, Phase 4
-  follow-up). When revisiting: `DAYTONA_API_KEY` is already in local env;
-  set `OVERLAY_HARNESS_SANDBOX_PROVIDER=daytona`, provision
-  `POST /api/v1/agent-environments/managed` with `{mode:'harness',
-  harnessId:'claude-code', provider:'daytona'}`, run a turn, and confirm the
-  harness reaches its in-sandbox bridge port through the private preview link.
-- [ ] **Verify a BYOK managed turn** — add a user `user-vercel-ai-gateway`
-  provider connection (Settings), bind a managed `claude-code` agent to it via
-  Model access, DM the agent, and confirm the turn is funded by the connection
-  (no Overlay model-usage reservation) with the key read from the vault at run
-  time — it must never appear in binding config, workflow state, or sandbox
-  env.
 - [ ] **Mobile parity in `overlay-mobile`** — the sibling app needs the managed
   capability bootstrap plus harness/provider labels in the agents roster and
   editor parity with the web pickers (runtime, model, model access).
@@ -148,3 +132,30 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   seam rejects it until egress allowlisting and safe credential forwarding
   exist. Revisit only with a Box rate card (`computeBoxRuntimeCost`) if it's
   ever offered.
+
+## Self-hosting roadmap
+
+Context: Convex is the only app-data provider (Phase 3 done). Enterprise
+self-hosting runs the official `convex-backend` (`examples/customer-deployment/`),
+and the SQL read mirror ships in `docker-compose.mirror.yml` (Phase 4 done).
+Architecture + rationale: `docs/develop/convex-only-self-hosting.md`.
+Frozen escape hatch: `postgres-self-host` branch pinned at `63cf2edb4` — the
+last commit with the full bespoke Postgres provider (deleted on `main`); only
+touch it if a customer explicitly requires a Postgres app-data backend.
+
+- [ ] **Confirm FSL scope with Convex before building** — email/Discord:
+  orchestrating `convex-backend` instances that exist only to serve Overlay
+  deployments (including in customer premises) vs. offering managed Convex as
+  a product. Get the answer in writing; enterprise procurement will ask.
+- [ ] **Big Brain — per-customer lifecycle manager** (Phase 5, build when a
+  concrete enterprise need lands). Scope v1 to single-customer deployments:
+  provision (instance name → schema → `INSTANCE_SECRET` → admin key →
+  container), health-check via `/version`, image upgrades with pre-upgrade
+  `npx convex export`, scheduled export backups, standby promote on lease
+  loss. Written against four portable interfaces — containers, Postgres
+  provisioner, object store, DNS — so it works on any cloud. The OSS repo's
+  `big_brain_client` crate shows the backend is designed for external control.
+- [ ] **Big Brain — central fleet plane** — deferred harder: per-tenant
+  routing, metering (`/metrics`, off by default), and multi-instance scaling
+  only matter if Overlay hosts many tenants itself. Re-read the FSL before
+  any managed-hosting shape; this version is closest to the license line.

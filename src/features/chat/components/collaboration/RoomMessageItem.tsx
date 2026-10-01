@@ -2,7 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element -- room attachments mirror the chat transcript renderer */
 
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   Bookmark,
   Check,
@@ -21,10 +28,11 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
-import type { AttachmentPreview } from '@overlay/chat-react'
+import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
+import { roomMessageDomId } from './room-message-view'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -69,7 +77,7 @@ export type RoomMessageView = {
   images: RoomMessageAttachment[]
   documentNames: string[]
   /** Room members named in the body, so `@name` renders as a chip. */
-  mentions: Array<{ type: string; id: string; name: string }>
+  mentions: ChatMessageMention[]
   streaming?: boolean
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
@@ -121,10 +129,7 @@ export type RoomMessageItemProps = {
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
 const NOOP_DRAFT = () => {}
 
-/** The scroll target for pin and thread jumps. */
-export function roomMessageDomId(messageId: string): string {
-  return `room-message-${messageId}`
-}
+
 
 function authorInitial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?'
@@ -135,6 +140,15 @@ const AUTHOR_STATUS_META = {
   invited: { label: 'Invited', className: 'bg-amber-500/10 text-amber-600' },
   not_invited: { label: 'Not invited', className: 'bg-[var(--surface-subtle)] text-[var(--muted)]' },
 } as const
+
+/** Agent mention chips carry the creature avatar; other types keep their icon. */
+const renderMentionAvatar = (mention: ChatMessageMention) =>
+  mention.type === 'agent' ? (
+    <AgentCreature
+      agent={{ name: mention.name, avatarColor: mention.avatarColor, avatarShape: mention.avatarShape }}
+      size={14}
+    />
+  ) : undefined
 
 type AuthorStatus = keyof typeof AUTHOR_STATUS_META
 
@@ -192,8 +206,11 @@ function AuthorIdentityPopover({
         {children}
       </button>
       {open ? (
+        // Anchored author popover — a native <dialog> cannot anchor below the trigger.
+        // react-doctor-disable-next-line react-doctor/prefer-html-dialog
         <div
           role="dialog"
+          aria-label={name ? `${name} profile` : 'Message author'}
           className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 shadow-xl"
         >
           <div className="flex items-center gap-2.5">
@@ -201,14 +218,20 @@ function AuthorIdentityPopover({
               {authorInitial(name)}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-[var(--foreground)]">{name}</span>
-              <span className="block truncate text-[11px] text-[var(--muted)]">{email ?? 'No email on file'}</span>
+              <span className='block truncate text-sm font-semibold text-[var(--foreground)]'>
+                {name}
+              </span>
+              <span className='block truncate text-[11px] text-[var(--muted)]'>
+                {email ?? 'No email on file'}
+              </span>
             </span>
           </div>
           {statusMeta ? (
             <div className="mt-2.5 flex items-center justify-between border-t border-[var(--border)] pt-2.5">
               <span className="text-[11px] text-[var(--muted)]">Workspace</span>
-              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}>
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}
+              >
                 {statusMeta.label}
               </span>
             </div>
@@ -257,8 +280,14 @@ export function RoomMessageItem({
   personalChatStyle = false,
 }: RoomMessageItemProps) {
   const { mine } = message
-  const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
-  const timeLabel = new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const isAgent =
+    message.authorKind === 'agent' || message.authorKind === 'model'
+  // Locale pinned to 'en-US' — SSR and client output are identical.
+  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+  const timeLabel = new Date(message.createdAt).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
   const rootProps = {
     id: roomMessageDomId(message.id),
     'data-room-message': message.id,
@@ -269,18 +298,127 @@ export function RoomMessageItem({
     ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
     : ''
 
-  const avatarNode = isAgent ? (
-    <span
-      className="flex h-9 w-9 shrink-0 items-center justify-center"
-      aria-hidden
-    >
-      <AgentCreature
-        agent={{ name: message.authorName, avatarColor: message.authorColor, avatarShape: message.authorShape }}
-        size={32}
-        animated={message.streaming}
+  const toolbar = (
+    <RoomMessageToolbar
+      alignEnd={mine}
+      floating={!personalChatStyle}
+      copyText={message.text}
+      canEdit={mine}
+      canReport={!mine}
+      pinned={pinned}
+      saved={saved}
+      disabled={Boolean(message.delivery)}
+      onStop={message.streaming ? onStopResponse : undefined}
+      onStartEdit={onStartEdit}
+      onDelete={onDelete}
+      onReport={onReport}
+      onSelectReaction={onToggleReaction}
+      onOpenThread={onOpenThread}
+      onQuoteReply={onQuoteReply}
+      onTogglePinned={onTogglePinned}
+      onToggleSaved={onToggleSaved}
+      onCopyPermalink={onCopyPermalink}
+    />
+  )
+
+  const content: RoomMessageContentProps = {
+    message,
+    reactions,
+    replyCount,
+    threadTeaser,
+    editing,
+    editingContent,
+    onEditingContentChange,
+    onSaveEdit,
+    onCancelEdit,
+    onOpenAttachmentPreview,
+    onToggleReaction,
+    onOpenThread,
+    personalChatStyle,
+  }
+
+  if (message.deletedAt) {
+    return (
+      <DeletedRoomMessage
+        rootProps={rootProps}
+        mine={mine}
+        personalChatStyle={personalChatStyle}
+        highlightClass={highlightClass}
+        message={message}
       />
-    </span>
-  ) : (
+    )
+  }
+
+  // ── Sent (yours): right gray bubble, with no redundant identity chrome. ──
+  if (mine && !isAgent) {
+    return (
+      <SentRoomMessage
+        rootProps={rootProps}
+        highlightClass={highlightClass}
+        toolbar={toolbar}
+        content={content}
+        onRetrySend={onRetrySend}
+      />
+    )
+  }
+
+  // ── Received human / agent: Slack flat row with avatar on every message ──
+  return (
+    <ReceivedRoomMessage
+      rootProps={rootProps}
+      highlightClass={highlightClass}
+      toolbar={toolbar}
+      content={content}
+      isAgent={isAgent}
+      timeLabel={timeLabel}
+      grouped={grouped}
+      pinned={pinned}
+      onControlRemoteQueue={onControlRemoteQueue}
+      onResolveRemoteRequest={onResolveRemoteRequest}
+    />
+  )
+}
+
+type RoomMessageRootProps = {
+  id: string
+  'data-room-message': string
+  'data-overlay-link-scope': string
+}
+
+/** Props shared by the sent and received message rows. */
+type RoomMessageContentProps = {
+  message: RoomMessageView
+  reactions: RoomMessageReaction[]
+  replyCount: number
+  threadTeaser: RoomThreadTeaser | null
+  editing: boolean
+  editingContent: string
+  onEditingContentChange: (value: string) => void
+  onSaveEdit: () => void
+  onCancelEdit: () => void
+  onOpenAttachmentPreview: (preview: AttachmentPreview) => void
+  onToggleReaction: (emoji: string) => void
+  onOpenThread: () => void
+  personalChatStyle: boolean
+}
+
+function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
+  const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
+  if (isAgent) {
+    return (
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center"
+        aria-hidden
+      >
+        <AgentCreature
+          agent={{ name: message.authorName, avatarColor: message.authorColor, avatarShape: message.authorShape }}
+          size={32}
+          animated={message.streaming}
+        />
+      </span>
+    )
+  }
+  return (
     <AuthorIdentityPopover
       name={message.authorName}
       email={message.authorEmail}
@@ -291,52 +429,75 @@ export function RoomMessageItem({
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]"
         aria-hidden
       >
-        {authorInitial(mine ? 'You' : message.authorName)}
+        {authorInitial(message.mine ? 'You' : message.authorName)}
       </span>
     </AuthorIdentityPopover>
   )
+}
 
-  /** Human and agent messages share the same safe GFM renderer. */
-  const humanBody = message.text ? (
+/** Human and agent messages share the same safe GFM renderer. */
+function HumanMessageText({ message }: { message: RoomMessageView }) {
+  if (!message.text) return null
+  return (
     <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
-      <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
+      <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} renderMentionAvatar={renderMentionAvatar} />
     </div>
-  ) : null
+  )
+}
 
-  if (message.deletedAt) {
-    if (mine) {
-      return (
-        <div
-          {...rootProps}
-          className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
-        >
-          <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
-            <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-              <span className="italic text-[var(--muted)]">Message deleted</span>
-            </UserMessageBubble>
-          </div>
-        </div>
-      )
-    }
+function SentMessageContent({ message }: { message: RoomMessageView }) {
+  if (!message.text) return null
+  return (
+    <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+      <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} renderMentionAvatar={renderMentionAvatar} />
+    </UserMessageBubble>
+  )
+}
 
+function DeletedRoomMessage({ rootProps, mine, personalChatStyle, highlightClass, message }: {
+  rootProps: RoomMessageRootProps
+  mine: boolean
+  personalChatStyle: boolean
+  highlightClass: string
+  message: RoomMessageView
+}) {
+  if (mine) {
     return (
       <div
         {...rootProps}
-        className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
       >
-        {avatarNode}
-        <p className="self-center text-sm italic text-[var(--muted-light)]">Message deleted</p>
+        <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
+          <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
+            <span className="italic text-[var(--muted)]">Message deleted</span>
+          </UserMessageBubble>
+        </div>
       </div>
     )
   }
 
-  const attachments = (
+  return (
+    <div
+      {...rootProps}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 ${highlightClass}`}
+    >
+      <RoomMessageAvatar message={message} />
+      <p className="self-center text-sm italic text-[var(--muted-light)]">Message deleted</p>
+    </div>
+  )
+}
+
+function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
+  message: RoomMessageView
+  onOpenAttachmentPreview: (preview: AttachmentPreview) => void
+}) {
+  return (
     <>
       {message.images.length > 0 ? (
-        <div className={`flex w-full flex-wrap gap-1.5 ${mine ? 'justify-end' : ''}`}>
-          {message.images.map((attachment, index) => (
+        <div className={`flex w-full flex-wrap gap-1.5 ${message.mine ? 'justify-end' : ''}`}>
+          {message.images.map((attachment) => (
             <button
-              key={`${attachment.url}-${index}`}
+              key={attachment.url}
               type="button"
               onClick={() => onOpenAttachmentPreview({
                 name: attachment.name,
@@ -356,22 +517,31 @@ export function RoomMessageItem({
         </div>
       ) : null}
       {message.documentNames.length > 0 ? (
-        <div className={`flex w-full flex-wrap gap-1.5 ${mine ? 'justify-end' : ''}`}>
+        <div className={`flex w-full flex-wrap gap-1.5 ${message.mine ? 'justify-end' : ''}`}>
           {message.documentNames.map((name) => (
             <div
               key={name}
               className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm"
             >
               <FileText size={13} className="shrink-0 text-[var(--muted)]" />
-              <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
+              <span className='truncate font-medium text-[var(--foreground)]'>
+                {name}
+              </span>
             </div>
           ))}
         </div>
       ) : null}
     </>
   )
+}
 
-  const editor = (
+function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit, onCancelEdit }: {
+  editingContent: string
+  onEditingContentChange: (value: string) => void
+  onSaveEdit: () => void
+  onCancelEdit: () => void
+}) {
+  return (
     <div className="mt-1 flex w-full gap-2">
       <Textarea
         autoFocus
@@ -405,9 +575,16 @@ export function RoomMessageItem({
       </button>
     </div>
   )
+}
 
-  const reactionRow = reactions.length > 0 ? (
-    <div className={`flex flex-wrap items-center gap-1 ${mine ? 'justify-end' : ''}`}>
+function RoomReactionRow({ reactions, alignEnd, onToggleReaction }: {
+  reactions: RoomMessageReaction[]
+  alignEnd: boolean
+  onToggleReaction: (emoji: string) => void
+}) {
+  if (reactions.length === 0) return null
+  return (
+    <div className={`flex flex-wrap items-center gap-1 ${alignEnd ? 'justify-end' : ''}`}>
       {reactions.map((reaction) => (
         <button
           key={reaction.emoji}
@@ -424,160 +601,208 @@ export function RoomMessageItem({
         </button>
       ))}
     </div>
-  ) : null
-
-  const threadEntry = !mine && replyCount > 0 ? (
-    <button
-      type="button"
-      onClick={onOpenThread}
-      data-testid="thread-teaser"
-      className="group/thread mt-0.5 flex max-w-xl items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-[var(--surface-subtle)]"
-    >
-      <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-[var(--muted)]" />
-      <span className="min-w-0 flex-1">
-        <span className="block text-[12px] font-semibold text-[var(--foreground)]">
-          {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-        </span>
-        {threadTeaser?.text ? (
-          <span className="mt-0.5 block truncate text-[12px] text-[var(--muted)]">
-            <span className="font-medium text-[var(--foreground)]">{threadTeaser.authorName}</span>
-            {': '}
-            {threadTeaser.text}
-          </span>
-        ) : null}
-      </span>
-    </button>
-  ) : replyCount > 0 ? (
-    <button
-      type="button"
-      onClick={onOpenThread}
-      data-testid="thread-teaser"
-      className={`inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] ${mine ? 'self-end' : ''}`}
-    >
-      <MessageSquareReply size={12} strokeWidth={1.75} />
-      {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-    </button>
-  ) : null
-
-  const toolbar = (
-    <RoomMessageToolbar
-      alignEnd={mine}
-      floating={!personalChatStyle}
-      copyText={message.text}
-      canEdit={mine}
-      canReport={!mine}
-      pinned={pinned}
-      saved={saved}
-      disabled={Boolean(message.delivery)}
-      onStop={message.streaming ? onStopResponse : undefined}
-      onStartEdit={onStartEdit}
-      onDelete={onDelete}
-      onReport={onReport}
-      onSelectReaction={onToggleReaction}
-      onOpenThread={onOpenThread}
-      onQuoteReply={onQuoteReply}
-      onTogglePinned={onTogglePinned}
-      onToggleSaved={onToggleSaved}
-      onCopyPermalink={onCopyPermalink}
-    />
   )
+}
 
-  // ── Sent (yours): right gray bubble, with no redundant identity chrome. ──
-  if (mine && !isAgent) {
+function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
+  mine: boolean
+  replyCount: number
+  threadTeaser: RoomThreadTeaser | null
+  onOpenThread: () => void
+}) {
+  if (!mine && replyCount > 0) {
     return (
-      <div
-        {...rootProps}
-        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
+      <button
+        type="button"
+        onClick={onOpenThread}
+        data-testid="thread-teaser"
+        className="group/thread mt-0.5 flex max-w-xl items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-[var(--surface-subtle)]"
       >
-        <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
-          {!personalChatStyle && toolbar}
-          {attachments}
-          {editing ? editor : message.text ? (
-            <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-              <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} />
-            </UserMessageBubble>
+        <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-[var(--muted)]" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12px] font-semibold text-[var(--foreground)]">
+            {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+          </span>
+          {threadTeaser?.text ? (
+            <span className="mt-0.5 block truncate text-[12px] text-[var(--muted)]">
+              <span className="font-medium text-[var(--foreground)]">{threadTeaser.authorName}</span>
+              {': '}
+              {threadTeaser.text}
+            </span>
           ) : null}
-          {message.delivery === 'failed' ? (
-            <button type="button" className="text-[11px] font-medium text-red-500 hover:underline" onClick={onRetrySend}>
-              Failed to send · Retry
-            </button>
-          ) : null}
-          {reactionRow}
-          {threadEntry}
-          {personalChatStyle && toolbar}
-        </div>
-      </div>
+        </span>
+      </button>
     )
   }
+  if (replyCount > 0) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenThread}
+        data-testid="thread-teaser"
+        className={`inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] ${mine ? 'self-end' : ''}`}
+      >
+        <MessageSquareReply size={12} strokeWidth={1.75} />
+        {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+      </button>
+    )
+  }
+  return null
+}
 
-  // ── Received human / agent: Slack flat row with avatar on every message ──
+function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
+  message: RoomMessageView
+  timeLabel: string
+  grouped: boolean
+  pinned: boolean
+}) {
+  return (
+    <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+      <AuthorIdentityPopover
+        name={message.authorName}
+        email={message.authorEmail}
+        status={message.authorStatus}
+      >
+        <span className="truncate text-[13px] font-bold text-[var(--foreground)] hover:underline">
+          {message.authorName}
+        </span>
+      </AuthorIdentityPopover>
+      {message.authorStatus && message.authorStatus !== 'member' ? (
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${AUTHOR_STATUS_META[message.authorStatus].className}`}>
+          {AUTHOR_STATUS_META[message.authorStatus].label}
+        </span>
+      ) : null}
+      {!grouped ? <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time> : null}
+      {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
+      {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
+    </div>
+  )
+}
+
+function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest }: {
+  message: RoomMessageView
+  onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
+  onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
+  onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
+}) {
+  return (
+    <>
+      <AssistantVisualBlocks
+        blocks={message.blocks}
+        blockKeyPrefix={message.id}
+        markdownKeyPrefix={message.id}
+        workedDurationMs={message.workedDurationMs}
+        isStreaming={Boolean(message.streaming)}
+        isTextStreaming={Boolean(message.streaming)}
+        onOpenDraft={NOOP_DRAFT}
+        onCreateAutomationDraft={NOOP_DRAFT}
+        onOpenAttachmentPreview={onOpenAttachmentPreview}
+      />
+      {message.streaming && message.blocks.length === 0 ? (
+        <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
+              style={{ animationDelay: `${dot * 120}ms` }}
+            />
+          ))}
+        </div>
+      ) : null}
+      {message.remoteQueue && onControlRemoteQueue ? (
+        <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
+      ) : null}
+      {message.remoteRequest && onResolveRemoteRequest ? (
+        <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
+      ) : null}
+      {message.remoteRun && onControlRemoteQueue && message.remoteRun.state !== 'waiting' ? (
+        <RemoteRunControls run={message.remoteRun} onControl={onControlRemoteQueue} />
+      ) : null}
+    </>
+  )
+}
+
+function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetrySend }: {
+  rootProps: RoomMessageRootProps
+  highlightClass: string
+  toolbar: ReactNode
+  content: RoomMessageContentProps
+  onRetrySend: () => void
+}) {
+  const { message, personalChatStyle } = content
+  return (
+    <div
+      {...rootProps}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
+    >
+      <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
+        {!personalChatStyle && toolbar}
+        <RoomMessageAttachments message={message} onOpenAttachmentPreview={content.onOpenAttachmentPreview} />
+        {content.editing ? (
+          <RoomMessageEditor
+            editingContent={content.editingContent}
+            onEditingContentChange={content.onEditingContentChange}
+            onSaveEdit={content.onSaveEdit}
+            onCancelEdit={content.onCancelEdit}
+          />
+        ) : (
+          <SentMessageContent message={message} />
+        )}
+        {message.delivery === 'failed' ? (
+          <button type="button" className="text-[11px] font-medium text-red-500 hover:underline" onClick={onRetrySend}>
+            Failed to send · Retry
+          </button>
+        ) : null}
+        <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
+        <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
+        {personalChatStyle && toolbar}
+      </div>
+    </div>
+  )
+}
+
+function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAgent, timeLabel, grouped, pinned, onControlRemoteQueue, onResolveRemoteRequest }: {
+  rootProps: RoomMessageRootProps
+  highlightClass: string
+  toolbar: ReactNode
+  content: RoomMessageContentProps
+  isAgent: boolean
+  timeLabel: string
+  grouped: boolean
+  pinned: boolean
+  onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
+  onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
+}) {
+  const { message, personalChatStyle } = content
   return (
     <div
       {...rootProps}
       className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
     >
-      {avatarNode}
+      <RoomMessageAvatar message={message} />
       <div className="relative min-w-0 flex-1">
         {!personalChatStyle && toolbar}
-        <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <AuthorIdentityPopover
-            name={message.authorName}
-            email={message.authorEmail}
-            status={message.authorStatus}
-          >
-            <span className="truncate text-[13px] font-bold text-[var(--foreground)] hover:underline">
-              {message.authorName}
-            </span>
-          </AuthorIdentityPopover>
-          {message.authorStatus && message.authorStatus !== 'member' ? (
-            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${AUTHOR_STATUS_META[message.authorStatus].className}`}>
-              {AUTHOR_STATUS_META[message.authorStatus].label}
-            </span>
-          ) : null}
-          {!grouped ? <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time> : null}
-          {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
-          {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
-        </div>
-        {attachments}
-        {editing ? editor : isAgent ? (
-          <>
-            <AssistantVisualBlocks
-              blocks={message.blocks}
-              blockKeyPrefix={message.id}
-              markdownKeyPrefix={message.id}
-              workedDurationMs={message.workedDurationMs}
-              isStreaming={Boolean(message.streaming)}
-              isTextStreaming={Boolean(message.streaming)}
-              onOpenDraft={NOOP_DRAFT}
-              onCreateAutomationDraft={NOOP_DRAFT}
-              onOpenAttachmentPreview={onOpenAttachmentPreview}
-            />
-            {message.streaming && message.blocks.length === 0 ? (
-              <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
-                {[0, 1, 2].map((dot) => (
-                  <span
-                    key={dot}
-                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
-                    style={{ animationDelay: `${dot * 120}ms` }}
-                  />
-                ))}
-              </div>
-            ) : null}
-            {message.remoteQueue && onControlRemoteQueue ? (
-              <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
-            ) : null}
-            {message.remoteRequest && onResolveRemoteRequest ? (
-              <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
-            ) : null}
-            {message.remoteRun && onControlRemoteQueue && message.remoteRun.state !== 'waiting' ? (
-              <RemoteRunControls run={message.remoteRun} onControl={onControlRemoteQueue} />
-            ) : null}
-          </>
+        <RoomMessageMetaRow message={message} timeLabel={timeLabel} grouped={grouped} pinned={pinned} />
+        <RoomMessageAttachments message={message} onOpenAttachmentPreview={content.onOpenAttachmentPreview} />
+        {content.editing ? (
+          <RoomMessageEditor
+            editingContent={content.editingContent}
+            onEditingContentChange={content.onEditingContentChange}
+            onSaveEdit={content.onSaveEdit}
+            onCancelEdit={content.onCancelEdit}
+          />
+        ) : isAgent ? (
+          <AgentMessageBody
+            message={message}
+            onOpenAttachmentPreview={content.onOpenAttachmentPreview}
+            onControlRemoteQueue={onControlRemoteQueue}
+            onResolveRemoteRequest={onResolveRemoteRequest}
+          />
         ) : (
-          humanBody
+          <HumanMessageText message={message} />
         )}
-        {reactionRow}
-        {threadEntry}
+        <RoomReactionRow reactions={content.reactions} alignEnd={message.mine} onToggleReaction={content.onToggleReaction} />
+        <RoomThreadEntry mine={message.mine} replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
         {personalChatStyle && toolbar}
       </div>
     </div>
@@ -588,54 +813,126 @@ function RemoteRequestControls({ request, onResolve }: {
   request: NonNullable<RoomMessageView['remoteRequest']>
   onResolve: NonNullable<RoomMessageItemProps['onResolveRemoteRequest']>
 }) {
-  const properties = request.requestedSchema?.properties && typeof request.requestedSchema.properties === 'object'
-    ? request.requestedSchema.properties as Record<string, { title?: string; type?: string; enum?: unknown[]; oneOf?: Array<{ const?: unknown; title?: string }> }> : {}
-  const required = Array.isArray(request.requestedSchema?.required)
-    ? request.requestedSchema.required.filter((key): key is string => typeof key === 'string') : []
-  const [values, setValues] = useState<Record<string, unknown>>(() => initialElicitationValues(properties, required))
+  const { properties, required } = useMemo(
+    () => ({
+      properties:
+        request.requestedSchema?.properties &&
+        typeof request.requestedSchema.properties === 'object'
+          ? (request.requestedSchema.properties as Record<
+              string,
+              {
+                title?: string
+                type?: string
+                enum?: unknown[]
+                oneOf?: Array<{ const?: unknown; title?: string }>
+              }
+            >)
+          : {},
+      required: Array.isArray(request.requestedSchema?.required)
+        ? request.requestedSchema.required.filter(
+            (key): key is string => typeof key === 'string',
+          )
+        : [],
+    }),
+    [request],
+  )
+  const requiredSet = new Set(required)
+  const [values, setValues] = useState<Record<string, unknown>>(() =>
+    initialElicitationValues(properties, required),
+  )
   return (
     <div className="mt-3 max-w-xl rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-      <p className="text-xs font-medium text-[var(--foreground)]">{request.kind === 'permission' ? 'Permission requested' : 'Input requested'}</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{request.prompt}</p>
-      {request.kind === 'elicitation' ? Object.entries(properties).map(([key, property]) => (
+      <p className='text-xs font-medium text-[var(--foreground)]'>
+        {request.kind === 'permission'
+          ? 'Permission requested'
+          : 'Input requested'}
+      </p>
+      <p className='mt-1 text-xs leading-5 text-[var(--muted)]'>
+        {request.prompt}
+      </p>
+      {request.kind === 'elicitation'
+        ? Object.entries(properties).map(([key, property]) =>
         property.type === 'boolean' ? (
           <div key={key} className="mt-2 flex items-center gap-3">
             <span className="flex-1 text-[11px] text-[var(--muted)]">
-              {property.title ?? key}{required.includes(key) ? ' *' : ''}
+                  {property.title ?? key}
+                  {requiredSet.has(key) ? ' *' : ''}
             </span>
             <Toggle
               checked={values[key] === true}
-              onCheckedChange={(next) => setValues((current) => ({ ...current, [key]: next }))}
-              aria-label={typeof (property.title ?? key) === 'string' ? (property.title ?? key) as string : key}
+                  onCheckedChange={(next) =>
+                    setValues((current) => ({ ...current, [key]: next }))
+                  }
+                  aria-label={
+                    typeof (property.title ?? key) === 'string'
+                      ? ((property.title ?? key) as string)
+                      : key
+                  }
             />
           </div>
         ) : (
-          <div key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
-            <span>{property.title ?? key}{required.includes(key) ? ' *' : ''}</span>
+          <label key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
+            <span>{property.title ?? key}{requiredSet.has(key) ? ' *' : ''}</span>
             {elicitationOptions(property).length > 0 ? (
-              <select value={String(values[key] ?? '')}
-                onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]">
+              <select
+                aria-label={key}
+                value={String(values[key] ?? '')}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    [key]: elicitationFieldValue(property.type, event.target.value),
+                  }))
+                }
+                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]"
+              >
                 <option value="">Select…</option>
-                {elicitationOptions(property).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                {elicitationOptions(property).map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             ) : (
               <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
+                aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
                 className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
             )}
-          </div>
+          </label>
+        ),
         )
-      )) : null}
+        : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        {request.kind === 'permission' ? request.options.map((option) => (
-          <button key={option.id} type="button" onClick={() => onResolve(request, option.id)}
-            className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]">{option.label}</button>
-        )) : <>
-          <button type="button" onClick={() => onResolve(request, 'accept', values)} className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]">Submit</button>
-          <button type="button" onClick={() => onResolve(request, 'decline')} className="rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)]">Decline</button>
-        </>}
+        {request.kind === 'permission' ? (
+          request.options.map((option) => (
+            <button
+              key={option.id}
+              type='button'
+              onClick={() => onResolve(request, option.id)}
+              className='rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]'
+            >
+              {option.label}
+            </button>
+          ))
+        ) : (
+          <>
+            <button
+              type='button'
+              onClick={() => onResolve(request, 'accept', values)}
+              className='rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]'
+            >
+              Submit
+            </button>
+            <button
+              type='button'
+              onClick={() => onResolve(request, 'decline')}
+              className='rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)]'
+            >
+              Decline
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -651,7 +948,11 @@ function initialElicitationValues(
 function elicitationFieldValue(type: string | undefined, value: string): unknown {
   if (type === 'number' || type === 'integer') return value === '' ? '' : Number(value)
   if (type === 'boolean') return value === 'true'
-  if (type === 'array') return value.split(',').map((item) => item.trim()).filter(Boolean)
+  if (type === 'array')
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
   return value
 }
 
@@ -669,12 +970,36 @@ function RemoteRunControls({ run, onControl }: {
   if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
   if (run.state === 'recoverable') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
-      <span>{run.retryClass === 'host_offline' ? 'The environment went offline.' : 'This run can be recovered.'}</span>
-      <button type="button" onClick={() => onControl(run.runId, 'resume')} className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)]">Resume</button>
-      <button type="button" onClick={() => onControl(run.runId, 'start_fresh')} className="rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)]">Start fresh</button>
+        <span>
+          {run.retryClass === 'host_offline'
+            ? 'The environment went offline.'
+            : 'This run can be recovered.'}
+        </span>
+        <button
+          type='button'
+          onClick={() => onControl(run.runId, 'resume')}
+          className='rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)]'
+        >
+          Resume
+        </button>
+        <button
+          type='button'
+          onClick={() => onControl(run.runId, 'start_fresh')}
+          className='rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)]'
+        >
+          Start fresh
+        </button>
     </div>
   )
-  return <button type="button" onClick={() => onControl(run.runId, 'cancel')} className="mt-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Cancel run</button>
+  return (
+    <button
+      type='button'
+      onClick={() => onControl(run.runId, 'cancel')}
+      className='mt-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+    >
+      Cancel run
+    </button>
+  )
 }
 
 function RemoteQueueControls({
@@ -695,9 +1020,25 @@ function RemoteQueueControls({
 
   return (
     <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
-      <span>{elapsed ? 'The 2-minute waiting window elapsed.' : 'Waiting up to 2 minutes for the environment to reconnect.'}</span>
-      <button type="button" onClick={() => onControl(queue.runId, 'cancel')} className="rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">Cancel</button>
-      <button type="button" onClick={() => onControl(queue.runId, 'retry')} className="rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--surface-subtle)]">Retry</button>
+      <span>
+        {elapsed
+          ? 'The 2-minute waiting window elapsed.'
+          : 'Waiting up to 2 minutes for the environment to reconnect.'}
+      </span>
+      <button
+        type='button'
+        onClick={() => onControl(queue.runId, 'cancel')}
+        className='rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+      >
+        Cancel
+      </button>
+      <button
+        type='button'
+        onClick={() => onControl(queue.runId, 'retry')}
+        className='rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--surface-subtle)]'
+      >
+        Retry
+      </button>
     </div>
   )
 }
@@ -707,6 +1048,95 @@ const QUICK_REACTIONS = [
   '🙏', '😮', '😢', '🤔', '🚀', '💡', '👏', '⚠️',
   '💯', '🤝', '📌', '☕', '🐛', '✨', '❓', '❌',
 ]
+
+function toolbarRailClass(floating: boolean, pickerOpen: boolean, alignEnd: boolean) {
+  return floating
+    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
+        pickerOpen ? 'opacity-100' : 'opacity-0'
+      }`
+    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
+        pickerOpen ? 'opacity-100' : 'opacity-0'
+      } ${alignEnd ? 'justify-end' : ''}`
+}
+
+function ToolbarIconButton({ buttonClass, onClick, disabled, ariaLabel, title, children }: {
+  buttonClass: string
+  onClick: () => void
+  disabled: boolean
+  ariaLabel: string
+  title?: string
+  children: ReactNode
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={buttonClass} aria-label={ariaLabel} title={title}>
+      {children}
+    </button>
+  )
+}
+
+function PinMessageButton({ buttonClass, pinned, disabled, onTogglePinned }: {
+  buttonClass: string
+  pinned: boolean
+  disabled: boolean
+  onTogglePinned: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onTogglePinned}
+      disabled={disabled}
+      className={`${buttonClass} ${pinned ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+      aria-label={pinned ? 'Unpin message' : 'Pin message'}
+      aria-pressed={pinned}
+    >
+      <Pin size={14} strokeWidth={1.75} className={pinned ? 'fill-current' : undefined} />
+    </button>
+  )
+}
+
+function SaveMessageButton({ buttonClass, saved, disabled, onToggleSaved }: {
+  buttonClass: string
+  saved: boolean
+  disabled: boolean
+  onToggleSaved: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggleSaved}
+      disabled={disabled}
+      className={`${buttonClass} ${saved ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+      aria-label={saved ? 'Remove from saved' : 'Save message'}
+      aria-pressed={saved}
+    >
+      <Bookmark size={14} strokeWidth={1.75} className={saved ? 'fill-current' : undefined} />
+    </button>
+  )
+}
+
+function EditDeleteButtons({ buttonClass, disabled, onStartEdit, onDelete }: {
+  buttonClass: string
+  disabled: boolean
+  onStartEdit: () => void
+  onDelete: () => void
+}) {
+  return (
+    <>
+      <ToolbarIconButton buttonClass={buttonClass} onClick={onStartEdit} disabled={disabled} ariaLabel="Edit message">
+        <Pencil size={14} strokeWidth={1.75} />
+      </ToolbarIconButton>
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={disabled}
+        className={`${buttonClass} hover:text-red-500`}
+        aria-label="Delete message"
+      >
+        <Trash2 size={14} strokeWidth={1.75} />
+      </button>
+    </>
+  )
+}
 
 function RoomMessageToolbar({
   alignEnd,
@@ -749,29 +1179,16 @@ function RoomMessageToolbar({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const buttonClass =
-    'rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
+    'rounded-md p-1.5 text-[var(--muted)] transition-[color,background-color,transform] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
 
-  const railClass = floating
-    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        pickerOpen ? 'opacity-100' : 'opacity-0'
-      }`
-    : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
-        pickerOpen ? 'opacity-100' : 'opacity-0'
-      } ${alignEnd ? 'justify-end' : ''}`
+  const railClass = toolbarRailClass(floating, pickerOpen, alignEnd)
 
   return (
     <div className={railClass}>
       {onStop ? (
-        <button
-          type="button"
-          onClick={onStop}
-          disabled={disabled}
-          className={buttonClass}
-          aria-label="Stop response"
-          title="Stop response"
-        >
+        <ToolbarIconButton buttonClass={buttonClass} onClick={onStop} disabled={disabled} ariaLabel="Stop response" title="Stop response">
           <Square size={13} strokeWidth={1.75} className="fill-current" />
-        </button>
+        </ToolbarIconButton>
       ) : null}
       <EmojiPickerButton
         alignEnd={alignEnd || floating}
@@ -781,63 +1198,25 @@ function RoomMessageToolbar({
         onSelect={onSelectReaction}
         buttonClass={buttonClass}
       />
-      <button type="button" onClick={onOpenThread} disabled={disabled} className={buttonClass} aria-label="Reply in thread">
+      <ToolbarIconButton buttonClass={buttonClass} onClick={onOpenThread} disabled={disabled} ariaLabel="Reply in thread">
         <MessageSquareReply size={14} strokeWidth={1.75} />
-      </button>
-      <button type="button" onClick={onQuoteReply} disabled={disabled} className={buttonClass} aria-label="Quote in reply">
+      </ToolbarIconButton>
+      <ToolbarIconButton buttonClass={buttonClass} onClick={onQuoteReply} disabled={disabled} ariaLabel="Quote in reply">
         <MessageSquareReply size={14} strokeWidth={1.75} className="rotate-180" />
-      </button>
+      </ToolbarIconButton>
       <FlashCopyIconButton copyText={copyText} disabled={disabled || copyText.length === 0} ariaLabel="Copy message" />
-      <button
-        type="button"
-        onClick={onCopyPermalink}
-        disabled={disabled}
-        aria-label="Copy message link"
-        title="Copy message link"
-        className={buttonClass}
-      >
+      <ToolbarIconButton buttonClass={buttonClass} onClick={onCopyPermalink} disabled={disabled} ariaLabel="Copy message link" title="Copy message link">
         <Link2 size={14} strokeWidth={1.75} />
-      </button>
-      <button
-        type="button"
-        onClick={onTogglePinned}
-        disabled={disabled}
-        className={`${buttonClass} ${pinned ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-        aria-label={pinned ? 'Unpin message' : 'Pin message'}
-        aria-pressed={pinned}
-      >
-        <Pin size={14} strokeWidth={1.75} className={pinned ? 'fill-current' : undefined} />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleSaved}
-        disabled={disabled}
-        className={`${buttonClass} ${saved ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-        aria-label={saved ? 'Remove from saved' : 'Save message'}
-        aria-pressed={saved}
-      >
-        <Bookmark size={14} strokeWidth={1.75} className={saved ? 'fill-current' : undefined} />
-      </button>
+      </ToolbarIconButton>
+      <PinMessageButton buttonClass={buttonClass} pinned={pinned} disabled={disabled} onTogglePinned={onTogglePinned} />
+      <SaveMessageButton buttonClass={buttonClass} saved={saved} disabled={disabled} onToggleSaved={onToggleSaved} />
       {canReport ? (
-        <button type="button" onClick={onReport} disabled={disabled} className={buttonClass} aria-label="Report message">
+        <ToolbarIconButton buttonClass={buttonClass} onClick={onReport} disabled={disabled} ariaLabel="Report message">
           <Flag size={14} strokeWidth={1.75} />
-        </button>
+        </ToolbarIconButton>
       ) : null}
       {canEdit ? (
-        <>
-          <button type="button" onClick={onStartEdit} disabled={disabled} className={buttonClass} aria-label="Edit message">
-            <Pencil size={14} strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={disabled}
-            className={`${buttonClass} hover:text-red-500`}
-            aria-label="Delete message"
-          >
-            <Trash2 size={14} strokeWidth={1.75} />
-          </button>
-        </>
+        <EditDeleteButtons buttonClass={buttonClass} disabled={disabled} onStartEdit={onStartEdit} onDelete={onDelete} />
       ) : null}
     </div>
   )
@@ -861,21 +1240,22 @@ function EmojiPickerButton({
   const rootRef = useRef<HTMLDivElement>(null)
   const setOpen = onOpenChange
 
+  const onPointerDown = useEffectEvent((event: MouseEvent) => {
+    if (!rootRef.current?.contains(event.target as Node)) onOpenChange(false)
+  })
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === 'Escape') onOpenChange(false)
+  })
+
   useEffect(() => {
     if (!open) return
-    function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) onOpenChange(false)
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onOpenChange(false)
-    }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [onOpenChange, open])
+  }, [open])
 
   return (
     <div ref={rootRef} className="relative">
@@ -891,6 +1271,8 @@ function EmojiPickerButton({
         <SmilePlus size={14} strokeWidth={1.75} />
       </button>
       {open ? (
+        // Anchored reaction picker — a native <dialog> cannot anchor above the trigger.
+        // react-doctor-disable-next-line react-doctor/prefer-html-dialog
         <div
           role="dialog"
           aria-label="Pick a reaction"

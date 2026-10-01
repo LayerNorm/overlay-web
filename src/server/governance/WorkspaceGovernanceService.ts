@@ -51,8 +51,6 @@ export class WorkspaceGovernanceService {
     rateLimiter: RateLimiter
     repository: WorkspaceRepository
     workspaces: WorkspaceService
-    appDataProvider: string
-    requiresConvexClient: boolean
     metrics?: {
       outboxPending(workspaceId: string): Promise<{ count: number; oldestAgeMs: number }>
       failedDeliveries(workspaceId: string): Promise<number>
@@ -80,6 +78,9 @@ export class WorkspaceGovernanceService {
           'forbidden',
         )
       }
+      // Sequential on purpose: each check consumes quota, and a denial must
+      // not let later rules consume theirs on a request that already fails.
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       const result = await this.deps.rateLimiter.check(resolved.key, resolved.limits)
       if (!result.allowed) {
         throw new WorkspaceServiceError(
@@ -302,8 +303,8 @@ export class WorkspaceGovernanceService {
       )).length,
       unreadDriftConversations: unreadDrift,
       providerParity: {
-        provider: this.deps.appDataProvider,
-        requiresConvexClient: this.deps.requiresConvexClient,
+        provider: 'convex',
+        requiresConvexClient: true,
       },
     }
   }

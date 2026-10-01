@@ -1,15 +1,21 @@
 import 'server-only'
 
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
+import type {
+  WorkspaceAgentAutomation,
+  WorkspaceAgentDirectoryItem,
+  WorkspaceAgentThread,
+} from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type {
+  AgentThreadRef,
   CreateWorkspaceAgentRecord,
   UpdateWorkspaceAgentRecord,
   WorkspaceAgentRepository,
 } from './WorkspaceAgentRepository'
 
 const FUNCTION_PREFIX = 'collaboration/agents'
+const THREAD_FUNCTION_PREFIX = 'agents/agentThreads'
 type ConvexAgent = Omit<WorkspaceAgentDirectoryItem, 'id'> & { agentId: string }
 
 export class ConvexWorkspaceAgentRepository implements WorkspaceAgentRepository {
@@ -34,6 +40,38 @@ export class ConvexWorkspaceAgentRepository implements WorkspaceAgentRepository 
   async archive(args: { agentId: string; workspaceId: string; now: number }) {
     return await mutation<boolean>('archiveByServer', args) ?? false
   }
+
+  async unarchive(args: { agentId: string; workspaceId: string; now: number }) {
+    return await mutation<boolean>('unarchiveByServer', args) ?? false
+  }
+
+  async resolveMainThread(args: { workspaceId: string; agentId: string; userId: string }) {
+    return await threadMutation<AgentThreadRef>('resolveMainThreadByServer', args)
+  }
+
+  async createThread(args: { workspaceId: string; agentId: string; userId: string; title?: string }) {
+    return await threadMutation<AgentThreadRef>('createThreadByServer', args)
+  }
+
+  async listThreads(args: { workspaceId: string; agentId: string; userId: string }) {
+    return await threadQuery<WorkspaceAgentThread[]>('listThreadsByServer', args) ?? []
+  }
+
+  async listAgentAutomations(args: { workspaceId: string; agentId: string; userId: string }) {
+    return await threadQuery<WorkspaceAgentAutomation[]>('listAutomationsByServer', args) ?? []
+  }
+
+  async listArchivedAgentIds(args: { workspaceId: string; userId: string }) {
+    return await threadQuery<string[]>('listArchivedAgentsByServer', args) ?? []
+  }
+
+  async setThreadArchived(args: { conversationId: string; agentId: string; userId: string; archived: boolean }) {
+    await threadMutation<null>('setThreadArchivedByServer', args)
+  }
+
+  async deleteThread(args: { conversationId: string; agentId: string; userId: string }) {
+    await threadMutation<null>('deleteThreadByServer', args)
+  }
 }
 
 function query<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
@@ -47,6 +85,22 @@ function query<T>(operation: string, args: Record<string, unknown>): Promise<T |
 function mutation<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
   return convex.mutation<T>(
     `${FUNCTION_PREFIX}:${operation}`,
+    { ...stripUndefined(args), serverSecret: getInternalApiSecret() },
+    { throwOnError: true },
+  )
+}
+
+function threadQuery<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
+  return convex.query<T>(
+    `${THREAD_FUNCTION_PREFIX}:${operation}`,
+    { ...stripUndefined(args), serverSecret: getInternalApiSecret() },
+    { throwOnError: true },
+  )
+}
+
+function threadMutation<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
+  return convex.mutation<T>(
+    `${THREAD_FUNCTION_PREFIX}:${operation}`,
     { ...stripUndefined(args), serverSecret: getInternalApiSecret() },
     { throwOnError: true },
   )

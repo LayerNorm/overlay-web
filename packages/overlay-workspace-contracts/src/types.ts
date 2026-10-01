@@ -367,6 +367,7 @@ export type DirectMessageSummary = {
   title: string
   participants: ConversationParticipant[]
   created: boolean
+  agentId?: string
 }
 
 export type DirectMessageCreateInput = {
@@ -572,6 +573,39 @@ export type WorkspaceAgentDirectoryItem = WorkspaceAgentDefinition & {
 export type WorkspaceAgentListResponse = {
   agents: WorkspaceAgentDirectoryItem[]
   canCreate: boolean
+  /** The caller's principal, so clients can bucket personal vs workspace agents. */
+  viewerPrincipalId?: string
+  /**
+   * Agents (including live ones) owning at least one thread the caller
+   * archived; the Archived tab is their union with fully-archived agents.
+   * Populated only when the list request asks for archived agents.
+   */
+  archivedThreadAgentIds?: string[]
+}
+
+/** A chat thread nested under a workspace agent. */
+export type WorkspaceAgentThread = {
+  conversationId: string
+  title: string
+  lastModified: number
+  createdAt: number
+  archivedAt?: number
+  /** The main thread is the oldest surviving thread and can never be deleted last. */
+  isMain: boolean
+}
+
+/** An automation created inside an agent thread; runs append to its own thread. */
+export type WorkspaceAgentAutomation = {
+  automationId: string
+  name: string
+  enabled: boolean
+  conversationId?: string
+  lastRunAt?: number
+}
+
+export type WorkspaceAgentBundle = {
+  threads: WorkspaceAgentThread[]
+  automations: WorkspaceAgentAutomation[]
 }
 
 export const WORKSPACE_SHARE_RESOURCE_TYPES = [

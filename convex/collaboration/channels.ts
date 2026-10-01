@@ -101,16 +101,19 @@ export const createChannel = mutation({
     const principals = await ctx.db.query('workspacePrincipals')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(5_000)
-    const eligible = []
-    for (const principal of principals) {
-      if (principal.archivedAt || (principal.type !== 'human' && principal.type !== 'agent')) continue
-      if (args.visibility === 'private' && !requested.has(principal.principalId)) continue
-      const membership = await ctx.db.query('workspaceMemberships')
+    const eligiblePrincipals = principals.filter((principal) =>
+      !principal.archivedAt
+      && (principal.type === 'human' || principal.type === 'agent')
+      && (args.visibility !== 'private' || requested.has(principal.principalId)))
+    const memberships = await Promise.all(eligiblePrincipals.map((principal) =>
+      ctx.db.query('workspaceMemberships')
         .withIndex('by_workspaceId_principalId', (q) => (
           q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId)
-        )).unique()
-      if (membership?.status === 'active') eligible.push({ principal, membership })
-    }
+        )).unique()))
+    const eligible = eligiblePrincipals.flatMap((principal, i) => {
+      const membership = memberships[i]
+      return membership?.status === 'active' ? [{ principal, membership }] : []
+    })
     if (args.visibility === 'private' && eligible.length !== requested.size) {
       throw new Error('Every participant must be active in this workspace')
     }
@@ -131,8 +134,8 @@ export const createChannel = mutation({
       channelVisibility: args.visibility,
       channelTopic: args.topic?.trim().replace(/\s+/g, ' ').slice(0, 240) || undefined,
     })
-    for (const { principal, membership } of eligible) {
-      await ctx.db.insert('conversationParticipants', {
+    await Promise.all(eligible.map(({ principal, membership }) =>
+      ctx.db.insert('conversationParticipants', {
         conversationId,
         workspaceId: args.workspaceId,
         principalId: principal.principalId,
@@ -145,8 +148,7 @@ export const createChannel = mutation({
         joinedAt: now,
         updatedAt: now,
         lastReadAt: principal.principalId === actor.principalId ? now : undefined,
-      })
-    }
+      })))
     await ctx.db.insert('workspaceResourceScopes', {
       workspaceId: args.workspaceId,
       resourceType: 'conversation',
@@ -185,15 +187,19 @@ export const listChannels = query({
       ))
       .filter((q) => q.eq(q.field('archivedAt'), undefined))
       .collect()
-    const result = []
-    for (const participant of participants) {
-      const conversation = await ctx.db.get(participant.conversationId)
-      if (!conversation || conversation.deletedAt || conversation.conversationType !== 'channel') continue
-      const members = await ctx.db.query('conversationParticipants')
+    const conversations = await Promise.all(participants.map((participant) =>
+      ctx.db.get(participant.conversationId)))
+    const channelConversations = conversations.filter((conversation): conversation is NonNullable<typeof conversation> =>
+      !!conversation && !conversation.deletedAt && conversation.conversationType === 'channel')
+    const memberLists = await Promise.all(channelConversations.map((conversation) =>
+      ctx.db.query('conversationParticipants')
         .withIndex('by_conversationId_status', (q) => (
           q.eq('conversationId', conversation._id).eq('status', 'active')
         ))
-        .collect()
+        .collect()))
+    const result = []
+    for (const [i, conversation] of channelConversations.entries()) {
+      const members = memberLists[i]!
       result.push({
         conversationId: conversation._id,
         workspaceId: args.workspaceId,
@@ -436,23 +442,28 @@ export const searchWorkspaceChats = query({
       }
     }
     // Also search message content for accessible conversations.
-    for (const conversationId of accessibleIds) {
-      const conversation = await ctx.db.get(conversationId)
-      if (!conversation || conversation.deletedAt) continue
+    const searchCandidates = [...accessibleIds].filter((conversationId) =>
       // Skip if already matched by title.
-      if (results.some((r) => r.conversationId === conversationId)) continue
-      const messages = await ctx.db.query('conversationMessages')
-        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
-        .order('desc').take(50)
-      for (const message of messages) {
-        if (!message.deletedAt && message.content.toLowerCase().includes(needle)) {
-          results.push({
-            conversationId, conversationType: conversation.conversationType ?? 'personal',
-            title: conversation.title, messageId: message._id,
-            snippet: message.content.slice(0, 240), createdAt: message.createdAt,
-          })
-          break // One message match per conversation is enough for search.
-        }
+      !results.some((r) => r.conversationId === conversationId))
+    const searchConversations = await Promise.all(searchCandidates.map((conversationId) =>
+      ctx.db.get(conversationId)))
+    const searchMessages = await Promise.all(searchConversations.map((conversation, i) =>
+      conversation && !conversation.deletedAt
+        ? ctx.db.query('conversationMessages')
+          .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', searchCandidates[i]!))
+          .order('desc').take(50)
+        : Promise.resolve([])))
+    for (const [i, conversation] of searchConversations.entries()) {
+      if (!conversation || conversation.deletedAt) continue
+      const conversationId = searchCandidates[i]!
+      const message = searchMessages[i]!.find((m) =>
+        !m.deletedAt && m.content.toLowerCase().includes(needle))
+      if (message) {
+        results.push({
+          conversationId, conversationType: conversation.conversationType ?? 'personal',
+          title: conversation.title, messageId: message._id,
+          snippet: message.content.slice(0, 240), createdAt: message.createdAt,
+        })
       }
     }
     return results.sort((a, b) => b.createdAt - a.createdAt).slice(0, Math.max(1, Math.min(100, args.limit ?? 30)))
@@ -528,22 +539,22 @@ export const deleteAllConversations = mutation({
       ))
       .collect()
 
-    for (const conversation of conversations) {
-      if (conversation.deletedAt) continue
-      await ctx.db.patch(conversation._id, {
+    const liveConversations = conversations.filter((conversation) => !conversation.deletedAt)
+    await Promise.all(liveConversations.flatMap((conversation) => [
+      ctx.db.patch(conversation._id, {
         deletedAt: now,
         lastModified: now,
         updatedAt: now,
-      })
-      conversationsDeleted++
-      await recordConversationEvent(ctx, {
+      }),
+      recordConversationEvent(ctx, {
         conversationId: conversation._id,
         workspaceId: args.workspaceId,
         userId: args.actorUserId,
         type: 'conversation.deleted',
         payload: { scope: 'everyone', reason: 'workspace-cleanup' },
-      })
-    }
+      }),
+    ]))
+    conversationsDeleted += liveConversations.length
 
     // Remove all participant rows in the workspace
     const participants = await ctx.db.query('conversationParticipants')
@@ -552,16 +563,14 @@ export const deleteAllConversations = mutation({
       ))
       .collect()
 
-    for (const participant of participants) {
-      if (participant.status === 'removed') continue
-      await ctx.db.patch(participant._id, {
-        status: 'removed',
-        removedAt: now,
-        archivedAt: now,
-        updatedAt: now,
-      })
-      participantsRemoved++
-    }
+    const activeParticipants = participants.filter((participant) => participant.status !== 'removed')
+    await Promise.all(activeParticipants.map((participant) => ctx.db.patch(participant._id, {
+      status: 'removed',
+      removedAt: now,
+      archivedAt: now,
+      updatedAt: now,
+    })))
+    participantsRemoved += activeParticipants.length
 
     return { conversationsDeleted, participantsRemoved }
   },

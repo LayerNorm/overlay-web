@@ -229,7 +229,8 @@ export function useMentionData() {
       const data = await fetchAllData()
       const q = query.trim()
 
-      return CATEGORY_META.filter((cat) => availableTypes.includes(cat.type)).map((cat) => {
+      const availableTypeSet = new Set(availableTypes)
+      return CATEGORY_META.filter((cat) => availableTypeSet.has(cat.type)).map((cat) => {
         const items = data[mentionListKey(cat.type)]
         const filtered = q
           ? items

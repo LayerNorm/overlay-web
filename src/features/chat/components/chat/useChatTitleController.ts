@@ -7,10 +7,11 @@ import {
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
 } from '@/shared/chat/chat-title'
+import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import {
-  upsertCachedChat,
-} from '@/shared/chat/chat-list-cache'
-import { generateTitle, prefetchTitle } from '@/features/chat/lib/generate-title'
+  generateTitle,
+  prefetchTitle,
+} from '@/features/chat/lib/generate-title'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import type { Conversation, ConversationUiState } from '../chat-interface/types'
 
@@ -52,11 +53,13 @@ export function useChatTitleController({
       if (!exists) {
         return [{ _id: chatId, title: nextTitle, lastModified: Date.now() }, ...prev]
       }
-      return prev.map((chat) => (chat._id === chatId ? { ...chat, title: nextTitle } : chat))
+        return prev.map((chat) =>
+          chat._id === chatId ? { ...chat, title: nextTitle } : chat,
+        )
     })
     updateRuntimeUiState(chatId, (prev) => ({ ...prev, activeChatTitle: nextTitle }))
     if (activeChatIdRef.current === chatId) {
-      setActiveChatTitle((prev) => prev !== null ? nextTitle : prev)
+        setActiveChatTitle((prev) => (prev !== null ? nextTitle : prev))
     }
     dispatchChatTitleUpdated({ chatId, title: nextTitle })
     return nextTitle
@@ -101,7 +104,10 @@ export function useChatTitleController({
   }, [activeChatId, editingChatId])
 
   const cancelChatRename = useCallback(() => {
+    // Clearing rename state on active-chat change is intentional.
+    // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
     setEditingChatId(null)
+    // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
     setEditingChatTitle('')
   }, [])
 
@@ -112,7 +118,9 @@ export function useChatTitleController({
   const commitChatRename = useCallback(async (chatId: string) => {
     const previousTitle =
       chats.find((chat) => chat._id === chatId)?.title ??
-      (activeChatIdRef.current === chatId ? activeChatTitle ?? DEFAULT_CHAT_TITLE : DEFAULT_CHAT_TITLE)
+        (activeChatIdRef.current === chatId
+          ? (activeChatTitle ?? DEFAULT_CHAT_TITLE)
+          : DEFAULT_CHAT_TITLE)
     const nextTitle = sanitizeChatTitle(editingChatTitle, previousTitle)
 
     cancelChatRename()

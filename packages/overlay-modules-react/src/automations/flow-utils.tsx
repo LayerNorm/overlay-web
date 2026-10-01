@@ -129,6 +129,8 @@ export function AutomationFlowPreview({ flow }: { flow: ParsedAutomationFlow }) 
         const y1 = paddingY + fromIndex * (nodeHeight + gap) + nodeHeight
         const y2 = paddingY + toIndex * (nodeHeight + gap)
         return (
+          // Parallel edges can share a from/to pair — index is the discriminator.
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key
           <line
             key={`${edge.from}-${edge.to}-${index}`}
             x1={x}

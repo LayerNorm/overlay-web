@@ -5,10 +5,11 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  type MutationCtx,
 } from '../_generated/server'
 import { internal, api } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
-import { validateServerSecret } from '../lib/auth'
+import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
@@ -21,15 +22,28 @@ import {
   KNOWLEDGE_CHUNK_OVERLAP,
   chunkKnowledgeText,
 } from '../../src/shared/knowledge/chunking'
+import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 
 export type HybridSearchChunk = {
   text: string
   title?: string
-  sourceKind: 'file' | 'memory'
+  sourceKind: 'file' | 'memory' | 'message'
   sourceId: string
   chunkIndex: number
   score: number
+  /** Raw vector similarity when ranked via vector search (absent for lexical-only hits). `score` is the fused RRF value. */
+  vecScore?: number
 }
+
+const KNOWLEDGE_SOURCE_KINDS = v.union(
+  v.literal('file'),
+  v.literal('memory'),
+  v.literal('message'),
+)
+
+/** Recency decay for memory chunks — OpenClaw's 30-day half-life on the fused score. */
+const MEMORY_HALF_LIFE_DAYS = 30
+const DAY_MS = 86_400_000
 
 /** Larger chunks reduce embedding/storage row counts while preserving retrieval context. */
 export const CHUNK_CHARS = KNOWLEDGE_CHUNK_CHARS
@@ -172,6 +186,7 @@ export async function embedViaGateway(texts: string[]): Promise<{ vectors: numbe
   }
   const res = await fetch(GATEWAY_EMBED_URL, {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
@@ -203,26 +218,45 @@ export async function embedViaGateway(texts: string[]): Promise<{ vectors: numbe
 
 // ─── Internal: purge + replace indexed content ───────────────────────────────
 
+/**
+ * db-level chunk + embedding delete for one source. Plain function (not a
+ * mutation) so other mutations — e.g. `deleteTurn`, workspace teardown — can
+ * purge chunks atomically in the same transaction as the source-row delete.
+ */
+export async function deleteChunksForSource(
+  db: MutationCtx['db'],
+  sourceKind: 'file' | 'memory' | 'message',
+  sourceId: string,
+  userId?: string,
+): Promise<number> {
+  const existing = await db
+    .query('knowledgeChunks')
+    .withIndex('by_source', (q) => q.eq('sourceKind', sourceKind).eq('sourceId', sourceId))
+    .collect()
+  const targets = existing.filter((c) => !userId || c.userId === userId)
+  const embeddings = await Promise.all(targets.map((c) =>
+    db
+      .query('knowledgeChunkEmbeddings')
+      .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
+      .first()))
+  await Promise.all(targets.flatMap((c, i) => {
+    const emb = embeddings[i]
+    return emb
+      ? [db.delete(emb._id), db.delete(c._id)]
+      : [db.delete(c._id)]
+  }))
+  const deleted = targets.length
+  return deleted
+}
+
 export const purgeKnowledgeSource = internalMutation({
   args: {
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: KNOWLEDGE_SOURCE_KINDS,
     sourceId: v.string(),
     userId: v.optional(v.string()),
   },
   handler: async (ctx, { sourceKind, sourceId, userId }) => {
-    const existing = await ctx.db
-      .query('knowledgeChunks')
-      .withIndex('by_source', (q) => q.eq('sourceKind', sourceKind).eq('sourceId', sourceId))
-      .collect()
-    for (const c of existing) {
-      if (userId && c.userId !== userId) continue
-      const emb = await ctx.db
-        .query('knowledgeChunkEmbeddings')
-        .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
-        .first()
-      if (emb) await ctx.db.delete(emb._id)
-      await ctx.db.delete(c._id)
-    }
+    await deleteChunksForSource(ctx.db, sourceKind, sourceId, userId)
   },
 })
 
@@ -230,7 +264,7 @@ export const replaceKnowledgeSource = internalMutation({
   args: {
     userId: v.string(),
     workspaceId: v.optional(v.string()),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: KNOWLEDGE_SOURCE_KINDS,
     sourceId: v.string(),
     title: v.optional(v.string()),
     segments: v.array(
@@ -241,21 +275,35 @@ export const replaceKnowledgeSource = internalMutation({
         embedding: v.array(v.float64()),
       }),
     ),
+    // Denormalized memory-lifecycle fields so search filters need no join.
+    expiresAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    superseded: v.optional(v.boolean()),
+    /** Source turn for provenance joins; effective event time for temporal windows. */
+    turnId: v.optional(v.string()),
+    eventAt: v.optional(v.number()),
+    /** Denormalized memory.sourceCount corroboration for ranking. */
+    sourceCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', args.sourceKind).eq('sourceId', args.sourceId))
       .collect()
-    for (const c of existing) {
-      const emb = await ctx.db
+    const existingEmbeddings = await Promise.all(existing.map((c) =>
+      ctx.db
         .query('knowledgeChunkEmbeddings')
         .withIndex('by_chunkId', (q) => q.eq('chunkId', c._id))
-        .first()
-      if (emb) await ctx.db.delete(emb._id)
-      await ctx.db.delete(c._id)
-    }
-    for (const seg of args.segments) {
+        .first()))
+    await Promise.all(existing.flatMap((c, i) => {
+      const emb = existingEmbeddings[i]
+      return emb
+        ? [ctx.db.delete(emb._id), ctx.db.delete(c._id)]
+        : [ctx.db.delete(c._id)]
+    }))
+    await Promise.all(args.segments.map(async (seg) => {
       const chunkId = await ctx.db.insert('knowledgeChunks', {
         userId: args.userId,
         workspaceId: args.workspaceId,
@@ -265,6 +313,14 @@ export const replaceKnowledgeSource = internalMutation({
         startOffset: seg.startOffset,
         text: seg.text,
         title: args.title,
+        expiresAt: args.expiresAt,
+        visibility: args.visibility,
+        createdAt: args.createdAt,
+        updatedAt: args.updatedAt,
+        superseded: args.superseded,
+        turnId: args.turnId,
+        eventAt: args.eventAt,
+        sourceCount: args.sourceCount,
       })
       await ctx.db.insert('knowledgeChunkEmbeddings', {
         chunkId,
@@ -272,7 +328,7 @@ export const replaceKnowledgeSource = internalMutation({
         sourceKind: args.sourceKind,
         embedding: seg.embedding,
       })
-    }
+    }))
   },
 })
 
@@ -304,14 +360,27 @@ export const getMemoryForReindex = internalQuery({
   handler: async (ctx, { memoryId }) => {
     const m = await ctx.db.get(memoryId)
     if (!m || m.deletedAt) return null
-    return { userId: m.userId, workspaceId: m.workspaceId, content: m.content }
+    return {
+      userId: m.userId,
+      workspaceId: m.workspaceId,
+      content: m.content,
+      tags: m.tags,
+      expiresAt: m.expiresAt,
+      visibility: m.visibility,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt ?? m.createdAt,
+      superseded: m.supersededBy !== undefined,
+      turnId: m.turnId,
+      eventAt: m.eventAt ?? m.createdAt,
+      sourceCount: m.sourceCount ?? 1,
+    }
   },
 })
 
 export const searchChunksLexical = internalQuery({
   args: {
     userId: v.string(),
-    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
     workspaceId: v.optional(v.string()),
     query: v.string(),
     limit: v.number(),
@@ -375,30 +444,27 @@ export const listWorkspaceMemoryUserIds = internalQuery({
 export const embeddingChunkIdsForVectorResults = internalQuery({
   args: {
     embeddingIds: v.array(v.id('knowledgeChunkEmbeddings')),
-    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    sourceKinds: v.optional(v.array(KNOWLEDGE_SOURCE_KINDS)),
     workspaceId: v.optional(v.string()),
   },
-  handler: async (ctx, { embeddingIds, sourceKind, workspaceId }) => {
-    const ordered: Array<{ chunkId: Id<'knowledgeChunks'> | null }> = []
-    for (const id of embeddingIds) {
-      const row = await ctx.db.get(id)
-      if (!row) {
-        ordered.push({ chunkId: null })
-        continue
+  handler: async (ctx, { embeddingIds, sourceKind, sourceKinds, workspaceId }) => {
+    const kinds = sourceKinds ?? (sourceKind !== undefined ? [sourceKind] : undefined)
+    const kindSet = kinds === undefined ? undefined : new Set(kinds)
+    const embeddingRows = await Promise.all(embeddingIds.map((id) => ctx.db.get(id)))
+    const kindChecked = embeddingRows.map((row) =>
+      row && (kindSet === undefined || kindSet.has(row.sourceKind)) ? row : null)
+    const chunks = workspaceId !== undefined
+      ? await Promise.all(kindChecked.map((row) => (row ? ctx.db.get(row.chunkId) : null)))
+      : null
+    const ordered: Array<{ chunkId: Id<'knowledgeChunks'> | null }> = kindChecked.map((row, i) => {
+      if (!row) return { chunkId: null }
+      if (chunks) {
+        const chunk = chunks[i]
+        if (!chunk || chunk.workspaceId !== workspaceId) return { chunkId: null }
       }
-      if (sourceKind !== undefined && row.sourceKind !== sourceKind) {
-        ordered.push({ chunkId: null })
-        continue
-      }
-      if (workspaceId !== undefined) {
-        const chunk = await ctx.db.get(row.chunkId)
-        if (!chunk || chunk.workspaceId !== workspaceId) {
-          ordered.push({ chunkId: null })
-          continue
-        }
-      }
-      ordered.push({ chunkId: row.chunkId })
-    }
+      return { chunkId: row.chunkId }
+    })
     return ordered
   },
 })
@@ -406,12 +472,61 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
 export const fetchChunkPayloads = internalQuery({
   args: { ids: v.array(v.id('knowledgeChunks')) },
   handler: async (ctx, { ids }) => {
-    const out = []
-    for (const id of ids) {
-      const row = await ctx.db.get(id)
-      if (row) out.push(row)
+    const rows = await Promise.all(ids.map((id) => ctx.db.get(id)))
+    return rows.filter((row) => row !== null)
+  },
+})
+
+/**
+ * Temporal candidate list for the RRF fusion: chunks of one owner whose
+ * effective event time (`eventAt` = memory.eventAt ?? createdAt) falls inside
+ * a parsed query window, newest first. Only rows written with `eventAt` —
+ * post-dating the index — appear; that is the whole signal anyway.
+ */
+export const temporalChunksInRange = internalQuery({
+  args: {
+    userId: v.string(),
+    sourceKinds: v.optional(v.array(KNOWLEDGE_SOURCE_KINDS)),
+    fromMs: v.number(),
+    toMs: v.number(),
+    limit: v.number(),
+  },
+  handler: async (ctx, { userId, sourceKinds, fromMs, toMs, limit }) => {
+    const rows = await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_userId_eventAt', (q) =>
+        q.eq('userId', userId).gte('eventAt', fromMs).lt('eventAt', toMs))
+      .order('desc')
+      .take(limit * 4)
+    const sourceKindSet = sourceKinds === undefined ? undefined : new Set(sourceKinds)
+    return (sourceKindSet ? rows.filter((r) => sourceKindSet.has(r.sourceKind)) : rows)
+      .slice(0, limit)
+      .map((r) => r._id)
+  },
+})
+
+/** Memory sourceIds → their turnIds, for provenance expansion. */
+export const memoryProvenanceTurnIds = internalQuery({
+  args: { memoryIds: v.array(v.id('memories')) },
+  handler: async (ctx, { memoryIds }) => {
+    const memories = await Promise.all(memoryIds.map((id) => ctx.db.get(id)))
+    const out: Array<{ memoryId: string; turnId: string }> = []
+    for (const [i, m] of memories.entries()) {
+      if (m?.turnId) out.push({ memoryId: memoryIds[i]!, turnId: m.turnId })
     }
     return out
+  },
+})
+
+/** Verbatim message chunks for a set of source turns (provenance attach). */
+export const messageChunksByTurn = internalQuery({
+  args: { turnId: v.string(), limit: v.number() },
+  handler: async (ctx, { turnId, limit }) => {
+    return await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_sourceKind_turnId', (q) =>
+        q.eq('sourceKind', 'message').eq('turnId', turnId))
+      .take(limit)
   },
 })
 
@@ -553,9 +668,162 @@ export const reindexCanonicalSourceInternal = internalAction({
   },
 })
 
+/**
+ * Billed embed-and-store for one source's chunks: background-work gate →
+ * budget reservation → embed → replaceKnowledgeSource → finalize/reconcile.
+ * Shared by the memory and message reindex paths.
+ */
+async function indexSourceTextBilled(
+  ctx: ActionCtx,
+  args: {
+    userId: string
+    workspaceId?: string
+    sourceKind: 'file' | 'memory' | 'message'
+    sourceId: string
+    title: string
+    indexText: string
+    expiresAt?: number
+    visibility?: 'owner' | 'workspace'
+    createdAt?: number
+    updatedAt?: number
+    superseded?: boolean
+    /** Source turn + effective event time — denormalized onto each chunk. */
+    turnId?: string
+    eventAt?: number
+    sourceCount?: number
+    /** Stable per-source string making the budget reservation idempotent. */
+    operationId: string
+    /**
+     * Server-secret-authenticated callers (benchmarks, internal tooling) skip
+     * the per-user daily background-work cap — that gate bounds real-account
+     * embedding spend, not synthetic harness users.
+     */
+    trustedInternal?: boolean
+    /**
+     * Optional discriminator mixed into the reservation idempotency key.
+     * Purge-then-reindex of identical content would otherwise hit the stale
+     * reservation and skip before chunks are rewritten.
+     */
+    reservationNonce?: string
+  },
+): Promise<'indexed' | 'skipped'> {
+  const segments = chunkText(args.indexText)
+  if (segments.length === 0) {
+    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+      sourceKind: args.sourceKind,
+      sourceId: args.sourceId,
+    })
+    return 'skipped'
+  }
+  if (!args.trustedInternal) {
+    const indexingReservation = await ctx.runMutation(internal.platform.usage.tryReserveBackgroundWorkInternal, {
+      userId: args.userId,
+      kind: 'indexing',
+      chunkCount: segments.length,
+      bytes: new TextEncoder().encode(args.indexText).byteLength,
+    })
+    if (!indexingReservation.allowed) return 'skipped'
+  }
+
+  const serverSecret = getServerSecretForBackground()
+  if (!serverSecret) return 'skipped'
+  const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
+  const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
+  if (estimatedCostUsd === null) return 'skipped'
+  const requestFingerprint = await sha256Hex(`${args.sourceKind}:${args.sourceId}:${args.indexText}`)
+  let reservationId: string
+  try {
+    const reserved = await reserveKnowledgeProviderBudget(ctx, {
+      idempotencyKey: `${args.sourceKind}:${args.sourceId}${args.reservationNonce ? `:${args.reservationNonce}` : ''}`,
+      kind: 'embedding',
+      modelId: EMBEDDING_MODEL,
+      operationId: args.operationId,
+      programmaticSubjectId: `knowledge-index:${args.sourceKind}:${args.sourceId}`,
+      requestFingerprint,
+      reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
+      serverSecret,
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+    })
+    reservationId = reserved.reservationId
+    if (reserved.reservation.idempotent) return 'skipped'
+  } catch {
+    return 'skipped'
+  }
+
+  let promptTokens = 0
+  try {
+    await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
+      serverSecret,
+      userId: args.userId,
+      reservationId,
+    })
+    const embedded = await embedViaGateway(segments.map((s) => s.text))
+    promptTokens = embedded.promptTokens
+    await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+      sourceKind: args.sourceKind,
+      sourceId: args.sourceId,
+      title: args.title,
+      expiresAt: args.expiresAt,
+      visibility: args.visibility,
+      createdAt: args.createdAt,
+      updatedAt: args.updatedAt,
+      superseded: args.superseded,
+      turnId: args.turnId,
+      eventAt: args.eventAt,
+      sourceCount: args.sourceCount,
+      segments: segments.map((s, i) => ({
+        text: s.text,
+        chunkIndex: s.chunkIndex,
+        startOffset: s.startOffset,
+        embedding: embedded.vectors[i]!,
+      })),
+    })
+    const actualCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, promptTokens || estimatedTokens)
+    if (actualCostUsd === null) {
+      await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
+        serverSecret,
+        userId: args.userId,
+        reservationId,
+        errorMessage: `pricing_missing:${EMBEDDING_MODEL}`,
+      }).catch(() => {})
+      return 'indexed'
+    }
+    const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd })
+    await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
+      serverSecret,
+      userId: args.userId,
+      reservationId,
+      actualCents: costCents,
+      events: [{
+        type: 'embedding',
+        modelId: EMBEDDING_MODEL,
+        inputTokens: promptTokens || estimatedTokens,
+        outputTokens: 0,
+        cachedTokens: 0,
+        providerCostUsd: actualCostUsd,
+        cost: costCents,
+        timestamp: Date.now(),
+      }],
+    })
+    return 'indexed'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'indexing_failed'
+    await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
+      serverSecret,
+      userId: args.userId,
+      reservationId,
+      errorMessage: message,
+    }).catch(() => {})
+    throw err
+  }
+}
+
 export const reindexMemoryInternal = internalAction({
-  args: { memoryId: v.id('memories') },
-  handler: async (ctx, { memoryId }) => {
+  args: { memoryId: v.id('memories'), trustedInternal: v.optional(v.boolean()) },
+  handler: async (ctx, { memoryId, trustedInternal }) => {
     const meta = await ctx.runQuery(internal.knowledge.knowledge.getMemoryForReindex, { memoryId })
     if (!meta) {
       await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
@@ -564,107 +832,494 @@ export const reindexMemoryInternal = internalAction({
       })
       return
     }
-    const segments = chunkText(meta.content)
-    if (segments.length === 0) {
-      await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
-        sourceKind: 'memory',
-        sourceId: memoryId,
-      })
-      return
-    }
-    const indexingReservation = await ctx.runMutation(internal.platform.usage.tryReserveBackgroundWorkInternal, {
+    // Tags are stored on the row but were never indexed — append them so both
+    // lexical and semantic search can hit them.
+    const indexText = meta.tags?.length
+      ? `${meta.content}\nTags: ${meta.tags.join(', ')}`
+      : meta.content
+    await indexSourceTextBilled(ctx, {
       userId: meta.userId,
-      kind: 'indexing',
-      chunkCount: segments.length,
-      bytes: new TextEncoder().encode(meta.content).byteLength,
+      workspaceId: meta.workspaceId,
+      sourceKind: 'memory',
+      sourceId: memoryId,
+      title: 'Memory',
+      indexText,
+      expiresAt: meta.expiresAt,
+      visibility: meta.visibility,
+      createdAt: meta.createdAt,
+      updatedAt: meta.updatedAt,
+      superseded: meta.superseded,
+      turnId: meta.turnId,
+      eventAt: meta.eventAt,
+      sourceCount: meta.sourceCount,
+      operationId: 'knowledge.reindex-memory',
+      trustedInternal,
     })
-    if (!indexingReservation.allowed) return
+  },
+})
 
-    const serverSecret = getServerSecretForBackground()
-    if (!serverSecret) return
-    const estimatedTokens = estimateEmbeddingTokens(segments.map((s) => s.text))
-    const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
-    if (estimatedCostUsd === null) return
-    const requestFingerprint = await sha256Hex(`memory:${memoryId}:${meta.content}`)
-    let reservationId: string
-    try {
-      const reserved = await reserveKnowledgeProviderBudget(ctx, {
-        idempotencyKey: `memory:${memoryId}`,
-        kind: 'embedding',
-        modelId: EMBEDDING_MODEL,
-        operationId: 'knowledge.reindex-memory',
-        programmaticSubjectId: `knowledge-index:memory:${memoryId}`,
-        requestFingerprint,
-        reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
-        serverSecret,
-        userId: meta.userId,
-        workspaceId: meta.workspaceId,
+// ─── Message indexing (M2): the verbatim evidence layer ─────────────────────
+//
+// Memory rows are the curated layer; messages are the raw corpus. When the
+// extractor paraphrases away a date or entity, `sourceKind: 'message'` chunks
+// still surface the original turn verbatim.
+
+const MIN_MESSAGE_INDEX_CHARS = 8
+
+function messageTextForIndex(m: {
+  content: string
+  parts?: unknown
+}): string {
+  const parts = m.parts as Array<{ type?: string; text?: string }> | undefined
+  const textParts = parts
+    ?.filter((p) => p?.type === 'text' && typeof p.text === 'string')
+    .map((p) => p.text!) ?? []
+  return (textParts.join(' ').trim() || m.content).trim()
+}
+
+function messageSpeakerLabel(m: {
+  role: string
+  authorKind?: string
+  importedAuthorName?: string
+}): string {
+  if (m.importedAuthorName?.trim()) return m.importedAuthorName.trim()
+  if (m.authorKind === 'agent' || m.role === 'assistant') return 'Assistant'
+  return 'User'
+}
+
+function messageIndexText(createdAt: number, speaker: string, text: string): string {
+  const date = new Date(createdAt).toISOString().slice(0, 10)
+  return `[${date}] ${speaker}: ${text}`
+}
+
+export const getMessageForReindex = internalQuery({
+  args: { messageId: v.id('conversationMessages') },
+  handler: async (ctx, { messageId }) => {
+    const m = await ctx.db.get(messageId)
+    if (!m || m.deletedAt) return null
+    const text = messageTextForIndex(m)
+    if (text.length < MIN_MESSAGE_INDEX_CHARS) return null
+    const convo = await ctx.db.get(m.conversationId)
+    return {
+      userId: m.userId,
+      workspaceId: convo?.workspaceId,
+      turnId: m.turnId,
+      speaker: messageSpeakerLabel(m),
+      text,
+      createdAt: m.createdAt,
+    }
+  },
+})
+
+export const reindexMessageInternal = internalAction({
+  args: { messageId: v.id('conversationMessages') },
+  handler: async (ctx, { messageId }) => {
+    const meta = await ctx.runQuery(internal.knowledge.knowledge.getMessageForReindex, { messageId })
+    if (!meta) {
+      await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'message',
+        sourceId: messageId,
       })
-      reservationId = reserved.reservationId
-      if (reserved.reservation.idempotent) return
-    } catch {
       return
     }
+    await indexSourceTextBilled(ctx, {
+      userId: meta.userId,
+      workspaceId: meta.workspaceId,
+      sourceKind: 'message',
+      sourceId: messageId,
+      title: `${new Date(meta.createdAt).toISOString().slice(0, 10)} · ${meta.speaker}`,
+      indexText: messageIndexText(meta.createdAt, meta.speaker, meta.text),
+      createdAt: meta.createdAt,
+      updatedAt: meta.createdAt,
+      turnId: meta.turnId,
+      eventAt: meta.createdAt,
+      // Workspace conversations are shared context; personal chats are not.
+      visibility: meta.workspaceId ? 'workspace' : 'owner',
+      operationId: 'knowledge.reindex-message',
+    })
+  },
+})
 
-    let promptTokens = 0
-    try {
-      await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
-        serverSecret,
-        userId: meta.userId,
-        reservationId,
-      })
-      const embedded = await embedViaGateway(segments.map((s) => s.text))
-      promptTokens = embedded.promptTokens
-      await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
-        userId: meta.userId,
-        workspaceId: meta.workspaceId,
-        sourceKind: 'memory',
-        sourceId: memoryId,
-        title: 'Memory',
-        segments: segments.map((s, i) => ({
-          text: s.text,
-          chunkIndex: s.chunkIndex,
-          startOffset: s.startOffset,
-          embedding: embedded.vectors[i]!,
-        })),
-      })
-      const actualCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, promptTokens || estimatedTokens)
-      if (actualCostUsd === null) {
-        await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-          serverSecret,
-          userId: meta.userId,
-          reservationId,
-          errorMessage: `pricing_missing:${EMBEDDING_MODEL}`,
-        }).catch(() => {})
-        return
-      }
-      const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd })
-      await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
-        serverSecret,
-        userId: meta.userId,
-        reservationId,
-        actualCents: costCents,
-        events: [{
-          type: 'embedding',
-          modelId: EMBEDDING_MODEL,
-          inputTokens: promptTokens || estimatedTokens,
-          outputTokens: 0,
-          cachedTokens: 0,
-          providerCostUsd: actualCostUsd,
-          cost: costCents,
-          timestamp: Date.now(),
-        }],
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'memory_indexing_failed'
-      await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-        serverSecret,
-        userId: meta.userId,
-        reservationId,
-        errorMessage: message,
-      }).catch(() => {})
-      throw err
+/** Page of a conversation's messages for the backfill action. */
+export const listConversationMessagesPage = internalQuery({
+  args: {
+    conversationId: v.id('conversations'),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, { conversationId, cursor }) => {
+    const [convo, page] = await Promise.all([
+      ctx.db.get(conversationId),
+      ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
+      .order('asc')
+        .paginate({ cursor: cursor ?? null, numItems: 50 }),
+    ])
+    return {
+      workspaceId: convo?.workspaceId,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
+      messages: page.page
+        .filter((m) => !m.deletedAt && m.status === 'completed')
+        .map((m) => ({
+          messageId: m._id,
+          userId: m.userId,
+          speaker: messageSpeakerLabel(m),
+          text: messageTextForIndex(m),
+          createdAt: m.createdAt,
+          turnId: m.turnId,
+        }))
+        .filter((m) => m.text.length >= MIN_MESSAGE_INDEX_CHARS),
     }
+  },
+})
+
+/**
+ * Backfills `sourceKind: 'message'` chunks for a conversation written before
+ * M2. Pages forward and reschedules itself; each message is billed-indexed
+ * once (idempotent re-runs skip via the reservation fingerprint).
+ */
+export const backfillConversationMessages = internalAction({
+  args: {
+    conversationId: v.id('conversations'),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, { conversationId, cursor }) => {
+    const page = await ctx.runQuery(internal.knowledge.knowledge.listConversationMessagesPage, {
+      conversationId,
+      cursor,
+    })
+    for (const m of page.messages) {
+      await indexSourceTextBilled(ctx, {
+        userId: m.userId,
+        workspaceId: page.workspaceId,
+        sourceKind: 'message',
+        sourceId: m.messageId,
+        title: `${new Date(m.createdAt).toISOString().slice(0, 10)} · ${m.speaker}`,
+        indexText: messageIndexText(m.createdAt, m.speaker, m.text),
+        createdAt: m.createdAt,
+        updatedAt: m.createdAt,
+        turnId: m.turnId,
+        eventAt: m.createdAt,
+        visibility: page.workspaceId ? 'workspace' : 'owner',
+        operationId: 'knowledge.backfill-message',
+      })
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.backfillConversationMessages, {
+        conversationId,
+        cursor: page.continueCursor,
+      })
+    }
+  },
+})
+
+/**
+ * Drops the message-chunk layer for a deleted conversation. Pages through
+ * conversationMessages so large threads stay inside mutation limits; reschedules
+ * itself until the index walk is done.
+ */
+export const purgeConversationMessageChunks = internalMutation({
+  args: {
+    conversationId: v.id('conversations'),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, { conversationId, cursor }) => {
+    const page = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
+      .order('asc')
+      .paginate({ cursor: cursor ?? null, numItems: 200 })
+    await Promise.all(page.page.map((m) =>
+      ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+        sourceKind: 'message',
+        sourceId: m._id,
+      })))
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.purgeConversationMessageChunks, {
+        conversationId,
+        cursor: page.continueCursor,
+      })
+    }
+  },
+})
+
+/**
+ * Public message-index entry for callers that don't have a conversationMessages
+ * row — benchmark harness turns and API-ingested content. Same billed path.
+ */
+export const indexMessageContent = action({
+  args: {
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    sourceId: v.string(),
+    text: v.string(),
+    speaker: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    conversationId: v.optional(v.string()),
+    /** Source-turn id for provenance joins (memory hit → verbatim context). */
+    turnId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    reservationNonce: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const trustedInternal = validateServerSecret(args.serverSecret)
+    if (!trustedInternal) {
+      await requireAccessToken(args.accessToken ?? '', args.userId)
+    }
+    const text = args.text.trim()
+    if (text.length < MIN_MESSAGE_INDEX_CHARS) return { indexed: false }
+    const createdAt = args.createdAt ?? Date.now()
+    const speaker = args.speaker?.trim() || 'User'
+    const result = await indexSourceTextBilled(ctx, {
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+      sourceKind: 'message',
+      sourceId: args.sourceId,
+      title: `${new Date(createdAt).toISOString().slice(0, 10)} · ${speaker}`,
+      indexText: messageIndexText(createdAt, speaker, text),
+      createdAt,
+      updatedAt: createdAt,
+      turnId: args.turnId,
+      eventAt: createdAt,
+      visibility: args.workspaceId ? 'workspace' : 'owner',
+      operationId: 'knowledge.index-message-content',
+      trustedInternal,
+      reservationNonce: trustedInternal ? args.reservationNonce : undefined,
+    })
+    return { indexed: result === 'indexed' }
+  },
+})
+
+/** Paired with indexMessageContent — drops a caller-owned message source. */
+export const purgeMessageContent = action({
+  args: {
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    sourceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) {
+      await requireAccessToken(args.accessToken ?? '', args.userId)
+    }
+    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+      sourceKind: 'message',
+      sourceId: args.sourceId,
+    })
+    return { purged: true }
+  },
+})
+
+// ─── Orphan-chunk sweep ─────────────────────────────────────────────────────
+//
+// `knowledgeChunks` carry no tombstone of their own — a chunk is dead when its
+// backing source row is. The normal paths are atomic (memory remove/supersede
+// purge or flag chunks in the same mutation), but a killed purge or a stray
+// write can still strand chunks that keep retrieving. The sweep deletes only
+// *provable* orphans: source row missing, or memory row tombstoned. Synthetic
+// sourceIds that aren't doc ids (benchmark harness) can't be verified → kept.
+
+async function sourceAliveForChunk(
+  ctx: MutationCtx,
+  chunk: Doc<'knowledgeChunks'>,
+): Promise<boolean> {
+  try {
+    switch (chunk.sourceKind) {
+      case 'memory': {
+        const m = await ctx.db.get(chunk.sourceId as Id<'memories'>)
+        return !!m && !m.deletedAt
+      }
+      case 'message': {
+        const m = await ctx.db.get(chunk.sourceId as Id<'conversationMessages'>)
+        return !!m
+      }
+      case 'file': {
+        const f = await ctx.db.get(chunk.sourceId as Id<'files'>)
+        return !!f
+      }
+    }
+  } catch {
+    // sourceId isn't a doc id — synthetic source, can't prove orphan. Keep it.
+    return true
+  }
+}
+
+/** One page of the orphan sweep; callers chain `cursor` until `isDone`. */
+export const sweepOrphanedChunksPage = internalMutation({
+  args: {
+    userId: v.optional(v.string()),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { userId, sourceKind, cursor, numItems }) => {
+    const page = await (userId
+      ? ctx.db
+          .query('knowledgeChunks')
+          .withIndex('by_userId', (q) => q.eq('userId', userId))
+      : ctx.db.query('knowledgeChunks')
+    )
+      .order('asc')
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 200 })
+    let deleted = 0
+    for (const chunk of page.page) {
+      if (sourceKind !== undefined && chunk.sourceKind !== sourceKind) continue
+      if (await sourceAliveForChunk(ctx, chunk)) continue
+      deleted += await deleteChunksForSource(ctx.db, chunk.sourceKind, chunk.sourceId)
+    }
+    return {
+      scanned: page.page.length,
+      deleted,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+    }
+  },
+})
+
+/** Chains `sweepOrphanedChunksPage` until the scan completes; self-reschedules past the per-call page cap so huge stores don't time out. */
+export const sweepOrphanedChunks = internalAction({
+  args: {
+    userId: v.optional(v.string()),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    totals: v.optional(v.object({ scanned: v.number(), deleted: v.number() })),
+  },
+  handler: async (
+    ctx,
+    { userId, sourceKind, cursor, totals },
+  ): Promise<{ scanned: number; deleted: number; done: boolean }> => {
+    let scanned = totals?.scanned ?? 0
+    let deleted = totals?.deleted ?? 0
+    let next = cursor ?? null
+    for (let i = 0; i < 50; i++) {
+      const page = await ctx.runMutation(internal.knowledge.knowledge.sweepOrphanedChunksPage, {
+        userId,
+        sourceKind,
+        cursor: next,
+      })
+      scanned += page.scanned
+      deleted += page.deleted
+      if (page.isDone) return { scanned, deleted, done: true }
+      next = page.continueCursor
+    }
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.sweepOrphanedChunks, {
+      userId,
+      sourceKind,
+      cursor: next,
+      totals: { scanned, deleted },
+    })
+    return { scanned, deleted, done: false }
+  },
+})
+
+/** Server-secret entry point (bench cleanup, admin remediation). */
+export const sweepOrphanedKnowledgeChunks = action({
+  args: {
+    userId: v.optional(v.string()),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ scanned: number; deleted: number; done: boolean }> => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    return await ctx.runAction(internal.knowledge.knowledge.sweepOrphanedChunks, {
+      userId: args.userId,
+      sourceKind: args.sourceKind,
+    })
+  },
+})
+
+/**
+ * Post-M3 denormalization backfill: stamps `turnId`/`eventAt`/`sourceCount`/
+ * `visibility` onto existing memory chunks from the parent row — the fields
+ * only land at index time otherwise, so rows written before this build never
+ * get them. Pure patches (no re-embedding); self-chains past the page cap.
+ */
+export const backfillMemoryChunkFieldsPage = internalMutation({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { cursor, numItems }) => {
+    const page = await ctx.db
+      .query('memories')
+      .order('asc')
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 50 })
+    const chunksByMemory = await Promise.all(page.page.map((memory) =>
+      ctx.db
+        .query('knowledgeChunks')
+        .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memory._id))
+        .collect()))
+    let patched = 0
+    const chunkPatches = []
+    for (const [i, memory] of page.page.entries()) {
+      const chunks = chunksByMemory[i]!
+      for (const chunk of chunks) {
+        const fields = {
+          turnId: memory.turnId,
+          eventAt: memory.eventAt ?? memory.createdAt,
+          sourceCount: memory.sourceCount,
+          visibility: memory.visibility,
+        } as const
+        const needs =
+          (fields.turnId !== undefined && chunk.turnId !== fields.turnId) ||
+          chunk.eventAt !== fields.eventAt ||
+          (fields.sourceCount !== undefined && chunk.sourceCount !== fields.sourceCount) ||
+          (fields.visibility !== undefined && chunk.visibility !== fields.visibility)
+        if (!needs) continue
+        chunkPatches.push(ctx.db.patch(chunk._id, {
+          ...(fields.turnId !== undefined ? { turnId: fields.turnId } : {}),
+          eventAt: fields.eventAt,
+          ...(fields.sourceCount !== undefined ? { sourceCount: fields.sourceCount } : {}),
+          ...(fields.visibility !== undefined ? { visibility: fields.visibility } : {}),
+        }))
+        patched++
+      }
+    }
+    await Promise.all(chunkPatches)
+    return {
+      memories: page.page.length,
+      patched,
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+    }
+  },
+})
+
+/** Chains `backfillMemoryChunkFieldsPage` until the scan completes. */
+export const backfillMemoryChunkFields = internalAction({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    totals: v.optional(v.object({ memories: v.number(), patched: v.number() })),
+  },
+  handler: async (ctx, { cursor, totals }): Promise<{ memories: number; patched: number; done: boolean }> => {
+    let memories = totals?.memories ?? 0
+    let patched = totals?.patched ?? 0
+    let next = cursor ?? null
+    for (let i = 0; i < 50; i++) {
+      const page = await ctx.runMutation(internal.knowledge.knowledge.backfillMemoryChunkFieldsPage, {
+        cursor: next,
+      })
+      memories += page.memories
+      patched += page.patched
+      if (page.isDone) return { memories, patched, done: true }
+      next = page.continueCursor
+    }
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.backfillMemoryChunkFields, {
+      cursor: next,
+      totals: { memories, patched },
+    })
+    return { memories, patched, done: false }
+  },
+})
+
+/** Server-secret entry point for the memory-chunk field backfill. */
+export const backfillMemoryChunks = action({
+  args: { serverSecret: v.string() },
+  handler: async (ctx, args): Promise<{ memories: number; patched: number; done: boolean }> => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    return await ctx.runAction(internal.knowledge.knowledge.backfillMemoryChunkFields, {})
   },
 })
 
@@ -675,6 +1330,7 @@ const PACK_MAX_PER_SOURCE = 3
 function packChunksForContext(
   ordered: Doc<'knowledgeChunks'>[],
   scores: Map<string, number>,
+  vecScores: Map<string, number>,
   maxChunks: number,
 ): HybridSearchChunk[] {
   const perSource = new Map<string, number>()
@@ -695,6 +1351,7 @@ function packChunksForContext(
       sourceId: row.sourceId,
       chunkIndex: row.chunkIndex,
       score: scores.get(row._id) ?? 0,
+      vecScore: vecScores.get(row._id),
     })
   }
   return out
@@ -715,7 +1372,24 @@ export const hybridSearch = action({
     spendSubjectKind: v.optional(v.union(v.literal('member'), v.literal('programmatic'))),
     requestFingerprint: v.string(),
     query: v.string(),
-    sourceKind: v.optional(v.union(v.literal('file'), v.literal('memory'))),
+    sourceKind: v.optional(KNOWLEDGE_SOURCE_KINDS),
+    /** Multi-kind filter (e.g. memory + message). Overrides sourceKind when set. */
+    sourceKinds: v.optional(v.array(KNOWLEDGE_SOURCE_KINDS)),
+    /** Recency decay on memory chunks (default on); dedup callers disable it. */
+    applyRecencyDecay: v.optional(v.boolean()),
+    /**
+     * Temporal dual-search (default on): when the query names a date window,
+     * chunks whose eventAt falls inside it enter the fusion as a third ranked
+     * list. `asOfMs` anchors relative expressions ("last week") — defaults to
+     * now; benchmarks pass the question's asked-on date.
+     */
+    temporalQuery: v.optional(v.boolean()),
+    asOfMs: v.optional(v.number()),
+    /**
+     * Attach up to `provenancePerHit` verbatim chunks from a memory hit's
+     * source turn — distilled fact plus the raw wording it came from.
+     */
+    includeProvenance: v.optional(v.boolean()),
     workspaceId: v.optional(v.string()),
     kVec: v.optional(v.number()),
     kLex: v.optional(v.number()),
@@ -824,13 +1498,20 @@ export const hybridSearch = action({
       }
     }
 
-    const memoryUserIds = args.workspaceId && args.sourceKind !== 'file'
+    const callerKinds = args.sourceKinds ?? (args.sourceKind !== undefined ? [args.sourceKind] : undefined)
+    const wantsMemory = callerKinds === undefined || callerKinds.includes('memory')
+    const wantsMessage = callerKinds === undefined || callerKinds.includes('message')
+    const memoryUserIds: string[] = args.workspaceId && wantsMemory
       ? await ctx.runQuery(internal.knowledge.knowledge.listWorkspaceMemoryUserIds, {
           requestingUserId: args.userId,
           workspaceId: args.workspaceId,
         })
       : [args.userId]
     const additionalMemoryUserIds = memoryUserIds.filter((userId) => userId !== args.userId)
+    // Other members contribute shared-context kinds only — never their files.
+    const expansionKinds = (['memory', 'message'] as const).filter(
+      (kind) => kind === 'memory' ? wantsMemory : wantsMessage,
+    )
 
     // The current member keeps access to their indexed files. Additional workspace members
     // contribute memory chunks only, preserving file ownership while sharing memory context.
@@ -853,7 +1534,7 @@ export const hybridSearch = action({
     const vectorPairGroups = await Promise.all(vectorGroups.map((group, index) => (
       ctx.runQuery(internal.knowledge.knowledge.embeddingChunkIdsForVectorResults, {
         embeddingIds: group.map((row) => row._id),
-        sourceKind: index === 0 ? args.sourceKind : 'memory',
+        sourceKinds: index === 0 ? callerKinds : [...expansionKinds],
         workspaceId: args.workspaceId,
       })
     )))
@@ -865,29 +1546,33 @@ export const hybridSearch = action({
     )).sort((a, b) => b.score - a.score).slice(0, kVec)
 
     const scores = new Map<string, number>()
+    const vecScores = new Map<string, number>()
     for (let i = 0; i < rankedVectorPairs.length; i++) {
       const cid = rankedVectorPairs[i]?.chunkId
       if (!cid) continue
+      vecScores.set(cid, Math.max(vecScores.get(cid) ?? 0, rankedVectorPairs[i]!.score))
       const rank = i + 1
       scores.set(cid, (scores.get(cid) ?? 0) + 1 / (RRF_K + rank))
     }
 
+    // The search index filters one sourceKind at a time — multi-kind requests
+    // run one lexical search per kind and interleave by rank.
     const lexLists = await Promise.all([
-      ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
+      ...(callerKinds ?? [undefined]).map((kind) => ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
         userId: args.userId,
-        sourceKind: args.sourceKind,
+        sourceKind: kind,
         workspaceId: args.workspaceId,
         query: q,
         limit: kLex,
-      }),
-      ...additionalMemoryUserIds.map((userId) => (
-        ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
+      })),
+      ...additionalMemoryUserIds.flatMap((userId) => (
+        expansionKinds.map((kind) => ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
           userId,
-          sourceKind: 'memory' as const,
+          sourceKind: kind,
           workspaceId: args.workspaceId,
           query: q,
           limit: kLex,
-        })
+        }))
       )),
     ])
     const lexDocs = interleaveRankedLists(lexLists, kLex)
@@ -895,6 +1580,32 @@ export const hybridSearch = action({
       const id = lexDocs[j]!._id
       const rank = j + 1
       scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + rank))
+    }
+
+    // Temporal dual-search: a question naming a window ("last week", "in
+    // March", "two days ago") contributes a third RRF list — chunks whose
+    // effective event time lands in the window, ranked newest first. A boost,
+    // not a filter: chunks outside the window keep their vec/lex scores.
+    if (args.temporalQuery !== false) {
+      const window = parseTemporalRange(q, args.asOfMs ?? Date.now())
+      if (window) {
+        const temporalGroups = await Promise.all(
+          [args.userId, ...additionalMemoryUserIds].map((userId, index) =>
+            ctx.runQuery(internal.knowledge.knowledge.temporalChunksInRange, {
+              userId,
+              sourceKinds: index === 0 ? callerKinds : [...expansionKinds],
+              fromMs: window.fromMs,
+              toMs: window.toMs,
+              limit: 24,
+            })),
+        )
+        const temporalIds = interleaveRankedLists(temporalGroups, 48)
+        for (let i = 0; i < temporalIds.length; i++) {
+          const id = temporalIds[i]!
+          const rank = i + 1
+          scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + rank))
+        }
+      }
     }
 
     const rankedIds = [...scores.entries()]
@@ -908,14 +1619,92 @@ export const hybridSearch = action({
     const byId = new Map<Id<'knowledgeChunks'>, Doc<'knowledgeChunks'>>(
       payloads.map((p) => [p._id, p]),
     )
+    const now = Date.now()
     const filtered = rankedIds
       .map((id) => byId.get(id))
       .filter((row): row is NonNullable<typeof row> => !!row)
+      // M1 memory lifecycle: superseded and expired memory chunks are dropped
+      // at retrieval (rows stay in `memories` for audit). Owner-private chunks
+      // only surface in the owner's own scope — other members' expansion
+      // searches must not see them.
+      .filter((row) => !row.superseded)
+      .filter((row) => row.expiresAt === undefined || row.expiresAt > now)
+      .filter((row) => row.userId === args.userId || row.visibility !== 'owner')
+
+    // Recency decay × corroboration on memory chunks: the fused score halves
+    // every 30 days since the fact was last confirmed (updatedAt, which
+    // `touch` bumps), and memories corroborated by multiple sources get a
+    // log-scaled lift (sourceCount — bumped on each dedup hit). Message and
+    // file chunks don't decay — verbatim evidence stays findable.
+    const decayOn = args.applyRecencyDecay !== false
+    const ranked = new Map<string, number>(
+      [...scores.entries()].map(([id, score]): [string, number] => {
+        const row = byId.get(id as Id<'knowledgeChunks'>)
+        if (row?.sourceKind !== 'memory') return [id, score]
+        const recency = row.updatedAt ?? row.createdAt
+        const decayed =
+          decayOn && recency !== undefined
+            ? score * Math.pow(0.5, Math.max(0, (now - recency) / DAY_MS) / MEMORY_HALF_LIFE_DAYS)
+            : score
+        return [id, decayed * (1 + 0.15 * Math.log1p(row.sourceCount ?? 1))]
+      }),
+    )
     const resorted = [...filtered].sort(
-      (a, b) => (scores.get(b._id) ?? 0) - (scores.get(a._id) ?? 0),
+      (a, b) => (ranked.get(b._id) ?? 0) - (ranked.get(a._id) ?? 0),
     )
 
-    const top = packChunksForContext(resorted, scores, m)
+    const top = packChunksForContext(resorted, ranked, vecScores, m)
+
+    // Provenance attach: each memory hit's source turn contributes its
+    // verbatim message chunks — the distilled fact arrives with the raw
+    // wording behind it. Attached below parent score, capped, and held to the
+    // same visibility/expiry rules as ranked hits.
+    if (args.includeProvenance === true) {
+      const memoryHits = top.filter((c) => c.sourceKind === 'memory').slice(0, 8)
+      if (memoryHits.length > 0) {
+        const links = await ctx.runQuery(internal.knowledge.knowledge.memoryProvenanceTurnIds, {
+          memoryIds: memoryHits.map((c) => c.sourceId as Id<'memories'>),
+        })
+        const turnByMemory = new Map(links.map((l) => [l.memoryId as string, l.turnId]))
+        const have = new Set(top.map((c) => `${c.sourceKind}:${c.sourceId}:${c.chunkIndex}`))
+        const perTurn = new Map<string, number>()
+        let attached = 0
+        const hitTurnIds = memoryHits
+          .map((hit) => turnByMemory.get(hit.sourceId))
+          .filter((turnId): turnId is string => Boolean(turnId))
+        const rowsByTurn = new Map(await Promise.all([...new Set(hitTurnIds)].map(async (turnId) => [
+          turnId,
+          await ctx.runQuery(internal.knowledge.knowledge.messageChunksByTurn, {
+            turnId,
+            limit: 8,
+          }),
+        ] as const)))
+        for (const hit of memoryHits) {
+          if (attached >= 4) break
+          const turnId = turnByMemory.get(hit.sourceId)
+          if (!turnId) continue
+          const rows = rowsByTurn.get(turnId) ?? []
+          for (const row of rows) {
+            if (attached >= 4 || (perTurn.get(turnId) ?? 0) >= 2) break
+            const key = `message:${row.sourceId}:${row.chunkIndex}`
+            if (have.has(key) || row.superseded) continue
+            if (row.expiresAt !== undefined && row.expiresAt <= now) continue
+            if (row.userId !== args.userId && row.visibility === 'owner') continue
+            have.add(key)
+            perTurn.set(turnId, (perTurn.get(turnId) ?? 0) + 1)
+            attached++
+            top.push({
+              text: row.text,
+              title: row.title ? `${row.title} · source` : 'source',
+              sourceKind: 'message',
+              sourceId: row.sourceId,
+              chunkIndex: row.chunkIndex,
+              score: hit.score * 0.9,
+            })
+          }
+        }
+      }
+    }
 
     return { chunks: top }
   },

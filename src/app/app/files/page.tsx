@@ -12,7 +12,11 @@ import { PublicShowcaseKnowledgeView } from '@/features/showcase/PublicShowcaseK
 // See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
 export const instant = false;
 
-const KnowledgeView = dynamic(() => import('../_components/KnowledgeViewHost'), {
+const KnowledgeView = dynamic(
+  () => import('../_components/KnowledgeViewHost'),
+  {
+    // KnowledgeViewHost manages its own Suspense boundaries around useSearchParams.
+    // react-doctor-disable-next-line react-doctor/nextjs-no-use-search-params-without-suspense
   loading: () => <FilesRouteLoadingSkeleton />,
 })
 
@@ -53,7 +57,13 @@ export default async function FilesPage({
   const params = await searchParams
   const publicShowcase = firstParam(params?.showcase) === '1'
 
-  if (publicShowcase) return <PublicShowcaseKnowledgeView />
+  if (publicShowcase) {
+    return (
+      <Suspense fallback={null}>
+        <PublicShowcaseKnowledgeView />
+      </Suspense>
+    )
+  }
   if (!session) redirect('/app/chat?signin=nav')
   const layout = resolveFilesLayout(params)
   return (

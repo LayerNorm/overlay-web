@@ -2,6 +2,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import type {
+  WorkspaceAgentBundle,
   WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
@@ -35,22 +36,33 @@ export class WorkspaceAgentService {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async list(args: { actorUserId: string; workspaceId: string }) {
+  async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
-    const agents = await this.repository.list({ workspaceId: access.workspace.id })
+    const agents = await this.repository.list({
+      workspaceId: access.workspace.id,
+      includeArchived: args.includeArchived,
+    })
     const visible = agents.filter((agent) => canSeeAgent(agent, access.principal.id))
     // Attribute tiles to their creator. Resolved best-effort: an unknown
     // principal simply yields no owner line.
     const creators = await Promise.all(
       visible.map((agent) => this.workspaces.resolvePrincipal(agent.createdByPrincipalId)),
     )
+    const archivedThreadAgentIds = args.includeArchived
+      ? await this.repository.listArchivedAgentIds({
+        workspaceId: access.workspace.id,
+        userId: args.actorUserId,
+      }).catch((_error) => [] as string[])
+      : []
     return {
       agents: visible.map((agent, index) => {
         const displayName = creators[index]?.displayName
         return displayName ? { ...agent, createdByDisplayName: displayName } : agent
       }),
       canCreate: canCreateAgent(access.membership.role),
+      viewerPrincipalId: access.principal.id,
+      archivedThreadAgentIds,
     }
   }
 
@@ -243,6 +255,100 @@ export class WorkspaceAgentService {
     })) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
   }
 
+  async unarchive(args: { actorUserId: string; workspaceId: string; agentId: string }) {
+    const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
+    if (!agent || !agent.archivedAt || !canSeeAgent(agent, access.principal.id)) {
+      throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    }
+    const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
+    if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
+      throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can restore this agent')
+    }
+    if (!await this.repository.unarchive({
+      workspaceId: access.workspace.id,
+      agentId: agent.id,
+      now: this.now(),
+    })) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+  }
+
+  /**
+   * The sidebar bundle for one agent: the caller's threads plus their
+   * agent-owned automations. Archived agents still serve the bundle so the
+   * Archived tab can render their history.
+   */
+  async listBundle(args: {
+    actorUserId: string
+    workspaceId: string
+    agentId: string
+  }): Promise<WorkspaceAgentBundle> {
+    const { access, agent } = await this.requireVisibleIncludingArchived(args)
+    const [threads, automations] = await Promise.all([
+      this.repository.listThreads({
+        workspaceId: access.workspace.id,
+        agentId: agent.id,
+        userId: args.actorUserId,
+      }),
+      this.repository.listAgentAutomations({
+        workspaceId: access.workspace.id,
+        agentId: agent.id,
+        userId: args.actorUserId,
+      }),
+    ])
+    return { threads, automations }
+  }
+
+  /** Resolves (adopting or creating when needed) the thread an agent opens into. */
+  async resolveMainThread(args: { actorUserId: string; workspaceId: string; agentId: string }) {
+    const { access, agent } = await this.requireVisibleIncludingArchived(args)
+    const ref = await this.repository.resolveMainThread({
+      workspaceId: access.workspace.id,
+      agentId: agent.id,
+      userId: args.actorUserId,
+    }).catch((error) => { throw mapThreadError(error) })
+    if (!ref) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    return ref
+  }
+
+  async createThread(args: {
+    actorUserId: string
+    workspaceId: string
+    agentId: string
+    title?: string
+  }) {
+    const { access, agent } = await this.requireVisible(args)
+    const ref = await this.repository.createThread({
+      workspaceId: access.workspace.id,
+      agentId: agent.id,
+      userId: args.actorUserId,
+      title: args.title,
+    }).catch((error) => { throw mapThreadError(error) })
+    if (!ref) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    return ref
+  }
+
+  async setThreadArchived(args: {
+    actorUserId: string
+    agentId: string
+    conversationId: string
+    archived: boolean
+  }) {
+    await this.repository.setThreadArchived({
+      conversationId: args.conversationId,
+      agentId: args.agentId,
+      userId: args.actorUserId,
+      archived: args.archived,
+    }).catch((error) => { throw mapThreadError(error) })
+  }
+
+  async deleteThread(args: { actorUserId: string; agentId: string; conversationId: string }) {
+    await this.repository.deleteThread({
+      conversationId: args.conversationId,
+      agentId: args.agentId,
+      userId: args.actorUserId,
+    }).catch((error) => { throw mapThreadError(error) })
+  }
+
   /**
    * DM-creation guard: every requested agent principal must resolve to an
    * agent visible to the actor. Human principals, unknown principals, and
@@ -267,6 +373,26 @@ export class WorkspaceAgentService {
       workspaceId: access.workspace.id,
       agentId,
     })))
+  }
+
+  /** Live agents only — for mutations that must not touch archived agents. */
+  private async requireVisible(args: { actorUserId: string; workspaceId: string; agentId: string }) {
+    const { access, agent } = await this.requireVisibleIncludingArchived(args)
+    if (agent.archivedAt) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    return { access, agent }
+  }
+
+  private async requireVisibleIncludingArchived(args: {
+    actorUserId: string
+    workspaceId: string
+    agentId: string
+  }) {
+    const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
+    if (!agent || !canSeeAgent(agent, access.principal.id)) {
+      throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    }
+    return { access, agent }
   }
 
   private async requireEditor(args: { actorUserId: string; workspaceId: string; agentId: string }) {
@@ -306,6 +432,24 @@ export class WorkspaceAgentService {
     }
     return { access, agent }
   }
+}
+
+/** Convex agent-thread mutations signal domain failures by message. */
+function mapThreadError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.includes('AGENT_LAST_THREAD')) {
+    return new WorkspaceAgentServiceError('conflict', 'An agent must keep at least one thread')
+  }
+  if (message.includes('AGENT_ARCHIVED')) {
+    return new WorkspaceAgentServiceError('conflict', 'Archived agents cannot start new threads')
+  }
+  if (message.includes('THREAD_ACCESS_DENIED') || message.includes('WORKSPACE_ACCESS_DENIED')) {
+    return new WorkspaceAgentServiceError('forbidden', 'Thread is not accessible')
+  }
+  if (message.includes('THREAD_NOT_FOUND') || message.includes('AGENT_NOT_FOUND')) {
+    return new WorkspaceAgentServiceError('not_found', 'Thread not found')
+  }
+  return error instanceof Error ? error : new Error(message)
 }
 
 export function canCreateAgent(role: WorkspaceMembershipRole) {

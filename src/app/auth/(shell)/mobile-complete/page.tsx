@@ -23,6 +23,7 @@ export default function MobileCompletePage() {
           )
         }
 
+        // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
         const response = await fetch('/api/auth/desktop-link', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

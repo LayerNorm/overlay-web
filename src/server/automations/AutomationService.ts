@@ -141,6 +141,16 @@ function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
   return `monthly:${schedule.dayOfMonthUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
 }
 
+const UTC_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+const UTC_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'UTC',
+  weekday: 'long',
+})
+
 function formatLocalTime(date: Date, timezone: string): string {
   try {
     return new Intl.DateTimeFormat('en-US', {
@@ -149,11 +159,7 @@ function formatLocalTime(date: Date, timezone: string): string {
       minute: '2-digit',
     }).format(date)
   } catch (_error) {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date)
+    return UTC_TIME_FORMATTER.format(date)
   }
 }
 
@@ -164,10 +170,7 @@ function weekdayName(date: Date, timezone: string): string {
       weekday: 'long',
     }).format(date)
   } catch (_error) {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',
-      weekday: 'long',
-    }).format(date)
+    return UTC_WEEKDAY_FORMATTER.format(date)
   }
 }
 
@@ -283,10 +286,14 @@ export class AutomationService {
       if (!automation) serviceError({ error: 'Not found' }, 404)
       return automation
     }
+    // The standalone Automations surface lists only standalone automations;
+    // agent-owned automations (created inside agent threads) nest under their
+    // agent in the sidebar instead.
     return await this.deps.repository.listAutomations({
       userId: args.userId,
       includeDeleted: args.includeDeleted,
       workspaceId: args.workspaceId,
+      excludeAgentBound: true,
     })
   }
 
@@ -415,15 +422,17 @@ export class AutomationService {
       userId: args.userId,
       workspaceId: args.workspaceId,
     })
-    const isDraftPlaceholder =
-      automation?.enabled === false &&
-      automation?.name === 'New automation' &&
-      automation?.description === 'Draft automation. Add a description before enabling it.' &&
-      automation?.instructions === 'Describe what this automation should do.'
-    const linkedConversationIds = [
-      automation?.conversationId,
-      isDraftPlaceholder ? automation?.sourceConversationId : undefined,
-    ].filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
+    // Only the automation-owned thread is deleted. The sourceConversationId
+    // is provenance — the chat the automation was drafted in belongs to the
+    // user (or the agent), and deleting the automation must not destroy it.
+    // Guard: legacy rows can have conversationId === sourceConversationId
+    // (the shared thread was stamped as the run target); never delete those.
+    const ownedConversationId =
+      automation?.conversationId && automation.conversationId !== automation.sourceConversationId
+        ? automation.conversationId
+        : undefined
+    const linkedConversationIds = [ownedConversationId]
+      .filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
 
     // Cancel any active scheduler workflow before deleting the automation
     if (automation?.schedulerWorkflowRunId) {
@@ -448,14 +457,13 @@ export class AutomationService {
       workspaceId: args.workspaceId,
     })
 
-    for (const conversationId of linkedConversationIds) {
-      await this.deps.repository.removeConversation({
+    await Promise.all(linkedConversationIds.map((conversationId) =>
+      this.deps.repository.removeConversation({
         conversationId,
         userId: args.userId,
       }).catch((error) => {
         logger.warn('[automations DELETE] Failed to delete linked conversation', error)
-      })
-    }
+      })))
 
     return { success: true, linkedConversationIds }
   }
@@ -467,6 +475,7 @@ export class AutomationService {
   }): Promise<{ success: true; runId: string; conversationId: string }> {
     let runId: string | null = null
     let automationId: string | null = null
+    let automationName: string | undefined
     try {
       if (!args.automationId) {
         serviceError({ error: 'automationId required' }, 400)
@@ -479,6 +488,7 @@ export class AutomationService {
       if (!automation) serviceError({ error: 'Automation not found' }, 404)
 
       const name = (automation.name || automation.title || 'Untitled automation').trim()
+      automationName = name
       const instructions = (automation.instructions || automation.instructionsMarkdown || '').trim()
       if (!instructions) {
         serviceError({ error: 'Automation has no instructions to test' }, 400)
@@ -486,7 +496,7 @@ export class AutomationService {
 
       const scheduledFor = this.clock.now()
       const turnId = `automation-test-${automationId}-${scheduledFor}`
-      const conversationId = automation.sourceConversationId || automation.conversationId
+      const conversationId = automation.conversationId
 
       runId = await this.deps.repository.createManualRun({
         automationId,
@@ -539,6 +549,7 @@ export class AutomationService {
       })
       await this.publishAutomationLifecycleEvent({
         automationId,
+        automationName: name,
         execution: 'manual',
         name: 'automation.succeeded',
         runId,
@@ -552,6 +563,7 @@ export class AutomationService {
         runId,
         userId: args.userId,
         automationId,
+        automationName,
       })
       throw error
     }
@@ -564,6 +576,7 @@ export class AutomationService {
   }): Promise<{ success: true; conversationId: string }> {
     let automationId: string | undefined
     let userId: string | undefined
+    let automationName: string | undefined
     try {
       if (!args.runId) serviceError({ error: 'runId required' }, 400)
       const executionRunId = args.runId
@@ -574,11 +587,16 @@ export class AutomationService {
       const { run, automation } = payload
       automationId = automation._id
       userId = automation.userId
+      const displayName = automation.name || automation.title || 'Untitled automation'
+      automationName = displayName
       if (automation.userId !== args.serviceUserId) {
         serviceError({ error: 'Unauthorized' }, 401)
       }
+      if ((payload as { agentArchived?: boolean }).agentArchived) {
+        serviceError({ error: 'Automation run is not executable' }, 409)
+      }
       const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
-      const conversationId = run.conversationId || automation.sourceConversationId || automation.conversationId
+      const conversationId = run.conversationId || automation.conversationId
 
       const result = await withObservabilityContext({
         provider: 'automation',
@@ -587,7 +605,7 @@ export class AutomationService {
         automationId: automation._id,
         runId: executionRunId,
         userId: automation.userId,
-        name: automation.name || automation.title || 'Untitled automation',
+        name: displayName,
         description: automation.description || '',
         instructions: automation.instructions || automation.instructionsMarkdown || '',
         modelId: automation.modelId,
@@ -605,6 +623,7 @@ export class AutomationService {
       })
       await this.publishAutomationLifecycleEvent({
         automationId: automation._id,
+        automationName,
         execution: 'scheduled',
         name: 'automation.succeeded',
         runId: args.runId,
@@ -622,6 +641,7 @@ export class AutomationService {
         })
         await this.publishAutomationLifecycleEvent({
           automationId,
+          automationName,
           execution: 'scheduled',
           failureClass: classifyAutomationFailure(error),
           name: 'automation.failed',
@@ -676,7 +696,6 @@ export class AutomationService {
       modelId: automation.modelId,
       conversationId:
         run.conversationId ||
-        automation.sourceConversationId ||
         automation.conversationId,
       schedule: automation.schedule ?? { kind: 'interval' as const, intervalMinutes: 60 },
       oneShot: true,
@@ -732,12 +751,12 @@ export class AutomationService {
     })
   }
 
-  async attachSourceConversation(args: {
+  async attachOwnedConversation(args: {
     automationId: string
     conversationId: string
     userId: string
   }): Promise<void> {
-    await this.deps.repository.attachSourceConversation(args)
+    await this.deps.repository.attachOwnedConversation(args)
   }
 
   async updateRunWorkflowRunId(args: {
@@ -854,7 +873,7 @@ export class AutomationService {
     userId: string,
   ): Promise<void> {
     const updateNote = buildAutomationUpdateNote(automation, after)
-    const conversationId = automation.sourceConversationId || automation.conversationId
+    const conversationId = automation.conversationId
     if (!updateNote || !conversationId) return
     await this.deps.repository.appendAutomationUpdateNote({
       automationId: automation._id,
@@ -868,6 +887,7 @@ export class AutomationService {
 
   private async failManualRunBestEffort(args: {
     automationId: string | null
+    automationName?: string
     error: unknown
     runId: string | null
     userId: string
@@ -890,6 +910,7 @@ export class AutomationService {
       })
       await this.publishAutomationLifecycleEvent({
         automationId: args.automationId,
+        automationName: args.automationName,
         execution: 'manual',
         failureClass: classifyAutomationFailure(args.error),
         name: 'automation.failed',
@@ -901,6 +922,7 @@ export class AutomationService {
 
   private async publishAutomationLifecycleEvent(args: {
     automationId: string
+    automationName?: string
     execution: 'manual' | 'scheduled'
     failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
     name: 'automation.failed' | 'automation.succeeded'
@@ -910,6 +932,7 @@ export class AutomationService {
     await this.deps.lifecycleEvents?.().publish({
       attributes: {
         execution: args.execution,
+        ...(args.automationName ? { automationName: args.automationName } : {}),
         ...(args.failureClass ? { failureClass: args.failureClass } : {}),
       },
       idempotencyKey: `${args.name}:${args.runId}`,

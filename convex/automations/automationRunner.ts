@@ -120,11 +120,8 @@ export const runMinuteTick = internalAction({
       limit: 25,
     })
 
-    for (const runId of runIds) {
-      await ctx.scheduler.runAfter(0, internal.automations.automationRunner.runAutomation, {
-        runId,
-      })
-    }
+    await Promise.all(runIds.map((runId) =>
+      ctx.scheduler.runAfter(0, internal.automations.automationRunner.runAutomation, { runId })))
 
     return null
   },
@@ -141,12 +138,22 @@ export const runAutomation = internalAction({
     })
     if (!payload) return null
 
-    const { run, automation } = payload
+    const { run, automation, agentArchived } = payload
     if (run.status !== 'queued') return null
 
     const now = Date.now()
+    // Agent-owned automations do not run while their agent is archived.
+    if (agentArchived) {
+      await ctx.runMutation(internal.automations.automations.markRunSkipped, {
+        runId: args.runId,
+        now,
+      })
+      return null
+    }
     const turnId = `automation-${args.runId}-${now}`
-    const existingConversationId = (automation.sourceConversationId || automation.conversationId) as
+    // Runs always target the automation-owned thread. sourceConversationId is
+    // provenance only and is never an execution target.
+    const existingConversationId = automation.conversationId as
       | Id<'conversations'>
       | undefined
     await ctx.runMutation(internal.automations.automations.markRunStarted, {

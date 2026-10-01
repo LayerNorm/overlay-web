@@ -30,10 +30,8 @@ import {
   GitBranch,
   ArrowRight,
   LayoutGrid,
-  Plus,
   Undo2,
   Redo2,
-  Trash2,
   X,
   CheckCircle2,
   XCircle,
@@ -44,7 +42,6 @@ import type {
   AutomationGraph,
   AutomationGraphNode,
   AutomationGraphNodeKind,
-  AutomationGraphNodeConfig,
   AutomationNodeRunStatus,
 } from '@overlay/app-core'
 import { autoLayout, NODE_WIDTH, NODE_HEIGHT } from './auto-layout'
@@ -55,7 +52,6 @@ import {
   deleteEdgeFromGraph,
   updateNodeInGraph,
   updateNodePositionInGraph,
-  graphFromReactFlowState,
   validateAutomationGraph,
   GraphHistory,
   type AutomationGraphValidationError,
@@ -198,7 +194,10 @@ function AutomationNode({ data, selected }: NodeProps) {
       )}
       {/* Error overlay tooltip */}
       {runStatus === 'failed' && errorMessage && (
-        <div className="absolute -bottom-1 left-2 right-2 translate-y-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-600 shadow-sm" style={{ zIndex: 10 }}>
+        <div
+          className='absolute -bottom-1 left-2 right-2 translate-y-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-600 shadow-sm'
+          style={{ zIndex: 10 }}
+        >
           <p className="truncate">{errorMessage}</p>
           {attemptCount && attemptCount > 1 ? (
             <p className="text-red-400">retry {attemptCount - 1}x</p>
@@ -249,11 +248,18 @@ function NodeConfigPanel({
     <div className="flex w-72 flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)]">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-center gap-2">
-          <Icon size={14} strokeWidth={1.75} className="text-[var(--foreground)]" />
-          <span className="text-sm font-medium text-[var(--foreground)]">Node settings</span>
+          <Icon
+            size={14}
+            strokeWidth={1.75}
+            className='text-[var(--foreground)]'
+          />
+          <span className='text-sm font-medium text-[var(--foreground)]'>
+            Node settings
+          </span>
         </div>
         <button
           type="button"
+          aria-label="Close node settings"
           onClick={onClose}
           className="rounded-md p-1 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
         >
@@ -344,37 +350,159 @@ function AddNodeButton({
 }
 
 // ---------------------------------------------------------------------------
-// Inner canvas (uses ReactFlow hooks)
+// Run-status overlays — apply live run state onto ReactFlow nodes/edges
 // ---------------------------------------------------------------------------
 
-function GraphCanvasInner({
+function applyRunStatusToNodes(
+  currentNodes: Node[],
+  nodeStatuses: Record<string, AutomationNodeRunStatus>,
+  nodeErrors: Record<string, string> | undefined,
+  nodeAttempts: Record<string, number> | undefined,
+): Node[] {
+  return currentNodes.map((n) => {
+    const nodeId = n.id
+    const status = nodeStatuses[nodeId] ?? 'pending'
+    const existingData = n.data as AutomationNodeData
+    // Skip update if status hasn't changed
+    if (existingData.runStatus === status) return n
+    return {
+      ...n,
+      data: {
+        ...existingData,
+        runStatus: status,
+        errorMessage: nodeErrors?.[nodeId],
+        attemptCount: nodeAttempts?.[nodeId],
+      },
+    }
+  })
+}
+
+function runStatusEdgeStroke(
+  sourceStatus: AutomationNodeRunStatus | undefined,
+  targetStatus: AutomationNodeRunStatus | undefined,
+  isAnimated: boolean,
+): string {
+  if (sourceStatus === 'failed' || targetStatus === 'failed') return 'var(--red-500, #ef4444)'
+  if (isAnimated) return 'var(--blue-500, #3b82f6)'
+  if (sourceStatus === 'succeeded') return 'var(--green-500, #22c55e)'
+  return 'var(--border)'
+}
+
+function applyRunStatusToEdges(
+  currentEdges: Edge[],
+  nodeStatuses: Record<string, AutomationNodeRunStatus>,
+): Edge[] {
+  return currentEdges.map((e) => {
+    const sourceStatus = nodeStatuses[e.source]
+    const targetStatus = nodeStatuses[e.target]
+    // Animate edge when source is running or succeeded and target is pending/running
+    const isAnimated =
+      (sourceStatus === 'running' || sourceStatus === 'succeeded') &&
+      (targetStatus === 'pending' || targetStatus === 'running')
+    return {
+      ...e,
+      animated: isAnimated,
+      style: { ...e.style, stroke: runStatusEdgeStroke(sourceStatus, targetStatus, isAnimated), strokeWidth: 1.5 },
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Graph mutation helpers — apply ReactFlow change batches to the graph model
+// ---------------------------------------------------------------------------
+
+function deleteNodesFromGraph(graph: AutomationGraph, nodeIds: string[]): AutomationGraph {
+  let nextGraph = graph
+  for (const id of nodeIds) {
+    nextGraph = deleteNodeFromGraph(nextGraph, id)
+  }
+  return nextGraph
+}
+
+function deleteEdgesFromGraph(
+  graph: AutomationGraph,
+  edgeIds: string[],
+  edges: Edge[],
+): AutomationGraph {
+  const edgesById = new Map(edges.map((e) => [e.id, e]))
+  let nextGraph = graph
+  for (const id of edgeIds) {
+    const edge = edgesById.get(id)
+    if (edge) {
+      nextGraph = deleteEdgeFromGraph(nextGraph, edge.source, edge.target)
+    }
+  }
+  return nextGraph
+}
+
+function applyPositionChanges(
+  graph: AutomationGraph,
+  positionChanges: Extract<NodeChange<Node>, { type: 'position' }>[],
+  nextNodes: Node[],
+): AutomationGraph {
+  const nodesById = new Map(nextNodes.map((n) => [n.id, n]))
+  let nextGraph = graph
+  for (const change of positionChanges) {
+    const updatedNode = nodesById.get(change.id)
+    if (updatedNode) {
+      nextGraph = updateNodePositionInGraph(nextGraph, change.id, updatedNode.position)
+    }
+  }
+  return nextGraph
+}
+
+function applyLayoutPositions(graph: AutomationGraph, layoutNodes: Node[]): AutomationGraph {
+  let nextGraph = graph
+  for (const layoutNode of layoutNodes) {
+    nextGraph = updateNodePositionInGraph(nextGraph, layoutNode.id, layoutNode.position)
+  }
+  return nextGraph
+}
+
+function applyNodeDataUpdates(
+  currentNodes: Node[],
+  nodeId: string,
+  updates: Partial<AutomationGraphNode>,
+): Node[] {
+  return currentNodes.map((n) => {
+    if (n.id !== nodeId) return n
+    const existing = (n.data as AutomationNodeData).node
+    const updated: AutomationGraphNode = {
+      ...existing,
+      ...updates,
+      config: updates.config ? { ...existing.config, ...updates.config } : existing.config,
+    }
+    return { ...n, data: { node: updated } }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Canvas state — ReactFlow state, history, and prop-sync effects
+// ---------------------------------------------------------------------------
+
+function useGraphCanvasState({
   graph,
   onGraphChange,
   nodeStatuses,
   nodeErrors,
   nodeAttempts,
-  readOnly,
 }: {
   graph: AutomationGraph
   onGraphChange?: (graph: AutomationGraph) => void
-  /** Per-node run status (nodeId → status). When present, canvas enters run-viewer mode. */
   nodeStatuses?: Record<string, AutomationNodeRunStatus>
-  /** Per-node error messages (nodeId → error text). */
   nodeErrors?: Record<string, string>
-  /** Per-node retry counts (nodeId → attempt count). */
   nodeAttempts?: Record<string, number>
-  /** When true, the canvas is read-only (no editing, no toolbar). Used in run-viewer mode. */
-  readOnly?: boolean
 }) {
-  const { fitView, screenToFlowPosition } = useReactFlow()
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const { fitView } = useReactFlow()
+  const [nodes, setNodes] = useNodesState<Node>([])
+  const [edges, setEdges] = useEdgesState<Edge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<AutomationGraphValidationError[]>([])
-  const [, setHistoryVersion] = useState(0)
-  const historyRef = useRef(new GraphHistory())
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+  const [historyInstance] = useState(() => new GraphHistory())
+  const historyRef = useRef(historyInstance)
   const currentGraphRef = useRef<AutomationGraph>(graph)
-  const skipHistoryRef = useRef(false)
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => autoLayout(graph), [graph])
 
@@ -393,63 +521,30 @@ function GraphCanvasInner({
     setEdges(layoutEdges)
     currentGraphRef.current = graph
     historyRef.current.reset()
-    setHistoryVersion((v) => v + 1)
+    syncHistoryFlags()
     setValidationErrors(validateAutomationGraph(graph))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph])
+  }, [graph, setNodes, setEdges])
 
   // Update node data when run statuses change (without resetting layout)
   useEffect(() => {
     if (!nodeStatuses) return
-    setNodes((currentNodes) =>
-      currentNodes.map((n) => {
-        const nodeId = n.id
-        const status = nodeStatuses[nodeId] ?? 'pending'
-        const existingData = n.data as AutomationNodeData
-        // Skip update if status hasn't changed
-        if (existingData.runStatus === status) return n
-        return {
-          ...n,
-          data: {
-            ...existingData,
-            runStatus: status,
-            errorMessage: nodeErrors?.[nodeId],
-            attemptCount: nodeAttempts?.[nodeId],
-          },
-        }
-      }),
-    )
+    setNodes((currentNodes) => applyRunStatusToNodes(currentNodes, nodeStatuses, nodeErrors, nodeAttempts))
     // Update edge styles for animated data flow
-    setEdges((currentEdges) =>
-      currentEdges.map((e) => {
-        const sourceStatus = nodeStatuses[e.source]
-        const targetStatus = nodeStatuses[e.target]
-        // Animate edge when source is running or succeeded and target is pending/running
-        const isAnimated =
-          (sourceStatus === 'running' || sourceStatus === 'succeeded') &&
-          (targetStatus === 'pending' || targetStatus === 'running')
-        const isError = sourceStatus === 'failed' || targetStatus === 'failed'
-        const stroke = isError
-          ? 'var(--red-500, #ef4444)'
-          : isAnimated
-            ? 'var(--blue-500, #3b82f6)'
-            : sourceStatus === 'succeeded'
-              ? 'var(--green-500, #22c55e)'
-              : 'var(--border)'
-        return {
-          ...e,
-          animated: isAnimated,
-          style: { ...e.style, stroke, strokeWidth: 1.5 },
-        }
-      }),
-    )
-  }, [nodeStatuses, nodeErrors, nodeAttempts])
+    setEdges((currentEdges) => applyRunStatusToEdges(currentEdges, nodeStatuses))
+  }, [nodeStatuses, nodeErrors, nodeAttempts, setNodes, setEdges])
 
   // Fit view after initial layout
   useEffect(() => {
     const timer = setTimeout(() => fitView({ padding: 0.2, duration: 200 }), 50)
     return () => clearTimeout(timer)
   }, [fitView])
+
+  // --- Undo/redo availability, kept in sync wherever history changes ---
+  const syncHistoryFlags = useCallback(() => {
+    setCanUndo(historyRef.current.canUndo())
+    setCanRedo(historyRef.current.canRedo())
+  }, [])
 
   // --- Commit current ReactFlow state back to AutomationGraph ---
   const commitGraph = useCallback(
@@ -458,11 +553,69 @@ function GraphCanvasInner({
       currentGraphRef.current = nextGraph
       lastEmittedGraphRef.current = nextGraph
       setValidationErrors(validateAutomationGraph(nextGraph))
-      setHistoryVersion((v) => v + 1)
+      syncHistoryFlags()
       onGraphChange?.(nextGraph)
     },
-    [onGraphChange],
+    [onGraphChange, syncHistoryFlags],
   )
+
+  const selectedFlowNode = selectedNodeId
+    ? nodes.find((n) => n.id === selectedNodeId)
+    : undefined
+  const selectedNode = selectedFlowNode
+    ? (selectedFlowNode.data as AutomationNodeData).node
+    : null
+
+  return {
+    nodes,
+    setNodes,
+    edges,
+    setEdges,
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedNode,
+    validationErrors,
+    setValidationErrors,
+    canUndo,
+    canRedo,
+    syncHistoryFlags,
+    historyRef,
+    currentGraphRef,
+    lastEmittedGraphRef,
+    layoutNodes,
+    fitView,
+    commitGraph,
+  }
+}
+
+type GraphCanvasState = ReturnType<typeof useGraphCanvasState>
+
+// ---------------------------------------------------------------------------
+// Canvas editing — node/edge change, connect, add, tidy, and update handlers
+// ---------------------------------------------------------------------------
+
+function useGraphEditing({
+  graph,
+  onGraphChange,
+  state,
+}: {
+  graph: AutomationGraph
+  onGraphChange?: (graph: AutomationGraph) => void
+  state: GraphCanvasState
+}) {
+  const { screenToFlowPosition } = useReactFlow()
+  const {
+    nodes,
+    setNodes,
+    edges,
+    setEdges,
+    selectedNodeId,
+    setSelectedNodeId,
+    currentGraphRef,
+    layoutNodes,
+    fitView,
+    commitGraph,
+  } = state
 
   // --- Node changes (drag, select, remove) ---
   const handleNodesChange = useCallback(
@@ -473,11 +626,7 @@ function GraphCanvasInner({
       // Handle deletions
       const removed = changes.filter((c) => c.type === 'remove')
       if (removed.length > 0) {
-        let nextGraph = currentGraphRef.current
-        for (const change of removed) {
-          nextGraph = deleteNodeFromGraph(nextGraph, change.id)
-        }
-        commitGraph(nextGraph)
+        commitGraph(deleteNodesFromGraph(currentGraphRef.current, removed.map((c) => c.id)))
         setSelectedNodeId(null)
         return
       }
@@ -488,14 +637,8 @@ function GraphCanvasInner({
           c.type === 'position' && c.dragging === false,
       )
       if (positionChanges.length > 0) {
-        let nextGraph = currentGraphRef.current
-        for (const change of positionChanges) {
-          const updatedNode = nextNodes.find((n) => n.id === change.id)
-          if (updatedNode) {
-            nextGraph = updateNodePositionInGraph(nextGraph, change.id, updatedNode.position)
-          }
-        }
         // Position updates don't push to history (too granular)
+        const nextGraph = applyPositionChanges(currentGraphRef.current, positionChanges, nextNodes)
         currentGraphRef.current = nextGraph
         onGraphChange?.(nextGraph)
       }
@@ -506,7 +649,7 @@ function GraphCanvasInner({
         setSelectedNodeId(selectionChange.selected ? selectionChange.id : null)
       }
     },
-    [nodes, commitGraph, onGraphChange],
+    [nodes, setNodes, setSelectedNodeId, currentGraphRef, commitGraph, onGraphChange],
   )
 
   // --- Edge changes ---
@@ -517,17 +660,10 @@ function GraphCanvasInner({
 
       const removed = changes.filter((c) => c.type === 'remove')
       if (removed.length > 0) {
-        let nextGraph = currentGraphRef.current
-        for (const change of removed) {
-          const edge = edges.find((e) => e.id === change.id)
-          if (edge) {
-            nextGraph = deleteEdgeFromGraph(nextGraph, edge.source, edge.target)
-          }
-        }
-        commitGraph(nextGraph)
+        commitGraph(deleteEdgesFromGraph(currentGraphRef.current, removed.map((c) => c.id), edges))
       }
     },
-    [edges, commitGraph],
+    [edges, setEdges, currentGraphRef, commitGraph],
   )
 
   // --- Connect nodes ---
@@ -544,7 +680,7 @@ function GraphCanvasInner({
         commitGraph(nextGraph)
       }
     },
-    [setEdges, commitGraph],
+    [setEdges, currentGraphRef, commitGraph],
   )
 
   // --- Add node ---
@@ -572,41 +708,99 @@ function GraphCanvasInner({
       }),
     )
     // Commit positions back to graph
-    let nextGraph = currentGraphRef.current
-    for (const layoutNode of layoutNodes) {
-      nextGraph = updateNodePositionInGraph(nextGraph, layoutNode.id, layoutNode.position)
-    }
+    const nextGraph = applyLayoutPositions(currentGraphRef.current, layoutNodes)
     currentGraphRef.current = nextGraph
     onGraphChange?.(nextGraph)
     setTimeout(() => fitView({ padding: 0.2, duration: 200 }), 50)
-  }, [layoutNodes, setNodes, fitView, onGraphChange])
+  }, [layoutNodes, setNodes, fitView, currentGraphRef, onGraphChange])
 
-  // --- Undo / redo ---
+  // --- Update selected node from side panel ---
+  const handleUpdateSelectedNode = useCallback(
+    (updates: Partial<AutomationGraphNode>) => {
+      if (!selectedNodeId) return
+      const nextGraph = updateNodeInGraph(currentGraphRef.current, selectedNodeId, updates)
+      commitGraph(nextGraph)
+      // Update node data in ReactFlow state
+      setNodes((current) => applyNodeDataUpdates(current, selectedNodeId, updates))
+    },
+    [selectedNodeId, currentGraphRef, commitGraph, setNodes],
+  )
+
+  return {
+    handleNodesChange,
+    handleEdgesChange,
+    handleConnect,
+    handleAddNode,
+    tidyUp,
+    handleUpdateSelectedNode,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Undo / redo and keyboard shortcuts
+// ---------------------------------------------------------------------------
+
+function useGraphUndoRedo({
+  onGraphChange,
+  state,
+}: {
+  onGraphChange?: (graph: AutomationGraph) => void
+  state: GraphCanvasState
+}) {
+  const {
+    historyRef,
+    currentGraphRef,
+    lastEmittedGraphRef,
+    setValidationErrors,
+    syncHistoryFlags,
+    setNodes,
+    setEdges,
+  } = state
+
+  const applyHistoryGraph = useCallback(
+    (nextGraph: AutomationGraph) => {
+      currentGraphRef.current = nextGraph
+      lastEmittedGraphRef.current = nextGraph
+      setValidationErrors(validateAutomationGraph(nextGraph))
+      syncHistoryFlags()
+      const { nodes: layoutedNodes, edges: layoutedEdges } = autoLayout(nextGraph)
+      setNodes(layoutedNodes)
+      setEdges(layoutedEdges)
+      onGraphChange?.(nextGraph)
+    },
+    [currentGraphRef, lastEmittedGraphRef, setValidationErrors, syncHistoryFlags, setNodes, setEdges, onGraphChange],
+  )
+
   const undo = useCallback(() => {
     if (!historyRef.current.canUndo()) return
-    const prev = historyRef.current.undo(currentGraphRef.current)
-    currentGraphRef.current = prev
-    lastEmittedGraphRef.current = prev
-    setValidationErrors(validateAutomationGraph(prev))
-    setHistoryVersion((v) => v + 1)
-    const { nodes: undoNodes, edges: undoEdges } = autoLayout(prev)
-    setNodes(undoNodes)
-    setEdges(undoEdges)
-    onGraphChange?.(prev)
-  }, [setNodes, setEdges, onGraphChange])
+    applyHistoryGraph(historyRef.current.undo(currentGraphRef.current))
+  }, [historyRef, currentGraphRef, applyHistoryGraph])
 
   const redo = useCallback(() => {
     if (!historyRef.current.canRedo()) return
-    const next = historyRef.current.redo(currentGraphRef.current)
-    currentGraphRef.current = next
-    lastEmittedGraphRef.current = next
-    setValidationErrors(validateAutomationGraph(next))
-    setHistoryVersion((v) => v + 1)
-    const { nodes: redoNodes, edges: redoEdges } = autoLayout(next)
-    setNodes(redoNodes)
-    setEdges(redoEdges)
-    onGraphChange?.(next)
-  }, [setNodes, setEdges, onGraphChange])
+    applyHistoryGraph(historyRef.current.redo(currentGraphRef.current))
+  }, [historyRef, currentGraphRef, applyHistoryGraph])
+
+  return { undo, redo }
+}
+
+function useGraphKeyboard({
+  state,
+  undo,
+  redo,
+}: {
+  state: GraphCanvasState
+  undo: () => void
+  redo: () => void
+}) {
+  const {
+    selectedNodeId,
+    setSelectedNodeId,
+    currentGraphRef,
+    commitGraph,
+    setNodes,
+    setEdges,
+  } = state
 
   // --- Delete selected node via keyboard ---
   useEffect(() => {
@@ -634,46 +828,186 @@ function GraphCanvasInner({
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNodeId, commitGraph, setNodes, setEdges, undo, redo])
+  }, [selectedNodeId, setSelectedNodeId, currentGraphRef, commitGraph, setNodes, setEdges, undo, redo])
+}
 
-  // --- Update selected node from side panel ---
-  const handleUpdateSelectedNode = useCallback(
-    (updates: Partial<AutomationGraphNode>) => {
-      if (!selectedNodeId) return
-      const nextGraph = updateNodeInGraph(currentGraphRef.current, selectedNodeId, updates)
-      commitGraph(nextGraph)
-      // Update node data in ReactFlow state
-      setNodes((current) =>
-        current.map((n) => {
-          if (n.id !== selectedNodeId) return n
-          const existing = (n.data as AutomationNodeData).node
-          const updated: AutomationGraphNode = {
-            ...existing,
-            ...updates,
-            config: updates.config ? { ...existing.config, ...updates.config } : existing.config,
-          }
-          return { ...n, data: { node: updated } }
-        }),
-      )
-    },
-    [selectedNodeId, commitGraph, setNodes],
+// ---------------------------------------------------------------------------
+// Canvas presentation — empty state, toolbar, and ReactFlow surface
+// ---------------------------------------------------------------------------
+
+function EmptyGraphNotice() {
+  return (
+    <div className="flex min-h-72 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
+      <div className="flex max-w-md flex-col items-center gap-2 text-center">
+        <GitBranch size={18} strokeWidth={1.75} className="text-[var(--muted)]" />
+        <p className="text-sm text-[var(--muted)]">
+          No automation steps defined yet.
+        </p>
+      </div>
+    </div>
   )
+}
 
-  const selectedNode = selectedNodeId
-    ? currentGraphRef.current.nodes.find((n) => n.id === selectedNodeId)
-    : null
+function GraphCanvasToolbar({
+  onAddNode,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  onTidyUp,
+  validationErrors,
+}: {
+  onAddNode: (kind: AutomationGraphNodeKind) => void
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
+  onTidyUp: () => void
+  validationErrors: AutomationGraphValidationError[]
+}) {
+  return (
+    <>
+      <div className="absolute left-3 top-3 z-10 flex flex-wrap items-center gap-1.5">
+        {ADDABLE_KINDS.map((kind) => (
+          <AddNodeButton key={kind} kind={kind} onAdd={onAddNode} />
+        ))}
+      </div>
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+        <button
+          type="button"
+          aria-label="Undo"
+          onClick={onUndo}
+          disabled={!canUndo}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
+        >
+          <Undo2 size={12} strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          aria-label="Redo"
+          onClick={onRedo}
+          disabled={!canRedo}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
+        >
+          <Redo2 size={12} strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          onClick={onTidyUp}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)]"
+        >
+          <LayoutGrid size={12} strokeWidth={1.75} />
+          Tidy up
+        </button>
+      </div>
+
+      {/* Validation errors */}
+      {validationErrors.length > 0 && (
+        <div className="absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-red-500/30 bg-[var(--surface-elevated)] px-3 py-2 text-xs text-red-500 shadow-sm">
+          {validationErrors[0].message}
+        </div>
+      )}
+    </>
+  )
+}
+
+function GraphFlowView({
+  nodes,
+  edges,
+  readOnly,
+  onNodesChange,
+  onEdgesChange,
+  onConnect,
+}: {
+  nodes: Node[]
+  edges: Edge[]
+  readOnly?: boolean
+  onNodesChange: (changes: NodeChange<Node>[]) => void
+  onEdgesChange: (changes: EdgeChange<Edge>[]) => void
+  onConnect: (connection: Connection) => void
+}) {
+  return (
+    <div className="h-96 overflow-hidden bg-[var(--surface-subtle)]">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={readOnly ? undefined : onNodesChange}
+        onEdgesChange={readOnly ? undefined : onEdgesChange}
+        onConnect={readOnly ? undefined : onConnect}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        elementsSelectable
+        panOnDrag
+        zoomOnScroll
+        zoomOnPinch
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+        proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={{ type: 'smoothstep', style: { stroke: 'var(--foreground)', strokeWidth: 1.5 }, markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 } }}
+        deleteKeyCode={null}
+      >
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={16}
+          size={1}
+          color="var(--border)"
+        />
+        <Controls
+          showInteractive={false}
+          className="!border-[var(--border)] !bg-[var(--surface-elevated)] !shadow-sm"
+        />
+      </ReactFlow>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Inner canvas (uses ReactFlow hooks)
+// ---------------------------------------------------------------------------
+
+function GraphCanvasInner({
+  graph,
+  onGraphChange,
+  nodeStatuses,
+  nodeErrors,
+  nodeAttempts,
+  readOnly,
+}: {
+  graph: AutomationGraph
+  onGraphChange?: (graph: AutomationGraph) => void
+  /** Per-node run status (nodeId → status). When present, canvas enters run-viewer mode. */
+  nodeStatuses?: Record<string, AutomationNodeRunStatus>
+  /** Per-node error messages (nodeId → error text). */
+  nodeErrors?: Record<string, string>
+  /** Per-node retry counts (nodeId → attempt count). */
+  nodeAttempts?: Record<string, number>
+  /** When true, the canvas is read-only (no editing, no toolbar). Used in run-viewer mode. */
+  readOnly?: boolean
+}) {
+  const state = useGraphCanvasState({ graph, onGraphChange, nodeStatuses, nodeErrors, nodeAttempts })
+  const {
+    nodes,
+    edges,
+    selectedNode,
+    validationErrors,
+    canUndo,
+    canRedo,
+    setSelectedNodeId,
+  } = state
+  const {
+    handleNodesChange,
+    handleEdgesChange,
+    handleConnect,
+    handleAddNode,
+    tidyUp,
+    handleUpdateSelectedNode,
+  } = useGraphEditing({ graph, onGraphChange, state })
+  const { undo, redo } = useGraphUndoRedo({ onGraphChange, state })
+  useGraphKeyboard({ state, undo, redo })
 
   if (graph.nodes.length === 0) {
-    return (
-      <div className="flex min-h-72 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
-        <div className="flex max-w-md flex-col items-center gap-2 text-center">
-          <GitBranch size={18} strokeWidth={1.75} className="text-[var(--muted)]" />
-          <p className="text-sm text-[var(--muted)]">
-            No automation steps defined yet.
-          </p>
-        </div>
-      </div>
-    )
+    return <EmptyGraphNotice />
   }
 
   return (
@@ -681,80 +1015,25 @@ function GraphCanvasInner({
       <div className="relative flex-1">
         {/* Toolbar (hidden in read-only / run-viewer mode) */}
         {!readOnly && (
-          <>
-            <div className="absolute left-3 top-3 z-10 flex flex-wrap items-center gap-1.5">
-              {ADDABLE_KINDS.map((kind) => (
-                <AddNodeButton key={kind} kind={kind} onAdd={handleAddNode} />
-              ))}
-            </div>
-            <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={undo}
-                disabled={!historyRef.current.canUndo()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
-              >
-                <Undo2 size={12} strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                onClick={redo}
-                disabled={!historyRef.current.canRedo()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
-              >
-                <Redo2 size={12} strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                onClick={tidyUp}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)]"
-              >
-                <LayoutGrid size={12} strokeWidth={1.75} />
-                Tidy up
-              </button>
-            </div>
-
-            {/* Validation errors */}
-            {validationErrors.length > 0 && (
-              <div className="absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-red-500/30 bg-[var(--surface-elevated)] px-3 py-2 text-xs text-red-500 shadow-sm">
-                {validationErrors[0].message}
-              </div>
-            )}
-          </>
+          <GraphCanvasToolbar
+            onAddNode={handleAddNode}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            onTidyUp={tidyUp}
+            validationErrors={validationErrors}
+          />
         )}
 
-        <div className="h-96 overflow-hidden bg-[var(--surface-subtle)]">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            onNodesChange={readOnly ? undefined : handleNodesChange}
-            onEdgesChange={readOnly ? undefined : handleEdgesChange}
-            onConnect={readOnly ? undefined : handleConnect}
-            nodesDraggable={!readOnly}
-            nodesConnectable={!readOnly}
-            elementsSelectable
-            panOnDrag
-            zoomOnScroll
-            zoomOnPinch
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
-            proOptions={{ hideAttribution: true }}
-            defaultEdgeOptions={{ type: 'smoothstep', style: { stroke: 'var(--foreground)', strokeWidth: 1.5 }, markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 } }}
-            deleteKeyCode={null}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={16}
-              size={1}
-              color="var(--border)"
-            />
-            <Controls
-              showInteractive={false}
-              className="!border-[var(--border)] !bg-[var(--surface-elevated)] !shadow-sm"
-            />
-          </ReactFlow>
-        </div>
+        <GraphFlowView
+          nodes={nodes}
+          edges={edges}
+          readOnly={readOnly}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={handleConnect}
+        />
       </div>
 
       {/* Node config side panel (hidden in read-only mode) */}

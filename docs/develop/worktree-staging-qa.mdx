@@ -78,11 +78,9 @@ For every staging QA run, verify the changed flow plus these basics where applic
 
 If staging is broken after a Convex schema or function change, first restore the shared development deployment by checking out the last known-good `staging` commit in the dedicated staging worktree and running `npm run convex:push:dev`. Never use a feature worktree or production deployment as the rollback source.
 
-## Remote Postgres contract QA
+## Convex contract QA
 
-`overlay-web-postgres.vercel.app` is the dedicated Vercel/Neon lane for Postgres checks. When local disk or Docker is unavailable, do not start Postgres or Redis locally. Deploy the reviewed revision with `npm run smoke:remote-postgres` running in the Vercel build environment; the script applies app-data migrations and executes the Postgres repository contract suite using the linked production project environment.
-
-Record the migration schema version, the complete contract count, and the Vercel build result before claiming Postgres parity. This lane currently has no remote Redis resource; Redis checks remain unverified until a remote Redis environment is explicitly configured.
+The app-data repository contract suite runs against the shared development Convex deployment with `npm run test:app-data-contracts:convex`. For self-hosted backend validation, use the reference stack in `examples/customer-deployment/` and the runbook at `docs/deploy-operate/self-hosted-convex.mdx`. Redis-backed rate-limit checks run locally through `npm run test:p1:redis` against the `local-redis` service in `docker/docker-compose.better-auth.yml`.
 
 ## Promote a verified release
 
@@ -100,7 +98,7 @@ If either staging SHA differs from the recorded QA revision, or if the ancestry 
 
 The Integration agent normally opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA. If `DevelopedByDev` explicitly authorizes a direct push to `main`, the Integration agent may instead fast-forward `main` to the exact tested staging revision after completing the owner fast-path checks in [Agentic Development](/develop/agentic-development). The direct path must not change the tested tree or rewrite either branch.
 
-Before merging a release PR, confirm root `vercel.json` sets `git.deploymentEnabled.main` to `false`. Vercel evaluates this source-controlled rule for Git events, so `staging` continues to deploy for hosted QA while a release PR merge updates `main` without creating a production deployment. Do not rely on an account-level deployment-source policy alone. After the merge, verify both the exact `origin/main` SHA and that Vercel created no production deployment for it, then align `staging` with the accepted merge commit so the next Builder PR has a clean comparison:
+Before merging a release PR, confirm root `vercel.json` sets `git.deploymentEnabled.main` to `false`. Vercel evaluates this source-controlled rule for Git events, so `staging` continues to deploy for hosted QA while a release PR merge updates `main` without creating a production deployment. Do not rely on an account-level deployment-source policy alone. After the merge, verify both the exact `origin/main` SHA and that Vercel created no production deployment for it. `main` and `staging` do not need to stay in sync — only align `staging` with the accepted merge commit when the owner requests parity or the next Builder candidate needs a clean base:
 
 ```bash
 cd ~/Downloads/overlay-mono/overlay-landing-staging
@@ -109,7 +107,7 @@ git merge --ff-only origin/main
 git push origin staging
 ```
 
-This is a non-rewriting fast-forward: the release merge commit has the tested staging revision as a parent. If it cannot fast-forward, stop and inspect the unexpected branch movement instead of force-pushing. If Vercel unexpectedly creates a production deployment, cancel it before aliases are assigned and treat the deployment gate as failed until the trigger configuration is corrected. After alignment and the no-deployment check, report the accepted SHA as **merged but not deployed**, then stop unless the user explicitly authorizes production deployment.
+This is a non-rewriting fast-forward: the release merge commit has the tested staging revision as a parent. If it cannot fast-forward, stop and inspect the unexpected branch movement instead of force-pushing. If Vercel unexpectedly creates a production deployment, cancel it before aliases are assigned and treat the deployment gate as failed until the trigger configuration is corrected. After the no-deployment check (and the alignment, when performed), report the accepted SHA as **merged but not deployed**, then stop unless the user explicitly authorizes production deployment.
 
 Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
 

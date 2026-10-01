@@ -1,7 +1,6 @@
 import 'server-only'
 
 import type { Entitlements } from '@/shared/app/app-contracts'
-import type { AppDataProvider } from '@/server/app-data/capabilities'
 import type { OverlayRuntimeConfig } from '@/shared/config'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import type { UsageRepository } from '@/server/usage'
@@ -193,7 +192,6 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
 }
 
 export function createGenerationUsagePolicy(args: {
-  appDataProvider: AppDataProvider
   repository: ActConversationRepository
   usageRepository: UsageRepository
   runtimeConfig: OverlayRuntimeConfig | null

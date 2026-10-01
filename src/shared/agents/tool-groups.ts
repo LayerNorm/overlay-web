@@ -40,13 +40,19 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     id: 'memory',
     label: 'Persistent memory',
     description: 'Recall and remember facts across conversations, including the agent\'s own memories.',
-    toolIds: ['search_memory', 'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'],
+    toolIds: ['search_memory', 'search_messages', 'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'],
   },
   {
     id: 'knowledge',
     label: 'Knowledge & file search',
-    description: 'Search the workspace knowledge base and uploaded files.',
-    toolIds: ['search_knowledge', 'search_in_files'],
+    description: 'Search, list, and read the workspace knowledge base and files.',
+    toolIds: ['search_knowledge', 'search_in_files', 'list_files', 'read_file'],
+  },
+  {
+    id: 'files',
+    label: 'File editing',
+    description: 'Create and edit text files, make folders, and move or rename files.',
+    toolIds: ['write_file', 'create_folder', 'move_file'],
   },
   {
     id: 'web_search',
@@ -73,7 +79,16 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     id: 'notes',
     label: 'Notes',
     description: 'Read and write documents in the workspace.',
-    toolIds: ['list_notes', 'get_note', 'create_note', 'update_note', 'delete_note'],
+    toolIds: [
+      'list_notes',
+      'get_note',
+      'create_note',
+      'append_to_note',
+      'replace_note_section',
+      'edit_note',
+      'update_note',
+      'delete_note',
+    ],
   },
   {
     id: 'skills',
@@ -111,12 +126,6 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
       'apply_motion_control',
       'edit_video',
     ],
-  },
-  {
-    id: 'sandbox',
-    label: 'Code sandbox',
-    description: 'Run code in an isolated Daytona sandbox.',
-    toolIds: ['run_daytona_sandbox'],
   },
   {
     id: 'browser',
@@ -172,10 +181,25 @@ export function agentToolCapabilities(
  */
 const LEGACY_MEMORY_WRITE_TOOL_IDS = ['save_memory', 'save_memory_batch', 'update_memory', 'delete_memory']
 
+/**
+ * Tools added to a group after agents were granted it. A group is enabled only
+ * when every one of its tools is granted, so a saved grant is read as holding
+ * the tools that joined its group later (file reads joined knowledge search;
+ * patch-style note edits joined whole-note updates).
+ */
+const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: readonly string[] }> = [
+  { grantedBy: ['search_knowledge', 'search_in_files'], adds: ['list_files', 'read_file'] },
+  { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
+]
+
 export function normalizeAgentToolGrant(allowedToolIds: readonly string[]): string[] {
   const granted = new Set(allowedToolIds)
   if (!granted.has('search_memory') && LEGACY_MEMORY_WRITE_TOOL_IDS.some((id) => granted.has(id))) {
     granted.add('search_memory')
+    granted.add('search_messages')
+  }
+  for (const { grantedBy, adds } of LATER_GROUP_MEMBERS) {
+    if (grantedBy.every((id) => granted.has(id))) adds.forEach((id) => granted.add(id))
   }
   return [...granted]
 }
@@ -225,4 +249,22 @@ export const DEFAULT_AGENT_TOOL_GROUP_IDS: readonly string[] = AGENT_TOOL_GROUPS
 /** Every overlay tool id and capability grant an agent can hold. */
 export function allAgentToolGrantIds(): string[] {
   return toolIdsForEnabledGroups(new Set(AGENT_TOOL_GROUPS.map((group) => group.id)))
+}
+
+export type AgentToolPreset = 'everything' | 'standard' | 'readonly'
+
+/** One-click tool sets for the new-agent dialog. None includes `computer`, which is its own explicit opt-in. */
+export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly string[]> = {
+  everything: DEFAULT_AGENT_TOOL_GROUP_IDS,
+  standard: ['memory', 'knowledge', 'files', 'web_search', 'notes'],
+  readonly: ['knowledge', 'web_search'],
+}
+
+/** The preset that exactly matches the enabled groups (ignoring `computer`), or null for a custom mix. */
+export function agentToolPresetFor(groupIds: ReadonlySet<string>): AgentToolPreset | null {
+  const enabled = [...groupIds].filter((id) => id !== 'computer')
+  for (const [preset, ids] of Object.entries(AGENT_TOOL_PRESETS) as Array<[AgentToolPreset, readonly string[]]>) {
+    if (ids.length === enabled.length && ids.every((id) => groupIds.has(id))) return preset
+  }
+  return null
 }

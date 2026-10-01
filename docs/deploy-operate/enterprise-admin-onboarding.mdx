@@ -10,13 +10,12 @@ This guide is for the first administrator of an enterprise or managed-cloud Over
 The first admin is normally granted by the deployment operator or by the [One-Command Install](./one-command-install) bootstrap script. If you need to grant it manually, use the admin helper:
 
 ```bash
-OVERLAY_DATABASE_URL='postgresql://overlay_app:password@database.example.com:5432/overlay_app' \
-OVERLAY_DATABASE_SSL_MODE=verify-full \
-npm run app-db:admin -- grant \
-  --user-id user_123 \
-  --role admin \
-  --reason "Initial enterprise admin"
+npx convex run admin/administration:grantPrincipalByServer \
+  '{"serverSecret":"<INTERNAL_API_SECRET>","grantedBy":"<operator>","reason":"Initial enterprise admin","role":"admin","userId":"user_123"}'
 ```
+
+Run it against the deployment holding app data (`convex deploy`/`CONVEX_DEPLOYMENT`
+or the self-hosted `CONVEX_SELF_HOSTED_URL` + admin key).
 
 This creates an `administrative_principal` record and records the grant in the audit log.
 Run the command from the checked-out release with the application database

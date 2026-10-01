@@ -6,7 +6,6 @@ export interface OnboardingStatus {
 
 export interface OnboardingCompleteResult {
   ok: true
-  persistedToPostgres?: boolean
 }
 
 export interface OnboardingRepository {

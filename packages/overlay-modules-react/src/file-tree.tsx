@@ -38,8 +38,6 @@ export function FilesInlineBranch({
   return (
     <div>
       <div
-        role="button"
-        tabIndex={0}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.setData('application/x-overlay-file-id', file._id)
@@ -61,14 +59,7 @@ export function FilesInlineBranch({
           if (!fileId || fileId === file._id) return
           onMove(fileId, file._id)
         }}
-        onClick={() => onOpen(file)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onOpen(file)
-          }
-        }}
-        className={`${panelItemClass} cursor-pointer ${dragOver ? 'bg-[var(--surface-subtle)] ring-1 ring-inset ring-[var(--foreground)]' : activeFileId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+        className={`${panelItemClass} ${dragOver ? 'bg-[var(--surface-subtle)] ring-1 ring-inset ring-[var(--foreground)]' : activeFileId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
         style={{ paddingLeft: `${10 + depth * 14}px` }}
       >
         {file.type === 'folder' ? (
@@ -84,14 +75,20 @@ export function FilesInlineBranch({
             <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
           </button>
         ) : null}
-        {file.type === 'folder'
-          ? open
-            ? <FolderOpen size={12} className="shrink-0" />
-            : <Folder size={12} className="shrink-0" />
-          : file.kind === 'note'
-            ? <BookOpen size={12} className="shrink-0 text-[var(--muted-light)]" />
-            : <FileTypeIcon file={file} size={12} className="text-[var(--muted-light)]" />}
-        <span className="min-w-0 flex-1 truncate">{file.name}</span>
+        <button
+          type="button"
+          onClick={() => onOpen(file)}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+        >
+          {file.type === 'folder'
+            ? open
+              ? <FolderOpen size={12} className="shrink-0" />
+              : <Folder size={12} className="shrink-0" />
+            : file.kind === 'note'
+              ? <BookOpen size={12} className="shrink-0 text-[var(--muted-light)]" />
+              : <FileTypeIcon file={file} size={12} className="text-[var(--muted-light)]" />}
+          <span className="min-w-0 flex-1 truncate">{file.name}</span>
+        </button>
       </div>
 
       {file.type === 'folder' && open && children.map((child) => (

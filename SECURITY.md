@@ -45,7 +45,7 @@ High-priority areas for this repository include:
 
 Enterprise launch readiness is blocked on the checklist in
 [`docs/deploy-operate/enterprise-security-launch-checklist.mdx`](docs/deploy-operate/enterprise-security-launch-checklist.mdx).
-That checklist covers the required cloud-side controls for Vercel, Cloudflare R2, Daytona,
+That checklist covers the required cloud-side controls for Vercel, Cloudflare R2, Box,
 Convex, WorkOS, Stripe, and security telemetry.
 
 ## Secret Handling Expectations

@@ -61,7 +61,7 @@ export function AttachmentPreviewTray({
     <div className="mb-2 flex min-w-0 flex-wrap gap-2">
       {attachedImages.map((img, index) => (
         <div
-          key={`img-${index}`}
+          key={img.dataUrl}
           className="group relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] py-1.5 pl-1.5 pr-2 sm:max-w-[min(100%,240px)]"
         >
           <button

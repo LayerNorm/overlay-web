@@ -61,6 +61,7 @@ type AutomationLifecycleEvent<TName extends 'automation.succeeded' | 'automation
     type: 'automation_run'
   }, {
     execution: 'manual' | 'scheduled'
+    automationName?: string
     failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
   }>
 

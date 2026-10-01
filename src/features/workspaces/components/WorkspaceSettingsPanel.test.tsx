@@ -219,7 +219,7 @@ test('operational signals appear for managers and reveal provider parity', () =>
           authorizationDenials: 5,
           invitationFailures: 6,
           unreadDriftConversations: 7,
-          providerParity: { provider: 'postgres', requiresConvexClient: false },
+          providerParity: { provider: 'convex', requiresConvexClient: true },
         },
       }}
       onToggle={() => undefined}
@@ -229,7 +229,7 @@ test('operational signals appear for managers and reveal provider parity', () =>
   assert.match(html, /Authorization denials/)
   assert.match(html, /Invitation failures/)
   assert.match(html, /Unread drift/)
-  assert.match(html, /postgres/)
+  assert.match(html, /convex/)
   assert.match(html, /Convex required/)
 
   const withoutMetrics = renderToStaticMarkup(

@@ -45,7 +45,20 @@ function toUiMessageFromPersisted(message: ActPersistedMessage): UIMessage {
 const MEMORY_CONTEXT_CHAR_BUDGET = 2_000   // ~500 tokens
 const SKILL_DIRECTORY_CHAR_BUDGET = 1_500  // ~375 tokens
 
-export function buildMemoryContext(memories: ActMemoryRow[]): string {
+export function buildMemoryContext(
+  memories: ActMemoryRow[],
+  profile?: { content: string } | null,
+): string {
+  const profileContent = profile?.content?.trim()
+  if (profileContent) {
+    // Compiled profile covers the top ~200 memories synthesized — it replaces
+    // the raw top-N list so durable identity/preferences survive retrieval
+    // misses. The raw list remains the fallback below when no profile exists.
+    const content = profileContent.length > MEMORY_CONTEXT_CHAR_BUDGET
+      ? `${profileContent.slice(0, MEMORY_CONTEXT_CHAR_BUDGET - 1).trimEnd()}…`
+      : profileContent
+    return '\n\nUser context:\n' + content
+  }
   if (memories.length === 0) return ''
   const topMemories = memories
     .sort((a, b) => {
@@ -105,7 +118,7 @@ export type ActTurnContext = {
   memoryContext: string
   mentionsContext: string
   skillsContext: string
-  sourceCitationMap: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+  sourceCitationMap: Record<string, { kind: 'file' | 'memory' | 'message'; sourceId: string }>
 }
 
 type AutoRetrievalBuilder = (args: {
@@ -123,7 +136,7 @@ type AutoRetrievalBuilder = (args: {
   workspaceId?: string
 }) => Promise<{
   extension: string
-  citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+  citations: Record<string, { kind: 'file' | 'memory' | 'message'; sourceId: string }>
 }>
 
 export class ActContextService {
@@ -225,6 +238,19 @@ export class ActContextService {
         return []
       }
     })() : Promise.resolve([])
+    const getMemoryProfile = this.deps.repository.getMemoryProfile?.bind(this.deps.repository)
+    const memoryProfileTask: Promise<{ content: string } | null> = memoryEnabled && getMemoryProfile
+      ? (async () => {
+          try {
+            return await getMemoryProfile({
+              userId: args.userId,
+              workspaceId: args.workspaceId,
+            })
+          } catch (_error) {
+            return null
+          }
+        })()
+      : Promise.resolve(null)
 
     const skillsTask: Promise<ActSkillRow[]> = (async () => {
       try {
@@ -256,9 +282,10 @@ export class ActContextService {
       }
     })()
 
-    const [effectiveMemories, enabledSkills] = await Promise.all([
+    const [effectiveMemories, enabledSkills, memoryProfile] = await Promise.all([
       memoriesTask,
       skillsTask,
+      memoryProfileTask,
     ])
 
     const mentionsContextTask = externalContextEnabled
@@ -274,7 +301,7 @@ export class ActContextService {
 
     const autoRetrievalTask: Promise<{
       extension: string
-      citations: Record<string, { kind: 'file' | 'memory'; sourceId: string }>
+      citations: Record<string, { kind: 'file' | 'memory' | 'message'; sourceId: string }>
     }> = (async () => {
       try {
         const buildAutoRetrievalBundle = this.deps.buildAutoRetrievalBundle ?? (async (
@@ -337,7 +364,7 @@ export class ActContextService {
       enabledSkills,
       hasPreloadedDocContext: docContextBundle.hasContent && docContextBundle.totalChars > 0,
       indexedAttachmentList,
-      memoryContext: memoryEnabled ? buildMemoryContext(effectiveMemories) : '',
+      memoryContext: memoryEnabled ? buildMemoryContext(effectiveMemories, memoryProfile) : '',
       mentionsContext,
       // Use the lightweight skill directory (name + description only) instead
       // of injecting full instructions for every skill into every turn.

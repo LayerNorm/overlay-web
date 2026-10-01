@@ -7,6 +7,7 @@ import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { applyStorageUsageDelta } from '../files/lib/storageQuota'
 import { recordConversationEvent } from '../collaboration/events'
+import { deleteChunksForSource } from '../knowledge/knowledge'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -165,7 +166,9 @@ async function getLinkedAutomationConversationIds(
   const ids = new Set<string>()
   for (const automation of automations) {
     if (automation.userId !== userId || automation.deletedAt) continue
-    if (automation.sourceConversationId) ids.add(automation.sourceConversationId)
+    // Only the automation-owned thread is hidden from Chats. The
+    // sourceConversationId is provenance (the chat the automation was drafted
+    // in) and must not hide a real conversation.
     if (automation.conversationId) ids.add(automation.conversationId)
   }
   return ids
@@ -278,6 +281,9 @@ export const list = query({
     return all
       .map(normalizeConversationDoc)
       .filter((c) => !c.isAutomation)
+      // Agent threads nest under their agent in the sidebar — they never
+      // appear in the flat Chats/DMs lists.
+      .filter((c) => !c.agentId)
       .filter((c) => !automationConversationIds.has(c._id))
       .filter((c) => (updatedSince !== undefined ? c.updatedAt > updatedSince : true))
       .filter((c) => (includeDeleted ? true : !c.deletedAt))
@@ -313,8 +319,18 @@ export const create = mutation({
     actModelId: v.optional(v.string()),
     lastMode: v.optional(v.union(v.literal('ask'), v.literal('act'))),
     isAutomation: v.optional(v.boolean()),
+    conversationType: v.optional(v.union(
+      v.literal('personal'),
+      v.literal('dm'),
+      v.literal('channel'),
+    )),
+    createdByPrincipalId: v.optional(v.string()),
+    externalPlatform: v.optional(v.string()),
+    externalChannelId: v.optional(v.string()),
+    externalThreadId: v.optional(v.string()),
+    surfaceBindingId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation, conversationType, createdByPrincipalId, externalPlatform, externalChannelId, externalThreadId, surfaceBindingId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -340,6 +356,12 @@ export const create = mutation({
       askModelIds: ask,
       actModelId: act,
       isAutomation: isAutomation ?? false,
+      conversationType,
+      createdByPrincipalId,
+      externalPlatform,
+      externalChannelId,
+      externalThreadId,
+      surfaceBindingId,
     })
     // Emit a conversation event so personal conversation list version
     // subscriptions can detect the change without a full reload.
@@ -408,6 +430,10 @@ export const remove = mutation({
       workspaceId: conversation.workspaceId,
       userId,
       type: 'conversation.deleted',
+    })
+    // Drop the verbatim message index for this conversation.
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.purgeConversationMessageChunks, {
+      conversationId,
     })
   },
 })
@@ -516,15 +542,14 @@ export const getRecentMessages = query({
       })
       .order('desc')
       .take(scanLimit)
-    const selectedTurnIds: string[] = []
+    const selectedTurnIdSet = new Set<string>()
     for (const message of recentScan) {
       if (message.role !== 'user') continue
       const turnId = message.turnId?.trim() || message._id
-      if (selectedTurnIds.includes(turnId)) continue
-      selectedTurnIds.push(turnId)
-      if (selectedTurnIds.length >= safeLimit) break
+      if (selectedTurnIdSet.has(turnId)) continue
+      selectedTurnIdSet.add(turnId)
+      if (selectedTurnIdSet.size >= safeLimit) break
     }
-    const selectedTurnIdSet = new Set(selectedTurnIds)
     const messages = recentScan
       .filter((message) => selectedTurnIdSet.has(message.turnId?.trim() || message._id))
       .sort((a, b) => a.createdAt - b.createdAt)
@@ -699,6 +724,12 @@ export const addMessage = mutation({
       : await ctx.db.insert('conversationMessages', payload)
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
 
+    // Verbatim evidence layer (M2): index the saved message text. Idempotent —
+    // edits via the clientNonce match re-embed and replace the old chunks.
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+      messageId: msgId,
+    })
+
 	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
 	        const subscription = await ctx.db
@@ -768,8 +799,10 @@ export const startAgentRun = mutation({
   },
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const conversation = await ctx.db.get(args.conversationId)
-    const userMessage = await ctx.db.get(args.userMessageId)
+    const [conversation, userMessage] = await Promise.all([
+      ctx.db.get(args.conversationId),
+      ctx.db.get(args.userMessageId),
+    ])
     if (
       !conversation || conversation.userId !== args.userId || conversation.deletedAt ||
       !userMessage || userMessage.conversationId !== args.conversationId ||
@@ -923,6 +956,10 @@ export const completeAgentRun = mutation({
       updatedAt: now,
     })
     await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
+    // Index the finalized assistant reply — it only now has real content.
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+      messageId: run.assistantMessageId,
+    })
     return await ctx.db.get(run._id)
   },
 })
@@ -978,14 +1015,17 @@ export const getLatestAgentRun = query({
       throw new Error('Unauthorized')
     }
     const active: Doc<'conversationAgentRuns'>[] = []
-    for (const status of ['queued', 'running', 'waiting_for_approval'] as const) {
-      const run = await ctx.db
-        .query('conversationAgentRuns')
-        .withIndex('by_conversationId_status_updatedAt', (q) => q
-          .eq('conversationId', args.conversationId)
-          .eq('status', status))
-        .order('desc')
-        .first()
+    const runsByStatus = await Promise.all(
+      (['queued', 'running', 'waiting_for_approval'] as const).map((status) =>
+        ctx.db
+          .query('conversationAgentRuns')
+          .withIndex('by_conversationId_status_updatedAt', (q) => q
+            .eq('conversationId', args.conversationId)
+            .eq('status', status))
+          .order('desc')
+          .first()),
+    )
+    for (const run of runsByStatus) {
       if (run) active.push(run)
     }
     if (active.length > 0) {
@@ -1097,20 +1137,26 @@ export const cancelAgentRuns = mutation({
     const sentinel = '\n\n[Interrupted by user. Continue?]'
     for (const run of activeRuns) {
       assertAgentRunTransition(run.status, 'cancelled')
-      const message = await ctx.db.get(run.assistantMessageId)
+    }
+    const runMessages = await Promise.all(
+      activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
+    )
+    await Promise.all(activeRuns.flatMap((run, i) => {
+      const message = runMessages[i]
+      const writes = []
       if (message?.status === 'generating') {
         const baseContent = args.partialContent ?? message.content
         const baseParts = args.partialParts?.length
           ? args.partialParts
           : message.parts ?? [{ type: 'text', text: baseContent }]
-        await ctx.db.patch(message._id, {
+        writes.push(ctx.db.patch(message._id, {
           content: `${baseContent.trimEnd()}${sentinel}`,
           parts: [...baseParts, { type: 'text', text: sentinel }],
           status: 'completed',
           updatedAt: now,
-        })
+        }))
       }
-      await ctx.db.patch(run._id, {
+      writes.push(ctx.db.patch(run._id, {
         status: 'cancelled',
         cancelledAt: now,
         leaseExpiresAt: undefined,
@@ -1124,8 +1170,9 @@ export const cancelAgentRuns = mutation({
           cancellationRequestedAt: now,
         },
         updatedAt: now,
-      })
-    }
+      }))
+      return writes
+    }))
     if (activeRuns.length > 0) {
       await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     }
@@ -1219,35 +1266,42 @@ export const expireToolLoopAgentRunLeases = internalMutation({
     }
 
     const errorText = 'Generation was interrupted because the chat process stopped before completion.'
-    for (const run of expired) {
-      if (!AGENT_RUN_TRANSITIONS[run.status]?.has('failed')) continue
-      const message = await ctx.db.get(run.assistantMessageId)
+    const failableRuns = expired.filter((run) => AGENT_RUN_TRANSITIONS[run.status]?.has('failed'))
+    const failableMessages = await Promise.all(
+      failableRuns.map((run) => ctx.db.get(run.assistantMessageId)),
+    )
+    await Promise.all(failableRuns.flatMap((run, i) => {
+      const message = failableMessages[i]
+      const writes = []
       if (message?.status === 'generating') {
-        await ctx.db.patch(message._id, {
+        writes.push(ctx.db.patch(message._id, {
           content: errorText,
           parts: [{ type: 'text', text: errorText }],
           status: 'error',
           updatedAt: now,
-        })
+        }))
       }
-      await ctx.db.patch(run._id, {
-        status: 'failed',
-        failedAt: now,
-        leaseExpiresAt: undefined,
-        terminalError: {
-          code: 'tool_loop_lease_expired',
-          message: errorText,
-          retryable: true,
-        },
-        metrics: {
-          ...run.metrics,
-          processFailureDetectedAt: now,
-          staleDetectedAt: now,
-        },
-        updatedAt: now,
-      })
-      await ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now })
-    }
+      writes.push(
+        ctx.db.patch(run._id, {
+          status: 'failed',
+          failedAt: now,
+          leaseExpiresAt: undefined,
+          terminalError: {
+            code: 'tool_loop_lease_expired',
+            message: errorText,
+            retryable: true,
+          },
+          metrics: {
+            ...run.metrics,
+            processFailureDetectedAt: now,
+            staleDetectedAt: now,
+          },
+          updatedAt: now,
+        }),
+        ctx.db.patch(run.conversationId, { lastModified: now, updatedAt: now }),
+      )
+      return writes
+    }))
     return { expiredCount: expired.length }
   },
 })
@@ -1287,16 +1341,15 @@ export const runEmptyConversationCleanup = internalMutation({
       .order('asc')
       .paginate({ cursor: state?.cursor ?? null, numItems: 50 })
     let deleted = 0
-    for (const conversation of page.page) {
-      if (conversation.deletedAt) continue
-      const firstMessage = await ctx.db
+    const liveConversations = page.page.filter((conversation) => !conversation.deletedAt)
+    const firstMessages = await Promise.all(liveConversations.map((conversation) =>
+      ctx.db
         .query('conversationMessages')
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversation._id))
-        .first()
-      if (firstMessage) continue
-      await ctx.db.delete(conversation._id)
-      deleted++
-    }
+        .first()))
+    const emptyConversations = liveConversations.filter((_, i) => !firstMessages[i])
+    await Promise.all(emptyConversations.map((conversation) => ctx.db.delete(conversation._id)))
+    deleted = emptyConversations.length
     const nextState = page.isDone
       ? { key: stateKey, cursor: undefined, cutoff: 0, nextRunAt: now + 6 * 60 * 60 * 1000, updatedAt: now }
       : { key: stateKey, cursor: page.continueCursor, cutoff, nextRunAt: undefined, updatedAt: now }
@@ -1370,14 +1423,17 @@ export const watchAgentRun = query({
     // Check for active runs first (queued, running, waiting_for_approval).
     const activeStatuses = ['queued', 'running', 'waiting_for_approval'] as const
     const active: Doc<'conversationAgentRuns'>[] = []
-    for (const status of activeStatuses) {
-      const run = await ctx.db
-        .query('conversationAgentRuns')
-        .withIndex('by_conversationId_status_updatedAt', (q) => q
-          .eq('conversationId', conversationId)
-          .eq('status', status))
-        .order('desc')
-        .first()
+    const runsByStatus = await Promise.all(
+      activeStatuses.map((status) =>
+        ctx.db
+          .query('conversationAgentRuns')
+          .withIndex('by_conversationId_status_updatedAt', (q) => q
+            .eq('conversationId', conversationId)
+            .eq('status', status))
+          .order('desc')
+          .first()),
+    )
+    for (const run of runsByStatus) {
       if (run) active.push(run)
     }
     if (active.length > 0) {
@@ -1446,13 +1502,14 @@ export const deleteTurn = mutation({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .collect()
 
-    let deletedMessages = 0
-    for (const m of messages) {
-      if (m.turnId === tid) {
-        await ctx.db.delete(m._id)
-        deletedMessages++
-      }
-    }
+    const turnMessages = messages.filter((m) => m.turnId === tid)
+    // Purge the message's knowledge chunks in the same transaction —
+    // orphaned sourceKind:'message' chunks would stay retrievable.
+    await Promise.all(turnMessages.flatMap((m) => [
+      deleteChunksForSource(ctx.db, 'message', m._id),
+      ctx.db.delete(m._id),
+    ]))
+    const deletedMessages = turnMessages.length
 
     const cid = conversationId as string
     const outputs = await ctx.db
@@ -1460,23 +1517,21 @@ export const deleteTurn = mutation({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', cid))
       .collect()
 
-    let deletedOutputs = 0
-    for (const o of outputs) {
-      if (o.turnId === tid && o.userId === userId) {
-        if (o.storageId) {
-          try {
-            await ctx.storage.delete(o.storageId)
-          } catch {
-            // best-effort
-          }
+    const turnOutputs = outputs.filter((o) => o.turnId === tid && o.userId === userId)
+    await Promise.all(turnOutputs.map(async (o) => {
+      if (o.storageId) {
+        try {
+          await ctx.storage.delete(o.storageId)
+        } catch {
+          // best-effort
         }
-        if (o.sizeBytes) {
-          await applyStorageUsageDelta(ctx as never, userId, -o.sizeBytes)
-        }
-        await ctx.db.delete(o._id)
-        deletedOutputs++
       }
-    }
+      if (o.sizeBytes) {
+        await applyStorageUsageDelta(ctx as never, userId, -o.sizeBytes)
+      }
+      await ctx.db.delete(o._id)
+    }))
+    const deletedOutputs = turnOutputs.length
 
     const now = Date.now()
     await ctx.db.patch(conversationId, { lastModified: now, updatedAt: now })
@@ -1509,12 +1564,11 @@ export const addMessages = mutation({
       throw new Error('Unauthorized')
     }
     const now = Date.now()
-    const ids: Id<'conversationMessages'>[] = []
-    for (const row of rows) {
-      const existing = await ctx.db
-        .query('conversationMessages')
-        .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
-        .collect()
+    const existing = await ctx.db
+      .query('conversationMessages')
+      .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
+      .collect()
+    const ids = await Promise.all(rows.map(async (row) => {
       const match = existing.find(
         (message) => sameMessageVariant(message, {
           turnId: row.turnId,
@@ -1534,8 +1588,11 @@ export const addMessages = mutation({
       const id = match
         ? (await ctx.db.patch(match._id, payload), match._id)
         : await ctx.db.insert('conversationMessages', payload)
-      ids.push(id)
-    }
+      await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+        messageId: id,
+      })
+      return id
+    }))
     await ctx.db.patch(conversationId, { lastModified: now, updatedAt: now })
     return ids
   },

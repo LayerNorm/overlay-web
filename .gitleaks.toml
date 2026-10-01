@@ -38,16 +38,3 @@ regexes = [
   '''YOUR_[A-Z_]+''',
   '''placeholder''',
 ]
-
-[[allowlists]]
-description = "Vendored Daytona API documentation contains placeholder curl examples"
-paths = [
-  '''docs/daytona/daytona-full\.md$''',
-]
-regexes = [
-  '''YOUR_API_KEY''',
-  '''YOUR_SECRET_TOKEN''',
-  '''YOUR_OPENVPN_CLIENT_PRIVATE_KEY''',
-  '''<YOUR_[A-Z_]+>''',
-  '''x-daytona-preview-token''',
-]

@@ -13,7 +13,6 @@ import {
   Plus,
   Send,
   Slash,
-  SquareTerminal,
   Video,
   X,
   type LucideIcon,
@@ -90,12 +89,6 @@ const TOOL_REQUEST_OPTIONS: Array<{
     label: 'Browser Use',
     description: 'Drive a real browser',
     Icon: MousePointerClick,
-  },
-  {
-    id: 'sandbox',
-    label: 'Sandbox',
-    description: 'Run code or commands',
-    Icon: SquareTerminal,
   },
 ]
 
@@ -350,6 +343,8 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
     props.setShowAttachMenu((value) => !value)
   }
 
+  const selectedToolIdSet = new Set(props.selectedToolIds)
+
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
       <DelayedTooltip label="Attach files or choose tools" side="top">
@@ -371,7 +366,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
             />
           )}
           {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
-            const active = props.selectedToolIds.includes(tool.id)
+            const active = selectedToolIdSet.has(tool.id)
             const Icon = tool.Icon
             return (
               <AttachMenuButton
@@ -418,7 +413,6 @@ function isToolRequestEnabled(
 ): boolean {
   if (toolId === 'web_search') return props.capabilities.webSearch
   if (toolId === 'browser') return props.capabilities.browserUse
-  if (toolId === 'sandbox') return props.capabilities.sandboxes
   if (toolId === 'memory') return props.capabilities.memory && props.capabilities.vectorSearch
   return true
 }

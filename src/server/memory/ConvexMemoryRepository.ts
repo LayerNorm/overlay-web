@@ -11,9 +11,15 @@ export class ConvexMemoryRepository implements MemoryRepository {
   }
 
   async get(args: { includeDeleted?: boolean; memoryId: string; userId: string; workspaceId?: string }): Promise<MemoryRecord | null> {
-    const rows = await this.list({ includeDeleted: true, userId: args.userId, workspaceId: args.workspaceId })
-    const memory = rows.find((row) => row._id === args.memoryId) ?? null
-    return memory && (args.includeDeleted || !memory.deletedAt) ? memory : null
+    const rows = await convex.query<MemoryRecord[]>('knowledge/memories:getByIds', {
+      userId: args.userId,
+      memoryIds: [args.memoryId as Id<'memories'>],
+      serverSecret: this.serverSecret,
+      includeDeleted: true,
+    }) ?? []
+    const memory = rows[0] ?? null
+    if (!memory || (args.workspaceId !== undefined && memory.workspaceId !== args.workspaceId)) return null
+    return args.includeDeleted || !memory.deletedAt ? memory : null
   }
 
   async list(args: {
@@ -75,5 +81,14 @@ export class ConvexMemoryRepository implements MemoryRepository {
       workspaceId: args.workspaceId,
     })
     return { deletedAt: Date.now(), memoryId: args.memoryId }
+  }
+
+  async touch(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<void> {
+    await convex.mutation('knowledge/memories:touch', {
+      memoryId: args.memoryId as Id<'memories'>,
+      serverSecret: this.serverSecret,
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+    })
   }
 }

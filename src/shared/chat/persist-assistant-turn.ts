@@ -27,6 +27,9 @@ const MAX_PERSISTED_WEB_SOURCES = 24
 const WEB_SOURCE_TOOL_NAMES = new Set([
   'perplexity_search',
   'parallel_search',
+  'web_search',
+  'deep_search',
+  'web_fetch',
   'browser_run_task',
   'interactive_browser_session',
 ])

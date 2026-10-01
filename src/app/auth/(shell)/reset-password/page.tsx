@@ -54,8 +54,11 @@ function ResetPasswordContent() {
         body: JSON.stringify({ token, password }),
       })
 
-      const data = await response.json()
-
+      if (!response.ok) {
+        setError('Failed to reset password')
+        return
+      }
+      const data = await response.json().catch(() => ({}))
       if (data.success) {
         setSuccess(true)
       } else {
@@ -106,9 +109,7 @@ function ResetPasswordContent() {
     <LandingAuthPageChrome>
       <div>
         <h1 className="text-2xl font-serif mb-2">Reset your password</h1>
-        <p className={`text-sm mb-8 ${muted}`}>
-          Enter your new password below
-        </p>
+        <p className={`text-sm mb-8 ${muted}`}>Enter your new password below</p>
 
         {error && (
           <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
@@ -127,7 +128,10 @@ function ResetPasswordContent() {
         {token && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="password" className="block text-sm font-medium mb-2">
+              <label
+                htmlFor='password'
+                className='block text-sm font-medium mb-2'
+              >
                 New password
               </label>
               <input
@@ -146,7 +150,10 @@ function ResetPasswordContent() {
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2">
+              <label
+                htmlFor='confirmPassword'
+                className='block text-sm font-medium mb-2'
+              >
                 Confirm new password
               </label>
               <input
@@ -160,11 +167,7 @@ function ResetPasswordContent() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className={submit}
-            >
+            <button type='submit' disabled={loading} className={submit}>
               {loading ? 'Resetting...' : 'Reset password'}
             </button>
           </form>

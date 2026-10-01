@@ -101,7 +101,7 @@ Run `npm run docs:check` before publishing docs changes.
 
 #### Automation & Execution
 - **Browser sessions** — AI-controlled browser for interactive web tasks
-- **Vercel Sandbox** — Run code and CLI tasks in isolated, usage-metered sandboxes
+- **Computers** — Persistent cloud machines with a terminal, browser, and desktop for agents
 - **Scheduled automations** — Interval, daily, weekly, or monthly recurring workflows
 - **Skills** — Reusable instruction templates for common tasks
 - **MCP servers** — Connect external tool servers via Model Context Protocol
@@ -128,8 +128,7 @@ Overlay keeps provider adapters behind a common gateway so the collaboration mod
 - [Stripe](https://stripe.com/) — Billing and subscriptions
 - [Composio](https://composio.dev/) — External app integrations
 - [TipTap](https://tiptap.dev/) — Rich text editing
-- [Vercel Sandbox](https://vercel.com/docs/sandbox) — Default managed code execution sandbox
-- [Daytona](https://daytona.io/) — Optional alternative sandbox provider
+- [Box](https://ascii.dev/) — Managed machines for Computers and agent environments
 - [Browser Use](https://browser-use.com/) — Browser automation
 - [OpenRouter](https://openrouter.ai/) — Unified model API
 - [Shadcn/UI](https://ui.shadcn.com/) — UI components

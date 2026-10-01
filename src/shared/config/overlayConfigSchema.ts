@@ -42,13 +42,15 @@ export const OverlayComplianceProfileSchema = z.enum([
   'dpdp-strict',
   'custom',
 ])
-export const OverlayDatabaseProviderSchema = z.enum(['convex', 'postgres'])
+export const OverlayDatabaseProviderSchema = z.enum(['convex'])
 export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'pgvector', 'pinecone', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'self-hosted-playwright', 'none'])
-export const OverlaySandboxProviderSchema = z.enum(['vercel', 'daytona', 'e2b', 'local-firecracker', 'none'])
-export const OverlayWebSearchProviderSchema = z.enum(['ai-gateway', 'perplexity', 'tavily', 'none'])
+// `vercel` and `daytona` are inert: both providers were removed. They are still accepted so
+// existing configs and env overrides keep validating; nothing reads them.
+export const OverlaySandboxProviderSchema = z.enum(['box', 'vercel', 'daytona', 'e2b', 'local-firecracker', 'none'])
+export const OverlayWebSearchProviderSchema = z.enum(['elo', 'ai-gateway', 'perplexity', 'tavily', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
 export const OverlayEmailProviderSchema = z.enum(['resend', 'ses', 'smtp', 'none'])
@@ -88,6 +90,7 @@ const OverlayFeatureFlagsSchema = z
     remoteAgentRuns: z.boolean().optional(),
     connectedAgentArtifacts: z.boolean().optional(),
     overlayCloudEnvironments: z.boolean().optional(),
+    // Inert: managed harness agents were removed. Kept so existing configs still validate.
     managedHarnessAgents: z.boolean().optional(),
     computers: z.boolean().optional(),
   })
@@ -416,13 +419,6 @@ export const OverlayRuntimeConfigSchema = z
       internalApiSecret: OptionalStringSchema,
       internalServiceAuthSecret: OptionalStringSchema,
       apiKeyHashSecret: OptionalStringSchema,
-      postgres: z
-        .object({
-          connectionString: OptionalStringSchema,
-          sslMode: OptionalStringSchema,
-          backgroundRuntimeEnabled: z.boolean().default(false),
-        })
-        .default({}),
     }),
     rateLimit: z
       .object({
@@ -464,10 +460,9 @@ export const OverlayRuntimeConfigSchema = z
       models: config.providers.models?.provider ?? config.llm.gatewayProvider,
       integrations: config.providers.integrations?.provider ?? (effectiveCapabilities.integrations ? 'composio' : 'none'),
       browser: config.providers.browser?.provider ?? (effectiveCapabilities.browserUse ? 'browser-use' : 'none'),
-      // Vercel Sandbox is the hosted default; Daytona remains an explicit opt-in
-      // for deployments that have configured its provider and credentials.
-      sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'vercel' : 'none'),
-      webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'ai-gateway' : 'none'),
+      // Box is the hosted provider; E2B will be the self-hosted one.
+      sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'box' : 'none'),
+      webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'elo' : 'none'),
       analytics: config.providers.analytics?.provider ?? (effectiveCapabilities.analytics ? 'posthog' : 'none'),
       errorReporting: config.providers.errorReporting?.provider ?? (effectiveCapabilities.errorReporting ? 'sentry' : 'none'),
       email: config.providers.email?.provider ?? config.email?.provider ?? 'none',
@@ -552,46 +547,8 @@ export const OverlayRuntimeConfigSchema = z
       }
     }
 
-    if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['database', 'postgres', 'connectionString'],
-        message: 'database.postgres.connectionString is required when database.provider is postgres',
-      })
-    }
-    if (
-      selectedProviders.database === 'postgres' &&
-      effectiveCapabilities.vectorSearch &&
-      selectedProviders.vectorSearch !== 'pgvector'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['capabilities', 'vectorSearch'],
-        message: 'Postgres vectorSearch requires providers.vectorSearch.provider=pgvector',
-      })
-    }
-    if (
-      selectedProviders.database === 'postgres' &&
-      selectedProviders.vectorSearch !== 'none' &&
-      selectedProviders.vectorSearch !== 'pgvector'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['providers', 'vectorSearch', 'provider'],
-        message: 'Postgres vector search supports pgvector or none',
-      })
-    }
-    if (
-      selectedProviders.vectorSearch === 'pgvector' &&
-      selectedProviders.database !== 'postgres'
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['providers', 'vectorSearch', 'provider'],
-        message: 'pgvector requires providers.database.provider=postgres',
-      })
-    }
     addUnsupportedProviderIssue(ctx, ['providers', 'vectorSearch', 'provider'], selectedProviders.vectorSearch, {
+      pgvector: 'pgvector was removed with the Postgres app-data provider. Use vectorSearch.provider=convex or none.',
       pinecone: 'Pinecone is declared for enterprise config v2 but no Pinecone adapter exists yet. Use vectorSearch.provider=convex or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'embeddings', 'provider'], selectedProviders.embeddings, {
@@ -627,12 +584,13 @@ export const OverlayRuntimeConfigSchema = z
       'self-hosted-playwright': 'Self-hosted Playwright is declared for enterprise config v2 but the browser adapter is not implemented. Use browser.provider=browser-use or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'sandbox', 'provider'], selectedProviders.sandbox, {
-      e2b: 'E2B sandboxes are declared for enterprise config v2 but no E2B adapter exists yet. Use sandbox.provider=vercel, sandbox.provider=daytona, or none.',
-      'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=vercel, sandbox.provider=daytona, or none.',
+      e2b: 'E2B sandboxes are declared for enterprise config v2 but no E2B adapter exists yet. Use sandbox.provider=box or none.',
+      'local-firecracker': 'Local Firecracker sandboxes are declared for enterprise config v2 but no local sandbox adapter exists yet. Use sandbox.provider=box or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'webSearch', 'provider'], selectedProviders.webSearch, {
-      perplexity: 'Direct Perplexity web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',
-      tavily: 'Tavily web search is declared but not implemented. Use webSearch.provider=ai-gateway or none.',
+      'ai-gateway': 'The AI Gateway web search path was removed. Web search now routes through ELO to Tavily/Parallel. Use webSearch.provider=elo or none.',
+      perplexity: 'Direct Perplexity web search is declared but not implemented. Use webSearch.provider=elo or none.',
+      tavily: 'Direct Tavily web search is declared but not implemented; Tavily is reached through ELO. Use webSearch.provider=elo or none.',
     })
     addUnsupportedProviderIssue(ctx, ['providers', 'secrets', 'provider'], selectedProviders.secrets, {
       vault: 'HashiCorp Vault is declared but not implemented for runtime secret loading. Use secrets.provider=env or workos-vault.',
@@ -806,13 +764,6 @@ export const OverlayRuntimeConfigSchema = z
           code: z.ZodIssueCode.custom,
           path: ['database', 'convexUrl'],
           message: 'Production requires the production Convex deployment URL',
-        })
-      }
-      if (selectedProviders.database === 'postgres' && !config.database.postgres.connectionString) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['database', 'postgres', 'connectionString'],
-          message: 'Production Postgres database provider requires database.postgres.connectionString',
         })
       }
       if (!config.database.internalApiSecret || !config.database.internalServiceAuthSecret) {
@@ -1026,10 +977,6 @@ export function redactOverlayRuntimeConfig(config: OverlayRuntimeConfig) {
       hasInternalApiSecret: Boolean(config.database.internalApiSecret),
       hasInternalServiceAuthSecret: Boolean(config.database.internalServiceAuthSecret),
       hasApiKeyHashSecret: Boolean(config.database.apiKeyHashSecret),
-      postgres: {
-        hasConnectionString: Boolean(config.database.postgres.connectionString),
-        sslMode: config.database.postgres.sslMode,
-      },
     },
     rateLimit: {
       redis: {

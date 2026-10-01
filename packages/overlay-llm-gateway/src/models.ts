@@ -48,14 +48,10 @@ const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
   ['openai/gpt-oss-120b', 'GPT OSS 120B', 'groq', false, true],
   ['nvidia/nemotron-nano-9b-v2', 'Nemotron Nano 9B', 'nvidia'],
   [FREE_TIER_AUTO_MODEL_ID, 'Free Router', 'openrouter', true, true],
-  ['openrouter/nvidia/nemotron-3-super-120b-a12b:free', 'Free: Nemotron 3 Super 120B', 'openrouter', false, true],
-  ['stepfun-ai/step-3.5-flash', 'Free: Step 3.5 Flash', 'nvidia', false, true],
 ]
 
 const FREE_MODEL_IDS = new Set([
   FREE_TIER_AUTO_MODEL_ID,
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
-  'stepfun-ai/step-3.5-flash',
 ])
 
 const ZDR_MODEL_IDS = new Set([
@@ -102,9 +98,11 @@ export const MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
-  'deepseek-ai/deepseek-v3.2': 'stepfun-ai/step-3.5-flash',
-  'moonshotai/kimi-k2-thinking': 'stepfun-ai/step-3.5-flash',
-  'minimaxai/minimax-m2.7': 'stepfun-ai/step-3.5-flash',
+  'deepseek-ai/deepseek-v3.2': FREE_TIER_AUTO_MODEL_ID,
+  'moonshotai/kimi-k2-thinking': FREE_TIER_AUTO_MODEL_ID,
+  'minimaxai/minimax-m2.7': FREE_TIER_AUTO_MODEL_ID,
+  'stepfun-ai/step-3.5-flash': FREE_TIER_AUTO_MODEL_ID,
+  'openrouter/nvidia/nemotron-3-super-120b-a12b:free': FREE_TIER_AUTO_MODEL_ID,
 }
 
 export function resolveModelId(modelId: string): string {

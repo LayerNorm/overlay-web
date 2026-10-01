@@ -18,16 +18,19 @@ import {
   getGatewayModelId,
   getOpenRouterLanguageModelCapturingRoutedModel,
 } from '@/server/ai/model-runtime'
-import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
+import { modelSupportsZeroDataRetention, modelUsesAiGatewayTransport } from '@/shared/ai/gateway/model-data'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
-import { getChatModelFallbackCandidates } from '@/shared/ai/gateway/model-fallbacks'
+import {
+  getChatModelFallbackCandidates,
+  getLowCreditFallbackAttemptModelIds,
+} from '@/shared/ai/gateway/model-fallbacks'
+import { isGatewayCreditLow } from '@/server/ai/gateway/gateway-credits'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { userFacingOpenRouterError } from '@/server/ai/model-runtime'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import {
   FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
-  isNvidiaNimChatModelId,
 } from '@/shared/ai/gateway/model-types'
 import { normalizeChatToolRequestIds } from '@/shared/chat/tool-requests'
 import { MAX_TOOL_STEPS_ACT } from '@/server/tools/tools/policy'
@@ -40,10 +43,6 @@ import {
   summarizeErrorForLog,
   summarizeToolInputForLog,
 } from '@/shared/security/safe-log'
-import {
-  createNvidiaNimChatLanguageModel,
-  resolveNvidiaApiKey,
-} from '@/server/ai/model-runtime'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   actContextService,
@@ -130,18 +129,24 @@ export async function executeActTurn(
   let concurrencySlot: { release: () => void } | null = null
   let requestModelId: string | undefined
   try {
-    const {
-      ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
-      ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
-      ACT_PAID_PLAN_ACT_TOOLS_REALITY,
-      FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
-      MEMORY_SAVE_PROTOCOL,
-      cloneMessagesWithIndexedFileHint,
-      indexedFilesSystemNote,
-      indexedFilesSystemNotePreloaded,
-    } = await import('@/server/agent/knowledge-agent-instructions')
-    const { MATH_FORMAT_INSTRUCTION } = await import('@/shared/markdown/math-format-instructions')
-    const { TABLE_FORMAT_INSTRUCTION } = await import('@/shared/markdown/markdown-table-instructions')
+    const [
+      {
+        ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
+        ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
+        ACT_PAID_PLAN_ACT_TOOLS_REALITY,
+        FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
+        MEMORY_SAVE_PROTOCOL,
+        cloneMessagesWithIndexedFileHint,
+        indexedFilesSystemNote,
+        indexedFilesSystemNotePreloaded,
+      },
+      { MATH_FORMAT_INSTRUCTION },
+      { TABLE_FORMAT_INSTRUCTION },
+    ] = await Promise.all([
+      import('@/server/agent/knowledge-agent-instructions'),
+      import('@/shared/markdown/math-format-instructions'),
+      import('@/shared/markdown/markdown-table-instructions'),
+    ])
     const _ttftDebug = process.env.TTFT_DEBUG === 'true'
     let _t0 = 0, _tAuth = 0, _tPrep = 0, _tTools = 0, _tStreamCall = 0
     let _tEnsureConversationMs = 0
@@ -175,6 +180,7 @@ export async function executeActTurn(
       automationMode,
       automationExecution,
       automationId,
+      automationName,
       mediaToolIntent,
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
@@ -190,8 +196,7 @@ export async function executeActTurn(
     }
     const uiMessages = messages as UIMessage[]
     const overlayContext = getOverlayServerContext()
-    const isPostgresAppData = overlayContext.appDataCapabilities.provider === 'postgres'
-    actWebhookSkip = automationExecution === true || isPostgresAppData
+    actWebhookSkip = automationExecution === true
     const { auth } = context
     const userId = auth.userId
     const conversationUserId = getAuthorizedResourceUserId(context)
@@ -315,7 +320,7 @@ export async function executeActTurn(
       if (_ttftDebug) _tEnsureConversationMs = performance.now() - ensureStartedAt
     }
     if (automationMode === true && automationId && cid) {
-      await automationService.attachSourceConversation({
+      await automationService.attachOwnedConversation({
         automationId,
         conversationId: cid,
         userId: conversationUserId,
@@ -410,13 +415,12 @@ export async function executeActTurn(
       // The resource owner, not the caller: a shared conversation loads its
       // owner's context while billing still follows the authenticated caller.
       userId: conversationUserId,
-      externalContextEnabled: !isPostgresAppData,
+      externalContextEnabled: true,
       workspaceId: billingWorkspaceId,
     })
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
     const mediaIntentTask: Promise<MediaToolIntent> = (() => {
-      if (isPostgresAppData) return Promise.resolve(null)
       if (isMultiModelFollowUpSlot || !paid) return Promise.resolve(null)
       if (structuredMediaToolIntent != null) return Promise.resolve(structuredMediaToolIntent)
       if (!mayNeedMediaGenerationTools(latestUserText)) return Promise.resolve(null)
@@ -885,7 +889,7 @@ export async function executeActTurn(
           _tFirstToolCall = performance.now()
         }
         const n = toolCall.toolName
-        if (n !== 'perplexity_search' && n !== 'parallel_search') return
+        if (n !== 'web_search' && n !== 'deep_search' && n !== 'web_fetch') return
         const input = toolCall.input as Record<string, unknown> | undefined
         logger.info(`[conversations/act] ${n} START`, {
           toolCallId: toolCall.toolCallId,
@@ -906,7 +910,7 @@ export async function executeActTurn(
           })
         }
         const n = toolCall.toolName
-        if (n === 'perplexity_search' || n === 'parallel_search') {
+        if (n === 'web_search' || n === 'deep_search' || n === 'web_fetch') {
           if (success) {
             logger.info(`[conversations/act] ${n} OK`, {
               toolCallId: toolCall.toolCallId,
@@ -921,7 +925,7 @@ export async function executeActTurn(
             })
           }
         }
-        if (!isPostgresAppData) {
+        {
           void import('@/server/tools/tools/record-tool-invocation')
             .then(({ fireAndForgetRecordToolInvocation }) => {
               fireAndForgetRecordToolInvocation({
@@ -993,6 +997,10 @@ export async function executeActTurn(
             ...summarizeAgentToolMetrics(event.steps),
             toolRetryCount: 0,
           },
+          importedAuthorName:
+            automationExecution === true && auth.authType === 'service'
+              ? automationName?.trim() || undefined
+              : undefined,
           multiModelSlotIndex,
           multiModelTotal,
           routedModelId: streamedRoutedModelId,
@@ -1223,15 +1231,6 @@ export async function executeActTurn(
     }
 
     const languageModelForAttempt = async (attemptModelId: string): Promise<LanguageModel> => {
-      if (isNvidiaNimChatModelId(attemptModelId)) {
-        const nvidiaKey = await resolveNvidiaApiKey(accessToken)
-        if (!nvidiaKey) {
-          throw new Error('NVIDIA_API_KEY is not configured.')
-        }
-        streamedRoutedModelId = attemptModelId
-        return createNvidiaNimChatLanguageModel(attemptModelId, nvidiaKey)
-      }
-
       if (attemptModelId === FREE_TIER_AUTO_MODEL_ID) {
         return getOpenRouterLanguageModelCapturingRoutedModel(
           FREE_TIER_AUTO_MODEL_ID,
@@ -1240,7 +1239,12 @@ export async function executeActTurn(
         )
       }
 
-      return getLanguageModel(attemptModelId, accessToken, userId)
+      return getLanguageModel(attemptModelId, accessToken, userId, {
+        // The attempt list already leads with free models when credit is low;
+        // remaining paid entries are deliberate last resorts, so they must
+        // reach the gateway rather than being swapped back to a free model.
+        allowLowBalanceFallback: !gatewayCreditLow,
+      })
     }
 
     const fallbackModelIds = (byokRequest ? [] : getChatModelFallbackCandidates({
@@ -1250,12 +1254,37 @@ export async function executeActTurn(
       requiresVision: messagesRequireVision(uiMessages),
       maxCandidates: MAX_ACT_MODEL_ATTEMPTS - 1,
     })).filter((candidateId) => authorizedModelIds.chat.has(candidateId))
-    const attemptModelIds = [...new Set([effectiveModelId, ...fallbackModelIds])].slice(0, MAX_ACT_MODEL_ATTEMPTS)
+    // Preserve remaining AI Gateway credit: when the global key drops below the
+    // low-balance threshold, try free models before spending on the paid path.
+    const gatewayCreditLow =
+      !byokRequest &&
+      modelUsesAiGatewayTransport(effectiveModelId) &&
+      !(paid && appSettings?.onlyAllowZdrModels === true) &&
+      (await isGatewayCreditLow())
+    if (gatewayCreditLow) {
+      logger.info('[conversations/act] low gateway credit — free models attempted first', {
+        requestId,
+        effectiveModelId,
+      })
+    }
+    const attemptModelIds = (
+      gatewayCreditLow
+        ? getLowCreditFallbackAttemptModelIds({
+            modelId: effectiveModelId,
+            paid,
+            onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
+            requiresVision: messagesRequireVision(uiMessages),
+            paidFallbackModelIds: fallbackModelIds,
+            maxCandidates: MAX_ACT_MODEL_ATTEMPTS,
+          }).filter((candidateId) => candidateId === effectiveModelId || authorizedModelIds.chat.has(candidateId))
+        : [...new Set([effectiveModelId, ...fallbackModelIds])]
+    ).slice(0, MAX_ACT_MODEL_ATTEMPTS)
     logger.info('[conversations/act] model attempts planned', {
       requestId,
       requestedModelId: modelId ?? null,
       effectiveModelId,
       attemptModelIds,
+      gatewayCreditLow,
       paid,
       onlyAllowZdrModels: paid && appSettings?.onlyAllowZdrModels === true,
     })

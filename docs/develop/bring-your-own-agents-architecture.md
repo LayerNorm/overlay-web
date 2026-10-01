@@ -358,7 +358,7 @@ continue using `@overlay/*`.
 | Codex, Claude Code, or Hermes | Performs the actual coding and tool work. |
 | `@overlay/agent-runtime` | Internal server-side helpers for Overlay-hosted turns. It is not the BYOA CLI. |
 | `@overlay/workspace-contracts` | Internal adapter identifiers and connected-agent domain contracts. |
-| `@overlay/sandbox-runtime` | Provider-neutral lifecycle for Vercel and Daytona managed sandboxes. |
+| `@overlay/sandbox-runtime` | Provider-neutral lifecycle for managed sandboxes (Box today, E2B planned). |
 | Overlay control plane | Workspace identity, authorization, bindings, runs, approvals, audit, transcript, memory, billing, and artifacts. |
 
 The product-qualified public names begin with the lockstep `0.3.0` release; the PATH-safe host and

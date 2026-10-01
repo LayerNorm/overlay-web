@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Globe, Loader2, Lock, MoreVertical, Share2 } from 'lucide-react'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
+import { ShareVisibilitySubmenu } from './ShareVisibilitySubmenu'
 import type { ShareDialogRenderProps } from '@/shared/share/share-dialog-resource'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -77,7 +78,7 @@ export function FileShareMenu({
       <button
         type="button"
         onClick={() => setShowMenu((v) => !v)}
-        className="rounded-md p-1.5 text-[var(--muted)] transition-all duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90"
+        className="rounded-md p-1.5 text-[var(--muted)] transition-[color,background-color,transform] duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90"
         aria-label="More options"
       >
         <MoreVertical size={16} strokeWidth={1.75} />
@@ -97,40 +98,16 @@ export function FileShareMenu({
             )}
           </button>
           {showShareSubmenu && (
-            <div className="border-t border-[var(--border)] bg-[var(--surface-subtle)] py-1">
-              <button
-                type="button"
-                onClick={() => void updateShareVisibility('private')}
-                disabled={shareBusy}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors disabled:opacity-50"
-              >
-                <Lock size={14} />
-                <span className="flex-1 text-left">Private</span>
-                {shareVisibility === 'private' && <Check size={14} className="text-emerald-500" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (shareVisibility === 'public') {
-                    setShareDialogOpen(true)
-                    setShowMenu(false)
-                    setShowShareSubmenu(false)
-                    return
-                  }
-                  void updateShareVisibility('public')
-                }}
-                disabled={shareBusy}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors disabled:opacity-50"
-              >
-                {shareBusy && shareVisibility !== 'public' ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Globe size={14} />
-                )}
-                <span className="flex-1 text-left">Anyone with the link</span>
-                {shareVisibility === 'public' && <Check size={14} className="text-emerald-500" />}
-              </button>
-            </div>
+            <ShareVisibilitySubmenu
+              shareVisibility={shareVisibility}
+              shareBusy={shareBusy}
+              onUpdateVisibility={(next) => void updateShareVisibility(next)}
+              onOpenShareDialog={() => {
+                setShareDialogOpen(true)
+                setShowMenu(false)
+                setShowShareSubmenu(false)
+              }}
+            />
           )}
         </div>
       )}

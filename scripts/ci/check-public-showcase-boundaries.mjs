@@ -58,7 +58,12 @@ if (!rootEntry.includes("if (resolution === 'transient-error')") && !rootEntry.i
   violations.push('transient root auth failures must never be classified as showcase guests')
 }
 
-const appSidebar = read('src/components/layout/AppSidebar.tsx')
+const appSidebar = [
+  'src/components/layout/AppSidebar.tsx',
+  'src/components/layout/sidebar/useAppSidebarState.ts',
+  'src/components/layout/sidebar/appSidebarNav.ts',
+  'src/components/layout/sidebar/AppSidebarChrome.tsx',
+].map(read).join('\n')
 if (!appSidebar.includes('publicShowcase')) violations.push('the real app sidebar must own public showcase mode')
 if (!appSidebar.includes('setShowcaseSidebarCollapsed')) violations.push('the real app sidebar must remain expandable in public mode')
 if (!appSidebar.includes('useState(false)')) violations.push('the public showcase sidebar must start expanded')
@@ -94,7 +99,10 @@ for (const adapter of [
 const chatPage = read('src/app/app/chat/page.tsx')
 if (!chatPage.includes('publicShowcaseSnapshots')) violations.push('the real chat renderer must receive static showcase snapshots')
 
-const chatExperience = read('src/features/chat/components/ChatExperience.tsx')
+const chatExperience = [
+  'src/features/chat/components/ChatExperience.tsx',
+  'src/features/chat/components/chat/useChatExperienceController.tsx',
+].map(read).join('\n')
 if (!chatExperience.includes('isPublicShowcase')) violations.push('the real chat renderer must support read-only public data')
 if (!chatExperience.includes('if (!activeChatId || isPublicShowcase) return')) {
   violations.push('public showcase hydration must not persist chat mutations')

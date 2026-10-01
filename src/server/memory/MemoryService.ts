@@ -54,18 +54,15 @@ export class MemoryService {
     const chunks = segmentMemoryForIngestion(content)
     if (chunks.length > MAX_MEMORY_CHUNKS) throw new MemoryServiceError('memory content produced too many chunks', 413)
     const source = normalizeSource(args.source)
-    const ids: string[] = []
-    let first: MemoryRecord | null = null
-    for (const chunk of chunks) {
-      const memory = await this.repository.create({
+    const memories = await Promise.all(chunks.map((chunk) =>
+      this.repository.create({
         ...args,
         clientId: chunks.length === 1 ? args.clientId?.trim() || undefined : undefined,
         content: chunk,
         source,
-      })
-      first ??= memory
-      ids.push(memory._id)
-    }
+      })))
+    const ids: string[] = memories.map((memory) => memory._id)
+    const first = memories[0] ?? null
     if (!first) throw new MemoryServiceError('content required', 400)
     return { count: ids.length, ids, memory: first }
   }
@@ -114,6 +111,11 @@ export class MemoryService {
     const result = await this.repository.remove(args)
     if (!result) throw new MemoryServiceError('Not found', 404)
     return result
+  }
+
+  /** Freshness bump for a semantic-duplicate write — no reindex needed. */
+  async touch(args: { memoryId: string; userId: string; workspaceId?: string }) {
+    return this.repository.touch(args)
   }
 }
 

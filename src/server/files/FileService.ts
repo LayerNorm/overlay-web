@@ -2,12 +2,14 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
+import { MAX_FILE_CONTENT_UTF8_BYTES, splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
+import { hashTextContent } from '@/server/storage/text-content-hash'
 import { findSubstringMatchesInText } from '@/shared/storage/file-text-search'
 import { formatBytes } from '@/shared/storage/storage-limits'
 import {
   deleteObject,
   deleteObjects,
+  downloadBuffer,
   generatePresignedDownloadUrl,
   generatePresignedUploadUrl,
   getMaxPresignedUploadBytes,
@@ -50,6 +52,7 @@ export type FileServiceStorage = {
   checkGlobalR2Budget(sizeBytes: number): Promise<void>
   deleteObject(key: string): Promise<void>
   deleteObjects(keys: string[]): Promise<void>
+  downloadBuffer(key: string, maximumBytes?: number): Promise<Uint8Array | null>
   generatePresignedDownloadUrl(key: string): Promise<string>
   generatePresignedUploadUrl(
     key: string,
@@ -94,6 +97,7 @@ const defaultStorage: FileServiceStorage = {
   checkGlobalR2Budget,
   deleteObject,
   deleteObjects,
+  downloadBuffer,
   generatePresignedDownloadUrl,
   generatePresignedUploadUrl,
   getMaxPresignedUploadBytes,
@@ -150,6 +154,8 @@ export class FileService {
     limit?: number
     paginated?: boolean
     summary?: boolean
+    /** For a single file: return the full text of text kept in object storage, not its prefix. */
+    fullText?: boolean
     userId: string
     workspaceId?: string
   }): Promise<unknown> {
@@ -160,6 +166,10 @@ export class FileService {
       })
       if (!file || file.userId !== args.userId) {
         serviceError({ error: 'Not found' }, 404)
+      }
+      if (args.fullText) {
+        const text = await this.readObjectStoreText(file, args.userId)
+        if (text !== null) return { ...file, content: text, textContent: text }
       }
       return file
     }
@@ -181,6 +191,8 @@ export class FileService {
     workspaceId?: string
   }): Promise<{ id: unknown; ids?: string[]; parts?: number }> {
     const createRequest = parseCreateFileRequest(args.body, args.userId)
+    // Listings are workspace-scoped; a row without its workspace is invisible.
+    if (args.workspaceId) createRequest.fileArgs.workspaceId = args.workspaceId
     let id: unknown
     const ids: string[] = []
 
@@ -192,17 +204,29 @@ export class FileService {
         r2Key: createRequest.r2Key,
         userId: args.userId,
       })
+    } else if (
+      shouldSplitTextFile(createRequest)
+      && utf8ByteLength(createRequest.textValue ?? '') > MAX_FILE_CONTENT_UTF8_BYTES
+    ) {
+      id = await this.createTextInObjectStore({
+        fileArgs: createRequest.fileArgs,
+        text: createRequest.textValue ?? '',
+        userId: args.userId,
+      })
     } else if (shouldSplitTextFile(createRequest)) {
-      for (const part of buildTextFilePartWrites(createRequest.fileArgs.name, createRequest.textValue ?? '')) {
-        const partId = await this.deps.repository.createFile({
-          ...createRequest.fileArgs,
-          ...part,
-        })
-        if (!partId) {
-          serviceError({ error: 'Failed to create file part' }, 500)
-        }
-        ids.push(partId)
-      }
+      const partIds = await Promise.all(
+        buildTextFilePartWrites(createRequest.fileArgs.name, createRequest.textValue ?? '')
+          .map(async (part) => {
+            const partId = await this.deps.repository.createFile({
+              ...createRequest.fileArgs,
+              ...part,
+            })
+            if (!partId) {
+              serviceError({ error: 'Failed to create file part' }, 500)
+            }
+            return partId
+          }))
+      ids.push(...partIds)
       id = ids[0]
     } else {
       assignTextContent(createRequest.fileArgs, createRequest.textValue)
@@ -216,13 +240,150 @@ export class FileService {
     }
   }
 
+  /**
+   * Stores server-produced bytes (for example a file an agent wrote in its
+   * sandbox) as an R2-backed upload in the caller's workspace.
+   */
+  async createFileFromBytes(args: {
+    bytes: Uint8Array
+    mimeType?: string
+    name: string
+    parentId?: string | null
+    userId: string
+    workspaceId?: string
+  }): Promise<{ id: string }> {
+    const name = args.name.replace(/[/\\]/g, '').slice(0, 240).trim()
+    if (!name) serviceError({ error: 'name required' }, 400)
+    const mimeType = normalizeMimeType(args.mimeType)
+    assertAllowedMimeType(mimeType)
+    const sizeBytes = args.bytes.byteLength
+    await this.assertStorageEntitlements({
+      notEnoughStoragePayload: (remainingBytes) => ({
+        error: 'Overlay storage limit reached.',
+        message: `Not enough Overlay storage remaining. ${formatBytes(remainingBytes)} available, ${formatBytes(sizeBytes)} needed.`,
+      }),
+      sizeBytes,
+      userId: args.userId,
+    })
+    await this.storage.checkGlobalR2Budget(sizeBytes)
+    const r2Key = this.storage.keyForFile(args.userId, this.clock.randomUUID(), name)
+    await this.storage.uploadBuffer(r2Key, args.bytes, mimeType)
+    let id: string | null = null
+    try {
+      id = await this.deps.repository.createFileWithStorage({
+        userId: args.userId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+        name,
+        ...(args.parentId ? { parentId: sanitizeConvexIdParam(args.parentId) } : {}),
+        r2Key,
+        sizeBytes,
+        mimeType,
+      })
+    } finally {
+      if (!id) await this.cleanupUploadedDocument(r2Key)
+    }
+    if (!id) serviceError({ error: 'Failed to create file' }, 500)
+    return { id }
+  }
+
   async updateFile(args: {
     body: Record<string, unknown>
     userId: string
     workspaceId?: string
   }): Promise<{ success: true }> {
-    await this.deps.repository.updateFile(buildUpdateFileArgs(args.body, args.userId))
+    const updateArgs = buildUpdateFileArgs(args.body, args.userId)
+    const placement = typeof updateArgs.content === 'string'
+      ? await this.placeUpdatedText(updateArgs as typeof updateArgs & { content: string }, args.userId)
+      : null
+    try {
+      await this.deps.repository.updateFile(updateArgs)
+    } catch (error) {
+      if (placement?.uploadedKey) await this.storage.deleteObject(placement.uploadedKey).catch((_error) => undefined)
+      // `expectedUpdatedAt` guards agent writes against a concurrent edit.
+      if (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT')) {
+        serviceError({ error: 'The file changed since it was read.', conflict: true }, 409)
+      }
+      throw error
+    }
+    if (placement?.staleKey) await this.storage.deleteObject(placement.staleKey).catch((_error) => undefined)
     return { success: true }
+  }
+
+  /**
+   * Text over the Convex document limit lives in object storage with a
+   * searchable prefix inline; smaller text is inline. An update moves the
+   * text to whichever side its new size belongs on and reports the object
+   * it replaced, deleted once the row points elsewhere.
+   */
+  private async placeUpdatedText(
+    updateArgs: Record<string, unknown> & { fileId: string; content: string },
+    userId: string,
+  ): Promise<{ uploadedKey?: string; staleKey?: string } | null> {
+    const text = updateArgs.content
+    const large = utf8ByteLength(text) > MAX_FILE_CONTENT_UTF8_BYTES
+    const existing = await this.deps.repository.getFile({ fileId: updateArgs.fileId, userId })
+    if (!existing || existing.kind === 'note') return null
+    const previousKey = existing.textInObjectStore && typeof existing.r2Key === 'string' ? existing.r2Key : undefined
+    if (!large) {
+      if (!previousKey) return null
+      Object.assign(updateArgs, { r2Key: '', textInObjectStore: false })
+      return { staleKey: previousKey }
+    }
+    const bytes = Buffer.from(text, 'utf8')
+    await this.storage.checkGlobalR2Budget(bytes.byteLength)
+    const r2Key = this.storage.keyForFile(userId, this.clock.randomUUID(), existing.name)
+    await this.storage.uploadBuffer(r2Key, bytes, typeof existing.mimeType === 'string' ? existing.mimeType : 'text/plain')
+    Object.assign(updateArgs, {
+      content: splitTextForConvexDocuments(text)[0] ?? '',
+      contentHash: hashTextContent(text),
+      r2Key,
+      sizeBytes: bytes.byteLength,
+      textInObjectStore: true,
+    })
+    return { uploadedKey: r2Key, ...(previousKey ? { staleKey: previousKey } : {}) }
+  }
+
+  private async createTextInObjectStore(args: {
+    fileArgs: Record<string, unknown> & { userId: string; name: string }
+    text: string
+    userId: string
+  }): Promise<string> {
+    const bytes = Buffer.from(args.text, 'utf8')
+    await this.assertStorageEntitlements({
+      notEnoughStoragePayload: (remainingBytes) => ({
+        error: 'Overlay storage limit reached.',
+        message: `Not enough Overlay storage remaining. ${formatBytes(remainingBytes)} available, ${formatBytes(bytes.byteLength)} needed.`,
+      }),
+      sizeBytes: bytes.byteLength,
+      userId: args.userId,
+    })
+    await this.storage.checkGlobalR2Budget(bytes.byteLength)
+    const r2Key = this.storage.keyForFile(args.userId, this.clock.randomUUID(), args.fileArgs.name)
+    const mimeType = typeof args.fileArgs.mimeType === 'string' ? args.fileArgs.mimeType : 'text/plain'
+    await this.storage.uploadBuffer(r2Key, bytes, mimeType)
+    let id: string | null = null
+    try {
+      id = await this.deps.repository.createFile({
+        ...args.fileArgs,
+        type: 'file',
+        r2Key,
+        textInObjectStore: true,
+        content: splitTextForConvexDocuments(args.text)[0] ?? '',
+        contentHash: hashTextContent(args.text),
+        sizeBytesOverride: bytes.byteLength,
+      })
+    } finally {
+      if (!id) await this.cleanupUploadedDocument(r2Key)
+    }
+    if (!id) serviceError({ error: 'Failed to create file' }, 500)
+    return id
+  }
+
+  /** The full text of a file kept in object storage, or null when the file keeps its text inline. */
+  async readObjectStoreText(file: { textInObjectStore?: unknown; r2Key?: unknown }, userId: string): Promise<string | null> {
+    if (!file.textInObjectStore || typeof file.r2Key !== 'string' || !isOwnedStorageKey(userId, file.r2Key)) return null
+    const bytes = await this.storage.downloadBuffer(file.r2Key)
+    return bytes ? new TextDecoder().decode(bytes) : null
   }
 
   async deleteFile(args: {
@@ -451,6 +612,7 @@ export class FileService {
     file: File | null
     parentId?: string
     userId: string
+    workspaceId?: string
   }): Promise<{ id: string | undefined; ids: string[]; name: string; parts: number }> {
     let uploadedR2Key: string | null = null
     let uploadedR2RetainedByFileRecord = false
@@ -531,6 +693,7 @@ export class FileService {
           r2Key,
           sourceSizeBytes: Math.max(0, Math.round(buf.byteLength)),
           userId: args.userId,
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         })
         uploadedR2RetainedByFileRecord = ids.length > 0
         if (ids.length !== partWrites.length) {

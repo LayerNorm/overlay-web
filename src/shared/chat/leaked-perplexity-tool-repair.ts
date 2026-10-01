@@ -8,7 +8,7 @@ function stepsHavePerplexitySearchWithOutput(
   for (const step of steps) {
     const byId = new Map((step.toolResults ?? []).map((r) => [r.toolCallId, r]))
     for (const tc of step.toolCalls ?? []) {
-      if (tc.toolName !== 'perplexity_search') continue
+      if (tc.toolName !== 'perplexity_search' && tc.toolName !== 'web_search') continue
       const r = byId.get(tc.toolCallId)
       if (r && r.output !== undefined && r.output !== null) return true
     }
@@ -29,15 +29,12 @@ export function normalizeLeakedToolCallBlob(text: string): string {
   return t
 }
 
+const SEARCH_TOOL_NAME_PATTERN = /"name"\s*:\s*"(?:perplexity_search|parallel_search|web_search|deep_search|web_fetch)"/i
+
 function looksLikeLeakedPerplexityToolSyntax(text: string): boolean {
   const t = text
   if (!t.trim()) return false
-  return (
-    /OLCALL|TOOLCALL|TOOL_CALL/i.test(t) ||
-    /\{\s*"name"\s*:\s*"perplexity_search"/i.test(t) ||
-    /\[\s*\{\s*"name"\s*:\s*"perplexity_search"/i.test(t) ||
-    /"name"\s*:\s*"perplexity_search"/i.test(t)
-  )
+  return /OLCALL|TOOLCALL|TOOL_CALL/i.test(t) || SEARCH_TOOL_NAME_PATTERN.test(t)
 }
 
 /** Extract `[...]` starting at `start` with string-aware bracket matching. */
@@ -85,7 +82,7 @@ function normalizeQueryField(value: unknown): string | string[] | null {
 function readPerplexityQueryFromToolLikeObject(obj: unknown): string | string[] | null {
   if (!obj || typeof obj !== 'object') return null
   const o = obj as Record<string, unknown>
-  if (o.name !== 'perplexity_search') return null
+  if (o.name !== 'perplexity_search' && o.name !== 'web_search') return null
   const rawArgs = o.arguments ?? o.parameters
   if (typeof rawArgs === 'string' && rawArgs.trim()) {
     try {

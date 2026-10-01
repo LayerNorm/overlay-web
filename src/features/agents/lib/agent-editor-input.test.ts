@@ -8,8 +8,6 @@ test('overlay input trims fields and maps tool groups', () => {
     description: '',
     instructions: '  Find evidence.  ',
     agentType: 'overlay',
-    hostedRuntime: 'overlay',
-    harnessBillingModelId: '',
     harnessLabel: 'Codex',
     adapterId: 'codex',
     modelId: '  test-model  ',
@@ -34,8 +32,6 @@ test('byo input generates instructions, harness, and model from the adapter', ()
     description: 'Works locally',
     instructions: 'ignored for byo',
     agentType: 'byo',
-    hostedRuntime: 'overlay',
-    harnessBillingModelId: '',
     harnessLabel: 'Codex',
     adapterId: 'codex',
     modelId: 'test-model',
@@ -51,36 +47,12 @@ test('byo input generates instructions, harness, and model from the adapter', ()
   assert.equal(input.description, 'Works locally')
 })
 
-test('managed harness input stores the priced model id, harness id, and no tool grants', () => {
-  const input = buildWorkspaceAgentInput({
-    name: 'Cloud Claude',
-    description: '',
-    instructions: '  Review pull requests.  ',
-    agentType: 'overlay',
-    hostedRuntime: 'claude-code',
-    harnessBillingModelId: 'claude-sonnet-4-6',
-    harnessLabel: 'Claude Code',
-    adapterId: '',
-    modelId: 'ignored-for-managed',
-    avatarColor: '#2563eb',
-    avatarShape: 'circle',
-    enabledToolGroups: new Set(['memory']),
-    visibility: 'workspace',
-  })
-  assert.equal(input.harness, 'claude-code')
-  assert.equal(input.modelId, 'claude-sonnet-4-6')
-  assert.equal(input.instructions, 'Review pull requests.')
-  assert.deepEqual(input.allowedToolIds, [])
-})
-
-test('editor validity mirrors the save gate for all three agent shapes', () => {
+test('editor validity mirrors the save gate for both agent shapes', () => {
   const base = {
     name: 'Scout',
     instructions: 'Find evidence.',
     modelId: 'test-model',
-    hostedRuntime: 'overlay',
-    harnessBillingModelId: '',
-    managedHarnessEnabled: true,
+    legacyHostedRuntime: false,
     connectedAgentsEnabled: true,
     bindingValid: true,
   }
@@ -94,11 +66,6 @@ test('editor validity mirrors the save gate for all three agent shapes', () => {
     isAgentEditorValid({ ...base, agentType: 'byo', connectedAgentsEnabled: false }),
     false,
   )
-  // Managed harness branch: needs the picker up, instructions, and a priced
-  // billing model — the hosted modelId field is irrelevant there.
-  const managed = { ...base, agentType: 'overlay' as const, hostedRuntime: 'claude-code', harnessBillingModelId: 'claude-sonnet-4-6' }
-  assert.equal(isAgentEditorValid(managed), true)
-  assert.equal(isAgentEditorValid({ ...managed, managedHarnessEnabled: false }), false)
-  assert.equal(isAgentEditorValid({ ...managed, harnessBillingModelId: '' }), false)
-  assert.equal(isAgentEditorValid({ ...managed, instructions: '' }), false)
+  // An agent whose hosted runtime was removed is read-only.
+  assert.equal(isAgentEditorValid({ ...base, agentType: 'overlay', legacyHostedRuntime: true }), false)
 })

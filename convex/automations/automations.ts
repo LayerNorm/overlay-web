@@ -97,10 +97,8 @@ async function countEnabledAutomations(
     .query('automations')
     .withIndex('by_userId_enabled', (q) => q.eq('userId', userId).eq('enabled', true))
     .collect()
-  return rows.filter((row) => (
-    !row.deletedAt &&
-    row._id !== excludeAutomationId
-  )).length
+  return rows.filter((row) => !row.deletedAt && row._id !== excludeAutomationId)
+    .length
 }
 
 async function enforceAutomationPolicy(
@@ -115,7 +113,7 @@ async function enforceAutomationPolicy(
   assertSchedulePolicy(params.schedule)
   if (!params.enabled) return
 
-  if (await getUserPlanKind(ctx, params.userId) !== 'paid') {
+  if ((await getUserPlanKind(ctx, params.userId)) !== 'paid') {
     throw new Error(AUTOMATION_POLICY_ERRORS.paidPlanRequired)
   }
 
@@ -133,10 +131,13 @@ async function getAutomationRunPolicyViolation(
   if (schedule.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES) {
     return `Automation paused because interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.`
   }
-  if (await getUserPlanKind(ctx, automation.userId) !== 'paid') {
+  if ((await getUserPlanKind(ctx, automation.userId)) !== 'paid') {
     return 'Automation paused because enabled automations require a paid plan.'
   }
-  if (await countEnabledAutomations(ctx, automation.userId) > MAX_ENABLED_AUTOMATIONS) {
+  if (
+    (await countEnabledAutomations(ctx, automation.userId)) >
+    MAX_ENABLED_AUTOMATIONS
+  ) {
     return `Automation paused because the account exceeds the ${MAX_ENABLED_AUTOMATIONS} enabled automation limit.`
   }
   return null
@@ -153,11 +154,12 @@ export const list = query({
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     includeDeleted: v.optional(v.boolean()),
+    excludeAgentBound: v.optional(v.boolean()),
     limit: v.optional(v.number()),
     beforeUpdatedAt: v.optional(v.number()),
   },
   returns: v.array(automationDoc),
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, limit, beforeUpdatedAt }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, excludeAgentBound, limit, beforeUpdatedAt }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -176,11 +178,18 @@ export const list = query({
       })
       .order('desc')
       .take(scanLimit)
-    return rows
+    return (
+      rows
       .filter((row) => row.userId === userId)
       .filter((row) => (includeDeleted ? true : !row.deletedAt))
-      .filter((row) => (workspaceId !== undefined ? row.workspaceId === workspaceId : true))
+        .filter((row) =>
+          workspaceId !== undefined ? row.workspaceId === workspaceId : true,
+        )
+      // The standalone Automations page lists only standalone automations;
+      // agent-owned automations live as threads under their agent.
+      .filter((row) => (excludeAgentBound ? !row.agentId : true))
       .slice(0, pageLimit)
+    )
   },
 })
 
@@ -225,11 +234,16 @@ export const create = mutation({
   returns: v.id('automations'),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    let sourceAgentId: string | undefined
     if (args.sourceConversationId) {
       const conversation = await ctx.db.get(args.sourceConversationId)
       if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
         throw new Error('Unauthorized')
       }
+      // Automations drafted inside an agent thread belong to that agent:
+      // they nest under it in the sidebar and never appear on the standalone
+      // Automations page.
+      sourceAgentId = conversation.agentId
     }
     const now = Date.now()
     const enabled = args.enabled ?? true
@@ -253,6 +267,7 @@ export const create = mutation({
       graphSource: args.graphSource?.trim() || undefined,
       graph: args.graph ?? undefined,
       sourceConversationId: args.sourceConversationId,
+      agentId: sourceAgentId,
       concurrencyPolicy: args.concurrencyPolicy ?? 'skip',
       createdAt: now,
       updatedAt: now,
@@ -601,7 +616,7 @@ export const markManualRunFailed = mutation({
   },
 })
 
-export const attachSourceConversationByServer = mutation({
+export const attachConversationByServer = mutation({
   args: {
     automationId: v.id('automations'),
     conversationId: v.id('conversations'),
@@ -610,9 +625,12 @@ export const attachSourceConversationByServer = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const automation = await ctx.db.get(args.automationId)
-    const conversation = await ctx.db.get(args.conversationId)
+    if (!validateServerSecret(args.serverSecret))
+      throw new Error('Unauthorized')
+    const [automation, conversation] = await Promise.all([
+      ctx.db.get(args.automationId),
+      ctx.db.get(args.conversationId),
+    ])
     if (
       !automation ||
       automation.userId !== args.userId ||
@@ -626,20 +644,29 @@ export const attachSourceConversationByServer = mutation({
     if (automation.workspaceId && conversation.workspaceId !== automation.workspaceId) {
       throw new Error('Unauthorized')
     }
-    const currentSource = automation.sourceConversationId
-      ? await ctx.db.get(automation.sourceConversationId)
+    // The conversation a user chats in on the automation surface IS the
+    // automation's own thread: it is owned by the automation, hidden from
+    // Chats via isAutomation, and becomes the run target.
+    const currentOwned = automation.conversationId
+      ? await ctx.db.get(automation.conversationId)
       : null
-    const currentSourceIsValid = Boolean(
-      currentSource
-      && currentSource.userId === args.userId
-      && !currentSource.deletedAt
-      && (!automation.workspaceId || currentSource.workspaceId === automation.workspaceId),
+    const currentOwnedIsValid = Boolean(
+      currentOwned
+      && currentOwned.userId === args.userId
+      && !currentOwned.deletedAt
+      && (!automation.workspaceId || currentOwned.workspaceId === automation.workspaceId),
     )
-    if (!currentSourceIsValid) {
+    if (!currentOwnedIsValid) {
       await ctx.db.patch(args.automationId, {
-        sourceConversationId: args.conversationId,
+        conversationId: args.conversationId,
+        // An automation adopting an agent thread as its owned thread belongs
+        // to that agent even when it was drafted without sourceConversationId.
+        agentId: automation.agentId ?? conversation.agentId,
         updatedAt: Date.now(),
       })
+      if (!conversation.isAutomation) {
+        await ctx.db.patch(args.conversationId, { isAutomation: true })
+      }
     }
     return null
   },
@@ -783,7 +810,10 @@ export const claimDueRuns = internalMutation({
         }
         const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
 
-        if ((automation.concurrencyPolicy ?? 'skip') === 'skip' && await hasQueuedOrRunningRun(ctx, automation._id, now)) {
+        if (
+          (automation.concurrencyPolicy ?? 'skip') === 'skip' &&
+          (await hasQueuedOrRunningRun(ctx, automation._id, now))
+        ) {
           await ctx.db.insert('automationRuns', {
             automationId: automation._id,
             userId: automation.userId,
@@ -829,6 +859,7 @@ export const getRunForExecution = internalQuery({
     v.object({
       run: automationRunDoc,
       automation: automationDoc,
+      agentArchived: v.boolean(),
     }),
     v.null(),
   ),
@@ -837,7 +868,15 @@ export const getRunForExecution = internalQuery({
     if (!run) return null
     const automation = await ctx.db.get(run.automationId)
     if (!automation || automation.deletedAt) return null
-    return { run, automation }
+    // Agent-owned automations stop running while their agent is archived.
+    const agent = automation.agentId
+      ? await ctx.db
+          .query('workspaceAgentDefinitions')
+        .withIndex('by_agentId', (q) => q.eq('agentId', automation.agentId!))
+        .unique()
+      : null
+    const agentArchived = Boolean(automation.agentId && (!agent || agent.archivedAt))
+    return { run, automation, agentArchived }
   },
 })
 
@@ -853,7 +892,14 @@ export const getRunForExecutionByServer = query({
     if (!run) return null
     const automation = await ctx.db.get(run.automationId)
     if (!automation || automation.deletedAt) return null
-    return { run, automation }
+    const agent = automation.agentId
+      ? await ctx.db
+          .query('workspaceAgentDefinitions')
+        .withIndex('by_agentId', (q) => q.eq('agentId', automation.agentId!))
+        .unique()
+      : null
+    const agentArchived = Boolean(automation.agentId && (!agent || agent.archivedAt))
+    return { run, automation, agentArchived }
   },
 })
 
@@ -899,6 +945,24 @@ export const markRunCompleted = internalMutation({
       ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       lastRunAt: args.now,
       lastError: undefined,
+      updatedAt: args.now,
+    })
+    return null
+  },
+})
+
+export const markRunSkipped = internalMutation({
+  args: {
+    runId: v.id('automationRuns'),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.status !== 'queued') return null
+    await ctx.db.patch(args.runId, {
+      status: 'skipped',
+      completedAt: args.now,
       updatedAt: args.now,
     })
     return null

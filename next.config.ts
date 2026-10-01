@@ -53,23 +53,6 @@ const nextConfig: NextConfig = {
   typescript: process.env.OVERLAY_SKIP_BUILD_TYPECHECK === "1"
     ? { ignoreBuildErrors: true }
     : undefined,
-  // Managed-harness adapters are server-only and lazily imported — resolve
-  // them from node_modules at runtime instead of bundling. This also keeps
-  // the ~134MB pi-coding-agent tree and pi-mcp-adapter's raw .ts entry out of
-  // the Turbopack trace (Node 24 type-strips it at require time).
-  serverExternalPackages: [
-    "@ai-sdk/harness",
-    "@ai-sdk/harness-acp",
-    "@ai-sdk/harness-claude-code",
-    "@ai-sdk/harness-codex",
-    "@ai-sdk/harness-opencode",
-    "@ai-sdk/harness-pi",
-    "@ai-sdk/sandbox-vercel",
-    "@ai-sdk/workflow-harness",
-    "@earendil-works/pi-ai",
-    "@earendil-works/pi-coding-agent",
-    "pi-mcp-adapter",
-  ],
   // Explicit server action body size limit. Prevents DoS via large payloads.
   experimental: {
     serverActions: {

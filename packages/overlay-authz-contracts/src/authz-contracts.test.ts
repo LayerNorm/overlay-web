@@ -18,9 +18,11 @@ describe('@overlay/authz-contracts', () => {
     assert.equal(isAuthorizationCapability('curriculum.manage'), false)
     assert.equal(isAuthorizationCapability('unknown.permission'), false)
     assert.equal(
-      AUTHORIZATION_CAPABILITY_DEFINITIONS.some(({ key }) => key === 'knowledge.publish'),
+      AUTHORIZATION_CAPABILITY_DEFINITIONS.some(({ key }) => key === 'files.share'),
       true,
     )
+    // Knowledge Bases were removed (9a6141f5b); their capabilities must stay gone.
+    assert.equal(isAuthorizationCapability('knowledge.publish'), false)
     assert.equal(getAuthorizationCapabilityDefinition('roles.manage').category, 'identity')
   })
 

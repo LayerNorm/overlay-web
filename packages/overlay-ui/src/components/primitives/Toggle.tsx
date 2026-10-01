@@ -12,6 +12,7 @@ export function Toggle({
   disabled,
   className,
   type = 'button',
+  onClick,
   ...props
 }: ToggleProps) {
   return (
@@ -21,7 +22,7 @@ export function Toggle({
       aria-checked={checked}
       disabled={disabled}
       onClick={(event) => {
-        props.onClick?.(event)
+        onClick?.(event)
         if (!event.defaultPrevented) onCheckedChange?.(!checked)
       }}
       className={cn(

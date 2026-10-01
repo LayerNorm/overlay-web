@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
 import { trackSessionRefresh } from '@/shared/observability/client-metrics'
 
@@ -40,6 +40,7 @@ async function fetchSessionState(): Promise<SessionCheckResult> {
   const response = await fetch('/api/auth/session', {
     credentials: 'same-origin',
     cache: 'no-store',
+    signal: AbortSignal.timeout(30_000),
   })
   const contentType = response.headers.get('content-type') || ''
   if (!response.ok || !contentType.includes('application/json')) {
@@ -99,14 +100,16 @@ export function AuthProvider({
   const reconciledUserId = useRef(initialUser?.id ?? null)
   const lastCheckAtRef = useRef(0)
 
-  useEffect(() => {
+  const [prevInitial, setPrevInitial] = useState({ user: initialUser, resolved: initialSessionResolved })
+  if (initialUser !== prevInitial.user || initialSessionResolved !== prevInitial.resolved) {
+    setPrevInitial({ user: initialUser, resolved: initialSessionResolved })
     if (initialUser) {
       setUser(initialUser)
     }
     if (initialSessionResolved) {
       setIsLoading(false)
     }
-  }, [initialUser, initialSessionResolved])
+  }
 
   useEffect(() => {
     if (isLoading) return
@@ -192,16 +195,16 @@ export function AuthProvider({
     }
   }, [checkSession, initialSessionResolved, initialUser])
 
+  const authValue = useMemo(() => ({
+    user,
+    isLoading,
+    isAuthenticated: Boolean(user),
+    signOut,
+    refreshSession,
+  }), [user, isLoading, signOut, refreshSession])
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        signOut,
-        refreshSession,
-      }}
-    >
+    <AuthContext.Provider value={authValue}>
       {children}
     </AuthContext.Provider>
   )

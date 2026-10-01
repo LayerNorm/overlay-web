@@ -35,7 +35,7 @@ if (/\.app-note-editor\b/.test(read('src/app/globals.css'))) {
 }
 
 requireText(
-  'src/app/%5F_fixtures/file-parity/page.tsx',
+  'src/app/dev-fixtures/file-parity/page.tsx',
   /NODE_ENV === 'production'.*FILE_PARITY_FIXTURES/s,
   'web fixture route must stay production-gated',
 )
@@ -86,7 +86,7 @@ for (const path of sharedNotebookFiles) {
 }
 
 requireText(
-  'packages/overlay-modules-react/src/notes/editor.tsx',
+  'packages/overlay-modules-react/src/notes/editor-state.ts',
   /new NotebookEditorController\(/,
   'canonical editor must delegate hydration and persistence to NotebookEditorController',
 )
@@ -217,7 +217,7 @@ for (const adapterTest of [
   )
 }
 requireText(
-  'packages/overlay-modules-react/src/notes/editor.tsx',
+  'packages/overlay-modules-react/src/notes/editor-state.ts',
   /useEditor\(\{[\s\S]*InlineDiffExtension/,
   'canonical editor must own the TipTap extension configuration',
 )
@@ -254,7 +254,7 @@ for (const [path, pattern, message] of [
     'shared layout controls must expose their selected state',
   ],
   [
-    'packages/overlay-modules-react/src/knowledge/surface.tsx',
+    'packages/overlay-modules-react/src/knowledge/surface-state.ts',
     /lastFileTriggerRef[\s\S]*requestAnimationFrame[\s\S]*\.focus\(\)/,
     'closing a file must restore focus to the element that opened it',
   ],

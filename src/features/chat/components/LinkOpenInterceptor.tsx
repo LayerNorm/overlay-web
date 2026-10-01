@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ExternalLink, PanelRight } from 'lucide-react'
 import type { LinkOpenPreference } from '@overlay/app-core'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { useDialogFocus } from '@overlay/ui'
 
 /**
  * Marks a region whose links participate in the open-in-Overlay flow. Anything
@@ -45,11 +46,11 @@ export function LinkOpenInterceptor({
   onOpenInOverlay: (url: string, title?: string) => void
 }) {
   const [choice, setChoice] = useState<Choice | null>(null)
+  const dialogRef = useDialogFocus(choice !== null)
 
   const close = useCallback(() => setChoice(null), [])
 
-  useEffect(() => {
-    function onClick(event: MouseEvent) {
+  const onClick = useEffectEvent((event: MouseEvent) => {
       // Leave the browser's own affordances alone: modified clicks, middle
       // clicks, and anything already handled by another listener.
       if (event.defaultPrevented) return
@@ -79,11 +80,13 @@ export function LinkOpenInterceptor({
         return
       }
       setChoice({ url, label, x: event.clientX, y: event.clientY })
-    }
+  })
 
+  useEffect(() => {
     document.addEventListener('click', onClick, true)
     return () => document.removeEventListener('click', onClick, true)
-  }, [onOpenInOverlay, preference])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onClick is a stable useEffectEvent
+  }, [])
 
   useEffect(() => {
     if (!choice) return
@@ -108,14 +111,22 @@ export function LinkOpenInterceptor({
 
   return createPortal(
     <>
+      {/* Scrim is a pointer-only click catcher; keyboard users dismiss via Escape. */}
+      {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
       <div className="fixed inset-0 z-[450]" onMouseDown={close} />
+      {/* Anchored chooser popover — a native <dialog> cannot position at the clicked link. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="Open link"
         style={{ position: 'fixed', top, left, width: CHOOSER_WIDTH, zIndex: 451 }}
         className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-1 shadow-2xl"
       >
-        <p className="truncate px-2.5 pb-1 pt-1.5 text-[11px] text-[var(--muted-light)]" title={choice.url}>
+        <p
+          className='truncate px-2.5 pb-1 pt-1.5 text-[11px] text-[var(--muted-light)]'
+          title={choice.url}
+        >
           {hostOf(choice.url)}
         </p>
         <button

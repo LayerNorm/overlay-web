@@ -2,11 +2,11 @@ import 'server-only'
 
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { SandboxInstance, SandboxLifecycleState, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
+import type { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
 import { getMarkupBasisPoints } from '@/shared/billing/billing-pricing'
-import { computeDaytonaRuntimeCost } from '@/shared/ai/sandbox/daytona-pricing'
 import { logger } from '@/server/observability/logger'
 import type {
   ConnectedAgentRepository,
@@ -14,12 +14,7 @@ import type {
   ConnectedAgentSandboxLeasePayer,
   RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
-import { MANAGED_HARNESS_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
-import {
-  calculateVercelSandboxCostUsd,
-  estimateVercelSandboxReservationUsd,
-  sandboxProviderCostLimitUsd,
-} from '@/server/ai/sandbox/vercel-pricing'
+import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 
 const DEFAULT_RESOURCES = { diskGiB: 10, memoryGiB: 4, vcpus: 2 }
 const DEFAULT_LOW_BALANCE_CUTOFF_CENTS = 100
@@ -171,9 +166,16 @@ export class ManagedAgentSandboxBilling {
       this.dependencies.repository.listSandboxLeases({ statuses: [...ACTIVE_STATUSES], limit }),
       this.dependencies.repository.listSandboxLeases({ statuses: [...REAPABLE_STATUSES], cleanupBefore: this.now(), limit }),
     ])
-    const ticks: ManagedSandboxMeterTick[] = []
-    for (const lease of active) ticks.push(await this.tickLease(lease))
-    for (const lease of reapable) ticks.push(await this.reapLease(lease))
+    const ticks: ManagedSandboxMeterTick[] = [
+      ...(await Promise.all(active.map((lease) => this.tickLease(lease)))),
+      ...(await Promise.all(reapable.map((lease) => this.reapLease(lease)))),
+    ]
+    // Fleet-level signal once per sweep when box leases exist: box bills from
+    // a shared account pool, so `canStart`/`remainingSeconds` exhaustion would
+    // stall every box environment at once.
+    if (active.concat(reapable).some((lease) => lease.provider === 'box')) {
+      await this.probeBoxLimits()
+    }
     return { ticks }
   }
 
@@ -230,14 +232,14 @@ export class ManagedAgentSandboxBilling {
     // wall-clock — see usageDelta for the virtual-cursor rule that keeps the
     // final post-stop total from double-charging.
     const instanceRunning = probe.status !== 'stopped' && probe.status !== 'archived' && probe.status !== 'deleted' && probe.status !== 'failed'
-    // Provider-side idle-stop: Vercel has no equivalent of Daytona's
-    // autoStopInterval, so the meter enforces the lease's idle window itself —
+    // Provider-side idle-stop: Box has no idle timer, so the meter enforces
+    // the lease's idle window itself —
     // a running sandbox with no activity for idleTimeoutMs is stopped while
     // the lease stays 'running'; the next turn's acquire resumes it. The tick
     // still bills the elapsed window it ran through.
     if (!stopping && instanceRunning && typeof probe.instance.stop === 'function') {
       const lastActiveAt = idleActivityTimestamp(usage, effectiveLease, now)
-      const idleTimeoutMs = finiteNumber(usage.idleTimeoutMs) || MANAGED_HARNESS_IDLE_TIMEOUT_MS
+      const idleTimeoutMs = finiteNumber(usage.idleTimeoutMs) || MANAGED_SANDBOX_IDLE_TIMEOUT_MS
       if (now - lastActiveAt > idleTimeoutMs) {
         await probe.instance.stop().then(() => {
           logger.info('Managed sandbox idle-stopped by meter', {
@@ -256,8 +258,8 @@ export class ManagedAgentSandboxBilling {
       }
     }
     if (probe.usage === null) {
-      // Stopped instance with unreadable counters (e.g. Daytona metrics on a
-      // stopped sandbox): advance the meter window without charging so the
+      // Stopped instance with unreadable counters (a provider that does not
+      // report metrics for a stopped sandbox): advance the meter window without charging so the
       // stopped span is never billed as elapsed on the next running tick. A
       // never-metered lease has no window to advance — its first successful
       // read adopts counters instead.
@@ -670,7 +672,36 @@ export class ManagedAgentSandboxBilling {
     return runtime
   }
 
+  private async probeBoxLimits() {
+    try {
+      const runtime = this.runtime('box')
+      const limits = typeof (runtime as BoxSandboxRuntime).limits === 'function'
+        ? await (runtime as BoxSandboxRuntime).limits()
+        : undefined
+      if (!limits) return
+      if (!limits.canStart || limits.remainingSeconds < boxLowRemainingSeconds()) {
+        logger.warn('Box provider balance or capacity low', {
+          activeSandboxes: limits.activeSandboxes,
+          blockedReason: limits.blockedReason,
+          canStart: limits.canStart,
+          maxActiveSandboxes: limits.maxActiveSandboxes,
+          remainingSeconds: limits.remainingSeconds,
+        })
+      }
+    } catch (error) {
+      logger.warn('Box limits probe failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   private now() { return this.dependencies.now?.() ?? Date.now() }
+}
+
+/** Largest provider cost one run may reserve before it is refused. */
+export function sandboxProviderCostLimitUsd() {
+  const configured = Number(process.env.OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN?.trim())
+  return Number.isFinite(configured) && configured > 0 ? configured : 15
 }
 
 export class ManagedAgentSandboxBudgetError extends Error {
@@ -683,19 +714,18 @@ export class ManagedAgentSandboxBudgetError extends Error {
 export function sandboxCostUsd(args: {
   provider: string
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
-  usage: Pick<SandboxUsage, 'activeCpuTimeMs' | 'egressBytes' | 'wallTimeMs'>
+  usage: Pick<SandboxUsage, 'activeCpuTimeMs' | 'egressBytes' | 'wallTimeMs' | 'providerMetrics'>
 }) {
   const wallTimeMs = Math.max(0, args.usage.wallTimeMs ?? 0)
-  if (args.provider === 'daytona') return computeDaytonaRuntimeCost({
-    cpu: args.resources.vcpus,
-    memoryGiB: args.resources.memoryGiB,
-    diskGiB: args.resources.diskGiB,
-    elapsedSeconds: wallTimeMs / 1_000,
-  }).costUsd
-  if (args.provider === 'vercel') return calculateVercelSandboxCostUsd({
-    memoryGb: args.resources.memoryGiB,
-    usage: args.usage,
-  })
+  if (args.provider === 'box') {
+    // Provider-reported dollars are authoritative — the usage API already
+    // applies the size multiplier and list price, so deltas of it bill exact
+    // spend. Absent only on responses too old to carry it; then fall back to
+    // list price on the metered billable-second delta.
+    const reported = providerReportedUsd(args.usage.providerMetrics)
+    if (reported !== undefined) return reported
+    return wallTimeMs / 1_000 / boxSecondsPerDollar()
+  }
   throw new Error(`MANAGED_SANDBOX_PROVIDER_UNPRICED:${args.provider}`)
 }
 
@@ -705,12 +735,6 @@ function sandboxReservationCostUsd(args: {
   provider: string
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
 }) {
-  if (args.provider === 'vercel') return estimateVercelSandboxReservationUsd({
-    maxEgressBytes: args.maxSandboxEgressBytes,
-    maxRunTimeMs: args.maxRunTimeMs,
-    memoryGb: args.resources.memoryGiB,
-    vcpus: args.resources.vcpus,
-  })
   return sandboxCostUsd({
     provider: args.provider,
     resources: args.resources,
@@ -754,7 +778,29 @@ function usageDelta(baseline: Record<string, unknown>, current: SandboxUsage, fa
     activeCpuTimeMs: current.activeCpuTimeMs === undefined ? undefined : Math.max(0, current.activeCpuTimeMs - baselineCpu),
     ingressBytes: current.ingressBytes === undefined ? undefined : Math.max(0, current.ingressBytes - finiteNumber(baseline.ingressBytes)),
     egressBytes: current.egressBytes === undefined ? undefined : Math.max(0, current.egressBytes - finiteNumber(baseline.egressBytes)),
+    providerMetrics: providerMetricsDelta(baseline.providerMetrics, current.providerMetrics),
   }
+}
+
+/**
+ * `reportedUsd` is the provider's cumulative lifetime spend for the sandbox —
+ * bill its delta. Other metrics (`secondsPerDollar`, `billingMultiplier`) are
+ * rates, not counters, and non-numeric entries (e.g. `running`) carry the
+ * current reading through unchanged.
+ */
+function providerMetricsDelta(
+  baseline: unknown,
+  current: SandboxUsage['providerMetrics'],
+): SandboxUsage['providerMetrics'] {
+  if (!current || typeof current !== 'object') return undefined
+  const base = baseline && typeof baseline === 'object' ? baseline as Record<string, unknown> : {}
+  const delta: Record<string, number | string | boolean | null> = {}
+  for (const [key, value] of Object.entries(current)) {
+    delta[key] = key === 'reportedUsd' && typeof value === 'number' && Number.isFinite(value)
+      ? Math.max(0, value - finiteNumber(base[key]))
+      : value
+  }
+  return delta
 }
 
 function sandboxResources(usage: Record<string, unknown>) {
@@ -828,4 +874,24 @@ function sandboxMeterDisabled() {
 function providerSpendAlertThresholdUsd() {
   const configured = Number(process.env.OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD)
   return Number.isFinite(configured) && configured > 0 ? configured : 10
+}
+
+const DEFAULT_BOX_SECONDS_PER_DOLLAR = 100_000
+const DEFAULT_BOX_LOW_REMAINING_SECONDS = 7_200
+
+/** Billable seconds per dollar at list price (`$20` → `2,000,000` seconds). */
+function boxSecondsPerDollar() {
+  const configured = Number(process.env.OVERLAY_BOX_SECONDS_PER_DOLLAR)
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_BOX_SECONDS_PER_DOLLAR
+}
+
+function providerReportedUsd(metrics: SandboxUsage['providerMetrics']) {
+  const value = metrics?.reportedUsd
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : undefined
+}
+
+/** Warn when the box account can't start sandboxes or is low on machine time. */
+function boxLowRemainingSeconds() {
+  const configured = Number(process.env.OVERLAY_BOX_LOW_REMAINING_SECONDS)
+  return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_BOX_LOW_REMAINING_SECONDS
 }

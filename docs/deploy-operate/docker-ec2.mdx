@@ -1,15 +1,16 @@
 ---
 title: "Docker On EC2"
-description: "Run a narrow Overlay sanity check on one EC2 instance with external PostgreSQL and Redis."
+description: "Run a narrow Overlay sanity check on one EC2 instance with a self-hosted Convex backend, external PostgreSQL for Better Auth, and Redis."
 ---
 
 Use this guide for the first customer-controlled deployment. It proves that the
-release can start in the customer's VPC, reach PostgreSQL and Redis, complete
-OIDC sign-in, persist a conversation, and recover after a container restart.
+release can start in the customer's VPC, reach a self-hosted Convex backend,
+PostgreSQL, and Redis, complete OIDC sign-in, persist a conversation, and
+recover after a container restart.
 
 <Warning>
   This is a disposable sanity check, not the pilot production architecture. It
-  runs one web container, one worker, and one scheduler on one EC2 host. Move to
+  runs one web container and one Convex backend on one EC2 host. Move to
   [Deploy On AWS](/deploy-operate/aws) after this check passes.
 </Warning>
 
@@ -20,9 +21,8 @@ Operator browser
   -> SSH tunnel to localhost:3000
   -> EC2 Docker host
        -> Overlay web
-       -> Overlay worker
-       -> Overlay scheduler
-       -> RDS PostgreSQL: overlay_app and overlay_auth
+       -> convex-backend (local volume persistence for the sanity check)
+       -> RDS PostgreSQL: overlay_auth (Better Auth only)
        -> ElastiCache Redis over TLS
        -> Google Workspace OIDC
        -> approved AI Gateway model
@@ -40,7 +40,7 @@ You need:
 | --- | --- |
 | AWS | A disposable nonproduction account or VPC, an approved Region, and permission to use EC2, RDS, and ElastiCache. |
 | EC2 | Ubuntu 24.04, at least 20 GB of encrypted gp3 storage, and `t3.large` or another 2-vCPU instance when pulling the release image. Use at least 40 GB and 4 vCPU only for an optional source build. |
-| PostgreSQL | One private RDS PostgreSQL instance with separate `overlay_app` and `overlay_auth` databases and separate login roles. |
+| PostgreSQL | One private RDS PostgreSQL instance with an `overlay_auth` database and login role for Better Auth. Application data lives in the self-hosted Convex backend. |
 | Redis | A TLS ElastiCache endpoint reachable from the EC2 security group. |
 | Identity | A Google Workspace organization and Google Cloud OAuth web client that permits the localhost callback shown below. |
 | Models | An approved `AI_GATEWAY_API_KEY` and model ID. |
@@ -92,10 +92,10 @@ chmod 600 "$HOME/.postgresql/root.crt"
 ```
 </Step>
 
-<Step title="Create the two databases with the RDS administrator">
-Run this once with a temporary administrative connection. The application
-and Better Auth roles must be separate and must not retain administrative
-membership. Replace all angle-bracket values before running it.
+<Step title="Create the Better Auth database with the RDS administrator">
+Run this once with a temporary administrative connection. The Better Auth role
+must not retain administrative membership. Replace all angle-bracket values
+before running it.
 
 ```bash
 export PGHOST='<writer>.rds.amazonaws.com'
@@ -104,38 +104,25 @@ export PGUSER='<rds-admin-role>'
 export PGSSLMODE=verify-full
 export PGSSLROOTCERT="$HOME/.postgresql/root.crt"
 read -rsp 'RDS admin password: ' PGPASSWORD; echo; export PGPASSWORD
-read -rsp 'Overlay app password: ' OVERLAY_APP_DB_PASSWORD; echo
 read -rsp 'Better Auth password: ' OVERLAY_AUTH_DB_PASSWORD; echo
 
 psql --dbname=postgres -v ON_ERROR_STOP=1 \
   -v admin_role="$PGUSER" \
-  -v app_password="$OVERLAY_APP_DB_PASSWORD" \
   -v auth_password="$OVERLAY_AUTH_DB_PASSWORD" <<'SQL'
-CREATE ROLE overlay_app LOGIN PASSWORD :'app_password';
 CREATE ROLE overlay_auth LOGIN PASSWORD :'auth_password';
-GRANT overlay_app TO :"admin_role";
 GRANT overlay_auth TO :"admin_role";
 SQL
 
 psql --dbname=postgres -v ON_ERROR_STOP=1 \
-  -c 'CREATE DATABASE overlay_app OWNER overlay_app;'
-psql --dbname=postgres -v ON_ERROR_STOP=1 \
   -c 'CREATE DATABASE overlay_auth OWNER overlay_auth;'
 
-psql --dbname=overlay_app -v ON_ERROR_STOP=1 \
-  -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-
 psql --dbname=postgres -v ON_ERROR_STOP=1 -v admin_role="$PGUSER" <<'SQL'
-REVOKE overlay_app FROM :"admin_role";
 REVOKE overlay_auth FROM :"admin_role";
 SQL
-unset PGPASSWORD OVERLAY_APP_DB_PASSWORD OVERLAY_AUTH_DB_PASSWORD
+unset PGPASSWORD OVERLAY_AUTH_DB_PASSWORD
 ```
 
-RDS requires its administrative role to install `pgvector`, even when the
-narrow sanity profile keeps vector search disabled. The normal migration
-and runtime commands must use the restricted `overlay_app` role afterward.
-If roles or databases already exist, inspect them instead of blindly
+If the role or database already exists, inspect it instead of blindly
 rerunning the creation statements.
 </Step>
 
@@ -188,7 +175,9 @@ Do not reuse a generated value. Do not paste secret values into chat,
 tickets, logs, screenshots, Git, or the coding agent's final report.
 
 Database passwords containing reserved URL characters must be URL-encoded
-in `OVERLAY_DATABASE_URL` and `BETTER_AUTH_DATABASE_URL`.
+in `BETTER_AUTH_DATABASE_URL`. `NEXT_PUBLIC_CONVEX_URL` points at the
+convex-backend service on the same host; `INTERNAL_API_SECRET` must match the
+value set on the backend deployment.
 </Step>
 
 <Step title="Configure Google Workspace login">
@@ -229,13 +218,13 @@ compose() {
 OVERLAY_ENV_FILE=.env \
 OVERLAY_CONFIG_PATH=./overlay.config.json \
 compose config --quiet
-compose pull web worker scheduler migrate
+compose pull web backend migrate
 ```
 
 `OVERLAY_WEB_IMAGE` must name the approved versioned release, such as
 `ghcr.io/layernorm/overlay-web:0.1.0-rc.1`. Do not use `latest` for a
-customer qualification run. The web, worker, scheduler, and migration roles
-all use the same immutable image.
+customer qualification run. The web and migration roles use the same immutable
+image; `backend` uses the pinned official `convex-backend` image.
 
 To build inspected or customized source instead, use the build override:
 
@@ -253,42 +242,55 @@ compose_source build web
 
 Continue with `compose_source` instead of `compose` for the remaining steps
 when using a source build. The override builds the tested enterprise runtime,
-including the web server, worker, scheduler, and migration tooling.
+including the web server and migration tooling.
 </Step>
 
-<Step title="Run migrations once">
-Migrations must complete before any long-running service starts:
+<Step title="Start the Convex backend and run migrations once">
+Start the backend and wait for its `/version` health check:
+
+```bash
+compose up -d backend
+compose ps
+curl -fsS http://127.0.0.1:3210/version
+```
+
+Then run the Better Auth migration once:
 
 ```bash
 compose --profile tools run --rm migrate
 ```
 
-The command must exit with status `0` and report that both app-data and
-Better Auth migrations are current. Do not run migrations from every web,
-worker, or scheduler container.
+The command must exit with status `0` and report that Better Auth migrations
+are current. Do not run migrations from every web container. Deploy the Convex
+functions and schema to the backend once per release with the bootstrap flow
+from
+[Self-hosted Convex backend](/deploy-operate/self-hosted-convex), which also
+sets `INTERNAL_API_SECRET` and `INTERNAL_SERVICE_AUTH_SECRET` on the deployment.
 </Step>
 
-<Step title="Start web, worker, and scheduler">
+<Step title="Start the web service">
 ```bash
-compose up -d web worker scheduler
+compose up -d web
 compose ps
-compose logs --tail=100 web worker scheduler
+compose logs --tail=100 web backend
 ```
 
-Wait for `web` to become healthy. Worker and scheduler logs should show a
-successful schema check and regular runtime activity without restart loops.
+Wait for `web` to become healthy. Backend logs should show the persistence
+lease held and regular function traffic without restart loops.
 </Step>
 
 <Step title="Open the SSH tunnel">
-From the operator's computer, open a second terminal:
+From the operator's computer, open a second terminal. The tunnel must carry
+both the app and the Convex client/realtime port:
 
 ```bash
-ssh -N -L 3000:127.0.0.1:3000 ubuntu@<EC2_PUBLIC_DNS>
+ssh -N -L 3000:127.0.0.1:3000 -L 3210:127.0.0.1:3210 -L 3211:127.0.0.1:3211 ubuntu@<EC2_PUBLIC_DNS>
 ```
 
 Keep that terminal open and visit
-[http://localhost:3000](http://localhost:3000). The browser and IdP see a
-localhost origin while the application runs inside the customer VPC.
+[http://localhost:3000](http://localhost:3000). The browser, IdP, and Convex
+client see localhost origins while the application runs inside the customer
+VPC.
 </Step>
 </Steps>
 
@@ -311,11 +313,10 @@ Then verify in the browser:
 6. Restart only the web container with `compose restart web`.
 7. Refresh again and confirm the conversation and title persist.
 8. Sign out and confirm the session is cleared.
-9. Confirm the browser network and container logs contain no Convex URL.
+9. Confirm the browser network and container logs reach only the local Convex backend URL.
 
-Expected capability signals include `provider: "postgres"` and
-`requiresConvexClient: false`. Features disabled by the sanity profile should
-not appear as usable navigation or routes.
+Expected capability signals include `provider: "convex"`. Features disabled by
+the sanity profile should not appear as usable navigation or routes.
 
 ## Troubleshooting
 
@@ -323,7 +324,8 @@ not appear as usable navigation or routes.
 | --- | --- |
 | Web container is unhealthy | `compose logs web`; validate every placeholder in `.env`; confirm the config file is mounted. |
 | Migration cannot connect | RDS security group, database hostname, URL-encoded password, CA hostname verification, and database ownership. |
-| Migration cannot create `vector` | Install `pgvector` once in `overlay_app` with the RDS administrator, then rerun migrations as `overlay_app`. |
+| Web cannot reach the backend | `NEXT_PUBLIC_CONVEX_URL`, backend `/version` health, `INTERNAL_API_SECRET` matching on both sides, and compose network resolution. |
+| Backend restarts or loses its lease | `compose logs backend`, free disk for the persistence volume, and `POSTGRES_URL`/`INSTANCE_SECRET` if external persistence is used. |
 | Better Auth reports canonical and legacy connections together | Use `BETTER_AUTH_CONNECTION_*` for the connection registry and remove legacy `BETTER_AUTH_DEFAULT_SSO_*` and `BETTER_AUTH_OIDC_*` values from both the environment and JSON config. |
 | Redis requests fail closed | ElastiCache endpoint, TLS URL beginning with `rediss://`, security groups, and authentication token. |
 | OIDC returns a callback error | Exact callback, provider ID, issuer, client ID/secret, trusted origin, and SSH tunnel. |
@@ -351,10 +353,10 @@ approved AWS mechanism:
 Deploy the approved Overlay release by following docs/deploy-operate/docker-ec2.mdx.
 
 Objective:
-- Complete a disposable EC2 sanity check using external RDS PostgreSQL and
-  ElastiCache Redis.
-- Prove OIDC sign-in, Postgres persistence, one chat response, container restart
-  recovery, and zero Convex traffic.
+- Complete a disposable EC2 sanity check using a self-hosted Convex backend,
+  external RDS PostgreSQL for Better Auth, and ElastiCache Redis.
+- Prove OIDC sign-in, Convex persistence, one chat response, and container
+  restart recovery.
 
 Hard rules:
 - Work only in the approved nonproduction AWS account and Region.
@@ -363,7 +365,7 @@ Hard rules:
   RDS/Redis public.
 - Do not print, echo, commit, upload, or include secret values in your report.
 - Ask me to populate missing provider credentials in deploy/ec2/.env; set mode 0600.
-- Use two separate databases and the exact approved source commit.
+- Use the auth-scoped database and the exact approved source commit.
 - Stop before any destructive action or when an architecture input is ambiguous.
 
 Execution:
@@ -372,9 +374,10 @@ Execution:
 3. Present the minimal proposed changes and wait for approval.
 4. Provision or reuse only approved disposable resources.
 5. Clone the approved release, configure the ignored files, validate Compose,
-   build one image, run migrations once, and start web/worker/scheduler.
+   build one image, start the Convex backend, deploy Convex functions, run the
+   Better Auth migration once, and start web.
 6. Run all command-line checks in the guide. Pause for my interactive OIDC login.
-7. Complete persistence and restart QA, inspect logs, and prove no Convex traffic.
+7. Complete persistence and restart QA and inspect logs for expected Convex traffic.
 8. Return a redacted report with resource IDs, Git SHA, image ID, test results,
    failures, cleanup steps, and a PASS or FAIL decision. Never return secrets.
 ```

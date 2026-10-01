@@ -25,7 +25,7 @@ import { AUTOMATION_GRAPH_VERSION } from './contracts'
 
 test('automation sidebar helpers preserve labels, routes, and optimistic state', () => {
   const automations = [
-    { _id: 'auto_1', title: 'Draft', enabled: true, createdAt: 1, updatedAt: 1, sourceConversationId: 'chat_1' },
+    { _id: 'auto_1', title: 'Draft', enabled: true, createdAt: 1, updatedAt: 1, sourceConversationId: 'chat_source', conversationId: 'chat_1' },
     { _id: 'auto_2', name: 'Daily', enabled: false, createdAt: 1, updatedAt: 1, lastError: 'boom' },
   ]
 

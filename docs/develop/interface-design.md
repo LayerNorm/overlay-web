@@ -32,10 +32,28 @@ Agent type, harness, environment, and access pickers are stacked radio rows
 Swatch grids (avatar shapes, colors, theme presets) are the exception: they
 are value pickers like theme presets, not cards.
 
+Short either/or choices (agent type, access, tool presets) use the shared
+`SegmentedControl` with `layout="stretch"`. An option that is not available yet
+stays visible but `disabled`, with a description such as "Coming soon".
+
+## Explanations live behind info icons
+
+Creation dialogs carry no hint lines. Labels are one or two words; anything
+that needs explaining gets an `InfoTip` (Lucide `Info`, `DelayedTooltip`) after
+the label, via `FieldLabel` in `src/features/agents/components/InfoTip.tsx`.
+
+## Avatars are edited in place
+
+The agent avatar is a button: hover shows a pencil, click opens
+`AgentAvatarPicker` with every creature shape (previewed in the current color)
+and the `AVATAR_COLORS` swatches. The new-agent dialog centres it above the
+name; the editor's identity section anchors the popover to its left edge.
+
 ## Editors save explicitly — no autosave, no save bar
 
 The agent editor reverted from instant-save after review: edits persist only
-on an explicit **Save changes** (edit mode) or **Create agent** (new mode),
+on an explicit **Save changes** (edit mode) or **Create agent** (the
+new-agent dialog, `NewAgentDialog`),
 with **Cancel** discarding back to the loaded agent and closing. No sticky
 glassmorphic footer bars anywhere — buttons sit in-flow at the end of the
 form. Rationale: agent identity edits are consequential (instructions, tools,

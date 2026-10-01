@@ -21,6 +21,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const raw = form.get('file')
     const result = await fileService.ingestDocument({
       userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
       file: raw instanceof File ? raw : null,
       parentId: typeof form.get('parentId') === 'string' ? form.get('parentId') as string : undefined,
     })

@@ -47,7 +47,12 @@ export class AgentHostRuntime {
       if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) throw new Error('event outbox backpressure limit reached')
     }
     const response = await this.options.controlPlane.pollCommands({ waitMs, ...(signal ? { signal } : {}) })
-    for (const command of response.commands) await this.processCommand(command)
+    // Sequential on purpose: commands arrive ordered and may build on each
+    // other (e.g. stop after start), so they must be processed in order.
+    for (const command of response.commands) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
+      await this.processCommand(command)
+    }
     await this.flushOutbox()
     return response.retryAfterMs ?? 0
   }
@@ -150,6 +155,9 @@ export class AgentHostRuntime {
         runId: events[0].runId,
         events,
       })
+      // Sequential on purpose: batches carry ordered sequences; the next
+      // iteration reads pendingEvents after this batch is acknowledged.
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
       const acknowledgement = await this.options.controlPlane.uploadEvents(batch)
       if (acknowledgement.accepted) {
         const lastSentSequence = batch.events.at(-1)!.sourceSequence

@@ -147,6 +147,7 @@ export interface UsageRepository {
   listReconciliationQueue(args?: {
     limit?: number
     updatedBefore?: number
+    userId?: string
   }): Promise<UsageReconciliationQueueItem[]>
   resolveReconciliation(args: {
     actualCostCents?: number

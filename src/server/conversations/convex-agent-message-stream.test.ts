@@ -17,8 +17,7 @@ const hasConvexUrl = Boolean(
 const hasInternalSecret = Boolean(process.env.INTERNAL_API_SECRET?.trim())
 
 /**
- * The Convex half of the durable agent turn contract, mirroring
- * `postgres-agent-message-stream.test.ts`. Deploying validates the schema and
+ * The Convex durable agent turn contract. Deploying validates the schema and
  * types but never executes a mutation, so without this nothing proves the
  * streaming writes, the idempotency, or the terminal-state guards actually run.
  */

@@ -103,19 +103,7 @@ export function AuthorizationAdminPanel({
   )
 }
 
-function RolesPanel({
-  canManage,
-  capabilities,
-  roles,
-  userDirectory,
-  onChanged,
-}: {
-  canManage: boolean
-  capabilities: AuthorizationCapabilityDefinition[]
-  roles: AuthorizationRole[]
-  userDirectory: AuthorizationUserSummary[]
-  onChanged(): Promise<void>
-}) {
+function useRoleEditor(roles: AuthorizationRole[], onChanged: () => Promise<void>) {
   const [selectedId, setSelectedId] = useState<string | null>(roles[0]?.id ?? null)
   const [creating, setCreating] = useState(false)
   const selected = roles.find((role) => role.id === selectedId) ?? null
@@ -190,7 +178,139 @@ function RolesPanel({
     setError(null)
   }
 
+  function select(id: string) {
+    setCreating(false)
+    setSelectedId(id)
+    setError(null)
+  }
+
+  return {
+    selected,
+    creating,
+    name,
+    setName,
+    description,
+    setDescription,
+    selectedCapabilities,
+    setSelectedCapabilities,
+    busy,
+    error,
+    save,
+    archive,
+    startCreate,
+    select,
+  }
+}
+
+function RoleListItem({
+  role,
+  selected,
+  onSelect,
+}: {
+  role: AuthorizationRole
+  selected: boolean
+  onSelect(id: string): void
+}) {
+  return (
+    <button
+      type="button"
+      className={`w-full px-2 py-3 text-left text-sm ${selected ? 'bg-[var(--surface)]' : ''}`}
+      onClick={() => onSelect(role.id)}
+    >
+      <span className="flex items-center justify-between gap-2 font-medium">
+        {role.name}
+        {role.isSystem ? <span className={badgeClass}>System</span> : null}
+      </span>
+      <span className="mt-1 block text-xs text-[var(--muted)]">{role.capabilities.length} capabilities</span>
+    </button>
+  )
+}
+
+function RoleEditor({
+  canManage,
+  capabilities,
+  editor,
+  userDirectory,
+  onChanged,
+}: {
+  canManage: boolean
+  capabilities: AuthorizationCapabilityDefinition[]
+  editor: ReturnType<typeof useRoleEditor>
+  userDirectory: AuthorizationUserSummary[]
+  onChanged(): Promise<void>
+}) {
+  const {
+    selected,
+    creating,
+    name,
+    setName,
+    description,
+    setDescription,
+    selectedCapabilities,
+    setSelectedCapabilities,
+    busy,
+    error,
+    save,
+    archive,
+  } = editor
   const editable = canManage && (creating || roleIsEditable(selected))
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Shield size={17} />
+          <h2 className="text-sm font-semibold">{creating ? 'New role' : selected?.name}</h2>
+        </div>
+        {canManage && !creating && selected && roleIsEditable(selected) ? (
+          <button type="button" aria-label="Archive role" className={iconButtonClass} disabled={busy} onClick={() => void archive()}>
+            <Archive size={15} />
+          </button>
+        ) : null}
+      </div>
+      {selected?.isSystem ? <p className="mt-3 text-xs text-[var(--muted)]">System roles are managed by Overlay and cannot be changed.</p> : null}
+      {error ? <ErrorMessage value={error} /> : null}
+      <div className="mt-5 grid gap-3">
+        <label className={labelClass}>
+          Name
+          <input className={inputClass} disabled={!editable} value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label className={labelClass}>
+          Description
+          <textarea
+            className={`${inputClass} min-h-20 py-2`}
+            disabled={!editable}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+      </div>
+      <CapabilityPicker definitions={capabilities} disabled={!editable} selected={selectedCapabilities} onChange={setSelectedCapabilities} />
+      {editable ? (
+        <button type="button" className={`${primaryButtonClass} mt-5`} disabled={busy || !name.trim()} onClick={() => void save()}>
+          <Check size={15} /> Save role
+        </button>
+      ) : null}
+      {!creating && selected ? <UserRoleAssignments canManage={canManage} role={selected} userDirectory={userDirectory} onChanged={onChanged} /> : null}
+    </>
+  )
+}
+
+function RolesPanel({
+  canManage,
+  capabilities,
+  roles,
+  userDirectory,
+  onChanged,
+}: {
+  canManage: boolean
+  capabilities: AuthorizationCapabilityDefinition[]
+  roles: AuthorizationRole[]
+  userDirectory: AuthorizationUserSummary[]
+  onChanged(): Promise<void>
+}) {
+  const editor = useRoleEditor(roles, onChanged)
+  const { selected, creating, startCreate, select } = editor
 
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -200,22 +320,12 @@ function RolesPanel({
         </button> : null}
         <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {roles.map((role) => (
-            <button
-              type="button"
+            <RoleListItem
               key={role.id}
-              className={`w-full px-2 py-3 text-left text-sm ${selected?.id === role.id && !creating ? 'bg-[var(--surface)]' : ''}`}
-              onClick={() => {
-                setCreating(false)
-                setSelectedId(role.id)
-                setError(null)
-              }}
-            >
-              <span className="flex items-center justify-between gap-2 font-medium">
-                {role.name}
-                {role.isSystem ? <span className={badgeClass}>System</span> : null}
-              </span>
-              <span className="mt-1 block text-xs text-[var(--muted)]">{role.capabilities.length} capabilities</span>
-            </button>
+              role={role}
+              selected={selected?.id === role.id && !creating}
+              onSelect={select}
+            />
           ))}
           {roles.length === 0 ? <p className="px-2 py-4 text-sm text-[var(--muted)]">No roles yet.</p> : null}
         </div>
@@ -223,43 +333,13 @@ function RolesPanel({
 
       <div>
         {creating || selected ? (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Shield size={17} />
-                <h2 className="text-sm font-semibold">{creating ? 'New role' : selected?.name}</h2>
-              </div>
-              {canManage && !creating && selected && roleIsEditable(selected) ? (
-                <button type="button" aria-label="Archive role" className={iconButtonClass} disabled={busy} onClick={() => void archive()}>
-                  <Archive size={15} />
-                </button>
-              ) : null}
-            </div>
-            {selected?.isSystem ? <p className="mt-3 text-xs text-[var(--muted)]">System roles are managed by Overlay and cannot be changed.</p> : null}
-            {error ? <ErrorMessage value={error} /> : null}
-            <div className="mt-5 grid gap-3">
-              <label className={labelClass}>
-                Name
-                <input className={inputClass} disabled={!editable} value={name} onChange={(event) => setName(event.target.value)} />
-              </label>
-              <label className={labelClass}>
-                Description
-                <textarea
-                  className={`${inputClass} min-h-20 py-2`}
-                  disabled={!editable}
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-              </label>
-            </div>
-            <CapabilityPicker definitions={capabilities} disabled={!editable} selected={selectedCapabilities} onChange={setSelectedCapabilities} />
-            {editable ? (
-              <button type="button" className={`${primaryButtonClass} mt-5`} disabled={busy || !name.trim()} onClick={() => void save()}>
-                <Check size={15} /> Save role
-              </button>
-            ) : null}
-            {!creating && selected ? <UserRoleAssignments canManage={canManage} role={selected} userDirectory={userDirectory} onChanged={onChanged} /> : null}
-          </>
+          <RoleEditor
+            canManage={canManage}
+            capabilities={capabilities}
+            editor={editor}
+            userDirectory={userDirectory}
+            onChanged={onChanged}
+          />
         ) : (
           <EmptyState icon={<Shield size={18} />} title="Select or create a role" />
         )}
@@ -446,7 +526,7 @@ function UserRoleAssignments({
   )
 }
 
-function GroupsPanel({ canManage, canManageRoles, canReadRoles, groups, roles, onChanged }: { canManage: boolean; canManageRoles: boolean; canReadRoles: boolean; groups: AuthorizationGroup[]; roles: AuthorizationRole[]; onChanged(): Promise<void> }) {
+function useGroupEditor(groups: AuthorizationGroup[], onChanged: () => Promise<void>) {
   const [selectedId, setSelectedId] = useState<string | null>(groups[0]?.id ?? null)
   const [creating, setCreating] = useState(false)
   const selected = groups.find((group) => group.id === selectedId) ?? null
@@ -507,93 +587,172 @@ function GroupsPanel({ canManage, canManageRoles, canReadRoles, groups, roles, o
     }
   }
 
+  function startCreate() {
+    setCreating(true)
+    setSelectedId(null)
+    setName('')
+    setDescription('')
+    setError(null)
+  }
+
+  function select(id: string) {
+    setCreating(false)
+    setSelectedId(id)
+    setError(null)
+  }
+
+  return {
+    selected,
+    creating,
+    name,
+    setName,
+    description,
+    setDescription,
+    busy,
+    error,
+    save,
+    archive,
+    startCreate,
+    select,
+  }
+}
+
+function GroupListItem({
+  group,
+  selected,
+  onSelect,
+}: {
+  group: AuthorizationGroup
+  selected: boolean
+  onSelect(id: string): void
+}) {
+  return (
+    <button
+      type="button"
+      className={`w-full px-2 py-3 text-left text-sm ${selected ? 'bg-[var(--surface)]' : ''}`}
+      onClick={() => onSelect(group.id)}
+    >
+      <span className="flex items-center justify-between gap-2 font-medium">
+        {group.name}
+        <span className={badgeClass}>{group.source}</span>
+      </span>
+      {group.description ? <span className="mt-1 block truncate text-xs text-[var(--muted)]">{group.description}</span> : null}
+    </button>
+  )
+}
+
+function GroupEditor({
+  canManage,
+  canManageRoles,
+  canReadRoles,
+  editor,
+  roles,
+}: {
+  canManage: boolean
+  canManageRoles: boolean
+  canReadRoles: boolean
+  editor: ReturnType<typeof useGroupEditor>
+  roles: AuthorizationRole[]
+}) {
+  const {
+    selected,
+    creating,
+    name,
+    setName,
+    description,
+    setDescription,
+    busy,
+    error,
+    save,
+    archive,
+  } = editor
   const editable = canManage && (creating || groupIsEditable(selected))
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Users size={17} />
+          <h2 className="text-sm font-semibold">{creating ? 'New group' : selected?.name}</h2>
+        </div>
+        {canManage && !creating && selected && groupIsEditable(selected) ? (
+          <button type="button" aria-label="Archive group" className={iconButtonClass} disabled={busy} onClick={() => void archive()}>
+            <Archive size={15} />
+          </button>
+        ) : null}
+      </div>
+      {selected?.source === 'external' ? (
+        <p className="mt-3 text-xs text-[var(--muted)]">This group is synchronized by an external identity provider and is read-only.</p>
+      ) : null}
+      {error ? <ErrorMessage value={error} /> : null}
+      <div className="mt-5 grid gap-3">
+        <label className={labelClass}>
+          Name
+          <input className={inputClass} disabled={!editable} value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label className={labelClass}>
+          Description
+          <textarea
+            className={`${inputClass} min-h-20 py-2`}
+            disabled={!editable}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+      </div>
+      {editable ? (
+        <button type="button" className={`${primaryButtonClass} mt-5`} disabled={busy || !name.trim()} onClick={() => void save()}>
+          <Check size={15} /> Save group
+        </button>
+      ) : null}
+      {!creating && selected ? (
+        <GroupAccess
+          canManageGroup={canManage && groupIsEditable(selected)}
+          canManageRoleAssignments={canManageRoles}
+          canReadRoles={canReadRoles}
+          group={selected}
+          roles={roles}
+        />
+      ) : null}
+    </>
+  )
+}
+
+function GroupsPanel({ canManage, canManageRoles, canReadRoles, groups, roles, onChanged }: { canManage: boolean; canManageRoles: boolean; canReadRoles: boolean; groups: AuthorizationGroup[]; roles: AuthorizationRole[]; onChanged(): Promise<void> }) {
+  const editor = useGroupEditor(groups, onChanged)
+  const { selected, creating, startCreate, select } = editor
+
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="border-r-0 border-[var(--border)] lg:border-r lg:pr-5">
         {canManage ? <button
           type="button"
           className={`${secondaryButtonClass} w-full justify-center`}
-          onClick={() => {
-            setCreating(true)
-            setSelectedId(null)
-            setName('')
-            setDescription('')
-            setError(null)
-          }}
+          onClick={startCreate}
         >
           <Plus size={15} /> New group
         </button> : null}
         <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {groups.map((group) => (
-            <button
-              type="button"
+            <GroupListItem
               key={group.id}
-              className={`w-full px-2 py-3 text-left text-sm ${selected?.id === group.id && !creating ? 'bg-[var(--surface)]' : ''}`}
-              onClick={() => {
-                setCreating(false)
-                setSelectedId(group.id)
-                setError(null)
-              }}
-            >
-              <span className="flex items-center justify-between gap-2 font-medium">
-                {group.name}
-                <span className={badgeClass}>{group.source}</span>
-              </span>
-              {group.description ? <span className="mt-1 block truncate text-xs text-[var(--muted)]">{group.description}</span> : null}
-            </button>
+              group={group}
+              selected={selected?.id === group.id && !creating}
+              onSelect={select}
+            />
           ))}
           {groups.length === 0 ? <p className="px-2 py-4 text-sm text-[var(--muted)]">No groups yet.</p> : null}
         </div>
       </aside>
       <div>
         {creating || selected ? (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Users size={17} />
-                <h2 className="text-sm font-semibold">{creating ? 'New group' : selected?.name}</h2>
-              </div>
-              {canManage && !creating && selected && groupIsEditable(selected) ? (
-                <button type="button" aria-label="Archive group" className={iconButtonClass} disabled={busy} onClick={() => void archive()}>
-                  <Archive size={15} />
-                </button>
-              ) : null}
-            </div>
-            {selected?.source === 'external' ? (
-              <p className="mt-3 text-xs text-[var(--muted)]">This group is synchronized by an external identity provider and is read-only.</p>
-            ) : null}
-            {error ? <ErrorMessage value={error} /> : null}
-            <div className="mt-5 grid gap-3">
-              <label className={labelClass}>
-                Name
-                <input className={inputClass} disabled={!editable} value={name} onChange={(event) => setName(event.target.value)} />
-              </label>
-              <label className={labelClass}>
-                Description
-                <textarea
-                  className={`${inputClass} min-h-20 py-2`}
-                  disabled={!editable}
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-              </label>
-            </div>
-            {editable ? (
-              <button type="button" className={`${primaryButtonClass} mt-5`} disabled={busy || !name.trim()} onClick={() => void save()}>
-                <Check size={15} /> Save group
-              </button>
-            ) : null}
-            {!creating && selected ? (
-              <GroupAccess
-                canManageGroup={canManage && groupIsEditable(selected)}
-                canManageRoleAssignments={canManageRoles}
-                canReadRoles={canReadRoles}
-                group={selected}
-                roles={roles}
-              />
-            ) : null}
-          </>
+          <GroupEditor
+            canManage={canManage}
+            canManageRoles={canManageRoles}
+            canReadRoles={canReadRoles}
+            editor={editor}
+            roles={roles}
+          />
         ) : (
           <EmptyState icon={<Users size={18} />} title="Select or create a group" />
         )}

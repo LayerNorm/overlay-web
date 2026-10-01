@@ -42,18 +42,18 @@ export const enqueueByServer = mutation({
     const now = Date.now()
     let enqueued = 0
 
-    for (const subscription of subscriptions) {
-      if (!subscriptionMatchesEvent(subscription.events, args.eventType)) continue
-
-      const duplicate = await ctx.db
+    const matchingSubscriptions = subscriptions.filter((subscription) =>
+      subscriptionMatchesEvent(subscription.events, args.eventType))
+    const duplicates = await Promise.all(matchingSubscriptions.map((subscription) =>
+      ctx.db
         .query('webhookDeliveries')
         .withIndex('by_subscriptionId_eventId', (q) =>
           q.eq('subscriptionId', subscription._id).eq('eventId', args.eventId),
         )
-        .first()
-      if (duplicate) continue
-
-      await ctx.db.insert('webhookDeliveries', {
+        .first()))
+    const freshSubscriptions = matchingSubscriptions.filter((_, i) => !duplicates[i])
+    await Promise.all(freshSubscriptions.map((subscription) =>
+      ctx.db.insert('webhookDeliveries', {
         userId: args.userId,
         subscriptionId: subscription._id,
         eventId: args.eventId,
@@ -64,9 +64,8 @@ export const enqueueByServer = mutation({
         nextAttemptAt: now,
         createdAt: now,
         updatedAt: now,
-      })
-      enqueued += 1
-    }
+      })))
+    enqueued = freshSubscriptions.length
 
     return { enqueued }
   },
@@ -190,15 +189,11 @@ export const claimDueDeliveries = internalMutation({
       )
       .take(cappedLimit)
 
-    const claimed: Id<'webhookDeliveries'>[] = []
-    for (const row of due) {
-      await ctx.db.patch(row._id, {
-        status: 'delivering',
-        updatedAt: args.now,
-      })
-      claimed.push(row._id)
-    }
-    return claimed
+    await Promise.all(due.map((row) => ctx.db.patch(row._id, {
+      status: 'delivering',
+      updatedAt: args.now,
+    })))
+    return due.map((row) => row._id)
   },
 })
 
@@ -308,15 +303,11 @@ async function resetStuckDeliveringRows(
     .withIndex('by_status_nextAttemptAt', (q) => q.eq('status', 'delivering'))
     .take(Math.min(Math.max(limit, 1), 200))
 
-  let reset = 0
-  for (const row of stuck) {
-    if (row.updatedAt > cutoff) continue
-    await ctx.db.patch(row._id, {
-      status: 'pending',
-      nextAttemptAt: now,
-      updatedAt: now,
-    })
-    reset += 1
-  }
-  return { reset }
+  const stale = stuck.filter((row) => row.updatedAt <= cutoff)
+  await Promise.all(stale.map((row) => ctx.db.patch(row._id, {
+    status: 'pending',
+    nextAttemptAt: now,
+    updatedAt: now,
+  })))
+  return { reset: stale.length }
 }

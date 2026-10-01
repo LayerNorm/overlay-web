@@ -37,7 +37,10 @@ function isTextPart(p: AnyPart): boolean {
 function isImagePart(p: AnyPart): boolean {
   if (p.type === 'tool-invocation') return false
   if (!p.url) return false
-  return p.type === 'image' || (typeof p.mediaType === 'string' && p.mediaType.startsWith('image/'))
+  return (
+    p.type === 'image' ||
+    (typeof p.mediaType === 'string' && p.mediaType.startsWith('image/'))
+  )
 }
 
 function isFilePart(p: AnyPart): boolean {
@@ -52,7 +55,7 @@ function joinUserText(message: Message): string {
   for (const part of asParts(message)) {
     if (isTextPart(part) && part.text) chunks.push(part.text)
   }
-  return chunks.join('\n\n')
+  return chunks.join("\n\n")
 }
 
 function UserMessage({ message }: { message: Message }) {
@@ -65,9 +68,9 @@ function UserMessage({ message }: { message: Message }) {
       <div className="flex max-w-[85%] flex-col items-end gap-2">
         {imageParts.length > 0 && (
           <div className="flex flex-wrap justify-end gap-2">
-            {imageParts.map((part, idx) => (
+            {imageParts.map((part) => (
               <img
-                key={idx}
+                key={part.url}
                 src={part.url}
                 alt=""
                 className="max-h-60 max-w-full rounded-lg border border-[var(--border)] object-cover"
@@ -77,9 +80,9 @@ function UserMessage({ message }: { message: Message }) {
         )}
         {fileParts.length > 0 && (
           <div className="flex flex-wrap justify-end gap-2">
-            {fileParts.map((part, idx) => (
+            {fileParts.map((part) => (
               <span
-                key={idx}
+                key={part.fileName}
                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--muted)]"
               >
                 {part.fileName ?? 'Attachment'}
@@ -99,19 +102,28 @@ function UserMessage({ message }: { message: Message }) {
 
 function AssistantMessage({ message }: { message: Message }) {
   const parts = asParts(message)
-  const hasRenderableParts = parts.some((part) => (
-    isTextPart(part) ||
-    isImagePart(part) ||
-    isGeneratedUiPart(part)
-  ))
-  const fallbackText = hasRenderableParts ? '' : message.content?.trim() ?? ''
+  const hasRenderableParts = parts.some(
+    (part) => isTextPart(part) || isImagePart(part) || isGeneratedUiPart(part),
+  )
+  const fallbackText = hasRenderableParts
+    ? ''
+    : (message.content?.trim() ?? '')
   return (
     <div className="flex justify-start">
       <div className="flex w-full max-w-[100%] flex-col gap-3">
-        {fallbackText ? <MarkdownMessage text={fallbackText} isStreaming={false} /> : null}
-        {hasRenderableParts ? parts.map((part, idx) => {
+        {fallbackText ? (
+          <MarkdownMessage text={fallbackText} isStreaming={false} />
+        ) : null}
+        {hasRenderableParts
+          ? parts.map((part) => {
           if (isTextPart(part) && part.text?.trim()) {
-            return <MarkdownMessage key={idx} text={part.text} isStreaming={false} />
+                return (
+                  <MarkdownMessage
+                    key={part.text}
+                    text={part.text}
+                    isStreaming={false}
+                  />
+                )
           }
           if (isGeneratedUiPart(part)) {
             return <GeneratedUiCard key={part.id} part={part} readOnly />
@@ -119,7 +131,7 @@ function AssistantMessage({ message }: { message: Message }) {
           if (isImagePart(part)) {
             return (
               <img
-                key={idx}
+                    key={part.url}
                 src={part.url}
                 alt=""
                 className="max-h-96 max-w-full rounded-lg border border-[var(--border)] object-contain"
@@ -133,8 +145,14 @@ function AssistantMessage({ message }: { message: Message }) {
   )
 }
 
-export function SharedChatView({ conversation }: { conversation: SharedConversation }) {
-  const sharedAt = new Date(conversation.sharedAt).toLocaleDateString(undefined, {
+export function SharedChatView({
+  conversation,
+}: {
+  conversation: SharedConversation
+}) {
+  // Locale pinned to 'en-US' — SSR and client output are identical.
+  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+  const sharedAt = new Date(conversation.sharedAt).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -145,8 +163,12 @@ export function SharedChatView({ conversation }: { conversation: SharedConversat
       <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--background)]/95 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-3">
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-medium">{conversation.title}</h1>
-            <p className="text-[11px] text-[var(--muted)]">Shared {sharedAt} · Read-only</p>
+            <h1 className='truncate text-sm font-medium'>
+              {conversation.title}
+            </h1>
+            <p className='text-[11px] text-[var(--muted)]'>
+              Shared {sharedAt} · Read-only
+            </p>
           </div>
           <Link
             href="/"
@@ -159,7 +181,9 @@ export function SharedChatView({ conversation }: { conversation: SharedConversat
 
       <main className="mx-auto max-w-3xl px-5 py-8">
         {conversation.messages.length === 0 ? (
-          <p className="text-center text-sm text-[var(--muted)]">This conversation is empty.</p>
+          <p className='text-center text-sm text-[var(--muted)]'>
+            This conversation is empty.
+          </p>
         ) : (
           <div className="flex flex-col gap-6">
             {/* Group by turn so multi-variant Ask responses stack under the user prompt */}
@@ -173,8 +197,11 @@ export function SharedChatView({ conversation }: { conversation: SharedConversat
                   blocks[blocks.length - 1].assistants.push(m)
                 }
               }
-              return blocks.map((block, idx) => (
-                <div key={idx} className="flex flex-col gap-4">
+              return blocks.map((block) => (
+                <div
+                  key={block.user ? block.user._id : block.assistants[0]?._id}
+                  className='flex flex-col gap-4'
+                >
                   {block.user && <UserMessage message={block.user} />}
                   {block.assistants.map((m) => (
                     <AssistantMessage key={m._id} message={m} />
@@ -189,7 +216,10 @@ export function SharedChatView({ conversation }: { conversation: SharedConversat
       <footer className="mx-auto max-w-3xl px-5 pb-10">
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-xs text-[var(--muted)]">
           This is a read-only snapshot shared from{' '}
-          <Link href="/" className="font-medium text-[var(--foreground)] hover:underline">
+          <Link
+            href='/'
+            className='font-medium text-[var(--foreground)] hover:underline'
+          >
             Overlay
           </Link>
           .

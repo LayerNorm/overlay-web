@@ -13,7 +13,7 @@ import {
 } from '@overlay/app-core'
 
 export type ClientAppDataCapabilities = {
-  provider: 'convex' | 'postgres'
+  provider: 'convex'
   supportsRealtime: boolean
   supportsStreamResume: boolean
   supportsChatPersistence: boolean
@@ -88,7 +88,7 @@ function normalizeCapabilities(value: unknown): CapabilityCheck | null {
 function normalizeAppDataCapabilities(value: unknown): ClientAppDataCapabilities | null {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Partial<ClientAppDataCapabilities>
-  if (candidate.provider !== 'convex' && candidate.provider !== 'postgres') return null
+  if (candidate.provider !== 'convex') return null
   for (const key of [
     'supportsRealtime',
     'supportsStreamResume',
@@ -138,6 +138,8 @@ export function CapabilitiesProvider({
   )
   const [isLoading, setIsLoading] = useState(!initialCapabilities || !initialAppDataCapabilities)
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     if (initialCapabilities && initialAppDataCapabilities) return
     let active = true

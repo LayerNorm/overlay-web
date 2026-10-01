@@ -11,9 +11,11 @@ export async function POST(request: Request) {
     }
     const server = getOverlayServerContext()
     const controlPlane = server.connectedAgentControlPlane
-    const supervised = await controlPlane.sweepRemoteRuns()
-    const reconciliation = await controlPlane.reconcileSandboxSettlements(100)
-    const meter = await server.managedAgentSandboxBilling.meterLeases()
+    const [supervised, reconciliation, meter] = await Promise.all([
+      controlPlane.sweepRemoteRuns(),
+      controlPlane.reconcileSandboxSettlements(100),
+      server.managedAgentSandboxBilling.meterLeases(),
+    ])
     return NextResponse.json({
       reconciliation,
       supervised: supervised.expiredRunIds.length,

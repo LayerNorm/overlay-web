@@ -1,66 +1,67 @@
-'use client'
+"use client";
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
 import { ListboxSelect } from '@overlay/ui/primitives'
+import { useDialogFocus } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 interface MemoryListItem {
-  key: string
-  memoryId: string
-  segmentIndex: number
-  content: string
-  fullContent: string
-  source: string
-  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-  importance?: number
-  conversationId?: string
-  noteId?: string
-  messageId?: string
-  turnId?: string
-  tags?: string[]
-  actor?: 'user' | 'agent'
-  canDelete: boolean
-  creatorEmail?: string
-  creatorName: string
-  creatorPrincipalId?: string
-  creatorUserId: string
-  createdAt: number
-  updatedAt?: number
+  key: string;
+  memoryId: string;
+  segmentIndex: number;
+  content: string;
+  fullContent: string;
+  source: string;
+  type?: "preference" | "fact" | "project" | "decision" | "agent";
+  importance?: number;
+  conversationId?: string;
+  noteId?: string;
+  messageId?: string;
+  turnId?: string;
+  tags?: string[];
+  actor?: "user" | "agent";
+  canDelete: boolean;
+  creatorEmail?: string;
+  creatorName: string;
+  creatorPrincipalId?: string;
+  creatorUserId: string;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 interface Memory {
-  memoryId: string
-  content: string
-  source: string
-  type?: 'preference' | 'fact' | 'project' | 'decision' | 'agent'
-  importance?: number
-  conversationId?: string
-  noteId?: string
-  messageId?: string
-  turnId?: string
-  tags: string[]
-  actor?: 'user' | 'agent'
-  canDelete: boolean
-  creatorEmail?: string
-  creatorName: string
-  creatorPrincipalId?: string
-  creatorUserId: string
-  createdAt: number
-  updatedAt?: number
+  memoryId: string;
+  content: string;
+  source: string;
+  type?: "preference" | "fact" | "project" | "decision" | "agent";
+  importance?: number;
+  conversationId?: string;
+  noteId?: string;
+  messageId?: string;
+  turnId?: string;
+  tags: string[];
+  actor?: "user" | "agent";
+  canDelete: boolean;
+  creatorEmail?: string;
+  creatorName: string;
+  creatorPrincipalId?: string;
+  creatorUserId: string;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
-  const seen = new Set<string>()
-  const out: Memory[] = []
+  const seen = new Set<string>();
+  const out: Memory[] = [];
   for (const row of rows) {
-    if (seen.has(row.memoryId)) continue
-    seen.add(row.memoryId)
+    if (seen.has(row.memoryId)) continue;
+    seen.add(row.memoryId);
     out.push({
       memoryId: row.memoryId,
       content: row.fullContent,
@@ -80,39 +81,143 @@ function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
       creatorUserId: row.creatorUserId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    })
+    });
   }
-  return out
+  return out;
 }
 
 function getDateLabel(timestamp: number): string {
-  const date = new Date(timestamp)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
+  const date = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
 
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function getBadgeTone(kind: string): string {
-  void kind
-  return 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]'
+  void kind;
+  return "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]";
 }
 
 function memoryDomId(memoryId: string): string {
-  return `memory-${memoryId}`
+  return `memory-${memoryId}`;
 }
 
 interface MemoriesHeaderState {
-  count: number
-  actions: ReactNode
+  count: number;
+  actions: ReactNode;
 }
 
 interface MemoriesViewProps {
-  userId: string
-  onHeaderStateChange?: (state: MemoriesHeaderState | null) => void
+  userId: string;
+  onHeaderStateChange?: (state: MemoriesHeaderState | null) => void;
+}
+
+interface MemoryMemberOption {
+  name: string
+  principalId: string
+  isAgent?: boolean
+}
+
+function useMemoryMembers({
+  activeWorkspaceId,
+  loadMemories,
+}: {
+  activeWorkspaceId: string | null | undefined
+  loadMemories: (memberPrincipalId?: string) => Promise<void>
+}) {
+  const [members, setMembers] = useState<MemoryMemberOption[]>([])
+  const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    let cancelled = false;
+    // `?owner=<principalId>` deep-links from an agent profile's memories section.
+    const requestedOwner = typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('owner')?.trim() || null
+    queueMicrotask(() => {
+      setSelectedIds(new Set())
+      setSelectionMode(false)
+    })
+    void Promise.all([
+      overlayAppClient.workspaces.management(activeWorkspaceId, "people"),
+      overlayAppClient.workspaces.management(activeWorkspaceId, "guests"),
+      overlayAppClient.agents
+        .list(activeWorkspaceId)
+        .catch(() => ({ agents: [] })),
+      requestedOwner ? Promise.resolve() : loadMemories("all"),
+    ])
+      .then(([people, guests, agentDirectory]) => {
+        if (cancelled) return;
+        const byPrincipalId = new Map<
+          string,
+          { name: string; principalId: string; isAgent?: boolean }
+        >();
+        for (const item of [...people.items, ...guests.items]) {
+          if (
+            item.kind === "member" &&
+            item.principalId &&
+            item.status === "active"
+          ) {
+            byPrincipalId.set(item.principalId, {
+              name: item.name,
+              principalId: item.principalId,
+            });
+          }
+        }
+        // Agents appear after humans — they own memories in their own right and
+        // the same member filter resolves them server-side.
+        const humans = [...byPrincipalId.values()].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+        const agents = (agentDirectory.agents ?? [])
+          .filter((agent) => agent.principalId)
+          .map((agent) => ({
+            name: agent.name,
+            principalId: agent.principalId,
+            isAgent: true as const,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const options = [...humans, ...agents];
+        setMembers(options);
+        const initial =
+          requestedOwner &&
+          options.some((m) => m.principalId === requestedOwner)
+            ? requestedOwner
+            : "all";
+        setSelectedMemberPrincipalId(initial);
+        if (requestedOwner) void loadMemories(initial);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMembers([]);
+          setSelectedMemberPrincipalId("all");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspaceId, loadMemories]);
+
+  return {
+    members,
+    selectedMemberPrincipalId,
+    setSelectedMemberPrincipalId,
+    selectionMode,
+    setSelectionMode,
+    selectedIds,
+    setSelectedIds,
+  }
 }
 
 export default function MemoriesView({ userId: _userId, onHeaderStateChange }: MemoriesViewProps) {
@@ -122,8 +227,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   /** Set when a chat source citation deep-links here via `?memory=<id>`. */
   const [highlightedMemoryId, setHighlightedMemoryId] = useState<string | null>(null)
   const jumpedMemoryIdRef = useRef<string | null>(null)
-  const [members, setMembers] = useState<Array<{ name: string; principalId: string }>>([])
-  const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
   const loadRequestIdRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -133,8 +236,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const actionButtonClass =
     'flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
   const dialogButtonClass =
@@ -165,89 +266,86 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     }
   }, [])
 
-  useEffect(() => {
-    if (!activeWorkspaceId) return
-    let cancelled = false
-    setSelectedMemberPrincipalId('all')
-    setSelectedIds(new Set())
-    setSelectionMode(false)
-    void Promise.all([
-      overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
-      overlayAppClient.workspaces.management(activeWorkspaceId, 'guests'),
-      loadMemories('all'),
-    ]).then(([people, guests]) => {
-      if (cancelled) return
-      const byPrincipalId = new Map<string, { name: string; principalId: string }>()
-      for (const item of [...people.items, ...guests.items]) {
-        if (item.kind === 'member' && item.principalId && item.status === 'active') {
-          byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
-        }
-      }
-      setMembers([...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name)))
-    }).catch(() => {
-      if (!cancelled) setMembers([])
-    })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, loadMemories])
+  const {
+    members,
+    selectedMemberPrincipalId,
+    setSelectedMemberPrincipalId,
+    selectionMode,
+    setSelectionMode,
+    selectedIds,
+    setSelectedIds,
+  } = useMemoryMembers({ activeWorkspaceId, loadMemories })
 
   // Deep link from a chat source chip: scroll the cited memory into view and
   // ring it, mirroring the message permalink behaviour in chats.
   useEffect(() => {
-    const target = typeof window === 'undefined'
-      ? null
-      : new URLSearchParams(window.location.search).get('memory')?.trim() || null
-    if (!target || jumpedMemoryIdRef.current === target) return
-    if (!memories.some((memory) => memory.memoryId === target)) return
-    jumpedMemoryIdRef.current = target
-    setHighlightedMemoryId(target)
-    document.getElementById(memoryDomId(target))?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [memories])
+    const target =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("memory")?.trim() ||
+          null;
+    if (!target || jumpedMemoryIdRef.current === target) return;
+    if (!memories.some((memory) => memory.memoryId === target)) return;
+    jumpedMemoryIdRef.current = target;
+    setHighlightedMemoryId(target);
+    document
+      .getElementById(memoryDomId(target))
+      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [memories]);
 
   useEffect(() => {
-    if (!highlightedMemoryId) return
-    const timer = window.setTimeout(() => setHighlightedMemoryId(null), 2_600)
-    return () => window.clearTimeout(timer)
-  }, [highlightedMemoryId])
+    if (!highlightedMemoryId) return;
+    const timer = window.setTimeout(() => setHighlightedMemoryId(null), 2_600);
+    return () => window.clearTimeout(timer);
+  }, [highlightedMemoryId]);
 
   async function handleAdd() {
-    const text = addText.trim()
-    if (!text || isSaving) return
-    setIsSaving(true)
-    setSaveError(null)
-    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
-    setPendingSavePreview(preview)
+    const text = addText.trim();
+    if (!text || isSaving) return;
+    setIsSaving(true);
+    setSaveError(null);
+    const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text;
+    setPendingSavePreview(preview);
     try {
       const res = await overlayAppClient.memory.createResponse({
         content: text,
-        source: 'manual',
+        source: "manual",
         type: addType,
         importance: Number(addImportance) || 3,
-        actor: 'user',
-      })
-      const data = (await res.json().catch(() => null)) as { error?: string } | null
+        actor: "user",
+      });
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       if (!res.ok) {
-        setSaveError(typeof data?.error === 'string' ? data.error : 'Could not save memory')
-        return
+        setSaveError(
+          typeof data?.error === "string"
+            ? data.error
+            : "Could not save memory",
+        );
+        return;
       }
-      setAddText('')
-      setAddType('fact')
-      setAddImportance('3')
-      setShowAdd(false)
-      await loadMemories(selectedMemberPrincipalId)
+      setAddText("");
+      setAddType("fact");
+      setAddImportance("3");
+      setShowAdd(false);
+      await loadMemories(selectedMemberPrincipalId);
     } finally {
-      setPendingSavePreview(null)
-      setIsSaving(false)
+      setPendingSavePreview(null);
+      setIsSaving(false);
     }
   }
 
   async function handleDelete(memoryId: string) {
-    await overlayAppClient.memory.deleteResponse({ memoryId })
-    setMemories((prev) => prev.filter((memory) => memory.memoryId !== memoryId))
+    await overlayAppClient.memory.deleteResponse({ memoryId });
+    setMemories((prev) =>
+      prev.filter((memory) => memory.memoryId !== memoryId),
+    );
     setSelectedIds((prev) => {
-      const next = new Set(prev)
-      next.delete(memoryId)
-      return next
-    })
+      const next = new Set(prev);
+      next.delete(memoryId);
+      return next;
+    });
   }
 
   const handleBulkDelete = useCallback(async () => {
@@ -257,75 +355,66 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     setMemories((prev) => prev.filter((memory) => !selectedIds.has(memory.memoryId)))
     setSelectedIds(new Set())
     setSelectionMode(false)
-  }, [selectedIds])
+  }, [selectedIds, setSelectedIds, setSelectionMode])
 
   async function handleCopy(memory: Memory) {
-    if (typeof navigator === 'undefined' || !navigator.clipboard) return
-    await navigator.clipboard.writeText(memory.content)
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(memory.content);
   }
 
   function toggleSelected(memoryId: string) {
     setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(memoryId)) next.delete(memoryId)
-      else next.add(memoryId)
-      return next
-    })
+      const next = new Set(prev);
+      if (next.has(memoryId)) next.delete(memoryId);
+      else next.add(memoryId);
+      return next;
+    });
   }
 
+  const handleMemberChange = useCallback((value: string) => {
+    setSelectedMemberPrincipalId(value)
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+    void loadMemories(value)
+  }, [loadMemories, setSelectedIds, setSelectedMemberPrincipalId, setSelectionMode])
+
+  const handleToggleSelectionMode = useCallback(() => {
+    setSelectionMode((value) => !value)
+    setSelectedIds(new Set())
+  }, [setSelectedIds, setSelectionMode])
+
+  const handleAddMemory = useCallback(() => {
+    setShowAdd(true)
+    setSaveError(null)
+  }, [])
+
+  const handleCloseAddDialog = useCallback(() => {
+    setShowAdd(false)
+    setSaveError(null)
+  }, [])
+
+  const handleDismissAddDialog = useCallback(() => {
+    setShowAdd(false)
+  }, [])
+
   const headerActions = useMemo(() => (
-    <>
-      <ListboxSelect
-        value={selectedMemberPrincipalId}
-        onChange={(value) => {
-          setSelectedMemberPrincipalId(value)
-          setSelectedIds(new Set())
-          setSelectionMode(false)
-          void loadMemories(value)
-        }}
-        options={[
-          { value: 'all', label: 'All' },
-          ...members.map((member) => ({ value: member.principalId, label: member.name })),
-        ]}
-        aria-label="Filter memories by workspace member"
-        className="w-40"
-        buttonClassName="min-h-8 rounded-md py-1 text-xs"
-      />
-      <button
-        onClick={() => {
-          setSelectionMode((value) => !value)
-          setSelectedIds(new Set())
-        }}
-        className={`flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs transition-colors ${
-          selectionMode
-            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-            : 'bg-[var(--surface-elevated)] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-        }`}
-      >
-        <CheckSquare size={12} />
-        {selectionMode ? 'Done' : 'Select'}
-      </button>
-      {selectionMode && selectedIds.size > 0 && (
-        <button
-          onClick={() => void handleBulkDelete()}
-          className="flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15"
-        >
-          <Trash2 size={12} />
-          Delete {selectedIds.size}
-        </button>
-      )}
-      <button
-        onClick={() => { setShowAdd(true); setSaveError(null) }}
-        className={actionButtonClass}
-      >
-        <Plus size={12} />
-        Add memory
-      </button>
-    </>
+    <MemoriesHeaderActions
+      members={members}
+      selectedMemberPrincipalId={selectedMemberPrincipalId}
+      onMemberChange={handleMemberChange}
+      selectionMode={selectionMode}
+      onToggleSelectionMode={handleToggleSelectionMode}
+      selectedCount={selectedIds.size}
+      onBulkDelete={handleBulkDelete}
+      onAddMemory={handleAddMemory}
+      actionButtonClass={actionButtonClass}
+    />
   ), [
     actionButtonClass,
+    handleAddMemory,
     handleBulkDelete,
-    loadMemories,
+    handleMemberChange,
+    handleToggleSelectionMode,
     members,
     selectedIds.size,
     selectedMemberPrincipalId,
@@ -333,17 +422,18 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   ])
 
   useEffect(() => {
-    if (!onHeaderStateChange) return
-    onHeaderStateChange({ count: memories.length, actions: headerActions })
-    return () => onHeaderStateChange(null)
-  }, [headerActions, memories.length, onHeaderStateChange])
+    if (!onHeaderStateChange) return;
+    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent, react-doctor/no-prop-callback-in-effect
+    onHeaderStateChange({ count: memories.length, actions: headerActions });
+    return () => onHeaderStateChange(null);
+  }, [headerActions, memories.length, onHeaderStateChange]);
 
-  const groups: Record<string, Memory[]> = {}
+  const groups: Record<string, Memory[]> = {};
   for (const memory of memories) {
-    const label = getDateLabel(memory.createdAt)
-    ;(groups[label] ||= []).push(memory)
+    const label = getDateLabel(memory.createdAt);
+    (groups[label] ||= []).push(memory);
   }
-  const groupLabels = Object.keys(groups)
+  const groupLabels = Object.keys(groups);
 
   return (
     <div className="flex h-full flex-col">
@@ -352,7 +442,9 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
           <h2 className="text-sm font-medium text-[var(--foreground)]">
             Memories
             {memories.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">{memories.length}</span>
+              <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">
+                {memories.length}
+              </span>
             )}
           </h2>
           <div className="flex items-center gap-2">{headerActions}</div>
@@ -360,105 +452,31 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
       ) : null}
 
       {showAdd && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setShowAdd(false)
-          }}
-        >
-          <div className="w-[520px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
-              <button
-                onClick={() => { setShowAdd(false); setSaveError(null) }}
-                className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <textarea
-              value={addText}
-              onChange={(event) => setAddText(event.target.value)}
-              placeholder="Type or paste memory content..."
-              autoFocus
-              rows={5}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && event.metaKey) void handleAdd()
-              }}
-              className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
-            />
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="text-xs text-[var(--muted)]">
-                Type
-                <ListboxSelect
-                  value={addType ?? 'fact'}
-                  onChange={(value) => setAddType(value as Memory['type'])}
-                  options={[
-                    { value: 'fact', label: 'Fact' },
-                    { value: 'preference', label: 'Preference' },
-                    { value: 'project', label: 'Project' },
-                    { value: 'decision', label: 'Decision' },
-                    { value: 'agent', label: 'Agent' },
-                  ]}
-                  className="mt-1 w-full"
-                />
-              </label>
-              <label className="text-xs text-[var(--muted)]">
-                Importance
-                <ListboxSelect
-                  value={addImportance}
-                  onChange={setAddImportance}
-                  options={['1', '2', '3', '4', '5'].map((value) => ({ value, label: value }))}
-                  className="mt-1 w-full"
-                />
-              </label>
-            </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted)]">
-              Saved memories stay as a single record, but the knowledge sidebar can still preview
-              them in short segments for easier scanning.
-            </p>
-            {saveError ? (
-              <p className="mt-3 text-xs text-red-400" role="alert">
-                {saveError}
-              </p>
-            ) : null}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => { setShowAdd(false); setSaveError(null) }}
-                className={dialogButtonClass}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleAdd()}
-                disabled={!addText.trim() || isSaving}
-                className={`${dialogButtonClass} disabled:opacity-40`}
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <AddMemoryDialog
+          addText={addText}
+          onAddTextChange={setAddText}
+          addType={addType}
+          onAddTypeChange={setAddType}
+          addImportance={addImportance}
+          onAddImportanceChange={setAddImportance}
+          isSaving={isSaving}
+          saveError={saveError}
+          onDismiss={handleDismissAddDialog}
+          onClose={handleCloseAddDialog}
+          onSave={handleAdd}
+          dialogButtonClass={dialogButtonClass}
+        />
       )}
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <MemoriesLoadingState />
         ) : memories.length === 0 && !pendingSavePreview ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--muted)]">
-            <Brain size={40} strokeWidth={1} className="opacity-40" />
-            <p className="text-sm">
-              {selectedMemberPrincipalId === 'all'
-                ? 'No memories yet'
-                : `No memories from ${members.find((member) => member.principalId === selectedMemberPrincipalId)?.name ?? 'this member'}`}
-            </p>
-            <button
-              onClick={() => setShowAdd(true)}
-              className="text-xs text-[var(--foreground)] underline underline-offset-2 transition-colors"
-            >
-              Add your first memory
-            </button>
-          </div>
+          <MemoriesEmptyState
+            members={members}
+            selectedMemberPrincipalId={selectedMemberPrincipalId}
+            onAddMemory={() => setShowAdd(true)}
+          />
         ) : (
           <div className="mx-auto max-w-3xl space-y-6 px-6 py-4">
             {pendingSavePreview ? (
@@ -467,9 +485,14 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                 aria-busy
                 aria-live="polite"
               >
-                <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]" />
+                <Loader2
+                  size={18}
+                  className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]"
+                />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-[var(--foreground)]">Saving memory…</p>
+                  <p className="text-xs font-medium text-[var(--foreground)]">
+                    Saving memory…
+                  </p>
                   <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">
                     {pendingSavePreview}
                   </p>
@@ -482,124 +505,370 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                   {label}
                 </p>
                 <div className="space-y-2">
-                  {groups[label].map((memory) => {
-                    const isSelected = selectedIds.has(memory.memoryId)
-                    const isHighlighted = highlightedMemoryId === memory.memoryId
-                    return (
-                      <div
-                        key={memory.memoryId}
-                        id={memoryDomId(memory.memoryId)}
-                        className={`group scroll-mt-6 rounded-xl border px-3 py-3 transition-colors ${
-                          isSelected
-                            ? 'border-[var(--border)] bg-[var(--surface-subtle)]'
-                            : 'border-[var(--border)] bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)]'
-                        } ${
-                          isHighlighted
-                            ? 'ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
-                            : ''
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          {selectionMode && memory.canDelete && (
-                            <button
-                              type="button"
-                              onClick={() => toggleSelected(memory.memoryId)}
-                              className="mt-0.5 shrink-0 text-[var(--muted)]"
-                            >
-                              {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                            </button>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
-                              {memory.content}
-                            </p>
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                              <span className={metaChipClass} title={memory.creatorEmail}>
-                                <UserRound size={10} className="mr-1 inline" />
-                                {memory.creatorName}
-                              </span>
-                              {memory.type && (
-                                <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.type)}`}>
-                                  {memory.type}
-                                </span>
-                              )}
-                              <span className={metaChipClass}>
-                                {memory.source}
-                              </span>
-                              {typeof memory.importance === 'number' && (
-                                <span className={metaChipClass}>
-                                  importance {memory.importance}
-                                </span>
-                              )}
-                              {memory.actor && (
-                                <span className={metaChipClass}>
-                                  {memory.actor}
-                                </span>
-                              )}
-                              {memory.conversationId && (
-                                <span className={metaChipClass}>
-                                  chat
-                                </span>
-                              )}
-                              {memory.noteId && (
-                                <span className={metaChipClass}>
-                                  note
-                                </span>
-                              )}
-                              {memory.tags.map((tag) => (
-                                <span
-                                  key={`${memory.memoryId}:${tag}`}
-                                  className={metaChipClass}
-                                >
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                            <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-light)]">
-                              <span>
-                                {new Date(memory.createdAt).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                              {memory.updatedAt && memory.updatedAt !== memory.createdAt && (
-                                <span>
-                                  updated{' '}
-                                  {new Date(memory.updatedAt).toLocaleTimeString('en-US', {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {!selectionMode && (
-                            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                              <button
-                                onClick={() => void handleCopy(memory)}
-                                className="rounded p-1 transition-colors hover:bg-[var(--surface-subtle)]"
-                                title="Copy memory"
-                              >
-                                <Copy size={13} className="text-[var(--muted)]" />
-                              </button>
-                              {memory.canDelete ? (
-                                <button
-                                  onClick={() => void handleDelete(memory.memoryId)}
-                                  className="rounded p-1 transition-colors hover:bg-red-500/10"
-                                  title="Delete memory"
-                                >
-                                  <Trash2 size={13} className="text-red-400" />
-                                </button>
-                              ) : null}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {groups[label].map((memory) => (
+                    <MemoryCard
+                      key={memory.memoryId}
+                      memory={memory}
+                      isSelected={selectedIds.has(memory.memoryId)}
+                      isHighlighted={highlightedMemoryId === memory.memoryId}
+                      selectionMode={selectionMode}
+                      metaChipClass={metaChipClass}
+                      onToggleSelected={toggleSelected}
+                      onCopy={handleCopy}
+                      onDelete={handleDelete}
+                    />
+                  ))}
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemoriesHeaderActions({
+  members,
+  selectedMemberPrincipalId,
+  onMemberChange,
+  selectionMode,
+  onToggleSelectionMode,
+  selectedCount,
+  onBulkDelete,
+  onAddMemory,
+  actionButtonClass,
+}: {
+  members: MemoryMemberOption[]
+  selectedMemberPrincipalId: string
+  onMemberChange: (value: string) => void
+  selectionMode: boolean
+  onToggleSelectionMode: () => void
+  selectedCount: number
+  onBulkDelete: () => Promise<void>
+  onAddMemory: () => void
+  actionButtonClass: string
+}) {
+  return (
+    <>
+      <ListboxSelect
+        value={selectedMemberPrincipalId}
+        onChange={onMemberChange}
+        options={[
+          { value: 'all', label: 'All' },
+          ...members.map((member) => ({
+            value: member.principalId,
+            label: member.isAgent ? `${member.name} · agent` : member.name,
+          })),
+        ]}
+        aria-label="Filter memories by workspace member"
+        className="w-40"
+        buttonClassName="min-h-8 rounded-md py-1 text-xs"
+      />
+      <button
+        onClick={onToggleSelectionMode}
+        className={`flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs transition-colors ${
+          selectionMode
+            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+            : 'bg-[var(--surface-elevated)] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+        }`}
+      >
+        <CheckSquare size={12} />
+        {selectionMode ? 'Done' : 'Select'}
+      </button>
+      {selectionMode && selectedCount > 0 && (
+        <button
+          onClick={() => void onBulkDelete()}
+          className="flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15"
+        >
+          <Trash2 size={12} />
+          Delete {selectedCount}
+        </button>
+      )}
+      <button
+        onClick={onAddMemory}
+        className={actionButtonClass}
+      >
+        <Plus size={12} />
+        Add memory
+      </button>
+    </>
+  )
+}
+
+function AddMemoryDialog({
+  addText,
+  onAddTextChange,
+  addType,
+  onAddTypeChange,
+  addImportance,
+  onAddImportanceChange,
+  isSaving,
+  saveError,
+  onDismiss,
+  onClose,
+  onSave,
+  dialogButtonClass,
+}: {
+  addText: string
+  onAddTextChange: (value: string) => void
+  addType: Memory['type']
+  onAddTypeChange: (value: Memory['type']) => void
+  addImportance: string
+  onAddImportanceChange: (value: string) => void
+  isSaving: boolean
+  saveError: string | null
+  onDismiss: () => void
+  onClose: () => void
+  onSave: () => Promise<void>
+  dialogButtonClass: string
+}) {
+  const addDialogRef = useDialogFocus(true)
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onDismiss()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onDismiss])
+
+  return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close control.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onDismiss()
+      }}
+    >
+      {/* Inline modal keeps a lightweight form flow; focus trapped via useDialogFocus. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
+      <div ref={addDialogRef} role="dialog" aria-modal="true" aria-labelledby="add-memory-title" className="w-[520px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 id="add-memory-title" className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
+          <button
+            aria-label="Close"
+            onClick={onClose}
+            className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <textarea
+          aria-label="Memory content"
+          value={addText}
+          onChange={(event) => onAddTextChange(event.target.value)}
+          placeholder="Type or paste memory content..."
+          data-autofocus
+          rows={5}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && event.metaKey) void onSave()
+          }}
+          className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+        />
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="text-xs text-[var(--muted)]">
+            Type
+            <ListboxSelect
+              value={addType ?? 'fact'}
+              onChange={(value) => onAddTypeChange(value as Memory['type'])}
+              options={[
+                { value: 'fact', label: 'Fact' },
+                { value: 'preference', label: 'Preference' },
+                { value: 'project', label: 'Project' },
+                { value: 'decision', label: 'Decision' },
+                { value: 'agent', label: 'Agent' },
+              ]}
+              className="mt-1 w-full"
+            />
+          </label>
+          <label className="text-xs text-[var(--muted)]">
+            Importance
+            <ListboxSelect
+              value={addImportance}
+              onChange={onAddImportanceChange}
+              options={['1', '2', '3', '4', '5'].map((value) => ({ value, label: value }))}
+              className="mt-1 w-full"
+            />
+          </label>
+        </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted)]">
+          Saved memories stay as a single record, but the knowledge sidebar can still preview
+          them in short segments for easier scanning.
+        </p>
+        {saveError ? (
+          <p className="mt-3 text-xs text-red-400" role="alert">
+            {saveError}
+          </p>
+        ) : null}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className={dialogButtonClass}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void onSave()}
+            disabled={!addText.trim() || isSaving}
+            className={`${dialogButtonClass} disabled:opacity-40`}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MemoriesEmptyState({
+  members,
+  selectedMemberPrincipalId,
+  onAddMemory,
+}: {
+  members: MemoryMemberOption[]
+  selectedMemberPrincipalId: string
+  onAddMemory: () => void
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--muted)]">
+      <Brain size={40} strokeWidth={1} className="opacity-40" />
+      <p className="text-sm">
+        {selectedMemberPrincipalId === 'all'
+          ? 'No memories yet'
+          : `No memories from ${members.find((member) => member.principalId === selectedMemberPrincipalId)?.name ?? 'this owner'}`}
+      </p>
+      <button
+        onClick={onAddMemory}
+        className="text-xs text-[var(--foreground)] underline underline-offset-2 transition-colors"
+      >
+        Add your first memory
+      </button>
+    </div>
+  )
+}
+
+function MemoryMetaChips({ memory, metaChipClass }: { memory: Memory; metaChipClass: string }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <span className={metaChipClass} title={memory.creatorEmail}>
+        <UserRound size={10} className="mr-1 inline" />
+        {memory.creatorName}
+      </span>
+      {memory.type && (
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.type)}`}>
+          {memory.type}
+        </span>
+      )}
+      <span className={metaChipClass}>
+        {memory.source}
+      </span>
+      {typeof memory.importance === 'number' && (
+        <span className={metaChipClass}>
+          importance {memory.importance}
+        </span>
+      )}
+      {memory.actor && (
+        <span className={metaChipClass}>
+          {memory.actor}
+        </span>
+      )}
+      {memory.conversationId && <span className={metaChipClass}>chat</span>}
+      {memory.noteId && <span className={metaChipClass}>note</span>}
+      {memory.tags.map((tag) => (
+        <span key={`${memory.memoryId}:${tag}`} className={metaChipClass}>
+          #{tag}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function MemoryCard({
+  memory,
+  isSelected,
+  isHighlighted,
+  selectionMode,
+  metaChipClass,
+  onToggleSelected,
+  onCopy,
+  onDelete,
+}: {
+  memory: Memory
+  isSelected: boolean
+  isHighlighted: boolean
+  selectionMode: boolean
+  metaChipClass: string
+  onToggleSelected: (memoryId: string) => void
+  onCopy: (memory: Memory) => Promise<void>
+  onDelete: (memoryId: string) => Promise<void>
+}) {
+  return (
+    <div
+      id={memoryDomId(memory.memoryId)}
+      className={`group scroll-mt-6 rounded-xl border px-3 py-3 transition-colors ${
+        isSelected
+          ? 'border-[var(--border)] bg-[var(--surface-subtle)]'
+          : 'border-[var(--border)] bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)]'
+      } ${
+        isHighlighted
+          ? 'ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
+          : ''
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        {selectionMode && memory.canDelete && (
+          <button
+            type="button"
+            aria-label={isSelected ? 'Deselect memory' : 'Select memory'}
+            onClick={() => onToggleSelected(memory.memoryId)}
+            className="mt-0.5 shrink-0 text-[var(--muted)]"
+          >
+            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+          </button>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
+            {memory.content}
+          </p>
+          <MemoryMetaChips memory={memory} metaChipClass={metaChipClass} />
+          <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-light)]">
+            <span>
+              {new Date(memory.createdAt).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+            {memory.updatedAt && memory.updatedAt !== memory.createdAt && (
+              <span>
+                updated{' '}
+                {new Date(memory.updatedAt).toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+            )}
+          </div>
+        </div>
+        {!selectionMode && (
+          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              onClick={() => void onCopy(memory)}
+              className="rounded p-1 transition-colors hover:bg-[var(--surface-subtle)]"
+              title="Copy memory"
+            >
+              <Copy size={13} className="text-[var(--muted)]" />
+            </button>
+            {memory.canDelete ? (
+              <button
+                onClick={() => void onDelete(memory.memoryId)}
+                className="rounded p-1 transition-colors hover:bg-red-500/10"
+                title="Delete memory"
+              >
+                <Trash2 size={13} className="text-red-400" />
+              </button>
+            ) : null}
           </div>
         )}
       </div>

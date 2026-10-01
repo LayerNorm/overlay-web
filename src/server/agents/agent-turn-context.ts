@@ -70,11 +70,17 @@ export async function buildAgentTurnContext(args: {
   const memoriesTask: Promise<string> = args.memoryEnabled
     ? (async () => {
         try {
-          const memories = await server.appData.repositories.conversations.listMemories({
-            userId: args.actorUserId,
-            workspaceId: args.workspaceId,
-          })
-          return buildMemoryContext(memories ?? [])
+          const [memories, profile] = await Promise.all([
+            server.appData.repositories.conversations.listMemories({
+              userId: args.actorUserId,
+              workspaceId: args.workspaceId,
+            }),
+            server.appData.repositories.conversations.getMemoryProfile?.({
+              userId: args.actorUserId,
+              workspaceId: args.workspaceId,
+            }) ?? Promise.resolve(null),
+          ])
+          return buildMemoryContext(memories ?? [], profile)
         } catch (error) {
           logger.warn('[workspace-agent] memory load failed', { error })
           return ''

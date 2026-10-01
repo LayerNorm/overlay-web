@@ -12,6 +12,8 @@ For a description of what each route does and its associated implementation file
 ## Authentication, sessions, account
 
 - `POST /api/account/delete`
+- `DELETE, GET, POST /api/agent-mcp`
+- `GET, POST /api/agent-gateway/[provider]/[...path]`
 - `GET /api/auth/callback`
 - `GET /api/auth/convex-token`
 - `GET, POST /api/auth/desktop-link`
@@ -47,7 +49,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/topups/checkout`
 - `GET /api/topups/history`
 - `POST /api/topups/verify`
-- `POST /api/webhooks/stripe`
 
 ## Deployment, bootstrap, capabilities, transport
 
@@ -83,6 +84,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/agent-environments/[environmentId]/commands`
 - `POST /api/v1/agent-environments/[environmentId]/credentials/refresh`
 - `POST /api/v1/agent-environments/[environmentId]/credentials`
+- `POST /api/v1/agent-environments/[environmentId]/desktop`
 - `POST /api/v1/agent-environments/[environmentId]/events`
 - `POST /api/v1/agent-environments/[environmentId]/heartbeat`
 - `POST /api/v1/agent-environments/[environmentId]/revoke`
@@ -90,11 +92,15 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/agent-environments/artifacts/cleanup`
 - `POST /api/v1/agent-environments/enroll`
 - `POST /api/v1/agent-environments/enrollment-sessions`
-- `GET, POST /api/v1/agent-environments/managed`
 - `POST /api/v1/agent-environments/operations/reconcile`
-- `POST /api/v1/agent-environments/[environmentId]/reset-harness`
 - `GET /api/v1/agent-environments`
 - `DELETE, GET, PATCH /api/v1/agents/[agentId]`
+- `GET /api/v1/agents/[agentId]/automations`
+- `GET /api/v1/agents/[agentId]/bundle`
+- `POST /api/v1/agents/[agentId]/restore`
+- `GET, POST /api/v1/agents/[agentId]/threads`
+- `DELETE, PATCH /api/v1/agents/[agentId]/threads/[threadId]`
+- `POST /api/v1/agents/[agentId]/threads/resolve`
 - `GET, POST /api/v1/agents`
 - `DELETE, GET, PATCH, POST /api/v1/api-keys`
 - `GET, POST /api/v1/computers`
@@ -102,6 +108,16 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/computers/[computerId]/desktop`
 - `POST /api/v1/computers/[computerId]/start`
 - `POST /api/v1/computers/[computerId]/stop`
+
+## Surfaces (Slack)
+
+- `GET /api/v1/surfaces/slack/connect`
+- `GET /api/v1/surfaces/slack/callback`
+- `GET /api/v1/surfaces/connections`
+- `GET /api/v1/surfaces/connections/[connectionId]/channels`
+- `GET, POST /api/v1/surfaces/bindings`
+- `DELETE /api/v1/surfaces/bindings/[bindingId]`
+- `POST /api/v1/webhooks/slack`
 
 ## Automations
 
@@ -150,7 +166,6 @@ For a description of what each route does and its associated implementation file
 
 ## Generators, sandbox, files, outputs
 
-- `POST /api/v1/daytona/run`
 - `GET /api/v1/files/[fileId]/content`
 - `POST /api/v1/files/ingest-document`
 - `POST /api/v1/files/ingest-jobs/process`
@@ -164,7 +179,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/generate-tab-group-label`
 - `POST /api/v1/generate-title`
 - `POST /api/v1/generate-video`
-- `POST /api/v1/sandbox/run`
 - `GET /api/v1/outputs/[outputId]/content`
 - `DELETE, GET /api/v1/outputs`
 

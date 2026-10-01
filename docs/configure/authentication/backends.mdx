@@ -27,7 +27,7 @@ BETTER_AUTH_SECRET=<independent-random-secret>
 BETTER_AUTH_DATABASE_URL=postgresql://overlay_auth:.../overlay_auth
 ```
 
-`BETTER_AUTH_DATABASE_URL` is auth state. `OVERLAY_DATABASE_URL` is application data. They may use separate databases on one PostgreSQL cluster, but they must remain separately named and independently migratable.
+`BETTER_AUTH_DATABASE_URL` is auth state. Application data always lives in the Convex deployment. Keep the auth database separately named and independently migratable.
 
 Better Auth delegates login to one or more configured OIDC connections. A canonical connection has a stable internal ID, preset, permitted domains, and credentials:
 

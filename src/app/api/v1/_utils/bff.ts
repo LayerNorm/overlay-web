@@ -27,10 +27,6 @@ import { parseApiBoundaryInput } from '@/server/app-api/boundary'
 import { getOverlayRuntimeConfig, isOverlayConfigError } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
-  appDataRouteUnsupportedResponse,
-  getAppDataRouteSupport,
-} from '@/server/app-data/route-support'
-import {
   getOwnerFundedOperation,
   ownerFundedOperationRequiresIdempotencyKey,
 } from '@/server/billing/owner-funded-operations'
@@ -54,8 +50,10 @@ const API_KEY_REQUEST_RATE_LIMIT = {
 } as const
 
 const DEFAULT_AUTHENTICATED_ROUTE_RATE_LIMITS = [
-  { bucket: 'api:default:ip', limit: 600, windowMs: 10 * 60_000 },
-  { bucket: 'api:default:user', limit: 300, windowMs: 10 * 60_000 },
+  // A loaded app session fires tens of cheap reads per page mount; 300/10min
+  // proved too easy to exhaust and lock out the whole surface.
+  { bucket: 'api:default:ip', limit: 1_200, windowMs: 10 * 60_000 },
+  { bucket: 'api:default:user', limit: 600, windowMs: 10 * 60_000 },
 ] as const
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
@@ -135,21 +133,6 @@ export async function handleBffRoute(
     idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
     const response = runtimeConfigErrorResponse(error)
-    await emitMetric(response)
-    return response
-  }
-  const appDataRouteSupport = getAppDataRouteSupport({
-    appDataCapabilities,
-    method: request.method,
-    pathname: request.nextUrl.pathname,
-  })
-  if (appDataRouteSupport.status === 'unsupported') {
-    const response = appDataRouteUnsupportedResponse({
-      databaseProvider: appDataCapabilities.provider,
-      method: request.method,
-      pathname: request.nextUrl.pathname,
-      support: appDataRouteSupport,
-    })
     await emitMetric(response)
     return response
   }

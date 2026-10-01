@@ -13,7 +13,7 @@ import { ConvexUserRepository } from '@/server/users/ConvexUserRepository'
 import { runAppDataRepositoryContractSuite } from './app-data-repository-contract'
 import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
 import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
-import { ConvexDaytonaWorkspaceRepository } from '@/server/ai/sandbox/ConvexDaytonaWorkspaceRepository'
+import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceRepository'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
 
 const enabled = process.env.APP_DATA_CONTRACT_CONVEX === '1'
@@ -34,7 +34,7 @@ test('real Convex app-data repository contracts', {
     chatSuggestions: new ConvexChatSuggestionRepository(),
     computers: new ConvexComputerRepository(),
     conversations,
-    daytonaWorkspaces: new ConvexDaytonaWorkspaceRepository(),
+    surfaces: new ConvexSurfaceRepository(),
     deleteAccount: deleteConvexAccount,
     files: new ConvexFileRepository(),
     memories: new ConvexMemoryRepository(),

@@ -1,7 +1,7 @@
 'use client'
 
 import AppSidebar from '@/components/layout/AppSidebar'
-import { AgentsInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
+import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
 import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
 import {
   ActivityInlinePanel,
@@ -30,6 +30,10 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
   const chatBaseHref = activeWorkspaceId
     ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
     : '/app/chat'
+  const agentsViewParam = searchParams?.get('view')
+  const agentsView = agentsViewParam === 'workspace' || agentsViewParam === 'archived'
+    ? agentsViewParam
+    : 'personal'
 
   return (
     <AppSidebar
@@ -81,6 +85,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
             <AgentsInlinePanel
               workspaceId={activeWorkspaceId}
               baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
+              view={agentsView}
               onNavigate={onNavigate}
             />
           )

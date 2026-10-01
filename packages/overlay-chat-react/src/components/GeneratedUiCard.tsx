@@ -142,6 +142,7 @@ function AutoTextarea({
   return (
     <textarea
       ref={ref}
+      aria-label="Prompt"
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
@@ -260,26 +261,24 @@ export function GeneratedUiCard({
   const [copied, setCopied] = useState(false)
   const timerRef = useRef<number | null>(null)
   const latestDataRef = useRef(data)
-  const partIdRef = useRef(part.id)
-  const incomingDataRef = useRef(part.data)
+  const [prevPart, setPrevPart] = useState<{ id: string; data: typeof part.data }>({ id: part.id, data: part.data })
   const streaming = part.transient === true
 
   useEffect(() => {
-    if (partIdRef.current !== part.id) {
-      partIdRef.current = part.id
-      incomingDataRef.current = part.data
+    latestDataRef.current = data
+  }, [data])
+
+  if (prevPart.id !== part.id) {
+    setPrevPart({ id: part.id, data: part.data })
       setData(part.data)
-      latestDataRef.current = part.data
       setEditing(false)
       setExpanded(false)
-      return
+  } else if (prevPart.data !== part.data) {
+    setPrevPart({ id: part.id, data: part.data })
+    if (!editing) {
+      setData(part.data)
     }
-    if (incomingDataRef.current === part.data) return
-    incomingDataRef.current = part.data
-    if (editing) return
-    setData(part.data)
-    latestDataRef.current = part.data
-  }, [editing, part.id, part.data])
+  }
 
   useEffect(() => () => {
     if (timerRef.current != null) window.clearTimeout(timerRef.current)
@@ -452,6 +451,7 @@ function TextDraftCardBody({
     return (
       <div className="space-y-3 px-5 py-5">
         <input
+          aria-label="Card title"
           value={data.title ?? ''}
           onChange={(event) => onChange({ ...data, title: event.target.value || undefined })}
           onBlur={onBlur}
@@ -502,6 +502,146 @@ function EmailField({
   )
 }
 
+function EmailVariantPicker({
+  variants,
+  activeVariantId,
+  readOnly,
+  onSelect,
+}: {
+  variants: GeneratedUiVariant[]
+  activeVariantId: string | null
+  readOnly: boolean
+  onSelect: (variant: GeneratedUiVariant) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5 border-b border-[var(--border)] px-3 py-2">
+      {variants.map((variant) => (
+        <button
+          key={variant.id}
+          type="button"
+          onClick={readOnly ? undefined : () => onSelect(variant)}
+          disabled={readOnly}
+          className={classNames(
+            'inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-default',
+            activeVariantId === variant.id
+              ? 'bg-[var(--foreground)] text-[var(--background)]'
+              : readOnly
+                ? 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+                : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]',
+          )}
+        >
+          {variant.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function EmailDraftEditor({
+  data,
+  expanded,
+  onChange,
+  onBlur,
+}: {
+  data: GeneratedEmailDraftData
+  expanded: boolean
+  onChange: (data: GeneratedUiData) => void
+  onBlur: () => void
+}) {
+  return (
+    <div>
+      <EmailField
+        label="To"
+        value={formatCsv(data.to)}
+        onChange={(value) => {
+          const next = parseCsv(value)
+          if (!arraysEqual(next, data.to)) onChange({ ...data, to: next })
+        }}
+        onBlur={onBlur}
+      />
+      <EmailField
+        label="Cc"
+        value={formatCsv(data.cc)}
+        onChange={(value) => {
+          const next = parseCsv(value)
+          if (!arraysEqual(next, data.cc)) onChange({ ...data, cc: next })
+        }}
+        onBlur={onBlur}
+      />
+      <EmailField
+        label="Subject"
+        value={data.subject}
+        onChange={(subject) => onChange({ ...data, subject })}
+        onBlur={onBlur}
+      />
+      <div className="px-4 py-4">
+        <AutoTextarea
+          value={data.body}
+          onChange={(body) => onChange({ ...data, body })}
+          onBlur={onBlur}
+          minRows={10}
+          maxRows={expanded ? 28 : 18}
+        />
+      </div>
+    </div>
+  )
+}
+
+function EmailDraftPreview({
+  data,
+  expanded,
+  streaming,
+}: {
+  data: GeneratedEmailDraftData
+  expanded: boolean
+  streaming: boolean
+}) {
+  return (
+    <div>
+      <div className="space-y-1 border-b border-[var(--border)] px-4 py-3 text-sm">
+        {data.to?.length ? <p><span className="text-[var(--muted)]">To:</span> {data.to.join(', ')}</p> : null}
+        {data.cc?.length ? <p><span className="text-[var(--muted)]">Cc:</span> {data.cc.join(', ')}</p> : null}
+        <p><span className="text-[var(--muted)]">Subject:</span> {data.subject}</p>
+      </div>
+      <ScrollableDraftBody
+        value={data.body}
+        expanded={expanded}
+        streaming={streaming}
+        className="px-4 py-4"
+      />
+    </div>
+  )
+}
+
+function EmailGmailActions({
+  data,
+  connectorActions,
+}: {
+  data: GeneratedEmailDraftData
+  connectorActions?: GeneratedUiConnectorActions
+}) {
+  const gmailConnected = connectorActions?.isConnected?.('Gmail', 'gmail') ?? false
+  const gmailLogo = connectorActions?.getLogoUrl?.('Gmail', 'gmail')
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] px-3 py-3">
+      {gmailConnected && connectorActions?.openEmailDraft ? (
+        <ActionButton
+          onClick={() => connectorActions.openEmailDraft?.(data)}
+          variant="primary"
+        >
+          {gmailLogo ? <ConnectorLogo serviceName="Gmail" slug="gmail" logoUrl={gmailLogo} /> : <Mail size={14} strokeWidth={1.75} />}
+          Open in Gmail
+        </ActionButton>
+      ) : connectorActions?.connect ? (
+        <ActionButton onClick={() => void connectorActions.connect?.('Gmail', 'gmail')} variant="primary">
+          {gmailLogo ? <ConnectorLogo serviceName="Gmail" slug="gmail" logoUrl={gmailLogo} /> : <Mail size={14} strokeWidth={1.75} />}
+          Connect Gmail
+        </ActionButton>
+      ) : null}
+    </div>
+  )
+}
+
 function EmailDraftCardBody({
   data,
   editing,
@@ -521,8 +661,6 @@ function EmailDraftCardBody({
   onChange: (data: GeneratedUiData, immediate?: boolean) => void
   onBlur: () => void
 }) {
-  const gmailConnected = connectorActions?.isConnected?.('Gmail', 'gmail') ?? false
-  const gmailLogo = connectorActions?.getLogoUrl?.('Gmail', 'gmail')
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null)
 
   function applyVariant(variant: GeneratedUiVariant) {
@@ -537,95 +675,29 @@ function EmailDraftCardBody({
   return (
     <div>
       {data.variants?.length ? (
-        <div className="flex flex-wrap gap-1.5 border-b border-[var(--border)] px-3 py-2">
-          {data.variants.map((variant) => (
-            <button
-              key={variant.id}
-              type="button"
-              onClick={readOnly ? undefined : () => applyVariant(variant)}
-              disabled={readOnly}
-              className={classNames(
-                'inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-default',
-                activeVariantId === variant.id
-                  ? 'bg-[var(--foreground)] text-[var(--background)]'
-                  : readOnly
-                    ? 'bg-[var(--surface-subtle)] text-[var(--muted)]'
-                    : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]',
-              )}
-            >
-              {variant.label}
-            </button>
-          ))}
-        </div>
+        <EmailVariantPicker
+          variants={data.variants}
+          activeVariantId={activeVariantId}
+          readOnly={readOnly}
+          onSelect={applyVariant}
+        />
       ) : null}
       {editing ? (
-        <div>
-          <EmailField
-            label="To"
-            value={formatCsv(data.to)}
-            onChange={(value) => {
-              const next = parseCsv(value)
-              if (!arraysEqual(next, data.to)) onChange({ ...data, to: next })
-            }}
-            onBlur={onBlur}
-          />
-          <EmailField
-            label="Cc"
-            value={formatCsv(data.cc)}
-            onChange={(value) => {
-              const next = parseCsv(value)
-              if (!arraysEqual(next, data.cc)) onChange({ ...data, cc: next })
-            }}
-            onBlur={onBlur}
-          />
-          <EmailField
-            label="Subject"
-            value={data.subject}
-            onChange={(subject) => onChange({ ...data, subject })}
-            onBlur={onBlur}
-          />
-          <div className="px-4 py-4">
-            <AutoTextarea
-              value={data.body}
-              onChange={(body) => onChange({ ...data, body })}
-              onBlur={onBlur}
-              minRows={10}
-              maxRows={expanded ? 28 : 18}
-            />
-          </div>
-        </div>
+        <EmailDraftEditor
+          data={data}
+          expanded={expanded}
+          onChange={onChange}
+          onBlur={onBlur}
+        />
       ) : (
-        <div>
-          <div className="space-y-1 border-b border-[var(--border)] px-4 py-3 text-sm">
-            {data.to?.length ? <p><span className="text-[var(--muted)]">To:</span> {data.to.join(', ')}</p> : null}
-            {data.cc?.length ? <p><span className="text-[var(--muted)]">Cc:</span> {data.cc.join(', ')}</p> : null}
-            <p><span className="text-[var(--muted)]">Subject:</span> {data.subject}</p>
-          </div>
-          <ScrollableDraftBody
-            value={data.body}
-            expanded={expanded}
-            streaming={streaming}
-            className="px-4 py-4"
-          />
-        </div>
+        <EmailDraftPreview
+          data={data}
+          expanded={expanded}
+          streaming={streaming}
+        />
       )}
       {!readOnly && data.provider === 'gmail' ? (
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] px-3 py-3">
-          {gmailConnected && connectorActions?.openEmailDraft ? (
-            <ActionButton
-              onClick={() => connectorActions.openEmailDraft?.(data)}
-              variant="primary"
-            >
-              {gmailLogo ? <ConnectorLogo serviceName="Gmail" slug="gmail" logoUrl={gmailLogo} /> : <Mail size={14} strokeWidth={1.75} />}
-              Open in Gmail
-            </ActionButton>
-          ) : connectorActions?.connect ? (
-            <ActionButton onClick={() => void connectorActions.connect?.('Gmail', 'gmail')} variant="primary">
-              {gmailLogo ? <ConnectorLogo serviceName="Gmail" slug="gmail" logoUrl={gmailLogo} /> : <Mail size={14} strokeWidth={1.75} />}
-              Connect Gmail
-            </ActionButton>
-          ) : null}
-        </div>
+        <EmailGmailActions data={data} connectorActions={connectorActions} />
       ) : null}
     </div>
   )

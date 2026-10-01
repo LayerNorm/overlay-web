@@ -24,7 +24,7 @@ test('a missing provider value is reported as a configuration fault', () => {
   assert.match(markup, /onprem-minimal.example.json/)
 })
 
-test('an unreachable backend is not reported as invalid configuration', () => {
+test('an unreachable backend is not reported as invalid configuration', { todo: 'Reverted with PR #41 in e02a88843; re-land ab1963f1c (unreachable-backend copy)' }, () => {
   const markup = renderToStaticMarkup(
     <AppConfigurationErrorState
       error={new Error(
@@ -44,7 +44,7 @@ test('an unreachable backend is not reported as invalid configuration', () => {
   assert.doesNotMatch(markup, /onprem-minimal.example.json/)
 })
 
-test('a bare failure is stated once rather than duplicated as its own detail', () => {
+test('a bare failure is stated once rather than duplicated as its own detail', { todo: 'Reverted with PR #41 in e02a88843; re-land ab1963f1c (unreachable-backend copy)' }, () => {
   const markup = renderToStaticMarkup(
     <AppConfigurationErrorState error={new Error('fetch failed')} />,
   )

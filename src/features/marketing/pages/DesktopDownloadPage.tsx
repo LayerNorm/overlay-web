@@ -31,6 +31,173 @@ function formatPublishedAt(iso: string | undefined): string | null {
   })
 }
 
+function DownloadsNotOpenCard() {
+  return (
+    <>
+      <p className={minimalBody()}>
+        Signed public downloads are not open yet. Source is available now;
+        the official beta DMG ships after Gate B (signing, notarization, and
+        release review).
+      </p>
+      <div className="flex flex-wrap gap-3 pt-2">
+        <MarketingButton
+          href="https://github.com/LayerNorm/overlay-desktop"
+          external
+          variant="primary"
+          arrow="up-right"
+        >
+          View source
+        </MarketingButton>
+        <MarketingButton
+          href="https://getoverlay.io/docs/desktop/overview"
+          external
+          variant="secondary"
+          arrow="up-right"
+        >
+          Desktop docs
+        </MarketingButton>
+      </div>
+    </>
+  )
+}
+
+function ReleaseLoadErrorCard({ releaseError }: { releaseError: string | null }) {
+  return (
+    <>
+      <p className={minimalBody()}>
+        A signed build could not be loaded right now
+        {releaseError ? ` (${releaseError})` : ''}. Try again later, or
+        install from source.
+      </p>
+      <div className="flex flex-wrap gap-3 pt-2">
+        <MarketingButton
+          href="https://github.com/LayerNorm/overlay-desktop/releases"
+          external
+          variant="primary"
+          arrow="up-right"
+        >
+          GitHub Releases
+        </MarketingButton>
+        <MarketingButton
+          href="https://github.com/LayerNorm/overlay-desktop"
+          external
+          variant="secondary"
+          arrow="up-right"
+        >
+          Build from source
+        </MarketingButton>
+      </div>
+    </>
+  )
+}
+
+function ReleaseDownloadCard({
+  release,
+  published,
+}: {
+  release: LatestReleaseInfo
+  published: string | null
+}) {
+  return (
+    <>
+      <p className="text-sm text-[var(--muted)]">
+        Version {release.version}
+        {published ? ` · ${published}` : null}
+        {release.releaseName ? ` · ${release.releaseName}` : null}
+      </p>
+      <p className={`mt-2 ${minimalBody()}`}>
+        Platform: <strong>macOS, Apple Silicon</strong>
+      </p>
+      <div className="flex flex-wrap gap-3 pt-4">
+        <MarketingButton
+          href={LATEST_RELEASE_DOWNLOAD_PATH}
+          variant="primary"
+          arrow="right"
+        >
+          Download for macOS
+        </MarketingButton>
+        <MarketingButton
+          href="https://github.com/LayerNorm/overlay-desktop/releases/latest"
+          external
+          variant="secondary"
+          arrow="up-right"
+        >
+          Release notes
+        </MarketingButton>
+      </div>
+    </>
+  )
+}
+
+function DownloadCard({
+  downloadsEnabled,
+  release,
+  releaseError,
+  published,
+}: {
+  downloadsEnabled: boolean
+  release: LatestReleaseInfo | null
+  releaseError: string | null
+  published: string | null
+}) {
+  const body = !downloadsEnabled ? (
+    <DownloadsNotOpenCard />
+  ) : releaseError || !release ? (
+    <ReleaseLoadErrorCard releaseError={releaseError} />
+  ) : (
+    <ReleaseDownloadCard release={release} published={published} />
+  )
+  return (
+    <div className="mt-10 space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-6">
+      {body}
+    </div>
+  )
+}
+
+function DownloadLinks({ canDownload }: { canDownload: boolean }) {
+  return (
+    <ul className={`mt-10 space-y-3 ${minimalBody()}`}>
+      <li>
+        <a
+          className={minimalTextLink()}
+          href="https://getoverlay.io/docs/desktop/system-requirements"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          System requirements
+        </a>
+      </li>
+      <li>
+        <Link className={minimalTextLink()} href="/privacy">
+          Privacy policy
+        </Link>
+      </li>
+      <li>
+        <a
+          className={minimalTextLink()}
+          href="https://github.com/LayerNorm/overlay-desktop"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Source repository
+        </a>
+      </li>
+      {canDownload ? (
+        <li>
+          <a
+            className={minimalTextLink()}
+            href="https://github.com/LayerNorm/overlay-desktop/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Checksums & provenance (GitHub Release assets)
+          </a>
+        </li>
+      ) : null}
+    </ul>
+  )
+}
+
 export function DesktopDownloadPage({
   downloadsEnabled,
   embedded = false,
@@ -57,129 +224,14 @@ export function DesktopDownloadPage({
               ).
             </p>
 
-            <div className="mt-10 space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-6">
-              {!downloadsEnabled ? (
-                <>
-                  <p className={minimalBody()}>
-                    Signed public downloads are not open yet. Source is available now;
-                    the official beta DMG ships after Gate B (signing, notarization, and
-                    release review).
-                  </p>
-                  <div className="flex flex-wrap gap-3 pt-2">
-                    <MarketingButton
-                      href="https://github.com/LayerNorm/overlay-desktop"
-                      external
-                      variant="primary"
-                      arrow="up-right"
-                    >
-                      View source
-                    </MarketingButton>
-                    <MarketingButton
-                      href="https://getoverlay.io/docs/desktop/overview"
-                      external
-                      variant="secondary"
-                      arrow="up-right"
-                    >
-                      Desktop docs
-                    </MarketingButton>
-                  </div>
-                </>
-              ) : releaseError || !release ? (
-                <>
-                  <p className={minimalBody()}>
-                    A signed build could not be loaded right now
-                    {releaseError ? ` (${releaseError})` : ''}. Try again later, or
-                    install from source.
-                  </p>
-                  <div className="flex flex-wrap gap-3 pt-2">
-                    <MarketingButton
-                      href="https://github.com/LayerNorm/overlay-desktop/releases"
-                      external
-                      variant="primary"
-                      arrow="up-right"
-                    >
-                      GitHub Releases
-                    </MarketingButton>
-                    <MarketingButton
-                      href="https://github.com/LayerNorm/overlay-desktop"
-                      external
-                      variant="secondary"
-                      arrow="up-right"
-                    >
-                      Build from source
-                    </MarketingButton>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-[var(--muted)]">
-                    Version {release.version}
-                    {published ? ` · ${published}` : null}
-                    {release.releaseName ? ` · ${release.releaseName}` : null}
-                  </p>
-                  <p className={`mt-2 ${minimalBody()}`}>
-                    Platform: <strong>macOS, Apple Silicon</strong>
-                  </p>
-                  <div className="flex flex-wrap gap-3 pt-4">
-                    <MarketingButton
-                      href={LATEST_RELEASE_DOWNLOAD_PATH}
-                      variant="primary"
-                      arrow="right"
-                    >
-                      Download for macOS
-                    </MarketingButton>
-                    <MarketingButton
-                      href="https://github.com/LayerNorm/overlay-desktop/releases/latest"
-                      external
-                      variant="secondary"
-                      arrow="up-right"
-                    >
-                      Release notes
-                    </MarketingButton>
-                  </div>
-                </>
-              )}
-            </div>
+            <DownloadCard
+              downloadsEnabled={downloadsEnabled}
+              release={release}
+              releaseError={releaseError}
+              published={published}
+            />
 
-            <ul className={`mt-10 space-y-3 ${minimalBody()}`}>
-              <li>
-                <a
-                  className={minimalTextLink()}
-                  href="https://getoverlay.io/docs/desktop/system-requirements"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  System requirements
-                </a>
-              </li>
-              <li>
-                <Link className={minimalTextLink()} href="/privacy">
-                  Privacy policy
-                </Link>
-              </li>
-              <li>
-                <a
-                  className={minimalTextLink()}
-                  href="https://github.com/LayerNorm/overlay-desktop"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Source repository
-                </a>
-              </li>
-              {canDownload ? (
-                <li>
-                  <a
-                    className={minimalTextLink()}
-                    href="https://github.com/LayerNorm/overlay-desktop/releases/latest"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Checksums & provenance (GitHub Release assets)
-                  </a>
-                </li>
-              ) : null}
-            </ul>
+            <DownloadLinks canDownload={canDownload} />
           </div>
         </section>
       </main>

@@ -47,6 +47,7 @@ export default defineSchema({
     workspaceId: v.optional(v.string()),
     status: v.union(v.literal('active'), v.literal('suspended'), v.literal('closed')),
     primaryBillingContactUserId: v.optional(v.string()),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
     pricingVersion: v.literal('markup_25_v1'),
     markupBasisPoints: v.number(),
     createdAt: v.number(),
@@ -492,33 +493,6 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),
 
-  daytonaWorkspaces: defineTable({
-    userId: v.string(),
-    sandboxId: v.string(),
-    sandboxName: v.string(),
-    volumeId: v.string(),
-    volumeName: v.string(),
-    tier: v.union(v.literal('pro'), v.literal('max')),
-    state: v.union(
-      v.literal('provisioning'),
-      v.literal('started'),
-      v.literal('stopped'),
-      v.literal('archived'),
-      v.literal('error'),
-      v.literal('missing'),
-    ),
-    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
-    mountPath: v.string(),
-    lastMeteredAt: v.optional(v.number()),
-    lastKnownStartedAt: v.optional(v.number()),
-    lastKnownStoppedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_sandboxId', ['sandboxId'])
-    .index('by_state_updatedAt', ['state', 'updatedAt']),
-
   maintenanceCursors: defineTable({
     key: v.string(),
     cursor: v.optional(v.string()),
@@ -535,35 +509,6 @@ export default defineSchema({
     scope: v.string(),
     completedAt: v.number(),
   }).index('by_key_scope', ['key', 'scope']),
-
-  daytonaUsageLedger: defineTable({
-    userId: v.string(),
-    billingAccountId: v.optional(v.string()),
-    sandboxId: v.string(),
-    tier: v.union(v.literal('pro'), v.literal('max')),
-    resourceProfile: v.union(v.literal('pro'), v.literal('max')),
-    startedAt: v.number(),
-    endedAt: v.number(),
-    durationSeconds: v.number(),
-    cpu: v.number(),
-    memoryGiB: v.number(),
-    diskGiB: v.number(),
-    costUsd: v.number(),
-    costCents: v.number(),
-    reason: v.union(
-      v.literal('start'),
-      v.literal('task'),
-      v.literal('stop'),
-      v.literal('archive'),
-      v.literal('resize'),
-      v.literal('reconcile'),
-    ),
-    createdAt: v.number(),
-  })
-    .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
-    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
-    .index('by_sandboxId_createdAt', ['sandboxId', 'createdAt']),
 
   /** One row per tool invocation (audit / cost-class tracking for chat tools). */
   toolInvocations: defineTable({
@@ -649,6 +594,67 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId']),
 
+  // External agent surfaces (Slack, later Teams/Discord). surfaceConnections
+  // is metadata for one platform install — the Chat SDK state adapter owns
+  // token resolution keyed on externalTeamId. surfaceBindings maps an agent
+  // onto a platform channel; channel membership is the access policy.
+  surfaceConnections: defineTable({
+    id: v.string(),
+    workspaceId: v.string(),
+    platform: v.union(v.literal('slack')),
+    externalTeamId: v.string(),
+    externalTeamName: v.optional(v.string()),
+    externalEnterpriseId: v.optional(v.string()),
+    botUserId: v.optional(v.string()),
+    status: v.union(
+      v.literal('active'),
+      v.literal('degraded'),
+      v.literal('uninstalled'),
+    ),
+    installedByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_platform_team', ['platform', 'externalTeamId']),
+
+  surfaceBindings: defineTable({
+    id: v.string(),
+    connectionId: v.string(),
+    agentId: v.string(),
+    channelId: v.string(),
+    channelName: v.optional(v.string()),
+    status: v.union(v.literal('active'), v.literal('removed')),
+    createdByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_entityId', ['id'])
+    .index('by_connectionId', ['connectionId'])
+    .index('by_connectionId_channelId', ['connectionId', 'channelId'])
+    .index('by_agentId', ['agentId']),
+
+  // Chat SDK state for surfaces (installations and bot tokens, thread
+  // subscriptions, locks, dedupe keys, lists, queues). Serverless instances
+  // share it through surfaces/chatState; values are JSON strings. List and
+  // queue entries are separate rows ordered by _creationTime within a key.
+  surfaceChatState: defineTable({
+    namespace: v.union(
+      v.literal('cache'),
+      v.literal('list'),
+      v.literal('queue'),
+      v.literal('subscription'),
+      v.literal('lock'),
+    ),
+    key: v.string(),
+    value: v.optional(v.string()),
+    token: v.optional(v.string()),
+    expiresAt: v.optional(v.number()),
+  })
+    .index('by_namespace_key', ['namespace', 'key'])
+    .index('by_expiresAt', ['expiresAt']),
+
   projects: defineTable({
     workspaceId: v.optional(v.string()),
     userId: v.string(),
@@ -716,6 +722,11 @@ export default defineSchema({
     graphSource: v.optional(v.string()),
     graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
+    // Set when the automation was created inside an agent thread: the
+    // automation belongs to that agent (nested under it in the sidebar and
+    // hidden from the standalone Automations page) and shares the agent's
+    // instructions, tools, and environment through its thread.
+    agentId: v.optional(v.string()),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
     schedulerWorkflowRunId: v.optional(v.string()),
     // Legacy automation fields kept so existing production rows continue to validate.
@@ -752,6 +763,7 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_enabled', ['userId', 'enabled'])
+    .index('by_agentId', ['agentId'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
     .index('by_projectId', ['projectId'])
     .searchIndex('search_name', {
@@ -972,12 +984,18 @@ export default defineSchema({
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
     isAutomation: v.optional(v.boolean()),
+    // Agent-thread binding: conversations created as threads under a
+    // workspace agent carry the agent's public id so the sidebar can nest
+    // them and the chat list can keep them out of Chats. Absent on ordinary
+    // chats and on automation-owned threads.
+    agentId: v.optional(v.string()),
     dmIdentityKey: v.optional(v.string()),
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
-    // Compatibility-only fields for channel rows written by external-surface
-    // (e.g. Slack) releases on shared deployments; not read or written here.
+    // Surface-linked conversations (Slack thread ↔ one Overlay conversation).
+    // externalThreadId is the platform's thread key (Slack thread_ts); the pair
+    // (surfaceBindingId, externalThreadId) identifies the conversation.
     externalPlatform: v.optional(v.string()),
     externalChannelId: v.optional(v.string()),
     externalThreadId: v.optional(v.string()),
@@ -990,8 +1008,10 @@ export default defineSchema({
     .index('by_shareToken', ['shareToken'])
     .index('by_createdAt', ['createdAt'])
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
+    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
+    .index('by_surfaceBindingId_externalThreadId', ['surfaceBindingId', 'externalThreadId'])
     .searchIndex('search_title', {
       searchField: 'title',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
@@ -1284,6 +1304,18 @@ export default defineSchema({
     turnId: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
+    // M1 memory lifecycle: supersession + expiry + visibility + event time.
+    supersededBy: v.optional(v.id('memories')),
+    supersededAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    eventAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    /** Times an independent source corroborated this memory (dedup hits). */
+    sourceCount: v.optional(v.number()),
+    /** Written by the consolidation pass — a cross-memory inference, not a stated fact. */
+    inferred: v.optional(v.boolean()),
+    /** The `derives` edge: memory ids this inference was derived from. */
+    derivedFrom: v.optional(v.array(v.id('memories'))),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
@@ -1294,12 +1326,25 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
+  // Compiled owner profile — a stable, model-synthesized "who is this" block
+  // regenerated periodically instead of injecting raw top-N memories.
+  memoryProfiles: defineTable({
+    ownerId: v.string(),
+    workspaceId: v.optional(v.string()),
+    content: v.string(),
+    sourceMemoryCount: v.number(),
+    modelId: v.string(),
+    generatedAt: v.number(),
+  })
+    .index('by_ownerId', ['ownerId'])
+    .index('by_workspaceId_ownerId', ['workspaceId', 'ownerId']),
+
   // Searchable chunks for hybrid vector + full-text retrieval (files + memories).
   knowledgeChunks: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.string()),
     projectId: v.optional(v.string()),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('message')),
     sourceId: v.string(),
     knowledgeSourceId: v.optional(v.string()),
     knowledgeSourceVersionId: v.optional(v.string()),
@@ -1307,11 +1352,34 @@ export default defineSchema({
     startOffset: v.number(),
     text: v.string(),
     title: v.optional(v.string()),
+    // Denormalized memory-lifecycle fields so search filters need no join.
+    // Undefined on file chunks and on rows written before M1.
+    expiresAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    createdAt: v.optional(v.number()),
+    /** Last-confirmed time — recency decay keys on this; `touch` keeps it fresh. */
+    updatedAt: v.optional(v.number()),
+    superseded: v.optional(v.boolean()),
+    /**
+     * Conversation turn the content came from — message chunks get the
+     * conversationMessages.turnId, memory chunks the memory's. Enables
+     * provenance: attach a memory hit's source-turn verbatim chunks.
+     */
+    turnId: v.optional(v.string()),
+    /**
+     * Effective event time — memory.eventAt when the extractor dated the fact,
+     * else createdAt. Temporal retrieval windows key on this.
+     */
+    eventAt: v.optional(v.number()),
+    /** Denormalized memory.sourceCount for ranking (undefined on non-memory). */
+    sourceCount: v.optional(v.number()),
   })
     .index('by_workspaceId', ['workspaceId'])
     .index('by_source', ['sourceKind', 'sourceId'])
     .index('by_userId', ['userId'])
     .index('by_knowledgeSourceId', ['knowledgeSourceId'])
+    .index('by_userId_eventAt', ['userId', 'eventAt'])
+    .index('by_sourceKind_turnId', ['sourceKind', 'turnId'])
     .searchIndex('search_text', {
       searchField: 'text',
       filterFields: ['userId', 'sourceKind', 'workspaceId'],
@@ -1321,7 +1389,7 @@ export default defineSchema({
   knowledgeChunkEmbeddings: defineTable({
     chunkId: v.id('knowledgeChunks'),
     userId: v.string(),
-    sourceKind: v.union(v.literal('file'), v.literal('memory')),
+    sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('message')),
     embedding: v.array(v.float64()),
   })
     .index('by_chunkId', ['chunkId'])
@@ -1483,6 +1551,11 @@ export default defineSchema({
     legacyNoteId: v.optional(v.id('notes')),
     legacyOutputId: v.optional(v.id('outputs')),
     projectId: v.optional(v.string()),
+    // Note tags (kind 'note' only).
+    tags: v.optional(v.array(v.string())),
+    // Text too large for a Convex document: the full text is the object at
+    // `r2Key`, and `content` holds a searchable prefix.
+    textInObjectStore: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),

@@ -46,6 +46,7 @@ export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'
 
 export interface AutomationRepository {
   listAutomations(args: {
+    excludeAgentBound?: boolean
     includeDeleted?: boolean
     userId: string
     workspaceId?: string
@@ -65,7 +66,7 @@ export interface AutomationRepository {
   }): Promise<AutomationRunTarget | null>
   createAutomation(args: CreateAutomationInput): Promise<string>
   updateAutomation(args: UpdateAutomationInput): Promise<void>
-  attachSourceConversation(args: {
+  attachOwnedConversation(args: {
     automationId: string
     conversationId: string
     userId: string

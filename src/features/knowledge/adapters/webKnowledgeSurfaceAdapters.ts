@@ -170,13 +170,14 @@ export function createWebKnowledgeRepository(
       return node
     },
     async delete(input: KnowledgeDeleteInput) {
-      for (const id of input.ids) {
-        const node = byId.get(id) ?? await repository.get(id)
+      const nodes = await Promise.all(input.ids.map((id) => byId.get(id) ?? repository.get(id)))
+      await Promise.all(input.ids.map(async (id, i) => {
+        const node = nodes[i]
         const response = node?.kind === 'note'
           ? await client.notes.deleteResponse({ noteId: id })
           : await client.files.deleteResponse({ fileId: id })
         if (!response.ok) throw await responseError(response, 'Could not delete file')
-      }
+      }))
       const deleted = input.ids.map((id) => byId.get(id)).filter(Boolean) as KnowledgeSurfaceNode[]
       for (const id of input.ids) byId.delete(id)
       emit({ type: 'deleted', ids: input.ids })

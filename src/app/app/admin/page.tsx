@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   LayoutDashboard,
   ListTree,
@@ -45,33 +45,42 @@ type AdminSectionOption = {
   Icon: LucideIcon
 }
 
-export default function AdminPage() {
-  const { can } = useAuthorization()
-  const canViewUsage = can('usage.read')
-  const canManageUsage = can('usage.manage')
-  const canViewAudit = can('audit.read')
-  const canViewRoles = can('roles.read')
-  const canManageRoles = can('roles.manage')
-  const canViewGroups = can('groups.read')
-  const canManageGroups = can('groups.manage')
-  const canViewCatalog = can('roles.read')
-  const canManageCatalog = can('roles.manage')
+type AdminPermissions = {
+  canViewUsage: boolean
+  canManageUsage: boolean
+  canViewAudit: boolean
+  canViewRoles: boolean
+  canManageRoles: boolean
+  canViewGroups: boolean
+  canManageGroups: boolean
+  canViewCatalog: boolean
+  canManageCatalog: boolean
+}
+
+function useAdminSections({
+  canViewUsage,
+  canViewAudit,
+  canViewRoles,
+  canViewGroups,
+  canViewCatalog,
+}: AdminPermissions) {
   const [section, setSection] = useState<AdminSection>('overview')
-  const [usage, setUsage] = useState<UsageRow[]>([])
-  const [events, setEvents] = useState<AuditRow[]>([])
-  const [userFilter, setUserFilter] = useState('')
-  const [auditFilter, setAuditFilter] = useState('')
-  const [adjustUserId, setAdjustUserId] = useState('')
-  const [amountCents, setAmountCents] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [forbidden, setForbidden] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const sections: AdminSectionOption[] = [
     ...(canViewUsage || canViewAudit ? [{ value: 'overview' as const, label: 'Overview', Icon: LayoutDashboard }] : []),
     ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles', Icon: ShieldCheck }] : []),
     ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups', Icon: UsersRound }] : []),
     ...(canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog', Icon: ListTree }] : []),
   ]
+  return { section, setSection, sections }
+}
+
+function useAdminData({ canViewUsage, canViewAudit }: AdminPermissions) {
+  const [usage, setUsage] = useState<UsageRow[]>([])
+  const [events, setEvents] = useState<AuditRow[]>([])
+  const [userFilter, setUserFilter] = useState('')
+  const [auditFilter, setAuditFilter] = useState('')
+  const [forbidden, setForbidden] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const usageUrl = new URL('/api/v1/admin/usage', window.location.origin)
@@ -89,24 +98,36 @@ export default function AdminPage() {
     if (usageResponse && !usageResponse.ok) throw new Error('Failed to load usage data')
     if (auditResponse && !auditResponse.ok) throw new Error('Failed to load audit data')
     setForbidden(false)
-    setUsage(usageResponse ? (await usageResponse.json() as { usage: UsageRow[] }).usage : [])
-    setEvents(auditResponse ? (await auditResponse.json() as { events: AuditRow[] }).events : [])
+    setUsage(
+      usageResponse
+        ? ((await usageResponse.json()) as { usage: UsageRow[] }).usage
+        : [],
+    )
+    setEvents(
+      auditResponse
+        ? ((await auditResponse.json()) as { events: AuditRow[] }).events
+        : [],
+    )
   }, [auditFilter, canViewAudit, canViewUsage, userFilter])
 
-  useEffect(() => {
-    void load().catch((loadError) => setError(message(loadError)))
-  }, [load])
+  return {
+    usage,
+    events,
+    userFilter,
+    setUserFilter,
+    auditFilter,
+    setAuditFilter,
+    forbidden,
+    error,
+    setError,
+    load,
+  }
+}
 
-  useEffect(() => {
-    if (section === 'overview' && (canViewUsage || canViewAudit)) return
-    if (section === 'roles' && canViewRoles) return
-    if (section === 'groups' && canViewGroups) return
-    if (section === 'catalog' && canViewCatalog) return
-    if (canViewUsage || canViewAudit) setSection('overview')
-    else if (canViewRoles) setSection('roles')
-    else if (canViewGroups) setSection('groups')
-    else if (canViewCatalog) setSection('catalog')
-  }, [canViewAudit, canViewCatalog, canViewGroups, canViewRoles, canViewUsage, section])
+function useBudgetAdjustment(load: () => Promise<void>, setError: (error: string | null) => void) {
+  const [adjustUserId, setAdjustUserId] = useState('')
+  const [amountCents, setAmountCents] = useState('')
+  const [busy, setBusy] = useState(false)
 
   async function adjustBudget() {
     const amount = Number(amountCents)
@@ -114,13 +135,18 @@ export default function AdminPage() {
     setBusy(true)
     setError(null)
     try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch('/api/v1/admin/usage', {
         body: JSON.stringify({ amountCents: amount, userId: adjustUserId.trim() }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       })
-      const payload = await response.json().catch(() => ({})) as { error?: string }
-      if (!response.ok) throw new Error(payload.error || 'Budget adjustment failed')
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string
+      }
+      if (!response.ok)
+        throw new Error(payload.error || 'Budget adjustment failed')
       setAmountCents('')
       await load()
     } catch (adjustError) {
@@ -130,39 +156,215 @@ export default function AdminPage() {
     }
   }
 
+  return { adjustUserId, setAdjustUserId, amountCents, setAmountCents, busy, adjustBudget }
+}
+
+function AdminSidebarNav({
+  sections,
+  section,
+  onSelectSection,
+}: {
+  sections: AdminSectionOption[]
+  section: AdminSection
+  onSelectSection: (section: AdminSection) => void
+}) {
+  return (
+    <>
+      <SecondaryPanelHeader title="Admin" />
+      <nav aria-label="Administration sections" className="space-y-0.5 px-2 py-3">
+        {sections.map(({ value, label, Icon }) => (
+          <button
+            key={value}
+            type="button"
+            aria-current={section === value ? 'page' : undefined}
+            onClick={() => onSelectSection(value)}
+            className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${
+              section === value
+                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            <Icon size={15} strokeWidth={1.75} className="shrink-0" />
+            <span className="truncate max-sm:hidden">{label}</span>
+          </button>
+        ))}
+      </nav>
+    </>
+  )
+}
+
+function AdminUsageSection({
+  usage,
+  userFilter,
+  onUserFilterChange,
+  canManageUsage,
+  adjustUserId,
+  onAdjustUserIdChange,
+  amountCents,
+  onAmountCentsChange,
+  busy,
+  onAdjustBudget,
+  onApplyFilter,
+}: {
+  usage: UsageRow[]
+  userFilter: string
+  onUserFilterChange: (value: string) => void
+  canManageUsage: boolean
+  adjustUserId: string
+  onAdjustUserIdChange: (value: string) => void
+  amountCents: string
+  onAmountCentsChange: (value: string) => void
+  busy: boolean
+  onAdjustBudget: () => void
+  onApplyFilter: () => void
+}) {
+  return (
+    <section data-testid="admin-usage">
+      <div className="flex items-center gap-2"><WalletCards size={17} /><h2 className="text-sm font-semibold">Usage and budgets</h2></div>
+      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 text-[var(--muted)]" size={15} />
+          <input aria-label="Filter usage by user ID" className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-9 pr-3 text-sm" placeholder="User ID" value={userFilter} onChange={(event) => onUserFilterChange(event.target.value)} />
+        </div>
+        <button type="button" className="h-9 rounded-md border border-[var(--border)] px-4 text-sm" onClick={onApplyFilter}>Apply filter</button>
+      </div>
+      <div className="mt-4 overflow-x-auto border-y border-[var(--border)]">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="text-xs text-[var(--muted)]"><tr><th className="py-3">User</th><th>Plan</th><th>Total</th><th>Used</th><th>Remaining</th></tr></thead>
+          <tbody className="divide-y divide-[var(--border)]">
+            {usage.map((row) => <tr key={row.userId}><td className="py-3"><div className="font-medium">{row.email || row.userId}</div><div className="text-xs text-[var(--muted)]">{row.userId}</div></td><td>{row.planKind}</td><td>{money(row.budgetTotalCents)}</td><td>{money(row.budgetUsedCents)}</td><td>{money(row.budgetRemainingCents)}</td></tr>)}
+          </tbody>
+        </table>
+      </div>
+      {canManageUsage ? <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
+        <input aria-label="Budget user ID" className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="User ID" value={adjustUserId} onChange={(event) => onAdjustUserIdChange(event.target.value)} />
+        <input aria-label="Budget adjustment cents" className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="Amount in cents" inputMode="numeric" value={amountCents} onChange={(event) => onAmountCentsChange(event.target.value)} />
+        <button type="button" className="h-9 rounded-md bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-50" disabled={busy} onClick={onAdjustBudget}>Adjust budget</button>
+      </div> : null}
+    </section>
+  )
+}
+
+function AdminAuditSection({
+  events,
+  auditFilter,
+  onAuditFilterChange,
+  onSearch,
+}: {
+  events: AuditRow[]
+  auditFilter: string
+  onAuditFilterChange: (value: string) => void
+  onSearch: () => void
+}) {
+  return (
+    <section className="mt-10" data-testid="admin-audit">
+      <div className="flex items-center gap-2"><ShieldCheck size={17} /><h2 className="text-sm font-semibold">Audit events</h2></div>
+      <div className="mt-4 flex gap-3">
+        <input aria-label="Filter audit action" className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="Exact action" value={auditFilter} onChange={(event) => onAuditFilterChange(event.target.value)} />
+        <button type="button" className="h-9 rounded-md border border-[var(--border)] px-4 text-sm" onClick={onSearch}>Search</button>
+      </div>
+      <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        {events.length === 0 ? <p className="py-5 text-sm text-[var(--muted)]">No matching audit events.</p> : events.map((event) => (
+          <div key={event.id} className="grid gap-1 py-3 text-sm md:grid-cols-[220px_1fr_100px]">
+            <div><p className="font-medium">{event.action}</p><p className="text-xs text-[var(--muted)]">{
+              // Locale pinned to 'en-US'.
+              // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+              new Date(event.createdAt).toLocaleString('en-US')
+            }</p></div>
+            <p className="text-[var(--muted)]">{event.resourceType}{event.resourceId ? ` · ${event.resourceId}` : ''}</p>
+            <p>{event.outcome}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function AdminOverview({
+  forbidden,
+  canViewUsage,
+  canViewAudit,
+  usageSection,
+  auditSection,
+}: {
+  forbidden: boolean
+  canViewUsage: boolean
+  canViewAudit: boolean
+  usageSection: ReactNode
+  auditSection: ReactNode
+}) {
+  if (forbidden || (!canViewUsage && !canViewAudit)) {
+    return (
+      <div className="py-12" data-testid="admin-forbidden">
+        <ShieldCheck size={22} />
+        <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
+        <p className="mt-2 text-sm text-[var(--muted)]">This account cannot view usage or audit data.</p>
+      </div>
+    )
+  }
+  return (
+    <>
+      {canViewUsage ? usageSection : null}
+      {canViewAudit ? auditSection : null}
+    </>
+  )
+}
+
+export default function AdminPage() {
+  const { can } = useAuthorization()
+  const permissions: AdminPermissions = {
+    canViewUsage: can('usage.read'),
+    canManageUsage: can('usage.manage'),
+    canViewAudit: can('audit.read'),
+    canViewRoles: can('roles.read'),
+    canManageRoles: can('roles.manage'),
+    canViewGroups: can('groups.read'),
+    canManageGroups: can('groups.manage'),
+    canViewCatalog: can('roles.read'),
+    canManageCatalog: can('roles.manage'),
+  }
+  const { canViewRoles, canManageRoles, canViewGroups, canManageGroups, canViewCatalog, canManageCatalog } = permissions
+  const { section, setSection, sections } = useAdminSections(permissions)
+  const {
+    usage,
+    events,
+    userFilter,
+    setUserFilter,
+    auditFilter,
+    setAuditFilter,
+    forbidden,
+    error,
+    setError,
+    load,
+  } = useAdminData(permissions)
+  const { adjustUserId, setAdjustUserId, amountCents, setAmountCents, busy, adjustBudget } = useBudgetAdjustment(load, setError)
+
+  useEffect(() => {
+    void load().catch((loadError) => setError(message(loadError)))
+  }, [load, setError])
+
+  useEffect(() => {
+    if (section === 'overview' && (permissions.canViewUsage || permissions.canViewAudit)) return
+    if (section === 'roles' && canViewRoles) return
+    if (section === 'groups' && canViewGroups) return
+    if (section === 'catalog' && canViewCatalog) return
+    if (permissions.canViewUsage || permissions.canViewAudit) setSection('overview')
+    else if (canViewRoles) setSection('roles')
+    else if (canViewGroups) setSection('groups')
+    else if (canViewCatalog) setSection('catalog')
+  }, [canViewCatalog, canViewGroups, canViewRoles, permissions.canViewAudit, permissions.canViewUsage, section, setSection])
+
   return (
     <AppScreenShell
       data-testid="admin-console"
       sidebarBehavior="always"
       sidebarClassName="w-12 p-0 sm:w-60"
-      sidebar={(
-        <>
-          <SecondaryPanelHeader title="Admin" />
-          <nav aria-label="Administration sections" className="space-y-0.5 px-2 py-3">
-            {sections.map(({ value, label, Icon }) => (
-              <button
-                key={value}
-                type="button"
-                aria-current={section === value ? 'page' : undefined}
-                onClick={() => setSection(value)}
-                className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${
-                  section === value
-                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                    : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-                }`}
-              >
-                <Icon size={15} strokeWidth={1.75} className="shrink-0" />
-                <span className="truncate max-sm:hidden">{label}</span>
-              </button>
-            ))}
-          </nav>
-        </>
-      )}
+      sidebar={<AdminSidebarNav sections={sections} section={section} onSelectSection={setSection} />}
       header={(
         <AppScreenHeader
           title="Administration"
           subtitle="Workspace controls"
-          actions={(
+          actions={
             <>
               <button
                 type="button"
@@ -173,12 +375,14 @@ export default function AdminPage() {
                 <RefreshCw size={15} />
               </button>
             </>
-          )}
+          }
         />
       )}
     >
       <AppScreenBody maxWidth="xl" padding="md">
-        {error ? <p className="mb-5 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
+        {error ? (
+          <p className='mb-5 text-sm text-red-600 dark:text-red-400'>{error}</p>
+        ) : null}
 
         {section === 'roles' && canViewRoles ? (
           <AuthorizationAdminPanel
@@ -202,61 +406,45 @@ export default function AdminPage() {
           <CatalogPolicyAdminPanel canManage={canManageCatalog} />
         ) : null}
 
-        {section === 'overview' && (forbidden || (!canViewUsage && !canViewAudit)) ? (
-          <div className="py-12" data-testid="admin-forbidden">
-            <ShieldCheck size={22} />
-            <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">This account cannot view usage or audit data.</p>
-          </div>
+        {section === 'overview' ? (
+          <AdminOverview
+            forbidden={forbidden}
+            canViewUsage={permissions.canViewUsage}
+            canViewAudit={permissions.canViewAudit}
+            usageSection={(
+              <AdminUsageSection
+                usage={usage}
+                userFilter={userFilter}
+                onUserFilterChange={setUserFilter}
+                canManageUsage={permissions.canManageUsage}
+                adjustUserId={adjustUserId}
+                onAdjustUserIdChange={setAdjustUserId}
+                amountCents={amountCents}
+                onAmountCentsChange={setAmountCents}
+                busy={busy}
+                onAdjustBudget={() => void adjustBudget()}
+                onApplyFilter={() => void load()}
+              />
+            )}
+            auditSection={(
+              <AdminAuditSection
+                events={events}
+                auditFilter={auditFilter}
+                onAuditFilterChange={setAuditFilter}
+                onSearch={() => void load()}
+              />
+            )}
+          />
         ) : null}
-
-        {section === 'overview' && !forbidden && (canViewUsage || canViewAudit) ? <>{canViewUsage ? <section data-testid="admin-usage">
-        <div className="flex items-center gap-2"><WalletCards size={17} /><h2 className="text-sm font-semibold">Usage and budgets</h2></div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-[var(--muted)]" size={15} />
-            <input aria-label="Filter usage by user ID" className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-9 pr-3 text-sm" placeholder="User ID" value={userFilter} onChange={(event) => setUserFilter(event.target.value)} />
-          </div>
-          <button type="button" className="h-9 rounded-md border border-[var(--border)] px-4 text-sm" onClick={() => void load()}>Apply filter</button>
-        </div>
-        <div className="mt-4 overflow-x-auto border-y border-[var(--border)]">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="text-xs text-[var(--muted)]"><tr><th className="py-3">User</th><th>Plan</th><th>Total</th><th>Used</th><th>Remaining</th></tr></thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {usage.map((row) => <tr key={row.userId}><td className="py-3"><div className="font-medium">{row.email || row.userId}</div><div className="text-xs text-[var(--muted)]">{row.userId}</div></td><td>{row.planKind}</td><td>{money(row.budgetTotalCents)}</td><td>{money(row.budgetUsedCents)}</td><td>{money(row.budgetRemainingCents)}</td></tr>)}
-            </tbody>
-          </table>
-        </div>
-        {canManageUsage ? <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
-          <input aria-label="Budget user ID" className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="User ID" value={adjustUserId} onChange={(event) => setAdjustUserId(event.target.value)} />
-          <input aria-label="Budget adjustment cents" className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="Amount in cents" inputMode="numeric" value={amountCents} onChange={(event) => setAmountCents(event.target.value)} />
-          <button type="button" className="h-9 rounded-md bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-50" disabled={busy} onClick={() => void adjustBudget()}>Adjust budget</button>
-        </div> : null}
-      </section> : null}
-
-      {canViewAudit ? <section className="mt-10" data-testid="admin-audit">
-        <div className="flex items-center gap-2"><ShieldCheck size={17} /><h2 className="text-sm font-semibold">Audit events</h2></div>
-        <div className="mt-4 flex gap-3">
-          <input aria-label="Filter audit action" className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="Exact action" value={auditFilter} onChange={(event) => setAuditFilter(event.target.value)} />
-          <button type="button" className="h-9 rounded-md border border-[var(--border)] px-4 text-sm" onClick={() => void load()}>Search</button>
-        </div>
-        <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
-          {events.length === 0 ? <p className="py-5 text-sm text-[var(--muted)]">No matching audit events.</p> : events.map((event) => (
-            <div key={event.id} className="grid gap-1 py-3 text-sm md:grid-cols-[220px_1fr_100px]">
-              <div><p className="font-medium">{event.action}</p><p className="text-xs text-[var(--muted)]">{new Date(event.createdAt).toLocaleString()}</p></div>
-              <p className="text-[var(--muted)]">{event.resourceType}{event.resourceId ? ` · ${event.resourceId}` : ''}</p>
-              <p>{event.outcome}</p>
-            </div>
-          ))}
-        </div>
-        </section> : null}</> : null}
       </AppScreenBody>
     </AppScreenShell>
   )
 }
 
+const USD_FORMATTER = new Intl.NumberFormat(undefined, { currency: 'USD', style: 'currency' })
+
 function money(cents: number): string {
-  return new Intl.NumberFormat(undefined, { currency: 'USD', style: 'currency' }).format(cents / 100)
+  return USD_FORMATTER.format(cents / 100)
 }
 
 function message(error: unknown): string {

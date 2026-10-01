@@ -16,11 +16,11 @@ const constants: ActInstructionConstants = {
 function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentInstructions>[0]> = {}) {
   return buildActAgentInstructions({
     availableToolIds: [
+      'deep_search',
       'interactive_browser_session',
-      'parallel_search',
-      'perplexity_search',
-      'run_daytona_sandbox',
       'save_memory',
+      'web_fetch',
+      'web_search',
     ],
     autoRetrieval: '\nAUTO_RETRIEVAL',
     constants,
@@ -33,7 +33,6 @@ function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentIns
     memoryContext: '\nMEMORY_CONTEXT',
     mentionsContext: '\nMENTIONS_CONTEXT',
     paid: true,
-    projectInstructions: 'PROJECT_RULES',
     skillsContext: '\nSKILLS_CONTEXT',
     userSystemPromptExtension: 'USER_SYSTEM',
     ...overrides,
@@ -47,11 +46,11 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   })
 
   assert.match(instructions, /^You are Overlay’s browser agent\./)
-  assert.match(instructions, /Project instructions:\nPROJECT_RULES/)
+  // Projects were removed (9a6141f5b); no project block is composed.
+  assert.doesNotMatch(instructions, /Project instructions/)
   assert.match(instructions, /generate_image, generate_video/)
   assert.match(instructions, /You are in Automate mode\./)
   assert.match(instructions, /interactive_browser_session/)
-  assert.match(instructions, /run_daytona_sandbox/)
   assert.match(instructions, /Every code artifact you write must be returned in a fenced Markdown code block/)
   assert.match(instructions, /never place source code, HTML, CSS, JavaScript, JSON, SQL/)
   assert.match(instructions, /WEB_KNOWLEDGE/)
@@ -95,6 +94,5 @@ test('buildActAgentInstructions does not advertise tools when none are registere
   assert.match(instructions, /No callable tools are registered for this turn/)
   assert.match(instructions, /No knowledge or memory tools are callable in this turn/)
   assert.doesNotMatch(instructions, /You also have an interactive_browser_session tool/)
-  assert.doesNotMatch(instructions, /You also have a run_daytona_sandbox tool/)
   assert.doesNotMatch(instructions, /PAID_REALITY/)
 })

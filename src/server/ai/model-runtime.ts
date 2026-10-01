@@ -4,19 +4,11 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   getGatewayImageModel,
   getGatewayModelId,
-  getGatewayParallelSearchTool,
-  getGatewayPerplexitySearchTool,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
   getOpenRouterLanguageModelCapturingRoutedModel,
-  parallelSearchInputSchema,
-  perplexitySearchInputSchema,
 } from '@/server/ai/gateway/ai-gateway'
 import { userFacingOpenRouterError } from '@/server/ai/gateway/openrouter-service'
-import {
-  createNvidiaNimChatLanguageModel,
-  resolveNvidiaApiKey,
-} from '@/server/ai/gateway/nvidia-nim-openai'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { ByokGateway, type ByokConnection } from '@overlay/llm-gateway'
 import type { ProviderConnectionRecord } from '@/server/ai/provider-connections'
@@ -47,6 +39,7 @@ export async function getLanguageModel(
   modelId: string,
   accessToken?: string,
   userId?: string,
+  options?: { allowLowBalanceFallback?: boolean },
 ): Promise<LanguageModel> {
   const parsed = parseByokModelId(modelId)
   if (isByokModelId(modelId) && !parsed) throw new Error('Invalid BYOK model id.')
@@ -71,7 +64,10 @@ export async function getLanguageModel(
 
   const model = await getOverlayServerContext().llmGateway.createLanguageModel(
     modelId,
-    { accessToken },
+    {
+      accessToken,
+      allowLowBalanceFallback: options?.allowLowBalanceFallback,
+    },
   )
   return model.implementation as LanguageModel
 }
@@ -79,14 +75,8 @@ export async function getLanguageModel(
 export {
   getGatewayImageModel,
   getGatewayModelId,
-  getGatewayParallelSearchTool,
-  getGatewayPerplexitySearchTool,
   getGatewayVideoModel,
   getOpenRouterLanguageModel,
   getOpenRouterLanguageModelCapturingRoutedModel,
-  parallelSearchInputSchema,
-  perplexitySearchInputSchema,
   userFacingOpenRouterError,
-  createNvidiaNimChatLanguageModel,
-  resolveNvidiaApiKey,
 }

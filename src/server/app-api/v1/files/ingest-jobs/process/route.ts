@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       userId,
       file,
       ...(typeof parentId === 'string' ? { parentId } : {}),
+      ...(typeof body.workspaceId === 'string' ? { workspaceId: body.workspaceId } : {}),
     })
 
     // Mark job as completed

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { type Dispatch, type SetStateAction, Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, MessageSquare, SlidersHorizontal } from 'lucide-react'
@@ -47,7 +47,6 @@ function tierIdForPaidAmount(cents: number): TierId {
 
 const PAID_FEATURE_BULLETS = [
   'Premium chat models',
-  'Daytona sandboxes',
   'Browser tasks',
   'Image and video generation',
   'Advanced agents and premium workflows',
@@ -60,6 +59,10 @@ const PAID_OPTIONS: Array<{ tier: TierId; label: string; amountCents: number; no
   { tier: 'pro', label: 'Most popular', amountCents: TIER_PRO_CENTS, note: 'For regular work' },
   { tier: 'max', label: 'Best value', amountCents: TIER_MAX_CENTS, note: '12 GB storage' },
 ]
+
+type PricingTheme = Record<string, string>
+type PricingLoadingState = 'checkout' | 'portal' | 'topup-settings' | null
+type PaidTierOption = (typeof PAID_OPTIONS)[number]
 
 function UserIdExtractor() {
   const searchParams = useSearchParams()
@@ -74,6 +77,513 @@ function UserIdExtractor() {
   return null
 }
 
+function BillingUnavailable({ theme }: { theme: PricingTheme }) {
+  return (
+    <StaticMarketingShell>
+      <main className={minimalSection()}>
+        <div className="mx-auto max-w-2xl text-center">
+          <Reveal>
+            <p className={minimalLabel()}>Plans and pricing</p>
+            <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
+              Billing unavailable.
+            </h1>
+            <p className={`mx-auto mt-6 max-w-xl ${minimalBody()}`}>
+              This deployment does not use Overlay-managed billing. Workspace
+              access is controlled by the deployment administrator.
+            </p>
+            <Link
+              href="/app/chat"
+              className={`mt-8 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-colors ${theme.primaryButton}`}
+            >
+              Open app
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Reveal>
+        </div>
+      </main>
+      <MarketingFooter />
+    </StaticMarketingShell>
+  )
+}
+
+function PricingHero({
+  authLoading,
+  isAuthenticated,
+  error,
+  selectedPlanAmountCents,
+}: {
+  authLoading: boolean
+  isAuthenticated: boolean
+  error: string | null
+  selectedPlanAmountCents: number
+}) {
+  return (
+    <Reveal>
+      <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
+        <div>
+          <p className={minimalLabel()}>Plans and pricing</p>
+          <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
+            Pay for the platform and the AI you use.
+          </h1>
+          <p className={`mt-6 max-w-2xl ${minimalBody()}`}>
+            Start free. Upgrade when you want premium models, agents,
+            browser tasks, and more monthly budget.
+          </p>
+          {!authLoading && !isAuthenticated ? (
+            <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--foreground)]">
+              Sign in to subscribe.
+              <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline underline-offset-4">
+                Sign in
+              </Link>
+            </div>
+          ) : null}
+          {error ? (
+            <div className="mt-6 inline-flex rounded-lg border border-[color:color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-2 text-sm text-[var(--danger)]">
+              {error}
+            </div>
+          ) : null}
+        </div>
+        <PricingControlPreview amount={formatDollarAmount(selectedPlanAmountCents)} />
+      </div>
+    </Reveal>
+  )
+}
+
+function CheckoutTermsNotice({
+  acceptedCheckoutTerms,
+  onAcceptedChange,
+}: {
+  acceptedCheckoutTerms: boolean
+  onAcceptedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-4 text-sm leading-6 text-[var(--muted)]">
+      <Toggle
+        checked={acceptedCheckoutTerms}
+        onCheckedChange={onAcceptedChange}
+        aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms"
+      />
+      <span>
+        I agree to the <Link className="underline" href={LEGAL_DOCUMENTS.terms.href}>Terms of Service (version {LEGAL_DOCUMENTS.terms.version})</Link>, acknowledge the <Link className="underline" href={LEGAL_DOCUMENTS.privacy.href}>Privacy Policy (version {LEGAL_DOCUMENTS.privacy.version})</Link>, and agree to the <Link className="underline" href="/refunds">recurring billing, cancellation, and refund terms</Link>.
+      </span>
+    </div>
+  )
+}
+
+function FreeTierCard({
+  theme,
+  currentPlanKind,
+  subscriptionLoading,
+  isAuthenticated,
+}: {
+  theme: PricingTheme
+  currentPlanKind: 'free' | 'paid'
+  subscriptionLoading: boolean
+  isAuthenticated: boolean
+}) {
+  return (
+    <section className={theme.tierCard}>
+      <div className="flex min-h-[56px] items-center gap-3">
+        <div className={theme.iconChip}>
+          <MessageSquare className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+        </div>
+        <div>
+          <h2 className={`text-lg font-semibold ${theme.heading}`}>Free</h2>
+          <p className={`text-xs ${theme.muted}`}>Auto model and core workspace</p>
+        </div>
+      </div>
+      <div className="mt-6 min-h-[82px]">
+        <div className={theme.title} style={minimalSerif()}>$0</div>
+        <p className={`mt-1 text-sm ${theme.body}`}>No card required</p>
+      </div>
+      <ul className="mt-4 flex flex-col gap-2.5">
+        {[
+          'Unlimited Auto model messages',
+          'Notes, chats, files, knowledge',
+          'Basic AI tools and core flows',
+          '10 MB file storage',
+        ].map((feature) => (
+          <li key={feature} className="flex items-start gap-2">
+            <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+            <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-auto pt-6">
+        {currentPlanKind === 'free' ? (
+          <div className={theme.currentPlanPill}>{subscriptionLoading ? 'Loading…' : 'Current plan'}</div>
+        ) : (
+          <Link
+            href={isAuthenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${theme.secondaryButton}`}
+          >
+            Start free
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function PaidTierCard({
+  theme,
+  className,
+  option,
+  onSelectTier,
+  cta,
+}: {
+  theme: PricingTheme
+  className: string
+  option: PaidTierOption
+  onSelectTier: (tier: TierId, amountCents?: number) => void
+  cta: React.ReactNode
+}) {
+  return (
+    // Card click pre-selects the tier as a pointer convenience; the inner CTA performs the same action for keyboard users.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions, react-doctor/no-noninteractive-element-interactions, react-doctor/click-events-have-key-events
+    <section className={className} onClick={() => onSelectTier(option.tier)}>
+      <div className="flex min-h-[56px] items-center justify-between gap-3">
+        <div>
+          <h2 className={`text-lg font-semibold ${theme.heading}`}>Paid</h2>
+          <p className={`text-xs ${theme.muted}`}>{option.note}</p>
+        </div>
+      </div>
+      <div className="mt-6 min-h-[82px]">
+        <div className="flex flex-wrap items-end gap-1.5">
+          <span className={theme.title} style={minimalSerif()}>${option.amountCents / 100}</span>
+          <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
+        </div>
+        <p className={`mt-2 text-xs leading-relaxed ${theme.muted}`}>
+          {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: option.amountCents }))} storage
+        </p>
+      </div>
+      <ul className="mt-4 flex flex-col gap-2">
+        <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
+        {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
+          <li key={feature} className="flex items-start gap-2">
+            <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+            <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-auto pt-6">{cta}</div>
+    </section>
+  )
+}
+
+function CustomTierCard({
+  theme,
+  className,
+  selectedTier,
+  selectedPlanAmountCents,
+  selectedPlanDollars,
+  selectedStorageBytes,
+  onSelectTier,
+  cta,
+}: {
+  theme: PricingTheme
+  className: string
+  selectedTier: TierId
+  selectedPlanAmountCents: number
+  selectedPlanDollars: number
+  selectedStorageBytes: number
+  onSelectTier: (tier: TierId, amountCents?: number) => void
+  cta: React.ReactNode
+}) {
+  return (
+    // Card click pre-selects the tier as a pointer convenience; the inner CTA performs the same action for keyboard users.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions, react-doctor/no-noninteractive-element-interactions, react-doctor/click-events-have-key-events
+    <section className={className} onClick={() => onSelectTier('custom')}>
+      <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
+      <div className="relative flex min-h-[56px] items-center gap-3">
+        <div className={theme.iconChip}>
+          <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+        </div>
+        <div>
+          <h2 className={`text-lg font-semibold ${theme.heading}`}>Choose my own</h2>
+          <p className={`text-xs ${theme.muted}`}>Pick any monthly budget ($8–$200)</p>
+        </div>
+      </div>
+      <div className="relative mt-6 min-h-[82px]">
+        <div className="flex flex-wrap items-end gap-1.5">
+          <span className={theme.title} style={minimalSerif()}>{formatDollarAmount(selectedPlanAmountCents)}</span>
+          <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
+        </div>
+        <p className={`mt-2 text-xs ${theme.muted}`}>
+          {formatBytes(selectedStorageBytes)} storage · {Math.round(selectedPlanAmountCents / 100)} × $1 units
+        </p>
+      </div>
+
+      <ul className="relative mt-4 flex flex-col gap-2">
+        <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
+        {PAID_FEATURE_BULLETS.map((feature) => (
+          <li key={feature} className="flex items-start gap-2">
+            <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
+            <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className={`relative mt-5 ${theme.subtleCard}`}>
+        <div className="flex items-center justify-between text-xs">
+          <span className={theme.muted}>Monthly budget</span>
+          <span className={`font-medium ${theme.heading}`}>{formatDollarAmount(selectedPlanAmountCents)}</span>
+        </div>
+        <input
+          type="range"
+          min={PAID_PLAN_MIN_AMOUNT_CENTS / 100}
+          max={PAID_PLAN_MAX_AMOUNT_CENTS / 100}
+          step={PAID_PLAN_STEP_AMOUNT_CENTS / 100}
+          value={selectedPlanDollars}
+          onChange={(event) => {
+            const next = Math.round(Number(event.target.value) * 100)
+            onSelectTier('custom', next)
+          }}
+          aria-label="Choose monthly budget"
+          onPointerDown={() => {
+            if (selectedTier !== 'custom') onSelectTier('custom', selectedPlanAmountCents)
+          }}
+          className={theme.sliderTrack}
+        />
+        <div className={`mt-1 flex justify-between text-[11px] ${theme.muted}`}>
+          <span>$8</span>
+          <span>$200</span>
+        </div>
+      </div>
+
+      <div className="relative mt-auto pt-6">{cta}</div>
+    </section>
+  )
+}
+
+function TopUpPanel({
+  theme,
+  autoTopUpEnabled,
+  onAutoTopUpChange,
+  currentPlanKind,
+  loading,
+  subscriptionLoading,
+  onSave,
+}: {
+  theme: PricingTheme
+  autoTopUpEnabled: boolean
+  onAutoTopUpChange: (checked: boolean) => void
+  currentPlanKind: 'free' | 'paid'
+  loading: PricingLoadingState
+  subscriptionLoading: boolean
+  onSave: () => void
+}) {
+  return (
+    <section className={theme.panel + ' p-6'}>
+      <h2 className={`text-sm font-medium ${theme.heading}`}>Top-ups</h2>
+      <p className={`mt-2 text-sm leading-relaxed ${theme.body}`}>
+        One-time and automatic top-ups use <span className="font-medium">$8</span> per recharge unless you change this in{' '}
+        <Link href="/app/settings?section=account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
+          Account
+        </Link>
+        . Automatic top-ups are off until you opt in.
+      </p>
+      <div
+        className="mt-5 flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4"
+      >
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-medium ${theme.heading}`}>Enable automatic top-ups</p>
+          <p className={`mt-1 text-xs leading-relaxed ${theme.muted}`}>
+            When enabled, we add $8 when your cumulative budget reaches zero.
+          </p>
+        </div>
+        <Toggle
+          checked={autoTopUpEnabled}
+          onCheckedChange={onAutoTopUpChange}
+          aria-label="Enable automatic top-ups"
+        />
+      </div>
+      {currentPlanKind === 'paid' ? (
+        <button
+          type="button"
+          onClick={() => void onSave()}
+          disabled={loading === 'topup-settings' || subscriptionLoading}
+          className={`mt-4 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${theme.secondaryButton}`}
+        >
+          {loading === 'topup-settings' ? 'Saving…' : 'Save top-up preference'}
+        </button>
+      ) : null}
+    </section>
+  )
+}
+
+function HowBillingWorksPanel({ theme }: { theme: PricingTheme }) {
+  return (
+    <section className={theme.panel + ' p-6'}>
+      <h2 className={`text-sm font-medium ${theme.heading}`}>How billing works</h2>
+      <div className="mt-4 space-y-4">
+        {[
+          { label: 'Monthly budget', hint: 'Your subscription sets how much usage budget you get each cycle.' },
+          { label: 'Usage draws it down', hint: 'Premium features consume budget with a small markup.' },
+          { label: 'Top up if needed', hint: 'Add $8 (or more from Account) when you need extra headroom.' },
+        ].map(({ label, hint }) => (
+          <div key={label}>
+            <p className={`text-sm font-medium ${theme.heading}`}>{label}</p>
+            <p className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>{hint}</p>
+          </div>
+        ))}
+      </div>
+      <p className={`mt-4 text-sm ${theme.body}`}>
+        Manage payment method and invoices in{' '}
+        <Link href="/app/settings?section=account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
+          Account
+        </Link>
+        .
+      </p>
+    </section>
+  )
+}
+
+function usePricingActions({
+  billingEnabled,
+  isAuthenticated,
+  user,
+  router,
+  acceptedCheckoutTerms,
+  autoTopUpEnabled,
+  selectTier,
+  setLoading,
+  setError,
+}: {
+  billingEnabled: boolean
+  isAuthenticated: boolean
+  user: { id?: string | null } | null
+  router: ReturnType<typeof useRouter>
+  acceptedCheckoutTerms: boolean
+  autoTopUpEnabled: boolean
+  selectTier: (tier: TierId, amountCents?: number) => void
+  setLoading: Dispatch<SetStateAction<PricingLoadingState>>
+  setError: Dispatch<SetStateAction<string | null>>
+}) {
+  async function startCheckout(planAmountCents: number, tier?: TierId) {
+    if (!billingEnabled) {
+      setError('Billing is disabled for this deployment.')
+      return
+    }
+    if (tier) {
+      if (tier === 'custom') selectTier('custom', planAmountCents)
+      else selectTier(tier)
+    }
+
+    if (!isAuthenticated || !user) {
+      router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
+      return
+    }
+
+    if (!acceptedCheckoutTerms) {
+      setError('Please accept the current Terms, Privacy Policy, and billing terms before subscribing.')
+      return
+    }
+
+    setLoading('checkout')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planAmountCents,
+          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
+          autoTopUpEnabled,
+          ...currentLegalAcceptancePayload(),
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
+          return
+        }
+        setError(data.error || 'Failed to start checkout.')
+        return
+      }
+
+      const checkoutUrl = safeHttpUrl(data.url)
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl
+        return
+      }
+
+      setError('No checkout URL returned. Please try again.')
+    } catch (checkoutError) {
+      console.error('[Pricing] Checkout error:', checkoutError)
+      setError('Failed to start checkout. Please try again.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  async function handleManageBilling() {
+    if (!billingEnabled) {
+      setError('Billing is disabled for this deployment.')
+      return
+    }
+    setLoading('portal')
+    setError(null)
+
+    try {
+      const response = await fetch('/api/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: 'OPEN_BILLING_PORTAL' }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.url) {
+        setError(data.error || 'Failed to open billing portal.')
+        return
+      }
+      window.location.href = data.url
+    } catch (portalError) {
+      console.error('[Pricing] Portal error:', portalError)
+      setError('Failed to open billing portal.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  async function handleSaveTopUpPreference() {
+    if (!billingEnabled) {
+      setError('Billing is disabled for this deployment.')
+      return
+    }
+    setLoading('topup-settings')
+    setError(null)
+
+    try {
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
+      const response = await fetch('/api/subscription/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
+          autoTopUpEnabled,
+          confirmation: 'UPDATE_BILLING_SETTINGS',
+          grantOffSessionConsent: autoTopUpEnabled,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setError(data.error || 'Failed to save top-up preference.')
+      }
+    } catch (saveError) {
+      console.error('[Pricing] Top-up settings error:', saveError)
+      setError('Failed to save top-up preference.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  return { startCheckout, handleManageBilling, handleSaveTopUpPreference }
+}
+
 function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const router = useRouter()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -82,17 +592,21 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   const [autoTopUpEnabled, setAutoTopUpEnabled] = useState(false)
   const [currentPlanKind, setCurrentPlanKind] = useState<'free' | 'paid'>('free')
   const [currentPlanAmountCents, setCurrentPlanAmountCents] = useState(0)
-  const [loading, setLoading] = useState<'checkout' | 'portal' | 'topup-settings' | null>(null)
+  const [loading, setLoading] = useState<PricingLoadingState>(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
 
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     if (!billingEnabled) return
     if (!isAuthenticated || !user?.id) return
 
     let active = true
-    setSubscriptionLoading(true)
+    void Promise.resolve().then(() => {
+      if (active) setSubscriptionLoading(true)
+    })
 
     void Promise.all([
       fetch(`/api/subscription?userId=${encodeURIComponent(user.id)}`).then(async (response) => {
@@ -205,124 +719,17 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
     )
   }
 
-  async function startCheckout(planAmountCents: number, tier?: TierId) {
-    if (!billingEnabled) {
-      setError('Billing is disabled for this deployment.')
-      return
-    }
-    if (tier) {
-      if (tier === 'custom') selectTier('custom', planAmountCents)
-      else selectTier(tier)
-    }
-
-    if (!isAuthenticated || !user) {
-      router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
-      return
-    }
-
-    if (!acceptedCheckoutTerms) {
-      setError('Please accept the current Terms, Privacy Policy, and billing terms before subscribing.')
-      return
-    }
-
-    setLoading('checkout')
-    setError(null)
-
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          planAmountCents,
-          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
-          autoTopUpEnabled,
-          ...currentLegalAcceptancePayload(),
-        }),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        if (response.status === 401) {
-          router.push(`/auth/sign-in?redirect=${encodeURIComponent('/pricing')}`)
-          return
-        }
-        setError(data.error || 'Failed to start checkout.')
-        return
-      }
-
-      const checkoutUrl = safeHttpUrl(data.url)
-      if (checkoutUrl) {
-        window.location.href = checkoutUrl
-        return
-      }
-
-      setError('No checkout URL returned. Please try again.')
-    } catch (checkoutError) {
-      console.error('[Pricing] Checkout error:', checkoutError)
-      setError('Failed to start checkout. Please try again.')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleManageBilling() {
-    if (!billingEnabled) {
-      setError('Billing is disabled for this deployment.')
-      return
-    }
-    setLoading('portal')
-    setError(null)
-
-    try {
-      const response = await fetch('/api/portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmation: 'OPEN_BILLING_PORTAL' }),
-      })
-      const data = await response.json()
-      if (!response.ok || !data.url) {
-        setError(data.error || 'Failed to open billing portal.')
-        return
-      }
-      window.location.href = data.url
-    } catch (portalError) {
-      console.error('[Pricing] Portal error:', portalError)
-      setError('Failed to open billing portal.')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleSaveTopUpPreference() {
-    if (!billingEnabled) {
-      setError('Billing is disabled for this deployment.')
-      return
-    }
-    setLoading('topup-settings')
-    setError(null)
-
-    try {
-      const response = await fetch('/api/subscription/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
-          autoTopUpEnabled,
-          confirmation: 'UPDATE_BILLING_SETTINGS',
-          grantOffSessionConsent: autoTopUpEnabled,
-        }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        setError(data.error || 'Failed to save top-up preference.')
-      }
-    } catch (saveError) {
-      console.error('[Pricing] Top-up settings error:', saveError)
-      setError('Failed to save top-up preference.')
-    } finally {
-      setLoading(null)
-    }
-  }
+  const { startCheckout, handleManageBilling, handleSaveTopUpPreference } = usePricingActions({
+    billingEnabled,
+    isAuthenticated,
+    user,
+    router,
+    acceptedCheckoutTerms,
+    autoTopUpEnabled,
+    selectTier,
+    setLoading,
+    setError,
+  })
 
   function paidCtaForAmount(cardAmountCents: number, cardTier: TierId) {
     const subscribedTier =
@@ -368,32 +775,7 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
   }
 
   if (!billingEnabled) {
-    return (
-      <StaticMarketingShell>
-        <main className={minimalSection()}>
-          <div className="mx-auto max-w-2xl text-center">
-            <Reveal>
-              <p className={minimalLabel()}>Plans and pricing</p>
-              <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
-                Billing unavailable.
-              </h1>
-              <p className={`mx-auto mt-6 max-w-xl ${minimalBody()}`}>
-                This deployment does not use Overlay-managed billing. Workspace
-                access is controlled by the deployment administrator.
-              </p>
-              <Link
-                href="/app/chat"
-                className={`mt-8 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-colors ${theme.primaryButton}`}
-              >
-                Open app
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Reveal>
-          </div>
-        </main>
-        <MarketingFooter />
-      </StaticMarketingShell>
-    )
+    return <BillingUnavailable theme={theme} />
   }
 
   return (
@@ -404,35 +786,12 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
 
       <main className={minimalSection()}>
         <div className="mx-auto flex max-w-5xl flex-col gap-16">
-          {/* Hero */}
-          <Reveal>
-            <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:items-center">
-              <div>
-                <p className={minimalLabel()}>Plans and pricing</p>
-                <h1 className={`mt-6 ${minimalDisplay()}`} style={minimalSerif()}>
-                  Pay for the platform and the AI you use.
-                </h1>
-                <p className={`mt-6 max-w-2xl ${minimalBody()}`}>
-                  Start free. Upgrade when you want premium models, agents,
-                  browser tasks, and more monthly budget.
-                </p>
-                {!authLoading && !isAuthenticated ? (
-                  <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--foreground)]">
-                    Sign in to subscribe.
-                    <Link href="/auth/sign-in?redirect=/pricing" className="font-medium underline underline-offset-4">
-                      Sign in
-                    </Link>
-                  </div>
-                ) : null}
-                {error ? (
-                  <div className="mt-6 inline-flex rounded-lg border border-[color:color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-2 text-sm text-[var(--danger)]">
-                    {error}
-                  </div>
-                ) : null}
-              </div>
-              <PricingControlPreview amount={formatDollarAmount(selectedPlanAmountCents)} />
-            </div>
-          </Reveal>
+          <PricingHero
+            authLoading={authLoading}
+            isAuthenticated={isAuthenticated}
+            error={error}
+            selectedPlanAmountCents={selectedPlanAmountCents}
+          />
 
           {/* Tier toggle */}
           <div className="hidden gap-3 lg:grid lg:grid-cols-3">
@@ -441,219 +800,56 @@ function PricingContent({ billingEnabled }: { billingEnabled: boolean }) {
             <div className="hidden lg:block" />
           </div>
 
-          {/* Tier cards */}
-          <div className={`flex items-start gap-3 rounded-xl border border-[var(--border)] p-4 text-sm leading-6 ${theme.body}`}>
-            <Toggle
-              checked={acceptedCheckoutTerms}
-              onCheckedChange={setAcceptedCheckoutTerms}
-              aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms"
-            />
-            <span>
-              I agree to the <Link className="underline" href={LEGAL_DOCUMENTS.terms.href}>Terms of Service (version {LEGAL_DOCUMENTS.terms.version})</Link>, acknowledge the <Link className="underline" href={LEGAL_DOCUMENTS.privacy.href}>Privacy Policy (version {LEGAL_DOCUMENTS.privacy.version})</Link>, and agree to the <Link className="underline" href="/refunds">recurring billing, cancellation, and refund terms</Link>.
-            </span>
-          </div>
+          <CheckoutTermsNotice
+            acceptedCheckoutTerms={acceptedCheckoutTerms}
+            onAcceptedChange={setAcceptedCheckoutTerms}
+          />
 
           <Reveal>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-              {/* Free */}
-              <section className={theme.tierCard}>
-                <div className="flex min-h-[56px] items-center gap-3">
-                  <div className={theme.iconChip}>
-                    <MessageSquare className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                  </div>
-                  <div>
-                    <h2 className={`text-lg font-semibold ${theme.heading}`}>Free</h2>
-                    <p className={`text-xs ${theme.muted}`}>Auto model and core workspace</p>
-                  </div>
-                </div>
-                <div className="mt-6 min-h-[82px]">
-                  <div className={theme.title} style={minimalSerif()}>$0</div>
-                  <p className={`mt-1 text-sm ${theme.body}`}>No card required</p>
-                </div>
-                <ul className="mt-4 flex flex-col gap-2.5">
-                  {[
-                    'Unlimited Auto model messages',
-                    'Notes, chats, files, knowledge',
-                    'Basic AI tools and core flows',
-                    '10 MB file storage',
-                  ].map((feature) => (
-                    <li key={feature} className="flex items-start gap-2">
-                      <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
-                      <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-auto pt-6">
-                  {currentPlanKind === 'free' ? (
-                    <div className={theme.currentPlanPill}>{subscriptionLoading ? 'Loading…' : 'Current plan'}</div>
-                  ) : (
-                    <Link
-                      href={isAuthenticated ? '/app/chat' : '/auth/sign-in?redirect=%2Fapp%2Fchat'}
-                      className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${theme.secondaryButton}`}
-                    >
-                      Start free
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  )}
-                </div>
-              </section>
+              <FreeTierCard
+                theme={theme}
+                currentPlanKind={currentPlanKind}
+                subscriptionLoading={subscriptionLoading}
+                isAuthenticated={isAuthenticated}
+              />
 
               <div className="lg:hidden">{renderPaidTierToggle()}</div>
 
-              {/* Paid */}
-              <section className={tierCardClass(selectedPaidOption.tier)} onClick={() => selectTier(selectedPaidOption.tier)}>
-                <div className="flex min-h-[56px] items-center justify-between gap-3">
-                  <div>
-                    <h2 className={`text-lg font-semibold ${theme.heading}`}>Paid</h2>
-                    <p className={`text-xs ${theme.muted}`}>{selectedPaidOption.note}</p>
-                  </div>
-                </div>
-                <div className="mt-6 min-h-[82px]">
-                  <div className="flex flex-wrap items-end gap-1.5">
-                    <span className={theme.title} style={minimalSerif()}>${selectedPaidOption.amountCents / 100}</span>
-                    <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
-                  </div>
-                  <p className={`mt-2 text-xs leading-relaxed ${theme.muted}`}>
-                    {formatBytes(getStorageLimitBytes({ planKind: 'paid', planAmountCents: selectedPaidOption.amountCents }))} storage
-                  </p>
-                </div>
-                <ul className="mt-4 flex flex-col gap-2">
-                  <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
-                  {PAID_FEATURE_BULLETS_COMPACT.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2">
-                      <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
-                      <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-auto pt-6">{paidCtaForAmount(selectedPaidOption.amountCents, selectedPaidOption.tier)}</div>
-              </section>
+              <PaidTierCard
+                theme={theme}
+                className={tierCardClass(selectedPaidOption.tier)}
+                option={selectedPaidOption}
+                onSelectTier={selectTier}
+                cta={paidCtaForAmount(selectedPaidOption.amountCents, selectedPaidOption.tier)}
+              />
 
-              {/* Choose your own */}
-              <section className={`${tierCardClass('custom')} relative overflow-hidden`} onClick={() => selectTier('custom')}>
-                <div className={`pointer-events-none absolute inset-0 ${theme.heroGlow}`} />
-                <div className="relative flex min-h-[56px] items-center gap-3">
-                  <div className={theme.iconChip}>
-                    <SlidersHorizontal className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                  </div>
-                  <div>
-                    <h2 className={`text-lg font-semibold ${theme.heading}`}>Choose my own</h2>
-                    <p className={`text-xs ${theme.muted}`}>Pick any monthly budget ($8–$200)</p>
-                  </div>
-                </div>
-                <div className="relative mt-6 min-h-[82px]">
-                  <div className="flex flex-wrap items-end gap-1.5">
-                    <span className={theme.title} style={minimalSerif()}>{formatDollarAmount(selectedPlanAmountCents)}</span>
-                    <span className={`pb-1 text-sm ${theme.muted}`}>/ month</span>
-                  </div>
-                  <p className={`mt-2 text-xs ${theme.muted}`}>
-                    {formatBytes(selectedStorageBytes)} storage · {Math.round(selectedPlanAmountCents / 100)} × $1 units
-                  </p>
-                </div>
-
-                <ul className="relative mt-4 flex flex-col gap-2">
-                  <li className={`text-xs font-medium ${theme.muted}`}>Everything in Free, plus:</li>
-                  {PAID_FEATURE_BULLETS.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2">
-                      <Check className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]`} />
-                      <span className="text-sm leading-snug text-[var(--foreground)]">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className={`relative mt-5 ${theme.subtleCard}`}>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className={theme.muted}>Monthly budget</span>
-                    <span className={`font-medium ${theme.heading}`}>{formatDollarAmount(selectedPlanAmountCents)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={PAID_PLAN_MIN_AMOUNT_CENTS / 100}
-                    max={PAID_PLAN_MAX_AMOUNT_CENTS / 100}
-                    step={PAID_PLAN_STEP_AMOUNT_CENTS / 100}
-                    value={selectedPlanDollars}
-                    onChange={(event) => {
-                      const next = Math.round(Number(event.target.value) * 100)
-                      selectTier('custom', next)
-                    }}
-                    aria-label="Choose monthly budget"
-                    onPointerDown={() => {
-                      if (selectedTier !== 'custom') selectTier('custom', selectedPlanAmountCents)
-                    }}
-                    className={theme.sliderTrack}
-                  />
-                  <div className={`mt-1 flex justify-between text-[11px] ${theme.muted}`}>
-                    <span>$8</span>
-                    <span>$200</span>
-                  </div>
-                </div>
-
-                <div className="relative mt-auto pt-6">{paidCtaForAmount(selectedPlanAmountCents, 'custom')}</div>
-              </section>
+              <CustomTierCard
+                theme={theme}
+                className={`${tierCardClass('custom')} relative overflow-hidden`}
+                selectedTier={selectedTier}
+                selectedPlanAmountCents={selectedPlanAmountCents}
+                selectedPlanDollars={selectedPlanDollars}
+                selectedStorageBytes={selectedStorageBytes}
+                onSelectTier={selectTier}
+                cta={paidCtaForAmount(selectedPlanAmountCents, 'custom')}
+              />
             </div>
           </Reveal>
 
           {/* Top-ups + how billing works — consolidated */}
           <Reveal>
             <div className="grid gap-5 md:grid-cols-2">
-              <section className={theme.panel + ' p-6'}>
-                <h2 className={`text-sm font-medium ${theme.heading}`}>Top-ups</h2>
-                <p className={`mt-2 text-sm leading-relaxed ${theme.body}`}>
-                  One-time and automatic top-ups use <span className="font-medium">$8</span> per recharge unless you change this in{' '}
-                  <Link href="/app/settings?section=account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
-                    Account
-                  </Link>
-                  . Automatic top-ups are off until you opt in.
-                </p>
-                <div
-                  className="mt-5 flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-medium ${theme.heading}`}>Enable automatic top-ups</p>
-                    <p className={`mt-1 text-xs leading-relaxed ${theme.muted}`}>
-                      When enabled, we add $8 when your cumulative budget reaches zero.
-                    </p>
-                  </div>
-                  <Toggle
-                    checked={autoTopUpEnabled}
-                    onCheckedChange={setAutoTopUpEnabled}
-                    aria-label="Enable automatic top-ups"
-                  />
-                </div>
-                {currentPlanKind === 'paid' ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveTopUpPreference()}
-                    disabled={loading === 'topup-settings' || subscriptionLoading}
-                    className={`mt-4 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${theme.secondaryButton}`}
-                  >
-                    {loading === 'topup-settings' ? 'Saving…' : 'Save top-up preference'}
-                  </button>
-                ) : null}
-              </section>
-
-              <section className={theme.panel + ' p-6'}>
-                <h2 className={`text-sm font-medium ${theme.heading}`}>How billing works</h2>
-                <div className="mt-4 space-y-4">
-                  {[
-                    { label: 'Monthly budget', hint: 'Your subscription sets how much usage budget you get each cycle.' },
-                    { label: 'Usage draws it down', hint: 'Premium features consume budget with a small markup.' },
-                    { label: 'Top up if needed', hint: 'Add $8 (or more from Account) when you need extra headroom.' },
-                  ].map(({ label, hint }) => (
-                    <div key={label}>
-                      <p className={`text-sm font-medium ${theme.heading}`}>{label}</p>
-                      <p className={`mt-0.5 text-xs leading-relaxed ${theme.muted}`}>{hint}</p>
-                    </div>
-                  ))}
-                </div>
-                <p className={`mt-4 text-sm ${theme.body}`}>
-                  Manage payment method and invoices in{' '}
-                  <Link href="/app/settings?section=account" className={`font-medium underline underline-offset-4 ${theme.heading}`}>
-                    Account
-                  </Link>
-                  .
-                </p>
-              </section>
+              <TopUpPanel
+                theme={theme}
+                autoTopUpEnabled={autoTopUpEnabled}
+                onAutoTopUpChange={setAutoTopUpEnabled}
+                currentPlanKind={currentPlanKind}
+                loading={loading}
+                subscriptionLoading={subscriptionLoading}
+                onSave={handleSaveTopUpPreference}
+              />
+              <HowBillingWorksPanel theme={theme} />
             </div>
           </Reveal>
         </div>

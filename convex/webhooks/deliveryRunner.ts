@@ -52,11 +52,10 @@ export const runMinuteTick = internalAction({
       limit: 25,
     })
 
-    for (const deliveryId of deliveryIds) {
-      await ctx.scheduler.runAfter(0, internal.webhooks.deliveryRunner.deliverOne, {
+    await Promise.all(deliveryIds.map((deliveryId) =>
+      ctx.scheduler.runAfter(0, internal.webhooks.deliveryRunner.deliverOne, {
         deliveryId,
-      })
-    }
+      })))
 
     return null
   },
@@ -77,6 +76,7 @@ export const deliverOne = internalAction({
     let response: Response
     try {
       const signature = await signPayload(job.secret, job.payloadJson, timestamp)
+      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       response = await fetch(job.url, {
         method: 'POST',
         headers: {

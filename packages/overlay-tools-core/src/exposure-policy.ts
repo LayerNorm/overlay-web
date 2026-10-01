@@ -1,7 +1,10 @@
 const DEFAULT_BASE_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
+  'list_files',
+  'read_file',
   'search_memory',
+  'search_messages',
   'save_memory',
   'save_memory_batch',
   'list_notes',
@@ -10,7 +13,15 @@ const DEFAULT_BASE_TOOL_IDS = [
 ] as const
 
 const MEMORY_MUTATION_TOOL_IDS = ['update_memory', 'delete_memory'] as const
-const NOTE_MUTATION_TOOL_IDS = ['create_note', 'update_note', 'delete_note'] as const
+const NOTE_MUTATION_TOOL_IDS = [
+  'create_note',
+  'append_to_note',
+  'replace_note_section',
+  'edit_note',
+  'update_note',
+  'delete_note',
+] as const
+const FILE_MUTATION_TOOL_IDS = ['write_file', 'create_folder', 'move_file'] as const
 const IMAGE_TOOL_IDS = ['generate_image'] as const
 const VIDEO_TOOL_IDS = [
   'generate_video',
@@ -20,7 +31,6 @@ const VIDEO_TOOL_IDS = [
   'edit_video',
 ] as const
 const BROWSER_TOOL_IDS = ['interactive_browser_session'] as const
-const DAYTONA_TOOL_IDS = ['run_daytona_sandbox'] as const
 const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat'] as const
 const AUTOMATION_TOOL_IDS = [
   'list_automations',
@@ -51,17 +61,16 @@ function isExplicitNoteMutationRequest(text: string): boolean {
   ])
 }
 
-function isExplicitBrowserRequest(text: string): boolean {
+function isExplicitFileMutationRequest(text: string): boolean {
   return matchesAny(text, [
-    /\b(log ?in|sign ?in|fill out|fill in|submit|click|browser session|use the browser|open the website|navigate to|take a screenshot|screenshot|scrape the page|web app|website flow|form)\b/i,
+    /\b(create|write|make|save|add|edit|update|rename|move|organi[sz]e)\b.{0,40}\b(file|files|folder|folders|document|csv|markdown|txt)\b/i,
+    /\b(file|files|folder|folders)\b.{0,40}\b(create|write|make|save|edit|update|rename|move|organi[sz]e)\b/i,
   ])
 }
 
-function isExplicitDaytonaRequest(text: string): boolean {
+function isExplicitBrowserRequest(text: string): boolean {
   return matchesAny(text, [
-    /\b(daytona|sandbox|workspace)\b/i,
-    /\b(run|execute|build|compile|render|convert|transform|process|generate)\b.{0,60}\b(script|code|cli|command|terminal|shell|workspace|file|files|pdf|ppt|pptx|powerpoint|slides|spreadsheet|xlsx|docx)\b/i,
-    /\b(python|node|bash|shell|terminal|cli|ffmpeg|pandoc)\b/i,
+    /\b(log ?in|sign ?in|fill out|fill in|submit|click|browser session|use the browser|open the website|navigate to|take a screenshot|screenshot|scrape the page|web app|website flow|form)\b/i,
   ])
 }
 
@@ -110,6 +119,9 @@ export function allowedOverlayToolIdsForTurn(params: {
   if (isExplicitNoteMutationRequest(text)) {
     addAll(allowed, NOTE_MUTATION_TOOL_IDS)
   }
+  if (isExplicitFileMutationRequest(text)) {
+    addAll(allowed, FILE_MUTATION_TOOL_IDS)
+  }
   if (isExplicitBrowserRequest(text) && !isExtensionClient) {
     addAll(allowed, BROWSER_TOOL_IDS)
   }
@@ -118,9 +130,6 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (params.mediaToolIntent === 'video') {
     addAll(allowed, VIDEO_TOOL_IDS)
-  }
-  if (isExplicitDaytonaRequest(text)) {
-    addAll(allowed, DAYTONA_TOOL_IDS)
   }
   if (isExplicitSkillDraftRequest(text)) {
     addAll(allowed, SKILL_DRAFT_TOOL_IDS)

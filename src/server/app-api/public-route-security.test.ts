@@ -15,6 +15,10 @@ const v1Root = join(appRoot, 'api', 'v1')
  */
 const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/account/delete': ['POST'],
+  // Scoped bearer-token model proxy for in-box CLIs — not session auth.
+  '/api/agent-gateway/[provider]/[...path]': ['GET', 'POST'],
+  // Per-turn bearer-token MCP server for connected agents — not session auth.
+  '/api/agent-mcp': ['DELETE', 'GET', 'POST'],
   '/api/auth/callback': ['GET'],
   '/api/auth/convex-token': ['GET'],
   '/api/auth/desktop-link': ['GET', 'POST'],
@@ -47,7 +51,6 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/topups/checkout': ['POST'],
   '/api/topups/history': ['GET'],
   '/api/topups/verify': ['POST'],
-  '/api/webhooks/stripe': ['POST'],
 }
 
 function routeFiles(directory: string): string[] {

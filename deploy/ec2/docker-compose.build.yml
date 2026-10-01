@@ -3,14 +3,10 @@ services:
     build: &overlay-build
       context: ../..
       dockerfile: docker/Dockerfile.enterprise-runtime
-    image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}
-
-  worker:
-    build: *overlay-build
-    image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}
-
-  scheduler:
-    build: *overlay-build
+      args:
+        # Baked into the bundle at build time; see Dockerfile.enterprise-runtime.
+        NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL:-http://127.0.0.1:3210}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     image: ${OVERLAY_WEB_BUILD_IMAGE:-overlay-web:ec2-sanity}
 
   migrate:

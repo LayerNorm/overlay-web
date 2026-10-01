@@ -8,14 +8,16 @@ export interface SettingsToggleProps {
   checked: boolean
   disabled?: boolean
   onChange: () => void
+  'aria-label'?: string
 }
 
-export function SettingsToggle({ checked, disabled, onChange }: SettingsToggleProps) {
+export function SettingsToggle({ checked, disabled, onChange, 'aria-label': ariaLabel }: SettingsToggleProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={onChange}
       className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${

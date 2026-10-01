@@ -405,7 +405,7 @@ test('integrations search reads Composio v3 toolkits and annotates connected sta
   const response = await route.GET(
     request('/api/v1/integrations?action=search&q=g&limit=25'),
     testContext,
-    { service: composioIntegrationService() },
+    { authorization: permissiveAuthorizationService(), service: composioIntegrationService() },
   )
 
   assert.equal(response.status, 200)
@@ -521,6 +521,7 @@ test('integrations default list reads Composio v3 connected accounts by user id'
     request('/api/v1/integrations'),
     testContext,
     {
+      authorization: permissiveAuthorizationService(),
       service: composioIntegrationService(),
       workspaceConnectors: workspaceConnectorRepositoryFixture(),
     },
@@ -596,6 +597,7 @@ test('integrations claim only orphaned legacy connections for the Personal works
   })
   const route = await import('./integrations/route')
   const response = await route.GET(request('/api/v1/integrations'), context(), {
+    authorization: permissiveAuthorizationService(),
     service: {
       id: 'composio',
       capabilities: COMPOSIO_INTEGRATION_CAPABILITIES,

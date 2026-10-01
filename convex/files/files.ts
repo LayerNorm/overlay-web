@@ -57,6 +57,17 @@ function textOf(file: Partial<Doc<'files'>>): string {
   return file.textContent ?? file.content ?? ''
 }
 
+/** Notes always have a visible title; blank names render as an empty header. */
+function fileName(kind: FileKind, name: string): string {
+  return kind === 'note' ? name.trim() || 'Untitled' : name
+}
+
+function noteTags(tags: string[] | undefined): string[] | undefined {
+  if (tags === undefined) return undefined
+  const unique = [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))]
+  return unique.slice(0, 50)
+}
+
 function isTextIndexable(kind: FileKind, text: string): boolean {
   if (kind === 'folder') return false
   return text.trim().length > 0
@@ -108,6 +119,8 @@ function normalizeFile(file: Doc<'files'>) {
     expiresAt: file.expiresAt,
     legacyNoteId: file.legacyNoteId,
     legacyOutputId: file.legacyOutputId,
+    tags: file.tags,
+    textInObjectStore: file.textInObjectStore,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     deletedAt: file.deletedAt,
@@ -127,6 +140,11 @@ function previewTextOf(value: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/\r\n?/g, '\n')
+    // Notes are Markdown: drop syntax that reads as noise in a card preview.
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|```.*$|\$\$$)/gm, '')
+    .replace(/^(\s*)[-*+]\s+\[[ xX]\]\s+/gm, '$1- ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|~~|\\(?=[\\`*_{}[\]()#+\-.!$|]))/g, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -193,10 +211,10 @@ async function maybePromoteDuplicate(
   const promoted = duplicates.find((candidate) => candidate.userId === userId && !candidate.deletedAt)
   if (!promoted) return null
   await ctx.db.patch(promoted._id, { duplicateOfFileId: undefined, indexStatus: 'pending' })
-  for (const duplicate of duplicates) {
-    if (duplicate._id === promoted._id || duplicate.userId !== userId || duplicate.deletedAt) continue
-    await ctx.db.patch(duplicate._id, { duplicateOfFileId: promoted._id, updatedAt: Date.now() })
-  }
+  const now = Date.now()
+  await Promise.all(duplicates
+    .filter((duplicate) => duplicate._id !== promoted._id && duplicate.userId === userId && !duplicate.deletedAt)
+    .map((duplicate) => ctx.db.patch(duplicate._id, { duplicateOfFileId: promoted._id, updatedAt: now })))
   return promoted._id
 }
 
@@ -268,8 +286,10 @@ export const createUploadIntentByServer = mutation({
       throw new Error('upload_intent_already_exists')
     }
 
-    const subscription = await getOrCreateSubscription(ctx, args.userId)
-    const pendingBytes = await getPendingUploadIntentBytes(ctx, args.userId)
+    const [subscription, pendingBytes] = await Promise.all([
+      getOrCreateSubscription(ctx, args.userId),
+      getPendingUploadIntentBytes(ctx, args.userId),
+    ])
     const nextReservedBytes = getStorageBytesUsed(subscription) + pendingBytes + declaredSizeBytes
     const storageLimitBytes = getStorageLimitForSubscription(subscription)
     if (nextReservedBytes > storageLimitBytes) {
@@ -391,14 +411,15 @@ export const expireUploadIntentsByServer = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     requireServerAccess(args.serverSecret)
-    for (const intentId of args.intentIds) {
-      const intent = await ctx.db.get(intentId)
-      if (!intent || intent.userId !== args.userId || intent.status !== 'pending') continue
-      await ctx.db.patch(intentId, {
+    const intents = await Promise.all(args.intentIds.map((intentId) => ctx.db.get(intentId)))
+    await Promise.all(args.intentIds.flatMap((intentId, i) => {
+      const intent = intents[i]
+      if (!intent || intent.userId !== args.userId || intent.status !== 'pending') return []
+      return [ctx.db.patch(intentId, {
         status: 'expired',
         expiredAt: args.now,
-      })
-    }
+      })]
+    }))
     return null
   },
 })
@@ -687,6 +708,8 @@ export const create = mutation({
     serverSecret: v.optional(v.string()),
     clientId: v.optional(v.string()),
     name: v.string(),
+    tags: v.optional(v.array(v.string())),
+    textInObjectStore: v.optional(v.boolean()),
     type: v.optional(v.union(v.literal('file'), v.literal('folder'))),
     kind: v.optional(v.union(
       v.literal('folder'),
@@ -748,6 +771,8 @@ export const create = mutation({
     const explicitSize = args.sizeBytesOverride ?? args.sizeBytes ?? 0
     const sizeBytes = type === 'file' ? Math.max(textBytes, explicitSize) : 0
     const clientId = args.clientId?.trim() || undefined
+    const name = fileName(kind, args.name)
+    const tags = kind === 'note' ? noteTags(args.tags) : undefined
     if (kind === 'note' && clientId) {
       const exactCandidate = await ctx.db
         .query('files')
@@ -786,7 +811,8 @@ export const create = mutation({
         const contentChanged = previousText !== textContent || Boolean(existingNote.deletedAt)
         await ctx.db.patch(existingNote._id, {
           clientId,
-          name: args.name,
+          name,
+          ...(tags !== undefined ? { tags } : {}),
           content: textContent,
           textContent: undefined,
           sizeBytes,
@@ -830,7 +856,9 @@ export const create = mutation({
       userId: args.userId,
       workspaceId: args.workspaceId,
       clientId,
-      name: args.name,
+      name,
+      tags,
+      ...(args.textInObjectStore && args.r2Key ? { textInObjectStore: true } : {}),
       type,
       kind,
       parentId: args.parentId,
@@ -838,7 +866,7 @@ export const create = mutation({
       storageId: args.storageId,
       r2Key: args.r2Key,
       mimeType: args.mimeType,
-      extension: args.extension ?? extensionOf(args.name),
+      extension: args.extension ?? extensionOf(name),
       sizeBytes,
       contentHash: args.contentHash,
       duplicateOfFileId: canonicalDuplicate?._id,
@@ -993,6 +1021,8 @@ export const update = mutation({
     serverSecret: v.optional(v.string()),
     fileId: v.id('files'),
     name: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    textInObjectStore: v.optional(v.boolean()),
     content: v.optional(v.string()),
     textContent: v.optional(v.string()),
     contentHash: v.optional(v.string()),
@@ -1051,16 +1081,23 @@ export const update = mutation({
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
     if (updates.name !== undefined) {
-      patch.name = updates.name
+      patch.name = fileName(kind, updates.name)
       patch.extension = extensionOf(updates.name)
     }
+    if (updates.tags !== undefined && kind === 'note') patch.tags = noteTags(updates.tags)
     if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError
+    const textInObjectStore = updates.textInObjectStore ?? existing.textInObjectStore ?? false
     if (updates.r2Key !== undefined) {
-      if (updates.r2Key && !isOwnedOutputR2Key(userId, updates.r2Key)) throw new Error('Invalid storage key')
+      // Outputs point at their own keys; a text file whose full text lives in
+      // object storage points at its owner's file key.
+      const allowedKey = isOwnedOutputR2Key(userId, updates.r2Key)
+        || (textInObjectStore && isOwnedFileR2Key(userId, updates.r2Key))
+      if (updates.r2Key && !allowedKey) throw new Error('Invalid storage key')
       patch.r2Key = updates.r2Key || undefined
     }
+    if (updates.textInObjectStore !== undefined) patch.textInObjectStore = updates.textInObjectStore || undefined
     if (updates.mimeType !== undefined) patch.mimeType = updates.mimeType
     if (updates.sizeBytes !== undefined) patch.sizeBytes = updates.sizeBytes
     if (updates.modelId !== undefined) patch.modelId = updates.modelId
@@ -1084,7 +1121,10 @@ export const update = mutation({
       if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
     }
     if (nextText !== undefined) {
-      const nextSizeBytes = utf8ByteLength(nextText)
+      // For text in object storage `content` is only a prefix; the caller passes the full size.
+      const nextSizeBytes = textInObjectStore && updates.sizeBytes !== undefined
+        ? updates.sizeBytes
+        : utf8ByteLength(nextText)
       const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existingText)
       storageDelta = shouldCountStorage(kind, existing.type, nextSizeBytes)
         ? nextSizeBytes - previousSizeBytes
@@ -1183,9 +1223,11 @@ export const backfillCanonicalFilesystem = mutation({
   handler: async (ctx, { serverSecret, dryRun, userId, limit }) => {
     if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
     const max = Math.min(5000, Math.max(1, limit ?? 1000))
-    const notes = await ctx.db.query('notes').collect()
-    const outputs = await ctx.db.query('outputs').collect()
-    const existingFiles = await ctx.db.query('files').collect()
+    const [notes, outputs, existingFiles] = await Promise.all([
+      ctx.db.query('notes').collect(),
+      ctx.db.query('outputs').collect(),
+      ctx.db.query('files').collect(),
+    ])
     const targetNotes = notes.filter((note) => !userId || note.userId === userId).slice(0, max)
     const targetOutputs = outputs.filter((output) => !userId || output.userId === userId).slice(0, max)
     const targetFiles = existingFiles.filter((file) => !userId || file.userId === userId).slice(0, max)
@@ -1204,31 +1246,30 @@ export const backfillCanonicalFilesystem = mutation({
     let outputsSkipped = 0
     const now = Date.now()
 
-    for (const file of targetFiles) {
-      if (file.kind) continue
-      filesPatched += 1
-      if (!dryRun) {
+    const filesToPatch = targetFiles.filter((file) => !file.kind)
+    filesPatched += filesToPatch.length
+    if (!dryRun) {
+      await Promise.all(filesToPatch.flatMap((file) => {
         const text = textOf(file)
         const kind = file.type === 'folder' ? 'folder' : 'upload'
-        await ctx.db.patch(file._id, {
+        const writes: Promise<unknown>[] = [ctx.db.patch(file._id, {
           kind,
           extension: file.extension ?? extensionOf(file.name),
           indexable: isTextIndexable(kind, text),
           indexStatus: isTextIndexable(kind, text) ? 'pending' : 'skipped',
-        })
+        })]
         if (isTextIndexable(kind, text)) {
-          await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: file._id })
+          writes.push(ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: file._id }))
         }
-      }
+        return writes
+      }))
     }
 
-    for (const note of targetNotes) {
-      if (note.deletedAt || existingNoteIds.has(String(note._id))) {
-        notesSkipped += 1
-        continue
-      }
-      notesMigrated += 1
-      if (!dryRun) {
+    const notesToMigrate = targetNotes.filter((note) => !(note.deletedAt || existingNoteIds.has(String(note._id))))
+    notesSkipped += targetNotes.length - notesToMigrate.length
+    notesMigrated += notesToMigrate.length
+    if (!dryRun) {
+      await Promise.all(notesToMigrate.map(async (note) => {
         const fileId = await ctx.db.insert('files', {
           userId: note.userId,
           name: note.title || 'Untitled',
@@ -1247,16 +1288,14 @@ export const backfillCanonicalFilesystem = mutation({
         if (note.content.trim()) {
           await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
         }
-      }
+      }))
     }
 
-    for (const output of targetOutputs) {
-      if (existingOutputIds.has(String(output._id))) {
-        outputsSkipped += 1
-        continue
-      }
-      outputsMigrated += 1
-      if (!dryRun) {
+    const outputsToMigrate = targetOutputs.filter((output) => !existingOutputIds.has(String(output._id)))
+    outputsSkipped += targetOutputs.length - outputsToMigrate.length
+    outputsMigrated += outputsToMigrate.length
+    if (!dryRun) {
+      await Promise.all(outputsToMigrate.map(async (output) => {
         const name = output.fileName || `${output.type}-${output._id}`
         const textContent =
           output.type === 'text' || output.type === 'code' || output.type === 'document'
@@ -1288,7 +1327,7 @@ export const backfillCanonicalFilesystem = mutation({
         if (textContent.trim()) {
           await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
         }
-      }
+      }))
     }
 
     return {

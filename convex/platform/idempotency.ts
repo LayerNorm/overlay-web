@@ -41,9 +41,7 @@ export const reserveByServer = mutation({
       .withIndex('by_expiresAt', (q) => q.lt('expiresAt', now))
       .take(PRUNE_BATCH_SIZE)
 
-    for (const row of expired) {
-      await ctx.db.delete(row._id)
-    }
+    await Promise.all(expired.map((row) => ctx.db.delete(row._id)))
 
     const existing = await ctx.db
       .query('apiIdempotencyKeys')
@@ -202,9 +200,7 @@ async function cleanupExpired(
     .withIndex('by_expiresAt', (q) => q.lt('expiresAt', now))
     .take(cappedLimit)
 
-  for (const row of expired) {
-    await ctx.db.delete(row._id)
-  }
+  await Promise.all(expired.map((row) => ctx.db.delete(row._id)))
 
   return { deleted: expired.length }
 }

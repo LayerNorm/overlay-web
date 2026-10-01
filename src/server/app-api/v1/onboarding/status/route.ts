@@ -19,15 +19,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json({ hasSeenOnboarding: true })
   }
 
-  if (context.appDataCapabilities.provider === 'postgres') {
-    const result = await getOverlayServerContext()
-      .appData
-      .repositories
-      .onboarding
-      .getStatus(userId)
-    return NextResponse.json(result)
-  }
-
   const result = (await convex.query('auth/users:getOnboardingStatus', {
     serverSecret: getInternalApiSecret(),
     userId,

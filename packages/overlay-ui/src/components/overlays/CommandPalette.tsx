@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, Search } from 'lucide-react'
+import { useDialogFocus } from '../../hooks/useDialogFocus'
 import { usePresence } from '../../hooks/usePresence'
 import { cn } from '../../utils/cn'
 
@@ -47,6 +48,7 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const { mounted, visible } = usePresence(open)
+  const dialogRef = useDialogFocus(mounted)
 
   // Gated on `mounted`, not just `open`: usePresence keeps the palette
   // unmounted for a frame after it opens, so focusing on `open` alone would
@@ -100,6 +102,8 @@ export function CommandPalette({
   const showSpinner = loading && rows.length === 0 && !emptyState
 
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={cn(
         'fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm pt-[12vh] px-4 transition-opacity duration-200 ease-[var(--overlay-ease)]',
@@ -109,9 +113,13 @@ export function CommandPalette({
         if (e.target === e.currentTarget) onClose()
       }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label="Command palette"
         className={cn(
           'flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)]',
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-1',

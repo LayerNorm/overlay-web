@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -18,9 +18,10 @@ import {
   getAgentEditorPanelMode,
   setAgentEditorPanelMode,
 } from '@/shared/agents/agent-editor-presentation'
-import { NEW_AGENT_EVENT, dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
+import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentEditorPage } from './AgentEditorPage'
-import { buildAgentsDirectoryHref, createAgentAndOpenChat, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
+import { buildAgentsDirectoryHref, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
+import { NewAgentDialog } from './NewAgentDialog'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -189,98 +190,27 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
-  // The agent created by the current editor session that has never been
-  // saved. Cancelling the editor archives it; a successful save (onSaved)
-  // or explicit archive (onArchived) clears the marker. A ref, not state:
-  // save calls onSaved() then closeEditor() in the same tick, and a state
-  // clear would not be visible to closeEditor's stale closure — the
-  // just-saved agent would be abandoned and archived.
-  const freshAgentRef = useRef<{ agentId: string; conversationId: string | null } | null>(null)
 
-  const creatingAgentRef = useRef(false)
+  const [createOpen, setCreateOpen] = useState(false)
 
-  // Create-first: "New agent" immediately creates a real agent with defaults,
-  // refreshes the sidebar, opens its conversation, then opens the edit panel
-  // pointed at it. The panel never creates in the context of another agent.
+  // "New agent" opens the creation dialog; nothing is created until the
+  // person confirms. The logged-out showcase keeps the static editor form.
   const openCreate = useCallback(() => {
+    setError(null)
     if (showcase) {
-      setError(null)
       setEditorMode('new')
       return
     }
-    if (!activeWorkspaceId || creatingAgentRef.current) return
-    creatingAgentRef.current = true
-    setError(null)
     setEditorMode(null)
-    void (async () => {
-      try {
-        const result = await createAgentAndOpenChat({
-          workspaceId: activeWorkspaceId,
-          push: (href) => router.push(href),
-          onDirectoryChanged: dispatchAgentDirectoryChanged,
-          onOpened: (agentId) => rememberAgentOpened(activeWorkspaceId, agentId),
-        })
-        if (result.status === 'no-permission') {
-          setEditorMode('new')
-          return
-        }
-        if (result.agent) {
-          freshAgentRef.current = { agentId: result.agent.id, conversationId: result.conversationId ?? null }
-        }
-        setEditorMode('edit')
-      } catch (createError) {
-        setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
-      } finally {
-        creatingAgentRef.current = false
-      }
-    })()
-  }, [showcase, activeWorkspaceId, router])
+    setCreateOpen(true)
+  }, [showcase])
 
   useEffect(() => {
     window.addEventListener(NEW_AGENT_EVENT, openCreate)
     return () => window.removeEventListener(NEW_AGENT_EVENT, openCreate)
   }, [openCreate])
 
-  const closeEditor = useCallback(() => {
-    setEditorMode(null)
-    // Cancelling while a never-saved agent is open abandons creation:
-    // archive the agent, drop its greeting DM, and land on the previous
-    // agent (or the agents index when nothing else exists).
-    const abandoned = freshAgentRef.current && agentId === freshAgentRef.current.agentId
-      ? freshAgentRef.current
-      : null
-    if (!abandoned) return
-    freshAgentRef.current = null
-    if (!activeWorkspaceId) return
-    const workspaceId = activeWorkspaceId
-    clearAgentOpened(workspaceId, abandoned.agentId)
-    void (async () => {
-      await overlayAppClient.agents.archive(workspaceId, abandoned.agentId).catch(() => undefined)
-      if (abandoned.conversationId) {
-        await overlayAppClient.conversations
-          .deleteResponse({ conversationId: abandoned.conversationId, scope: 'self' })
-          .catch(() => undefined)
-      }
-      dispatchAgentDirectoryChanged(workspaceId)
-      const remaining = await overlayAppClient.agents
-        .list(workspaceId)
-        .then((response) => response.agents.filter((agent) => agent.id !== abandoned.agentId))
-        .catch(() => [])
-      const target = pickAgentToOpen(remaining, workspaceId)
-      if (!target) {
-        router.replace(buildAgentsDirectoryHref(workspaceId))
-        return
-      }
-      rememberAgentOpened(workspaceId, target.id)
-      await startAgentChat({
-        workspaceId,
-        agentId: target.id,
-        agentPrincipalId: target.principalId,
-        surface: 'agents',
-        push: (href) => router.push(href),
-      }).catch(() => router.replace(buildAgentsDirectoryHref(workspaceId)))
-    })()
-  }, [agentId, activeWorkspaceId, router])
+  const closeEditor = useCallback(() => setEditorMode(null), [])
 
   const workspaceActions = useAgentWorkspaceActions({
     activeWorkspaceId,
@@ -310,36 +240,39 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   })
 
   const editor = editorMode ? (
-    <AgentEditorPage
+    <AgentEditorPanel
       key={`${editorMode}:${agentId ?? 'new'}`}
       mode={editorMode}
-      agentId={editorMode === 'edit' ? (agentId ?? undefined) : undefined}
-      // The create flow inserts the draft row first, then opens the editor in
-      // edit mode — a fresh draft is still "creating", so its runtime must
-      // stay pickable until first save.
-      freshDraft={Boolean(agentId) && agentId === freshAgentRef.current?.agentId}
-      presentation="panel"
+      agentId={agentId}
       panelMode={panelMode}
       onTogglePanelMode={() => setPanelMode(panelMode === 'dialog' ? 'side' : 'dialog')}
       onClose={closeEditor}
       onCreated={openCreatedAgent}
-      onArchived={() => {
-        freshAgentRef.current = null
-        handleArchived()
-      }}
-      onSaved={() => { freshAgentRef.current = null }}
+      onArchived={handleArchived}
     />
   ) : null
   // Side mode docks through the screen's rightPanel slot; rendering the panel
   // as a plain sibling stacks it under the content instead of beside it.
   const sideEditor = panelMode === 'side' ? editor : null
   const dialogEditor = panelMode === 'dialog' ? editor : null
+  const createDialog = showcase ? null : (
+    <NewAgentDialog
+      open={createOpen}
+      workspaceId={activeWorkspaceId}
+      onClose={() => setCreateOpen(false)}
+      onCreated={(agent, warning) => {
+        setCreateOpen(false)
+        openCreatedAgent(agent)
+        if (warning) setError(warning)
+      }}
+    />
+  )
 
   const settingsButton = (
     <AgentSettingsButton
       hasAgent={Boolean(agentId)}
       active={Boolean(editorMode)}
-      onClick={() => setEditorMode(agentId ? 'edit' : 'new')}
+      onClick={() => (agentId ? setEditorMode('edit') : openCreate())}
     />
   )
 
@@ -363,10 +296,85 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           onExternalRightPanelClose={closeEditor}
         />
         {dialogEditor}
+        {createDialog}
       </>
     )
   }
 
+  return (
+    <>
+      <AgentDirectoryScreen
+        settingsButton={settingsButton}
+        sideEditor={sideEditor}
+        onRightPanelClose={closeEditor}
+        activeWorkspaceId={activeWorkspaceId}
+        directory={directory}
+        resolving={resolving}
+        error={error}
+        loadError={loadError}
+        onRetry={retryOpen}
+        onCreate={openCreate}
+      />
+      {dialogEditor}
+      {createDialog}
+    </>
+  )
+}
+
+function AgentEditorPanel({
+  mode,
+  agentId,
+  panelMode,
+  onTogglePanelMode,
+  onClose,
+  onCreated,
+  onArchived,
+}: {
+  mode: 'new' | 'edit'
+  agentId: string | null
+  panelMode: 'dialog' | 'side'
+  onTogglePanelMode(): void
+  onClose(): void
+  onCreated(agent: WorkspaceAgentDirectoryItem): void
+  onArchived(): void
+}) {
+  return (
+    <AgentEditorPage
+      mode={mode}
+      agentId={mode === 'edit' ? (agentId ?? undefined) : undefined}
+      presentation="panel"
+      panelMode={panelMode}
+      onTogglePanelMode={onTogglePanelMode}
+      onClose={onClose}
+      onCreated={onCreated}
+      onArchived={onArchived}
+    />
+  )
+}
+
+function AgentDirectoryScreen({
+  settingsButton,
+  sideEditor,
+  onRightPanelClose,
+  activeWorkspaceId,
+  directory,
+  resolving,
+  error,
+  loadError,
+  onRetry,
+  onCreate,
+}: {
+  settingsButton: ReactNode
+  sideEditor: ReactNode
+  onRightPanelClose(): void
+  activeWorkspaceId: string | null
+  directory: WorkspaceAgentDirectoryItem[] | null
+  resolving: boolean
+  error: string | null
+  loadError: string | null
+  onRetry(): void
+  onCreate(): void
+}) {
   // Loading covers three phases with no gaps: roster fetch, the frame between
   // roster arrival and the resolve effect firing, and the DM creation itself.
   // The empty state therefore only ever renders for genuinely agent-less
@@ -377,52 +385,49 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const empty = directory !== null && directory.length === 0 && !displayError
 
   return (
-    <>
-      <AppScreenShell
-        header={<AppScreenHeader title="Agents" actions={settingsButton} />}
-        rightPanel={sideEditor}
-        rightPanelMode="docked"
-        rightPanelWidth="lg"
-        onRightPanelClose={closeEditor}
-      >
-        <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
-        {loading ? (
-          <div className="flex items-center gap-1.5" role="status" aria-label="Opening your agent">
-            {[0, 1, 2].map((dot) => (
-              <span
-                key={dot}
-                className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted)]"
-                style={{ animationDelay: `${dot * 150}ms` }}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="max-w-sm text-center">
-            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
-              <Bot size={18} />
-            </span>
-            <h1 className="mt-4 text-sm font-medium text-[var(--foreground)]">
-              {displayError ? 'Could not open your agent' : 'Your agents work from here'}
-            </h1>
-            <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
-              {displayError ?? (empty
-                ? 'Create one for a new outcome.'
-                : 'Select an agent to open its conversation, or create one for a new outcome.')}
-            </p>
-            {displayError ? (
-              <Button variant="secondary" size="sm" className="mt-4" onClick={retryOpen}>
-                Retry
-              </Button>
-            ) : (
-              <Button variant="secondary" size="sm" className="mt-4" onClick={openCreate}>
-                Create agent
-              </Button>
-            )}
-          </div>
-        )}
+    <AppScreenShell
+      header={<AppScreenHeader title="Agents" actions={settingsButton} />}
+      rightPanel={sideEditor}
+      rightPanelMode="docked"
+      rightPanelWidth="lg"
+      onRightPanelClose={onRightPanelClose}
+    >
+      <AppScreenBody className="flex min-h-full items-center justify-center p-6" padding="none">
+      {loading ? (
+        <div className="flex items-center gap-1.5" role="status" aria-label="Opening your agent">
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted)]"
+              style={{ animationDelay: `${dot * 150}ms` }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="max-w-sm text-center">
+          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
+            <Bot size={18} />
+          </span>
+          <h1 className="mt-4 text-sm font-medium text-[var(--foreground)]">
+            {displayError ? 'Could not open your agent' : 'Your agents work from here'}
+          </h1>
+          <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
+            {displayError ?? (empty
+              ? 'Create one for a new outcome.'
+              : 'Select an agent to open its conversation, or create one for a new outcome.')}
+          </p>
+          {displayError ? (
+            <Button variant="secondary" size="sm" className="mt-4" onClick={onRetry}>
+              Retry
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" className="mt-4" onClick={onCreate}>
+              Create agent
+            </Button>
+          )}
+        </div>
+      )}
       </AppScreenBody>
-      </AppScreenShell>
-      {dialogEditor}
-    </>
+    </AppScreenShell>
   )
 }

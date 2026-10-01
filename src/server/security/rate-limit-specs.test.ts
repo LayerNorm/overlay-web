@@ -63,6 +63,52 @@ test('bootstrap read routes get dedicated buckets so they cannot starve each oth
   }
 })
 
+test('agents sidebar reads get dedicated buckets off the shared default pool', () => {
+  const agentsReadRoutes = [
+    { pathname: '/api/v1/agents', expectedBucket: 'agents:read:user' },
+    { pathname: '/api/v1/agents/agent_1', expectedBucket: 'agents:read:user' },
+    { pathname: '/api/v1/agents/agent_1/bundle', expectedBucket: 'agents:read:user' },
+    { pathname: '/api/v1/agents/agent_1/threads', expectedBucket: 'agents:read:user' },
+    { pathname: '/api/v1/agents/agent_1/automations', expectedBucket: 'agents:read:user' },
+  ]
+  for (const route of agentsReadRoutes) {
+    const rules = getEndpointRateLimitSpecs({
+      ip: '203.0.113.5',
+      method: 'GET',
+      pathname: route.pathname,
+      userId: 'user_1',
+    })
+    const buckets = rules.map((rule) => rule.bucket)
+    assert.ok(
+      buckets.includes(route.expectedBucket),
+      `${route.pathname} should have a dedicated ${route.expectedBucket} bucket, got: ${buckets.join(', ')}`,
+    )
+    assert.ok(
+      !buckets.includes('api:default:user'),
+      `${route.pathname} should not use the shared api:default:user bucket`,
+    )
+  }
+})
+
+test('agent thread opens and creates get a dedicated write bucket', () => {
+  for (const pathname of [
+    '/api/v1/agents/agent_1/threads',
+    '/api/v1/agents/agent_1/threads/resolve',
+  ]) {
+    const rules = getEndpointRateLimitSpecs({
+      ip: '203.0.113.5',
+      method: 'POST',
+      pathname,
+      userId: 'user_1',
+    })
+    const buckets = rules.map((rule) => rule.bucket)
+    assert.ok(
+      buckets.includes('agents:threads:write:user'),
+      `${pathname} should have a dedicated write bucket, got: ${buckets.join(', ')}`,
+    )
+  }
+})
+
 test('realtime conversation reads use dedicated buckets instead of starving room loads', () => {
   const realtimeRoutes = [
     {

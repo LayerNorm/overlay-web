@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type ClipboardEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import {
   LARGE_PASTE_MAX_BYTES,
   pastedTextFileName,
@@ -70,9 +70,17 @@ async function prepareImageAttachment(file: File, mimeType: string): Promise<Att
       : null
     // Keep original bytes when transcoding can't beat them (tiny PNGs, odd content).
     if (!blob || blob.size >= file.size) {
-      return { dataUrl: await readBlobAsDataUrl(file), mimeType, name: file.name }
+      return {
+        dataUrl: await readBlobAsDataUrl(file),
+        mimeType,
+        name: file.name,
     }
-    return { dataUrl: await readBlobAsDataUrl(blob), mimeType: 'image/webp', name: file.name }
+    }
+    return {
+      dataUrl: await readBlobAsDataUrl(blob),
+      mimeType: 'image/webp',
+      name: file.name,
+    }
   } catch {
     return { dataUrl: await readBlobAsDataUrl(file), mimeType, name: file.name }
   }
@@ -84,8 +92,14 @@ export function useChatAttachments({
   setComposerNotice: (notice: string | null) => void
 }) {
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
-  const [pendingChatDocuments, setPendingChatDocuments] = useState<PendingChatDocument[]>([])
+  const [pendingChatDocuments, setPendingChatDocuments] = useState<
+    PendingChatDocument[]
+  >([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const attachedImagesRef = useRef<AttachedImage[]>(attachedImages)
+  useEffect(() => {
+    attachedImagesRef.current = attachedImages
+  }, [attachedImages])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
@@ -103,7 +117,8 @@ export function useChatAttachments({
     ])
     const form = new FormData()
     form.append('file', file)
-    void overlayAppClient.files.ingestDocumentResponse(form, {
+    void overlayAppClient.files
+      .ingestDocumentResponse(form, {
       credentials: 'same-origin',
     })
       .then(async (res) => {
@@ -162,19 +177,15 @@ export function useChatAttachments({
           setAttachmentError(`"${file.name}" is too large to attach. Try a smaller or cropped image.`)
           return
         }
-        setAttachedImages((prev) => {
-          const totalChars = attachedImagesTotalDataUrlChars(prev) + image.dataUrl.length
-          // Side-effects from updaters must be idempotent (StrictMode may re-run
-          // them) — queuing the error write satisfies that.
-          if (totalChars > IMAGE_ATTACHMENTS_MAX_TOTAL_DATA_URL_CHARS) {
-            queueMicrotask(() =>
-              setAttachmentError('Too much image data attached. Remove an image or use smaller ones.'),
-            )
-            return prev
-          }
-          queueMicrotask(() => setAttachmentError(null))
-          return [...prev, image]
-        })
+        if (
+          attachedImagesTotalDataUrlChars(attachedImagesRef.current) + image.dataUrl.length >
+          IMAGE_ATTACHMENTS_MAX_TOTAL_DATA_URL_CHARS
+        ) {
+          setAttachmentError('Too much image data attached. Remove an image or use smaller ones.')
+          return
+        }
+        setAttachedImages((prev) => [...prev, image])
+        setAttachmentError(null)
       })
     })
   }

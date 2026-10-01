@@ -293,24 +293,19 @@ export const applyBackfillBatchInternal = internalMutation({
     })),
   },
   handler: async (ctx, { filePatches, outputPatches, userStorageTotals }) => {
-    for (const patch of filePatches) {
-      await ctx.db.patch(patch.fileId, {
-        sizeBytes: patch.sizeBytes,
-        contentHash: patch.contentHash,
-        duplicateOfFileId: patch.duplicateOfFileId ?? undefined,
-      })
-    }
+    await Promise.all(filePatches.map((patch) => ctx.db.patch(patch.fileId, {
+      sizeBytes: patch.sizeBytes,
+      contentHash: patch.contentHash,
+      duplicateOfFileId: patch.duplicateOfFileId ?? undefined,
+    })))
 
-    for (const patch of outputPatches) {
-      await ctx.db.patch(patch.outputId, { sizeBytes: patch.sizeBytes })
-    }
+    await Promise.all(outputPatches.map((patch) => ctx.db.patch(patch.outputId, { sizeBytes: patch.sizeBytes })))
 
-    for (const usage of userStorageTotals) {
-      const subscription = await getOrCreateSubscription(ctx, usage.userId)
-      await ctx.db.patch(subscription._id, {
-        overlayStorageBytesUsed: Math.max(0, usage.bytesUsed),
-      })
-    }
+    const subscriptions = await Promise.all(userStorageTotals.map((usage) =>
+      getOrCreateSubscription(ctx, usage.userId)))
+    await Promise.all(userStorageTotals.map((usage, i) => ctx.db.patch(subscriptions[i]!._id, {
+      overlayStorageBytesUsed: Math.max(0, usage.bytesUsed),
+    })))
 
     return {
       filePatchesApplied: filePatches.length,
@@ -353,7 +348,7 @@ export const backfillStorageUsageByServer = action({
     const measurementFailures: Array<{ kind: 'file' | 'output'; id: string; error: string }> = []
     const userStorageTotals = new Map<string, number>()
 
-    for (const file of files) {
+    const measuredFiles = await Promise.all(files.map(async (file) => {
       let sizeBytes = 0
       if (file.type === 'file') {
         if (file.storageId) {
@@ -373,19 +368,22 @@ export const backfillStorageUsageByServer = action({
       }
 
       let contentHash: string | undefined
+      if (file.type === 'file' && !file.storageId && (file.content ?? '').trim().length > 0) {
+        contentHash = await sha256Hex(file.content ?? '')
+      }
+      return { file, sizeBytes, contentHash }
+    }))
+
+    for (const { file, sizeBytes, contentHash } of measuredFiles) {
       let duplicateOfFileId: Id<'files'> | null = null
-      if (file.type === 'file' && !file.storageId) {
-        const trimmed = (file.content ?? '').trim()
-        if (trimmed.length > 0) {
-          contentHash = await sha256Hex(file.content ?? '')
-          const canonicalKey = `${file.userId}:${contentHash}`
-          const canonicalFileId = canonicalByHash.get(canonicalKey)
-          if (canonicalFileId) {
-            duplicateOfFileId = canonicalFileId
-            duplicateFileIdsToPurge.add(file._id)
-          } else {
-            canonicalByHash.set(canonicalKey, file._id)
-          }
+      if (file.type === 'file' && !file.storageId && contentHash) {
+        const canonicalKey = `${file.userId}:${contentHash}`
+        const canonicalFileId = canonicalByHash.get(canonicalKey)
+        if (canonicalFileId) {
+          duplicateOfFileId = canonicalFileId
+          duplicateFileIdsToPurge.add(file._id)
+        } else {
+          canonicalByHash.set(canonicalKey, file._id)
         }
       }
 
@@ -407,7 +405,7 @@ export const backfillStorageUsageByServer = action({
       }
     }
 
-    for (const output of outputs) {
+    const measuredOutputs = await Promise.all(outputs.map(async (output) => {
       let sizeBytes = Math.max(0, output.sizeBytes ?? 0)
       if (output.storageId && sizeBytes <= 0) {
         try {
@@ -417,11 +415,12 @@ export const backfillStorageUsageByServer = action({
           measurementFailures.push({ kind: 'output', id: output._id, error: error instanceof Error ? error.message : String(error) })
         }
       }
-
+      return { output, sizeBytes }
+    }))
+    for (const { output, sizeBytes } of measuredOutputs) {
       if (sizeBytes !== Math.max(0, output.sizeBytes ?? 0)) {
         outputPatches.push({ outputId: output._id, sizeBytes })
       }
-
       userStorageTotals.set(output.userId, (userStorageTotals.get(output.userId) ?? 0) + sizeBytes)
     }
 
@@ -442,25 +441,28 @@ export const backfillStorageUsageByServer = action({
     let outputPatchesApplied = 0
     let subscriptionsUpdated = 0
 
-    for (let start = 0; start < Math.max(filePatches.length, outputPatches.length, userStorageTotalRows.length); start += batchSize) {
-      const result = await ctx.runMutation(internal.files.storageAdmin.applyBackfillBatchInternal, {
+    const totalBatches = Math.ceil(Math.max(filePatches.length, outputPatches.length, userStorageTotalRows.length) / batchSize)
+    const batchResults = await Promise.all(Array.from({ length: totalBatches }, (_, i) => {
+      const start = i * batchSize
+      return ctx.runMutation(internal.files.storageAdmin.applyBackfillBatchInternal, {
         filePatches: filePatches.slice(start, start + batchSize),
         outputPatches: outputPatches.slice(start, start + batchSize),
         userStorageTotals: userStorageTotalRows.slice(start, start + batchSize),
       })
+    }))
+    for (const result of batchResults) {
       filePatchesApplied += result.filePatchesApplied
       outputPatchesApplied += result.outputPatchesApplied
       subscriptionsUpdated += result.subscriptionsUpdated
     }
 
     let duplicateKnowledgePurged = 0
-    for (const fileId of duplicateFileIdsToPurge) {
-      await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+    await Promise.all([...duplicateFileIdsToPurge].map((fileId) =>
+      ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
         sourceKind: 'file',
         sourceId: fileId,
-      })
-      duplicateKnowledgePurged += 1
-    }
+      })))
+    duplicateKnowledgePurged = duplicateFileIdsToPurge.size
 
     return {
       filesInspected: files.length,
@@ -495,9 +497,8 @@ export const reindexAllCanonicalFilesByServer = action({
     requireServerSecret(serverSecret)
     const fileIds = await ctx.runQuery(internal.files.storageAdmin.listCanonicalFileIdsForReindexInternal, {}) as Id<'files'>[]
     const capped = fileIds.slice(0, limit ? Math.max(0, limit) : undefined)
-    for (const fileId of capped) {
-      await ctx.runAction(internal.knowledge.knowledge.reindexFileInternal, { fileId })
-    }
+    await Promise.all(capped.map((fileId) =>
+      ctx.runAction(internal.knowledge.knowledge.reindexFileInternal, { fileId })))
     return {
       totalCanonicalFiles: fileIds.length,
       reindexed: capped.length,

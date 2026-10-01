@@ -40,8 +40,7 @@ import { getOverlayRuntimeConfig } from '@/server/config'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { ConnectedAgentRepository, RemoteAgentUsageSettlement } from './ConnectedAgentRepository'
 import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
-import { managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
-import { managedHarnessDescriptor } from './harnesses/registry'
+import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import { logger } from '@/server/observability/logger'
 
@@ -282,75 +281,6 @@ export class ConnectedAgentControlPlaneService {
     }, args.environmentId)
   }
 
-  /**
-   * Resets a managed-harness environment: clears every persisted HarnessAgent
-   * session on its bindings and destroys the sandbox. The lease stays
-   * `running` with a now-stale `providerReference`, so the next turn's acquire
-   * step recreates a fresh sandbox — reset means "start over", not "shut down".
-   */
-  async resetHarnessEnvironment(args: { actorUserId: string; workspaceId: string; environmentId: string }) {
-    await this.assertEnabled(args.workspaceId)
-    await this.requireManager(args.actorUserId, args.workspaceId)
-    const environment = await this.dependencies.repository.getEnvironment({
-      workspaceId: args.workspaceId,
-      environmentId: args.environmentId,
-    })
-    if (!environment || environment.status === 'revoked') {
-      throw controlPlaneError('Environment not found', 404, 'environment_not_found')
-    }
-    const adapters = Array.isArray(environment.capabilities.adapters)
-      ? environment.capabilities.adapters as Array<Record<string, unknown>> : []
-    if (environment.kind !== 'overlay_cloud' || !adapters.some((adapter) => adapter.protocol === 'harness')) {
-      throw controlPlaneError('Environment does not host a managed harness', 400, 'not_a_harness_environment')
-    }
-    const now = this.now()
-    const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId })
-    let sessionsCleared = 0
-    for (const binding of bindings.filter((candidate) => candidate.environmentId === args.environmentId)) {
-      sessionsCleared += await this.dependencies.repository.deleteHarnessSessionsForBinding({
-        workspaceId: args.workspaceId,
-        bindingId: binding.id,
-        now,
-      })
-    }
-    // Deleting the provider sandbox is best-effort: the next turn reconciles a
-    // missing or expired instance into a fresh one either way.
-    const lease = await this.dependencies.repository.getActiveSandboxLease({
-      workspaceId: args.workspaceId,
-      environmentId: args.environmentId,
-    })
-    let sandboxDestroyed = false
-    if (lease?.providerReference) {
-      const runtime = (this.dependencies.managedRuntime ?? managedSandboxRuntimeFromEnv)(lease.provider)
-      sandboxDestroyed = await runtime.reconnect(lease.providerReference, { resume: false })
-        .then(async (instance) => {
-          const status = typeof instance.status === 'function'
-            ? await instance.status().catch((_error) => undefined)
-            : undefined
-          if (status !== 'stopped' && status !== 'archived' && status !== 'deleted' && typeof instance.stop === 'function') {
-            await instance.stop().catch((_error) => undefined)
-          }
-          await this.dependencies.meterSandboxLease?.(lease).catch((_error) => undefined)
-          await instance.delete()
-        })
-        .then(() => true)
-        .catch((error) => {
-          logger.warn('[connected-agents] managed harness sandbox destroy failed during reset', {
-            environmentId: args.environmentId,
-            error: error instanceof Error ? error.message : String(error),
-          })
-          return false
-        })
-    }
-    await this.audit('agent_environment.harness_reset', 'user', args.actorUserId, {
-      workspaceId: args.workspaceId,
-      environmentId: args.environmentId,
-      sessionsCleared,
-      sandboxDestroyed,
-    }, args.environmentId)
-    return { reset: true as const, sessionsCleared, sandboxDestroyed }
-  }
-
   async listBindings(args: { actorUserId: string; workspaceId: string; agentId?: string }) {
     await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
@@ -367,19 +297,13 @@ export class ConnectedAgentControlPlaneService {
     environmentId: string
     adapterId: string
     workingDirectory: string
-    /** Harness-facing model alias for `protocol:'harness'` adapters. */
-    model?: string
-    /** `byok` funds the turn with the actor's own provider connection. */
-    modelBilling?: 'overlay' | 'byok'
-    byokConnectionId?: string
   }) {
     await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
     if (!args.agentId.trim() || args.agentId.length > 256 ||
       !args.environmentId.trim() || args.environmentId.length > 256 ||
       !args.adapterId.trim() || args.adapterId.length > 128 ||
-      !args.workingDirectory.trim() || args.workingDirectory.length > 4_096 ||
-      (args.model !== undefined && (typeof args.model !== 'string' || args.model.length > 128))) {
+      !args.workingDirectory.trim() || args.workingDirectory.length > 4_096) {
       throw controlPlaneError('Agent binding fields are invalid', 400, 'binding_invalid')
     }
     const environment = await this.dependencies.repository.getEnvironment({
@@ -393,32 +317,17 @@ export class ConnectedAgentControlPlaneService {
     const adapters = Array.isArray(environment.capabilities.adapters)
       ? environment.capabilities.adapters as Array<Record<string, unknown>> : []
     const adapter = adapters.find((candidate) => candidate.id === args.adapterId)
-    if (!adapter || (adapter.protocol !== 'acp' && adapter.protocol !== 'harness')) {
+    if (!adapter || adapter.protocol !== 'acp') {
       throw controlPlaneError('The selected agent adapter is not installed on this environment', 409, 'adapter_unavailable')
     }
-    if (adapter.protocol === 'harness') {
-      // A harness binding declares the agent's runtime — the workspace policy
-      // gate for runtimes applies here too, not only at agents.create.
-      await this.dependencies.workspaces.assertAgentHarnessAllowed({
-        actorUserId: args.actorUserId,
-        workspaceId: args.workspaceId,
-        harness: args.adapterId,
-      })
-    }
     const now = this.now()
-    const adapterConfig: Record<string, unknown> = adapter.protocol === 'harness'
-      ? {
-          harnessId: args.adapterId,
-          workingDirectory: args.workingDirectory,
-          ...(await this.harnessBillingConfig(args))
-        }
-      : { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
+    const adapterConfig: Record<string, unknown> = { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
     const binding = await this.dependencies.repository.upsertBinding({
       id: randomUUID(),
       workspaceId: args.workspaceId,
       agentId: args.agentId,
       environmentId: args.environmentId,
-      protocolAdapter: adapter.protocol === 'harness' ? 'harness' : 'acp',
+      protocolAdapter: 'acp',
       adapterConfig,
       enabled: true,
       now,
@@ -431,73 +340,6 @@ export class ConnectedAgentControlPlaneService {
       workingDirectory: args.workingDirectory,
     }, binding.id, 'agent_binding')
     return binding
-  }
-
-  /**
-   * Resolves a harness binding's model-billing config: stamps the sandbox
-   * provider from the active lease, defaults to Overlay-funded billing, and
-   * validates BYOK — the connection must belong to the actor, be compatible
-   * with the harness, and run on Vercel (the only provider whose request
-   * transformations keep the customer's key out of the sandbox environment).
-   */
-  private async harnessBillingConfig(args: {
-    actorUserId: string
-    workspaceId: string
-    environmentId: string
-    adapterId: string
-    model?: string
-    modelBilling?: 'overlay' | 'byok'
-    byokConnectionId?: string
-  }) {
-    const lease = await this.dependencies.repository.getActiveSandboxLease({
-      workspaceId: args.workspaceId,
-      environmentId: args.environmentId,
-    })
-    const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : undefined
-    if (args.modelBilling !== 'byok') {
-      return {
-        modelBilling: 'overlay' as const,
-        ...(model ? { model } : {}),
-        ...(lease ? { provider: lease.provider } : {}),
-      }
-    }
-    if (lease?.provider !== 'vercel') {
-      throw controlPlaneError(
-        'Bring-your-own-key managed agents require the Vercel sandbox provider',
-        400,
-        'byok_provider_unsupported',
-      )
-    }
-    const descriptor = managedHarnessDescriptor(args.adapterId as ManagedHarnessId)
-    if (!descriptor.byokAuth || Object.keys(descriptor.byokAuth).length === 0) {
-      throw controlPlaneError('This runtime does not support customer model keys', 400, 'byok_unsupported')
-    }
-    if (!args.byokConnectionId?.trim() || !this.dependencies.providerConnections) {
-      throw controlPlaneError('A provider connection is required for customer-key billing', 400, 'byok_connection_required')
-    }
-    const connection = await this.dependencies.providerConnections.get({
-      connectionId: args.byokConnectionId.trim(),
-      userId: args.actorUserId,
-    })
-    if (!connection || connection.status !== 'active' || !connection.credentialRef) {
-      throw controlPlaneError('The selected provider connection is unavailable', 400, 'byok_connection_unavailable')
-    }
-    if (!descriptor.byokAuth[connection.providerId]) {
-      throw controlPlaneError(
-        `This provider cannot fund a ${descriptor.id} agent`,
-        400,
-        'byok_provider_incompatible',
-      )
-    }
-    return {
-      modelBilling: 'byok' as const,
-      byokConnectionId: args.byokConnectionId.trim(),
-      // Connections are per-user; the configurer's identity resolves the key
-      // at turn time so any workspace member can trigger the shared agent.
-      byokConnectionUserId: args.actorUserId,
-      ...(model ? { model } : {}),
-      ...(lease ? { provider: lease.provider } : {}),
-    }
   }
 
   async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {
@@ -650,7 +492,7 @@ export class ConnectedAgentControlPlaneService {
     const now = this.now()
     const artifacts = await this.dependencies.repository.listArtifactsForCleanup({ now, limit })
     let failed = 0
-    for (const artifact of artifacts) {
+    await Promise.all(artifacts.map(async (artifact) => {
       try {
         await this.requireObjectStore().deleteObject(artifact.objectKey)
         await this.dependencies.repository.markArtifactDeleted({ artifactId: artifact.id, now })
@@ -670,7 +512,7 @@ export class ConnectedAgentControlPlaneService {
             runId: artifact.runId, remoteSessionId: artifact.remoteSessionId },
         }).catch((_error) => undefined)
       }
-    }
+    }))
     return { deleted: artifacts.length - failed, ...(failed > 0 ? { failed } : {}) }
   }
 
@@ -679,20 +521,20 @@ export class ConnectedAgentControlPlaneService {
     const result = await this.dependencies.repository.sweepRemoteRuns({
       now, hostOfflineBefore: now - 90_000, limit: 100,
     })
-    if (this.dependencies.settleUsage) for (const settlement of result.settlements) {
-      if (settlement.reservationId || settlement.sandboxBilling?.reservationId) {
-        await this.settleWithAudit(settlement).catch((_error) => undefined)
-      }
+    if (this.dependencies.settleUsage) {
+      await Promise.all(result.settlements
+        .filter((settlement) => settlement.reservationId || settlement.sandboxBilling?.reservationId)
+        .map((settlement) => this.settleWithAudit(settlement).catch((_error) => undefined)))
     }
-    for (const alert of result.alerts) {
+    await Promise.all(result.alerts.map((alert) => {
       logger.warn('Connected-agent operational alert', alert)
-      await this.dependencies.audit.record({
+      return this.dependencies.audit.record({
         action: `agent_operations.${alert.code}`, actorType: 'service', outcome: 'failure',
         resourceType: alert.runId ? 'agent_run' : 'agent_environment',
         resourceId: alert.runId ?? alert.environmentId ?? alert.workspaceId,
         metadata: alert,
       }).catch((_error) => undefined)
-    }
+    }))
     return result
   }
 
@@ -701,16 +543,16 @@ export class ConnectedAgentControlPlaneService {
     const pending = await this.dependencies.repository.listPendingSandboxSettlements({
       limit: Math.max(1, Math.min(100, Math.floor(limit))),
     })
-    let failed = 0
-    let settled = 0
-    for (const settlement of pending) {
+    const outcomes = await Promise.all(pending.map(async (settlement) => {
       try {
         await this.settleWithAudit(settlement)
-        settled += 1
+        return true
       } catch (_error) {
-        failed += 1
+        return false
       }
-    }
+    }))
+    const settled = outcomes.filter(Boolean).length
+    const failed = pending.length - settled
     return { attempted: pending.length, failed, settled }
   }
 

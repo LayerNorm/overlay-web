@@ -26,10 +26,17 @@ export function RoomPeoplePanel({
   onClose: () => void
 }) {
   return (
-    <AppScreenSidePanel title="People" description={`${participants.length} in this room`} onClose={onClose}>
+    <AppScreenSidePanel
+      title='People'
+      description={`${participants.length} in this room`}
+      onClose={onClose}
+    >
       <div className="space-y-1 p-3">
         {participants.map((participant) => (
-          <div key={participant.principalId} className="flex items-center gap-3 rounded-lg px-3 py-2">
+          <div
+            key={participant.principalId}
+            className='flex items-center gap-3 rounded-lg px-3 py-2'
+          >
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-xs">
               {participant.displayName.slice(0, 1).toUpperCase()}
             </span>
@@ -75,6 +82,7 @@ export function RoomThreadPanel({
   onInputChange,
   onSubmit,
   onClose,
+  readOnlyNotice,
 }: {
   roomLabel: string
   replyCount: number
@@ -85,6 +93,8 @@ export function RoomThreadPanel({
   onInputChange: (value: string) => void
   onSubmit: () => void
   onClose: () => void
+  /** Replaces the reply form — used for mirrored surface threads. */
+  readOnlyNotice?: string
 }) {
   return (
     <AppScreenSidePanel
@@ -107,6 +117,11 @@ export function RoomThreadPanel({
       <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-5">{messages}</div>
       </div>
+      {readOnlyNotice ? (
+        <div className="shrink-0 border-t border-[var(--border)] px-4 py-3 text-center text-xs text-[var(--muted)]">
+          {readOnlyNotice}
+        </div>
+      ) : (
       <form
         className="m-3 flex shrink-0 items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 focus-within:border-[var(--muted-light)]"
         onSubmit={(event) => {
@@ -137,6 +152,7 @@ export function RoomThreadPanel({
           <Send size={14} />
         </button>
       </form>
+      )}
     </AppScreenSidePanel>
   )
 }
@@ -172,19 +188,33 @@ export function RoomPinnedPanel({
       ) : (
         <ul className="flex flex-col gap-1 p-2">
           {pinned.map((item) => (
-            <li key={item.messageId} className="group/pin flex items-start gap-1">
+            <li
+              key={item.messageId}
+              className='group/pin flex items-start gap-1'
+            >
               <button
                 type="button"
                 onClick={() => onJump(item.messageId)}
                 className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--surface-subtle)]"
               >
                 <span className="flex items-baseline gap-2">
-                  <span className="truncate text-xs font-medium text-[var(--foreground)]">{item.authorName}</span>
+                  <span className='truncate text-xs font-medium text-[var(--foreground)]'>
+                    {item.authorName}
+                  </span>
                   <time className="shrink-0 text-[10px] text-[var(--muted-light)]">
-                    {new Date(item.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    {
+                      // Locale pinned to 'en-US' — SSR and client output are identical.
+                      // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
+                      new Date(item.createdAt).toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })
+                    }
                   </time>
                 </span>
-                <span className="mt-0.5 line-clamp-2 block text-xs text-[var(--muted)]">{item.preview}</span>
+                <span className='mt-0.5 line-clamp-2 block text-xs text-[var(--muted)]'>
+                  {item.preview}
+                </span>
               </button>
               <button
                 type="button"

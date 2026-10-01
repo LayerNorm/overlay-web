@@ -231,6 +231,10 @@ export const getAccessibleConversation = query({
       conversationType: conversation.conversationType ?? 'personal',
       otherParticipantTypes: await otherParticipantTypes(ctx, conversation._id, access.actor.principalId),
       workspaceId: conversation.workspaceId,
+      externalPlatform: conversation.externalPlatform,
+      externalChannelId: conversation.externalChannelId,
+      externalThreadId: conversation.externalThreadId,
+      surfaceBindingId: conversation.surfaceBindingId,
     }
   },
 })
@@ -255,6 +259,8 @@ export const listAccessibleConversations = query({
     const accessible = rows.filter((conversation) => (
       !conversation.deletedAt
       && !conversation.isAutomation
+      // Agent threads nest under their agent in the sidebar, never in DMs.
+      && !conversation.agentId
       && (
         ((conversation.conversationType ?? 'personal') === 'personal' && conversation.userId === args.actorUserId)
         || shared.has(String(conversation._id))
@@ -278,6 +284,10 @@ export const listAccessibleConversations = query({
       conversationType: conversation.conversationType ?? 'personal',
       otherParticipantTypes: await otherParticipantTypes(ctx, conversation._id, actor.principalId),
       workspaceId: conversation.workspaceId,
+      externalPlatform: conversation.externalPlatform,
+      externalChannelId: conversation.externalChannelId,
+      externalThreadId: conversation.externalThreadId,
+      surfaceBindingId: conversation.surfaceBindingId,
     })))
   },
 })
@@ -316,7 +326,7 @@ export const listArchivedConversations = query({
     )
     return rows
       .filter((conversation): conversation is Doc<'conversations'> => (
-        !!conversation && !conversation.deletedAt
+        !!conversation && !conversation.deletedAt && !conversation.agentId
       ))
       .map((conversation) => ({
         _id: conversation._id,
@@ -335,6 +345,10 @@ export const listArchivedConversations = query({
         isAutomation: conversation.isAutomation,
         conversationType: conversation.conversationType ?? 'personal',
         workspaceId: conversation.workspaceId,
+        externalPlatform: conversation.externalPlatform,
+        externalChannelId: conversation.externalChannelId,
+        externalThreadId: conversation.externalThreadId,
+        surfaceBindingId: conversation.surfaceBindingId,
         archivedAt: archived.get(String(conversation._id)),
       }))
       .sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0))
@@ -460,6 +474,9 @@ export const addMessage = mutation({
     if ((access.conversation.conversationType ?? 'personal') === 'personal') {
       throw new Error('COLLABORATION_CONVERSATION_REQUIRED')
     }
+    if (access.conversation.externalPlatform) {
+      throw new Error('SURFACE_CONVERSATION_READ_ONLY')
+    }
     if (args.threadRootMessageId) {
       await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     }
@@ -496,6 +513,9 @@ export const addMessage = mutation({
       workspaceId: args.workspaceId,
       userId: args.actorUserId,
       type: 'message.created',
+      messageId,
+    })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
       messageId,
     })
     return messageId
@@ -556,6 +576,9 @@ export const addAgentMessage = mutation({
       workspaceId: args.workspaceId,
       userId: args.actorUserId,
       type: 'message.created',
+      messageId,
+    })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
       messageId,
     })
     await notifyAgentMessage(ctx, { ...args, messageId })
@@ -798,14 +821,16 @@ export const startAgentTurn = mutation({
   },
   handler: async (ctx, args) => {
     await requireAgentAuthor(ctx, args)
-    const { messageId, resumed } = await openAgentMessageRow(ctx, args)
     // A room turn carries no variant index, so the turn prefix of this index
     // identifies at most one run.
-    const existingRun = await ctx.db.query('conversationAgentRuns')
+    const [{ messageId, resumed }, existingRun] = await Promise.all([
+      openAgentMessageRow(ctx, args),
+      ctx.db.query('conversationAgentRuns')
       .withIndex('by_turn_variant', (q) => (
         q.eq('conversationId', args.conversationId).eq('turnId', args.turnId)
       ))
-      .first()
+        .first(),
+    ])
     if (existingRun) return { messageId, resumed: true, runId: existingRun._id }
 
     const now = Date.now()
@@ -922,6 +947,9 @@ export const finalizeAgentMessage = mutation({
       type: 'message.completed',
       messageId: args.messageId,
     })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
+      messageId: args.messageId,
+    })
     await notifyAgentMessage(ctx, args)
   },
 })
@@ -974,16 +1002,17 @@ export const createDirectMessage = mutation({
     const principalIds = [...new Set([actor.principalId, ...args.principalIds.map((id) => id.trim()).filter(Boolean)])]
       .sort()
     if (principalIds.length < 2) throw new Error('A direct message requires at least two participants')
-    const principals = []
-    for (const principalId of principalIds) {
-      const principal = await ctx.db.query('workspacePrincipals')
-        .withIndex('by_principalId', (q) => q.eq('principalId', principalId))
-        .unique()
-      const membership = await ctx.db.query('workspaceMemberships')
-        .withIndex('by_workspaceId_principalId', (q) => (
-          q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
-        ))
-        .unique()
+    const resolved = await Promise.all(principalIds.map(async (principalId) => {
+      const [principal, membership] = await Promise.all([
+        ctx.db.query('workspacePrincipals')
+          .withIndex('by_principalId', (q) => q.eq('principalId', principalId))
+          .unique(),
+        ctx.db.query('workspaceMemberships')
+          .withIndex('by_workspaceId_principalId', (q) => (
+            q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
+          ))
+          .unique(),
+      ])
       if (
         !principal
         || principal.workspaceId !== args.workspaceId
@@ -991,8 +1020,17 @@ export const createDirectMessage = mutation({
         || (principal.type !== 'human' && principal.type !== 'agent')
         || membership?.status !== 'active'
       ) throw new Error('Every participant must be an active human or agent in this workspace')
-      principals.push(principal)
-    }
+      return principal
+    }))
+    const principals = resolved
+
+    // A one-to-one DM whose counterpart is an agent principal is that
+    // agent's main thread: it binds the conversation to the agent so it
+    // nests under the agent in the sidebar instead of appearing in Chats.
+    // Group DMs that merely include an agent stay ordinary conversations —
+    // threads are per-user and must not hide the chat from other humans.
+    const agentPrincipal = principals.find((principal) => principal.type === 'agent')
+    const dmAgentId = principalIds.length === 2 ? agentPrincipal?.agentId : undefined
 
     const dmIdentityKey = principalIds.join(':')
     const existing = await ctx.db.query('conversations')
@@ -1002,6 +1040,9 @@ export const createDirectMessage = mutation({
       .filter((q) => q.eq(q.field('deletedAt'), undefined))
       .first()
     if (existing) {
+      if (dmAgentId && !existing.agentId && !existing.isAutomation) {
+        await ctx.db.patch(existing._id, { agentId: dmAgentId, updatedAt: Date.now() })
+      }
       const actorParticipant = await ctx.db.query('conversationParticipants')
         .withIndex('by_conversationId_principalId', (q) => (
           q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
@@ -1024,6 +1065,7 @@ export const createDirectMessage = mutation({
         title: existing.title,
         participants: await participantViews(ctx, existing._id),
         created: false,
+        agentId: existing.agentId ?? dmAgentId,
       }
     }
 
@@ -1057,9 +1099,10 @@ export const createDirectMessage = mutation({
       askModelIds: [DEFAULT_MODEL_ID],
       actModelId: DEFAULT_MODEL_ID,
       dmIdentityKey,
+      agentId: dmAgentId,
     })
-    for (const principal of principals) {
-      await ctx.db.insert('conversationParticipants', {
+    await Promise.all(principals.flatMap((principal) => {
+      const writes = [ctx.db.insert('conversationParticipants', {
         conversationId,
         workspaceId: args.workspaceId,
         principalId: principal.principalId,
@@ -1070,9 +1113,9 @@ export const createDirectMessage = mutation({
         joinedAt: now,
         updatedAt: now,
         lastReadAt: principal.principalId === actor.principalId ? now : undefined,
-      })
+      })] as Promise<unknown>[]
       if (principal.principalId !== actor.principalId) {
-        await ctx.db.insert('workspaceNotifications', {
+        writes.push(ctx.db.insert('workspaceNotifications', {
           notificationId: crypto.randomUUID(),
           workspaceId: args.workspaceId,
           recipientPrincipalId: principal.principalId,
@@ -1083,9 +1126,10 @@ export const createDirectMessage = mutation({
           body: title,
           eventSequence: now,
           createdAt: now,
-        })
+        }))
       }
-    }
+      return writes
+    }))
     await ctx.db.insert('workspaceResourceScopes', {
       workspaceId: args.workspaceId,
       resourceType: 'conversation',
@@ -1106,6 +1150,7 @@ export const createDirectMessage = mutation({
       title,
       participants: await participantViews(ctx, conversationId),
       created: true,
+      agentId: dmAgentId,
     }
   },
 })
@@ -1118,16 +1163,18 @@ export const accessibleConversationIds = query({
   },
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx, args)
-    const conversations = await ctx.db.query('conversations')
+    const [conversations, participantRows] = await Promise.all([
+      ctx.db.query('conversations')
       .withIndex('by_workspaceId_conversationType_lastModified', (q) => q.eq('workspaceId', args.workspaceId))
-      .collect()
-    const participantRows = await ctx.db.query('conversationParticipants')
+        .collect(),
+      ctx.db.query('conversationParticipants')
       .withIndex('by_workspaceId_principalId_status', (q) => (
         q.eq('workspaceId', args.workspaceId)
           .eq('principalId', actor.principalId)
           .eq('status', 'active')
       ))
-      .collect()
+        .collect(),
+    ])
     const shared = new Set(participantRows.filter((row) => !row.archivedAt).map((row) => String(row.conversationId)))
     return conversations.filter((conversation) => (
       !conversation.deletedAt
@@ -1176,13 +1223,15 @@ export const addParticipant = mutation({
     if (access.conversation?.conversationType === 'dm') {
       throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')
     }
-    const principal = await ctx.db.query('workspacePrincipals')
+    const [principal, membership] = await Promise.all([
+      ctx.db.query('workspacePrincipals')
       .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
-      .unique()
-    const membership = await ctx.db.query('workspaceMemberships')
+        .unique(),
+      ctx.db.query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('principalId', args.principalId)
-      )).unique()
+        )).unique(),
+    ])
     if (
       !principal
       || principal.workspaceId !== args.workspaceId
@@ -1355,12 +1404,10 @@ export const archiveConversationForEveryone = mutation({
         q.eq('conversationId', args.conversationId).eq('status', 'active')
       ))
       .collect()
-    for (const participant of participants) {
-      await ctx.db.patch(participant._id, {
-        archivedAt: args.archived ? now : undefined,
-        updatedAt: now,
-      })
-    }
+    await Promise.all(participants.map((participant) => ctx.db.patch(participant._id, {
+      archivedAt: args.archived ? now : undefined,
+      updatedAt: now,
+    })))
     await recordConversationEvent(ctx, {
       conversationId: args.conversationId,
       workspaceId: args.workspaceId,
@@ -1403,6 +1450,9 @@ export const deleteConversationForEveryone = mutation({
       userId: args.actorUserId,
       type: 'conversation.deleted',
       payload: { scope: 'everyone' },
+    })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.purgeConversationMessageChunks, {
+      conversationId: args.conversationId,
     })
     return true
   },
@@ -1515,12 +1565,13 @@ async function computePresence(
     )).collect()
   const now = Date.now()
   const sessionsByPrincipal = new Map<string, Array<Doc<'workspacePresence'>>>()
-  for (const participant of participants) {
-    const presenceRows = await ctx.db.query('workspacePresence')
+  const presenceRowsByParticipant = await Promise.all(participants.map((participant) =>
+    ctx.db.query('workspacePresence')
       .withIndex('by_workspaceId_principalId', (q) => (
         q.eq('workspaceId', workspaceId).eq('principalId', participant.principalId)
-      )).collect()
-    const sessions = presenceRows
+      )).collect()))
+  for (const [i, participant] of participants.entries()) {
+    const sessions = presenceRowsByParticipant[i]!
       .filter((row) => !row.conversationId || row.conversationId === conversationId)
     if (sessions.length > 0) sessionsByPrincipal.set(participant.principalId, sessions)
   }
@@ -1626,15 +1677,18 @@ async function fanOutMessageNotifications(
       .withIndex('by_conversationId_status', (q) => (
         q.eq('conversationId', args.conversationId).eq('status', 'active')
       )).collect()
-    for (const participant of participants) {
+    const recipientCandidates = participants.filter((participant) =>
+      participant.principalId !== args.actorPrincipalId && !viewingConversation.has(participant.principalId))
+    const candidatePreferences = await Promise.all(recipientCandidates.map((participant) =>
+      ctx.db.query('workspaceNotificationPreferences')
+        .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', participant.principalId))
+        .unique()))
+    const notifications = []
+    for (const [i, participant] of recipientCandidates.entries()) {
       const mentioned = mentions.has(participant.principalId)
-      if (participant.principalId === args.actorPrincipalId) continue
-      if (viewingConversation.has(participant.principalId)) continue
       const broadcast = hasChannelMention || (hasHereMention && activeHere.has(participant.principalId))
       const followedThread = Boolean(args.threadRootMessageId && followerIds.has(participant.principalId))
-      const preferences = await ctx.db.query('workspaceNotificationPreferences')
-        .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', participant.principalId))
-        .unique()
+      const preferences = candidatePreferences[i]
       if (mentioned || broadcast) {
         if (preferences?.mentions === 'off') continue
       } else if (followedThread) {
@@ -1646,7 +1700,7 @@ async function fanOutMessageNotifications(
       }
       const type = mentioned || broadcast ? 'mention' as const : followedThread ? 'thread' as const : 'message' as const
       const mentionScope = mentioned ? 'direct' as const : hasChannelMention ? 'channel' as const : hasHereMention ? 'here' as const : undefined
-      await ctx.db.insert('workspaceNotifications', {
+      notifications.push(ctx.db.insert('workspaceNotifications', {
         notificationId: crypto.randomUUID(),
         workspaceId: args.workspaceId,
         recipientPrincipalId: participant.principalId,
@@ -1664,8 +1718,9 @@ async function fanOutMessageNotifications(
             : `New message from ${args.actorDisplayName}`,
         body: args.body?.slice(0, 240),
         createdAt: now,
-      })
+      }))
     }
+    await Promise.all(notifications)
   }
 }
 
@@ -1724,15 +1779,17 @@ export const getConversationEventCursor = query({
   },
   handler: async (ctx, args) => {
     if (!args.workspaceId) return 0
-    const accessible = await accessibleConversationIdsForEvents(ctx, {
+    const [accessible, events] = await Promise.all([
+      accessibleConversationIdsForEvents(ctx, {
       actorUserId: args.actorUserId,
       workspaceId: args.workspaceId,
       serverSecret: args.serverSecret,
-    })
-    const events = await ctx.db.query('conversationEvents')
+      }),
+      ctx.db.query('conversationEvents')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .order('desc')
-      .take(500)
+        .take(500),
+    ])
     return events
       .filter((event) => accessible.has(event.conversationId))
       .reduce((max, event) => Math.max(max, event._creationTime), 0)
@@ -1749,17 +1806,19 @@ export const listConversationEvents = query({
   },
   handler: async (ctx, args) => {
     if (!args.workspaceId) return []
-    const accessible = await accessibleConversationIdsForEvents(ctx, {
+    const [accessible, events] = await Promise.all([
+      accessibleConversationIdsForEvents(ctx, {
       actorUserId: args.actorUserId,
       workspaceId: args.workspaceId,
       serverSecret: args.serverSecret,
-    })
-    const events = await ctx.db.query('conversationEvents')
+      }),
+      ctx.db.query('conversationEvents')
       .withIndex('by_workspaceId', (q) => (
         q.eq('workspaceId', args.workspaceId).gt('_creationTime', args.afterSequence)
       ))
       .order('asc')
-      .take(Math.max(1, Math.min(200, Math.floor(args.limit))))
+        .take(Math.max(1, Math.min(200, Math.floor(args.limit)))),
+    ])
     return events
       .filter((event) => accessible.has(event.conversationId) && event._creationTime > args.afterSequence)
       .sort((left, right) => left._creationTime - right._creationTime)
@@ -1862,6 +1921,10 @@ export const deleteMessage = mutation({
     ) return false
     const now = Date.now()
     await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
+    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+      sourceKind: 'message',
+      sourceId: args.messageId,
+    })
     return true
   },
 })
@@ -1893,11 +1956,13 @@ async function listNotificationRows(
   const conversationIds = [...new Set(notifications.map((row) => row.conversationId))]
   const conversationStateById = new Map<string, 'archived' | 'deleted'>()
   await Promise.all(conversationIds.map(async (conversationId) => {
-    const conversation = await ctx.db.get(conversationId)
-    const participant = await ctx.db.query('conversationParticipants')
+    const [conversation, participant] = await Promise.all([
+      ctx.db.get(conversationId),
+      ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_principalId', (q) => (
         q.eq('conversationId', conversationId).eq('principalId', actor.principalId)
-      )).unique()
+        )).unique(),
+    ])
     const state = resolveConversationActivityState({
       archivedAt: participant?.archivedAt,
       conversation: conversation ? { deletedAt: conversation.deletedAt } : null,
@@ -2098,16 +2163,13 @@ export const markNotificationsRead = mutation({
       .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
       )).collect()
-    let updated = 0
-    for (const row of rows) {
-      if (
-        row.readAt
-        || (ids && !ids.has(row.notificationId))
-        || (args.conversationId && row.conversationId !== args.conversationId)
-      ) continue
-      await ctx.db.patch(row._id, { readAt: Date.now() })
-      updated++
-    }
-    return updated
+    const unread = rows.filter((row) => !(
+      row.readAt
+      || (ids && !ids.has(row.notificationId))
+      || (args.conversationId && row.conversationId !== args.conversationId)
+    ))
+    const readAt = Date.now()
+    await Promise.all(unread.map((row) => ctx.db.patch(row._id, { readAt })))
+    return unread.length
   },
 })

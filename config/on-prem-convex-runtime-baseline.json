@@ -2,6 +2,8 @@
   "version": 2,
   "apiRouteFiles": [
     "src/app/api/account/delete/route.ts",
+    "src/app/api/agent-gateway/[provider]/[...path]/route.ts",
+    "src/app/api/agent-mcp/route.ts",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -53,18 +55,23 @@
     "src/app/api/v1/agent-environments/[environmentId]/commands/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/credentials/refresh/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/credentials/route.ts",
+    "src/app/api/v1/agent-environments/[environmentId]/desktop/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/events/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/heartbeat/route.ts",
-    "src/app/api/v1/agent-environments/[environmentId]/reset-harness/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/revoke/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/roots/route.ts",
     "src/app/api/v1/agent-environments/artifacts/cleanup/route.ts",
     "src/app/api/v1/agent-environments/enroll/route.ts",
     "src/app/api/v1/agent-environments/enrollment-sessions/route.ts",
-    "src/app/api/v1/agent-environments/managed/route.ts",
     "src/app/api/v1/agent-environments/operations/reconcile/route.ts",
     "src/app/api/v1/agent-environments/route.ts",
+    "src/app/api/v1/agents/[agentId]/automations/route.ts",
+    "src/app/api/v1/agents/[agentId]/bundle/route.ts",
+    "src/app/api/v1/agents/[agentId]/restore/route.ts",
     "src/app/api/v1/agents/[agentId]/route.ts",
+    "src/app/api/v1/agents/[agentId]/threads/[threadId]/route.ts",
+    "src/app/api/v1/agents/[agentId]/threads/resolve/route.ts",
+    "src/app/api/v1/agents/[agentId]/threads/route.ts",
     "src/app/api/v1/agents/route.ts",
     "src/app/api/v1/api-keys/route.ts",
     "src/app/api/v1/automations/[id]/approve/route.ts",
@@ -115,7 +122,6 @@
     "src/app/api/v1/conversations/search/route.ts",
     "src/app/api/v1/conversations/share/route.ts",
     "src/app/api/v1/conversations/stop/route.ts",
-    "src/app/api/v1/daytona/run/route.ts",
     "src/app/api/v1/discovery/route.ts",
     "src/app/api/v1/extensions/[extensionId]/[...path]/route.ts",
     "src/app/api/v1/files/[fileId]/content/route.ts",
@@ -152,7 +158,6 @@
     "src/app/api/v1/outputs/route.ts",
     "src/app/api/v1/providers/connections/route.ts",
     "src/app/api/v1/providers/connections/test/route.ts",
-    "src/app/api/v1/sandbox/run/route.ts",
     "src/app/api/v1/search/route.ts",
     "src/app/api/v1/settings/route.ts",
     "src/app/api/v1/shares/impact/route.ts",
@@ -161,8 +166,15 @@
     "src/app/api/v1/skills/route.ts",
     "src/app/api/v1/subscription/route.ts",
     "src/app/api/v1/subscription/settings/route.ts",
+    "src/app/api/v1/surfaces/bindings/[bindingId]/route.ts",
+    "src/app/api/v1/surfaces/bindings/route.ts",
+    "src/app/api/v1/surfaces/connections/[connectionId]/channels/route.ts",
+    "src/app/api/v1/surfaces/connections/route.ts",
+    "src/app/api/v1/surfaces/slack/callback/route.ts",
+    "src/app/api/v1/surfaces/slack/connect/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
+    "src/app/api/v1/webhooks/slack/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/checkout/route.ts",
@@ -180,17 +192,17 @@
     "src/app/api/v1/workspaces/[workspaceId]/teams/[teamId]/members/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/teams/route.ts",
     "src/app/api/v1/workspaces/active/route.ts",
-    "src/app/api/v1/workspaces/route.ts",
-    "src/app/api/webhooks/stripe/route.ts"
+    "src/app/api/v1/workspaces/route.ts"
   ],
   "browserRuntimeFiles": [
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
-    "src/features/chat/components/ChatExperience.tsx",
+    "src/features/chat/components/DirectMessageExperience.parts.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAgentRunLifecycle.ts",
+    "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
@@ -228,11 +240,6 @@
     },
     {
       "cadence": "{ minutes: 1 }",
-      "name": "daytona workspace reconciliation",
-      "target": "internal.ai.sandbox.daytonaReconcile.runMinuteTick"
-    },
-    {
-      "cadence": "{ minutes: 1 }",
       "name": "document ingestion job processor",
       "target": "(internal as any).files.ingestion.runner.runMinuteTick"
     },
@@ -245,6 +252,11 @@
       "cadence": "{ hours: 6 }",
       "name": "function metrics cleanup",
       "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
+    },
+    {
+      "cadence": "{ hourUTC: 4, minuteUTC: 30 }",
+      "name": "knowledge orphan-chunk sweep",
+      "target": "(internal as any).knowledge.knowledge.sweepOrphanedChunks"
     },
     {
       "cadence": "{ minutes: 1 }",
@@ -265,6 +277,11 @@
       "cadence": "{ minutes: 1 }",
       "name": "slack import job processor",
       "target": "(internal as any).imports.slackRunner.runMinuteTick"
+    },
+    {
+      "cadence": "{ minutes: 15 }",
+      "name": "surface chat state expiry sweep",
+      "target": "(internal as any).surfaces.chatState.pruneExpired"
     },
     {
       "cadence": "{ minutes: 2 }",
@@ -288,7 +305,6 @@
     }
   ],
   "convexRuntimeImportFiles": [
-    "src/app/.well-known/workflow/v1/step/route.js",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -299,9 +315,10 @@
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
-    "src/features/chat/components/ChatExperience.tsx",
+    "src/features/chat/components/DirectMessageExperience.parts.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAgentRunLifecycle.ts",
+    "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
@@ -316,7 +333,6 @@
     "src/server/ai/catalog/index.ts",
     "src/server/ai/provider-connections/ConvexProviderConnectionRepository.ts",
     "src/server/ai/provider-connections/index.ts",
-    "src/server/ai/sandbox/ConvexDaytonaWorkspaceRepository.ts",
     "src/server/app-api/v1/bootstrap/route.ts",
     "src/server/app-api/v1/imports/slack/route.ts",
     "src/server/app-api/v1/mention-search/route.ts",
@@ -374,6 +390,11 @@
     "src/server/storage/providers/index.ts",
     "src/server/storage/r2-budget.ts",
     "src/server/storage/r2-upload-intents.ts",
+    "src/server/surfaces/ConvexSurfaceRepository.ts",
+    "src/server/surfaces/chat.ts",
+    "src/server/surfaces/convex-chat-state.ts",
+    "src/server/surfaces/surface-authors.ts",
+    "src/server/tools/tools/files-executes.ts",
     "src/server/tools/tools/record-tool-invocation.ts",
     "src/server/usage/ConvexUsageRepository.ts",
     "src/server/usage/index.ts",
@@ -393,7 +414,9 @@
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",
     "convex/imports/slackRunner.ts",
+    "convex/knowledge/knowledge.ts",
     "convex/knowledge/memories.ts",
+    "convex/knowledge/memoryExtractorNode.ts",
     "convex/webhooks/deliveryRunner.ts"
   ]
 }

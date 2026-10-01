@@ -54,6 +54,7 @@ function SelectedFileHeader({
       </button>
       <input
         type="text"
+        aria-label="File title"
         value={fileTitle}
         onChange={(e) => onTitleChange(e.target.value)}
         placeholder="File title..."
@@ -283,6 +284,267 @@ function LayoutControls({
   )
 }
 
+function HeaderSearchForTab({
+  activeTab,
+  fileSearchOpen,
+  fileSearchQuery,
+  memorySearchOpen,
+  memorySearchQuery,
+  onSetFileSearchOpen,
+  onSetFileSearchQuery,
+  onSetMemorySearchOpen,
+  onSetMemorySearchQuery,
+}: {
+  activeTab: Tab
+  fileSearchOpen: boolean
+  fileSearchQuery: string
+  memorySearchOpen: boolean
+  memorySearchQuery: string
+  onSetFileSearchOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  onSetFileSearchQuery: (value: string) => void
+  onSetMemorySearchOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  onSetMemorySearchQuery: (value: string) => void
+}) {
+  if (activeTab === 'files') {
+    return (
+      <HeaderSearch
+        value={fileSearchQuery}
+        onChange={onSetFileSearchQuery}
+        open={fileSearchOpen}
+        onOpenChange={onSetFileSearchOpen}
+        label="Search files"
+        placeholder="Search files…"
+      />
+    )
+  }
+  if (activeTab === 'memories') {
+    return (
+      <HeaderSearch
+        value={memorySearchQuery}
+        onChange={onSetMemorySearchQuery}
+        open={memorySearchOpen}
+        onOpenChange={onSetMemorySearchOpen}
+        label="Search memories"
+        placeholder="Search memories…"
+      />
+    )
+  }
+  return null
+}
+
+function TabActionControls({
+  activeTab,
+  activeFolder,
+  createMenuOpen,
+  createMenuRef,
+  fileUploadRef,
+  folderUploadRef,
+  mode,
+  onCreateNoteFile,
+  onImportMemory,
+  onNewMemory,
+  onPickFile,
+  onPickFolder,
+  setCreateMenuOpen,
+  setDialog,
+  setDialogName,
+  setUploadMenuOpen,
+  uploadMenuOpen,
+  uploadMenuRef,
+}: {
+  activeTab: Tab
+  activeFolder: FileNode | null
+  createMenuOpen: boolean
+  createMenuRef: React.RefObject<HTMLDivElement | null>
+  fileUploadRef: React.RefObject<HTMLInputElement | null>
+  folderUploadRef: React.RefObject<HTMLInputElement | null>
+  mode: 'knowledge' | 'files'
+  onCreateNoteFile: () => void
+  onImportMemory: () => void
+  onNewMemory: () => void
+  onPickFile?: () => void
+  onPickFolder?: () => void
+  setCreateMenuOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  setDialog: (value: { type: 'file' | 'folder'; parentId: string | null } | null) => void
+  setDialogName: (value: string) => void
+  setUploadMenuOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  uploadMenuOpen: boolean
+  uploadMenuRef: React.RefObject<HTMLDivElement | null>
+}) {
+  if (activeTab === 'memories') {
+    return (
+      <>
+        <button type="button" onClick={onImportMemory} className={TOOLBAR_FILLED_BUTTON_CLASS}>
+          <FolderInput size={13} />
+          Import
+        </button>
+        <button type="button" onClick={onNewMemory} className={TOOLBAR_FILLED_BUTTON_CLASS}>
+          <Plus size={13} />
+          New Memory
+        </button>
+      </>
+    )
+  }
+  if (activeTab === 'files') {
+    return (
+      <FilesCreateUploadControls
+        activeFolder={activeFolder}
+        createMenuOpen={createMenuOpen}
+        createMenuRef={createMenuRef}
+        fileUploadRef={fileUploadRef}
+        folderUploadRef={folderUploadRef}
+        mode={mode}
+        onCreateNoteFile={onCreateNoteFile}
+        onPickFile={onPickFile}
+        onPickFolder={onPickFolder}
+        setCreateMenuOpen={setCreateMenuOpen}
+        setDialog={setDialog}
+        setDialogName={setDialogName}
+        setUploadMenuOpen={setUploadMenuOpen}
+        uploadMenuOpen={uploadMenuOpen}
+        uploadMenuRef={uploadMenuRef}
+      />
+    )
+  }
+  return null
+}
+
+function TabToolbar({
+  activeFolder,
+  activeTab,
+  bulkDeleting,
+  createMenuOpen,
+  createMenuRef,
+  fileUploadRef,
+  folderUploadRef,
+  layout,
+  mode,
+  onBulkDeleteFiles,
+  onBulkDeleteMemories,
+  onBulkDeleteOutputs,
+  onCommitOutputFilter,
+  onCreateNoteFile,
+  onExitSelectMode,
+  onImportMemory,
+  onNewMemory,
+  onPickFile,
+  onPickFolder,
+  onRefreshOutputs,
+  onSetSelectMode,
+  onUpdateQuery,
+  outputFilter,
+  outputFilterOpen,
+  outputFilterRef,
+  selectMode,
+  selectedFileCount,
+  selectedMemoryCount,
+  selectedOutputCount,
+  setCreateMenuOpen,
+  setDialog,
+  setDialogName,
+  setOutputFilterOpen,
+  setUploadMenuOpen,
+  uploadMenuOpen,
+  uploadMenuRef,
+}: {
+  activeFolder: FileNode | null
+  activeTab: Tab
+  bulkDeleting: boolean
+  createMenuOpen: boolean
+  createMenuRef: React.RefObject<HTMLDivElement | null>
+  fileUploadRef: React.RefObject<HTMLInputElement | null>
+  folderUploadRef: React.RefObject<HTMLInputElement | null>
+  layout: KnowledgeLayout
+  mode: 'knowledge' | 'files'
+  onBulkDeleteFiles: () => void
+  onBulkDeleteMemories: () => void
+  onBulkDeleteOutputs: () => void
+  onCommitOutputFilter: (filter: OutputFilter) => void
+  onCreateNoteFile: () => void
+  onExitSelectMode: () => void
+  onImportMemory: () => void
+  onNewMemory: () => void
+  onPickFile?: () => void
+  onPickFolder?: () => void
+  onRefreshOutputs: () => void
+  onSetSelectMode: (value: boolean) => void
+  onUpdateQuery: (updates: Record<string, string | null | undefined>) => void
+  outputFilter: OutputFilter
+  outputFilterOpen: boolean
+  outputFilterRef: React.RefObject<HTMLDivElement | null>
+  selectMode: boolean
+  selectedFileCount: number
+  selectedMemoryCount: number
+  selectedOutputCount: number
+  setCreateMenuOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  setDialog: (value: { type: 'file' | 'folder'; parentId: string | null } | null) => void
+  setDialogName: (value: string) => void
+  setOutputFilterOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  setUploadMenuOpen: (value: boolean | ((value: boolean) => boolean)) => void
+  uploadMenuOpen: boolean
+  uploadMenuRef: React.RefObject<HTMLDivElement | null>
+}) {
+  return (
+    <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] max-sm:order-2 max-sm:w-full sm:ml-auto sm:w-auto sm:overflow-visible [&::-webkit-scrollbar]:hidden">
+      <BulkSelectControls
+        activeTab={activeTab}
+        bulkDeleting={bulkDeleting}
+        onBulkDeleteFiles={onBulkDeleteFiles}
+        onBulkDeleteMemories={onBulkDeleteMemories}
+        onBulkDeleteOutputs={onBulkDeleteOutputs}
+        onExitSelectMode={onExitSelectMode}
+        onSetSelectMode={onSetSelectMode}
+        selectMode={selectMode}
+        selectedFileCount={selectedFileCount}
+        selectedMemoryCount={selectedMemoryCount}
+        selectedOutputCount={selectedOutputCount}
+      />
+      {activeTab === 'outputs' ? (
+        <OutputFilterMenu
+          onCommit={onCommitOutputFilter}
+          open={outputFilterOpen}
+          outputFilter={outputFilter}
+          outputFilterRef={outputFilterRef}
+          setOpen={setOutputFilterOpen}
+        />
+      ) : null}
+      {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') ? (
+        <LayoutControls layout={layout} onUpdateQuery={onUpdateQuery} />
+      ) : null}
+      {activeTab === 'outputs' ? (
+        <button
+          type="button"
+          title="Refresh"
+          onClick={onRefreshOutputs}
+          className={TOOLBAR_ICON_BUTTON_CLASS}
+        >
+          <RefreshCw size={14} strokeWidth={1.75} />
+        </button>
+      ) : null}
+      <TabActionControls
+        activeTab={activeTab}
+        activeFolder={activeFolder}
+        createMenuOpen={createMenuOpen}
+        createMenuRef={createMenuRef}
+        fileUploadRef={fileUploadRef}
+        folderUploadRef={folderUploadRef}
+        mode={mode}
+        onCreateNoteFile={onCreateNoteFile}
+        onImportMemory={onImportMemory}
+        onNewMemory={onNewMemory}
+        onPickFile={onPickFile}
+        onPickFolder={onPickFolder}
+        setCreateMenuOpen={setCreateMenuOpen}
+        setDialog={setDialog}
+        setDialogName={setDialogName}
+        setUploadMenuOpen={setUploadMenuOpen}
+        uploadMenuOpen={uploadMenuOpen}
+        uploadMenuRef={uploadMenuRef}
+      />
+    </div>
+  )
+}
+
 export function KnowledgeViewHeader({
   activeFolder,
   activeTab,
@@ -429,94 +691,55 @@ export function KnowledgeViewHeader({
               mode={mode}
             />
           )}
-          {activeTab === 'files' ? (
-            <HeaderSearch
-              value={fileSearchQuery}
-              onChange={onSetFileSearchQuery}
-              open={fileSearchOpen}
-              onOpenChange={onSetFileSearchOpen}
-              label="Search files"
-              placeholder="Search files…"
-            />
-          ) : activeTab === 'memories' ? (
-            <HeaderSearch
-              value={memorySearchQuery}
-              onChange={onSetMemorySearchQuery}
-              open={memorySearchOpen}
-              onOpenChange={onSetMemorySearchOpen}
-              label="Search memories"
-              placeholder="Search memories…"
-            />
-          ) : null}
-          <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] max-sm:order-2 max-sm:w-full sm:ml-auto sm:w-auto sm:overflow-visible [&::-webkit-scrollbar]:hidden">
-            <BulkSelectControls
-              activeTab={activeTab}
-              bulkDeleting={bulkDeleting}
-              onBulkDeleteFiles={onBulkDeleteFiles}
-              onBulkDeleteMemories={onBulkDeleteMemories}
-              onBulkDeleteOutputs={onBulkDeleteOutputs}
-              onExitSelectMode={onExitSelectMode}
-              onSetSelectMode={onSetSelectMode}
-              selectMode={selectMode}
-              selectedFileCount={selectedFileCount}
-              selectedMemoryCount={selectedMemoryCount}
-              selectedOutputCount={selectedOutputCount}
-            />
-            {activeTab === 'outputs' ? (
-              <OutputFilterMenu
-                onCommit={onCommitOutputFilter}
-                open={outputFilterOpen}
-                outputFilter={outputFilter}
-                outputFilterRef={outputFilterRef}
-                setOpen={setOutputFilterOpen}
-              />
-            ) : null}
-            {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') ? (
-              <LayoutControls layout={layout} onUpdateQuery={onUpdateQuery} />
-            ) : null}
-            {activeTab === 'outputs' ? (
-              <button
-                type="button"
-                title="Refresh"
-                onClick={onRefreshOutputs}
-                className={TOOLBAR_ICON_BUTTON_CLASS}
-              >
-                <RefreshCw size={14} strokeWidth={1.75} />
-              </button>
-            ) : null}
-            {activeTab === 'memories' ? (
-              <>
-                <button type="button" onClick={onImportMemory} className={TOOLBAR_FILLED_BUTTON_CLASS}>
-                  <FolderInput size={13} />
-                  Import
-                </button>
-                <button type="button" onClick={onNewMemory} className={TOOLBAR_FILLED_BUTTON_CLASS}>
-                  <Plus size={13} />
-                  New Memory
-                </button>
-              </>
-            ) : activeTab === 'files' ? (
-              <>
-              <FilesCreateUploadControls
-                activeFolder={activeFolder}
-                createMenuOpen={createMenuOpen}
-                createMenuRef={createMenuRef}
-                fileUploadRef={fileUploadRef}
-                folderUploadRef={folderUploadRef}
-                mode={mode}
-                onCreateNoteFile={onCreateNoteFile}
-                onPickFile={onPickFile}
-                onPickFolder={onPickFolder}
-                setCreateMenuOpen={setCreateMenuOpen}
-                setDialog={setDialog}
-                setDialogName={setDialogName}
-                setUploadMenuOpen={setUploadMenuOpen}
-                uploadMenuOpen={uploadMenuOpen}
-                uploadMenuRef={uploadMenuRef}
-              />
-              </>
-            ) : null}
-          </div>
+          <HeaderSearchForTab
+            activeTab={activeTab}
+            fileSearchOpen={fileSearchOpen}
+            fileSearchQuery={fileSearchQuery}
+            memorySearchOpen={memorySearchOpen}
+            memorySearchQuery={memorySearchQuery}
+            onSetFileSearchOpen={onSetFileSearchOpen}
+            onSetFileSearchQuery={onSetFileSearchQuery}
+            onSetMemorySearchOpen={onSetMemorySearchOpen}
+            onSetMemorySearchQuery={onSetMemorySearchQuery}
+          />
+          <TabToolbar
+            activeFolder={activeFolder}
+            activeTab={activeTab}
+            bulkDeleting={bulkDeleting}
+            createMenuOpen={createMenuOpen}
+            createMenuRef={createMenuRef}
+            fileUploadRef={fileUploadRef}
+            folderUploadRef={folderUploadRef}
+            layout={layout}
+            mode={mode}
+            onBulkDeleteFiles={onBulkDeleteFiles}
+            onBulkDeleteMemories={onBulkDeleteMemories}
+            onBulkDeleteOutputs={onBulkDeleteOutputs}
+            onCommitOutputFilter={onCommitOutputFilter}
+            onCreateNoteFile={onCreateNoteFile}
+            onExitSelectMode={onExitSelectMode}
+            onImportMemory={onImportMemory}
+            onNewMemory={onNewMemory}
+            onPickFile={onPickFile}
+            onPickFolder={onPickFolder}
+            onRefreshOutputs={onRefreshOutputs}
+            onSetSelectMode={onSetSelectMode}
+            onUpdateQuery={onUpdateQuery}
+            outputFilter={outputFilter}
+            outputFilterOpen={outputFilterOpen}
+            outputFilterRef={outputFilterRef}
+            selectMode={selectMode}
+            selectedFileCount={selectedFileCount}
+            selectedMemoryCount={selectedMemoryCount}
+            selectedOutputCount={selectedOutputCount}
+            setCreateMenuOpen={setCreateMenuOpen}
+            setDialog={setDialog}
+            setDialogName={setDialogName}
+            setOutputFilterOpen={setOutputFilterOpen}
+            setUploadMenuOpen={setUploadMenuOpen}
+            uploadMenuOpen={uploadMenuOpen}
+            uploadMenuRef={uploadMenuRef}
+          />
         </>
       )}
       </div>

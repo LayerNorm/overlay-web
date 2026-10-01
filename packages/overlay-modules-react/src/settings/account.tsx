@@ -12,6 +12,8 @@ import {
   usageProgressTone,
 } from '@overlay/app-core/settings-account'
 
+const NUMBER_FORMATTER = new Intl.NumberFormat('en-US')
+
 export interface AccountMessage {
   type: 'success' | 'error'
   text: string
@@ -284,7 +286,7 @@ export function AccountPaidUsageCard({
         isLandingDark={dark}
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Personal top-up credits" value={`${new Intl.NumberFormat('en-US').format((entitlements.topUpBalanceCents ?? 0) * 10)} credits`} />
+        <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Personal top-up credits" value={`${NUMBER_FORMATTER.format((entitlements.topUpBalanceCents ?? 0) * 10)} credits`} />
         <AccountMetricCard dark={dark} mutedClass={mutedClass} headingClass={headingClass} label="Storage" value={storageUsageLabel} />
       </div>
     </div>
@@ -387,7 +389,7 @@ export function AccountFreeUsageCard({
         />
       </div>
       <p className={`mt-4 text-xs ${mutedClass}`}>
-        Auto is unlimited on free. Upgrade to a paid plan to use premium models, Daytona, browser tasks, and generation tools.
+        Auto is unlimited on free. Upgrade to a paid plan to use premium models, browser tasks, and generation tools.
       </p>
     </div>
   )
@@ -413,15 +415,9 @@ export function UsageProgressBar({
   const displayedPercentage = percentageMode === 'used' ? Math.max(0, 100 - percentage) : percentage
   const tone = usageProgressTone(percentage)
   const labelCls = isLandingDark ? 'text-zinc-400' : 'text-zinc-500'
-  const valueCls = tone === 'empty'
-    ? 'text-red-400'
-    : tone === 'low'
-      ? 'text-amber-400'
-      : isLandingDark
-        ? 'text-zinc-100'
-        : 'text-zinc-900'
+  const valueCls = usageProgressValueClass(tone, isLandingDark)
   const track = isLandingDark ? 'bg-zinc-700' : 'bg-zinc-200'
-  const fill = tone === 'empty' ? 'bg-red-500' : tone === 'low' ? 'bg-amber-500' : isLandingDark ? 'bg-zinc-100' : 'bg-zinc-900'
+  const fill = usageProgressFillClass(tone, isLandingDark)
 
   return (
     <div className="space-y-2">
@@ -438,6 +434,18 @@ export function UsageProgressBar({
       </div>
     </div>
   )
+}
+
+function usageProgressValueClass(tone: 'empty' | 'low' | 'normal', isLandingDark: boolean) {
+  if (tone === 'empty') return 'text-red-400'
+  if (tone === 'low') return 'text-amber-400'
+  return isLandingDark ? 'text-zinc-100' : 'text-zinc-900'
+}
+
+function usageProgressFillClass(tone: 'empty' | 'low' | 'normal', isLandingDark: boolean) {
+  if (tone === 'empty') return 'bg-red-500'
+  if (tone === 'low') return 'bg-amber-500'
+  return isLandingDark ? 'bg-zinc-100' : 'bg-zinc-900'
 }
 
 export function EntitlementsErrorPanel({

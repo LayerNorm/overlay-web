@@ -18,8 +18,11 @@ services:
   web:
     <<: *overlay-runtime
     command: ["node", "server.js"]
-    ports:
-      - "127.0.0.1:${OVERLAY_HTTP_PORT:-3000}:3000"
+    # Host networking lets one baked URL (http://127.0.0.1:3210) serve both the
+    # browser (via the SSH tunnel) and the in-container server client (via the
+    # host-published backend port). NEXT_PUBLIC_* is inlined at image build;
+    # for source builds pass --build-arg NEXT_PUBLIC_CONVEX_URL.
+    network_mode: host
     healthcheck:
       test:
         - CMD
@@ -31,15 +34,34 @@ services:
       retries: 12
       start_period: 45s
     restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
 
-  worker:
-    <<: *overlay-runtime
-    command: ["node", "dist/app-data-worker.cjs", "--mode=worker"]
-    restart: unless-stopped
-
-  scheduler:
-    <<: *overlay-runtime
-    command: ["node", "dist/app-data-worker.cjs", "--mode=scheduler"]
+  backend:
+    image: ${CONVEX_BACKEND_IMAGE:-ghcr.io/get-convex/convex-backend:latest}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      # Client API + realtime sync on the host loopback; the operator reaches it
+      # through the same SSH tunnel as the web app.
+      - "127.0.0.1:${CONVEX_API_PORT:-3210}:3210"
+      - "127.0.0.1:${CONVEX_SITE_PORT:-3211}:3211"
+    volumes:
+      - convex-data:/convex/data
+    environment:
+      # Local-volume persistence for the sanity check. For qualified
+      # deployments use POSTGRES_URL + S3 per the self-hosted Convex runbook.
+      INSTANCE_NAME: ${INSTANCE_NAME:-overlay-ec2-sanity}
+      INSTANCE_SECRET: ${INSTANCE_SECRET:?set in .env}
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:3210}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-http://127.0.0.1:3211}
+      DISABLE_BEACON: "true"
+      RUST_LOG: ${RUST_LOG:-info}
+    healthcheck:
+      test: curl -f http://localhost:3210/version
+      interval: 5s
+      start_period: 20s
     restart: unless-stopped
 
   migrate:
@@ -48,7 +70,9 @@ services:
       - sh
       - -lc
       - >-
-        NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/app-data-migrate.ts &&
         NODE_OPTIONS=--conditions=react-server node_modules/.bin/tsx scripts/db/better-auth-migrate.ts
     profiles: ["tools"]
     restart: "no"
+
+volumes:
+  convex-data:

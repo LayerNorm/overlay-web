@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chat, useChat } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { createConversationUiState } from '@overlay/chat-core'
@@ -92,7 +92,8 @@ function createConversationRuntime(
 
 export function useChatRuntimes(activeChatId: string | null) {
   const runtimesRef = useRef(new Map<string, ConversationRuntime>())
-  const emptyRuntimeRef = useRef(createConversationRuntime('__empty__'))
+  const [emptyRuntime] = useState(() => createConversationRuntime('__empty__'))
+  const emptyRuntimeRef = useRef(emptyRuntime)
 
   const ensureConversationRuntime = useCallback((chatId: string, uiOverrides?: Partial<ConversationUiState>) => {
     const existing = runtimesRef.current.get(chatId)
@@ -144,11 +145,13 @@ export function useChatRuntimes(activeChatId: string | null) {
   const chat2Ref = useRef(chat2)
   const chat3Ref = useRef(chat3)
   const actChatRef = useRef(actChat)
-  chat0Ref.current = chat0
-  chat1Ref.current = chat1
-  chat2Ref.current = chat2
-  chat3Ref.current = chat3
-  actChatRef.current = actChat
+  useEffect(() => {
+    chat0Ref.current = chat0
+    chat1Ref.current = chat1
+    chat2Ref.current = chat2
+    chat3Ref.current = chat3
+    actChatRef.current = actChat
+  })
   const chatInstances = useMemo(() => [chat0, chat1, chat2, chat3], [chat0, chat1, chat2, chat3])
 
   return {

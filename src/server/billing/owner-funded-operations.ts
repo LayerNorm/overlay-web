@@ -47,11 +47,6 @@ export const OWNER_FUNDED_OPERATIONS = [
     path: '/api/v1/notebook-agent',
   },
   {
-    id: 'sandbox.daytona-run',
-    method: 'POST',
-    path: '/api/v1/daytona/run',
-  },
-  {
     id: 'audio.transcribe',
     method: 'POST',
     path: '/api/v1/transcribe',
@@ -64,7 +59,6 @@ export const OWNER_FUNDED_OPERATIONS = [
 ] as const
 
 export type OwnerFundedOperation = (typeof OWNER_FUNDED_OPERATIONS)[number]
-export type OwnerFundedOperationId = OwnerFundedOperation['id']
 
 const IDEMPOTENCY_REQUIRED_METHODS = new Set(['POST', 'PATCH', 'DELETE'])
 

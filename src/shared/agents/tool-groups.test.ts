@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   AGENT_TOOL_GROUPS,
+  AGENT_TOOL_PRESETS,
+  agentToolPresetFor,
   agentToolCapabilities,
   agentToolCapabilityGrantId,
   allAgentToolGrantIds,
@@ -48,6 +50,7 @@ test('a memory grant saved before recall existed still counts as memory', () => 
   const legacy = ['save_memory', 'save_memory_batch', 'update_memory', 'delete_memory']
   assert.equal(enabledAgentToolGroupIds(legacy).has('memory'), true)
   assert.equal(normalizeAgentToolGrant(legacy).includes('search_memory'), true)
+  assert.equal(normalizeAgentToolGrant(legacy).includes('search_messages'), true)
 })
 
 test('normalization does not invent a memory grant that was never given', () => {
@@ -110,4 +113,23 @@ test('the computer group needs every computer tool id to count as enabled', () =
     enabledAgentToolGroupIds([...computer.toolIds]).has('computer'),
     true,
   )
+})
+
+test('grants saved before a group grew still hold the tools that joined it', () => {
+  const beforeNoteEdits = ['list_notes', 'get_note', 'create_note', 'update_note', 'delete_note']
+  const beforeFileReads = ['search_knowledge', 'search_in_files']
+  const groups = enabledAgentToolGroupIds([...beforeNoteEdits, ...beforeFileReads])
+  assert.ok(groups.has('notes'))
+  assert.ok(groups.has('knowledge'))
+  assert.ok(!groups.has('files'), 'file editing is a new grant, not implied by search')
+  const normalized = normalizeAgentToolGrant(beforeNoteEdits)
+  for (const id of ['append_to_note', 'replace_note_section', 'edit_note']) assert.ok(normalized.includes(id))
+  assert.ok(!normalizeAgentToolGrant(['get_note']).includes('edit_note'), 'read-only note grants gain no writes')
+})
+
+test('tool presets never include computer and are recognised from their groups', () => {
+  for (const ids of Object.values(AGENT_TOOL_PRESETS)) assert.equal(ids.includes('computer'), false)
+  assert.equal(agentToolPresetFor(new Set(AGENT_TOOL_PRESETS.everything)), 'everything')
+  assert.equal(agentToolPresetFor(new Set([...AGENT_TOOL_PRESETS.standard, 'computer'])), 'standard')
+  assert.equal(agentToolPresetFor(new Set(['knowledge'])), null)
 })

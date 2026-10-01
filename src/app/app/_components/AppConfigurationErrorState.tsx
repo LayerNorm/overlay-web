@@ -4,7 +4,10 @@ export function AppConfigurationErrorState({ error }: { error: unknown }) {
   const formatted = formatOverlayConfigError(error)
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4 py-8 text-[var(--foreground)]">
+    <div
+      data-testid="app-configuration-error"
+      className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4 py-8 text-[var(--foreground)]"
+    >
       <div className="w-full max-w-2xl rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
           Runtime configuration

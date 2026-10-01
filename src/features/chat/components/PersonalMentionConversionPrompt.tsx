@@ -31,11 +31,14 @@ export function PersonalMentionConversionPrompt({
     setError(null)
     try {
       let conversationId: string | undefined
+      let dmAgentId: string | undefined
       if (kind === 'dm') {
-        conversationId = (await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
+        const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
           principalIds: participantIds,
           sourceConversationId: sourceConversationId ?? undefined,
-        })).directMessage.conversationId
+        })
+        conversationId = directMessage.conversationId
+        dmAgentId = directMessage.agentId ?? undefined
       } else {
         conversationId = (await overlayAppClient.conversations.createWorkspaceChannel(workspaceId, {
           name: `${names.join(' & ') || 'New'} discussion`.slice(0, 100),
@@ -48,8 +51,17 @@ export function PersonalMentionConversionPrompt({
       savePendingCollaborationMessage({ conversationId, content: draft })
       const params = new URLSearchParams(window.location.search)
       params.set('id', conversationId)
-      params.set('view', kind === 'dm' ? 'dms' : 'channels')
-      window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`)
+      // A DM with an agent is a thread under that agent — it lives on the
+      // agents surface, not in the chat list. `view` there is the agents
+      // panel tab, not the chats subview, so the 'dms' marker must stay off.
+      if (dmAgentId) {
+        params.set('agent', dmAgentId)
+        params.delete('view')
+      } else {
+        params.set('view', kind === 'dm' ? 'dms' : 'channels')
+      }
+      const pathname = dmAgentId ? '/app/agents' : window.location.pathname
+      window.history.pushState(null, '', `${pathname}?${params.toString()}`)
       window.dispatchEvent(new Event('overlay:chat-route-selected'))
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Could not create the conversation.')

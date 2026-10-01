@@ -108,6 +108,7 @@ export const ActConversationRequest = z.object({
   automationMode: z.boolean().optional(),
   automationExecution: z.boolean().optional(),
   automationId: z.string().optional(),
+  automationName: z.string().max(200).optional(),
   mediaToolIntent: z.enum(['image', 'video']).nullable().optional(),
   requestedToolIds: z.unknown().optional(),
   memoryEnabled: z.boolean().optional(),

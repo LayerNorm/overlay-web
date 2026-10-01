@@ -25,23 +25,28 @@ test('Phase 4 protects channel search, reactions, pins, and saved-message routes
   ]) assert.ok(routes.get(path), `missing ${path}`)
 })
 
-test('Phase 4 migration carries channel shape, threads, reactions, pins, saves, and #general backfill', async () => {
-  const migration = await readFile(`${root}/migrations/app-data/0034_channels_threads.sql`, 'utf8')
+test('Phase 4 schema carries channel shape, threads, reactions, pins, saves, and #general backfill', async () => {
+  // Convex is the only app-data provider (64b4257ae removed the Postgres
+  // migrations this used to read), so the invariants live in the schema.
+  const [schema, workspaces] = await Promise.all([
+    readFile(`${root}/convex/schema.ts`, 'utf8'),
+    readFile(`${root}/convex/collaboration/workspaces.ts`, 'utf8'),
+  ])
   for (const invariant of [
-    'channel_slug',
-    'channel_visibility',
-    'thread_root_message_id',
-    'conversation_message_reactions',
-    'conversation_pins',
-    'conversation_saved_messages',
-    "'general'",
-  ]) assert.match(migration, new RegExp(invariant))
+    'channelSlug',
+    'channelVisibility',
+    'threadRootMessageId',
+    'conversationMessageReactions: defineTable',
+    'conversationPins: defineTable',
+    'conversationSavedMessages: defineTable',
+  ]) assert.match(schema, new RegExp(invariant))
+  assert.match(workspaces, /channelSlug: 'general'/)
 })
 
 test('Phase 4 ships create-channel, thread, reaction, pin, save, and workspace search UX', async () => {
   const [dialog, conversation, message, search] = await Promise.all([
     readFile(`${root}/src/features/chat/components/NewChannelDialog.tsx`, 'utf8'),
-    readFile(`${root}/src/features/chat/components/DirectMessageExperience.tsx`, 'utf8'),
+    readFile(`${root}/src/features/chat/components/DirectMessageExperience.parts.tsx`, 'utf8'),
     readFile(`${root}/src/features/chat/components/collaboration/RoomMessageItem.tsx`, 'utf8'),
     readFile(`${root}/src/components/layout/GlobalSearchDialog.tsx`, 'utf8'),
   ])

@@ -1,6 +1,8 @@
 import 'server-only'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
+import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
+import { machineForAgent, touchEnvironmentMachine } from '@/server/agents/environment-machine'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   ComputerServiceError,
@@ -224,6 +226,57 @@ export async function executeSearchMemory(
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Memory search failed',
+    }
+  }
+}
+
+/**
+ * Verbatim transcript layer: raw messages indexed under sourceKind 'message'.
+ * Chunks carry a `YYYY-MM-DD · Speaker` title, so each hit is citation-ready
+ * (when it was said, who said it) without a second lookup.
+ */
+export async function executeSearchMessages(
+  options: OverlayToolsOptions,
+  input: { query: string },
+) {
+  if (options.memoryEnabled === false) {
+    return { success: false, error: 'Memory is off for this turn.' }
+  }
+  const query = input.query?.trim()
+  if (!query) return { success: false, error: 'A query is required to search messages.' }
+  try {
+    const res = await callInternalApi(
+      '/api/v1/knowledge/search',
+      {
+        query,
+        sourceKind: 'message',
+        ...toolAuthBody(options),
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch((_error) => ({ error: 'Message search failed' }))
+      return { success: false, error: (err as { error?: string }).error ?? 'Message search failed' }
+    }
+    const data = (await res.json()) as { chunks?: Array<Record<string, unknown>> }
+    const messages = (data.chunks ?? []).map((chunk) => ({
+      content: chunk.text,
+      messageId: chunk.sourceId,
+      title: chunk.title,
+    }))
+    return {
+      success: true,
+      messages,
+      ...(messages.length === 0
+        ? { note: 'No past messages matched. Try search_memory for distilled facts, or a different phrasing.' }
+        : {}),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Message search failed',
     }
   }
 }
@@ -803,76 +856,6 @@ export async function executeGenerateVideo(
   }
 }
 
-export async function executeRunDaytonaSandbox(
-  options: OverlayToolsOptions,
-  input: {
-    task: string
-    runtime: 'node' | 'python'
-    command: string
-    code?: string
-    inputFileIds?: string[]
-    expectedOutputs: string[]
-  },
-) {
-  const { task, runtime, command, code, inputFileIds, expectedOutputs } = input
-
-  try {
-    const res = await callInternalApi(
-      '/api/v1/daytona/run',
-      {
-        task,
-        runtime,
-        command,
-        code,
-        inputFileIds,
-        expectedOutputs,
-        conversationId: options.conversationId,
-        turnId: options.turnId,
-        ...toolAuthBody(options),
-      },
-      options.accessToken,
-      options.baseUrl,
-      { forwardCookie: options.forwardCookie },
-    )
-
-    const data = (await res.json().catch((_error) => ({}))) as Record<string, unknown>
-    if (!res.ok) {
-      return {
-        success: false,
-        exitCode: data.exitCode,
-        stdout: data.stdout,
-        stderr: data.stderr,
-        artifacts: data.artifacts,
-        missingExpectedOutputs: data.missingExpectedOutputs,
-        error:
-          (typeof data.message === 'string' && data.message) ||
-          (typeof data.error === 'string' && data.error) ||
-          'Daytona sandbox run failed',
-      }
-    }
-
-    return {
-      success: Boolean(data.success),
-      exitCode: data.exitCode,
-      stdout: data.stdout,
-      stderr: data.stderr,
-      artifacts: data.artifacts,
-      missingExpectedOutputs: data.missingExpectedOutputs,
-      uploadedFiles: data.uploadedFiles,
-      message:
-        typeof data.message === 'string'
-          ? data.message
-          : 'Daytona sandbox run completed.',
-    }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Daytona sandbox run failed',
-    }
-  }
-}
-
-
 export async function executeDraftSkillFromChat(
   _options: OverlayToolsOptions,
   input: {
@@ -922,7 +905,7 @@ function computerErrorResult(err: unknown, fallback: string) {
 async function computerInstanceFor(
   options: OverlayToolsOptions,
 ): Promise<
-  | { ok: true; computer: Computer; instance: SandboxInstance }
+  | { ok: true; computer: Pick<Computer, 'id' | 'name'>; instance: SandboxInstance }
   | { ok: false; error: string }
 > {
   if (!options.workspaceId) {
@@ -949,6 +932,23 @@ async function computerInstanceFor(
     })
     return { ok: true, computer, instance }
   } catch (err) {
+    // An agent bound to an Overlay Cloud environment already has a machine —
+    // its environment sandbox. Fall back to it before reporting "no computer"
+    // so env-bound agents get machine tools without a second box.
+    if (err instanceof ComputerServiceError && err.code === 'not_found' && options.agentId) {
+      const machine = await machineForAgent({
+        workspaceId: options.workspaceId,
+        agentId: options.agentId,
+      }).catch((_error) => null)
+      if (machine) {
+        await touchEnvironmentMachine(machine)
+        return {
+          ok: true,
+          computer: { id: `env:${machine.environment.id}`, name: machine.environment.name },
+          instance: machine.instance,
+        }
+      }
+    }
     // An unbound owner is terminal — every computer tool hits it, so tell the
     // model to stop retrying and ask the user to bind one instead of looping.
     if (err instanceof ComputerServiceError && err.code === 'not_found') {
@@ -977,6 +977,14 @@ export async function executeComputerExec(
     const handle = await resolved.instance.runCommand({
       command: input.command,
       cwd: input.cwd,
+      // Scoped gateway credentials so agent CLIs on the machine authenticate
+      // through Overlay's metered proxy — no real provider keys in the box.
+      environment: agentGatewayExecEnv({
+        workspaceId: options.workspaceId!,
+        userId: options.userId,
+        agentId: options.agentId,
+        ttlMs: timeoutMs + 60_000,
+      }),
       timeoutMs,
     })
     const result = await handle.wait()

@@ -132,12 +132,12 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
   const events: string[] = []
   const result = await runActModelAttempts<string>({
     attemptModelIds: [
-      'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
       'openrouter/free',
-      'stepfun-ai/step-3.5-flash',
+      'anthropic/claude-opus-4.7',
+      'z-ai/glm-5.1',
     ],
     reserveBudgetForAttempt: async (attemptModelId) => {
-      if (attemptModelId === 'stepfun-ai/step-3.5-flash') return { ok: true }
+      if (attemptModelId === 'z-ai/glm-5.1') return { ok: true }
       return {
         ok: false,
         reason: 'budget',
@@ -156,8 +156,8 @@ test('runActModelAttempts describes the full budget fallback chain', async () =>
 
   assert.equal(result, 'ok')
   assert.deepEqual(events, [
-    'fallback:openrouter/free->stepfun-ai/step-3.5-flash:openrouter/nvidia/nemotron-3-super-120b-a12b:free,openrouter/free',
-    'run:stepfun-ai/step-3.5-flash:Free: Nemotron 3 Super 120B and Free Router exceeded remaining budget, switching to Free: Step 3.5 Flash.',
+    'fallback:anthropic/claude-opus-4.7->z-ai/glm-5.1:openrouter/free,anthropic/claude-opus-4.7',
+    'run:z-ai/glm-5.1:Free Router and Claude Opus 4.7 exceeded remaining budget, switching to GLM 5.1.',
   ])
 })
 

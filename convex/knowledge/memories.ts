@@ -33,12 +33,20 @@ const memoryDocValidator = v.object({
   conversationId: v.optional(v.string()),
   createdAt: v.number(),
   deletedAt: v.optional(v.number()),
+  derivedFrom: v.optional(v.array(v.id('memories'))),
+  inferred: v.optional(v.boolean()),
+  eventAt: v.optional(v.number()),
+  expiresAt: v.optional(v.number()),
   importance: v.optional(v.number()),
   messageId: v.optional(v.string()),
   noteId: v.optional(v.string()),
   source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
+  sourceCount: v.optional(v.number()),
+  supersededAt: v.optional(v.number()),
+  supersededBy: v.optional(v.id('memories')),
   tags: v.optional(v.array(v.string())),
   turnId: v.optional(v.string()),
+  visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
   type: v.optional(v.union(
     v.literal('preference'),
     v.literal('fact'),
@@ -149,6 +157,12 @@ export const add = mutation({
     turnId: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
+    expiresAt: v.optional(v.number()),
+    eventAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+    /** Consolidation-pass writes: cross-memory inference + its `derives` edge. */
+    inferred: v.optional(v.boolean()),
+    derivedFrom: v.optional(v.array(v.id('memories'))),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -192,8 +206,17 @@ export const add = mutation({
         if (candidate.deletedAt) continue
         const candNorm = candidate.content.toLowerCase().replace(/\s+/g, ' ').trim()
         if (candNorm === normalized) {
-          // Update freshness on exact duplicate
-          await ctx.db.patch(candidate._id, { updatedAt: Date.now() })
+          // Exact duplicate = another corroborating source: bump freshness
+          // and sourceCount on the row and its chunks. Sequential: returns on
+          // the first match, so later candidates are never touched.
+          // react-doctor-disable-next-line react-doctor/async-await-in-loop
+          const sourceCount = (candidate.sourceCount ?? 1) + 1
+          await ctx.db.patch(candidate._id, { updatedAt: Date.now(), sourceCount })
+          const chunks = await ctx.db
+            .query('knowledgeChunks')
+            .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', candidate._id))
+            .collect()
+          await Promise.all(chunks.map((chunk) => ctx.db.patch(chunk._id, { updatedAt: Date.now(), sourceCount })))
           return candidate._id
         }
       }
@@ -214,10 +237,19 @@ export const add = mutation({
       turnId: args.turnId,
       tags: args.tags,
       actor: args.actor,
+      expiresAt: args.expiresAt,
+      eventAt: args.eventAt,
+      visibility: args.visibility,
+      sourceCount: 1,
+      inferred: args.inferred,
+      derivedFrom: args.derivedFrom,
       createdAt: now,
       updatedAt: now,
     })
-    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, { memoryId })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
+      memoryId,
+      trustedInternal: validateServerSecret(args.serverSecret),
+    })
     return memoryId
   },
 })
@@ -247,6 +279,9 @@ export const update = mutation({
     turnId: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
+    expiresAt: v.optional(v.number()),
+    eventAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
   },
   handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -269,8 +304,14 @@ export const update = mutation({
     if (updates.turnId !== undefined) patch.turnId = updates.turnId || undefined
     if (updates.tags !== undefined) patch.tags = updates.tags
     if (updates.actor !== undefined) patch.actor = updates.actor
+    if (updates.expiresAt !== undefined) patch.expiresAt = updates.expiresAt
+    if (updates.eventAt !== undefined) patch.eventAt = updates.eventAt
+    if (updates.visibility !== undefined) patch.visibility = updates.visibility
     await ctx.db.patch(memoryId, patch)
-    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, { memoryId })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
+      memoryId,
+      trustedInternal: validateServerSecret(serverSecret),
+    })
   },
 })
 
@@ -297,5 +338,144 @@ export const remove = mutation({
       deletedAt: Date.now(),
       updatedAt: Date.now(),
     })
+  },
+})
+
+/**
+ * Freshness + corroboration bump for semantic duplicates: the fact is
+ * unchanged, but an independent source just confirmed it — sourceCount feeds
+ * retrieval ranking and recency decay keys off the denormalized chunk
+ * `updatedAt`, so both move together. No reindex — content is identical.
+ */
+export const touch = mutation({
+  args: {
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    memoryId: v.id('memories'),
+  },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const existing = await ctx.db.get(memoryId)
+    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) {
+      throw new Error('Unauthorized')
+    }
+    const now = Date.now()
+    const sourceCount = (existing.sourceCount ?? 1) + 1
+    await ctx.db.patch(memoryId, { updatedAt: now, sourceCount })
+    const chunks = await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memoryId))
+      .collect()
+    await Promise.all(chunks.map((chunk) => ctx.db.patch(chunk._id, { updatedAt: now, sourceCount })))
+  },
+})
+
+/**
+ * Factual replacement: insert the new row and mark the old one superseded.
+ * The old row stays in the table for audit but its chunks are flagged
+ * `superseded` so retrieval drops them without a join.
+ */
+export const supersede = mutation({
+  args: {
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    memoryId: v.id('memories'),
+    content: v.string(),
+    source: v.union(v.literal('chat'), v.literal('note'), v.literal('manual')),
+    type: v.optional(
+      v.union(
+        v.literal('preference'),
+        v.literal('fact'),
+        v.literal('project'),
+        v.literal('decision'),
+        v.literal('agent'),
+      ),
+    ),
+    importance: v.optional(v.number()),
+    conversationId: v.optional(v.string()),
+    noteId: v.optional(v.string()),
+    messageId: v.optional(v.string()),
+    turnId: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
+    expiresAt: v.optional(v.number()),
+    eventAt: v.optional(v.number()),
+    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
+  },
+  handler: async (ctx, args) => {
+    await authorizeUserAccess(args)
+    const old = await ctx.db.get(args.memoryId)
+    if (!old || old.userId !== args.userId || old.deletedAt || (args.workspaceId !== undefined && old.workspaceId !== args.workspaceId)) {
+      throw new Error('Unauthorized')
+    }
+    const MAX_MEMORY_BYTES = 50 * 1024
+    if (new TextEncoder().encode(args.content).byteLength > MAX_MEMORY_BYTES) {
+      throw new Error(`Memory content exceeds size limit (max ${MAX_MEMORY_BYTES / 1024} KB)`)
+    }
+    const now = Date.now()
+    const newId = await ctx.db.insert('memories', {
+      userId: args.userId,
+      workspaceId: old.workspaceId,
+      content: args.content,
+      source: args.source,
+      type: args.type ?? old.type,
+      importance: args.importance ?? old.importance,
+      conversationId: args.conversationId ?? old.conversationId,
+      noteId: args.noteId ?? old.noteId,
+      messageId: args.messageId,
+      turnId: args.turnId,
+      tags: args.tags ?? old.tags,
+      actor: args.actor ?? old.actor,
+      expiresAt: args.expiresAt,
+      eventAt: args.eventAt,
+      visibility: args.visibility ?? old.visibility,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.patch(old._id, {
+      supersededBy: newId,
+      supersededAt: now,
+      updatedAt: now,
+    })
+    const oldChunks = await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', old._id))
+      .collect()
+    await Promise.all(oldChunks.map((chunk) => ctx.db.patch(chunk._id, { superseded: true })))
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
+      memoryId: newId,
+      trustedInternal: validateServerSecret(args.serverSecret),
+    })
+    return newId
+  },
+})
+
+/**
+ * Fetch specific memory rows by id (owner-scoped, live rows only). Used by the
+ * extractor's dedup decision to read the memories behind retrieved chunks —
+ * `list` caps at 100 rows and can't page by id.
+ */
+export const getByIds = query({
+  args: {
+    userId: v.string(),
+    memoryIds: v.array(v.id('memories')),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    includeDeleted: v.optional(v.boolean()),
+  },
+  returns: v.array(memoryDocValidator),
+  handler: async (ctx, { userId, memoryIds, accessToken, serverSecret, includeDeleted }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const docs = await Promise.all(memoryIds.slice(0, 50).map((id) => ctx.db.get(id)))
+    return docs.filter((m) => m && m.userId === userId && (includeDeleted || !m.deletedAt))
+      .map((m) => normalizeMemoryDoc(m!))
   },
 })

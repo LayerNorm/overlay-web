@@ -42,6 +42,8 @@ interface Props {
   appBaseUrl?: string | null
   /** Known mentions render as the same distinct pills used by the composer. */
   mentions?: ChatMessageMention[]
+  /** Optional avatar renderer for mention chips (e.g. agent creatures). Falls back to the type icon. */
+  renderMentionAvatar?: (mention: ChatMessageMention) => ReactNode
   /**
    * 'token' (default): render the full normalized text through one ReactMarkdown pass
    *   every update, with a shim that closes open structures so partial markdown still
@@ -68,6 +70,7 @@ function MarkdownMessageImpl({
   streamingMode = 'token',
   appBaseUrl = null,
   mentions,
+  renderMentionAvatar,
   onOpenAttachmentPreview,
 }: Props) {
   recordRender(isStreaming ? 'MarkdownMessage(streaming)' : 'MarkdownMessage')
@@ -129,15 +132,16 @@ function MarkdownMessageImpl({
           if (isMentionHref(href)) {
             const encodedId = typeof href === 'string' ? href.slice('#overlay-mention-'.length) : ''
             const mention = mentions?.find((item) => encodeURIComponent(item.id) === encodedId)
+            const avatar = mention ? renderMentionAvatar?.(mention) : undefined
             const Icon = mention?.type === 'file' ? FileText
               : mention?.type === 'knowledge' ? BookOpen
                 : mention?.type === 'connector' ? Plug
-                  : mention?.type === 'automation' ? Bot
+                  : mention?.type === 'automation' || mention?.type === 'agent' ? Bot
                     : mention?.type === 'skill' ? Sparkles
                       : mention?.type === 'mcp' ? Server
                         : mention?.type === 'chat' ? Hash
                           : AtSign
-            return <span className={`${mentionChipClass} gap-1`}><Icon size={11} strokeWidth={1.75} aria-hidden="true" />{props.children}</span>
+            return <span className={`${mentionChipClass} gap-1`}>{avatar ?? <Icon size={11} strokeWidth={1.75} aria-hidden="true" />}{props.children}</span>
           }
 
           // Knowledge citation chip: `#overlay-knowcite-N` (a cited file or memory).
@@ -227,7 +231,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, onOpenAttachmentPreview],
+    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview],
   )
   const activeRemarkPlugins = useMemo(
     () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
@@ -304,6 +308,8 @@ function MarkdownMessageImpl({
   return (
     <div className="markdown-content">
       {completedBlocks.map((block, index) => (
+        // Parsed blocks have no id; index is the stable identity for append-only output.
+        // react-doctor-disable-next-line react-doctor/no-array-index-as-key
         <div key={`md-block-${index}`} className="md-block-appear">
           <ReactMarkdown
             remarkPlugins={activeRemarkPlugins}
@@ -373,6 +379,7 @@ export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
     prev.suppressTypingIndicator === next.suppressTypingIndicator &&
     prev.appBaseUrl === next.appBaseUrl &&
     prev.mentions === next.mentions &&
+    prev.renderMentionAvatar === next.renderMentionAvatar &&
     sameCitations(prev.sourceCitations, next.sourceCitations) &&
     sameWebSources(prev.webSources, next.webSources)
   )

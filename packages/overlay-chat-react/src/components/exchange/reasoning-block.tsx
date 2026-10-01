@@ -7,6 +7,65 @@ import { MarkdownMessage } from '../MarkdownMessage'
 
 import { ToolLogoColumn } from './tool-rail'
 
+function ReasoningExpandButton({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
+    >
+      <ChevronDown
+        size={14}
+        strokeWidth={1.75}
+        className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+      />
+    </button>
+  )
+}
+
+function ReasoningDetails({
+  hasContent,
+  show,
+  streaming,
+  text,
+  scrollRef,
+}: {
+  hasContent: boolean
+  show: boolean
+  streaming: boolean
+  text: string
+  scrollRef: React.RefObject<HTMLDivElement | null>
+}) {
+  if (!hasContent) return null
+  return (
+    <div
+      className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
+        show ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
+      }`}
+    >
+      {show ? (
+        <div
+          ref={scrollRef}
+          className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'}`}
+        >
+          <MarkdownMessage
+            text={text}
+            isStreaming={streaming}
+            suppressTypingIndicator
+          />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function ReasoningBlock({
   text,
   streaming,
@@ -40,42 +99,21 @@ export function ReasoningBlock({
                 {label}
               </span>
               {!streaming && hasContent ? (
-                <button
-                  type="button"
-                  onClick={() => setUserExpanded((open) => !open)}
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  aria-label={userExpanded ? 'Collapse reasoning' : 'Expand reasoning'}
-                >
-                  <ChevronDown
-                    size={14}
-                    strokeWidth={1.75}
-                    className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
-                  />
-                </button>
+                <ReasoningExpandButton
+                  expanded={userExpanded}
+                  onToggle={() => setUserExpanded((open) => !open)}
+                />
               ) : null}
             </div>
           </div>
         </div>
-        {hasContent ? (
-          <div
-            className={`ml-[26px] overflow-hidden transition-[max-height] duration-300 ${
-              showDetails ? 'max-h-[min(42vh,304px)] pt-1 pb-2' : 'max-h-0'
-            }`}
-          >
-            {showDetails ? (
-              <div
-                ref={scrollRef}
-                className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'}`}
-              >
-                <MarkdownMessage
-                  text={text}
-                  isStreaming={streaming}
-                  suppressTypingIndicator
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <ReasoningDetails
+          hasContent={hasContent}
+          show={showDetails}
+          streaming={streaming}
+          text={text}
+          scrollRef={scrollRef}
+        />
       </div>
     </div>
   )

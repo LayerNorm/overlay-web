@@ -53,7 +53,7 @@ export class WorkOSByokCredentialStore implements ByokCredentialStore {
 }
 
 /**
- * Customer-controlled secret store for Postgres/AWS deployments. Secret names
+ * Customer-controlled secret store for AWS/self-hosted deployments. Secret names
  * are opaque random IDs: neither user identity nor provider key material is
  * placed in an ARN, a tag, a database row, or a log message.
  */
@@ -114,41 +114,11 @@ export class AwsSecretsManagerByokCredentialStore implements ByokCredentialStore
   }
 }
 
-class UnavailableByokCredentialStore implements ByokCredentialStore {
-  private unavailable(): never {
-    throw new Error(
-      'Postgres BYOK requires providers.secrets.provider=aws-secrets-manager so provider keys remain in the customer AWS account.',
-    )
-  }
-
-  async write(_args: { apiKey: string; context: ByokCredentialContext }): Promise<string> {
-    return this.unavailable()
-  }
-
-  async read(_credentialRef: string): Promise<string | null> {
-    return this.unavailable()
-  }
-
-  async update(_args: { credentialRef: string; apiKey: string }): Promise<void> {
-    return this.unavailable()
-  }
-
-  async delete(_credentialRef: string): Promise<void> {
-    return this.unavailable()
-  }
-}
-
 export function createByokCredentialStore(
   runtimeConfig: OverlayRuntimeConfig | null,
 ): ByokCredentialStore {
-  const databaseProvider = runtimeConfig?.providers.database?.provider ?? runtimeConfig?.database.provider ?? 'convex'
   const secretProvider = runtimeConfig?.providers.secrets?.provider ?? 'env'
   if (secretProvider === 'aws-secrets-manager') return new AwsSecretsManagerByokCredentialStore()
-  if (databaseProvider === 'postgres') {
-    // BYOK may be unused. Preserve an otherwise valid on-prem boot and fail
-    // closed only if a caller attempts to store or read a provider key.
-    return new UnavailableByokCredentialStore()
-  }
   return new WorkOSByokCredentialStore()
 }
 

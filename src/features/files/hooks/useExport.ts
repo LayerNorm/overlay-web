@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { htmlToMarkdown, chatMessagesToMarkdown } from '@/features/files/lib/export/markdown'
+import { toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
+import { chatMessagesToMarkdown } from '@/features/files/lib/export/markdown'
 import { exportChatToJSON, exportNoteToJSON } from '@/features/files/lib/export/json'
 
 interface ExportMessage {
@@ -31,7 +32,7 @@ export function useExport({ type, title, content, metadata }: UseExportOptions) 
       return chatMessagesToMarkdown(content)
     }
     if (type === 'note' && typeof content === 'string') {
-      return htmlToMarkdown(content)
+      return toCanonicalNoteMarkdown(content)
     }
     return ''
   }, [type, content])

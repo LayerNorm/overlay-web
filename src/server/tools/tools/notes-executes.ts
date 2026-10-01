@@ -1,89 +1,186 @@
 import 'server-only'
 
+import {
+  appendToNote,
+  applyNoteEdits,
+  NoteEditError,
+  noteOutline,
+  prependToNote,
+  replaceNoteSection,
+  type NoteFindReplace,
+} from '@overlay/app-core/note-edits'
+import type { NoteDoc } from '@overlay/app-core'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
-import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
-import { unwrapPaginatedData } from '@/shared/api/pagination'
 import type { OverlayToolsOptions } from './types'
+
+/**
+ * Agent note tools. Notes are Markdown, and every write goes through
+ * `/api/v1/notes` (NoteService) — the same path as the editor. Patch-style
+ * tools read the note, apply the edit, and write it back guarded by the
+ * revision they read, so an edit never overwrites a concurrent change.
+ */
+
+const NOTES_PATH = '/api/v1/notes'
+
+type ToolFailure = { success: false; error: string; conflict?: true; currentRevision?: string }
+
+function revisionOf(note: Pick<NoteDoc, 'updatedAt'>): string {
+  return String(note.updatedAt)
+}
+
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  const body = await res.json().catch((_error) => null) as { error?: string } | null
+  return body?.error ?? fallback
+}
+
+function failure(err: unknown, fallback: string): ToolFailure {
+  return { success: false, error: err instanceof Error ? err.message : fallback }
+}
+
+async function fetchNote(options: OverlayToolsOptions, noteId: string): Promise<NoteDoc | ToolFailure> {
+  const params = new URLSearchParams({ noteId: noteId.trim() })
+  const res = await callInternalApiGet(
+    `${NOTES_PATH}?${params}`,
+    options.accessToken,
+    options.baseUrl,
+    options.forwardCookie,
+    options.serverSecret,
+    options.userId,
+    options.workspaceId,
+  )
+  if (!res.ok) return { success: false, error: await errorMessage(res, 'Note not found') }
+  return await res.json() as NoteDoc
+}
+
+type WriteResult =
+  | { ok: true; note: NoteDoc | null }
+  | { ok: false; conflict: boolean; error: string; currentRevision?: string }
+
+async function writeNote(
+  options: OverlayToolsOptions,
+  body: { noteId: string; title?: string; content?: string; tags?: string[]; expectedUpdatedAt?: number },
+): Promise<WriteResult> {
+  const res = await callInternalApi(
+    NOTES_PATH,
+    { ...body, ...toolAuthBody(options) },
+    options.accessToken,
+    options.baseUrl,
+    { method: 'PATCH', forwardCookie: options.forwardCookie },
+  )
+  if (res.status === 409) {
+    const conflict = await res.json().catch((_error) => null) as { conflict?: { remoteRevision?: string } } | null
+    return {
+      ok: false,
+      conflict: true,
+      error: 'The note changed since it was read.',
+      currentRevision: conflict?.conflict?.remoteRevision,
+    }
+  }
+  if (!res.ok) return { ok: false, conflict: false, error: await errorMessage(res, 'Failed to update note') }
+  const data = await res.json().catch((_error) => null) as { note?: NoteDoc | null } | null
+  return { ok: true, note: data?.note ?? null }
+}
+
+function staleRevision(expected: string, current: string): ToolFailure {
+  return {
+    success: false,
+    conflict: true,
+    currentRevision: current,
+    error: `The note changed since revision ${expected} (now ${current}), likely because someone is editing it. Call get_note again and redo the edit on the current text.`,
+  }
+}
+
+/**
+ * Read → transform → write, guarded by the revision read. Without an
+ * `expectedRevision` from the model, a lost race is retried once on fresh text.
+ */
+async function patchNote(
+  options: OverlayToolsOptions,
+  input: { noteId: string; expectedRevision?: string },
+  transform: (markdown: string) => string,
+) {
+  const attempts = input.expectedRevision ? 1 : 2
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const note = await fetchNote(options, input.noteId)
+    if ('success' in note) return note
+    const current = revisionOf(note)
+    if (input.expectedRevision && input.expectedRevision !== current) {
+      return staleRevision(input.expectedRevision, current)
+    }
+    let next: string
+    try {
+      next = transform(note.content)
+    } catch (err) {
+      if (err instanceof NoteEditError) return { success: false as const, error: err.message }
+      throw err
+    }
+    const written = await writeNote(options, { noteId: note._id, content: next, expectedUpdatedAt: note.updatedAt })
+    if (written.ok) {
+      return {
+        success: true as const,
+        noteId: note._id,
+        revision: written.note ? revisionOf(written.note) : undefined,
+      }
+    }
+    if (!written.conflict) return { success: false as const, error: written.error }
+    if (attempt === attempts - 1) {
+      return staleRevision(input.expectedRevision ?? current, written.currentRevision ?? 'unknown')
+    }
+  }
+  return { success: false as const, error: 'Failed to update note' }
+}
 
 export async function executeListNotes(
   options: OverlayToolsOptions,
   _input: Record<string, never>,
 ) {
   try {
-    const params = new URLSearchParams({ userId: options.userId })
-    params.set('kind', 'note')
-    params.set('limit', '100')
     const res = await callInternalApiGet(
-      `/api/v1/files?${params}`,
+      NOTES_PATH,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
       options.serverSecret,
       options.userId,
+      options.workspaceId,
     )
-    if (!res.ok) {
-      const err = await res.json().catch((_error) => ({ error: 'Failed to list notes' }))
-      return { success: false, error: (err as { error?: string }).error ?? 'Failed to list notes' }
-    }
-    const notes = unwrapPaginatedData<{
-      _id: string
-      name?: string
-      updatedAt: number
-    }>(await res.json())
-    const slim = notes.map((n) => ({
-      noteId: n._id,
-      title: n.name || 'Untitled',
-      updatedAt: n.updatedAt,
-    }))
-    return { success: true, notes: slim }
-  } catch (err) {
+    if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list notes') }
+    const notes = await res.json() as NoteDoc[]
     return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to list notes',
+      success: true,
+      notes: notes
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 200)
+        .map((note) => ({
+          noteId: note._id,
+          title: note.title || 'Untitled',
+          tags: note.tags ?? [],
+          updatedAt: note.updatedAt,
+        })),
     }
+  } catch (err) {
+    return failure(err, 'Failed to list notes')
   }
 }
 
 export async function executeGetNote(options: OverlayToolsOptions, input: { noteId: string }) {
   try {
-    const params = new URLSearchParams({
-      userId: options.userId,
-      fileId: input.noteId.trim(),
-    })
-    const res = await callInternalApiGet(
-      `/api/v1/files?${params}`,
-      options.accessToken,
-      options.baseUrl,
-      options.forwardCookie,
-      options.serverSecret,
-      options.userId,
-    )
-    if (!res.ok) {
-      const err = await res.json().catch((_error) => ({ error: 'Note not found' }))
-      return { success: false, error: (err as { error?: string }).error ?? 'Note not found' }
-    }
-    const note = (await res.json()) as {
-      _id: string
-      name?: string
-      content?: string
-      textContent?: string
-      updatedAt: number
-    }
+    const note = await fetchNote(options, input.noteId)
+    if ('success' in note) return note
     return {
       success: true,
       note: {
         noteId: note._id,
-        title: note.name || 'Untitled',
-        content: note.textContent ?? note.content ?? '',
-        tags: [],
+        title: note.title || 'Untitled',
+        content: note.content,
+        tags: note.tags ?? [],
+        revision: revisionOf(note),
+        outline: noteOutline(note.content),
         updatedAt: note.updatedAt,
       },
     }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to load note',
-    }
+    return failure(err, 'Failed to load note')
   }
 }
 
@@ -93,96 +190,109 @@ export async function executeCreateNote(
 ) {
   try {
     const res = await callInternalApi(
-      '/api/v1/files',
+      NOTES_PATH,
       {
-        kind: 'note',
-        name: input.title ?? 'Untitled',
-        textContent: input.content,
+        title: input.title?.trim() || 'Untitled',
+        content: input.content,
+        ...(input.tags ? { tags: input.tags } : {}),
         ...toolAuthBody(options),
       },
       options.accessToken,
       options.baseUrl,
       { forwardCookie: options.forwardCookie },
     )
-    if (!res.ok) {
-      const err = await res.json().catch((_error) => ({ error: 'Failed to create note' }))
-      return { success: false, error: (err as { error?: string }).error ?? 'Failed to create note' }
-    }
-    const data = (await res.json()) as { id?: string }
-    return { success: true, noteId: data.id }
-  } catch (err) {
+    if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create note') }
+    const data = (await res.json()) as { id?: string; note?: NoteDoc | null }
     return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to create note',
+      success: true,
+      noteId: data.id,
+      revision: data.note ? revisionOf(data.note) : undefined,
     }
+  } catch (err) {
+    return failure(err, 'Failed to create note')
   }
 }
 
 export async function executeUpdateNote(
   options: OverlayToolsOptions,
-  input: { noteId: string; title?: string; content?: string; tags?: string[] },
+  input: { noteId: string; title?: string; content?: string; tags?: string[]; expectedRevision?: string },
 ) {
   try {
-    const res = await callInternalApi(
-      '/api/v1/files',
-      {
-        fileId: input.noteId,
-        name: input.title,
-        textContent: input.content,
-        ...toolAuthBody(options),
-      },
-      options.accessToken,
-      options.baseUrl,
-      { method: 'PATCH', forwardCookie: options.forwardCookie },
-    )
-    if (!res.ok) {
-      const err = await res.json().catch((_error) => ({ error: 'Failed to update note' }))
-      return { success: false, error: (err as { error?: string }).error ?? 'Failed to update note' }
+    const expectedUpdatedAt = input.expectedRevision ? Number(input.expectedRevision) : undefined
+    if (input.expectedRevision && !Number.isFinite(expectedUpdatedAt)) {
+      return { success: false, error: 'expectedRevision must be the revision returned by get_note.' }
     }
-    return { success: true }
+    const written = await writeNote(options, {
+      noteId: input.noteId.trim(),
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.content !== undefined ? { content: input.content } : {}),
+      ...(input.tags !== undefined ? { tags: input.tags } : {}),
+      ...(expectedUpdatedAt !== undefined ? { expectedUpdatedAt } : {}),
+    })
+    if (written.ok) {
+      return {
+        success: true,
+        noteId: input.noteId.trim(),
+        revision: written.note ? revisionOf(written.note) : undefined,
+      }
+    }
+    if (written.conflict) return staleRevision(input.expectedRevision ?? '', written.currentRevision ?? 'unknown')
+    return { success: false, error: written.error }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to update note',
-    }
+    return failure(err, 'Failed to update note')
+  }
+}
+
+export async function executeAppendToNote(
+  options: OverlayToolsOptions,
+  input: { noteId: string; content: string; position?: 'end' | 'start'; expectedRevision?: string },
+) {
+  try {
+    return await patchNote(options, input, (markdown) => (
+      input.position === 'start' ? prependToNote(markdown, input.content) : appendToNote(markdown, input.content)
+    ))
+  } catch (err) {
+    return failure(err, 'Failed to append to note')
+  }
+}
+
+export async function executeReplaceNoteSection(
+  options: OverlayToolsOptions,
+  input: { noteId: string; heading: string; content: string; createIfMissing?: boolean; expectedRevision?: string },
+) {
+  try {
+    return await patchNote(options, input, (markdown) => (
+      replaceNoteSection(markdown, input.heading, input.content, { appendIfMissing: input.createIfMissing })
+    ))
+  } catch (err) {
+    return failure(err, 'Failed to update note section')
+  }
+}
+
+export async function executeEditNote(
+  options: OverlayToolsOptions,
+  input: { noteId: string; edits: NoteFindReplace[]; expectedRevision?: string },
+) {
+  try {
+    return await patchNote(options, input, (markdown) => applyNoteEdits(markdown, input.edits))
+  } catch (err) {
+    return failure(err, 'Failed to edit note')
   }
 }
 
 export async function executeDeleteNote(options: OverlayToolsOptions, input: { noteId: string }) {
   try {
-    const url = options.baseUrl
-      ? `${options.baseUrl}/api/v1/files?fileId=${encodeURIComponent(input.noteId.trim())}`
-      : `/api/v1/files?fileId=${encodeURIComponent(input.noteId.trim())}`
-    const serviceAuthHeader =
-      options.serverSecret
-        ? await buildServiceAuthToken({
-            userId: options.userId,
-            method: 'DELETE',
-            path: '/api/v1/files',
-          })
-        : null
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : {}),
-        ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
-        ...(options.forwardCookie ? { Cookie: options.forwardCookie } : {}),
-      },
-      body: JSON.stringify({
-        userId: options.userId,
-        accessToken: options.accessToken,
-      }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch((_error) => ({ error: 'Failed to delete note' }))
-      return { success: false, error: (err as { error?: string }).error ?? 'Failed to delete note' }
-    }
+    const params = new URLSearchParams({ noteId: input.noteId.trim() })
+    const res = await callInternalApi(
+      `${NOTES_PATH}?${params}`,
+      toolAuthBody(options),
+      options.accessToken,
+      options.baseUrl,
+      { method: 'DELETE', forwardCookie: options.forwardCookie },
+    )
+    if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to delete note') }
     return { success: true }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to delete note',
-    }
+    return failure(err, 'Failed to delete note')
   }
 }

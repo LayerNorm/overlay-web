@@ -11,7 +11,7 @@ export type WorkspaceBillingContractBackend = {
   cleanupWorkspace?(workspaceId: string): Promise<void>
   cleanupUser?(userId: string): Promise<void>
   prepareUser?(userId: string, email: string): Promise<void>
-  provider: 'convex' | 'postgres'
+  provider: 'convex'
   usage: UsageRepository
   workspaces: WorkspaceService
 }
@@ -27,16 +27,18 @@ export async function runWorkspaceBillingProviderContract(
   const memberEmail = `${memberUserId}@example.test`
   await backend.prepareUser?.(ownerUserId, ownerEmail)
   await backend.prepareUser?.(memberUserId, memberEmail)
-  const workspace = await backend.workspaces.createOrganization({
+  const [workspace, emptyWorkspace] = await Promise.all([
+    backend.workspaces.createOrganization({
     actorUserId: ownerUserId,
     email: ownerEmail,
     name: scope,
-  })
-  const emptyWorkspace = await backend.workspaces.createOrganization({
+    }),
+    backend.workspaces.createOrganization({
     actorUserId: ownerUserId,
     email: ownerEmail,
     name: `${scope} empty`,
-  })
+    }),
+  ])
   const account = await backend.billing.ensureWorkspaceBillingAccount({
     primaryBillingContactUserId: ownerUserId,
     workspaceId: workspace.workspace.id,

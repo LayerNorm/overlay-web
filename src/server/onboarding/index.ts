@@ -3,4 +3,3 @@ export type {
   OnboardingRepository,
   OnboardingStatus,
 } from './OnboardingRepository'
-export { PostgresOnboardingRepository } from './PostgresOnboardingRepository'

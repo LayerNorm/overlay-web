@@ -25,8 +25,8 @@ try {
     capabilities: { mcpServers?: boolean; skills?: boolean }
     appDataCapabilities: { provider?: string; requiresConvexClient?: boolean }
   }
-  assert.equal(capabilityBody.appDataCapabilities.provider, 'postgres')
-  assert.equal(capabilityBody.appDataCapabilities.requiresConvexClient, false)
+  assert.equal(capabilityBody.appDataCapabilities.provider, 'convex')
+  assert.equal(capabilityBody.appDataCapabilities.requiresConvexClient, true)
   assert.equal(capabilityBody.capabilities.skills, true)
   assert.equal(capabilityBody.capabilities.mcpServers, true)
 

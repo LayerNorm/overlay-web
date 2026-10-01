@@ -318,18 +318,12 @@ function databaseConfigFromEnv(
   env: EnvSource,
   deploymentEnvironment?: OverlayDeploymentEnvironment,
 ): OverlayRuntimeConfigLayer | null {
-  const provider = readEnv(env, 'OVERLAY_PROVIDER_DATABASE')
   const convexUrl = deploymentEnvironment === 'development'
     ? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'NEXT_PUBLIC_CONVEX_URL')
     : readEnv(env, 'NEXT_PUBLIC_CONVEX_URL') ?? readEnv(env, 'DEV_NEXT_PUBLIC_CONVEX_URL')
-  const postgresConnectionString = readEnv(env, 'OVERLAY_DATABASE_URL')
-  const postgresSslMode = readEnv(env, 'OVERLAY_DATABASE_SSL_MODE')
 
   if (
-    !provider &&
     !convexUrl &&
-    !postgresConnectionString &&
-    !postgresSslMode &&
     !readEnv(env, 'CONVEX_DEPLOYMENT') &&
     !readEnv(env, 'INTERNAL_API_SECRET') &&
     !readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET') &&
@@ -338,20 +332,13 @@ function databaseConfigFromEnv(
     return null
   }
 
-  const postgres = compactObject({
-    connectionString: postgresConnectionString,
-    sslMode: postgresSslMode,
-    backgroundRuntimeEnabled: readBool(env, 'OVERLAY_BACKGROUND_RUNTIME_ENABLED'),
-  })
-
   return compactObject({
-    provider: (provider ?? 'convex') as OverlayRuntimeConfigInput['database']['provider'] | undefined,
+    provider: 'convex',
     convexUrl,
     deployment: readEnv(env, 'CONVEX_DEPLOYMENT'),
     internalApiSecret: readEnv(env, 'INTERNAL_API_SECRET'),
     internalServiceAuthSecret: readEnv(env, 'INTERNAL_SERVICE_AUTH_SECRET'),
     apiKeyHashSecret: readEnv(env, 'API_KEY_HASH_SECRET'),
-    postgres: Object.keys(postgres).length > 0 ? postgres : undefined,
   })
 }
 
@@ -452,7 +439,6 @@ function complianceFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
 function providersFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
   const providers = compactObject({
     auth: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_AUTH') ?? readEnv(env, 'AUTH_PROVIDER')),
-    database: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_DATABASE')),
     objectStorage: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_OBJECT_STORAGE')),
     vectorSearch: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_VECTOR_SEARCH')),
     embeddings: providerOverride(readEnv(env, 'OVERLAY_PROVIDER_EMBEDDINGS')),

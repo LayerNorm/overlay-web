@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-const {
+import {
   buildActStreamIdempotencyKey,
   buildActStreamIdempotencyKeyFromMetadata,
   parseActStreamIdempotencyKey,
-} = await import(new URL('./act-idempotency.ts', import.meta.url).href)
+} from './act-idempotency.ts'
 
 test('buildActStreamIdempotencyKey encodes turn and slot', () => {
   assert.equal(buildActStreamIdempotencyKey('turn-abc', 2), 'act:turn-abc:2')

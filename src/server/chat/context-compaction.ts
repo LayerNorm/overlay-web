@@ -4,10 +4,8 @@ import { logger } from '@/server/observability/logger'
 import type { UIMessage } from 'ai'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import {
-  FREE_TIER_AUTO_MODEL_ID,
   FREE_TIER_DEFAULT_MODEL_ID,
   isFreeTierChatModelId,
-  isNvidiaNimChatModelId,
 } from '@/shared/ai/gateway/model-types'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
@@ -85,10 +83,7 @@ function transcriptForSummary(messages: UIMessage[]): string {
 }
 
 function manualContextWindow(modelId: string): number | null {
-  if (modelId === FREE_TIER_AUTO_MODEL_ID) return FALLBACK_CONTEXT_WINDOW
-  if (modelId === FREE_TIER_DEFAULT_MODEL_ID) return FALLBACK_CONTEXT_WINDOW
   if (isFreeTierChatModelId(modelId)) return FALLBACK_CONTEXT_WINDOW
-  if (isNvidiaNimChatModelId(modelId)) return FALLBACK_CONTEXT_WINDOW
   return null
 }
 

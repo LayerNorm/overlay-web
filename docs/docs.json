@@ -164,6 +164,7 @@
             "group": "Self-hosting",
             "pages": [
               "deploy-operate/one-command-install",
+              "deploy-operate/self-hosted-convex",
               "deploy-operate/docker-ec2",
               "deploy-operate/aws",
               "deploy-operate/cloud-managed",

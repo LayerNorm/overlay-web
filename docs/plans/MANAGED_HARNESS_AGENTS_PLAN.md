@@ -1,3 +1,5 @@
+> **Removed 2026-10-01.** The managed harness path described here (AI SDK HarnessAgent in Vercel Sandbox) was deleted. See `SANDBOX_PROVIDER_CONSOLIDATION_PLAN.md`. Kept as history.
+
 # Managed harness agents: AI SDK HarnessAgent on Overlay Cloud
 
 > Status: approved direction, not yet implemented.

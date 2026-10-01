@@ -148,7 +148,7 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
     },
   })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       usage: async () => ({ wallTimeMs: 60_000 }),
@@ -192,7 +192,7 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
     },
   })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       usage: async () => ({ wallTimeMs: 30_000 }),
@@ -233,7 +233,7 @@ test('meterLeases reaps a running lease past its reserved window even when the s
     },
   })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'stopped' as const,
@@ -266,7 +266,7 @@ test('meterLeases reaps stopping leases and retries provider cleanup', async () 
   const updates: Array<Record<string, unknown>> = []
   const stoppingLease = leaseFixture({ status: 'stopping', cleanupAfter: 100_000 })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       usage: async () => { throw new Error('gone') },
@@ -324,7 +324,7 @@ test('metered settle runs a final tick, releases the bootstrap hold, and tolerat
     outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
     workspaceId: 'workspace',
     sandboxBilling: {
-      baselineUsage: {}, leaseId: 'lease', provider: 'vercel', providerReference: 'sandbox-reference',
+      baselineUsage: {}, leaseId: 'lease', provider: 'box', providerReference: 'sandbox-reference',
       reservationId: 'sandbox-reservation', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, startedAt: 60_000,
     },
   })
@@ -351,7 +351,7 @@ test('managed sandbox settlement failure marks its reservation for reconciliatio
     inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
     outcome: 'timeout', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
     workspaceId: 'workspace', sandboxBilling: {
-      baselineUsage: {}, leaseId: 'lease', provider: 'vercel', providerReference: 'sandbox', reservationId: 'sandbox-reservation',
+      baselineUsage: {}, leaseId: 'lease', provider: 'box', providerReference: 'sandbox', reservationId: 'sandbox-reservation',
       resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, startedAt: Date.now(),
     },
   }), /provider unavailable/)
@@ -363,7 +363,7 @@ test('legacy settle follows a repointed lease and seeds the meter cursor', async
   // turn's acquire step recreates the sandbox and repoints the same lease.
   const reconnects: string[] = []
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async (reference: string) => {
       reconnects.push(reference)
@@ -437,7 +437,7 @@ test('meterLease bills elapsed wall-clock when provider counters are stalled mid
   })
   const reconnectOptions: Array<Record<string, unknown> | undefined> = []
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async (_reference: string, options?: { resume?: boolean }) => {
       reconnectOptions.push(options)
@@ -485,7 +485,7 @@ test('meterLease bills real counter totals on a stopped instance without elapsed
     },
   })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'stopped' as const,
@@ -530,7 +530,7 @@ test('meterLease idle-stops a running sandbox whose lease shows no recent activi
     },
   })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'running' as const,
@@ -567,7 +567,7 @@ test('meterLease leaves a recently-active sandbox running', async () => {
     },
   })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'running' as const,
@@ -594,7 +594,7 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
   const events: string[] = []
   const stoppingLease = leaseFixture({ status: 'stopping', cleanupAfter: 100_000 })
   const runtime: SandboxRuntime = {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => { throw new Error('unreachable') },
     reconnect: async () => ({
       status: async () => 'running' as const,
@@ -631,19 +631,82 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
 })
 
 test('provider pricing uses provider-native runtime dimensions', () => {
-  assert.equal(sandboxCostUsd({
+  assert.throws(() => sandboxCostUsd({
     provider: 'daytona', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
     usage: { wallTimeMs: 60_000 },
-  }) > 0, true)
+  }), /MANAGED_SANDBOX_PROVIDER_UNPRICED/)
   assert.equal(sandboxCostUsd({
-    provider: 'vercel', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
     usage: { wallTimeMs: 60_000, activeCpuTimeMs: 30_000 },
   }) > 0, true)
 })
 
+test('box pricing prefers provider-reported dollars over the seconds rate card', () => {
+  // Provider-reported delta is authoritative even when it diverges from the
+  // list-price estimate (plan seconds, refused-stop exclusion, rounding).
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 60_000, providerMetrics: { reportedUsd: 0.0123 } },
+  }), 0.0123)
+  // A zero delta is honest: no new billable spend reported (e.g. stopped).
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 0, providerMetrics: { reportedUsd: 0 } },
+  }), 0)
+  // Without providerMetrics (or without dollars in it) the rate card applies:
+  // billable seconds at list price — 100_000 seconds per dollar.
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 100_000_000 },
+  }), 1)
+  assert.equal(sandboxCostUsd({
+    provider: 'box', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+    usage: { wallTimeMs: 50_000_000, providerMetrics: { running: true } },
+  }), 0.5)
+})
+
+test('meterLease bills the provider-reported dollar delta on a box lease', async () => {
+  const meterCalls: Array<Record<string, unknown>> = []
+  const usage = {
+    wallTimeMs: 3_700_000,
+    providerMetrics: { reportedUsd: 0.037, running: true },
+  }
+  const lease = leaseFixture({
+    provider: 'box',
+    usage: {
+      resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 },
+      meteredUsage: {
+        wallTimeMs: 3_600_000,
+        providerMetrics: { reportedUsd: 0.036, running: true },
+      },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+    },
+  })
+  const service = new ManagedAgentSandboxBilling({
+    now: () => 190_000,
+    policy: {} as never,
+    repository: {
+      meterSandboxLease: async (args: Record<string, unknown>) => {
+        meterCalls.push(args)
+        return { applied: true as const, meterVersion: 4, remainingCents: 500 }
+      },
+    } as never,
+    runtime: () => ({ ...runtimeWithUsage(() => usage), provider: 'box' }),
+  })
+  const result = await service.meterLease(lease)
+  assert.equal(result.applied, true)
+  const charge = meterCalls[0]!.charge as { providerCostUsd: number; durationSeconds: number }
+  // Delta: 100s billable + $0.001 provider-reported — the reported dollars win.
+  assert.ok(Math.abs(charge.providerCostUsd - 0.001) < 1e-9)
+  assert.equal(charge.durationSeconds, 100)
+})
+
 function leaseFixture(overrides: Partial<AgentSandboxLease>): AgentSandboxLease {
   return {
-    id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'vercel',
+    id: 'lease', workspaceId: 'workspace', environmentId: 'environment', provider: 'box',
     providerReference: 'sandbox-reference', status: 'running', reservedUntil: 10_000,
     runtimeStartedAt: 1_000, usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 } },
     cleanupAttempts: 0, createdAt: 1_000, updatedAt: 1_000,
@@ -654,7 +717,7 @@ function leaseFixture(overrides: Partial<AgentSandboxLease>): AgentSandboxLease 
 function runtimeWithUsage(read: () => { wallTimeMs: number; activeCpuTimeMs?: number }): SandboxRuntime {
   const instance = { usage: async () => read() } as SandboxInstance
   return {
-    provider: 'vercel', capabilities: {} as never,
+    provider: 'box', capabilities: {} as never,
     create: async () => instance, reconnect: async () => instance,
     restore: async () => instance, deleteSnapshot: async () => undefined,
   }

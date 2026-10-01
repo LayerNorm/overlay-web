@@ -253,8 +253,10 @@ test('sharing to a room requires explicit confirmation of dynamic expansion', as
   const args = {
     actorUserId: OWNER_USER,
     workspaceId: WORKSPACE,
-    resourceType: 'project' as WorkspaceShareResourceType,
-    resourceId: 'project_1',
+    // Room expansion confirmation applies to conversations (projects and
+    // knowledge bases were removed in 9a6141f5b).
+    resourceType: 'conversation' as WorkspaceShareResourceType,
+    resourceId: 'conversation_shared',
     targetType: 'room' as WorkspaceShareTargetType,
     targetId: ROOM,
     accessRole: 'viewer' as const,

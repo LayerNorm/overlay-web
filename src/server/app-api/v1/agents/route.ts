@@ -8,11 +8,14 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentErrorResponse } from './shared'
 
-export async function GET(_request: Request, context: AppApiRouteContext) {
+export async function GET(request: Request, context: AppApiRouteContext) {
   try {
+    const includeArchived = new URL(request.url).searchParams.get('includeArchived') === 'true'
+      || new URL(request.url).searchParams.get('includeArchived') === '1'
     return NextResponse.json(await getOverlayServerContext().workspaceAgentService.list({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
+      includeArchived,
     }))
   } catch (error) {
     return agentErrorResponse(error)

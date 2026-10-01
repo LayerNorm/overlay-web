@@ -38,7 +38,7 @@ Common patterns include:
 
 Each source is canonical and versioned. Indexing is durable. Search is scoped to enabled sources in the selected knowledge base and combines lexical and semantic retrieval when vector search is configured. Grounded chat receives only authorized source chunks and emits citations that resolve back to the source.
 
-Postgres deployments use the configured durable worker and pgvector path. Convex deployments use the equivalent Convex repositories. The browser and API contracts are identical.
+Knowledge indexing and retrieval run inside the Convex deployment using Convex vector search plus the configured embeddings provider. The browser and API contracts are provider-independent.
 
 ## Authorization requirements
 

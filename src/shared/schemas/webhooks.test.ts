@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-const { WebhookEventSchema, CreateWebhookSubscriptionRequest } = await import(new URL('./webhooks.ts', import.meta.url).href)
+import { WebhookEventSchema, CreateWebhookSubscriptionRequest } from './webhooks.ts'
 
 test('WebhookEventSchema accepts known event types', () => {
   const parsed = WebhookEventSchema.parse({

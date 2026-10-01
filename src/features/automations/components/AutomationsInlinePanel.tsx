@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, type MouseEvent } from 'react'
+import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { dispatchChatDeleted } from '@/shared/chat/chat-title'
@@ -28,7 +28,7 @@ export function AutomationsInlinePanel({
   const [automations, setAutomations] = useState<AutomationSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [nextCursor, setNextCursor] = useState<string | undefined>()
+  const nextCursorRef = useRef<string | undefined>(undefined)
   const [hasMore, setHasMore] = useState(false)
   const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null)
   const [editingAutomationName, setEditingAutomationName] = useState('')
@@ -44,7 +44,7 @@ export function AutomationsInlinePanel({
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
       })
       setAutomations(Array.isArray(page.data) ? page.data : [])
-      setNextCursor(page.nextCursor)
+      nextCursorRef.current = page.nextCursor
       setHasMore(page.hasMore)
     } catch {
       // ignore
@@ -54,11 +54,11 @@ export function AutomationsInlinePanel({
   }, [])
 
   async function loadMoreAutomations() {
-    if (!nextCursor) return
+    if (!nextCursorRef.current) return
     setLoadingMore(true)
     try {
       const page = await overlayAppClient.automations.getPage<AutomationSummary>({
-        cursor: nextCursor,
+        cursor: nextCursorRef.current,
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
       })
       setAutomations((current) => {
@@ -68,7 +68,7 @@ export function AutomationsInlinePanel({
         }
         return [...byId.values()]
       })
-      setNextCursor(page.nextCursor)
+      nextCursorRef.current = page.nextCursor
       setHasMore(page.hasMore)
     } finally {
       setLoadingMore(false)

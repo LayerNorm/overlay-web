@@ -104,7 +104,7 @@ export class ComputerService {
       // Healthy or in-flight rows satisfy the provision call. Dead rows —
       // `error`, or `provisioning` left behind by a crashed create — are
       // reclaimed so the retry below starts clean instead of producing a
-      // second bound row (or tripping the Postgres unique binding).
+      // second bound row (or tripping the unique binding).
       if (existing.status !== 'error' && !staleProvisioning) return existing
       await this.deleteRowAndMachine(existing)
     }
@@ -324,12 +324,10 @@ export class ComputerService {
 
   async listForWorkspace(args: { actor: ComputerActor; workspaceId: string }): Promise<Computer[]> {
     const computers = await this.dependencies.repository.listByWorkspace(args.workspaceId)
-    const visible: Computer[] = []
-    for (const computer of computers) {
-      const ownerAccess = await this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)
-      if (this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccess)) visible.push(computer)
-    }
-    return visible
+    const ownerAccesses = await Promise.all(computers.map((computer) =>
+      this.ownerAccess(computer.workspaceId, computer.ownerType, computer.ownerId)))
+    return computers.filter((computer, i) =>
+      this.canAccess(args.actor, computer.ownerType, computer.ownerId, ownerAccesses[i]))
   }
 
   private async accessibleInstance(actor: ComputerActor, computerId: string) {

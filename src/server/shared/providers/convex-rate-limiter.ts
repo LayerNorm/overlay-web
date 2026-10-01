@@ -27,7 +27,6 @@ export class ConvexRateLimiter implements RateLimiter {
   private static readonly FAIL_CLOSED_PREFIXES = [
     'owner-funded:',
     'browser-task:',
-    'sandbox:daytona:',
     'generation:image:',
     'generation:video:',
     'transcribe:',

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const {
+import {
   PAID_PLAN_MAX_AMOUNT_CENTS,
   PAID_PLAN_MIN_AMOUNT_CENTS,
   PAID_STORAGE_BASE_BYTES,
@@ -11,7 +11,7 @@ const {
   isValidTopUpAmount,
   planAmountCentsToQuantity,
   quantityToPlanAmountCents,
-} = await import(new URL('./billing-pricing.ts', import.meta.url).href)
+} from './billing-pricing.ts'
 test('clampPaidPlanAmountCents enforces slider bounds and steps', () => {
   assert.equal(clampPaidPlanAmountCents(755), PAID_PLAN_MIN_AMOUNT_CENTS)
   assert.equal(clampPaidPlanAmountCents(1_649), 1_600)

@@ -4,7 +4,7 @@ import { getObservabilityContext } from './context'
 import { getPostHogClient } from './posthog-server'
 
 /**
- * Infrastructure metrics emission for the BFF, Postgres, Convex, and model
+ * Infrastructure metrics emission for the BFF, Convex, and model
  * context layers.  Events use the `overlay.metrics.*` namespace so they can
  * be filtered separately from product analytics events in PostHog.
  *
@@ -59,35 +59,6 @@ export function captureBffRequestMetric(metric: BffRequestMetric): void {
     })
   } catch (_error) {
     // metrics must never break the request
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Postgres query metrics
-// ---------------------------------------------------------------------------
-
-export type PostgresQueryMetric = {
-  operation: 'select' | 'insert' | 'update' | 'delete' | 'execute' | 'transaction'
-  durationMs: number
-  rowsReturned?: number
-  /** Whether the query was retried due to a transient error. */
-  retried?: boolean
-}
-
-export function capturePostgresQueryMetric(metric: PostgresQueryMetric): void {
-  if (!metricsEnabled()) return
-  try {
-    const posthog = getPostHogClient()!
-    posthog.capture({
-      distinctId: 'system',
-      event: 'overlay.metrics.postgres_query',
-      properties: {
-        ...baseProperties(),
-        ...metric,
-      },
-    })
-  } catch (_error) {
-    // ignore
   }
 }
 

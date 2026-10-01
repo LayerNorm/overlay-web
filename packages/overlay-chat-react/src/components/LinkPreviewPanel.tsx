@@ -47,33 +47,12 @@ function PanelIconButton({
   )
 }
 
-/**
- * Opens a link inside the app's right-hand panel instead of a browser tab, so
- * reading a source or checking a document does not lose the chat.
- *
- * Sites that refuse to be framed get a plain "open it in a new tab" state
- * instead of a blank frame; `checkEmbeddable` reads their headers, since a
- * blocked frame still fires `load` and cannot be detected from script.
- */
-export function LinkPreviewPanel({
-  url,
-  title,
-  onClose,
-  presentation,
-  onPresentationChange,
-  checkEmbeddable,
-}: {
-  url: string
-  title?: string
-  onClose: () => void
-  presentation?: PanelPresentation
-  onPresentationChange?: (presentation: PanelPresentation) => void
-  /** Resolves false when the site's headers refuse framing. */
-  checkEmbeddable?: (url: string) => Promise<boolean>
-}) {
-  const safeUrl = safeHttpUrl(url)
+function useEmbedBlocked(
+  safeUrl: string | null,
+  checkEmbeddable: ((url: string) => Promise<boolean>) | undefined,
+  reloadKey: number,
+) {
   const [blocked, setBlocked] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0)
   const loadedRef = useRef(false)
 
   useEffect(() => {
@@ -100,6 +79,10 @@ export function LinkPreviewPanel({
     }
   }, [checkEmbeddable, safeUrl, reloadKey])
 
+  return { blocked, loadedRef }
+}
+
+function useEscapeToClose(onClose: () => void) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -107,12 +90,125 @@ export function LinkPreviewPanel({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+}
+
+function LinkPreviewActions({
+  showFrame,
+  onReload,
+  onOpenInNewTab,
+  presentation,
+  onPresentationChange,
+}: {
+  showFrame: boolean
+  onReload: () => void
+  onOpenInNewTab: () => void
+  presentation?: PanelPresentation
+  onPresentationChange?: (presentation: PanelPresentation) => void
+}) {
+  const nextPresentation: PanelPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
+  return (
+    <>
+      {showFrame ? (
+        <PanelIconButton label="Reload" onClick={onReload}>
+          <RotateCw size={15} strokeWidth={1.75} />
+        </PanelIconButton>
+      ) : null}
+      <PanelIconButton label="Open in new tab" onClick={onOpenInNewTab}>
+        <ExternalLink size={15} strokeWidth={1.75} />
+      </PanelIconButton>
+      {presentation && onPresentationChange ? (
+        <PanelIconButton
+          label={presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'}
+          onClick={() => onPresentationChange(nextPresentation)}
+        >
+          {presentation === 'floating'
+            ? <PanelRightOpen size={15} strokeWidth={1.75} />
+            : <Maximize2 size={15} strokeWidth={1.75} />}
+        </PanelIconButton>
+      ) : null}
+    </>
+  )
+}
+
+function LinkPreviewFallback({
+  url,
+  safeUrl,
+  onOpenInNewTab,
+  onClose,
+}: {
+  url: string
+  safeUrl: string | null
+  onOpenInNewTab: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+      <div>
+        <p className="text-sm font-medium text-[var(--foreground)]">
+          {safeUrl ? 'This website can only be opened in a new tab' : 'This link cannot be previewed'}
+        </p>
+        <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">
+          {safeUrl
+            ? `${hostOf(url)} does not allow other sites to embed it.`
+            : 'Only http and https links open in the panel.'}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        {safeUrl ? (
+          <button
+            type="button"
+            onClick={onOpenInNewTab}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+          >
+            <ExternalLink size={13} strokeWidth={1.75} />
+            Open in New Tab
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Opens a link inside the app's right-hand panel instead of a browser tab, so
+ * reading a source or checking a document does not lose the chat.
+ *
+ * Sites that refuse to be framed get a plain "open it in a new tab" state
+ * instead of a blank frame; `checkEmbeddable` reads their headers, since a
+ * blocked frame still fires `load` and cannot be detected from script.
+ */
+export function LinkPreviewPanel({
+  url,
+  title,
+  onClose,
+  presentation,
+  onPresentationChange,
+  checkEmbeddable,
+}: {
+  url: string
+  title?: string
+  onClose: () => void
+  presentation?: PanelPresentation
+  onPresentationChange?: (presentation: PanelPresentation) => void
+  /** Resolves false when the site's headers refuse framing. */
+  checkEmbeddable?: (url: string) => Promise<boolean>
+}) {
+  const safeUrl = safeHttpUrl(url)
+  const [reloadKey, setReloadKey] = useState(0)
+  const { blocked, loadedRef } = useEmbedBlocked(safeUrl, checkEmbeddable, reloadKey)
+  useEscapeToClose(onClose)
 
   const openInNewTab = () => {
     if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer')
   }
 
-  const nextPresentation: PanelPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
   const showFrame = safeUrl !== null && !blocked
 
   return (
@@ -123,26 +219,13 @@ export function LinkPreviewPanel({
       closeLabel="Close link preview"
       bodyClassName="p-0"
       actions={
-        <>
-          {showFrame ? (
-            <PanelIconButton label="Reload" onClick={() => setReloadKey((value) => value + 1)}>
-              <RotateCw size={15} strokeWidth={1.75} />
-            </PanelIconButton>
-          ) : null}
-          <PanelIconButton label="Open in new tab" onClick={openInNewTab}>
-            <ExternalLink size={15} strokeWidth={1.75} />
-          </PanelIconButton>
-          {presentation && onPresentationChange ? (
-            <PanelIconButton
-              label={presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'}
-              onClick={() => onPresentationChange(nextPresentation)}
-            >
-              {presentation === 'floating'
-                ? <PanelRightOpen size={15} strokeWidth={1.75} />
-                : <Maximize2 size={15} strokeWidth={1.75} />}
-            </PanelIconButton>
-          ) : null}
-        </>
+        <LinkPreviewActions
+          showFrame={showFrame}
+          onReload={() => setReloadKey((value) => value + 1)}
+          onOpenInNewTab={openInNewTab}
+          presentation={presentation}
+          onPresentationChange={onPresentationChange}
+        />
       }
     >
       {showFrame ? (
@@ -159,37 +242,12 @@ export function LinkPreviewPanel({
           }}
         />
       ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
-          <div>
-            <p className="text-sm font-medium text-[var(--foreground)]">
-              {safeUrl ? 'This website can only be opened in a new tab' : 'This link cannot be previewed'}
-            </p>
-            <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">
-              {safeUrl
-                ? `${hostOf(url)} does not allow other sites to embed it.`
-                : 'Only http and https links open in the panel.'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {safeUrl ? (
-              <button
-                type="button"
-                onClick={openInNewTab}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-              >
-                <ExternalLink size={13} strokeWidth={1.75} />
-                Open in New Tab
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <LinkPreviewFallback
+          url={url}
+          safeUrl={safeUrl}
+          onOpenInNewTab={openInNewTab}
+          onClose={onClose}
+        />
       )}
     </AppScreenSidePanel>
   )

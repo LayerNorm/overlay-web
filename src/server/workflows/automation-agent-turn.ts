@@ -162,9 +162,7 @@ export async function checkAutomationEnabled(input: {
 
 export async function runAutomationAgentTurn(
   input: AutomationAgentTurnInput,
-): Promise<{ conversationId: string }> {
-  const { workflowRunId } = getWorkflowMetadata()
-
+): Promise<{ conversationId: string; replyText: string }> {
   const ensured = await ensureConversationStep(input)
   const turnInput = { ...input, conversationId: ensured.conversationId, workspaceId: ensured.workspaceId }
 
@@ -178,6 +176,22 @@ export async function runAutomationAgentTurn(
       turnId: input.turnId,
     })
   }
+
+  return await runDurableAgentTurn(turnInput)
+}
+
+/**
+ * The durable prepare → model/tool loop → finalize sequence, shared by the
+ * automation workflow and the surface (Slack) workflow. Must be invoked from
+ * a `'use workflow'` scope — the steps inside it are what make the turn
+ * durable. Returns the final assistant text so surface callers can relay it
+ * back to the platform.
+ */
+export async function runDurableAgentTurn(
+  turnInput: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
+): Promise<{ conversationId: string; replyText: string }> {
+  const { workflowRunId } = getWorkflowMetadata()
+  const input = turnInput
 
   let plan: AutomationAgentTurnPlan | undefined
   const allSteps: StepResult<ToolSet>[] = []
@@ -205,18 +219,29 @@ export async function runAutomationAgentTurn(
       const toolResultContent: Array<Record<string, unknown>> = []
       const stepToolResults: Array<Record<string, unknown>> = []
       const stepContent: Array<Record<string, unknown>> = []
-      for (const toolCall of call.toolCalls) {
-        stepContent.push({ type: 'tool-call', ...toolCall })
-        const definition = resolvedPlan.toolDefinitions.find(
-          (entry) => entry.name === toolCall.toolName,
-        )
-        const context = {
-          ...resolvedPlan.toolingContext,
-          automationRunId,
-          toolName: toolCall.toolName,
-        }
+      const toolContexts = call.toolCalls.map((toolCall) => ({
+        ...resolvedPlan.toolingContext,
+        automationRunId,
+        toolName: toolCall.toolName,
+      }))
+      const toolDefinitionsByName = new Map(resolvedPlan.toolDefinitions.map((entry) => [entry.name, entry]))
+      const toolCallDefinitions = call.toolCalls.map((toolCall) =>
+        toolDefinitionsByName.get(toolCall.toolName))
+      const toolCallApprovals = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
+        const definition = toolCallDefinitions[i]
+        if (!definition?.needsApproval) return false
+        return personalChatWorkToolNeedsApproval(toolCall.input, {
+          context: toolContexts[i]!,
+          messages,
+          toolCallId: toolCall.toolCallId,
+        })
+      }))
+      const toolCallResults = await Promise.all(call.toolCalls.map(async (toolCall, i) => {
+        const definition = toolCallDefinitions[i]
+        const context = toolContexts[i]!
         let output: Record<string, unknown>
         let transcriptResult: Record<string, unknown>
+        let failure: { toolCallId: string; toolName: string; error: string } | null = null
         if (!definition) {
           const reason = `Tool ${toolCall.toolName} is not available for this run.`
           output = { type: 'error-text', value: reason }
@@ -228,19 +253,12 @@ export async function runAutomationAgentTurn(
             error: reason,
             output: { error: reason },
           }
-          turnToolFailures.push({
+          failure = {
             toolCallId: toolCall.toolCallId,
             toolName: toolCall.toolName,
             error: reason,
-          })
-        } else if (
-          definition.needsApproval
-          && await personalChatWorkToolNeedsApproval(toolCall.input, {
-            context,
-            messages,
-            toolCallId: toolCall.toolCallId,
-          })
-        ) {
+          }
+        } else if (toolCallApprovals[i]) {
           output = { type: 'execution-denied', reason: AUTOMATION_TOOL_APPROVAL_DENIAL }
           transcriptResult = {
             type: 'tool-error',
@@ -250,11 +268,11 @@ export async function runAutomationAgentTurn(
             error: AUTOMATION_TOOL_APPROVAL_DENIAL,
             output: { error: AUTOMATION_TOOL_APPROVAL_DENIAL },
           }
-          turnToolFailures.push({
+          failure = {
             toolCallId: toolCall.toolCallId,
             toolName: toolCall.toolName,
             error: AUTOMATION_TOOL_APPROVAL_DENIAL,
-          })
+          }
         } else {
           try {
             const result = await executePersonalChatWorkTool(toolCall.input, {
@@ -285,13 +303,19 @@ export async function runAutomationAgentTurn(
               error: reason,
               output: { error: reason },
             }
-            turnToolFailures.push({
+            failure = {
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
               error: reason,
-            })
+            }
           }
         }
+        return { failure, output, transcriptResult }
+      }))
+      for (const [i, toolCall] of call.toolCalls.entries()) {
+        const { failure, output, transcriptResult } = toolCallResults[i]!
+        stepContent.push({ type: 'tool-call', ...toolCall })
+        if (failure) turnToolFailures.push(failure)
         stepToolResults.push(transcriptResult)
         stepContent.push(transcriptResult)
         toolResultContent.push({
@@ -329,7 +353,7 @@ export async function runAutomationAgentTurn(
           toolFailures: turnToolFailures,
           workflowRunId,
         })
-        return { conversationId: resolvedPlan.conversationId }
+        return { conversationId: resolvedPlan.conversationId, replyText: call.text }
       }
 
       // response.messages holds only the messages generated this call (the

@@ -5,10 +5,13 @@ import { z } from 'zod'
 import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {
+  executeAppendToNote,
   executeCreateNote,
   executeDeleteNote,
+  executeEditNote,
   executeGetNote,
   executeListNotes,
+  executeReplaceNoteSection,
   executeUpdateNote,
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
@@ -30,21 +33,29 @@ import {
   executeListAutomations,
   executeListSkills,
   executePauseAutomation,
-  executeRunDaytonaSandbox,
   executeSaveMemory,
   executeSaveMemoryBatch,
   executeSearchInFiles,
   executeSearchKnowledge,
   executeSearchMemory,
+  executeSearchMessages,
   executeUpdateAutomation,
   executeUpdateAgent,
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
+import {
+  executeCreateFolder,
+  executeListFiles,
+  executeMoveFile,
+  executeReadFile,
+  executeWriteFile,
+} from './files-executes'
+import { runInToolCallScope } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
 /**
- * Overlay-defined tools only (no Composio, no Gateway perplexity). Act agent: full tool surface.
+ * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
  */
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
@@ -377,9 +388,88 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
   }
 
+  if (shouldExposeTool('list_files')) {
+    tools.list_files = tool({
+      description:
+        'List files and folders in the Overlay workspace (id, name, type, parent folder, size, last edit). ' +
+        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree.',
+      inputSchema: z.object({
+        folderId: z.string().optional().describe('Folder id from a previous list_files result'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('list_files')
+        return executeListFiles(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('read_file')) {
+    tools.read_file = tool({
+      description:
+        'Read the text of a workspace file (uploads keep their extracted text). Long files come back in chunks: ' +
+        'pass the returned nextOffset to continue. Returns a revision to pass to write_file when you change the file. Use get_note for notes.',
+      inputSchema: z.object({
+        fileId: z.string(),
+        offset: z.number().int().min(0).optional().describe('Character offset to continue from'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('read_file')
+        return executeReadFile(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('write_file')) {
+    tools.write_file = tool({
+      description:
+        'Create a text file in the Overlay workspace (name, optional folderId), or replace an existing file\'s text (fileId). ' +
+        'When replacing, pass the revision from read_file as expectedRevision so you never overwrite a newer change.',
+      inputSchema: z.object({
+        fileId: z.string().optional().describe('Existing file to replace; omit to create a new file'),
+        name: z.string().optional().describe('File name with extension, e.g. "report.md" (required when creating)'),
+        folderId: z.string().optional().describe('Folder to create the file in'),
+        content: z.string().describe('The full text of the file'),
+        expectedRevision: z.string().optional(),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('write_file')
+        return executeWriteFile(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('create_folder')) {
+    tools.create_folder = tool({
+      description: 'Create a folder in the Overlay workspace, optionally inside another folder.',
+      inputSchema: z.object({
+        name: z.string(),
+        parentId: z.string().optional().describe('Parent folder id; omit for the top level'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('create_folder')
+        return executeCreateFolder(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('move_file')) {
+    tools.move_file = tool({
+      description: 'Move a file or folder to another folder (folderId null = top level) and/or rename it.',
+      inputSchema: z.object({
+        fileId: z.string(),
+        folderId: z.string().nullable().optional().describe('Destination folder id, or null for the top level'),
+        name: z.string().optional().describe('New name'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('move_file')
+        return executeMoveFile(options, input)
+      },
+    })
+  }
+
   if (shouldExposeTool('list_notes')) {
     tools.list_notes = tool({
-    description: 'List the user\'s notes in Overlay.',
+    description: 'List the user\'s notes in Overlay (id, title, tags), most recently edited first.',
     inputSchema: z.object({}),
     execute: async (input) => {
       assertToolAllowed('list_notes')
@@ -390,9 +480,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   if (shouldExposeTool('get_note')) {
     tools.get_note = tool({
-    description: 'Load a single note by id (full title, body, tags).',
+    description:
+      'Load a note by id. Returns its Markdown content, tags, heading outline, and `revision`. ' +
+      'Pass that revision as expectedRevision when you edit the note so you never overwrite a change made after you read it.',
     inputSchema: z.object({
-      noteId: z.string().describe('Convex notes document id'),
+      noteId: z.string().describe('The note id from list_notes'),
     }),
     execute: async (input) => {
       assertToolAllowed('get_note')
@@ -414,6 +506,23 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('search_memory')
         return executeSearchMemory(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('search_messages')) {
+    tools.search_messages = tool({
+      description:
+        'Search the raw conversation record — the exact words the user or others actually said. ' +
+        'Use this when search_memory is not enough: when you need precise wording, what was literally said, a date, or who said it. ' +
+        'Memories are distilled and can lose detail; past messages are verbatim. ' +
+        'Returns dated excerpts labeled by speaker.',
+      inputSchema: z.object({
+        query: z.string().describe('What to find in past messages — e.g. "what the user said about the pricing deadline" or a distinctive phrase.'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('search_messages')
+        return executeSearchMessages(options, input)
       },
     })
   }
@@ -515,9 +624,9 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.interactive_browser_session = tool({
     description:
       'Remote AI-controlled browser session for INTERACTIVE web tasks only — NOT a search tool. ' +
-      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through perplexity_search and/or parallel_search (multi-query + domain/recency filters; deep research with long excerpts and includeDomains). ' +
+      'HARD RULE: you are forbidden from calling this tool for any information-gathering, lookup, research, "find sources", "find papers", "find articles", news, reference, citation, or list-building request. Those MUST go through web_search and/or deep_search (multi-query + domain/recency filters; deep research with long excerpts and includeDomains). ' +
       'Permitted ONLY when ALL of the following are true: (1) the task literally cannot be satisfied by search results + URLs, AND (2) it requires driving a real browser — e.g. logging in with credentials, clicking through a UI flow, submitting a form, scraping a page that actively blocks non-browser clients, operating a JS-heavy SPA, or capturing a screenshot of a specific rendered page. ' +
-      'Forbidden examples (use perplexity_search / parallel_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
+      'Forbidden examples (use web_search / deep_search instead): "give me 10 academic sources on X", "find peer-reviewed papers about Y", "cite research on Z", "look up the latest news on …", "find articles about …", "who is …", "what is …", "summarize the state of …". ' +
       'If both web tools ran and returned insufficient or irrelevant results, you may then escalate — but state that in your reasoning. Never call this tool as a first attempt for a research-style question. It is ~10–100× slower and more expensive than web search tools.',
     inputSchema: z.object({
       task: z.string().describe('What to do in the browser — natural language'),
@@ -551,38 +660,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
     }
 
-  if (includePaidOnlyOverlay && shouldExposeTool('run_daytona_sandbox')) {
-      tools.run_daytona_sandbox = tool({
-      description:
-        'Run a CLI or script task inside the user’s persistent paid Daytona workspace. ' +
-        'Use this for programmatic workflows like app building, code generation, file transforms, slideshow generation, or media pipelines that should run through command-line tooling rather than browser automation. ' +
-        'Selected Overlay files are uploaded into the workspace, declared output files are imported back into the Outputs tab, and the workspace persists across runs.',
-      inputSchema: z.object({
-        task: z.string().describe('Short summary of what the sandbox should do'),
-        runtime: z.enum(['node', 'python']).describe('Sandbox runtime: node for JavaScript tooling, python for Python tooling'),
-        command: z.string().describe('Shell command to execute inside the sandbox workspace'),
-        code: z.string().optional().describe('Optional inline source code to write into the sandbox before execution'),
-        inputFileIds: z
-          .array(z.string())
-          .optional()
-          .describe('Optional existing Overlay file ids to upload into the sandbox input directory'),
-        expectedOutputs: z
-          .array(z.string())
-          .min(1)
-          .describe('File paths relative to the sandbox workspace that should be imported back into Outputs after execution'),
-      }),
-      execute: async (input) => {
-        assertToolAllowed('run_daytona_sandbox')
-        return executeRunDaytonaSandbox(options, input)
-      },
-    })
-    }
-
     if (shouldExposeTool('computer_exec')) {
       tools.computer_exec = tool({
       description:
         'Run a shell command on the bound Overlay Computer — a persistent cloud desktop whose files, apps, and signed-in state survive across conversations. ' +
-        'Use for anything that needs a real machine: builds, scripts, package installs, or driving desktop apps via CLI. ' +
+        'Use for anything that needs a real machine: builds, scripts, package installs, driving desktop apps via CLI, or delegating to other agent CLIs. ' +
+        'Agent CLIs installed on the machine (claude, codex, opencode, pi, hermes, …) are already authenticated through Overlay — just run them; their model usage is metered to the workspace. ' +
         'Output is truncated to ~40k characters; prefer targeted commands over dumps.',
       inputSchema: z.object({
         command: z.string().describe('Full shell command to run on the computer, e.g. "ls -la /home/user" or "python3 script.py"'),
@@ -659,10 +742,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
     if (shouldExposeTool('create_note')) {
       tools.create_note = tool({
-      description: 'Create a new note (title, markdown/plain content, optional tags).',
+      description: 'Create a new note. Content is Markdown (GitHub-flavored, with $math$ and - [ ] task lists).',
       inputSchema: z.object({
         title: z.string().optional(),
-        content: z.string(),
+        content: z.string().describe('Markdown body'),
         tags: z.array(z.string()).optional(),
       }),
       execute: async (input) => {
@@ -672,14 +755,79 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
     }
 
+    const expectedRevision = z
+      .string()
+      .optional()
+      .describe('The revision from get_note. The edit is refused if the note changed since then.')
+
+    if (shouldExposeTool('append_to_note')) {
+      tools.append_to_note = tool({
+      description:
+        'Add Markdown to the end (or start) of a note without rewriting it. Prefer this for logs, new sections, and additions.',
+      inputSchema: z.object({
+        noteId: z.string(),
+        content: z.string().describe('Markdown to add'),
+        position: z.enum(['end', 'start']).optional().describe('Default: end'),
+        expectedRevision,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('append_to_note')
+        return executeAppendToNote(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('replace_note_section')) {
+      tools.replace_note_section = tool({
+      description:
+        'Replace everything under one heading of a note (up to the next heading of the same or higher level), keeping the heading. ' +
+        'Use the heading text from get_note\'s outline.',
+      inputSchema: z.object({
+        noteId: z.string(),
+        heading: z.string().describe('Heading text, e.g. "Next steps"'),
+        content: z.string().describe('New Markdown for the section body (no heading line)'),
+        createIfMissing: z.boolean().optional().describe('Append the section as a new ## heading when it does not exist'),
+        expectedRevision,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('replace_note_section')
+        return executeReplaceNoteSection(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('edit_note')) {
+      tools.edit_note = tool({
+      description:
+        'Make precise find-and-replace edits to a note\'s Markdown. Each find must be copied exactly from get_note and match once ' +
+        '(add surrounding text to make it unique, or set replaceAll). Edits apply in order and all succeed or none do.',
+      inputSchema: z.object({
+        noteId: z.string(),
+        edits: z.array(z.object({
+          find: z.string().min(1),
+          replace: z.string(),
+          replaceAll: z.boolean().optional(),
+        })).min(1).max(50),
+        expectedRevision,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('edit_note')
+        return executeEditNote(options, input)
+      },
+    })
+    }
+
     if (shouldExposeTool('update_note')) {
       tools.update_note = tool({
-      description: 'Update an existing note by id (any subset of title, content, tags).',
+      description:
+        'Rename a note, set its tags, or replace its whole Markdown content. ' +
+        'To change part of a note use edit_note, replace_note_section, or append_to_note instead of resending everything.',
       inputSchema: z.object({
         noteId: z.string(),
         title: z.string().optional(),
-        content: z.string().optional(),
+        content: z.string().optional().describe('Full replacement Markdown body'),
         tags: z.array(z.string()).optional(),
+        expectedRevision,
       }),
       execute: async (input) => {
         assertToolAllowed('update_note')
@@ -838,5 +986,16 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
   }
 
+  return withToolCallScopes(tools)
+}
+
+/** Runs each tool's execute in its call scope, so its internal writes get per-call idempotency keys. */
+function withToolCallScopes(tools: ToolSet): ToolSet {
+  for (const definition of Object.values(tools)) {
+    const target = definition as { execute?: (input: unknown, options: { toolCallId?: string }) => unknown }
+    const execute = target.execute
+    if (typeof execute !== 'function') continue
+    target.execute = (input, options) => runInToolCallScope(options?.toolCallId, () => execute.call(target, input, options))
+  }
   return tools
 }

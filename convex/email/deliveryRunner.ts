@@ -23,9 +23,8 @@ export const runMinuteTick = internalAction({
       now: Date.now(),
       workerId: WORKER_ID,
     })
-    for (const outboxId of ids) {
-      await ctx.scheduler.runAfter(0, internal.email.deliveryRunner.deliverOne, { outboxId })
-    }
+    await Promise.all(ids.map((outboxId) =>
+      ctx.scheduler.runAfter(0, internal.email.deliveryRunner.deliverOne, { outboxId })))
     return null
   },
 })
@@ -207,6 +206,8 @@ function parseEvent(payloadJson: string): LifecycleEmailEvent {
     'automation.failed',
     'api_key.changed',
     'workspace.invitation_sent',
+    'workspace.mention',
+    'workspace.dm_received',
   ]
   if (!allowed.includes(String(value.name))) throw new Error('Unsupported lifecycle email event')
   return {

@@ -20,6 +20,7 @@ export const listQueuedJobsInternal = query({
     mimeType: v.string(),
     sizeBytes: v.number(),
     parentId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
     createdAt: v.number(),
   })),
   handler: async (ctx, args) => {
@@ -37,6 +38,7 @@ export const listQueuedJobsInternal = query({
       mimeType: job.mimeType,
       sizeBytes: job.sizeBytes,
       ...(job.parentId ? { parentId: job.parentId } : {}),
+      ...(job.workspaceId ? { workspaceId: job.workspaceId } : {}),
       createdAt: job.createdAt,
     }))
   },
@@ -105,8 +107,9 @@ export const runMinuteTick = internalAction({
       limit: 5,
     })
 
-    for (const job of jobs) {
-      await ctx.scheduler.runAfter(0, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await Promise.all((jobs as any[]).map((job: any) =>
+      ctx.scheduler.runAfter(0, // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (internal as any).files.ingestion.runner.processOne, {
         jobId: job._id as Id<'documentIngestionJobs'>,
         userId: job.userId,
@@ -115,8 +118,8 @@ export const runMinuteTick = internalAction({
         mimeType: job.mimeType,
         sizeBytes: job.sizeBytes,
           ...(job.parentId ? { parentId: job.parentId } : {}),
-      })
-    }
+          ...(job.workspaceId ? { workspaceId: job.workspaceId } : {}),
+      })))
 
     return null
   },
@@ -135,6 +138,7 @@ export const processOne = internalAction({
     mimeType: v.string(),
     sizeBytes: v.number(),
     parentId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -168,6 +172,7 @@ export const processOne = internalAction({
           mimeType: args.mimeType,
           sizeBytes: args.sizeBytes,
               ...(args.parentId ? { parentId: args.parentId } : {}),
+              ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         }),
       })
 

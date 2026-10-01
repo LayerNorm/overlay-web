@@ -18,21 +18,23 @@ function CallbackContent() {
       posthog.capture('integration_connect_completed')
       notifyOpenerIntegrationsChanged()
       const interval = setInterval(() => {
-        setCountdown((n) => {
-          if (n <= 1) {
-            clearInterval(interval)
-            window.close()
-          }
-          return n - 1
-        })
+        setCountdown((n) => (n <= 1 ? 0 : n - 1))
       }, 1000)
-      return () => clearInterval(interval)
+      const closeTimer = setTimeout(() => window.close(), 3000)
+      return () => {
+            clearInterval(interval)
+        clearTimeout(closeTimer)
+          }
     } else {
       posthog.capture('integration_connect_failed', {
         failure_class: error ? 'provider_error' : 'unknown',
       })
     }
   }, [isSuccess, error])
+
+  useEffect(() => {
+    if (isSuccess && countdown <= 0) window.close()
+  }, [countdown, isSuccess])
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-white">
@@ -43,7 +45,9 @@ function CallbackContent() {
               <path d="M4 10l4.5 4.5L16 6" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-[#0a0a0a]">Connected successfully</p>
+          <p className='text-sm font-medium text-[#0a0a0a]'>
+            Connected successfully
+          </p>
           <p className="text-xs text-[#888] mt-1">Closing in {countdown}…</p>
           <button
             onClick={() => window.close()}
@@ -59,7 +63,9 @@ function CallbackContent() {
               <path d="M6 6l8 8M14 6l-8 8" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </div>
-          <p className="text-sm font-medium text-[#0a0a0a]">Connection failed</p>
+          <p className='text-sm font-medium text-[#0a0a0a]'>
+            Connection failed
+          </p>
           {error && <p className="text-xs text-[#888] mt-1">{error}</p>}
           <button
             onClick={() => window.close()}

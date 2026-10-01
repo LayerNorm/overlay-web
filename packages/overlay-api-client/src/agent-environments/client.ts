@@ -3,7 +3,6 @@ import type {
   AgentEnvironment,
   AgentFilesystemGrant,
   BuiltInUserOwnedAcpAdapterId,
-  ManagedHarnessId,
 } from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
 
@@ -12,21 +11,6 @@ const WORKSPACE_HEADER = 'x-overlay-workspace-id'
 export type AgentEnvironmentResource = Omit<AgentEnvironment, 'publicKey'> & {
   verificationPhrase?: string
   enrollmentExpiresAt?: number
-}
-
-/** One row of the managed-harness picker, as served by `GET .../managed`. */
-export type ManagedHarnessPickerEntry = {
-  id: ManagedHarnessId
-  label: string
-  description: string
-  byokProviders: string[]
-  models: Array<{ value: string; label: string; harnessModel?: string; billingModelId: string }>
-}
-
-export type ManagedHarnessPicker = {
-  harnesses: ManagedHarnessPickerEntry[]
-  providers: string[]
-  workingDirectory: string
 }
 
 function workspaceInit(workspaceId: string, init?: RequestInit): RequestInit {
@@ -47,25 +31,6 @@ export class AgentEnvironmentsClient {
   createEnrollment(workspaceId: string, input?: { adapterId?: BuiltInUserOwnedAcpAdapterId }, init?: RequestInit) {
     return this.http.json<{ enrollmentSessionId: string; code: string; command: string; expiresAt: number }>(
       '/api/v1/agent-environments/enrollment-sessions',
-      this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),
-    )
-  }
-
-  createManaged(
-    workspaceId: string,
-    input?:
-      | { adapterId?: 'codex' | 'claude-code' }
-      | { mode: 'harness'; harnessId: ManagedHarnessId; provider?: string },
-    init?: RequestInit,
-  ) {
-    return this.http.json<{
-      environment: AgentEnvironmentResource
-      lease: { id: string; status: string }
-      setup:
-        | { label: 'Overlay Cloud'; approvedRoot: string; adapterId: 'codex' | 'claude-code' }
-        | { label: 'Overlay Cloud'; approvedRoot: string; mode: 'harness'; harnessId: ManagedHarnessId; provider: string }
-    }>(
-      '/api/v1/agent-environments/managed',
       this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }
@@ -98,15 +63,14 @@ export class AgentEnvironmentsClient {
     )
   }
 
-  /** Harness runtimes this workspace may host on Overlay Cloud (404 when gated). */
-  managedHarnesses(workspaceId: string, init?: RequestInit) {
-    return this.http.json<ManagedHarnessPicker>('/api/v1/agent-environments/managed', workspaceInit(workspaceId, init))
-  }
-
-  resetHarness(workspaceId: string, environmentId: string, init?: RequestInit) {
-    return this.http.json<{ reset: true; sessionsCleared: number; sandboxDestroyed: boolean; environmentId: string }>(
-      `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/reset-harness`,
-      workspaceInit(workspaceId, { ...init, method: 'POST' }),
+  /**
+   * Live desktop ticket for an Overlay Cloud environment's machine — the
+   * environment's sandbox doubles as the bound agent's computer.
+   */
+  openDesktop(workspaceId: string, environmentId: string, mode?: 'webrtc' | 'vnc', init?: RequestInit) {
+    return this.http.json<{ url: string; mode: 'webrtc' | 'vnc' | 'other'; expiresAt: number | null }>(
+      `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/desktop`,
+      this.http.jsonRequest({ mode }, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }
 

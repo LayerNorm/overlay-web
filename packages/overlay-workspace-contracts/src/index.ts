@@ -90,6 +90,9 @@ export {
   type WorkspaceAgentUpdateInput,
   type WorkspaceAgentDirectoryItem,
   type WorkspaceAgentListResponse,
+  type WorkspaceAgentThread,
+  type WorkspaceAgentAutomation,
+  type WorkspaceAgentBundle,
   WORKSPACE_SHARE_RESOURCE_TYPES,
   WORKSPACE_SHARE_TARGET_TYPES,
   WORKSPACE_SHARE_ACCESS_ROLES,
@@ -116,3 +119,4 @@ export {
 
 export * from './connected-agents'
 export * from './computers'
+export * from './surfaces'

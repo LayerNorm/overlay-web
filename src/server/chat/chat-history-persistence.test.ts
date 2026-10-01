@@ -4,9 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { PersistedMessagePart } from './chat-message-persistence'
 
-const { sanitizeMessagePartsForPersistence } = await import(
-  new URL('./chat-message-persistence.ts', import.meta.url).href
-)
+import { sanitizeMessagePartsForPersistence } from './chat-message-persistence.ts'
 
 test('sanitizeMessagePartsForPersistence keeps file URLs for reload', () => {
   const parts = sanitizeMessagePartsForPersistence(

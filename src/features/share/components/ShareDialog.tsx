@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { Check, Linkedin, Link2, X } from 'lucide-react'
-import { usePresence } from '@overlay/ui'
+import { useDialogFocus, usePresence } from '@overlay/ui'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 
 type Resource = {
@@ -65,11 +65,12 @@ export function ShareDialog({
   onClose: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose()
+  })
+
   useEffect(() => {
     if (!isOpen) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
     window.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -77,7 +78,7 @@ export function ShareDialog({
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
     }
-  }, [isOpen, onClose])
+  }, [isOpen])
 
   const socials = useMemo(
     () => (resource?.url ? buildSocialUrls(resource.url, resource.title) : null),
@@ -85,6 +86,7 @@ export function ShareDialog({
   )
 
   const { mounted, visible } = usePresence(isOpen)
+  const dialogRef = useDialogFocus(mounted)
   if (!mounted || !resource || !socials) return null
 
   const handleCopy = async () => {
@@ -104,6 +106,8 @@ export function ShareDialog({
   }
 
   return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={`fixed inset-0 z-[10080] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
         visible ? 'opacity-100' : 'opacity-0'
@@ -112,7 +116,10 @@ export function ShareDialog({
         if (e.target === e.currentTarget) onClose()
       }}
     >
+      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-dialog-title"

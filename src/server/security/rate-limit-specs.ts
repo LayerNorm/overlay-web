@@ -49,6 +49,14 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'helper:chat-suggestions:ip', limit: 120, windowMs: TEN_MINUTES },
     { bucket: 'helper:chat-suggestions:user', limit: 30, windowMs: TEN_MINUTES },
   ],
+  // The agents sidebar fires the directory read plus one bundle fetch per
+  // expanded agent on every shell mount. Without dedicated buckets that
+  // cheap-read traffic falls into the shared `api:default:*` pools and can
+  // lock the whole app out during a burst.
+  'GET /api/v1/agents': [
+    { bucket: 'agents:read:ip', limit: 900, windowMs: TEN_MINUTES },
+    { bucket: 'agents:read:user', limit: 450, windowMs: TEN_MINUTES },
+  ],
   'POST /api/v1/browser-task': [
     { bucket: 'browser-task:ip', limit: 20, windowMs: TEN_MINUTES },
     { bucket: 'browser-task:user', limit: 10, windowMs: TEN_MINUTES },
@@ -74,11 +82,6 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'generation:image:ip', limit: 30, windowMs: TEN_MINUTES },
     { bucket: 'generation:image:user', limit: 15, windowMs: TEN_MINUTES },
     { bucket: 'generation:image:workspace', limit: 30, windowMs: TEN_MINUTES },
-  ],
-  'POST /api/v1/daytona/run': [
-    { bucket: 'sandbox:daytona:ip', limit: 20, windowMs: TEN_MINUTES },
-    { bucket: 'sandbox:daytona:user', limit: 10, windowMs: TEN_MINUTES },
-    { bucket: 'sandbox:daytona:workspace', limit: 20, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/generate-title': [
     { bucket: 'helper:title:ip', limit: 120, windowMs: TEN_MINUTES },
@@ -157,6 +160,14 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'GET /api/v1/mcps/oauth/callback': [
     { bucket: 'mcps/oauth:callback:ip', limit: 60, windowMs: TEN_MINUTES },
   ],
+  // Slack surface OAuth is a browser navigation outside handleBffRoute; both
+  // legs rate-limit before reading the session, so they key on IP.
+  'GET /api/v1/surfaces/slack/connect': [
+    { bucket: 'surfaces/slack:connect:ip', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/surfaces/slack/callback': [
+    { bucket: 'surfaces/slack:callback:ip', limit: 60, windowMs: TEN_MINUTES },
+  ],
 }
 
 type DynamicEndpointRateLimit = {
@@ -166,6 +177,24 @@ type DynamicEndpointRateLimit = {
 }
 
 const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
+  {
+    method: 'GET',
+    pattern: /^\/api\/v1\/agents\/[^/]+(\/(bundle|threads|automations))?$/,
+    limits: [
+      { bucket: 'agents:read:ip', limit: 900, windowMs: TEN_MINUTES },
+      { bucket: 'agents:read:user', limit: 450, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
+    // Agent open/thread-create gestures — writes, so tighter than reads but
+    // well above what a human session generates.
+    method: 'POST',
+    pattern: /^\/api\/v1\/agents\/[^/]+\/threads(\/resolve)?$/,
+    limits: [
+      { bucket: 'agents:threads:write:ip', limit: 240, windowMs: TEN_MINUTES },
+      { bucket: 'agents:threads:write:user', limit: 120, windowMs: TEN_MINUTES },
+    ],
+  },
   {
     method: 'GET',
     pattern: /^\/api\/v1\/conversations\/[^/]+\/presence$/,

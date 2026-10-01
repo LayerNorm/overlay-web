@@ -43,7 +43,7 @@ export function createEmbeddingProvider(config: OverlayRuntimeConfig): Embedding
       },
     })
   }
-  throw new Error(`Unsupported embeddings provider for Postgres knowledge: ${provider}`)
+  throw new Error(`Unsupported embeddings provider: ${provider}`)
 }
 
 class HttpEmbeddingProvider implements EmbeddingProvider {

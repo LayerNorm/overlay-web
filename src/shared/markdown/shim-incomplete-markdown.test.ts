@@ -1,10 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const mod = (await import(
-  new URL('./shim-incomplete-markdown.ts', import.meta.url).href
-)) as { shimIncompleteMarkdown: (text: string) => string }
-const { shimIncompleteMarkdown } = mod
+import { shimIncompleteMarkdown } from './shim-incomplete-markdown.ts'
 
 test('leaves already-balanced markdown unchanged', () => {
   const balanced = 'Hello **world**. `code` and _italic_.'

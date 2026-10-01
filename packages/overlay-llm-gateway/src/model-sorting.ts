@@ -25,17 +25,14 @@ export const CHAT_MODEL_QUALITY_PRIORITY: readonly string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'stepfun-ai/step-3.5-flash',
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
-/** True for the free-tier router ("Auto") and OpenRouter/NVIDIA NIM free models. */
+/** True for the free-tier router ("Auto") and OpenRouter free models. */
 export function isFreeTierModel(modelId: string | undefined): modelId is string {
   if (!modelId) return false
   if (modelId === FREE_TIER_AUTO_MODEL_ID) return true
-  if (modelId.endsWith(':free')) return true
-  return modelId === 'stepfun-ai/step-3.5-flash'
+  return modelId.endsWith(':free')
 }
 
 /**

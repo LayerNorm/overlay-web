@@ -3,7 +3,11 @@ import Link from 'next/link'
 import { Download } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeSanitize from 'rehype-sanitize'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import { toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
 import type { SharedFile } from '@/app/share/f/[token]/page'
 
 function formatBytes(bytes: number | null): string {
@@ -18,14 +22,23 @@ function formatBytes(bytes: number | null): string {
   return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`
 }
 
+// Notes keep underline, highlight, and sub/superscript as inline HTML.
+const noteSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), 'u', 'mark'],
+}
+
 function PreviewBody({ file, token }: { file: SharedFile; token: string }) {
   const binaryUrl = file.hasBinary ? `/api/share/file/${token}` : null
 
   if (file.kind === 'note' && file.content) {
     return (
       <article className="prose prose-neutral max-w-none rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-6 py-6 text-[var(--foreground)] dark:prose-invert">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-          {file.content}
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeRaw, [rehypeSanitize, noteSchema], rehypeKatex]}
+        >
+          {toCanonicalNoteMarkdown(file.content)}
         </ReactMarkdown>
       </article>
     )
@@ -44,6 +57,7 @@ function PreviewBody({ file, token }: { file: SharedFile; token: string }) {
       <iframe
         src={binaryUrl}
         title={file.name}
+        sandbox=""
         className="h-[80vh] w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]"
       />
     )

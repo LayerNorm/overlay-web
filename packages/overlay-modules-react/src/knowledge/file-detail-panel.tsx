@@ -20,6 +20,7 @@ export function KnowledgeFileDetailPanel({
       {isEditable ? (
         <>
           <textarea
+            aria-label="File contents"
             value={fileContent}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start typing..."

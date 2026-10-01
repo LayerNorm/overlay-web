@@ -13,7 +13,7 @@ const hasConvexUrl = Boolean(
 )
 const hasInternalSecret = Boolean(process.env.INTERNAL_API_SECRET?.trim())
 
-test('Convex governance repository matches the Postgres governance contract', {
+test('Convex governance repository matches the workspace governance contract', {
   skip: enabled && hasConvexUrl && hasInternalSecret
     ? false
     : 'Set WORKSPACE_CONTRACT_CONVEX=1 plus Convex URL and INTERNAL_API_SECRET',

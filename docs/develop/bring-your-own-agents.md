@@ -14,8 +14,10 @@ flow, memory, and package boundaries.
 The first release supports agent conversations and supervised work through one outbound-only
 Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
 may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
-`external`. Overlay Cloud uses Vercel Sandbox by default, with Daytona behind the same private
-sandbox interface.
+`external`. Overlay Cloud is Box (E2B is planned for self-hosting); Vercel Sandbox and
+Daytona were removed. Creating agents that run on Overlay Cloud is currently disabled while
+those runtimes are rebuilt (see `docs/plans/SANDBOX_PROVIDER_CONSOLIDATION_PLAN.md`); the
+connected (on-your-machine) path described here is unaffected.
 
 The release includes `@mention` invocation, durable runs and commands, streamed transcript
 projection, approval/elicitation, cancellation, reconnect/resume, artifacts, audit, policy,
@@ -37,8 +39,7 @@ Phases 0 through 8 are implemented. Phase 9 release controls and repeatable loca
 implemented, but Phase 9 is not complete until the live Convex and PostgreSQL browser matrices,
 managed-provider conformance, and production stability gates are recorded.
 Overlay Cloud activation remains
-gated on publishing the Agent Host image and passing live Vercel conformance in the target
-project; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
+gated on rebuilding hosted other-agents on Box and passing live conformance; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
 conformance run against staging. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
@@ -192,104 +193,21 @@ validation state, retention cleanup, and idempotent tombstones.
 The managed-sandbox boundary is `@overlay/sandbox-runtime`. Its contract covers
 lifecycle and reconnect, streamed and cancellable commands, files, process environment, ports,
 snapshots and persistence, network policy, broker-owned credential references, idle and hard
-timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Vercel Sandbox
-uses the official `@vercel/sandbox` SDK and is the default `Overlay Cloud` backend. Daytona uses
-the official `@daytona/sdk` adapter, and the legacy `/api/v1/daytona/run` execution and artifact
-path now performs command and file operations through the same runtime contract.
+timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Box is the
+Overlay Cloud adapter, and an E2B adapter is planned for self-hosting. Provider SDK objects and references are never public response fields.
+The lease meter (`ManagedAgentSandboxBilling`) bills a lease from provider-reported usage and
+enforces the idle window and the 24-hour hard cap; Box has no idle timer, so idle-stop is ours.
 
-`POST /api/v1/agent-environments/managed` is the provider-neutral provisioning resource and accepts
-two modes. The default request body (`{adapterId}`) boots the image configured by
-`OVERLAY_AGENT_HOST_IMAGE`: that image contains the same `@layernorm/overlay-agent-host` executable
-used on user-owned machines and invokes the same one-time enrollment, Ed25519 proof, browser
-approval, short-lived credentials, polling, and ACP bridge. Managed hosts enroll as `overlay_cloud`
-and default their explicit approval root to `/workspace`; the browser still performs the normal
-explicit root approval. No provider receives a privileged alternate host credential.
-
-The harness mode (`{mode: 'harness', harnessId, provider?}`) is the managed AI SDK HarnessAgent
-path (`docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`). It skips the host image and the entire
-enrollment ceremony: the service creates the sandbox, writes an already-approved `overlay_cloud`
-environment with a fixed `/workspace` filesystem grant, records the lease, and returns the same
-`{environment, lease}` response shape. The harness itself bootstraps into the sandbox on the first
-turn; the environment advertises `capabilities.adapters: [{id: harnessId, protocol: 'harness'}]`
-and binding upserts against it write `protocolAdapter: 'harness'` with an
-`adapterConfig` of `{harnessId, workingDirectory, provider}`. Harness sessions resume through the
-durable `agentHarnessSessions` table (binding + conversation scoped `resumeState`), so the
-sandbox lease is renewable while the agent's conversation state survives provider expiration.
-Dispatch branches on the binding's `protocolAdapter`: `harness` bindings run
-`managedHarnessAgentTurnWorkflow` — durable `@ai-sdk/workflow-harness` time slices that
-reconnect (or recreate) the lease's sandbox, wrap the native handle with
-`createVercelSandbox({ sandbox })` (or the Overlay bridge for other providers), and stream the
-harness's UI-message chunks into the same generating reply row a hosted agent writes. When the
-harness suspends on a tool approval, the workflow records the pending calls on the run row's
-`approval` and parks itself on `createHook`; the existing approval card and
-`POST /api/v1/conversations/run/approval` resolution resume it with synthesized
-`tool-approval-response` messages (capped at 20 cycles per turn). `acp` bindings keep the
-remote command-queue path, and any other adapter fails loudly rather than falling back.
-
-The hosted branch of the agent editor gets its managed-harness picker from
-`GET /api/v1/agent-environments/managed`, which applies every gate server-side — the
-`managedHarnessAgents` feature flag (itself gated on resolvable Vercel Sandbox credentials), the
-independent `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` plus its internal/invited workspace lists, and
-the workspace `allowedAgentHarnesses` policy filtering the shared catalog. A 404 leaves Overlay as
-the only hosted runtime. Selecting a managed runtime swaps the model/tool-group section for harness
-config: a per-harness model select (Overlay-funded — the picker value maps to a harness-native
-`adapterConfig.model` on the binding while the priced gateway `billingModelId` becomes
-`agent.modelId` for usage reservations), a **Model access** picker when the harness advertises
-BYOK providers (see below), a provider row (`Vercel Sandbox`, or `Daytona` when that provider is
-configured), and `/workspace`.
-Saving creates the agent, provisions the managed environment, then upserts the binding; a mid-flow
-failure lands on the edit page so retry reuses the durable agent instead of duplicating it. Editing
-a managed agent shows the runtime, its sandbox status, and a manager-gated **Reset session** action
-backed by `POST /api/v1/agent-environments/[environmentId]/reset-harness` — it deletes every
-persisted harness session on the environment's bindings and destroys the sandbox while leaving the
-lease's stale `providerReference` to trigger recreation on the next turn. Switching an agent's
-runtime provisions a fresh environment and resets the detached one; switching away from managed
-entirely disables the binding and tears the sandbox down. Dispatch re-checks availability at turn
-time, so a flag flip or policy change that retires a harness fails the next message closed instead
-of turning on a stale binding.
-
-Non-Vercel managed providers reach the harness through
-`createOverlaySandboxProvider(runtime)` / `createOverlayInstanceProvider(instance)` in
-`@overlay/sandbox-runtime` (`src/harness-bridge.ts`) — a provider-neutral adapter that maps
-`SandboxInstance` onto the AI SDK's `HarnessV1SandboxProvider` surface (spawn/run/files/ports/
-network policy/lifecycle/`restricted()`), with deterministic session-name derivation so
-`resumeSession` reconnects the same sandbox. Daytona is selectable via `DAYTONA_API_KEY`; its
-private preview links authenticate through `x-daytona-preview-token`, carried on the new
-`SandboxPort.headers` field so the bridge can connect the harness's in-sandbox bridge port.
-Box stays excluded for harnesses — it lacks the egress allowlist and credential-forwarding
-guarantees, and the provider seam rejects it with a documented reason.
-
-Managed harnesses can also run on a member's own provider connection (BYOK). The editor's
-**Model access** picker lists the member's active provider connections filtered by the
-harness's `byokProviders` (Vercel AI Gateway for the bridge adapters and Pi, OpenRouter for
-Hermes). The binding records `modelBilling:'byok'`, the connection id, and the configurer's
-user id — connections are per-user, so turns triggered by other workspace members resolve the
-key under the configurer's identity. The turn slice reads the key from the credential vault at
-execution time and passes it to the adapter as an `auth` environment record; it is never
-persisted in binding config or workflow state and never enters the sandbox environment. BYOK
-requires the Vercel provider — its request transformations inject the key at the sandbox
-boundary — and `upsertBinding` fails closed on missing, foreign, disabled, or incompatible
-connections. BYOK turns skip the Overlay model-usage reservation.
-
-Provider selection for the agent-host mode is available only to operators through
-`OVERLAY_MANAGED_SANDBOX_PROVIDER` and defaults to `vercel`. Harness mode resolves through
-`OVERLAY_HARNESS_SANDBOX_PROVIDER` (or the request `provider`), offers `vercel` and `daytona`
-when their credentials are configured, and fails closed when the selected provider is not
-configured. Vercel
-creation is pinned to `OVERLAY_VERCEL_SANDBOX_REGION` (default `iad1`) so the configured unit rates
-match a known region.
-
-Credential bindings contain an opaque broker reference, placeholder environment variable, and
-allowed domains. Vercel translates resolved header material into network-policy transforms;
-Daytona maps the reference to an existing organization Secret and relies on its egress-time
-substitution. Provider SDK objects and references are never public response fields. Deterministic
-conformance runs for both provider identities on every package test; live provider conformance is
-opt-in with `OVERLAY_SANDBOX_LIVE_CONFORMANCE=1` and remains the release gate for provision,
-reconnect, provider-supported snapshot/restore or persistent stop/resume, command
-timeout/cancellation, network enforcement, usage, and cleanup. Daytona snapshot creation remains
-experimental and timed out in live verification, so the Daytona adapter currently advertises
-persistence and reconnect but not snapshots. It must not claim the capability until the live test
-passes reliably.
+**Removed: managed harness agents.** Earlier phases ran AI SDK HarnessAgents (Claude Code, Codex,
+OpenCode, Pi, Hermes) inside Vercel Sandbox (`managedHarnessAgentTurnWorkflow`,
+`agentHarnessSessions`), provisioned through `POST /api/v1/agent-environments/managed`. That path,
+its Vercel adapter, the harness bridge, the editor's runtime picker, and the reset endpoint were
+deleted. `protocol: 'harness'` bindings that still exist in data are inert: dispatch posts a failed
+reply asking the user to recreate the agent, the editor shows such an agent read-only, and the
+control plane refuses new harness bindings. Hosted other-agents (Claude Code, Codex, … on Overlay
+Cloud) will be rebuilt from the ground up on Box, and on E2B for self-hosted deployments; the
+connected-agent protocol below is the foundation for that, as it already supports an Overlay-owned
+machine running the Agent Host.
 
 Overlay Cloud model access follows a fixed priority. Overlay-funded models are the default and
 lowest-friction path. BYOK/API keys are the first customer-owned authentication path and are
@@ -302,7 +220,7 @@ Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-brid
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
 package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.5`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.5 overlay-agent-host ...`
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.6 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
@@ -344,20 +262,15 @@ egress, and managed runtime; the existing billing ledger remains the monthly-spe
 Host-side BYOK model tokens remain observable but never become Overlay model usage. A local or VPS
 environment has no sandbox reservation. Overlay Cloud creates a distinct pre-dispatch `sandbox`
 reservation under `agent:<agentId>` in addition to any explicitly Overlay-funded model reservation.
-Actual Vercel usage settles the SDK's cumulative vCPU-milliseconds, provisioned-memory wall time,
-decimal-GB outbound transfer, and per-creation charge where a run creates its own sandbox; Daytona settles
-its resource-time dimensions. The reservation ledger is the exact-once boundary, and an unavailable
+Actual Box usage settles the provider-reported dollars (falling back to the rate card on billable
+seconds). The reservation ledger is the exact-once boundary, and an unavailable
 provider or failed usage read moves the reservation to reconciliation instead of guessing at a
-charge. Reservations assume every allocated vCPU is active for the full allowed runtime, include
-the plan egress ceiling, and add `OVERLAY_VERCEL_SANDBOX_RESERVATION_BUFFER_PERCENT` (25% by
-default). `OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN` rejects an estimated run above USD 15 by
-default before provider work starts. The four `OVERLAY_VERCEL_SANDBOX_*_USD_*` rate variables must
-be updated when the selected region or provider contract changes. Persistent Vercel sandboxes retain
-one latest snapshot and delete the evicted snapshot to bound storage growth. A durable settlement marker is created atomically with each managed run and is cleared only
+charge. `OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN` rejects an estimated run above USD 15 by
+default before provider work starts. A durable settlement marker is created atomically with each managed run and is cleared only
 after the idempotent usage ledger and lease usage record both succeed. PostgreSQL maintenance retries
 pending markers directly; the Convex scheduler calls the internal BFF reconciliation route so
 provider credentials never move into Convex. `OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD` controls the
-per-run provider-spend warning threshold and defaults to USD 10. Vercel account-level spend alerts
+per-run provider-spend warning threshold and defaults to USD 10. Provider account-level spend alerts
 and limits remain mandatory because provider storage and aggregate monthly overages are not visible
 in a single run's SDK counters.
 
@@ -384,8 +297,7 @@ choose between stopping new tenant dispatch and immediately stopping the entire 
 The repeatable local release gate is `npm run check:byo-agents:release`. It covers unit, protocol,
 host crash/reconnect, Convex repository, authorization, billing, route inventory, migration-version,
 no-Convex PostgreSQL bootstrap, bounded command/event/fan-out load, managed sandbox, and cleanup
-tests. `npm run check:byo-agents:release:postgres` runs the migrated PostgreSQL provider contract
-against the configured remote contract database. Host compatibility runs in GitHub Actions on
+tests. Host compatibility runs in GitHub Actions on
 macOS 14, Ubuntu 24.04, and Windows Server 2022. These automated checks do not replace authenticated
 browser QA, live provider conformance, invoice reconciliation, or production soak evidence.
 
@@ -418,16 +330,36 @@ must survive. This deterministic rehearsal complements rather than replaces the 
 production retention observation.
 
 Live sandbox conformance uses the strictest portable lifecycle constraint shared by the supported
-providers. In particular, Vercel snapshot fixtures request a one-day expiry because the live API
-rejects shorter expirations. Resume the original persistent sandbox before deleting its snapshot,
-then delete the snapshot explicitly during cleanup.
+providers. Resume the original persistent sandbox before deleting its snapshot, then delete the
+snapshot explicitly during cleanup.
 
-The 2026-08-25 live conformance run passed for both Vercel Sandbox and Daytona. Phase 9 remains open
+The 2026-08-25 live conformance run passed for Vercel Sandbox and Daytona (both since removed). Phase 9 remains open
 until the fresh enrollment-to-mention matrix, provider-invoice reconciliation, calendar-time
 artifact-retention observation, and matching production Convex rollout and stability evidence are
 complete.
 
-## Trust boundaries and threat model
+## Overlay workspace tools for connected agents
+
+A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
+notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
+(`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`), memory, knowledge search,
+automations, connected apps, and MCP servers — built by the same pipeline (`buildWorkspaceAgentTooling`:
+the agent's grant intersected with workspace policy, entitlements, and the summoning message's
+mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
+duplicate the agent's own machine (`computer_*`) and generated UI are
+withheld, and MCP calls whose server policy requires approval are refused with an explanation,
+because no room approval exists for them yet.
+
+- **Connected agents** receive an MCP server. The remote-turn start command carries
+  `metadata.overlayMcp = { url: <app origin>/api/agent-mcp, token }`; the Agent Host passes it to ACP
+  `session/new`/`session/load` as an HTTP MCP server with an `Authorization: Bearer` header, only when
+  the runtime advertises `mcpCapabilities.http` and the URL is HTTPS (or localhost). The token
+  (`ovmcp_…`, `src/server/agents/agent-mcp-token.ts`) is HMAC-signed with
+  `OVERLAY_AGENT_MCP_SECRET` (falling back to the service-auth secret), scoped to one run, expires
+  after the run-time cap plus slack, and is refused as soon as the run's remote session is no longer
+  live. Older hosts ignore the metadata key, so no protocol version change was needed; a published
+  host release is required for connected agents to use the tools.
+
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
   transcript projections, audit, and artifact policy. A host owns only private harness state,
@@ -545,16 +477,10 @@ scanned in full by a production malware engine, validated by content magic, and 
 attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
 cleanup controls remain implemented but are not a substitute for that release gate.
 
-Managed provisioning additionally requires `OVERLAY_AGENT_HOST_IMAGE`. Vercel deployments use a
-Vercel Container Registry reference; Daytona may use the equivalent OCI image in its configured
-registry. `VERCEL_OIDC_TOKEN` is preferred on Vercel. An operator running elsewhere may instead
-provide `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, and `VERCEL_PROJECT_ID`; Daytona uses its existing API
-URL and key configuration.
-
-The dormant managed API and provider adapters remain implemented so the future release can reuse
-the same host protocol. Restoring the UI additionally requires the image, conformance, credential
-brokering, egress, billing, cleanup, security-review, and server-authoritative readiness gates
-tracked in this document's managed-environment release-gate section.
+Overlay Cloud machines run on Box (`BOX_API_KEY`). Hosted other-agents are not offered at the
+moment; when they return they will build on the connected-agent protocol, so the one-time
+enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge
+described above stay the only host authentication path.
 
 ## Public resources and protocol policy
 

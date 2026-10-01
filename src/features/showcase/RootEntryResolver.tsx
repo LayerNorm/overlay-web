@@ -8,6 +8,8 @@ import {
 } from '@/shared/auth/root-entry'
 
 export function RootEntryResolver() {
+  // Client-side data load on mount — no server data layer in this app.
+  // react-doctor-disable-next-line react-doctor/no-fetch-in-effect
   useEffect(() => {
     let cancelled = false
 

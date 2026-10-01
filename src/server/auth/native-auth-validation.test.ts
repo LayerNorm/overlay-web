@@ -3,14 +3,14 @@ import 'server-only'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const {
+import {
   isAllowedNativeRedirectUri,
   isAllowedWorkOsAuthorizationUrl,
   isNativeAuthProvider,
   isValidNativeAuthCode,
   isValidNativeAuthState,
   isValidPkceVerifier,
-} = await import(new URL('./native-auth-validation.ts', import.meta.url).href)
+} from './native-auth-validation.ts'
 
 test('native auth provider allowlist is strict', () => {
   assert.equal(isNativeAuthProvider('GoogleOAuth'), true)

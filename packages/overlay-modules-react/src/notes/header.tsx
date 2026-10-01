@@ -87,17 +87,13 @@ export function NotebookHeader({
       <div className={`flex flex-1 items-center justify-between gap-2 px-3 ${compact ? 'h-11' : ''}`}>
         {leading}
         {!hideBackButton ? (
-          <button
-            type="button"
-            onClick={onBackToFiles}
-            title="Back to files"
-            className={`inline-flex shrink-0 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'}`}
-          >
+          <NotebookHeaderIconButton title="Back to files" compact={compact} onClick={onBackToFiles}>
             <ArrowLeft size={compact ? 13 : 17} />
-          </button>
+          </NotebookHeaderIconButton>
         ) : null}
         <input
           type="text"
+          aria-label="Note title"
           value={title}
           onChange={onTitleChange}
           onBlur={onTitleBlur}
@@ -106,43 +102,94 @@ export function NotebookHeader({
           className={`flex-1 bg-transparent font-medium text-[var(--foreground)] outline-none placeholder:text-[var(--muted)] ${compact ? 'text-[19px]' : 'text-xl'}`}
           style={{ fontFamily: 'var(--font-serif)' }}
         />
-        {!hideActions ? <div className="flex shrink-0 items-center gap-1.5">
-          {projectName && (
-            <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
-              <FolderOpen size={9} />
-              {projectName}
-            </span>
-          )}
-          {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
-          {onDeleteNote ? (
-            <button
-              type="button"
-              onClick={onDeleteNote}
-              className={`inline-flex shrink-0 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'}`}
-              aria-label="Delete note"
-              title="Delete note"
-            >
-              <Trash2 size={compact ? 13 : 15} />
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onToggleAgentPanel}
-            className={`inline-flex shrink-0 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'} ${
-              agentPanelOpen ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
-            }`}
-            aria-label={agentPanelOpen ? 'Close note assistant' : 'Open note assistant'}
-            title="Note assistant"
-          >
-            <MessageCircle size={compact ? 13 : 16} />
-          </button>
-          {/* Overflow menu sits last: it is the catch-all, so it belongs at the
-              edge rather than between the direct actions. */}
-          {exportMenu}
-        </div> : null}
+        {!hideActions ? (
+          <NotebookHeaderActions
+            compact={compact}
+            projectName={projectName}
+            isDirty={isDirty}
+            agentPanelOpen={agentPanelOpen}
+            exportMenu={exportMenu}
+            onDeleteNote={onDeleteNote}
+            onToggleAgentPanel={onToggleAgentPanel}
+          />
+        ) : null}
       </div>
       {agentPanelOpen ? assistantHeader : null}
     </AppScreenHeader>
+  )
+}
+
+interface NotebookHeaderIconButtonProps {
+  compact?: boolean
+  active?: boolean
+  label?: string
+  title: string
+  onClick: () => void
+  children: ReactNode
+}
+
+function NotebookHeaderIconButton({ compact, active, label, title, onClick, children }: NotebookHeaderIconButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={label}
+      className={`inline-flex shrink-0 items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'} ${
+        active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+interface NotebookHeaderActionsProps {
+  compact?: boolean
+  projectName?: string
+  isDirty?: boolean
+  agentPanelOpen?: boolean
+  exportMenu?: ReactNode
+  onDeleteNote?: () => void
+  onToggleAgentPanel: () => void
+}
+
+function NotebookHeaderActions({
+  compact,
+  projectName,
+  isDirty,
+  agentPanelOpen,
+  exportMenu,
+  onDeleteNote,
+  onToggleAgentPanel,
+}: NotebookHeaderActionsProps) {
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      {projectName && (
+        <span className="flex items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+          <FolderOpen size={9} />
+          {projectName}
+        </span>
+      )}
+      {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
+      {onDeleteNote ? (
+        <NotebookHeaderIconButton label="Delete note" title="Delete note" compact={compact} onClick={onDeleteNote}>
+          <Trash2 size={compact ? 13 : 15} />
+        </NotebookHeaderIconButton>
+      ) : null}
+      <NotebookHeaderIconButton
+        label={agentPanelOpen ? 'Close note assistant' : 'Open note assistant'}
+        title="Note assistant"
+        compact={compact}
+        active={agentPanelOpen}
+        onClick={onToggleAgentPanel}
+      >
+        <MessageCircle size={compact ? 13 : 16} />
+      </NotebookHeaderIconButton>
+      {/* Overflow menu sits last: it is the catch-all, so it belongs at the
+          edge rather than between the direct actions. */}
+      {exportMenu}
+    </div>
   )
 }
 

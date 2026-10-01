@@ -74,7 +74,3 @@ function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function optionalString(value: unknown): string | undefined {
-  const normalized = stringValue(value)
-  return normalized || undefined
-}

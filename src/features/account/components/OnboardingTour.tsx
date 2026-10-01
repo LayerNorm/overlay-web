@@ -267,6 +267,601 @@ interface Frame { rect: Rect | null; stepIndex: number; spotlightRect: Rect | nu
 
 type PostTourPhase = null | 'import-memories' | 'connectors'
 
+function usePostTourPhase({
+  currentStep,
+  stepsLength,
+  onNext,
+  onSkip,
+  onDone,
+  memoryEnabled,
+  integrationsEnabled,
+}: {
+  currentStep: number
+  stepsLength: number
+  onNext: () => void
+  onSkip: () => void
+  onDone: () => void
+  memoryEnabled: boolean
+  integrationsEnabled: boolean
+}) {
+  const [postTourPhase, setPostTourPhase] = useState<PostTourPhase>(null)
+
+  const finishPostTour = useCallback(() => {
+    setPostTourPhase(null)
+    onDone()
+  }, [onDone])
+
+  const goToConnectorsStep = useCallback(() => {
+    setPostTourPhase('connectors')
+  }, [])
+
+  const finishImportStep = useCallback(() => {
+    if (integrationsEnabled) goToConnectorsStep()
+    else finishPostTour()
+  }, [finishPostTour, goToConnectorsStep, integrationsEnabled])
+
+  const beginPostTour = useCallback(() => {
+    if (memoryEnabled) setPostTourPhase('import-memories')
+    else if (integrationsEnabled) setPostTourPhase('connectors')
+    else finishPostTour()
+  }, [finishPostTour, integrationsEnabled, memoryEnabled])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (postTourPhase === 'import-memories') {
+        if (e.key === 'Escape') finishImportStep()
+        return
+      }
+      if (postTourPhase === 'connectors') {
+        if (e.key === 'Escape') finishPostTour()
+        return
+      }
+      if (e.key === 'Escape') onSkip()
+      if (e.key === 'ArrowRight' || e.key === 'Enter') {
+        if (currentStep < stepsLength - 1) onNext()
+        else {
+          beginPostTour()
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [
+    currentStep,
+    stepsLength,
+    onNext,
+    onSkip,
+    postTourPhase,
+    finishImportStep,
+    finishPostTour,
+    beginPostTour,
+  ])
+
+  return { postTourPhase, beginPostTour, finishImportStep, finishPostTour }
+}
+
+function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
+  const [importPaste, setImportPaste] = useState('')
+  const [memoryPromptCopied, setMemoryPromptCopied] = useState(false)
+  const [isImportSaving, setIsImportSaving] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  const saveImportedMemories = useCallback(async () => {
+    const text = importPaste.trim()
+    if (!text || isImportSaving) return
+    setIsImportSaving(true)
+    setImportError(null)
+    try {
+      const res = await overlayAppClient.memory.createResponse({
+        content: text,
+        source: 'manual',
+        actor: 'user',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to save' }))
+        setImportError((err as { error?: string }).error ?? 'Failed to save memories')
+        return
+      }
+      onFinish()
+    } finally {
+      setIsImportSaving(false)
+    }
+  }, [importPaste, isImportSaving, onFinish])
+
+  return (
+    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls.
+    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
+    <div
+      className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onFinish() }}
+    >
+      {/* Import step is a transient post-tour surface, not a persistent native <dialog>. */}
+      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
+      <div
+        role="dialog"
+        aria-labelledby="onboarding-import-title"
+        className="w-[min(540px,92vw)] max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <h2 id="onboarding-import-title" className="text-base font-semibold text-[var(--foreground)]">
+            Import memories from other assistants
+          </h2>
+          <button
+            type="button"
+            onClick={onFinish}
+            className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            aria-label="Skip import"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <p className="mb-6 text-xs text-[var(--muted)]">
+          Optional — bring over context from ChatGPT, Claude, or other tools. Copy the prompt, paste it there, then paste the reply below. We&apos;ll save it into your Overlay memories.
+        </p>
+
+        <div className="relative mb-6 flex gap-3">
+          <div className="flex flex-col items-center">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
+              1
+            </span>
+            <div className="mt-1 w-px flex-1 min-h-[24px] bg-[var(--border)]" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+              Copy this prompt into a chat with your other AI provider
+            </p>
+            <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pb-10 pt-3">
+              <p className="text-xs leading-relaxed text-[var(--foreground)]">{ONBOARDING_IMPORT_MEMORY_PROMPT}</p>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(ONBOARDING_IMPORT_MEMORY_PROMPT)
+                  setMemoryPromptCopied(true)
+                  window.setTimeout(() => setMemoryPromptCopied(false), 2000)
+                }}
+                className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+              >
+                {memoryPromptCopied ? <Check size={11} /> : <Copy size={11} />}
+                {memoryPromptCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
+            2
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+              Paste results below to add to Overlay memories
+            </p>
+            <textarea
+              aria-label="Memory import results"
+              value={importPaste}
+              onChange={(e) => setImportPaste(e.target.value)}
+              placeholder="Paste your memory details here"
+              rows={6}
+              className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted)] focus:border-[var(--muted)]"
+            />
+            {importError ? (
+              <p className="mt-2 text-xs text-red-500">{importError}</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+          <button type="button" onClick={onFinish} className={DIALOG_SECONDARY_CLASS}>
+            Skip
+          </button>
+          <button
+            type="button"
+            onClick={() => void saveImportedMemories()}
+            disabled={!importPaste.trim() || isImportSaving}
+            className={DIALOG_PRIMARY_CLASS}
+          >
+            {isImportSaving ? 'Saving…' : 'Add to memory'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
+  const router = useRouter()
+  const [connectorConnectingSlug, setConnectorConnectingSlug] = useState<string | null>(null)
+  const [connectorLogos, setConnectorLogos] = useState<Record<string, string | null>>({})
+  const [connectedSlugs, setConnectedSlugs] = useState<Set<string>>(new Set())
+  const [integrationsPickerOpen, setIntegrationsPickerOpen] = useState(false)
+
+  // Same provider-neutral catalog fetch as Extensions → loadCatalog.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await overlayAppClient.integrations.getResponse({ action: 'search', limit: 100 })
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as { items?: Array<{ slug: string; logoUrl?: string | null }> }
+        const items = Array.isArray(data.items) ? data.items : []
+        const next: Record<string, string | null> = {}
+        for (const item of items) {
+          next[item.slug] = item.logoUrl ?? null
+        }
+        if (!cancelled) setConnectorLogos(next)
+      } catch {
+        // keep emoji fallbacks
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Track connected toolkits so cards reflect connections in real time after the
+  // Provider setup completes in another tab and signals via focus/event refresh.
+  useEffect(() => {
+    let cancelled = false
+    async function loadConnected() {
+      try {
+        const res = await overlayAppClient.integrations.getResponse()
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as { connected?: string[] }
+        if (cancelled) return
+        setConnectedSlugs(new Set(data.connected ?? []))
+      } catch {
+        // ignore
+      }
+    }
+
+    void loadConnected()
+
+    const onChanged = () => { void loadConnected() }
+    window.addEventListener('overlay:integrations-changed', onChanged)
+    window.addEventListener('focus', onChanged)
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
+      bc.onmessage = onChanged
+    } catch {
+      // BroadcastChannel unsupported
+    }
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('overlay:integrations-changed', onChanged)
+      window.removeEventListener('focus', onChanged)
+      bc?.close()
+    }
+  }, [])
+
+  const dialogConnect = useCallback(async (slug: string) => {
+    const oauthTab = window.open('about:blank', '_blank')
+    try {
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: slug })
+      const data = (await res.json().catch(() => ({}))) as { redirectUrl?: string; connectionId?: string; error?: string }
+      if (!res.ok) {
+        oauthTab?.close()
+        throw new Error(data.error || 'Failed to initiate connection')
+      }
+      const redirectUrl = safeHttpUrl(data.redirectUrl)
+      if (redirectUrl) {
+        if (oauthTab) oauthTab.location.href = redirectUrl
+        else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
+        notifyIntegrationsChanged()
+      } else if (data.connectionId) {
+        oauthTab?.close()
+        notifyIntegrationsChanged()
+      } else {
+        oauthTab?.close()
+        throw new Error('No connection setup URL returned')
+      }
+    } catch (err) {
+      oauthTab?.close()
+      throw err
+    }
+  }, [])
+
+  const dialogDisconnect = useCallback(async (slug: string) => {
+    const res = await overlayAppClient.integrations.disconnectResponse(slug)
+    if (!res.ok) throw new Error('Failed to disconnect')
+    notifyIntegrationsChanged()
+  }, [])
+
+  const connectPopularConnector = useCallback(
+    async (slug: string) => {
+      if (connectorConnectingSlug) return
+      setConnectorConnectingSlug(slug)
+      try {
+        await dialogConnect(slug)
+      } catch {
+        // Shows in OAuth / popup flow; user can retry or use Add to search
+      } finally {
+        setConnectorConnectingSlug(null)
+      }
+    },
+    [connectorConnectingSlug, dialogConnect],
+  )
+
+  return (
+    <>
+      {/* Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls. */}
+      {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
+      <div
+        className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
+        onClick={(e) => { if (e.target === e.currentTarget) onFinish() }}
+      >
+        {/* Anchored post-tour surface, not a persistent native <dialog>. */}
+        {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
+        <div
+          role="dialog"
+          aria-labelledby="onboarding-connectors-title"
+          className="w-[min(520px,94vw)] max-h-[min(90vh,840px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <h2 id="onboarding-connectors-title" className="text-base font-semibold text-[var(--foreground)]">
+              Connect your tools
+            </h2>
+            <button
+              type="button"
+              onClick={onFinish}
+              className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <p className="mb-4 text-xs leading-relaxed text-[var(--muted)]">
+            Optional — connect apps you use with Overlay. Use Connect on a card below (same OAuth flow as Extensions), or{' '}
+            <span className="text-[var(--foreground)]">Add</span> to search the full integration catalog.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+            {ONBOARDING_CONNECTOR_CARDS.map((c) => {
+              const busy = connectorConnectingSlug === c.slug
+              const anyBusy = connectorConnectingSlug !== null
+              const isConnected = connectedSlugs.has(c.slug)
+              return (
+                <div
+                  key={c.slug}
+                  className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 shadow-sm"
+                >
+                  <OnboardingConnectorCardLogo
+                    name={c.name}
+                    fallbackEmoji={c.icon}
+                    logoUrl={connectorLogos[c.slug]}
+                  />
+                  <p className="text-xs font-semibold text-[var(--foreground)]">{c.name}</p>
+                  <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-[var(--muted)]">
+                    {c.description}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { if (!isConnected) void connectPopularConnector(c.slug) }}
+                    disabled={anyBusy || isConnected}
+                    className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-100 disabled:hover:bg-[var(--surface-elevated)]"
+                  >
+                    {isConnected ? (
+                      <>
+                        <Check size={12} aria-hidden />
+                        Connected
+                      </>
+                    ) : (
+                      <>
+                        {busy ? (
+                          <Loader2 size={12} className="animate-spin" aria-hidden />
+                        ) : null}
+                        Connect
+                      </>
+                    )}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIntegrationsPickerOpen(true)}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)]/60 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+          >
+            <Plus size={16} strokeWidth={2} className="text-[var(--muted)]" aria-hidden />
+            Add integration
+          </button>
+
+          <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+            <button type="button" onClick={onFinish} className={DIALOG_SECONDARY_CLASS}>
+              Skip
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                router.push('/app/tools')
+                onFinish()
+              }}
+              className={`${DIALOG_PRIMARY_CLASS} flex items-center gap-1.5`}
+            >
+              Open Extensions
+            </button>
+          </div>
+        </div>
+      </div>
+      <IntegrationsDialog
+        connectedSlugs={connectedSlugs}
+        isOpen={integrationsPickerOpen}
+        onClose={() => setIntegrationsPickerOpen(false)}
+        onConnect={dialogConnect}
+        onDisconnect={dialogDisconnect}
+        overlayClassName="fixed inset-0 z-[10060] flex items-center justify-center bg-[var(--overlay-scrim)] p-5"
+      />
+    </>
+  )
+}
+
+function TourBackdrop({
+  opacity,
+  spotlightRect,
+}: {
+  opacity: number
+  spotlightRect: Frame['spotlightRect']
+}) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9998,
+        pointerEvents: 'none',
+        transition: 'opacity 400ms ease',
+        opacity,
+      }}
+    >
+      {spotlightRect && (
+        <div
+          style={{
+            position: 'absolute',
+            top: spotlightRect.top,
+            left: spotlightRect.left,
+            width: spotlightRect.width,
+            height: spotlightRect.height,
+            borderRadius: 8,
+            boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
+            transition: 'top 400ms ease, left 400ms ease, width 400ms ease, height 400ms ease',
+          }}
+        />
+      )}
+      {spotlightRect && (
+        <>
+          {/* Block clicks to the app behind the tour; do not dismiss on backdrop (Skip / X only). */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: spotlightRect.top, pointerEvents: 'auto' }} />
+          <div style={{ position: 'absolute', top: spotlightRect.top + spotlightRect.height, left: 0, right: 0, bottom: 0, pointerEvents: 'auto' }} />
+          <div style={{ position: 'absolute', top: spotlightRect.top, left: 0, width: spotlightRect.left, height: spotlightRect.height, pointerEvents: 'auto' }} />
+          <div style={{ position: 'absolute', top: spotlightRect.top, left: spotlightRect.left + spotlightRect.width, right: 0, height: spotlightRect.height, pointerEvents: 'auto' }} />
+        </>
+      )}
+      {/* When the target is missing, do not swallow clicks for the whole app —
+          that blocked invitation accept and other non-chat routes. */}
+      {!spotlightRect && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+      )}
+    </div>
+  )
+}
+
+function TourOverlay({
+  step,
+  currentStep,
+  stepsCount,
+  isClosing,
+  frame,
+  backdropReady,
+  onSkip,
+  onBack,
+  onNext,
+  onComplete,
+}: {
+  step: TourStep
+  currentStep: number
+  stepsCount: number
+  isClosing: boolean
+  frame: Frame
+  backdropReady: boolean
+  onSkip: () => void
+  onBack: () => void
+  onNext: () => void
+  onComplete: () => void
+}) {
+  const rect = frame.stepIndex === currentStep ? frame.rect : null
+  const spotlightRect = frame.spotlightRect
+
+  const visible = frame.stepIndex === currentStep && frame.rect !== null && !isClosing
+  const backdropOpacity = backdropReady && !isClosing ? 1 : 0
+
+  const tooltipInfo = rect
+    ? computeTooltipStyle(rect, step.placement ?? 'right')
+    : null
+
+  const isLast = currentStep === stepsCount - 1
+
+  return (
+    <>
+      {/* Backdrop with box-shadow cutout */}
+      <TourBackdrop opacity={backdropOpacity} spotlightRect={spotlightRect} />
+
+      {/* Tooltip card */}
+      {tooltipInfo && (
+        // Anchored spotlight tooltip — a native <dialog> cannot position against the target element.
+        // react-doctor-disable-next-line react-doctor/prefer-html-dialog
+        <div
+          role="dialog"
+          aria-label={`Onboarding step ${currentStep + 1} of ${stepsCount}`}
+          style={{
+            ...tooltipInfo.style,
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'scale(1)' : 'scale(0.95)',
+            transition: 'opacity 400ms ease, transform 400ms ease',
+          }}
+          className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
+        >
+          <div style={tooltipInfo.arrowStyle} aria-hidden />
+
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <span className="text-[11px] font-medium tabular-nums text-[var(--muted)]">
+              {currentStep + 1} / {stepsCount}
+            </span>
+            <button
+              type="button"
+              onClick={onSkip}
+              className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              aria-label="Close tour"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <h3 className="mb-1.5 text-base font-semibold text-[var(--foreground)]">{step.title}</h3>
+          <p className="mb-5 text-sm leading-relaxed text-[var(--muted)]">{step.description}</p>
+
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={onSkip}
+              className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Skip tour
+            </button>
+            <div className="flex gap-2">
+              {currentStep > 0 && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--surface-elevated)]"
+                >
+                  Back
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={isLast ? onComplete : onNext}
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)]"
+              >
+                {isLast ? (
+                  <>Get started</>
+                ) : (
+                  <>Next <ArrowRight size={13} /></>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export function OnboardingTour({
   steps,
   currentStep,
@@ -278,17 +873,16 @@ export function OnboardingTour({
   memoryEnabled = true,
   integrationsEnabled = true,
 }: Props) {
-  const router = useRouter()
   const step = steps[currentStep]
-  const [postTourPhase, setPostTourPhase] = useState<PostTourPhase>(null)
-  const [importPaste, setImportPaste] = useState('')
-  const [memoryPromptCopied, setMemoryPromptCopied] = useState(false)
-  const [connectorConnectingSlug, setConnectorConnectingSlug] = useState<string | null>(null)
-  const [connectorLogos, setConnectorLogos] = useState<Record<string, string | null>>({})
-  const [connectedSlugs, setConnectedSlugs] = useState<Set<string>>(new Set())
-  const [integrationsPickerOpen, setIntegrationsPickerOpen] = useState(false)
-  const [isImportSaving, setIsImportSaving] = useState(false)
-  const [importError, setImportError] = useState<string | null>(null)
+  const { postTourPhase, beginPostTour, finishImportStep, finishPostTour } = usePostTourPhase({
+    currentStep,
+    stepsLength: steps.length,
+    onNext,
+    onSkip,
+    onDone,
+    memoryEnabled,
+    integrationsEnabled,
+  })
   const [frame, setFrame] = useState<Frame>({ rect: null, stepIndex: -1, spotlightRect: null })
   const [backdropReady, setBackdropReady] = useState(false)
   const rafRef = useRef<number | null>(null)
@@ -352,529 +946,28 @@ export function OnboardingTour({
     }
   }, [currentStep, isClosing, measure, steps])
 
-  // Same provider-neutral catalog fetch as Extensions → loadCatalog.
-  useEffect(() => {
-    if (postTourPhase !== 'connectors') return
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await overlayAppClient.integrations.getResponse({ action: 'search', limit: 100 })
-        if (!res.ok || cancelled) return
-        const data = (await res.json()) as { items?: Array<{ slug: string; logoUrl?: string | null }> }
-        const items = Array.isArray(data.items) ? data.items : []
-        const next: Record<string, string | null> = {}
-        for (const item of items) {
-          next[item.slug] = item.logoUrl ?? null
-        }
-        if (!cancelled) setConnectorLogos(next)
-      } catch {
-        // keep emoji fallbacks
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [postTourPhase])
-
-  // Track connected toolkits so cards reflect connections in real time after the
-  // Provider setup completes in another tab and signals via focus/event refresh.
-  useEffect(() => {
-    if (postTourPhase !== 'connectors') return
-
-    let cancelled = false
-    async function loadConnected() {
-      try {
-        const res = await overlayAppClient.integrations.getResponse()
-        if (!res.ok || cancelled) return
-        const data = (await res.json()) as { connected?: string[] }
-        if (cancelled) return
-        setConnectedSlugs(new Set(data.connected ?? []))
-      } catch {
-        // ignore
-      }
-    }
-
-    void loadConnected()
-
-    const onChanged = () => { void loadConnected() }
-    window.addEventListener('overlay:integrations-changed', onChanged)
-    window.addEventListener('focus', onChanged)
-    let bc: BroadcastChannel | null = null
-    try {
-      bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
-      bc.onmessage = onChanged
-    } catch {
-      // BroadcastChannel unsupported
-    }
-
-    return () => {
-      cancelled = true
-      window.removeEventListener('overlay:integrations-changed', onChanged)
-      window.removeEventListener('focus', onChanged)
-      bc?.close()
-    }
-  }, [postTourPhase])
-
-  const finishPostTour = useCallback(() => {
-    setPostTourPhase(null)
-    setImportPaste('')
-    setImportError(null)
-    setIntegrationsPickerOpen(false)
-    setConnectorLogos({})
-    onDone()
-  }, [onDone])
-
-  const dialogConnect = useCallback(async (slug: string) => {
-    const oauthTab = window.open('about:blank', '_blank')
-    try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: slug })
-      const data = (await res.json().catch(() => ({}))) as { redirectUrl?: string; connectionId?: string; error?: string }
-      if (!res.ok) {
-        oauthTab?.close()
-        throw new Error(data.error || 'Failed to initiate connection')
-      }
-      const redirectUrl = safeHttpUrl(data.redirectUrl)
-      if (redirectUrl) {
-        if (oauthTab) oauthTab.location.href = redirectUrl
-        else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
-        notifyIntegrationsChanged()
-      } else if (data.connectionId) {
-        oauthTab?.close()
-        notifyIntegrationsChanged()
-      } else {
-        oauthTab?.close()
-        throw new Error('No connection setup URL returned')
-      }
-    } catch (err) {
-      oauthTab?.close()
-      throw err
-    }
-  }, [])
-
-  const dialogDisconnect = useCallback(async (slug: string) => {
-    const res = await overlayAppClient.integrations.disconnectResponse(slug)
-    if (!res.ok) throw new Error('Failed to disconnect')
-    notifyIntegrationsChanged()
-  }, [])
-
-  const connectPopularConnector = useCallback(
-    async (slug: string) => {
-      if (connectorConnectingSlug) return
-      setConnectorConnectingSlug(slug)
-      try {
-        await dialogConnect(slug)
-      } catch {
-        // Shows in OAuth / popup flow; user can retry or use Add to search
-      } finally {
-        setConnectorConnectingSlug(null)
-      }
-    },
-    [connectorConnectingSlug, dialogConnect],
-  )
-
-  const goToConnectorsStep = useCallback(() => {
-    setImportPaste('')
-    setImportError(null)
-    setPostTourPhase('connectors')
-  }, [])
-
-  const finishImportStep = useCallback(() => {
-    if (integrationsEnabled) goToConnectorsStep()
-    else finishPostTour()
-  }, [finishPostTour, goToConnectorsStep, integrationsEnabled])
-
-  const beginPostTour = useCallback(() => {
-    if (memoryEnabled) setPostTourPhase('import-memories')
-    else if (integrationsEnabled) setPostTourPhase('connectors')
-    else finishPostTour()
-  }, [finishPostTour, integrationsEnabled, memoryEnabled])
-
-  const saveImportedMemories = useCallback(async () => {
-    const text = importPaste.trim()
-    if (!text || isImportSaving) return
-    setIsImportSaving(true)
-    setImportError(null)
-    try {
-      const res = await overlayAppClient.memory.createResponse({
-        content: text,
-        source: 'manual',
-        actor: 'user',
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Failed to save' }))
-        setImportError((err as { error?: string }).error ?? 'Failed to save memories')
-        return
-      }
-      finishImportStep()
-    } finally {
-      setIsImportSaving(false)
-    }
-  }, [importPaste, isImportSaving, finishImportStep])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (postTourPhase === 'import-memories') {
-        if (e.key === 'Escape') finishImportStep()
-        return
-      }
-      if (postTourPhase === 'connectors') {
-        if (e.key === 'Escape') finishPostTour()
-        return
-      }
-      if (e.key === 'Escape') onSkip()
-      if (e.key === 'ArrowRight' || e.key === 'Enter') {
-        if (currentStep < steps.length - 1) onNext()
-        else {
-          beginPostTour()
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [
-    currentStep,
-    steps.length,
-    onNext,
-    onSkip,
-    postTourPhase,
-    finishImportStep,
-    finishPostTour,
-    beginPostTour,
-  ])
-
   if (!step) return null
 
   if (postTourPhase === 'import-memories') {
-    return (
-      <div
-        className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
-        onClick={(e) => { if (e.target === e.currentTarget) finishImportStep() }}
-      >
-        <div
-          role="dialog"
-          aria-labelledby="onboarding-import-title"
-          className="w-[min(540px,92vw)] max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="mb-5 flex items-start justify-between gap-3">
-            <h2 id="onboarding-import-title" className="text-base font-semibold text-[var(--foreground)]">
-              Import memories from other assistants
-            </h2>
-            <button
-              type="button"
-              onClick={finishImportStep}
-              className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              aria-label="Skip import"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <p className="mb-6 text-xs text-[var(--muted)]">
-            Optional — bring over context from ChatGPT, Claude, or other tools. Copy the prompt, paste it there, then paste the reply below. We&apos;ll save it into your Overlay memories.
-          </p>
-
-          <div className="relative mb-6 flex gap-3">
-            <div className="flex flex-col items-center">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
-                1
-              </span>
-              <div className="mt-1 w-px flex-1 min-h-[24px] bg-[var(--border)]" aria-hidden />
-            </div>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
-                Copy this prompt into a chat with your other AI provider
-              </p>
-              <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pb-10 pt-3">
-                <p className="text-xs leading-relaxed text-[var(--foreground)]">{ONBOARDING_IMPORT_MEMORY_PROMPT}</p>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(ONBOARDING_IMPORT_MEMORY_PROMPT)
-                    setMemoryPromptCopied(true)
-                    window.setTimeout(() => setMemoryPromptCopied(false), 2000)
-                  }}
-                  className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
-                >
-                  {memoryPromptCopied ? <Check size={11} /> : <Copy size={11} />}
-                  {memoryPromptCopied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
-              2
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
-                Paste results below to add to Overlay memories
-              </p>
-              <textarea
-                value={importPaste}
-                onChange={(e) => setImportPaste(e.target.value)}
-                placeholder="Paste your memory details here"
-                rows={6}
-                className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted)] focus:border-[var(--muted)]"
-              />
-              {importError ? (
-                <p className="mt-2 text-xs text-red-500">{importError}</p>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={finishImportStep} className={DIALOG_SECONDARY_CLASS}>
-              Skip
-            </button>
-            <button
-              type="button"
-              onClick={() => void saveImportedMemories()}
-              disabled={!importPaste.trim() || isImportSaving}
-              className={DIALOG_PRIMARY_CLASS}
-            >
-              {isImportSaving ? 'Saving…' : 'Add to memory'}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
+    return <ImportMemoriesStep onFinish={finishImportStep} />
   }
 
   if (postTourPhase === 'connectors') {
-    return (
-      <>
-        <div
-          className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) finishPostTour() }}
-        >
-          <div
-            role="dialog"
-            aria-labelledby="onboarding-connectors-title"
-            className="w-[min(520px,94vw)] max-h-[min(90vh,840px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <h2 id="onboarding-connectors-title" className="text-base font-semibold text-[var(--foreground)]">
-                Connect your tools
-              </h2>
-              <button
-                type="button"
-                onClick={finishPostTour}
-                className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <p className="mb-4 text-xs leading-relaxed text-[var(--muted)]">
-              Optional — connect apps you use with Overlay. Use Connect on a card below (same OAuth flow as Extensions), or{' '}
-              <span className="text-[var(--foreground)]">Add</span> to search the full integration catalog.
-            </p>
-
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-              {ONBOARDING_CONNECTOR_CARDS.map((c) => {
-                const busy = connectorConnectingSlug === c.slug
-                const anyBusy = connectorConnectingSlug !== null
-                const isConnected = connectedSlugs.has(c.slug)
-                return (
-                  <div
-                    key={c.slug}
-                    className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 shadow-sm"
-                  >
-                    <OnboardingConnectorCardLogo
-                      name={c.name}
-                      fallbackEmoji={c.icon}
-                      logoUrl={connectorLogos[c.slug]}
-                    />
-                    <p className="text-xs font-semibold text-[var(--foreground)]">{c.name}</p>
-                    <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-[var(--muted)]">
-                      {c.description}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => { if (!isConnected) void connectPopularConnector(c.slug) }}
-                      disabled={anyBusy || isConnected}
-                      className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-100 disabled:hover:bg-[var(--surface-elevated)]"
-                    >
-                      {isConnected ? (
-                        <>
-                          <Check size={12} aria-hidden />
-                          Connected
-                        </>
-                      ) : (
-                        <>
-                          {busy ? (
-                            <Loader2 size={12} className="animate-spin" aria-hidden />
-                          ) : null}
-                          Connect
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIntegrationsPickerOpen(true)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)]/60 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
-            >
-              <Plus size={16} strokeWidth={2} className="text-[var(--muted)]" aria-hidden />
-              Add integration
-            </button>
-
-            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-              <button type="button" onClick={finishPostTour} className={DIALOG_SECONDARY_CLASS}>
-                Skip
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  router.push('/app/tools')
-                  finishPostTour()
-                }}
-                className={`${DIALOG_PRIMARY_CLASS} flex items-center gap-1.5`}
-              >
-                Open Extensions
-              </button>
-            </div>
-          </div>
-        </div>
-        <IntegrationsDialog
-          connectedSlugs={connectedSlugs}
-          isOpen={integrationsPickerOpen}
-          onClose={() => setIntegrationsPickerOpen(false)}
-          onConnect={dialogConnect}
-          onDisconnect={dialogDisconnect}
-          overlayClassName="fixed inset-0 z-[10060] flex items-center justify-center bg-[var(--overlay-scrim)] p-5"
-        />
-      </>
-    )
+    return <ConnectToolsStep onFinish={finishPostTour} />
   }
 
-  const rect = frame.stepIndex === currentStep ? frame.rect : null
-  const spotlightRect = frame.spotlightRect
-
-  const visible = frame.stepIndex === currentStep && frame.rect !== null && !isClosing
-  const backdropOpacity = backdropReady && !isClosing ? 1 : 0
-
-  const tooltipInfo = rect
-    ? computeTooltipStyle(rect, step.placement ?? 'right')
-    : null
-
-  const isLast = currentStep === steps.length - 1
-
   return (
-    <>
-      {/* Backdrop with box-shadow cutout */}
-      <div
-        aria-hidden
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9998,
-          pointerEvents: 'none',
-          transition: 'opacity 400ms ease',
-          opacity: backdropOpacity,
-        }}
-      >
-        {spotlightRect && (
-          <div
-            style={{
-              position: 'absolute',
-              top: spotlightRect.top,
-              left: spotlightRect.left,
-              width: spotlightRect.width,
-              height: spotlightRect.height,
-              borderRadius: 8,
-              boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
-              transition: 'top 400ms ease, left 400ms ease, width 400ms ease, height 400ms ease',
-            }}
-          />
-        )}
-        {spotlightRect && (
-          <>
-            {/* Block clicks to the app behind the tour; do not dismiss on backdrop (Skip / X only). */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: spotlightRect.top, pointerEvents: 'auto' }} />
-            <div style={{ position: 'absolute', top: spotlightRect.top + spotlightRect.height, left: 0, right: 0, bottom: 0, pointerEvents: 'auto' }} />
-            <div style={{ position: 'absolute', top: spotlightRect.top, left: 0, width: spotlightRect.left, height: spotlightRect.height, pointerEvents: 'auto' }} />
-            <div style={{ position: 'absolute', top: spotlightRect.top, left: spotlightRect.left + spotlightRect.width, right: 0, height: spotlightRect.height, pointerEvents: 'auto' }} />
-          </>
-        )}
-        {/* When the target is missing, do not swallow clicks for the whole app —
-            that blocked invitation accept and other non-chat routes. */}
-        {!spotlightRect && (
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
-        )}
-      </div>
-
-      {/* Tooltip card */}
-      {tooltipInfo && (
-        <div
-          role="dialog"
-          aria-label={`Onboarding step ${currentStep + 1} of ${steps.length}`}
-          style={{
-            ...tooltipInfo.style,
-            opacity: visible ? 1 : 0,
-            transform: visible ? 'scale(1)' : 'scale(0.95)',
-            transition: 'opacity 400ms ease, transform 400ms ease',
-          }}
-          className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
-        >
-          <div style={tooltipInfo.arrowStyle} aria-hidden />
-
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <span className="text-[11px] font-medium tabular-nums text-[var(--muted)]">
-              {currentStep + 1} / {steps.length}
-            </span>
-            <button
-              type="button"
-              onClick={onSkip}
-              className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              aria-label="Close tour"
-            >
-              <X size={14} />
-            </button>
-          </div>
-
-          <h3 className="mb-1.5 text-base font-semibold text-[var(--foreground)]">{step.title}</h3>
-          <p className="mb-5 text-sm leading-relaxed text-[var(--muted)]">{step.description}</p>
-
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onSkip}
-              className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              Skip tour
-            </button>
-            <div className="flex gap-2">
-              {currentStep > 0 && (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--surface-elevated)]"
-                >
-                  Back
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={isLast ? beginPostTour : onNext}
-                className="flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)]"
-              >
-                {isLast ? (
-                  <>Get started</>
-                ) : (
-                  <>Next <ArrowRight size={13} /></>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <TourOverlay
+      step={step}
+      currentStep={currentStep}
+      stepsCount={steps.length}
+      isClosing={isClosing}
+      frame={frame}
+      backdropReady={backdropReady}
+      onSkip={onSkip}
+      onBack={onBack}
+      onNext={onNext}
+      onComplete={beginPostTour}
+    />
   )
 }

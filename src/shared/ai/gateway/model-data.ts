@@ -63,8 +63,6 @@ const REASONING_KIMI_K3: readonly ModelReasoningOption[] = [
 
 const SPECIAL_CHAT_MODELS: ChatModel[] = [
   { id: FREE_TIER_AUTO_MODEL_ID, name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-  { id: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free', name: 'Free: Nemotron 3 Super 120B', provider: 'openrouter', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-  { id: 'stepfun-ai/step-3.5-flash', name: 'Free: Step 3.5 Flash', provider: 'nvidia', intelligence: 0, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
 ]
 
 export const OVERLAY_FREE_CHAT_MODELS: readonly ChatModel[] = SPECIAL_CHAT_MODELS
@@ -81,11 +79,12 @@ const CURATED_FALLBACK_CHAT_MODELS: ChatModel[] = [
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', intelligence: 0, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: false, supportsSearch: false, supportsZeroDataRetention: true },
   { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20 Reasoning', provider: 'xai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', intelligence: 0, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, reasoningLevels: REASONING_DEEPSEEK, supportsSearch: false, supportsZeroDataRetention: false },
-  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, reasoningLevels: REASONING_DEEPSEEK, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'deepseek/deepseek-v4-flash-0731', name: 'DeepSeek V4 Flash', provider: 'deepseek', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, reasoningLevels: REASONING_DEEPSEEK, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'moonshotai', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_KIMI_K3, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'z-ai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
+  { id: 'z-ai/glm-5.3-flash', name: 'GLM 5.3 Flash', provider: 'z-ai', intelligence: 0, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'qwen/qwen3.6-plus', name: 'Qwen3.6 Plus', provider: 'qwen', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false },
   { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'openai', intelligence: 0, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: true },
 ]
@@ -102,11 +101,12 @@ export const DEFAULT_CURATED_CHAT_MODEL_IDS = [
   'claude-haiku-4-5',
   'xai/grok-4.20-reasoning',
   'deepseek/deepseek-v4-pro',
-  'deepseek/deepseek-v4-flash',
+  'deepseek/deepseek-v4-flash-0731',
   'minimax/minimax-m2.7',
   'moonshotai/kimi-k3',
   'moonshotai/kimi-k2.6',
   'z-ai/glm-5.1',
+  'z-ai/glm-5.3-flash',
   'qwen/qwen3.6-plus',
   'openai/gpt-oss-120b',
   ...SPECIAL_CHAT_MODELS.map((model) => model.id),
@@ -218,12 +218,13 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'claude-sonnet-4-6',
   'xai/grok-4.20-reasoning',
   'deepseek/deepseek-v4-pro',
-  'deepseek/deepseek-v4-flash',
+  'deepseek/deepseek-v4-flash-0731',
   'moonshotai/kimi-k3',
   'moonshotai/kimi-k2.6',
   'qwen/qwen3.6-plus',
   'gemini-3-flash-preview',
   'openai/gpt-5.4-mini',
+  'z-ai/glm-5.3-flash',
   'z-ai/glm-5.1',
   'gpt-4.1-2025-04-14',
   'claude-haiku-4-5',
@@ -231,8 +232,6 @@ export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  'stepfun-ai/step-3.5-flash',
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
   FREE_TIER_AUTO_MODEL_ID,
 ]
 
@@ -261,6 +260,7 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash': 'gemini-3-flash-preview',
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
+  'zai/glm-5.3-flash': 'z-ai/glm-5.3-flash',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
   'openrouter/moonshotai/kimi-k2.6:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/z-ai/glm-4.5-air:free': FREE_TIER_DEFAULT_MODEL_ID,
@@ -269,9 +269,12 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'openrouter/minimax/minimax-m2.5:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/arcee-ai/trinity-large-thinking:free': FREE_TIER_DEFAULT_MODEL_ID,
   'openrouter/openai/gpt-oss-120b:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'deepseek-ai/deepseek-v3.2': 'stepfun-ai/step-3.5-flash',
-  'moonshotai/kimi-k2-thinking': 'stepfun-ai/step-3.5-flash',
-  'minimaxai/minimax-m2.7': 'stepfun-ai/step-3.5-flash',
+  'openrouter/nvidia/nemotron-3-super-120b-a12b:free': FREE_TIER_DEFAULT_MODEL_ID,
+  'stepfun-ai/step-3.5-flash': FREE_TIER_DEFAULT_MODEL_ID,
+  'deepseek-ai/deepseek-v3.2': FREE_TIER_DEFAULT_MODEL_ID,
+  'deepseek/deepseek-v4-flash': 'deepseek/deepseek-v4-flash-0731',
+  'moonshotai/kimi-k2-thinking': FREE_TIER_DEFAULT_MODEL_ID,
+  'minimaxai/minimax-m2.7': FREE_TIER_DEFAULT_MODEL_ID,
 }
 
 export function getModel(id: string): ChatModel | undefined {
@@ -341,6 +344,16 @@ export function intelligenceToBarFill5(m: ChatModel): number {
 export function modelUsesOpenRouterTransport(modelId: string): boolean {
   const p = getModel(modelId)?.provider
   return p === 'openrouter'
+}
+
+/**
+ * True when completions are served via the Vercel AI Gateway on the global
+ * `AI_GATEWAY_API_KEY` — the metered path that runs out of credit. OpenRouter
+ * (free router), NVIDIA NIM, and BYOK models use separate credentials.
+ */
+export function modelUsesAiGatewayTransport(modelId: string): boolean {
+  if (isByokModelId(modelId)) return false
+  return !modelUsesOpenRouterTransport(modelId)
 }
 
 export function modelSupportsZeroDataRetention(modelId: string): boolean {

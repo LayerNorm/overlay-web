@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react'
@@ -50,8 +51,15 @@ export function GuestGateProvider({
   const pathname = usePathname()
   const [modalReason, setModalReason] = useState<GateReason | null>(null)
   const [modalClosing, setModalClosing] = useState(false)
-  const [cornerDismissed, setCornerDismissed] = useState(readCornerDismissed)
+  // Always false on the server and first client render so hydration matches;
+  // the real sessionStorage value is read after mount.
+  const [cornerDismissed, setCornerDismissed] = useState(false)
   const [cornerClosing, setCornerClosing] = useState(false)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read sessionStorage after mount
+    setCornerDismissed(readCornerDismissed())
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -85,11 +93,16 @@ export function GuestGateProvider({
     }, FADE_MS)
   }, [])
 
+  const guestGateValue = useMemo(
+    () => ({ requireAuth, isModalOpen: Boolean(modalReason) }),
+    [requireAuth, modalReason],
+  )
+
   const showCorner =
     !suppressPrompts && authSettled && !isAuthenticated && !cornerDismissed && !modalReason
 
   return (
-    <GuestGateContext.Provider value={{ requireAuth, isModalOpen: !!modalReason }}>
+    <GuestGateContext.Provider value={guestGateValue}>
       {children}
       {!isAuthenticated && (((authSettled && !!modalReason) || modalClosing)) ? (
         <SignInFullScreenModal

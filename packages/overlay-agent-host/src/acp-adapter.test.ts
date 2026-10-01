@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { AcpAgentAdapter } from './acp-adapter'
+import { AcpAgentAdapter, overlayMcpServers } from './acp-adapter'
 import type { NormalizedAgentEvent } from './adapter'
 
 test('official ACP SDK adapter streams supervised updates and bridges approval and elicitation', async () => {
@@ -71,3 +71,17 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
   throw new Error('timed out waiting for ACP event')
 }
+
+test('the Overlay MCP server is offered only to HTTP-capable agents over a safe URL', () => {
+  const metadata = { overlayMcp: { url: 'https://www.getoverlay.io/api/agent-mcp', token: 'ovmcp_abc.def' } }
+  assert.deepEqual(overlayMcpServers(metadata, true), [{
+    type: 'http',
+    name: 'overlay',
+    url: 'https://www.getoverlay.io/api/agent-mcp',
+    headers: [{ name: 'Authorization', value: 'Bearer ovmcp_abc.def' }],
+  }])
+  assert.deepEqual(overlayMcpServers(metadata, false), [])
+  assert.deepEqual(overlayMcpServers({}, true), [])
+  assert.deepEqual(overlayMcpServers({ overlayMcp: { url: 'http://evil.example/mcp', token: 't' } }, true), [])
+  assert.equal(overlayMcpServers({ overlayMcp: { url: 'http://localhost:3000/api/agent-mcp', token: 't' } }, true).length, 1)
+})

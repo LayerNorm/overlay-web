@@ -45,14 +45,7 @@ export function useChatPreferences() {
   const [imageModelSelectionMode, setImageModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [videoModelSelectionMode, setVideoModelSelectionMode] = useState<AskModelSelectionMode>('single')
   const [reasoning, setReasoning] = useState<ReasoningLevel | undefined>(undefined)
-  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>(() => {
-    try {
-      const saved = localStorage.getItem(VIDEO_SUB_MODE_KEY)
-      return (saved as VideoSubMode | null) ?? 'text-to-video'
-    } catch {
-      return 'text-to-video'
-    }
-  })
+  const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>('text-to-video')
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -64,6 +57,9 @@ export function useChatPreferences() {
       if (savedPersonalChatMode === 'chat' || savedPersonalChatMode === 'work') {
         setPersonalChatMode(savedPersonalChatMode)
       }
+
+      const savedVideoSubMode = localStorage.getItem(VIDEO_SUB_MODE_KEY)
+      if (savedVideoSubMode) setVideoSubMode(savedVideoSubMode as VideoSubMode)
 
       // Restore last text chat model selection if present
       try {
@@ -107,7 +103,11 @@ export function useChatPreferences() {
           const parsed = JSON.parse(rawImg) as unknown
           if (Array.isArray(parsed) && parsed.length > 0) {
             const allowed = new Set(IMAGE_MODELS.map((m) => m.id))
-            const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
+            const next = parsed
+              .filter(
+                (id): id is string => typeof id === 'string' && allowed.has(id),
+              )
+              .slice(0, 4)
             if (next.length > 0) setSelectedImageModels(next)
           }
         }
@@ -120,7 +120,11 @@ export function useChatPreferences() {
           const parsed = JSON.parse(rawVid) as unknown
           if (Array.isArray(parsed) && parsed.length > 0) {
             const allowed = new Set(VIDEO_MODELS.map((m) => m.id))
-            const next = parsed.filter((id): id is string => typeof id === 'string' && allowed.has(id)).slice(0, 4)
+            const next = parsed
+              .filter(
+                (id): id is string => typeof id === 'string' && allowed.has(id),
+              )
+              .slice(0, 4)
             if (next.length > 0) setSelectedVideoModels(next)
           }
         }
@@ -130,6 +134,8 @@ export function useChatPreferences() {
     } catch {
       /* private browsing / blocked storage — keep defaults */
     } finally {
+      // Marks prefs hydration complete — this flag is the mechanism itself.
+      // react-doctor-disable-next-line react-doctor/no-initialize-state
       setChatPrefsHydrated(true)
     }
   }, [])

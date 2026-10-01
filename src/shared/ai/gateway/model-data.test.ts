@@ -6,6 +6,7 @@ import {
   getGatewayCatalogRevision,
   IMAGE_MODELS,
   VIDEO_MODELS,
+  modelUsesAiGatewayTransport,
   registerByokModels,
   registerGatewayCatalogModels,
 } from './model-data'
@@ -154,4 +155,10 @@ test('active BYOK models register without replacing hosted models and respect ex
   registerByokModels([])
   assert.equal(getEnabledChatModels(['openrouter/free'], true)[0]?.id, 'openrouter/free')
   assert.equal(getEnabledChatModels([byokId], true).length, 0)
+})
+
+test('modelUsesAiGatewayTransport only flags models served by the metered gateway key', () => {
+  assert.equal(modelUsesAiGatewayTransport('anthropic/claude-opus-4.7'), true)
+  assert.equal(modelUsesAiGatewayTransport('openrouter/free'), false)
+  assert.equal(modelUsesAiGatewayTransport('byok/connection_1/vendor/model-a'), false)
 })

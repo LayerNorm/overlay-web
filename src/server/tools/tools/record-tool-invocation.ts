@@ -31,31 +31,6 @@ async function recordToolInvocation(args: Parameters<typeof fireAndForgetRecordT
   bucket: ReturnType<typeof toolCostBucketForId>
   errorMessage?: string
 }): Promise<void> {
-  const { getOverlayServerContext } = await import('@/server/bootstrap')
-  const context = getOverlayServerContext()
-  if (context.appDataCapabilities.provider === 'postgres') {
-    await context.appData.repositories.usage.recordBatch({
-      events: [{
-        costCents: 0,
-        kind: 'agent',
-        metadata: {
-          conversationId: args.conversationId,
-          costBucket: args.bucket,
-          durationMs: args.durationMs,
-          errorMessage: args.errorMessage,
-          success: args.success,
-          toolId: args.toolName,
-          turnId: args.turnId,
-        },
-        modelId: args.modelId,
-        occurredAt: Date.now(),
-      }],
-      operationId: `tool_${globalThis.crypto.randomUUID()}`,
-      userId: args.userId,
-    })
-    return
-  }
-
   const { convex } = await import('@/server/database/convex')
   await convex.mutation(
     'platform/usage:recordToolInvocation',

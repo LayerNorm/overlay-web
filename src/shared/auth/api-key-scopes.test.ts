@@ -1,11 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-const {
+import {
   hasRequiredApiKeyScopes,
   isApiKeyScope,
   normalizeApiKeyScopes,
-} = await import(new URL('./api-key-scopes.ts', import.meta.url).href)
+} from './api-key-scopes.ts'
 
 test('normalizeApiKeyScopes de-dupes valid scopes', () => {
   assert.deepEqual(

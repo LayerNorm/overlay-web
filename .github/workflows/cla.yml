@@ -45,7 +45,8 @@ jobs:
             }
 
             function isAllowlisted(login) {
-              return ALLOWLIST.has(String(login || '').toLowerCase());
+              const normalized = String(login || '').toLowerCase();
+              return ALLOWLIST.has(normalized) || normalized.endsWith('[bot]');
             }
 
             function signedLoginsForCurrentVersion(signatures) {
@@ -308,7 +309,12 @@ jobs:
                   login.toLowerCase(),
                 ),
             );
-            const complete = unidentified.length === 0 && missing.length === 0;
+            // Bot/app-authored commits often carry only a raw git identity
+            // (no linked GitHub user). Accept them when the PR author itself
+            // is an exempt bot; human PRs still fail on unidentified commits.
+            const complete =
+              (unidentified.length === 0 || isAllowlisted(prUser)) &&
+              missing.length === 0;
 
             if (complete) {
               const summary = 'All pull request authors are allowlisted or have signed the current CLA version.';

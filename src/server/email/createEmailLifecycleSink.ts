@@ -3,7 +3,7 @@ import 'server-only'
 import type { OutboxRepository } from '@/server/jobs'
 import type { LifecycleEventSink } from '@/server/lifecycle-events'
 import type { RateLimiter } from '@overlay/app-core'
-import { LIFECYCLE_EMAIL_OUTBOX_TOPIC } from './EmailOutboxDelivery'
+export const LIFECYCLE_EMAIL_OUTBOX_TOPIC = 'email.lifecycle.v1'
 
 /**
  * Per-user email rate limits. Without these, a user can @-mention or DM-spam

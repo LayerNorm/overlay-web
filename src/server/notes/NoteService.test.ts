@@ -95,3 +95,22 @@ test('NoteService.updateNote forwards the expected revision to the repository', 
   assert.equal(expectedRevision, now)
   assert.equal(result.note?.updatedAt, now + 1)
 })
+
+test('NoteService stores Markdown when a client sends editor HTML, and reads legacy HTML as Markdown', async () => {
+  const repository = createNoteRepository()
+  const service = new NoteService({ noteRepository: repository })
+
+  const created = await service.createNote({
+    userId: 'user_1',
+    title: 'Plan',
+    content: '<h2>Goals</h2><ul data-type="taskList"><li data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p>ship</p></div></li></ul>',
+  })
+  assert.equal(created.note?.content, '## Goals\n\n- [ ] ship\n')
+  assert.equal((await repository.getNote({ noteId: created.id, userId: 'user_1' }))?.content, '## Goals\n\n- [ ] ship\n')
+
+  const legacy = await repository.createNote({ userId: 'user_1', title: 'Old', content: '<p><strong>bold</strong></p>' })
+  assert.equal((await service.getNote({ userId: 'user_1', noteId: legacy.id }))?.content, '**bold**\n')
+
+  const markdown = await service.createNote({ userId: 'user_1', title: 'Md', content: '# Already markdown\n' })
+  assert.equal(markdown.note?.content, '# Already markdown\n')
+})
