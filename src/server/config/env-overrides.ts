@@ -287,8 +287,8 @@ function llmConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
       : readEnv(env, 'OPENROUTER_API_KEY')
         ? 'openrouter'
         : readEnv(env, 'OPENAI_API_KEY')
-        ? 'openai'
-        : undefined)
+          ? 'openai'
+          : undefined)
   const azureOpenAI = compactObject({
     resourceName: readEnv(env, 'AZURE_OPENAI_RESOURCE_NAME'),
     baseURL: readEnv(env, 'AZURE_OPENAI_BASE_URL'),
@@ -296,7 +296,7 @@ function llmConfigFromEnv(env: EnvSource): OverlayRuntimeConfigLayer | null {
     deployments: parseProviderIdMap(env, 'AZURE_OPENAI_DEPLOYMENTS'),
   })
   const bedrock = compactObject({
-    region: readEnv(env, 'BEDROCK_REGION') ?? readEnv(env, 'AWS_REGION'),
+    region: readEnv(env, 'BEDROCK_REGION') ?? (gatewayProvider === 'bedrock' ? readEnv(env, 'AWS_REGION') : undefined),
     modelIds: parseProviderIdMap(env, 'BEDROCK_MODEL_IDS'),
   })
   if (

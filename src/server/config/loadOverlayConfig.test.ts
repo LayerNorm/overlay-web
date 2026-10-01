@@ -220,12 +220,21 @@ test('configOverridesFromEnv maps Azure OpenAI and Bedrock model settings withou
     },
   })
 
-  assert.deepEqual(configOverridesFromEnv({
+  assert.equal(configOverridesFromEnv({
     BEDROCK_REGION: '',
     AWS_REGION: 'us-west-2',
     AWS_BEARER_TOKEN_BEDROCK: 'not-in-config',
     AZURE_OPENAI_API_KEY: 'not-in-config',
+  }).llm, undefined)
+})
+
+test('configOverridesFromEnv only uses AWS_REGION for an explicitly selected Bedrock gateway', () => {
+  assert.equal(configOverridesFromEnv({ AWS_REGION: 'us-west-2' }).llm, undefined)
+  assert.deepEqual(configOverridesFromEnv({
+    AWS_REGION: 'us-west-2',
+    LLM_GATEWAY: 'bedrock',
   }).llm, {
+    gatewayProvider: 'bedrock',
     bedrock: { region: 'us-west-2' },
   })
 })
