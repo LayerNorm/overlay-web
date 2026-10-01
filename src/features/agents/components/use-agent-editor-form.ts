@@ -13,7 +13,7 @@ import {
 } from '@/shared/agents/tool-groups'
 import { workspaceAgentUsesByo, workspaceAgentUsesManagedHarness } from '../lib/byo-agent-setup'
 import { dispatchAgentDraftPreview } from '@/shared/workspace/sidebar-events'
-import { AVATAR_COLORS } from '../lib/agent-editor-utils'
+import { AVATAR_FALLBACK_COLOR } from '../lib/agent-editor-utils'
 import type { getInitialEditorState } from '../lib/agent-editor-state'
 import type { AgentType } from './AgentEditorForm'
 
@@ -74,7 +74,7 @@ export function useAgentEditorForm({
       setDescription(agent.description ?? '')
       setInstructions(agent.instructions)
       setModelId(agent.modelId)
-      setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
+      setAvatarColor(agent.avatarColor ?? AVATAR_FALLBACK_COLOR)
       setAvatarShape(agent.avatarShape ?? 'circle')
       setVisibility(agent.visibility)
       setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))

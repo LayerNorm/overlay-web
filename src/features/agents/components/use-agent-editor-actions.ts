@@ -11,7 +11,7 @@ import { enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { buildAgentEditorHref, startAgentChat } from '../lib/agent-chat'
-import { AVATAR_COLORS } from '../lib/agent-editor-utils'
+import { AVATAR_FALLBACK_COLOR } from '../lib/agent-editor-utils'
 import type { useAgentRuntime } from './use-agent-runtime'
 import type { useByoConnection } from './use-byo-connection'
 import type { useAgentEditorForm } from './use-agent-editor-form'
@@ -192,7 +192,7 @@ export function useAgentEditorActions({
     setDescription(agent.description ?? '')
     setInstructions(agent.instructions)
     setModelId(agent.modelId)
-    setAvatarColor(agent.avatarColor ?? AVATAR_COLORS[0]!)
+    setAvatarColor(agent.avatarColor ?? AVATAR_FALLBACK_COLOR)
     setAvatarShape(agent.avatarShape ?? 'circle')
     setVisibility(agent.visibility)
     setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))

@@ -30,7 +30,6 @@ type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
   agent: WorkspaceAgentDirectoryItem | null
   isDefaultMaster: boolean
-  freshDraft: boolean
   showcase: boolean
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
@@ -54,7 +53,6 @@ function AgentEditorFormSection({
   mode,
   agent,
   isDefaultMaster,
-  freshDraft,
   showcase,
   computersAvailable,
   connectedAgentsEnabled,
@@ -313,7 +311,6 @@ export function AgentEditorView({
   valid,
   busy,
   error,
-  freshDraft,
   showcase,
   computersAvailable,
   connectedAgentsEnabled,
@@ -345,7 +342,6 @@ export function AgentEditorView({
   valid: boolean
   busy: boolean
   error: string | null
-  freshDraft: boolean
   showcase: boolean
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
@@ -411,7 +407,6 @@ export function AgentEditorView({
             mode={mode}
             agent={agent}
             isDefaultMaster={isDefaultMaster}
-            freshDraft={freshDraft}
             showcase={showcase}
             computersAvailable={computersAvailable}
             connectedAgentsEnabled={connectedAgentsEnabled}

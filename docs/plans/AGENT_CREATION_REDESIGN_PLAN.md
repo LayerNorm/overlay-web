@@ -1,6 +1,6 @@
 # Agent creation redesign
 
-Status: mockup stage. Nothing in `src/` changes until the design is approved. Mockup: `artifacts/agent-create-panel.html` (gitignored; open it in a browser).
+Status: shipped for Overlay agents (`NewAgentDialog`, `AgentAvatarPicker`, `InfoTip`). "Other agent" is visible but disabled until other-agent support is rebuilt. Mockup: `artifacts/agent-create-panel.html` (local, gitignored).
 
 ## Goal
 
@@ -47,8 +47,9 @@ Moved out of creation, still available after the agent exists: Reachable on (Sla
 ## Mapping to existing code
 
 - `buildWorkspaceAgentInput` already takes everything the dialog needs; the dialog just supplies defaults for what it hides (`enabledToolGroups`, `visibility`, `modelId`, avatar).
-- Defaults live in one place (`DEFAULT_NEW_AGENT_TOOL_GROUPS`, new, in `src/shared/agents/tool-groups.ts`) so the dialog and the API agree.
-- `isAgentEditorValid` stays the save gate.
+- Tool presets live in `AGENT_TOOL_PRESETS` / `agentToolPresetFor` in `src/shared/agents/tool-groups.ts`; Everything is `DEFAULT_AGENT_TOOL_GROUP_IDS`.
+- The dialog's save gate is `isNewAgentDraftValid`; the full editor keeps `isAgentEditorValid`.
+- The create-first flow ("Untitled agent" created on click, archived on cancel) is removed.
 - The dialog reuses `Creature`, `Toggle` and `ListboxSelect` from the existing chrome, and the app's tooltip primitive for the info icons. No new dependencies.
 - The avatar popover writes `avatarShape` and `avatarColor`, which the API already stores. `AVATAR_COLORS` grows from 6 to 11 (white, brown, red, orange, amber, green, teal, blue, purple, pink, grey); the eye colour already adapts to light bodies.
 

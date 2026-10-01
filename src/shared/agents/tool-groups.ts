@@ -250,3 +250,21 @@ export const DEFAULT_AGENT_TOOL_GROUP_IDS: readonly string[] = AGENT_TOOL_GROUPS
 export function allAgentToolGrantIds(): string[] {
   return toolIdsForEnabledGroups(new Set(AGENT_TOOL_GROUPS.map((group) => group.id)))
 }
+
+export type AgentToolPreset = 'everything' | 'standard' | 'readonly'
+
+/** One-click tool sets for the new-agent dialog. None includes `computer`, which is its own explicit opt-in. */
+export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly string[]> = {
+  everything: DEFAULT_AGENT_TOOL_GROUP_IDS,
+  standard: ['memory', 'knowledge', 'files', 'web_search', 'notes'],
+  readonly: ['knowledge', 'web_search'],
+}
+
+/** The preset that exactly matches the enabled groups (ignoring `computer`), or null for a custom mix. */
+export function agentToolPresetFor(groupIds: ReadonlySet<string>): AgentToolPreset | null {
+  const enabled = [...groupIds].filter((id) => id !== 'computer')
+  for (const [preset, ids] of Object.entries(AGENT_TOOL_PRESETS) as Array<[AgentToolPreset, readonly string[]]>) {
+    if (ids.length === enabled.length && ids.every((id) => groupIds.has(id))) return preset
+  }
+  return null
+}

@@ -1,13 +1,8 @@
 'use client'
 
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
-import { buildWorkspaceAgentInput } from './agent-editor-input'
-import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '@/shared/agents/tool-groups'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { AVATAR_COLORS } from './agent-editor-utils'
 
 /** Opens (or creates) the agent's main thread, then navigates to it. Resolves the conversation id (null when it cannot be determined). */
 export async function startAgentChat(args: {
@@ -96,52 +91,4 @@ export async function sendAgentGreeting(args: {
   } catch {
     // Greeting is decorative; creation already succeeded.
   }
-}
-
-/**
- * Create-first "New agent": creates a real agent with defaults (unique
- * "Untitled agent" name), refreshes the roster, opens its conversation, and
- * returns it so the caller can open the edit panel pointed at it. Returns
- * 'no-permission' when guests cannot create (caller shows the blank form).
- */
-export async function createAgentAndOpenChat(args: {
-  workspaceId: string
-  push(href: string): void
-  onDirectoryChanged(workspaceId: string): void
-  onOpened(agentId: string): void
-}): Promise<{ status: 'created' | 'no-permission'; agent?: WorkspaceAgentDirectoryItem; conversationId?: string }> {
-  const directory = await overlayAppClient.agents.list(args.workspaceId)
-  if (!directory.canCreate) return { status: 'no-permission' }
-  const taken = new Set(directory.agents.map((agent) => agent.name.toLowerCase()))
-  let name = 'Untitled agent'
-  for (let n = 2; taken.has(name.toLowerCase()) && n < 50; n += 1) name = `Untitled agent ${n}`
-  const created = await overlayAppClient.agents.create(args.workspaceId, {
-    ...buildWorkspaceAgentInput({
-      name,
-      description: '',
-      instructions: 'You are a helpful assistant.',
-      agentType: 'overlay',
-      harnessLabel: '',
-      adapterId: '',
-      modelId: DEFAULT_MODEL_ID,
-      avatarColor: AVATAR_COLORS[0]!,
-      avatarShape: 'circle',
-      enabledToolGroups: new Set(DEFAULT_AGENT_TOOL_GROUP_IDS),
-      visibility: 'workspace',
-    }),
-    teamIds: [],
-  })
-  args.onDirectoryChanged(args.workspaceId)
-  args.onOpened(created.agent.id)
-  const conversationId = await startAgentChat({
-    workspaceId: args.workspaceId,
-    agentId: created.agent.id,
-    agentPrincipalId: created.agent.principalId,
-    surface: 'agents',
-    push: args.push,
-  })
-  if (conversationId) {
-    await sendAgentGreeting({ workspaceId: args.workspaceId, conversationId, agentId: created.agent.id })
-  }
-  return { status: 'created', agent: created.agent, conversationId: conversationId ?? undefined }
 }

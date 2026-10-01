@@ -1,6 +1,6 @@
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { AVATAR_COLORS } from './agent-editor-utils'
+import { AVATAR_FALLBACK_COLOR } from './agent-editor-utils'
 import { SHOWCASE_AGENTS } from './showcase-agents'
 
 export function getShowcaseAgent(
@@ -26,7 +26,7 @@ export function getInitialEditorState(args: {
     description: agent?.description ?? '',
     instructions: agent?.instructions ?? '',
     modelId: agent?.modelId ?? DEFAULT_MODEL_ID,
-    avatarColor: agent?.avatarColor ?? AVATAR_COLORS[0]!,
+    avatarColor: agent?.avatarColor ?? AVATAR_FALLBACK_COLOR,
     avatarShape: agent?.avatarShape ?? 'circle',
     visibility: agent?.visibility ?? 'workspace',
   }

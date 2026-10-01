@@ -18,9 +18,10 @@ import {
   getAgentEditorPanelMode,
   setAgentEditorPanelMode,
 } from '@/shared/agents/agent-editor-presentation'
-import { NEW_AGENT_EVENT, dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
+import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentEditorPage } from './AgentEditorPage'
-import { buildAgentsDirectoryHref, createAgentAndOpenChat, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
+import { buildAgentsDirectoryHref, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
+import { NewAgentDialog } from './NewAgentDialog'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -174,38 +175,6 @@ function useAgentAutoOpen(args: {
   }, [conversationId, activeWorkspaceId, agentId, directory, retryCount, router, onResolvingChange, onError])
 }
 
-/** Archive + cleanup after an abandoned create-first agent, then land on the next one. */
-async function archiveAbandonedAgent(
-  workspaceId: string,
-  abandoned: { agentId: string; conversationId: string | null },
-  router: { push(href: string): void; replace(href: string): void },
-) {
-  await overlayAppClient.agents.archive(workspaceId, abandoned.agentId).catch(() => undefined)
-  if (abandoned.conversationId) {
-    await overlayAppClient.conversations
-      .deleteResponse({ conversationId: abandoned.conversationId, scope: 'self' })
-      .catch(() => undefined)
-  }
-  dispatchAgentDirectoryChanged(workspaceId)
-  const remaining = await overlayAppClient.agents
-    .list(workspaceId)
-    .then((response) => response.agents.filter((agent) => agent.id !== abandoned.agentId))
-    .catch(() => [])
-  const target = pickAgentToOpen(remaining, workspaceId)
-  if (!target) {
-    router.replace(buildAgentsDirectoryHref(workspaceId))
-    return
-  }
-  rememberAgentOpened(workspaceId, target.id)
-  await startAgentChat({
-    workspaceId,
-    agentId: target.id,
-    agentPrincipalId: target.principalId,
-    surface: 'agents',
-    push: (href) => router.push(href),
-  }).catch(() => router.replace(buildAgentsDirectoryHref(workspaceId)))
-}
-
 export function AgentConversationWorkspace({ showcase = false }: { showcase?: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -222,72 +191,26 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
 
-  // The agent created by the current editor session that has never been
-  // saved. Cancelling the editor archives it; a successful save (onSaved)
-  // or explicit archive (onArchived) clears the marker. A ref, not state:
-  // save calls onSaved() then closeEditor() in the same tick, and a state
-  // clear would not be visible to closeEditor's stale closure — the
-  // just-saved agent would be abandoned and archived.
-  const freshAgentRef = useRef<{ agentId: string; conversationId: string | null } | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
-  const creatingAgentRef = useRef(false)
-
-  // Create-first: "New agent" immediately creates a real agent with defaults,
-  // refreshes the sidebar, opens its conversation, then opens the edit panel
-  // pointed at it. The panel never creates in the context of another agent.
+  // "New agent" opens the creation dialog; nothing is created until the
+  // person confirms. The logged-out showcase keeps the static editor form.
   const openCreate = useCallback(() => {
+    setError(null)
     if (showcase) {
-      setError(null)
       setEditorMode('new')
       return
     }
-    if (!activeWorkspaceId || creatingAgentRef.current) return
-    creatingAgentRef.current = true
-    setError(null)
     setEditorMode(null)
-    void (async () => {
-      try {
-        const result = await createAgentAndOpenChat({
-          workspaceId: activeWorkspaceId,
-          push: (href) => router.push(href),
-          onDirectoryChanged: dispatchAgentDirectoryChanged,
-          onOpened: (agentId) => rememberAgentOpened(activeWorkspaceId, agentId),
-        })
-        if (result.status === 'no-permission') {
-          setEditorMode('new')
-          return
-        }
-        if (result.agent) {
-          freshAgentRef.current = { agentId: result.agent.id, conversationId: result.conversationId ?? null }
-        }
-        setEditorMode('edit')
-      } catch (createError) {
-        setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
-      } finally {
-        creatingAgentRef.current = false
-      }
-    })()
-  }, [showcase, activeWorkspaceId, router])
+    setCreateOpen(true)
+  }, [showcase])
 
   useEffect(() => {
     window.addEventListener(NEW_AGENT_EVENT, openCreate)
     return () => window.removeEventListener(NEW_AGENT_EVENT, openCreate)
   }, [openCreate])
 
-  const closeEditor = useCallback(() => {
-    setEditorMode(null)
-    // Cancelling while a never-saved agent is open abandons creation:
-    // archive the agent, drop its greeting DM, and land on the previous
-    // agent (or the agents index when nothing else exists).
-    const abandoned = freshAgentRef.current && agentId === freshAgentRef.current.agentId
-      ? freshAgentRef.current
-      : null
-    if (!abandoned) return
-    freshAgentRef.current = null
-    if (!activeWorkspaceId) return
-    clearAgentOpened(activeWorkspaceId, abandoned.agentId)
-    void archiveAbandonedAgent(activeWorkspaceId, abandoned, router)
-  }, [agentId, activeWorkspaceId, router])
+  const closeEditor = useCallback(() => setEditorMode(null), [])
 
   const workspaceActions = useAgentWorkspaceActions({
     activeWorkspaceId,
@@ -321,31 +244,35 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       key={`${editorMode}:${agentId ?? 'new'}`}
       mode={editorMode}
       agentId={agentId}
-      // The create flow inserts the draft row first, then opens the editor in
-      // edit mode — a fresh draft is still "creating", so its runtime must
-      // stay pickable until first save.
-      freshDraft={Boolean(agentId) && agentId === freshAgentRef.current?.agentId}
       panelMode={panelMode}
       onTogglePanelMode={() => setPanelMode(panelMode === 'dialog' ? 'side' : 'dialog')}
       onClose={closeEditor}
       onCreated={openCreatedAgent}
-      onArchived={() => {
-        freshAgentRef.current = null
-        handleArchived()
-      }}
-      onSaved={() => { freshAgentRef.current = null }}
+      onArchived={handleArchived}
     />
   ) : null
   // Side mode docks through the screen's rightPanel slot; rendering the panel
   // as a plain sibling stacks it under the content instead of beside it.
   const sideEditor = panelMode === 'side' ? editor : null
   const dialogEditor = panelMode === 'dialog' ? editor : null
+  const createDialog = showcase ? null : (
+    <NewAgentDialog
+      open={createOpen}
+      workspaceId={activeWorkspaceId}
+      onClose={() => setCreateOpen(false)}
+      onCreated={(agent, warning) => {
+        setCreateOpen(false)
+        openCreatedAgent(agent)
+        if (warning) setError(warning)
+      }}
+    />
+  )
 
   const settingsButton = (
     <AgentSettingsButton
       hasAgent={Boolean(agentId)}
       active={Boolean(editorMode)}
-      onClick={() => setEditorMode(agentId ? 'edit' : 'new')}
+      onClick={() => (agentId ? setEditorMode('edit') : openCreate())}
     />
   )
 
@@ -369,6 +296,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
           onExternalRightPanelClose={closeEditor}
         />
         {dialogEditor}
+        {createDialog}
       </>
     )
   }
@@ -388,6 +316,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
         onCreate={openCreate}
       />
       {dialogEditor}
+      {createDialog}
     </>
   )
 }
@@ -395,36 +324,30 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
 function AgentEditorPanel({
   mode,
   agentId,
-  freshDraft,
   panelMode,
   onTogglePanelMode,
   onClose,
   onCreated,
   onArchived,
-  onSaved,
 }: {
   mode: 'new' | 'edit'
   agentId: string | null
-  freshDraft: boolean
   panelMode: 'dialog' | 'side'
   onTogglePanelMode(): void
   onClose(): void
   onCreated(agent: WorkspaceAgentDirectoryItem): void
   onArchived(): void
-  onSaved(): void
 }) {
   return (
     <AgentEditorPage
       mode={mode}
       agentId={mode === 'edit' ? (agentId ?? undefined) : undefined}
-      freshDraft={freshDraft}
       presentation="panel"
       panelMode={panelMode}
       onTogglePanelMode={onTogglePanelMode}
       onClose={onClose}
       onCreated={onCreated}
       onArchived={onArchived}
-      onSaved={onSaved}
     />
   )
 }

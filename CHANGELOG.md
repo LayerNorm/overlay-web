@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Changed
+
+- **New agent is a short dialog.** "New agent" now opens one small dialog instead of creating an "Untitled agent" and opening the full editor: avatar (click to pick a shape and colour), name, description (the agent's instructions), type, a Computer toggle (off by default, provisions the machine on create), access (Only me by default), and a collapsed Advanced section with the model and tools (every tool on by default, with Everything / Standard / Read only presets). Nothing is created until **Create agent**, so cancelling no longer archives a draft. "Other agent" is shown but disabled until connected and hosted agents are rebuilt. The avatar palette grows to 11 colours and the editor uses the same avatar picker.
+
 ### Removed
 
 - **Vercel Sandbox is removed.** Hosted harness agents (Claude Code, Codex, OpenCode, Pi, Hermes in an Overlay sandbox) are gone: the AI SDK `HarnessAgent` turn workflow, harness registry and bridge, the Vercel sandbox adapter, `POST /api/v1/sandbox/run` and its orphan sweeper, Vercel sandbox pricing, the `@ai-sdk/harness*`, `@ai-sdk/workflow-harness`, `@ai-sdk/sandbox-vercel`, and `@vercel/sandbox` dependencies, `POST /api/v1/agent-environments/managed`, `POST …/reset-harness`, the editor's hosted-runtime picker, and the `managedHarnessAgents` capability. The `./overlay` file sync built for harness sandboxes went with them. Agents that were bound to a hosted runtime stay read-only in the editor, and messaging one posts a reply explaining it must be recreated. The Overlay MCP server for connected agents is unchanged (its tool builder moved to `agent-mcp-tools`). The sandbox lease meter now prices Box (and Daytona until it is removed); leases for `vercel` are refused. `OVERLAY_VERCEL_SANDBOX_*`, `OVERLAY_MANAGED_SANDBOX_PROVIDER`, `OVERLAY_EXEC_SANDBOX_PROVIDER`, `OVERLAY_EPHEMERAL_SANDBOX_STALE_MS`, `OVERLAY_HARNESS_*`, and `OVERLAY_AGENT_HOST_IMAGE` no longer do anything and can be unset. `providers.sandbox.provider: vercel` is still accepted so existing configs validate; the default is now `box`.

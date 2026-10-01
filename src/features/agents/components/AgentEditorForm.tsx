@@ -5,14 +5,13 @@ import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
-import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
-import { AVATAR_COLORS } from '../lib/agent-editor-utils'
+import { AgentAvatarPicker } from './AgentAvatarPicker'
 import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
 export type AgentType = 'overlay' | 'byo'
@@ -630,7 +629,7 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
       <p className="text-xs font-medium">Identity</p>
       <div className="mt-2 flex items-start gap-3">
         <div className="flex h-[76px] w-[76px] shrink-0 items-center justify-center">
-          <Creature shape={shape} color={color} size={72} label="Agent avatar preview" />
+          <AgentAvatarPicker shape={shape} color={color} onShapeChange={onShapeChange} onColorChange={onChange} align="start" />
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <label className="block text-xs font-medium">
@@ -650,46 +649,6 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
             />
           </label>
         </div>
-      </div>
-      <p className="mt-4 text-xs font-medium">Shape</p>
-      <div
-        className='mt-1.5 grid grid-cols-8 gap-1.5'
-        role='radiogroup'
-        aria-label='Avatar shape'
-      >
-        {CREATURE_SHAPES.map((creatureShape) => (
-          <button
-            key={creatureShape}
-            type="button"
-            role="radio"
-            aria-checked={shape === creatureShape}
-            aria-label={`Use ${creatureShape} shape`}
-            onClick={() => onShapeChange(creatureShape)}
-            className={`flex h-11 items-center justify-center rounded-md border transition-colors ${shape === creatureShape ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
-          >
-            <Creature shape={creatureShape} color={color} size={26} animated={false} label="" />
-          </button>
-        ))}
-      </div>
-      <p className="mt-4 text-xs font-medium">Color</p>
-      <div
-        className='mt-1.5 flex items-center gap-3'
-        role='radiogroup'
-        aria-label='Avatar color'
-      >
-        {AVATAR_COLORS.map((avatarColor) => (
-          <button
-            key={avatarColor}
-            type="button"
-            role="radio"
-            aria-checked={color === avatarColor}
-            aria-label={`Use ${avatarColor}`}
-            onClick={() => onChange(avatarColor)}
-            className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${color === avatarColor ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
-          >
-            <Creature shape={shape} color={avatarColor} size={24} animated={false} label="" />
-          </button>
-        ))}
       </div>
     </div>
   )

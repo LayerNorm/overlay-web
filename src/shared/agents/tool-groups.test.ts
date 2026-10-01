@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   AGENT_TOOL_GROUPS,
+  AGENT_TOOL_PRESETS,
+  agentToolPresetFor,
   agentToolCapabilities,
   agentToolCapabilityGrantId,
   allAgentToolGrantIds,
@@ -123,4 +125,11 @@ test('grants saved before a group grew still hold the tools that joined it', () 
   const normalized = normalizeAgentToolGrant(beforeNoteEdits)
   for (const id of ['append_to_note', 'replace_note_section', 'edit_note']) assert.ok(normalized.includes(id))
   assert.ok(!normalizeAgentToolGrant(['get_note']).includes('edit_note'), 'read-only note grants gain no writes')
+})
+
+test('tool presets never include computer and are recognised from their groups', () => {
+  for (const ids of Object.values(AGENT_TOOL_PRESETS)) assert.equal(ids.includes('computer'), false)
+  assert.equal(agentToolPresetFor(new Set(AGENT_TOOL_PRESETS.everything)), 'everything')
+  assert.equal(agentToolPresetFor(new Set([...AGENT_TOOL_PRESETS.standard, 'computer'])), 'standard')
+  assert.equal(agentToolPresetFor(new Set(['knowledge'])), null)
 })
