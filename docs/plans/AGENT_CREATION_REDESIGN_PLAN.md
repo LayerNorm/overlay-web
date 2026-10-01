@@ -12,10 +12,11 @@ Creating an agent should take two fields and one button. Anything a person does 
 
 ## New flow
 
-A small dialog. The first question is **what** you are creating, then **where** it runs, never both at once:
+A small dialog. Three levels, each its own control, so the hierarchy is never guessed:
 
-- **Agent** is a `ListboxSelect` with two groups: *Overlay* (Overlay agent) and *Bring your own* (Claude Code, Codex, Hermes). A one-line hint sits under it. A dropdown scales as more agents are added.
-- **Runs on** appears only for a bring-your-own agent: a two-option segmented control, *Overlay Cloud* or *Your machine*, with a hint line ("A sandbox we host. Nothing to set up." / "Your computer or server. It connects out to Overlay."). Same segmented style as Access, so there is one pattern for a short either/or.
+1. **Overlay agent | Other agent**: a two-way segmented switch at the top, with a one-line hint. Overlay agents are the default and the first-class path.
+2. **Agent** (Other agent only): a `ListboxSelect` of Claude Code, Codex, Hermes. A dropdown scales as more agents are added.
+3. **Runs on** (Other agent only): a two-option segmented control, *Overlay Cloud* or *Your machine*, with a hint line ("A sandbox we host. Nothing to set up." / "Your computer or server. It connects out to Overlay."). Same style as Access, so one pattern for a short either/or.
 
 Avatar and name are always shown, and the name is required. **Access** is always visible near the bottom (Only me by default).
 
@@ -32,11 +33,11 @@ Avatar and name are always shown, and the name is required. **Access** is always
 
 ### Bring your own: Overlay Cloud
 
-Agent, Runs on, name, Size (`ListboxSelect`), Access. Instructions are generated from the agent, as for connected agents today. Blocked until the Box/E2B rebuild lands; the "Overlay Cloud" option stays hidden until then.
+Name, Size (`ListboxSelect`), Access. Instructions are generated from the agent, as for connected agents today. Blocked until the Box/E2B rebuild lands; the "Overlay Cloud" option stays hidden until then.
 
 ### Bring your own: your machine
 
-Agent, Runs on, name, then the one-line connect command with a copy button and a "Waiting for the machine to connect…" state, then Access. The button reads "Create and connect".
+Name, then the one-line connect command with a copy button and a "Waiting for the machine to connect…" state, then Access. The button reads "Create and connect".
 
 ### Defaults
 
