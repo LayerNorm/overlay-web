@@ -12,26 +12,18 @@ Creating an agent should take two fields and one button. Anything a person does 
 
 ## New flow
 
-A small dialog. The first control is the agent type, as three stacked option rows (the app's `OptionRow`, never a side-by-side grid):
-
-- **Overlay agent**
-- Other agents, under a small group label:
-  - **On Overlay Cloud** (Claude Code, Codex, Hermes in a sandbox we host)
-  - **On your machine** (the same agents on your computer or server, connected out to Overlay)
-
-Everything below the type changes with it. Avatar and name are always shown, and the name is required.
+A small dialog. The first control is a two-way switch: **Overlay agent** or **Other agent**. Choosing Other agent reveals a quiet second line, **On Overlay Cloud** or **On your machine**, so the hierarchy reads as agent type, then where it runs. A one-line hint under the switch explains the current choice. Avatar and name are always shown, and the name is required.
 
 ### Overlay agent
 
 1. **Avatar and name.** The creature and colour are picked for the person; clicking the avatar reshuffles it.
 2. **What should it do?** One textarea. This is the agent's instructions. Required.
-3. **Advanced** (collapsed). The header summarises the current choices, for example "Auto · Standard tools · Only me". Inside:
+3. **Computer** (its own row, directly under the description, off by default). A computer is a provisioned resource, so it needs explicit enablement and is not part of the tool list. Turning it on reveals a size `ListboxSelect` in the same row; the machine is created on save.
+4. **Advanced** (collapsed). The header summarises the current choices, for example "Auto · Standard tools · Only me". Inside:
    - **Model** uses the shared `ListboxSelect`, not a native select, ordered by `CHAT_MODEL_QUALITY_PRIORITY` with Auto first.
-   - **Tools** has presets (Standard / Read only / Everything), and every tool group is listed with its toggle straight away. Nothing sits behind a "customize" link.
+   - **Tools** has presets (Standard / Read only / Everything), and every tool group is listed as a plain label with a toggle. Nothing sits behind a "customize" link; Computer is not in this list.
    - **Access**: Only me (default) or Everyone in this workspace.
-4. **Create agent**, disabled until name and instructions are filled in.
-
-The Computer row is stacked: description, then the toggle below it, then (when on) the size `ListboxSelect` and the "created when you save" note.
+5. **Create agent**, disabled until name and instructions are filled in.
 
 ### Other agent: on Overlay Cloud
 
@@ -46,7 +38,8 @@ Agent, then the one-line connect command with a copy button and a "Waiting for t
 | Setting | Default | Notes |
 | --- | --- | --- |
 | Model | Auto | |
-| Tools | Standard: memory, knowledge, files, notes, web search | Computer and Browser stay off until asked for. Web search is on because it no longer costs per call (Exa-style search API). |
+| Tools | Standard: memory, knowledge, files, notes, web search | Browser stays off until asked for. Web search is on because it no longer costs per call (Exa-style search API). |
+| Computer | Off | Explicit opt-in. |
 | Access | Only me | |
 
 Moved out of creation, still available after the agent exists: Reachable on (Slack), Memories, Danger zone, computer lifecycle.
