@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- **Computers moved to Boat's API.** Box renamed itself Boat, and the legacy `ascii.dev/api/box/v1` endpoints advertise a 2026-10-31 sunset. The sandbox adapter now calls `https://boat.dev/api/v1` (`/sandboxes/*`, `sandbox` envelopes, `sandboxId` in named snapshots) and still reads legacy `box` envelopes. `BOAT_API_KEY` is preferred; the existing `BOX_API_KEY` keeps working, so no secret change is needed to deploy. `BOAT_API_BASE_URL` can override the base. The internal provider id stays `box`, so leases, prices, and stored references are unchanged. Verified with the live conformance and desktop suites against Boat.
 - **New agent is a short dialog.** "New agent" now opens one small dialog instead of creating an "Untitled agent" and opening the full editor: avatar (click to pick a shape and colour), name, description (the agent's instructions), type, a Computer toggle (off by default, provisions the machine on create), access (Only me by default), and a collapsed Advanced section with the model and tools (every tool on by default, with Everything / Standard / Read only presets). Nothing is created until **Create agent**, so cancelling no longer archives a draft. "Other agent" is shown but disabled until connected and hosted agents are rebuilt. The avatar palette grows to 11 colours and the editor uses the same avatar picker.
 
 ### Removed

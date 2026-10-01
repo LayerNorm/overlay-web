@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SandboxRuntime } from '@overlay/sandbox-runtime'
-import { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
+import { BoxSandboxRuntime, boatApiKeyFromEnv } from '@overlay/sandbox-runtime/box'
 
 /** Idle window after which the lease meter stops an Overlay Cloud machine. */
 export const MANAGED_SANDBOX_IDLE_TIMEOUT_MS = 15 * 60_000
@@ -21,9 +21,9 @@ export class ManagedSandboxError extends Error {
 export function managedSandboxRuntimeFromEnv(providerOverride?: string): SandboxRuntime {
   const provider = providerOverride?.trim().toLowerCase() || 'box'
   if (provider === 'box') {
-    const apiKey = process.env.BOX_API_KEY?.trim()
+    const apiKey = boatApiKeyFromEnv()
     if (!apiKey) {
-      throw new ManagedSandboxError('Box is not configured: set BOX_API_KEY', 503, 'managed_sandbox_provider_invalid')
+      throw new ManagedSandboxError('Box is not configured: set BOAT_API_KEY', 503, 'managed_sandbox_provider_invalid')
     }
     return new BoxSandboxRuntime({ apiKey })
   }

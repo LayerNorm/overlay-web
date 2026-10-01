@@ -255,6 +255,8 @@ After Create the dialog shows startup phases until Ready, then opens the agent's
 
 ## Phases
 
+**Prerequisite (done 2026-10-01): Boat API migration.** Box renamed itself Boat; the legacy Box endpoints advertise a 2026-10-31 sunset. The adapter now targets `https://boat.dev/api/v1`, so Phase 0's image work targets Boat only.
+
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
 | **0. Machine** | acpx spike and adoption in the Agent Host, Overlay layer (`provision.sh`) published as a Boat snapshot (E2B template build script alongside), managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SandboxRuntime } from '@overlay/sandbox-runtime'
-import { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
+import { BoxSandboxRuntime, boatApiKeyFromEnv } from '@overlay/sandbox-runtime/box'
 
 /**
  * Which computer provider this deployment operates. A computer row stores the
@@ -21,7 +21,7 @@ export function computerRuntimeFromEnv(
   if (provider === 'box') {
     // Admin-scope preset required (box.create/resume/fork/delete) — the
     // `full-box` preset lacks them.
-    const apiKey = env.BOX_API_KEY?.trim()
+    const apiKey = boatApiKeyFromEnv(env)
     return apiKey ? new BoxSandboxRuntime({ apiKey }) : undefined
   }
   return undefined

@@ -477,7 +477,7 @@ scanned in full by a production malware engine, validated by content magic, and 
 attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
 cleanup controls remain implemented but are not a substitute for that release gate.
 
-Overlay Cloud machines run on Box (`BOX_API_KEY`). Hosted other-agents are not offered at the
+Overlay Cloud machines run on Boat, formerly Box (`BOAT_API_KEY`, or the legacy `BOX_API_KEY`). Hosted other-agents are not offered at the
 moment; when they return they will build on the connected-agent protocol, so the one-time
 enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge
 described above stay the only host authentication path.

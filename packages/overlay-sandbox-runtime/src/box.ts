@@ -20,7 +20,8 @@ import type {
 } from './contracts'
 
 /**
- * Box (ascii.dev) runtime: Linux VMs with a real streamed desktop.
+ * Box runtime: Linux VMs with a real streamed desktop. The provider renamed
+ * itself Boat (boat.dev); Overlay keeps the internal provider id `box`.
  *
  * Mapping notes against the SandboxRuntime port:
  * - `hardTimeoutMs` → `ttlSeconds` (box's auto-archive ceiling). Idle stop is
@@ -53,7 +54,14 @@ const CAPABILITIES: SandboxCapabilities = {
   desktop: true,
 }
 
-const DEFAULT_BASE_URL = 'https://ascii.dev/api/box/v1'
+// Boat API. The legacy Box base (`https://ascii.dev/api/box/v1`) advertises a
+// 2026-10-31 sunset.
+const DEFAULT_BASE_URL = 'https://boat.dev/api/v1'
+
+/** API key from the environment: `BOAT_API_KEY`, falling back to the legacy `BOX_API_KEY`. */
+export function boatApiKeyFromEnv(env: Record<string, string | undefined> = process.env): string | undefined {
+  return env.BOAT_API_KEY?.trim() || env.BOX_API_KEY?.trim() || undefined
+}
 const WORK_DIR = '/home/user'
 const POLL_INTERVAL_MS = 750
 const PROVISION_TIMEOUT_MS = 5 * 60_000
@@ -92,6 +100,13 @@ export type BoxFetch = (
   init: { method?: string; headers?: Record<string, string>; body?: string },
 ) => Promise<{ status: number; json(): Promise<unknown> }>
 
+/** Boat responses carry `sandbox`; legacy Box responses carried `box`. */
+type SandboxEnvelope = { sandbox?: BoxInfo; box?: BoxInfo }
+
+function sandboxFromEnvelope(envelope: SandboxEnvelope): BoxInfo | undefined {
+  return envelope.sandbox ?? envelope.box
+}
+
 export type BoxSandboxRuntimeOptions = {
   apiKey?: string
   baseUrl?: string
@@ -106,10 +121,10 @@ export class BoxSandboxRuntime implements SandboxRuntime {
   private readonly fetch: BoxFetch
 
   constructor(options: BoxSandboxRuntimeOptions = {}) {
-    const apiKey = options.apiKey ?? process.env.BOX_API_KEY
-    if (!apiKey) throw new Error('BOX_API_KEY is not configured')
+    const apiKey = options.apiKey ?? boatApiKeyFromEnv()
+    if (!apiKey) throw new Error('BOAT_API_KEY (or legacy BOX_API_KEY) is not configured')
     this.apiKey = apiKey
-    this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    this.baseUrl = (options.baseUrl ?? process.env.BOAT_API_BASE_URL?.trim() ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
     this.fetch = options.fetch ?? (async (input, init) => {
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch(input, init)
@@ -159,7 +174,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     if (request.networkPolicy.mode !== 'allow_all') {
       throw new BoxApiError(400, 'unsupported', 'box does not support network policies')
     }
-    const response = await this.request<{ box?: BoxInfo }>('POST', '/boxes', {
+    const response = await this.request<SandboxEnvelope>('POST', '/sandboxes', {
       headers: { 'Idempotency-Key': randomUUID() },
       body: {
         type: boxSize(request.resources),
@@ -169,10 +184,10 @@ export class BoxSandboxRuntime implements SandboxRuntime {
         from: request.snapshotId,
       },
     })
-    const id = response.box?.id
+    const id = sandboxFromEnvelope(response)?.id
     if (!id) throw new BoxApiError(500, 'invalid_json_response', 'create returned no box id')
     if (request.name) {
-      await this.request('PATCH', `/boxes/${id}`, { body: { name: request.name } }).catch(() => undefined)
+      await this.request('PATCH', `/sandboxes/${id}`, { body: { name: request.name } }).catch(() => undefined)
     }
     const instance = new BoxSandboxInstance(this, id, request.environment)
     try {
@@ -221,9 +236,9 @@ export class BoxSandboxRuntime implements SandboxRuntime {
   }
 
   async getBox(boxId: string): Promise<BoxInfo> {
-    const response = await this.request<{ box?: BoxInfo }>('GET', `/boxes/${boxId}`)
-    if (!response.box) throw new BoxApiError(500, 'invalid_json_response', 'box info returned no box')
-    return response.box
+    const info = sandboxFromEnvelope(await this.request<SandboxEnvelope>('GET', `/sandboxes/${boxId}`))
+    if (!info) throw new BoxApiError(500, 'invalid_json_response', 'sandbox info returned no sandbox')
+    return info
   }
 
   /**
@@ -308,19 +323,19 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async resume(): Promise<void> {
-    await this.runtime.request('POST', `/boxes/${this.reference}/resume`, { body: {} })
+    await this.runtime.request('POST', `/sandboxes/${this.reference}/resume`, { body: {} })
     await this.waitUntil(['ready', 'idle', 'running'], PROVISION_TIMEOUT_MS)
   }
 
   async stop(): Promise<void> {
-    await this.runtime.request('POST', `/boxes/${this.reference}/stop`, { body: {} })
+    await this.runtime.request('POST', `/sandboxes/${this.reference}/stop`, { body: {} })
     await this.waitUntil(['archived'], STOP_TIMEOUT_MS)
   }
 
   async delete(): Promise<void> {
     if (this.deleted) return
     // The confirm header must equal the box id — the provider's own two-step.
-    await this.runtime.request('DELETE', `/boxes/${this.reference}`, {
+    await this.runtime.request('DELETE', `/sandboxes/${this.reference}`, {
       headers: { 'X-Ascii-Confirm-Delete': this.reference },
     })
     this.deleted = true
@@ -332,9 +347,9 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     resources?: SandboxResources
     hardTimeoutMs?: number
   }): Promise<SandboxInstance> {
-    const response = await this.runtime.request<{ id?: string; box?: BoxInfo }>(
+    const response = await this.runtime.request<{ id?: string } & SandboxEnvelope>(
       'POST',
-      `/boxes/${this.reference}/fork`,
+      `/sandboxes/${this.reference}/fork`,
       {
         headers: { 'Idempotency-Key': randomUUID() },
         body: {
@@ -344,7 +359,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
         },
       },
     )
-    const id = response.id ?? response.box?.id
+    const id = response.id ?? sandboxFromEnvelope(response)?.id
     if (!id) throw new BoxApiError(500, 'invalid_json_response', 'fork returned no box id')
     const instance = new BoxSandboxInstance(this.runtime, id, request?.environment)
     await instance.waitUntil(['ready', 'idle', 'running'], PROVISION_TIMEOUT_MS)
@@ -360,7 +375,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
       provisioning?: boolean
       desktopUrl?: string
       mode?: string
-    }>('POST', `/boxes/${this.reference}/desktop`, {
+    }>('POST', `/sandboxes/${this.reference}/desktop`, {
       query: {
         ...(options.mode === 'vnc' ? { vnc: '1' } : {}),
         ...(options.theme ? { theme: options.theme } : {}),
@@ -380,7 +395,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     const response = await this.runtime.request<{
       processId?: number
       pid?: number
-    }>('POST', `/boxes/${this.reference}/commands`, {
+    }>('POST', `/sandboxes/${this.reference}/commands`, {
       body: { command, cwd: request.cwd, detached: true },
     })
     if (response.processId === undefined) {
@@ -391,7 +406,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>): Promise<void> {
     await Promise.all(files.map((file) =>
-      this.runtime.request('PUT', `/boxes/${this.reference}/files`, {
+      this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
         body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
       })))
   }
@@ -400,7 +415,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     try {
       const response = await this.runtime.request<{ content?: string }>(
         'GET',
-        `/boxes/${this.reference}/files`,
+        `/sandboxes/${this.reference}/files`,
         { query: { path, encoding: 'base64' } },
       )
       return response.content === undefined ? null : new Uint8Array(Buffer.from(response.content, 'base64'))
@@ -443,7 +458,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   async port(port: number): Promise<SandboxPort> {
     const response = await this.runtime.request<{ url?: string }>(
       'POST',
-      `/boxes/${this.reference}/host`,
+      `/sandboxes/${this.reference}/host`,
       { body: { port } },
     )
     if (!response.url) throw new BoxApiError(500, 'invalid_json_response', 'host returned no url')
@@ -454,7 +469,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     // Named-snapshot names are [a-z0-9-]{1,63}; box ids carry underscores.
     const name = `ov-${this.reference.replace(/[^a-z0-9-]/g, '')}-${Date.now().toString(36)}`
     await this.runtime.request('POST', '/named-snapshots', {
-      body: { boxId: this.reference, name },
+      body: { sandboxId: this.reference, name },
     })
     const deadline = Date.now() + SNAPSHOT_TIMEOUT_MS
     for (;;) {
@@ -487,7 +502,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
       secondsPerDollar?: number
       billingMultiplier?: number
       running?: boolean
-    }>('GET', `/boxes/${this.reference}/usage`)
+    }>('GET', `/sandboxes/${this.reference}/usage`)
     const seconds = finite(response.seconds)
     return {
       wallTimeMs: Math.max(0, seconds) * 1_000,
@@ -549,7 +564,7 @@ class BoxCommandHandle implements SandboxCommandHandle {
 
   async cancel(): Promise<void> {
     if (this.pid === undefined) return
-    await this.runtime.request('POST', `/boxes/${this.boxId}/commands`, {
+    await this.runtime.request('POST', `/sandboxes/${this.boxId}/commands`, {
       body: { command: `kill -TERM ${this.pid}`, detached: true },
     }).catch(() => undefined)
   }
@@ -598,7 +613,7 @@ class BoxCommandHandle implements SandboxCommandHandle {
   private async status(): Promise<BoxCommandStatus> {
     return this.runtime.request<BoxCommandStatus>(
       'GET',
-      `/boxes/${this.boxId}/commands/${this.id}`,
+      `/sandboxes/${this.boxId}/commands/${this.id}`,
     )
   }
 

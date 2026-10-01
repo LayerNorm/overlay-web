@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BoxApiError, BoxSandboxRuntime, type BoxFetch } from './box'
+import { BoxApiError, BoxSandboxRuntime, boatApiKeyFromEnv, type BoxFetch } from './box'
 import { isDesktopSandboxInstance, type SandboxCreateRequest } from './contracts'
 
 type RecordedCall = { method: string; url: string; body?: unknown; headers: Record<string, string> }
@@ -40,12 +40,12 @@ function request(name = 'overlay-box'): SandboxCreateRequest {
 }
 
 test('create always provisions no-env, maps size and ttl, and sets the name via PATCH', async () => {
-  const { calls, fetch } = recorder(() => ({ ok: true, type: 'box.created', box: { id: 'bx_new', state: 'ready' } }))
+  const { calls, fetch } = recorder(() => ({ ok: true, type: 'sandbox.created', sandbox: { id: 'bx_new', state: 'ready' } }))
   const instance = await runtime(fetch).create(request('computer-1'))
 
   const create = calls[0]
   assert.equal(create.method, 'POST')
-  assert.match(create.url, /\/boxes$/)
+  assert.match(create.url, /\/sandboxes$/)
   assert.deepEqual(create.body, {
     type: 'small',
     ttlSeconds: 600,
@@ -64,13 +64,13 @@ test('create always provisions no-env, maps size and ttl, and sets the name via 
 })
 
 test('create maps default/large sizes and infinite ttl, and restore uses from', async () => {
-  const { calls, fetch } = recorder(() => ({ ok: true, box: { id: 'bx_1', state: 'ready' } }))
+  const { calls, fetch } = recorder(() => ({ ok: true, sandbox: { id: 'bx_1', state: 'ready' } }))
   const rt = runtime(fetch)
   await rt.create({ ...request(), hardTimeoutMs: 0, resources: { vcpus: 4 } })
   assert.deepEqual(calls[0].body, { type: 'default', ttlSeconds: null, env: { OVERLAY_WORKSPACE_ID: 'ws-1' }, noEnv: true })
 
   await rt.restore('golden-image', { ...request(), resources: { vcpus: 8 } })
-  const restoreCreate = calls.filter((call) => call.method === 'POST' && call.url.endsWith('/boxes')).at(-1)!
+  const restoreCreate = calls.filter((call) => call.method === 'POST' && call.url.endsWith('/sandboxes')).at(-1)!
   assert.equal((restoreCreate.body as Record<string, unknown>).type, 'large')
   assert.equal((restoreCreate.body as Record<string, unknown>).from, 'golden-image')
 })
@@ -111,9 +111,9 @@ test('lifecycle: status maps box states, delete requires the confirm header, 404
   let deleted = false
   const { calls, fetch } = recorder((call) => {
     if (call.method === 'DELETE') { deleted = true; return ok({ type: 'deletion.accepted' }) }
-    if (call.url.includes('/boxes/bx_1')) {
+    if (call.url.includes('/sandboxes/bx_1')) {
       if (deleted) return { ok: false, status: 404, code: 'not_found', error: { code: 'not_found', status: 404 } }
-      return ok({ box: { id: 'bx_1', state: 'ready' } })
+      return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
     }
     return ok()
   })
@@ -129,7 +129,7 @@ test('reconnect resumes an archived box', async () => {
   let state = 'archived'
   const { calls, fetch } = recorder((call) => {
     if (call.url.endsWith('/resume')) { state = 'ready'; return ok({ type: 'box.resuming' }) }
-    return ok({ box: { id: 'bx_1', state } })
+    return ok({ sandbox: { id: 'bx_1', state } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   assert.ok(calls.some((call) => call.url.endsWith('/resume')))
@@ -148,7 +148,7 @@ test('commands run detached, stream log deltas, and resolve with exit code', asy
         ? { processId: 7, running: true, status: 'running', stdout: 'hel', stderr: '' }
         : { processId: 7, running: false, status: 'exited', exitCode: 0, stdout: 'hello', stderr: 'warn' })
     }
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   const handle = await instance.runCommand({ command: 'echo', args: ['hello world'], timeoutMs: 10_000 })
@@ -176,7 +176,7 @@ test('cancel kills the detached process by pid', async () => {
     if (call.url.endsWith('/commands/7')) {
       return ok({ processId: 7, running: false, status: 'exited', exitCode: null, signal: 'SIGTERM', stdout: '', stderr: '' })
     }
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   const handle = await instance.runCommand({ command: 'sleep', args: ['30'], timeoutMs: 60_000 })
@@ -190,7 +190,7 @@ test('emulated environment prefixes every subsequent command', async () => {
   const { calls, fetch } = recorder((call) => {
     if (call.url.endsWith('/commands') && call.method === 'POST') return ok({ processId: 1, pid: 1 })
     if (call.url.includes('/commands/1')) return ok({ running: false, status: 'exited', exitCode: 0, stdout: '', stderr: '' })
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   await instance.updateEnvironment({ OVERLAY_TOKEN: "it's" }, ['STALE'])
@@ -207,7 +207,7 @@ test('files write base64, read base64, and missing files read as null', async ()
     if (call.method === 'GET' && call.url.includes('/files')) {
       return ok({ content: Buffer.from('overlay').toString('base64'), encoding: 'base64' })
     }
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   await instance.writeFiles([{ path: '/home/user/a.txt', contents: new TextEncoder().encode('overlay') }])
@@ -222,7 +222,7 @@ test('listFiles emulates via find and parses kinds', async () => {
     if (call.url.includes('/commands/2')) {
       return ok({ running: false, status: 'exited', exitCode: 0, stderr: '', stdout: 'd\t4096\t/home/user/sub\nf\t7\t/home/user/a.txt\nl\t9\t/home/user/link\n' })
     }
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   const entries = await instance.listFiles('/home/user')
@@ -240,7 +240,7 @@ test('desktop returns ready ticket, vnc mode, and provisioning ticket', async ()
       if (provisioning) { provisioning = false; return ok({ type: 'desktop.provisioning', provisioning: true }) }
       return ok({ type: 'desktop.url', desktopUrl: 'https://stream.example/vnc.html?_token=x', mode: 'vnc' })
     }
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   assert.ok(isDesktopSandboxInstance(instance))
@@ -256,8 +256,8 @@ test('desktop returns ready ticket, vnc mode, and provisioning ticket', async ()
 test('fork returns a new instance over a fresh box id', async () => {
   const { calls, fetch } = recorder((call) => {
     if (call.url.endsWith('/fork')) return ok({ type: 'box.forking', id: 'bx_fork' })
-    if (call.url.includes('bx_fork')) return ok({ box: { id: 'bx_fork', state: 'ready' } })
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    if (call.url.includes('bx_fork')) return ok({ sandbox: { id: 'bx_fork', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   assert.ok(isDesktopSandboxInstance(instance))
@@ -272,7 +272,7 @@ test('stop polls until archived and delete is idempotent', async () => {
   const { fetch } = recorder((call) => {
     if (call.url.endsWith('/stop')) { state = 'archived'; return ok({ type: 'box.stopping' }) }
     if (call.method === 'DELETE') return ok()
-    return ok({ box: { id: 'bx_1', state } })
+    return ok({ sandbox: { id: 'bx_1', state } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   await instance.stop()
@@ -290,20 +290,20 @@ test('snapshot saves a named snapshot and deleteSnapshot removes it', async () =
       if (call.method === 'DELETE') return ok()
       return ok({ snapshot: { status: saved ? 'ready' : 'saving' } })
     }
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   const snapshot = await instance.snapshot()
   assert.match(snapshot.id, /^ov-bx1-/)
-  assert.equal((calls.find((call) => call.url.endsWith('/named-snapshots'))?.body as { boxId: string }).boxId, 'bx_1')
+  assert.equal((calls.find((call) => call.url.endsWith('/named-snapshots'))?.body as { sandboxId: string }).sandboxId, 'bx_1')
   await runtime(fetch).deleteSnapshot(snapshot.id)
   assert.ok(calls.some((call) => call.method === 'DELETE' && call.url.includes(snapshot.id)))
 })
 
 test('port returns a token-gated private url', async () => {
   const { fetch } = recorder((call) => {
-    if (call.url.endsWith('/host')) return ok({ url: 'https://x-3000.on.ascii.dev?_token=t' })
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    if (call.url.endsWith('/host')) return ok({ url: 'https://x-3000.on.boat.dev?_token=t' })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   const port = await instance.port(3000)
@@ -314,13 +314,13 @@ test('port returns a token-gated private url', async () => {
 test('create retries once when a box lands in error during provisioning', async () => {
   let creates = 0
   const { calls, fetch } = recorder((call) => {
-    if (call.method === 'POST' && call.url.endsWith('/boxes')) {
+    if (call.method === 'POST' && call.url.endsWith('/sandboxes')) {
       creates += 1
-      return ok({ box: { id: creates === 1 ? 'bx_bad' : 'bx_good', state: 'ready' } })
+      return ok({ sandbox: { id: creates === 1 ? 'bx_bad' : 'bx_good', state: 'ready' } })
     }
     if (call.method === 'DELETE') return ok()
-    if (call.url.includes('bx_bad')) return ok({ box: { id: 'bx_bad', state: 'error' } })
-    return ok({ box: { id: 'bx_good', state: 'ready' } })
+    if (call.url.includes('bx_bad')) return ok({ sandbox: { id: 'bx_bad', state: 'error' } })
+    return ok({ sandbox: { id: 'bx_good', state: 'ready' } })
   })
   const instance = await runtime(fetch).create(request('retry'))
   assert.equal(creates, 2)
@@ -340,7 +340,7 @@ test('usage reports billable machine seconds as wallTime plus provider dollars',
         running: false,
       })
     }
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const instance = await runtime(fetch).reconnect('bx_1')
   const usage = await instance.usage()
@@ -349,13 +349,13 @@ test('usage reports billable machine seconds as wallTime plus provider dollars',
   assert.equal(usage.providerMetrics?.secondsPerDollar, 100000)
   assert.equal(usage.providerMetrics?.billingMultiplier, 0.5)
   assert.equal(usage.providerMetrics?.running, false)
-  assert.match(calls.find((call) => call.url.includes('/usage'))!.url, /\/boxes\/bx_1\/usage$/)
+  assert.match(calls.find((call) => call.url.includes('/usage'))!.url, /\/sandboxes\/bx_1\/usage$/)
 })
 
 test('usage omits reportedUsd when the API predates dollar reporting', async () => {
   const { fetch } = recorder((call) => {
     if (call.url.endsWith('/usage')) return ok({ seconds: 120, running: true })
-    return ok({ box: { id: 'bx_1', state: 'ready' } })
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
   })
   const usage = await runtime(fetch).reconnect('bx_1').then((instance) => instance.usage())
   assert.equal(usage.wallTimeMs, 120_000)
@@ -388,11 +388,32 @@ test('limits reads account capacity and balance', async () => {
 })
 
 test('constructor refuses a missing api key', () => {
-  const saved = process.env.BOX_API_KEY
+  const saved = { boat: process.env.BOAT_API_KEY, box: process.env.BOX_API_KEY }
+  delete process.env.BOAT_API_KEY
   delete process.env.BOX_API_KEY
   try {
-    assert.throws(() => new BoxSandboxRuntime({ fetch: async () => { throw new Error('unreachable') } }), /BOX_API_KEY/)
+    assert.throws(() => new BoxSandboxRuntime({ fetch: async () => { throw new Error('unreachable') } }), /BOAT_API_KEY/)
   } finally {
-    if (saved) process.env.BOX_API_KEY = saved
+    if (saved.boat) process.env.BOAT_API_KEY = saved.boat
+    if (saved.box) process.env.BOX_API_KEY = saved.box
   }
+})
+
+test('BOAT_API_KEY wins over the legacy BOX_API_KEY, which still works alone', () => {
+  assert.equal(boatApiKeyFromEnv({ BOAT_API_KEY: 'boat_new', BOX_API_KEY: 'box_old' }), 'boat_new')
+  assert.equal(boatApiKeyFromEnv({ BOX_API_KEY: 'box_old' }), 'box_old')
+  assert.equal(boatApiKeyFromEnv({ BOAT_API_KEY: '  ', BOX_API_KEY: 'box_old' }), 'box_old')
+  assert.equal(boatApiKeyFromEnv({}), undefined)
+})
+
+test('requests go to the Boat API by default', async () => {
+  const { calls, fetch } = recorder(() => ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+  await runtime(fetch).reconnect('bx_1')
+  assert.equal(calls[0]!.url, 'https://boat.dev/api/v1/sandboxes/bx_1')
+})
+
+test('legacy box envelopes are still read', async () => {
+  const { fetch } = recorder(() => ok({ box: { id: 'bx_legacy', state: 'ready' } }))
+  const instance = await runtime(fetch).create(request())
+  assert.equal(instance.reference, 'bx_legacy')
 })
