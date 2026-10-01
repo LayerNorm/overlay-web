@@ -15,19 +15,6 @@ const TODAY = new Date().toISOString().slice(0, 10)
 
 const AUDIT_EXCEPTIONS = [
   {
-    path: 'node_modules/@earendil-works/pi-coding-agent/node_modules/undici',
-    advisories: ['GHSA-rfgv-xxqx-mfg5', 'GHSA-w293-vg96-wgc3'],
-    expires: '2026-10-14',
-    reason: 'pi-coding-agent@0.84 ships an npm-shrinkwrap pinning undici 8.9.0, so overrides cannot reach it. '
-      + 'Loaded only when a Pi-harness agent runs. Fixed by pi-coding-agent >=0.87 via the @ai-sdk/harness family bump.',
-  },
-  {
-    path: 'node_modules/@earendil-works/pi-coding-agent/node_modules/brace-expansion',
-    advisories: ['GHSA-qhr7-859c-m2p7', 'GHSA-6j4f-fj2g-mc7p'],
-    expires: '2026-10-14',
-    reason: 'Same pi-coding-agent shrinkwrap (brace-expansion 5.0.9). Same fix as above.',
-  },
-  {
     path: 'node_modules/eve/node_modules/undici',
     advisories: ['GHSA-rfgv-xxqx-mfg5', 'GHSA-w293-vg96-wgc3'],
     expires: '2026-10-14',

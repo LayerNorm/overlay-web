@@ -8,7 +8,7 @@ import {
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
-import { managedSandboxRuntimeFromEnv } from './ManagedAgentSandboxService'
+import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 
 /**
  * An Overlay Cloud environment's sandbox IS the agent's machine — this module

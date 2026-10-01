@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { sweepEphemeralSandboxes } from '@/server/ai/sandbox/ephemeral-sweeper'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { agentEnvironmentErrorResponse } from '../../shared'
 
@@ -12,18 +11,10 @@ export async function POST(request: Request) {
     }
     const server = getOverlayServerContext()
     const controlPlane = server.connectedAgentControlPlane
-    // Defense in depth: delete `sandbox/run` sandboxes orphaned by aborted
-    // requests. Runs already delete themselves; anything swept here is a bug
-    // elsewhere, so the count is reported loudly.
-    const [supervised, reconciliation, meter, ephemeralSweep] = await Promise.all([
+    const [supervised, reconciliation, meter] = await Promise.all([
       controlPlane.sweepRemoteRuns(),
       controlPlane.reconcileSandboxSettlements(100),
       server.managedAgentSandboxBilling.meterLeases(),
-      sweepEphemeralSandboxes().catch((error) => ({
-        swept: [] as string[],
-        errors: 1,
-        error: error instanceof Error ? error.message : String(error),
-      })),
     ])
     return NextResponse.json({
       reconciliation,
@@ -34,10 +25,6 @@ export async function POST(request: Request) {
         metered: meter.ticks.filter((tick) => tick.outcome === 'metered').length,
         released: meter.ticks.filter((tick) => tick.outcome === 'released').length,
         errors: meter.ticks.filter((tick) => tick.outcome === 'error').length,
-      },
-      ephemeralSweep: {
-        deleted: ephemeralSweep.swept.length,
-        errors: ephemeralSweep.errors,
       },
     }, {
       headers: { 'Cache-Control': 'no-store' },

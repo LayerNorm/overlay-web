@@ -23,18 +23,16 @@ export function useAgentEditorForm({
   agent,
   showcase,
   activeWorkspaceId,
-  setHostedRuntime,
+  setLegacyHostedRuntime,
   setAgentType,
-  setModelAccess,
 }: {
   initial: ReturnType<typeof getInitialEditorState>
   showcaseAgent: WorkspaceAgentDirectoryItem | null
   agent: WorkspaceAgentDirectoryItem | null
   showcase: boolean
   activeWorkspaceId: string | null
-  setHostedRuntime: Dispatch<SetStateAction<string>>
+  setLegacyHostedRuntime: Dispatch<SetStateAction<boolean>>
   setAgentType: Dispatch<SetStateAction<AgentType>>
-  setModelAccess: Dispatch<SetStateAction<string>>
 }) {
   const [name, setName] = useState(initial.name)
   const [description, setDescription] = useState(initial.description)
@@ -80,12 +78,9 @@ export function useAgentEditorForm({
       setAvatarShape(agent.avatarShape ?? 'circle')
       setVisibility(agent.visibility)
       setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-      // The agent record marks a managed harness via `harness`; the binding load
-      // (`onManagedBinding`) fills in the environment and picked model.
-      setHostedRuntime(workspaceAgentUsesManagedHarness(agent) ? agent.harness : 'overlay')
+      // The agent record marks a removed hosted runtime via `harness`.
+      setLegacyHostedRuntime(workspaceAgentUsesManagedHarness(agent))
       setAgentType(workspaceAgentUsesByo(agent) ? 'byo' : 'overlay')
-      // `onManagedBinding` restores the saved access for managed agents.
-      setModelAccess('overlay')
       setDirty(false)
       setSavedFlash(false)
     }

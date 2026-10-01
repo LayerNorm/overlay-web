@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import type { ManagedHarnessToolGrant } from './managed-harness-tools'
+import type { AgentMcpToolGrant } from './agent-mcp-tools'
 
 /**
  * Bearer token a connected agent's Agent Host hands to its ACP runtime as the
@@ -30,7 +30,7 @@ export type AgentMcpTokenClaims = {
   invocationNonce: string
   modelId: string
   memoryEnabled: boolean
-  grant: ManagedHarnessToolGrant
+  grant: AgentMcpToolGrant
   /** The summoning message, which gates mutation tools like a native turn. */
   latestUserText?: string
   expiresAt: number
@@ -78,7 +78,7 @@ export function verifyAgentMcpToken(token: string | null | undefined): AgentMcpT
     const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as Record<string, unknown>
     if (parsed.v !== TOKEN_VERSION || typeof parsed.expiresAt !== 'number' || parsed.expiresAt <= Date.now()) return null
     if (!STRING_CLAIMS.every((key) => typeof parsed[key] === 'string' && parsed[key])) return null
-    const grant = parsed.grant as Partial<ManagedHarnessToolGrant> | undefined
+    const grant = parsed.grant as Partial<AgentMcpToolGrant> | undefined
     if (!grant || !Array.isArray(grant.allowedToolIds) || typeof grant.isDefaultMaster !== 'boolean') return null
     return {
       ...(Object.fromEntries(STRING_CLAIMS.map((key) => [key, parsed[key]])) as Pick<AgentMcpTokenClaims, typeof STRING_CLAIMS[number]>),

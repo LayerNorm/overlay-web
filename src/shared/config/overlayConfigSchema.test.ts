@@ -452,17 +452,31 @@ test('OverlayRuntimeConfigSchema rejects pgvector now that the Postgres provider
   )
 })
 
-test('OverlayRuntimeConfigSchema rejects declared but unsupported providers', () => {
-  assert.throws(
-    () =>
-      OverlayRuntimeConfigSchema.parse({
-        ...minimalSaasConfig,
-        providers: {
-          sandbox: { provider: 'e2b' },
-        },
-      }),
-    /Invalid enum value[\s\S]*e2b/,
-  )
+test('OverlayRuntimeConfigSchema rejects unimplemented sandbox provider values', () => {
+  for (const provider of ['e2b', 'local-firecracker']) {
+    assert.throws(
+      () =>
+        OverlayRuntimeConfigSchema.parse({
+          ...minimalSaasConfig,
+          providers: {
+            sandbox: { provider },
+          },
+        }),
+      new RegExp(`Invalid enum value[\\s\\S]*${provider}`),
+    )
+  }
+})
+
+test('OverlayRuntimeConfigSchema accepts box, legacy Vercel, and Daytona sandbox providers', () => {
+  for (const provider of ['box', 'vercel', 'daytona'] as const) {
+    const result = OverlayRuntimeConfigSchema.safeParse({
+      ...minimalSaasConfig,
+      providers: {
+        sandbox: { provider },
+      },
+    })
+    assert.equal(result.success, true, `${provider} should be accepted`)
+  }
 })
 
 test('OverlayRuntimeConfigSchema rejects MinIO as a named storage provider', () => {

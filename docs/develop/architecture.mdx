@@ -177,7 +177,7 @@ per-step 8,192 output-token ceiling. A tool loop must not reserve only its first
 model call: later completed steps would otherwise exceed the reservation and be
 quarantined even when provider usage is valid.
 
-Vercel Sandbox is the default managed sandbox provider. Agent-environment leases no longer hold a
+Box is the managed sandbox provider (Vercel Sandbox was removed; Daytona is being removed; E2B is planned for self-hosting). Agent-environment leases no longer hold a
 worst-case 24-hour reservation: `ManagedAgentSandboxBilling.reserve` takes only a small bootstrap
 hold (the low-balance floor plus a short coverage window), and a per-lease meter debits the wallet
 periodically while the sandbox runs. Each tick reads provider `instance.usage()` counters, computes
@@ -189,12 +189,11 @@ declined, the lease flips to `stopping`, pending commands and queued/running tur
 with a `usage_limited` terminal error, and the provider sandbox is deleted by the reaper pass; a
 turn's settle is just the final meter tick plus bootstrap-hold release. All metering and cleanup
 reconnects use `{resume:false}` — passive reads never wake an idle-stopped sandbox. Some providers
-(Vercel) only publish cumulative usage counters once a session stops, so while a sandbox runs the
+only publish cumulative usage counters once a session stops, so while a sandbox runs the
 meter bills the elapsed window against a virtual wall-time cursor instead; teardown paths
-(reap, harness reset) stop the instance, take one final meter read that reconciles real totals
+(reap, revoke) stop the instance, take one final meter read that reconciles real totals
 against the virtual cursor, then delete — session usage is never lost. The meter also enforces
-the lease's idle window: Vercel sandboxes have no native idle-stop (Daytona honors the same
-`idleTimeoutMs` via `autoStopInterval`), so a running sandbox whose lease shows no activity for
+the lease's idle window: Box has no native idle timer, so a running sandbox whose lease shows no activity for
 `usage.idleTimeoutMs` (default 15 minutes) is provider-stopped while the lease stays `running` —
 every turn-slice acquire heartbeats `usage.lastActiveAt`, so an actively working sandbox never
 cools mid-turn, and the next turn's `resume:true` acquire wakes it again. A `running` lease past

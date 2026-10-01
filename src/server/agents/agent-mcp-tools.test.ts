@@ -2,13 +2,13 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { adaptToolsForHarness, harnessOverlayToolsInstructions, MCP_APPROVAL_REFUSAL } from './managed-harness-tools'
+import { adaptToolsForMcp, overlayMcpInstructions, MCP_APPROVAL_REFUSAL } from './agent-mcp-tools'
 
 type Execute = (input: unknown, options: { toolCallId?: string; context?: unknown }) => Promise<unknown>
 
 test('harness tools drop sandbox-duplicating tools and pass tool context explicitly', async () => {
   const seen: unknown[] = []
-  const tools = adaptToolsForHarness({
+  const tools = adaptToolsForMcp({
     tools: {
       get_note: { description: 'n', inputSchema: {}, execute: async (input: unknown) => ({ input }) },
       computer_exec: { description: 'c', inputSchema: {}, execute: async () => 'no' },
@@ -31,7 +31,7 @@ test('harness tools drop sandbox-duplicating tools and pass tool context explici
 
 test('approval-required MCP calls are refused, not run', async () => {
   let ran = false
-  const tools = adaptToolsForHarness({
+  const tools = adaptToolsForMcp({
     tools: {
       call_mcp_tool: { description: 'm', inputSchema: {}, execute: async () => { ran = true; return 'ran' } },
     } as never,
@@ -44,6 +44,6 @@ test('approval-required MCP calls are refused, not run', async () => {
 })
 
 test('instructions name the tools and are empty without tools', () => {
-  assert.equal(harnessOverlayToolsInstructions([]), '')
-  assert.match(harnessOverlayToolsInstructions(['get_note', 'edit_note']), /Available: get_note, edit_note\./)
+  assert.equal(overlayMcpInstructions([]), '')
+  assert.match(overlayMcpInstructions(['get_note', 'edit_note']), /Available: get_note, edit_note\./)
 })

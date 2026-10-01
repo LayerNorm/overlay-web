@@ -156,20 +156,6 @@ export const webApiBoundaryDefinitions = [
     summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
   },
   {
-    method: 'GET', path: '/api/v1/agent-environments/managed', schema: { query: EmptyQuery, response: UnknownResponse },
-    summary: 'List managed harness runtimes available to the active workspace', tag: 'Agent environments',
-  },
-  {
-    method: 'POST', path: '/api/v1/agent-environments/managed', schema: { json: EmptyRequest, response: UnknownResponse },
-    summary: 'Provision an Overlay Cloud agent environment', tag: 'Agent environments',
-  },
-  {
-    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/reset-harness', routePath: '/api/v1/agent-environments/[environmentId]/reset-harness',
-    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/reset-harness$/,
-    schema: { json: EmptyRequest, response: UnknownResponse },
-    summary: 'Reset a managed-harness environment session and destroy its sandbox', tag: 'Agent environments',
-  },
-  {
     method: 'POST', path: '/api/v1/agent-environments/enroll', schema: { json: enrollmentRequestSchema, response: UnknownResponse },
     summary: 'Redeem an enrollment code and register a device public key', tag: 'Agent environments',
   },
@@ -475,13 +461,6 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/daytona/run',
     schema: { json: DaytonaRunRequest },
     summary: 'Run code in a Daytona sandbox',
-    tag: 'Tools',
-  },
-  {
-    method: 'POST',
-    path: '/api/v1/sandbox/run',
-    schema: { json: DaytonaRunRequest },
-    summary: 'Run code in the configured managed sandbox provider',
     tag: 'Tools',
   },
   { method: 'GET', path: '/api/v1/files', schema: { query: FileListQuery }, summary: 'List or read files', tag: 'Files' },

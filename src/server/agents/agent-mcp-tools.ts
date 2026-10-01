@@ -10,19 +10,16 @@ import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 
 /**
- * Overlay workspace tools for managed harness agents (Claude Code, Codex,
- * OpenCode, Pi, Hermes in an Overlay sandbox).
+ * Overlay workspace tools for agents that connect over MCP (`/api/agent-mcp`).
  *
- * The tools are passed to `HarnessAgent` as host-executed tools: the harness
- * asks for a call, and it runs here, in the workflow step, with the same
- * delegate identity and grant as a native agent turn. Nothing — no token, no
- * extra egress — is added to the sandbox.
+ * The tool set is the one a native Overlay agent with the same grant gets —
+ * built by `buildWorkspaceAgentTooling`, then adapted here — and every call runs
+ * on Overlay's servers with the same delegate identity as a native agent turn.
  */
 
 /**
- * Tools a harness does not get: it already has a shell and file system in its
- * own sandbox (so no second computer or Daytona workspace), and its transcript
- * cannot render generated UI.
+ * Tools an MCP client does not get: it has its own machine and file system (so no
+ * second computer or code sandbox), and its transcript cannot render generated UI.
  */
 export const HARNESS_WITHHELD_TOOL_IDS: ReadonlySet<string> = new Set([
   ...COMPUTER_TOOL_IDS,
@@ -38,17 +35,17 @@ type ToolDefinition = ToolSet[string]
 type ExecuteOptions = { toolCallId?: string; context?: unknown }
 
 /**
- * Adapts a workspace agent's tool set for `HarnessAgent`:
+ * Adapts a workspace agent's tool set for MCP clients:
  *  - drops the withheld tools;
- *  - hands each tool its `toolsContext` entry directly (the harness does not
+ *  - hands each tool its `toolsContext` entry directly (MCP clients do not
  *    route AI SDK tool context) and drops `contextSchema` so it cannot fail
  *    validation before `execute`;
  *  - refuses MCP calls whose server policy requires approval, because the
- *    harness approval map is static per tool name and cannot express it.
+ *    MCP clients have no room approval flow for them.
  *    A native agent turn stalls on those instead; refusing is the explicit
  *    equivalent.
  */
-export function adaptToolsForHarness(args: {
+export function adaptToolsForMcp(args: {
   tools: ToolSet
   toolApproval?: McpToolApprovalFn
   toolsContext?: Record<string, unknown>
@@ -79,33 +76,33 @@ export function adaptToolsForHarness(args: {
   return adapted
 }
 
-/** Appended to a harness agent's instructions so it reaches for the tools. */
-export function harnessOverlayToolsInstructions(toolNames: readonly string[]): string {
+/** Server instructions telling an MCP client what the Overlay tools are for. */
+export function overlayMcpInstructions(toolNames: readonly string[]): string {
   if (toolNames.length === 0) return ''
   return [
     'Overlay workspace tools',
-    'Besides your own shell and files, you have tools that act on the Overlay workspace this conversation belongs to: ' +
+    'Besides your own shell and files, you also have tools that act on the Overlay workspace this conversation belongs to: ' +
       'its notes, files, memory, knowledge search, automations, connected apps, and MCP servers. ' +
-      'Your sandbox disk is scratch space; anything the team should see belongs in Overlay, written with these tools. ' +
+      'Your own disk is scratch space; anything the team should see belongs in Overlay, written with these tools. ' +
       'Notes are Markdown — read one with get_note and change it with edit_note, replace_note_section, or append_to_note rather than rewriting it.',
     `Available: ${toolNames.join(', ')}.`,
   ].join('\n')
 }
 
-/** The agent's grant, carried in the workflow input so each slice rebuilds the same tools. */
-export type ManagedHarnessToolGrant = {
+/** The agent's grant, carried in the MCP token so each request rebuilds the same tools. */
+export type AgentMcpToolGrant = {
   allowedToolIds: string[]
   isDefaultMaster: boolean
 }
 
 /**
- * The Overlay tools for one harness slice. Built the same way as a native
- * agent turn (grant, workspace policy, entitlements), so a harness agent and
+ * The Overlay tools for one MCP request. Built the same way as a native
+ * agent turn (grant, workspace policy, entitlements), so an MCP-connected agent and
  * an Overlay agent with the same grant can do the same things in the
  * workspace. Returns no tools, rather than failing the turn, when the grant
  * is missing or the tool pipeline is unavailable.
  */
-export async function buildManagedHarnessTools(input: {
+export async function buildAgentMcpTools(input: {
   actorUserId: string
   agentId: string
   agentPrincipalId: string
@@ -114,7 +111,7 @@ export async function buildManagedHarnessTools(input: {
   latestUserText?: string
   memoryEnabled?: boolean
   modelId: string
-  toolGrant?: ManagedHarnessToolGrant
+  toolGrant?: AgentMcpToolGrant
   turnId: string
   workspaceId: string
 }): Promise<{ tools: ToolSet; instructions: string }> {
@@ -133,19 +130,19 @@ export async function buildManagedHarnessTools(input: {
       effectiveModelId: input.modelId,
       entitlements,
       grant: { agentId: input.agentId, ...input.toolGrant },
-      // Stable across slices, so a retried slice does not repeat side effects.
-      idempotencyKey: `${input.invocationNonce}:harness-tools`,
+      // Stable across requests of one run, so a retried call does not repeat side effects.
+      idempotencyKey: `${input.invocationNonce}:mcp-tools`,
       ...(input.latestUserText ? { latestUserText: input.latestUserText } : {}),
       memoryEnabled: input.memoryEnabled !== false,
       paid: canUsePaidBudgetFeatures(entitlements),
-      requestFingerprint: hashOperationalIdentifier('workspace-agent-harness-tools', input.invocationNonce),
+      requestFingerprint: hashOperationalIdentifier('workspace-agent-mcp-tools', input.invocationNonce),
       turnId: input.turnId,
       workspaceId: input.workspaceId,
     })
-    const tools = adaptToolsForHarness(tooling)
-    return { tools, instructions: harnessOverlayToolsInstructions(Object.keys(tools)) }
+    const tools = adaptToolsForMcp(tooling)
+    return { tools, instructions: overlayMcpInstructions(Object.keys(tools)) }
   } catch (error) {
-    logger.warn('[managed-harness] Overlay tools unavailable for this slice', {
+    logger.warn('[agent-mcp] Overlay tools unavailable for this request', {
       agentId: input.agentId,
       conversationId: input.conversationId,
       error: error instanceof Error ? error.message : String(error),

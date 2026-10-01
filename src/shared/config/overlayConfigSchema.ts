@@ -49,7 +49,9 @@ export const OverlayVectorSearchProviderSchema = z.enum(['convex', 'none'])
 export const OverlayEmbeddingsProviderSchema = z.enum(['ai-gateway', 'openai', 'azure-openai', 'bedrock', 'none'])
 export const OverlayIntegrationsProviderSchema = z.enum(['composio', 'executor', 'mcp', 'none'])
 export const OverlayBrowserProviderSchema = z.enum(['browser-use', 'none'])
-export const OverlaySandboxProviderSchema = z.enum(['vercel', 'daytona', 'none'])
+// `vercel` is inert: Vercel Sandbox was removed. It is still accepted so existing configs
+// and env overrides keep validating; nothing reads it.
+export const OverlaySandboxProviderSchema = z.enum(['box', 'vercel', 'daytona', 'none'])
 export const OverlayWebSearchProviderSchema = z.enum(['elo', 'none'])
 export const OverlayAnalyticsProviderSchema = z.enum(['posthog', 'none'])
 export const OverlayErrorReportingProviderSchema = z.enum(['sentry', 'none'])
@@ -90,6 +92,7 @@ const OverlayFeatureFlagsSchema = z
     remoteAgentRuns: z.boolean().optional(),
     connectedAgentArtifacts: z.boolean().optional(),
     overlayCloudEnvironments: z.boolean().optional(),
+    // Inert: managed harness agents were removed. Kept so existing configs still validate.
     managedHarnessAgents: z.boolean().optional(),
     computers: z.boolean().optional(),
   })
@@ -475,9 +478,8 @@ export const OverlayRuntimeConfigSchema = z
       models: config.providers.models?.provider ?? config.llm.gatewayProvider,
       integrations: config.providers.integrations?.provider ?? (effectiveCapabilities.integrations ? 'composio' : 'none'),
       browser: config.providers.browser?.provider ?? (effectiveCapabilities.browserUse ? 'browser-use' : 'none'),
-      // Vercel Sandbox is the hosted default; Daytona remains an explicit opt-in
-      // for deployments that have configured its provider and credentials.
-      sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'vercel' : 'none'),
+      // Box is the hosted provider; E2B will be the self-hosted one.
+      sandbox: config.providers.sandbox?.provider ?? (effectiveCapabilities.sandboxes ? 'box' : 'none'),
       webSearch: config.providers.webSearch?.provider ?? (effectiveCapabilities.webSearch ? 'elo' : 'none'),
       analytics: config.providers.analytics?.provider ?? (effectiveCapabilities.analytics ? 'posthog' : 'none'),
       errorReporting: config.providers.errorReporting?.provider ?? (effectiveCapabilities.errorReporting ? 'sentry' : 'none'),
