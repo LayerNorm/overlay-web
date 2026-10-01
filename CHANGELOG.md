@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Changed
+
+- **Creating agents on Overlay Cloud is disabled.** The runtime picker for hosted Claude Code, Codex, OpenCode, Pi, and Hermes no longer appears, the control plane refuses new managed-harness bindings for every workspace regardless of flags, and `POST /api/v1/agent-environments/managed` returns 410. These runtimes are being rebuilt from the ground up (Box in the cloud, E2B for self-hosting); Vercel Sandbox and Daytona are being removed. Existing agents, Computers, and connected (on-your-machine) agents are unaffected. Plan: `docs/plans/SANDBOX_PROVIDER_CONSOLIDATION_PLAN.md`.
+
 ### Added
 
 - **Agent Host 0.3.6** (`@layernorm/overlay-agent-host`, `@layernorm/overlay-agent-bridge-protocol`): connected agents receive Overlay's MCP server for workspace tools. New enrollments pin 0.3.6; existing hosts keep working without it and pick up the tools when upgraded.
