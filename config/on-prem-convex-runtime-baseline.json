@@ -3,6 +3,7 @@
   "apiRouteFiles": [
     "src/app/api/account/delete/route.ts",
     "src/app/api/agent-gateway/[provider]/[...path]/route.ts",
+    "src/app/api/agent-mcp/route.ts",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -404,6 +405,7 @@
     "src/server/surfaces/chat.ts",
     "src/server/surfaces/convex-chat-state.ts",
     "src/server/surfaces/surface-authors.ts",
+    "src/server/tools/tools/files-executes.ts",
     "src/server/tools/tools/record-tool-invocation.ts",
     "src/server/usage/ConvexUsageRepository.ts",
     "src/server/usage/index.ts",
