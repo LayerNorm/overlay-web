@@ -29,6 +29,7 @@ import { createAgentMessageStream } from '@/server/agents/agent-message-stream'
 import { createHarnessTranscriptWritable, type HarnessTranscriptSnapshot } from '@/server/agents/harnesses/transcript-writable'
 import { createManagedHarnessAgent, managedHarnessDescriptor } from '@/server/agents/harnesses/registry'
 import type { ManagedHarnessToolGrant } from '@/server/agents/managed-harness-tools'
+import { allAgentToolGrantIds, normalizeAgentToolGrant, overlayToolIdsFromGrant } from '@/shared/agents/tool-groups'
 import { managedHarnessEntry } from '@/shared/agents/harness-catalog'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
@@ -326,6 +327,79 @@ export async function acquireManagedHarnessTurn(input: {
 }
 
 /**
+ * Which directions of the Overlay file sync this turn gets: the mirror is
+ * read access to the actor's files (the agent's `read_file` grant), saving
+ * back is write access (`write_file`). `OVERLAY_HARNESS_FILE_SYNC=0` turns
+ * the sync off entirely.
+ */
+function harnessFileSyncAccess(grant: ManagedHarnessToolGrant | undefined): { pull: boolean; push: boolean } {
+  if (!grant || process.env.OVERLAY_HARNESS_FILE_SYNC === '0') return { pull: false, push: false }
+  // Same effective grant as `resolveAgentGrant` (the default agent holds everything).
+  const overlayToolIds = overlayToolIdsFromGrant(grant.isDefaultMaster && grant.allowedToolIds.length === 0
+    ? allAgentToolGrantIds()
+    : normalizeAgentToolGrant(grant.allowedToolIds))
+  const pull = overlayToolIds.includes('read_file')
+  return { pull, push: pull && overlayToolIds.includes('write_file') }
+}
+
+/**
+ * Writes the actor's workspace files into `<workDir>/overlay` before the
+ * first slice. Best-effort: a sync failure never fails the turn.
+ */
+export async function pullOverlayFilesIntoHarnessSandbox(input: HarnessTurnIdentity): Promise<{ files: number } | null> {
+  'use step'
+  if (!harnessFileSyncAccess(input.toolGrant).pull) return null
+  try {
+    const [{ instance }, sync, { createWorkspaceFileSource }] = await Promise.all([
+      ensureHarnessSandboxInstance({ environmentId: input.environmentId, harnessId: input.harnessId, workspaceId: input.workspaceId }),
+      import('@/server/agents/sandbox-file-sync'),
+      import('@/server/agents/workspace-file-source'),
+    ])
+    const root = await sync.resolveMirrorRoot(instance, input.workingDirectory)
+    const summary = await sync.pullWorkspaceIntoSandbox({
+      instance,
+      root,
+      source: createWorkspaceFileSource({ userId: input.actorUserId, workspaceId: input.workspaceId }),
+    })
+    logger.info('[managed-harness] Overlay files mirrored into sandbox', { runId: input.runId, ...summary })
+    return { files: summary.files }
+  } catch (error) {
+    logger.warn('[managed-harness] Overlay file mirror failed', {
+      runId: input.runId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+/** Saves files the agent changed or created in the mirror back to Overlay. Best-effort. */
+export async function pushHarnessSandboxFilesToOverlay(input: HarnessTurnIdentity) {
+  'use step'
+  if (!harnessFileSyncAccess(input.toolGrant).push) return null
+  try {
+    const [{ instance }, sync, { createWorkspaceFileSource }] = await Promise.all([
+      ensureHarnessSandboxInstance({ environmentId: input.environmentId, harnessId: input.harnessId, workspaceId: input.workspaceId }),
+      import('@/server/agents/sandbox-file-sync'),
+      import('@/server/agents/workspace-file-source'),
+    ])
+    const root = await sync.resolveMirrorRoot(instance, input.workingDirectory)
+    const summary = await sync.pushSandboxChangesToWorkspace({
+      instance,
+      root,
+      source: createWorkspaceFileSource({ userId: input.actorUserId, workspaceId: input.workspaceId }),
+    })
+    if (summary) logger.info('[managed-harness] sandbox files saved to Overlay', { runId: input.runId, ...summary })
+    return summary
+  } catch (error) {
+    logger.warn('[managed-harness] saving sandbox files to Overlay failed', {
+      runId: input.runId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+/**
  * Runs one time-sliced piece of the turn: ensure the sandbox, wrap the native
  * handle, build the HarnessAgent, then drive `runHarnessAgentTimeSlice` with a
  * writable that projects stream chunks into the reply row. The returned state
@@ -365,7 +439,10 @@ export async function runManagedHarnessTurnSlice(input: HarnessTurnIdentity & {
     // Imported lazily so the tool pipeline stays out of workflow bundles.
     import('@/server/agents/managed-harness-tools').then(({ buildManagedHarnessTools }) => buildManagedHarnessTools(input)),
   ])
-  const instructions = [input.instructions, overlayTools.instructions].filter(Boolean).join('\n\n')
+  const fileSync = harnessFileSyncAccess(input.toolGrant).pull
+    ? (await import('@/server/agents/sandbox-file-sync')).sandboxSyncInstructions()
+    : ''
+  const instructions = [input.instructions, overlayTools.instructions, fileSync].filter(Boolean).join('\n\n')
   const agent = await createManagedHarnessAgent({
     harnessId: input.harnessId,
     ...(input.harnessModel ? { model: input.harnessModel } : {}),

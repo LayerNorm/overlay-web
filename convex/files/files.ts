@@ -120,6 +120,7 @@ function normalizeFile(file: Doc<'files'>) {
     legacyNoteId: file.legacyNoteId,
     legacyOutputId: file.legacyOutputId,
     tags: file.tags,
+    textInObjectStore: file.textInObjectStore,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     deletedAt: file.deletedAt,
@@ -708,6 +709,7 @@ export const create = mutation({
     clientId: v.optional(v.string()),
     name: v.string(),
     tags: v.optional(v.array(v.string())),
+    textInObjectStore: v.optional(v.boolean()),
     type: v.optional(v.union(v.literal('file'), v.literal('folder'))),
     kind: v.optional(v.union(
       v.literal('folder'),
@@ -856,6 +858,7 @@ export const create = mutation({
       clientId,
       name,
       tags,
+      ...(args.textInObjectStore && args.r2Key ? { textInObjectStore: true } : {}),
       type,
       kind,
       parentId: args.parentId,
@@ -1019,6 +1022,7 @@ export const update = mutation({
     fileId: v.id('files'),
     name: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
+    textInObjectStore: v.optional(v.boolean()),
     content: v.optional(v.string()),
     textContent: v.optional(v.string()),
     contentHash: v.optional(v.string()),
@@ -1084,10 +1088,16 @@ export const update = mutation({
     if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError
+    const textInObjectStore = updates.textInObjectStore ?? existing.textInObjectStore ?? false
     if (updates.r2Key !== undefined) {
-      if (updates.r2Key && !isOwnedOutputR2Key(userId, updates.r2Key)) throw new Error('Invalid storage key')
+      // Outputs point at their own keys; a text file whose full text lives in
+      // object storage points at its owner's file key.
+      const allowedKey = isOwnedOutputR2Key(userId, updates.r2Key)
+        || (textInObjectStore && isOwnedFileR2Key(userId, updates.r2Key))
+      if (updates.r2Key && !allowedKey) throw new Error('Invalid storage key')
       patch.r2Key = updates.r2Key || undefined
     }
+    if (updates.textInObjectStore !== undefined) patch.textInObjectStore = updates.textInObjectStore || undefined
     if (updates.mimeType !== undefined) patch.mimeType = updates.mimeType
     if (updates.sizeBytes !== undefined) patch.sizeBytes = updates.sizeBytes
     if (updates.modelId !== undefined) patch.modelId = updates.modelId
@@ -1111,7 +1121,10 @@ export const update = mutation({
       if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
     }
     if (nextText !== undefined) {
-      const nextSizeBytes = utf8ByteLength(nextText)
+      // For text in object storage `content` is only a prefix; the caller passes the full size.
+      const nextSizeBytes = textInObjectStore && updates.sizeBytes !== undefined
+        ? updates.sizeBytes
+        : utf8ByteLength(nextText)
       const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existingText)
       storageDelta = shouldCountStorage(kind, existing.type, nextSizeBytes)
         ? nextSizeBytes - previousSizeBytes

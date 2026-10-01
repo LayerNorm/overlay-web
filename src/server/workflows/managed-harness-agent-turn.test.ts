@@ -145,7 +145,7 @@ test('dispatch re-gates availability and threads harness model + instructions', 
   assert.match(workflow, /instructions: input\.instructions/)
   assert.match(steps, /model: input\.harnessModel/)
   // The agent's instructions reach the HarnessAgent, extended with the Overlay tools note.
-  assert.match(steps, /\[input\.instructions, overlayTools\.instructions\]/)
+  assert.match(steps, /\[input\.instructions, overlayTools\.instructions/)
   assert.match(steps, /tools: overlayTools\.tools/)
 })
 

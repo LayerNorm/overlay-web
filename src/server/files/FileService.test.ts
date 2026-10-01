@@ -24,6 +24,9 @@ function createStorage(overrides: Partial<FileServiceStorage> = {}): FileService
     async deleteObjects(keys: string[]) {
       storage.deletedKeys.push(...keys)
     },
+    async downloadBuffer() {
+      return null
+    },
     async generatePresignedDownloadUrl(key: string) {
       return `https://download.test/${encodeURIComponent(key)}`
     },
@@ -212,9 +215,16 @@ test('FileService.createFile rejects legacy Convex storage uploads', async () =>
   )
 })
 
-test('FileService.createFile splits large text into Convex-safe parts', async () => {
-  const repository = createRepository()
-  const service = createService(repository)
+const roomyStorage = {
+  async getStorageEntitlements() {
+    return { overlayStorageBytesUsed: 0, overlayStorageBytesLimit: 100_000_000 }
+  },
+}
+
+test('FileService.createFile keeps large text in object storage as one file with a searchable prefix', async () => {
+  const repository = createRepository(roomyStorage as never)
+  const storage = createStorage()
+  const service = createService(repository, storage)
   const result = await service.createFile({
     userId: 'user_1',
     body: {
@@ -225,10 +235,49 @@ test('FileService.createFile splits large text into Convex-safe parts', async ()
   })
 
   assert.equal(result.id, 'file_1')
-  assert.equal(result.parts, 2)
-  assert.deepEqual(result.ids, ['file_1', 'file_2'])
-  assert.equal(repository.createdFiles[0]?.name, 'large (part 1 of 2).txt')
-  assert.equal(repository.createdFiles[1]?.name, 'large (part 2 of 2).txt')
+  assert.equal(result.parts, undefined)
+  assert.equal(repository.createdFiles.length, 1)
+  const created = repository.createdFiles[0]!
+  assert.equal(created.name, 'large.txt')
+  assert.equal(created.textInObjectStore, true)
+  assert.equal(created.r2Key, storage.uploadedKeys[0])
+  assert.equal(created.sizeBytesOverride, 900_000)
+  assert.ok(String(created.content).length < 900_000)
+})
+
+test('FileService moves text between inline and object storage as it grows and shrinks', async () => {
+  const updates: Array<Record<string, unknown>> = []
+  let stored: Record<string, unknown> = { _id: 'f1', userId: 'user_1', name: 'log.txt', content: 'small' }
+  const repository = createRepository({
+    async getFile() {
+      return stored as never
+    },
+    async updateFile(args) {
+      updates.push(args)
+      stored = { ...stored, ...args }
+    },
+  })
+  const storage = createStorage({
+    async downloadBuffer() {
+      return new TextEncoder().encode('b'.repeat(900_000))
+    },
+  })
+  const service = createService(repository, storage)
+
+  await service.updateFile({ userId: 'user_1', body: { fileId: 'f1', textContent: 'b'.repeat(900_000) } })
+  assert.equal(updates[0]?.textInObjectStore, true)
+  assert.equal(updates[0]?.sizeBytes, 900_000)
+  const grownKey = String(updates[0]?.r2Key)
+  assert.equal(storage.uploadedKeys.at(-1), grownKey)
+
+  const full = await service.getOrListFiles({ userId: 'user_1', fileId: 'f1', fullText: true }) as { textContent: string }
+  assert.equal(full.textContent.length, 900_000)
+
+  await service.updateFile({ userId: 'user_1', body: { fileId: 'f1', textContent: 'short again' } })
+  assert.equal(updates[1]?.textInObjectStore, false)
+  assert.equal(updates[1]?.r2Key, '')
+  assert.equal(updates[1]?.content, 'short again')
+  assert.deepEqual(storage.deletedKeys, [grownKey])
 })
 
 test('FileService.createUploadUrl returns current upload-url DTO and records intent', async () => {
@@ -413,9 +462,10 @@ test('FileService.searchText preserves match response shape', async () => {
 })
 
 test('FileService creates files in the caller\'s workspace so workspace listings include them', async () => {
-  const repository = createRepository()
+  const repository = createRepository(roomyStorage as never)
   const service = createService(repository)
   await service.createFile({ userId: 'user_1', workspaceId: 'ws_1', body: { name: 'Docs', type: 'folder', kind: 'folder' } })
+  await service.createFile({ userId: 'user_1', workspaceId: 'ws_1', body: { name: 'notes.txt', type: 'file', textContent: 'hello' } })
   await service.createFile({ userId: 'user_1', workspaceId: 'ws_1', body: { name: 'large.txt', type: 'file', textContent: 'a'.repeat(900_000) } })
   assert.deepEqual(repository.createdFiles.map((file) => file.workspaceId), ['ws_1', 'ws_1', 'ws_1'])
 

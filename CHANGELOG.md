@@ -4,6 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Added
+
+- **Workspace files in every managed harness sandbox**: before a hosted Claude Code, Codex, OpenCode, Pi, or Hermes turn, the summoning person's workspace files are mirrored into `./overlay` in the agent's working directory (notes as `.md`). After the turn, files the agent changed or created there are saved back to Overlay. Edits update the original guarded by the mirrored revision, an edit that raced a change in Overlay is saved as an "(agent copy)", and deleting a mirrored file never deletes it in Overlay. The mirror is rebuilt each turn, needs the agent's `read_file` grant (saving back needs `write_file`), and is limited to 2,000 files and 100 MB. `OVERLAY_HARNESS_FILE_SYNC=0` turns it off. The sync runs host-side through the same file and note services as the app, so no storage credentials enter the sandbox.
+- **Large text files live in object storage**: text over the Convex document limit (~850 KB) is now stored as one R2 object with a searchable inline prefix (`files.textInObjectStore`), rather than being split into `(part N of M)` rows. `read_file` and `GET /api/v1/files?fileId=…&fullText=true` return the full text. Edits move text between inline and object storage as its size changes. Agents' `write_file` accepts up to 10 MB. The Files editor shows these files read-only, since it only loads the prefix. `list_files` now pages past the list endpoint's 100-row cap.
+
 ### Fixed
 
 - **Files and folders created through `/api/v1/files` land in the caller's workspace.** `FileService` received the request's workspace but dropped it on every create path: new folders, text files, R2 uploads, and ingested documents. The rows had no `workspaceId`, so workspace-scoped listings (the Files page, `list_files`) never showed them. Background ingestion now carries the job's workspace too. Rows created before this fix still have no workspace; `migrations/backfillWorkspaceIds` can assign them.

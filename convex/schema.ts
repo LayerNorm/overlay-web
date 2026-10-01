@@ -1609,6 +1609,9 @@ export default defineSchema({
     projectId: v.optional(v.string()),
     // Note tags (kind 'note' only).
     tags: v.optional(v.array(v.string())),
+    // Text too large for a Convex document: the full text is the object at
+    // `r2Key`, and `content` holds a searchable prefix.
+    textInObjectStore: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),

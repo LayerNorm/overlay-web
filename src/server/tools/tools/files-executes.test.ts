@@ -2,7 +2,7 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { executeReadFile, executeWriteFile } from './files-executes'
+import { executeListFiles, executeReadFile, executeWriteFile } from './files-executes'
 import type { OverlayToolsOptions } from './types'
 
 const options: OverlayToolsOptions = { userId: 'user_1', workspaceId: 'ws_1', baseUrl: 'https://overlay.test' }
@@ -60,6 +60,24 @@ test('write_file creates with a mime type and reports a stale revision as a conf
     assert.equal(conflict.success, false)
     assert.equal('conflict' in conflict && conflict.conflict, true)
     assert.equal(bodies[1]?.expectedUpdatedAt, 3)
+  } finally {
+    restore()
+  }
+})
+
+test('list_files pages past the endpoint\'s 100-row cap', async () => {
+  const cursors: Array<string | null> = []
+  const restore = mockFetch((url) => {
+    cursors.push(url.searchParams.get('cursor'))
+    const first = !url.searchParams.get('cursor')
+    const data = Array.from({ length: first ? 100 : 30 }, (_, index) => ({ _id: `f${first ? index : 100 + index}`, name: 'x', type: 'file', updatedAt: 1 }))
+    return Response.json({ data, nextCursor: first ? 'c2' : null, hasMore: first })
+  })
+  try {
+    const result = await executeListFiles(options, {})
+    assert.equal('files' in result && result.files.length, 130)
+    assert.equal('truncated' in result, false)
+    assert.deepEqual(cursors, [null, 'c2'])
   } finally {
     restore()
   }

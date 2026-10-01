@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { MAX_FILE_CONTENT_UTF8_BYTES, utf8ByteLength } from '@/shared/storage/convex-file-content'
+import { utf8ByteLength } from '@/shared/storage/convex-file-content'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
@@ -13,6 +13,8 @@ import type { OverlayToolsOptions } from './types'
 const FILES_PATH = '/api/v1/files'
 const READ_CHUNK_CHARS = 60_000
 const LIST_LIMIT = 200
+/** Text over the Convex document limit is kept in object storage, so this is a sanity cap, not a storage limit. */
+const MAX_WRITE_BYTES = 10 * 1024 * 1024
 
 type FileSummary = {
   _id: string
@@ -26,7 +28,7 @@ type FileSummary = {
   isStorageBacked?: boolean
 }
 
-type FileDetail = FileSummary & { textContent?: string }
+type FileDetail = FileSummary & { textContent?: string; textInObjectStore?: boolean }
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   md: 'text/markdown',
@@ -98,15 +100,25 @@ export async function executeListFiles(
   input: { folderId?: string },
 ) {
   try {
-    const params = new URLSearchParams({ summary: 'true', limit: String(LIST_LIMIT) })
-    if (input.folderId) params.set('parentId', input.folderId)
-    const res = await get(options, params)
-    if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list files') }
-    const files = await res.json() as FileSummary[]
+    // The list endpoint returns at most 100 rows per page.
+    const files: FileSummary[] = []
+    let cursor: string | null = null
+    let hasMore = false
+    do {
+      const params = new URLSearchParams({ summary: 'true', page: 'true', limit: '100' })
+      if (input.folderId) params.set('parentId', input.folderId)
+      if (cursor) params.set('cursor', cursor)
+      const res = await get(options, params)
+      if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list files') }
+      const page = await res.json() as { data: FileSummary[]; nextCursor: string | null; hasMore: boolean }
+      files.push(...page.data)
+      hasMore = page.hasMore
+      cursor = page.nextCursor
+    } while (hasMore && cursor && files.length < LIST_LIMIT)
     return {
       success: true,
-      files: files.map(summarize),
-      ...(files.length >= LIST_LIMIT ? { truncated: true } : {}),
+      files: files.slice(0, LIST_LIMIT).map(summarize),
+      ...(hasMore || files.length > LIST_LIMIT ? { truncated: true } : {}),
     }
   } catch (err) {
     return failure(err, 'Failed to list files')
@@ -118,7 +130,7 @@ export async function executeReadFile(
   input: { fileId: string; offset?: number },
 ) {
   try {
-    const res = await get(options, new URLSearchParams({ fileId: input.fileId.trim() }))
+    const res = await get(options, new URLSearchParams({ fileId: input.fileId.trim(), fullText: 'true' }))
     if (!res.ok) return { success: false, error: await errorMessage(res, 'File not found') }
     const file = await res.json() as FileDetail
     if (file.type === 'folder') return { success: false, error: 'That is a folder; use list_files with its id.' }
@@ -130,7 +142,7 @@ export async function executeReadFile(
         success: true,
         file: base,
         content: '',
-        note: file.isStorageBacked
+        note: file.isStorageBacked && !file.textInObjectStore
           ? 'This file has no extracted text (it is a binary or unindexed upload).'
           : 'The file is empty.',
       }
@@ -155,8 +167,8 @@ export async function executeWriteFile(
   input: { fileId?: string; name?: string; folderId?: string; content: string; expectedRevision?: string },
 ) {
   try {
-    if (utf8ByteLength(input.content) > MAX_FILE_CONTENT_UTF8_BYTES) {
-      return { success: false, error: `Content is over ${Math.floor(MAX_FILE_CONTENT_UTF8_BYTES / 1000)} KB; split it into several files.` }
+    if (utf8ByteLength(input.content) > MAX_WRITE_BYTES) {
+      return { success: false, error: 'Content is over 10 MB; split it into several files.' }
     }
     if (input.fileId) {
       const expectedUpdatedAt = input.expectedRevision ? Number(input.expectedRevision) : undefined

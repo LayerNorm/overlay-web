@@ -267,7 +267,8 @@ function KnowledgeSurfaceBody({
       {activeTab === 'files' && opened.selectedFile && (
         <KnowledgeFileDetailPanel
           fileName={opened.selectedFile.name}
-          isEditable={filePort.isEditable(opened.selectedFile.name)}
+          // Only a prefix of text kept in object storage is loaded here; saving it would truncate the file.
+          isEditable={filePort.isEditable(opened.selectedFile.name) && !opened.selectedFile.textInObjectStore}
           fileContent={opened.fileContent}
           onContentChange={opened.handleFileContentChange}
           renderViewer={() =>

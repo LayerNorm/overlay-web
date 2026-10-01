@@ -441,6 +441,16 @@ because no room approval exists for them yet.
 - **Managed harnesses** (`managedHarnessAgentTurnWorkflow`) receive the tools as `HarnessAgent`
   host-executed tools. Each slice rebuilds them from the grant carried in the workflow input, and a
   call runs in the workflow step on Overlay's servers. The sandbox gains no token and no egress.
+- **Managed harness file mirror.** Before a turn's first slice, the actor's workspace files are
+  written into `<workDir>/overlay` in the sandbox (notes as `.md`), rebuilt from scratch each turn so
+  nothing from another person's turn survives in it. After the last slice (or on failure), files the
+  agent changed or created there are saved back through `FileService`/`NoteService`: edits update the
+  original guarded by the revision mirrored, a file changed in Overlay meanwhile is saved as an
+  "(agent copy)", new text becomes a text file (large text goes to object storage), and other bytes
+  become an R2 upload. Deleting a mirrored file never deletes it in Overlay. Pulling requires the
+  agent's `read_file` grant and saving back requires `write_file`; limits are 2,000 files, 100 MB, and
+  25 MB per file. `OVERLAY_HARNESS_FILE_SYNC=0` disables it. Code: `src/server/agents/sandbox-file-sync.ts`,
+  `src/server/agents/workspace-file-source.ts`.
 - **Connected agents** receive an MCP server. The remote-turn start command carries
   `metadata.overlayMcp = { url: <app origin>/api/agent-mcp, token }`; the Agent Host passes it to ACP
   `session/new`/`session/load` as an HTTP MCP server with an `Authorization: Bearer` header, only when

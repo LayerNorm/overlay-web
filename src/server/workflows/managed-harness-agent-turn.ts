@@ -15,6 +15,8 @@ import {
   markManagedHarnessApprovalResolved,
   markManagedHarnessApprovalWaiting,
   pendingHarnessApprovals,
+  pullOverlayFilesIntoHarnessSandbox,
+  pushHarnessSandboxFilesToOverlay,
   runManagedHarnessTurnSlice,
   type ManagedHarnessWorkflowState,
 } from '@/server/agents/managed-harness-steps'
@@ -143,6 +145,7 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
   let sessionId: string | undefined
   let resumeFrom: Record<string, unknown> | undefined
   let continueFrom: Record<string, unknown> | undefined
+  let filesSaved = false
 
   try {
     const acquired = await acquireManagedHarnessTurn({
@@ -154,6 +157,7 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
     })
     sessionId = acquired.sessionId
     resumeFrom = acquired.resumeFrom
+    await pullOverlayFilesIntoHarnessSandbox(identity)
 
     let slice = await runManagedHarnessTurnSlice({
       ...identity,
@@ -222,6 +226,9 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
     // Keep teardown coordinates current regardless of how the loop exited.
     resumeFrom = state.resumeFrom ?? resumeFrom
     continueFrom = state.continueFrom ?? continueFrom
+    // Work the agent left in the mirror is saved even if the turn ran out of time.
+    filesSaved = true
+    await pushHarnessSandboxFilesToOverlay(identity)
 
     if (state.status === 'finished') {
       const result = await finalizeManagedHarnessTurn({
@@ -253,6 +260,7 @@ export async function managedHarnessAgentTurnWorkflow(input: ManagedHarnessTurnI
     }
     throw new Error(state.error ?? 'The managed agent turn failed.')
   } catch (error) {
+    if (!filesSaved) await pushHarnessSandboxFilesToOverlay(identity).catch((_error) => null)
     const failure = describeManagedHarnessFailure(error)
     await failManagedHarnessTurn({
       ...identity,
