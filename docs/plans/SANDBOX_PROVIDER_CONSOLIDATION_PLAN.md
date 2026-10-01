@@ -36,7 +36,7 @@ _Revised 2026-10-01. Steps 1–3 landed on `main` the same day (not yet deployed
 2. Took an export, then ran `migrations/removeDaytonaData:run` on production until `done` was true: 161 rows (158 usage-ledger rows, about $2.02 total, and 3 workspaces). The backup is `artifacts/backups/prod-pre-daytona-cleanup-2026-10-01.zip` (local, gitignored).
 3. Follow-up commit dropped `daytonaWorkspaces` and `daytonaUsageLedger` from the schema along with their cleanup code, count fields and tenancy rows, and deleted the migration. Then deploy Convex again.
    - **Shared dev Convex still has Daytona rows.** A schema without the tables fails validation there. Before the first `convex:push:dev` from `staging`, check out `35724c913`, push it to dev, run `npx convex run migrations/removeDaytonaData:run '{}'` until `done`, then push the newer code.
-4. Unset in production: `OVERLAY_VERCEL_SANDBOX_*`, `OVERLAY_MANAGED_SANDBOX_PROVIDER`, `OVERLAY_HARNESS_*`, `OVERLAY_EXEC_SANDBOX_PROVIDER`, `OVERLAY_EPHEMERAL_SANDBOX_STALE_MS`, `DAYTONA_*`, `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS`, and `OVERLAY_PROVIDER_SANDBOX` if it names `vercel` or `daytona`.
+4. Unset in production on 2026-10-01: `OVERLAY_VERCEL_SANDBOX_*`, `OVERLAY_MANAGED_SANDBOX_PROVIDER`, `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS`, `DAYTONA_*` (Production only; Preview still has them). `OVERLAY_PROVIDER_SANDBOX` is sensitive and unreadable, so it was left; the config still accepts `vercel`/`daytona` as inert values. Removed variables take effect on the next web deploy.
 5. Revoked harness environments and their leases (provider `vercel`) remain as inert rows.
 
 ## After this
