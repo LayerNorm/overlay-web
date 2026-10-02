@@ -9,7 +9,7 @@ import { createCloudAgentMachineService } from '@/server/agents/cloud/create-clo
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId } from '@/server/app-api/bff-context'
 import { isPaidPlan } from '@/server/billing/billing-runtime'
 import { logger } from '@/server/observability/logger'
-import { getBaseUrl } from '@/server/web/app-url'
+import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { AgentProviderAccountError } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { agentEnvironmentErrorResponse } from '../shared'
 
@@ -68,7 +68,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       size: body.size,
       // The configured app URL, not the request origin: behind a proxy or tunnel the
       // origin can be an internal host the machine cannot reach.
-      serverUrl: getBaseUrl(),
+      serverUrl: getAgentFacingBaseUrl(),
     }).then(() => undefined).catch((error) => {
       // The failure is recorded for the agent page; nothing more to do here.
       logger.warn('[cloud-agent] provisioning failed', { agentId: body.agentId, error: error instanceof Error ? error.message : String(error) })

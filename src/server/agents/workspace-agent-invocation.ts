@@ -37,7 +37,7 @@ import {
 import type { AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import type { AgentMcpToolGrant } from '@/server/agents/agent-mcp-tools'
 import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/agent-mcp-token'
-import { getBaseUrl } from '@/server/web/app-url'
+import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
 
 /**
@@ -517,7 +517,7 @@ function overlayMcpMetadata(args: {
     ...(args.latestUserText ? { latestUserText: args.latestUserText } : {}),
     ttlMs: args.ttlMs,
   })
-  return token ? { overlayMcp: { url: `${getBaseUrl()}/api/agent-mcp`, token } } : {}
+  return token ? { overlayMcp: { url: `${getAgentFacingBaseUrl()}/api/agent-mcp`, token } } : {}
 }
 
 export async function startRemoteWorkspaceAgentTurn(args: {
