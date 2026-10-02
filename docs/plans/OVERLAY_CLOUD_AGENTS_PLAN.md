@@ -315,7 +315,7 @@ Known gaps:
 - The create and agent-page UI was rendered only in a signed-out browser session, so the full click-through (including a visual pass) is still to do by hand: create → progress → conversation, then Pause / Resume / delete on the agent page.
 - ~~No reconnect prompt inside the conversation.~~ Fixed: a sign-in failure shows the reconnect message with a link to Agent accounts instead of the agent's raw error. Conversation cards for runs are still open (to land with Phase 3's approval round trip).
 
-**Phase 3 status (2026-10-02): built; verified live except the approval round trip, which is verified at unit and Convex level.**
+**Phase 3 status (2026-10-02): done and verified on production (getoverlay.io), with a real Claude Code subscription.**
 
 - [x] **Overlay MCP for other AI apps** (added to the scope at the owner's request): `/api/mcp` with OAuth 2.1 (dynamic registration, PKCE, rotating refresh), a consent page, personal tokens, `mcpGrants`, and Settings → Connected apps. Three access levels (read, write, everything) that only narrow what the workspace allows. See `docs/develop/mcp-access.md`.
 - [x] **Coverage audit**: every tool an outside app or connected agent can hold was called against the dev backend; the audit found and fixed `list_notes` (broke on the notes API's page envelope) and `update_automation` / `pause_automation` / `delete_automation` (the tool's own id was erased by an empty one). Not executed because they spend money or need a third party: web search/fetch, image/video, the browser, `call_mcp_tool` (the one configured server's catalog is stale; a "test connection" refreshes it), Composio execution. Contract test `mcp-coverage.test.ts` fails when a tool group is added without an MCP decision.
@@ -323,11 +323,26 @@ Known gaps:
 - [x] **Approvals**: a connected agent's MCP call that needs approval shows an approval card in the conversation and gets the answer (short wait, then "call again"); denial and run end refuse. Verified by Convex tests (card, authorization, option check, no host command, run end closes it) and gate unit tests, not by a live run.
 - [x] **Scope**: unchanged: token = invoking person ∩ the agent's grant, for the run only.
 
+**Production verification (2026-10-02, owner's signed-in browser, real Boat machines, real subscription):**
+
+- The official MCP SDK client signed in through the real consent page (discovery, registration, PKCE, tokens) and made note, file, memory, and prompt calls; personal tokens and OAuth connections were disconnected from Settings and stopped working at once; DCR accepts the real Claude web and ChatGPT callback URLs; automation tools and `call_mcp_tool` (DeepWiki) work.
+- A cloud Claude Code agent created from the dialog reached Ready, answered a real message, listed 54 notes, created, read back, and deleted a note through Overlay's MCP tools, and ran a user MCP server tool through `call_mcp_tool`. Overlay's own approval card (gate on a tool with an approval-required policy) was shown, approved after 19 s, and the call ran. Pause and resume, the sign-in failure with its reconnect link, and the agent page's Machine section were checked too.
+
+Bugs found by that run, all fixed and deployed:
+
+- The machine's host enrolled but got 401 on every signed request: prod's app URL (`getoverlay.io`) redirects to `www`, and a cross-origin redirect drops `Authorization`. Machine-facing URLs now come from `OVERLAY_AGENT_PUBLIC_URL` (prod: `https://www.getoverlay.io`). MCP/OAuth metadata is built from the host the client called.
+- The create dialog stopped polling when provisioning finished (before the host was online) and hung on "Starting".
+- A machine started with credit under the meter's low-balance floor was deleted within a minute; creation now refuses up front (402 `insufficient_credit`), and the agent page explains a stopped machine.
+- An agent created from the dialog had an empty tool grant, so its MCP server exposed no tools. Cloud agents now default to Everything and the agent page has an **Overlay access** control (None, Read only, Read and write, Everything); Save no longer rewrites the grant.
+- Consent defaults to Read and write when an app asks for every scope.
+
 Known gaps:
 
+- Budget holds stuck in `reconcile_required` (found on the owner's account: 115 holds, about $7.62) make remaining credit read far below allowance minus spend; filed as a separate task. `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS=25` is set on prod so the owner's machine can run with under $1 left; unset it to restore the $1 floor.
+- An approval is remembered per run: if the person answers after the agent has given up waiting (25 s), the next turn asks again.
+- Strict OAuth clients must use the `www` address (the apex redirects).
 - No "run now" automation tool: agents can create, update, pause, and delete automations (verified), but an automation runs on its schedule.
-- Approval round trip not exercised in a live run; hosted ChatGPT and Claude web were not connected (the OAuth flow was exercised end to end with the official SDK and a public tunnel, and Claude Code on a Boat machine reported the server connected with a personal token).
-- The consent page and Connected apps settings were not click-tested signed in (the browser session was signed out); the signed-out redirect to sign-in works.
+- Hosted ChatGPT and Claude web were not connected by me (only their callback URLs were registered); everything else in the flow ran with the official SDK client and Claude Code.
 
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
