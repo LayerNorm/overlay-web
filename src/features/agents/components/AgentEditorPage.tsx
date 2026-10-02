@@ -106,7 +106,7 @@ export function AgentEditorPage({
 
   const buildInput = useCallback((): WorkspaceAgentCreateInput => {
     const harnessLabel = byo.selectedHarness?.label ?? byo.adapterId
-    return {
+    const built = {
       ...buildWorkspaceAgentInput({
         name: form.name,
         description: form.description,
@@ -122,7 +122,11 @@ export function AgentEditorPage({
       }),
       teamIds: agent?.teamIds ?? [],
     }
-  }, [byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
+    // An Overlay Cloud agent's Overlay access is set by its own control on this page, not by Save; sending the
+    // editor's copy (empty for connected agents) would wipe it.
+    if (runtime.cloudAgent) delete built.allowedToolIds
+    return built
+  }, [runtime.cloudAgent, byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
     runtime.agentType,
     form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility,
     agent])

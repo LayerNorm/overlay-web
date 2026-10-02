@@ -6,6 +6,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { rememberAgentOpened } from '@/shared/agents/last-agent-by-workspace'
 import { cloudCreateProgress, type CloudAgentPhase } from '@/shared/agents/cloud-agent'
+import { mcpToolGrantFor } from '@/shared/mcp/access'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { OTHER_AGENT_LABEL, type OtherAgentDraft } from './cloud-agent-draft'
 
@@ -89,6 +90,8 @@ export function useCloudAgentCreate(args: { workspaceId: string | null; onReady(
           avatarShape: identity.avatarShape,
           enabledToolGroups: new Set(),
           visibility: identity.visibility,
+          // The agent reaches Overlay's notes, files, memory and the rest over MCP; with no grant it would have no tools at all.
+          mcpToolIds: mcpToolGrantFor('full'),
         }),
         teamIds: [],
       })

@@ -74,6 +74,21 @@ export const MCP_GROUP_COVERAGE: {
   },
 }
 
+/**
+ * The access level an agent's saved tool grant amounts to: `none` when it holds no tools, a level when it matches
+ * one exactly, `custom` for anything else (set before levels existed, or by hand).
+ */
+export function mcpAccessForGrant(allowedToolIds: readonly string[]): McpAccessLevel | 'none' | 'custom' {
+  if (allowedToolIds.length === 0) return 'none'
+  const held = new Set(allowedToolIds)
+  // Highest level whose grant is exactly what is held.
+  for (const level of [...MCP_ACCESS_LEVELS].reverse()) {
+    const grant = mcpToolGrantFor(level)
+    if (grant.length === held.size && grant.every((id) => held.has(id))) return level
+  }
+  return 'custom'
+}
+
 export function isMcpAccessLevel(value: unknown): value is McpAccessLevel {
   return typeof value === 'string' && (MCP_ACCESS_LEVELS as readonly string[]).includes(value)
 }

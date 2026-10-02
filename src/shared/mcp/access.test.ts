@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AGENT_TOOL_GROUPS, COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
-import { MCP_ACCESS_LEVELS, mcpToolGrantFor } from './access'
+import { MCP_ACCESS_LEVELS, mcpAccessForGrant, mcpToolGrantFor } from './access'
 
 const WRITE_TOOLS = [
   'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory',
@@ -42,4 +42,11 @@ test('every tool id in a level belongs to a known group', () => {
       assert.ok(id.startsWith('capability:') || known.has(id), `${id} is not in any tool group`)
     }
   }
+})
+
+test('a saved tool grant reads back as the level it matches', () => {
+  assert.equal(mcpAccessForGrant([]), 'none')
+  for (const level of MCP_ACCESS_LEVELS) assert.equal(mcpAccessForGrant(mcpToolGrantFor(level)), level)
+  assert.equal(mcpAccessForGrant(['get_note']), 'custom')
+  assert.equal(mcpAccessForGrant([...mcpToolGrantFor('write'), 'create_automation']), 'custom')
 })

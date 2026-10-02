@@ -26,6 +26,7 @@ import type { useAgentRuntime } from './use-agent-runtime'
 import type { useAgentSurfaces } from './use-agent-surfaces'
 import { AgentSurfacesField } from './AgentSurfacesField'
 import { CloudAgentPanel } from './CloudAgentPanel'
+import { CloudAgentAccess } from './CloudAgentAccess'
 
 type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
@@ -158,7 +159,7 @@ function AgentEditorFormSection({
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
         <div className="space-y-4">
-          {runtime.cloudAgent && agent ? <CloudAgentPanel agentId={agent.id} /> : null}
+          {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} /></> : null}
           {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}
             connectedAgentsEnabled={connectedAgentsEnabled}
