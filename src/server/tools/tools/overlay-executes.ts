@@ -585,7 +585,9 @@ export async function executeUpdateAutomation(
     const schedule = input.schedule ? normalizeScheduleInput(input.schedule) : input.schedule
     const res = await callInternalApi(
       '/api/v1/automations',
-      { ...input, schedule, ...toolAuthBody(options) },
+      // Auth fields first: `toolAuthBody` carries the *running* automation's id (undefined in chat), which would
+      // otherwise overwrite the automation being changed.
+      { ...toolAuthBody(options), ...input, schedule },
       options.accessToken,
       options.baseUrl,
       { method: 'PATCH', forwardCookie: options.forwardCookie },
@@ -607,7 +609,7 @@ export async function executePauseAutomation(options: OverlayToolsOptions, input
   try {
     const res = await callInternalApi(
       '/api/v1/automations',
-      { automationId: input.automationId, action: 'pause', ...toolAuthBody(options) },
+      { ...toolAuthBody(options), automationId: input.automationId, action: 'pause' },
       options.accessToken,
       options.baseUrl,
       { method: 'PATCH', forwardCookie: options.forwardCookie },
@@ -692,7 +694,7 @@ export async function executeDeleteAutomation(options: OverlayToolsOptions, inpu
   try {
     const res = await callInternalApi(
       '/api/v1/automations',
-      { automationId: input.automationId, ...toolAuthBody(options) },
+      { ...toolAuthBody(options), automationId: input.automationId },
       options.accessToken,
       options.baseUrl,
       { method: 'DELETE', forwardCookie: options.forwardCookie },
