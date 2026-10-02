@@ -167,6 +167,26 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_provider', ['userId', 'provider']),
 
+  // Where an Overlay Cloud agent is in starting its machine, so the dialog and the agent
+  // page can show progress after the request that started it has returned.
+  cloudAgentProvisions: defineTable({
+    workspaceId: v.string(),
+    agentId: v.string(),
+    userId: v.string(),
+    phase: v.union(
+      v.literal('queued'),
+      v.literal('allocating'),
+      v.literal('booting'),
+      v.literal('connecting'),
+      v.literal('ready'),
+      v.literal('failed'),
+    ),
+    error: v.optional(v.string()),
+    environmentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_workspaceId_agentId', ['workspaceId', 'agentId']),
+
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)
   // mutated on every usage event.

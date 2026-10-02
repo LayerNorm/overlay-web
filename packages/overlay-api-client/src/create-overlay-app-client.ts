@@ -11,6 +11,7 @@ import { BootstrapClient } from './bootstrap/client'
 import { ChatAuxClient } from './chat/chat-aux-client'
 import { ComputersClient } from './computers/client'
 import { ProviderAccountsClient } from './provider-accounts/client'
+import { CloudAgentsClient } from './cloud-agents/client'
 import { ConversationsClient } from './chat/conversations-client'
 import { DiscoveryClient } from './discovery/client'
 import { FilesClient } from './files/client'
@@ -62,6 +63,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     agentEnvironments: new AgentEnvironmentsClient(http),
     computers: new ComputersClient(http),
     providerAccounts: new ProviderAccountsClient(http),
+    cloudAgents: new CloudAgentsClient(http),
     surfaces: new SurfacesClient(http),
   }
 }

@@ -42,6 +42,12 @@ export {
   AgentEnvironmentsClient,
   type AgentEnvironmentResource,
 } from './agent-environments/client'
+export {
+  CloudAgentsClient,
+  type CloudAgentStatusResource,
+  type CloudAgentPhaseResource,
+  type CloudAgentStateResource,
+} from './cloud-agents/client'
 export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
 export { ProviderAccountsClient, type ProviderAccountResource } from './provider-accounts/client'
 export { SurfacesClient } from './surfaces/client'

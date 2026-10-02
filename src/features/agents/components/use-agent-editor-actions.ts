@@ -60,7 +60,7 @@ export function useAgentEditorActions({
   onArchived?: () => void
   onSaved?: () => void
 }) {
-  const { agentType } = runtime
+  const { agentType, cloudAgent } = runtime
   const { environmentId, adapterId, workingDirectory } = byo
   const {
     enabledToolGroups,
@@ -140,7 +140,9 @@ export function useAgentEditorActions({
     void (async () => {
       try {
         const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, buildInput())
-        if (agentType === 'byo') {
+        if (agentType === 'byo' && cloudAgent) {
+          // An Overlay Cloud agent's binding (machine, account) is managed from its machine panel; rewriting it here would drop the account.
+        } else if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
             agentId: saved.agent.id,
             environmentId, adapterId, workingDirectory: workingDirectory.trim(),
@@ -203,10 +205,15 @@ export function useAgentEditorActions({
 
   const archiveAgent = async () => {
     if (showcase || !activeWorkspaceId || !agent || busy) return
-    if (!window.confirm(`Archive ${agent.name}? It will leave rooms and teams, but its message history will remain.`)) return
+    const prompt = cloudAgent
+      ? `Archive ${agent.name}? Its machine and everything on it is deleted. Its message history will remain.`
+      : `Archive ${agent.name}? It will leave rooms and teams, but its message history will remain.`
+    if (!window.confirm(prompt)) return
     setBusy(true)
     setError(null)
     try {
+      // Delete the machine first so a failure leaves the agent in place to retry, not a paid machine with no owner.
+      if (cloudAgent) await overlayAppClient.cloudAgents.remove(activeWorkspaceId, agent.id)
       await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
       dispatchAgentDirectoryChanged(activeWorkspaceId)
       if (onArchived) onArchived()

@@ -12,6 +12,7 @@ function fakeMachine(status: 'running' | 'stopped' = 'running') {
     reference: 'bx_agent',
     status: async () => status,
     resume: async () => { calls.push('resume') },
+    stop: async () => { calls.push('stop') },
     delete: async () => { calls.push('delete') },
     runCommand: async (request: { args?: string[] }) => {
       commands.push(request.args?.[1] ?? '')
@@ -39,12 +40,20 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment } = {}) {
+function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean } = {}) {
   const log: Array<[string, unknown]> = []
+  const phases: Array<{ phase: string; error?: string }> = []
+  let removed = false
   const { runtime, created } = fakeRuntime(machine)
   const service = new CloudAgentMachineService({
     audit: { record: async () => undefined } as never,
     image: 'overlay-agent-v2',
+    provisions: {
+      get: async () => null,
+      begin: async () => ({ started: true, phase: 'queued' }),
+      setPhase: async (args: { phase: string; error?: string }) => { phases.push({ phase: args.phase, ...(args.error ? { error: args.error } : {}) }) },
+      remove: async () => { removed = true },
+    } as never,
     runtime,
     sleep: async () => undefined,
     now: () => 1_000,
@@ -62,9 +71,13 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
         ? { id: 'lease-1', status: 'running', provider: 'box', providerReference: 'bx_agent' } as AgentSandboxLease
         : options.lease),
       patchSandboxLeaseUsage: async (args: unknown) => { log.push(['patch', args]); return null },
+      listBindings: async () => (options.bound === false ? [] : [{
+        id: 'binding-1', workspaceId: 'ws', agentId: 'agent-1', environmentId: 'env-1', adapterId: 'claude-code', enabled: true,
+        adapterConfig: { providerAccountId: 'account-1', providerAccountOwnerUserId: 'user' },
+      } as never]),
     },
   })
-  return { service, log, created }
+  return { service, log, created, phases, wasRemoved: () => removed }
 }
 
 const provisionArgs = {
@@ -118,4 +131,50 @@ test('wake leaves a running machine with a live host alone, and skips machines w
   assert.equal(await deps(machine).service.wake({ workspaceId: 'ws', environmentId: 'env-1' }), 'running')
   assert.deepEqual(commands, [])
   assert.equal(await deps(machine, { lease: null }).service.wake({ workspaceId: 'ws', environmentId: 'env-1' }), 'unavailable')
+})
+
+test('provision records each startup phase and a safe message when it fails', async () => {
+  const { machine } = fakeMachine()
+  const ok = deps(machine)
+  await ok.service.provision(provisionArgs)
+  assert.deepEqual(ok.phases.map((entry) => entry.phase), ['allocating', 'booting', 'connecting', 'ready'])
+
+  const broken = deps(fakeMachine().machine, { enrolled: false })
+  await assert.rejects(broken.service.provision(provisionArgs))
+  assert.equal(broken.phases.at(-1)?.phase, 'failed')
+  assert.ok(broken.phases.at(-1)?.error)
+  assert.doesNotMatch(String(broken.phases.at(-1)?.error), /stack|bx_agent|one-time-code/)
+})
+
+test('pause stops the machine; restart replaces the host process', async () => {
+  const paused = fakeMachine()
+  await deps(paused.machine).service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'pause' })
+  assert.deepEqual(paused.calls, ['stop'])
+
+  const restarted = fakeMachine('stopped')
+  await deps(restarted.machine).service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'restart' })
+  assert.deepEqual(restarted.calls, ['resume'])
+  assert.equal(restarted.commands[0], cloudAgentStopHostCommand())
+  assert.equal(restarted.commands.length, 2)
+
+  await assert.rejects(
+    deps(fakeMachine().machine, { bound: false }).service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'pause' }),
+    /no Overlay Cloud machine/,
+  )
+})
+
+test('status reports a running agent, and a stopped machine as paused', async () => {
+  const running = await deps(fakeMachine().machine).service.status({ workspaceId: 'ws', agentId: 'agent-1' })
+  assert.equal(running.state, 'ready')
+  const stopped = await deps(fakeMachine('stopped').machine).service.status({ workspaceId: 'ws', agentId: 'agent-1' })
+  assert.equal(stopped.state, 'paused')
+})
+
+test('teardown revokes the environment, deletes the machine, and clears the provision record', async () => {
+  const { machine, calls } = fakeMachine()
+  const { service, log, wasRemoved } = deps(machine)
+  await service.teardown({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' })
+  assert.ok(log.some(([name]) => name === 'revoke'))
+  assert.deepEqual(calls, ['delete'])
+  assert.equal(wasRemoved(), true)
 })

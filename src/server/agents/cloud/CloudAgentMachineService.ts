@@ -1,11 +1,19 @@
 import 'server-only'
 
+import { logger } from '@/server/observability/logger'
 import { randomUUID } from 'node:crypto'
 import type { SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
-import type { AgentEnvironment, AgentSandboxLease, ComputerSize } from '@overlay/workspace-contracts'
+import type { AgentBinding, AgentEnvironment, AgentSandboxLease, ComputerSize } from '@overlay/workspace-contracts'
 import type { AuditService } from '@/server/admin'
 import type { ConnectedAgentControlPlaneService } from '../ConnectedAgentControlPlaneService'
 import type { ConnectedAgentRepository } from '../ConnectedAgentRepository'
+import type { CloudAgentProvisionRepository } from './CloudAgentProvisionRepository'
+import {
+  deriveCloudAgentState,
+  type CloudAgentAction,
+  type CloudAgentPhase,
+  type CloudAgentStatus,
+} from '@/shared/agents/cloud-agent'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from '../managed-sandbox-runtime'
 import {
   CLOUD_AGENT_RESOURCES,
@@ -31,7 +39,12 @@ export class CloudAgentMachineError extends Error {
 type ControlPlane = Pick<ConnectedAgentControlPlaneService,
   'createEnrollmentSession' | 'approveEnvironment' | 'upsertBinding' | 'revokeEnvironment'>
 type Repository = Pick<ConnectedAgentRepository,
-  'listEnvironments' | 'getEnvironment' | 'createSandboxLease' | 'getActiveSandboxLease' | 'patchSandboxLeaseUsage'>
+  'listEnvironments' | 'getEnvironment' | 'createSandboxLease' | 'getActiveSandboxLease' | 'patchSandboxLeaseUsage' | 'listBindings'>
+
+/** The account an agent runs on, as the person sees it. */
+export type CloudAgentAccountSummary = { id: string; label: string; provider: string; method: string; status: 'active' | 'needs_reauth' }
+
+const SIZE_BY_VCPUS: Record<number, string> = { 2: 'small', 4: 'default', 8: 'large' }
 
 /**
  * Overlay Cloud agent machines: one Boat machine per agent, booted from the
@@ -48,6 +61,9 @@ export class CloudAgentMachineService {
     audit: AuditService
     controlPlane: ControlPlane
     repository: Repository
+    provisions: CloudAgentProvisionRepository
+    /** Looks up the account a binding chose, for the agent page. */
+    accountSummary?: (userId: string, accountId: string) => Promise<CloudAgentAccountSummary | null>
     runtime?: SandboxRuntime
     image?: string
     sleep?: (ms: number) => Promise<void>
@@ -63,6 +79,12 @@ export class CloudAgentMachineService {
     size: ComputerSize
     serverUrl: string
   }) {
+    const phase = (next: CloudAgentPhase, extra: { error?: string; environmentId?: string } = {}) =>
+      this.dependencies.provisions.setPhase({ workspaceId: args.workspaceId, agentId: args.agentId, phase: next, now: this.now(), ...extra })
+        .catch((error) => logger.warn('[cloud-agent] could not record the provisioning phase', {
+          error: error instanceof Error ? error.message : String(error),
+        }))
+    await phase('allocating')
     const runtime = this.runtime()
     const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
       actorUserId: args.actorUserId,
@@ -86,12 +108,14 @@ export class CloudAgentMachineService {
         resources,
         metadata: { overlay: 'true', kind: 'cloud-agent', workspace: args.workspaceId, agent: args.agentId },
       })
+      await phase('booting')
       await this.runDetached(machine, cloudAgentConnectCommand({
         enrollmentCode: enrollment.code,
         serverUrl: args.serverUrl,
         name,
         adapterId: args.adapterId,
       }))
+      await phase('connecting')
       environment = await this.waitForEnrollment(args.workspaceId, name)
       await this.dependencies.controlPlane.approveEnvironment({
         actorUserId: args.actorUserId,
@@ -112,12 +136,122 @@ export class CloudAgentMachineService {
         resourceId: environment.id,
         metadata: { workspaceId: args.workspaceId, agentId: args.agentId, adapterId: args.adapterId, leaseId: lease.id, size: args.size },
       })
+      await phase('ready', { environmentId: environment.id })
       const { publicKey: _publicKey, ...publicEnvironment } = environment
       return { environment: publicEnvironment, lease: { id: lease.id, status: lease.status }, binding }
     } catch (error) {
       await this.abandon(args, machine, environment)
+      await phase('failed', { error: provisionFailureMessage(error) })
       throw error
     }
+  }
+
+  /**
+   * Everything the agent page shows. The provider is asked for the machine's
+   * state (one read), so this is called when the page opens, not per message.
+   */
+  async status(args: { workspaceId: string; agentId: string }): Promise<CloudAgentStatus> {
+    const [provision, bindings] = await Promise.all([
+      this.dependencies.provisions.get(args),
+      this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId }),
+    ])
+    const found = await this.cloudBinding(args.workspaceId, bindings)
+    const lease = found ? await this.dependencies.repository.getActiveSandboxLease({
+      workspaceId: args.workspaceId, environmentId: found.environment.id,
+    }) : null
+    const machine = lease ? await this.readMachine(lease) : null
+    const ownerUserId = typeof found?.binding.adapterConfig.providerAccountOwnerUserId === 'string' ? found.binding.adapterConfig.providerAccountOwnerUserId : ''
+    const accountId = typeof found?.binding.adapterConfig.providerAccountId === 'string' ? found.binding.adapterConfig.providerAccountId : ''
+    const account = ownerUserId && accountId && this.dependencies.accountSummary
+      ? await this.dependencies.accountSummary(ownerUserId, accountId).catch((_error) => null)
+      : null
+    const parts = {
+      provision: provision ? { phase: provision.phase, ...(provision.error ? { error: provision.error } : {}), updatedAt: provision.updatedAt } : null,
+      environment: found ? {
+        id: found.environment.id, status: found.environment.status,
+        ...(found.environment.lastSeenAt ? { lastSeenAt: found.environment.lastSeenAt } : {}), createdAt: found.environment.createdAt,
+      } : null,
+      machine,
+      account,
+    }
+    return { agentId: args.agentId, ...parts, state: deriveCloudAgentState({
+      ...parts,
+      // A host is "online" only while it keeps checking in.
+      environment: found ? { ...parts.environment!, status: this.hostFresh(found.environment) ? 'online' : 'offline' } : null,
+    }) }
+  }
+
+  /** Pause, resume, or restart an agent's machine. */
+  async control(args: { workspaceId: string; agentId: string; action: CloudAgentAction }): Promise<void> {
+    const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
+    const found = await this.cloudBinding(args.workspaceId, bindings)
+    if (!found) throw new CloudAgentMachineError('This agent has no Overlay Cloud machine', 404, 'cloud_agent_missing')
+    const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+    if (!lease?.providerReference) throw new CloudAgentMachineError('This agent\'s machine is not available', 409, 'cloud_agent_unavailable')
+    const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })
+    if (args.action === 'pause') {
+      await machine.stop()
+      return
+    }
+    if (args.action === 'resume') {
+      await this.wake({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+      return
+    }
+    // Restart: make sure the machine is up, then replace the host process.
+    if (await machine.status() !== 'running') await machine.resume()
+    await this.runDetached(machine, cloudAgentStopHostCommand())
+    await this.runDetached(machine, cloudAgentRunCommand())
+    await this.dependencies.repository.patchSandboxLeaseUsage({
+      workspaceId: args.workspaceId, leaseId: lease.id, patch: { lastActiveAt: this.now() }, now: this.now(),
+    })
+  }
+
+  /** Stops using the machine: revoke its environment (which ends the lease and its bindings) and delete it now. */
+  async teardown(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<void> {
+    const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
+    const found = await this.cloudBinding(args.workspaceId, bindings)
+    if (found) {
+      const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+      await this.dependencies.controlPlane.revokeEnvironment({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, environmentId: found.environment.id,
+      })
+      if (lease?.providerReference) {
+        // The reaper would delete it on its next pass; do it now so no paid machine lingers.
+        await (await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })).delete()
+          .catch((_error) => undefined)
+      }
+    }
+    await this.dependencies.provisions.remove({ workspaceId: args.workspaceId, agentId: args.agentId })
+  }
+
+  private async cloudBinding(workspaceId: string, bindings: AgentBinding[]) {
+    for (const binding of bindings.filter((candidate) => candidate.enabled)) {
+      const environment = await this.dependencies.repository.getEnvironment({ workspaceId, environmentId: binding.environmentId })
+      if (environment?.kind === 'overlay_cloud' && environment.status !== 'revoked') return { binding, environment }
+    }
+    return null
+  }
+
+  private async readMachine(lease: AgentSandboxLease): Promise<NonNullable<CloudAgentStatus['machine']>> {
+    const usage = lease.usage ?? {}
+    const resources = usage.resources as { vcpus?: number } | undefined
+    const details = {
+      ...(resources?.vcpus && SIZE_BY_VCPUS[resources.vcpus] ? { size: SIZE_BY_VCPUS[resources.vcpus]! } : {}),
+      ...(typeof usage.image === 'string' ? { image: usage.image } : {}),
+      ...(typeof usage.adapterId === 'string' ? { adapterId: usage.adapterId } : {}),
+    }
+    if (!lease.providerReference) return { state: 'unknown', ...details }
+    try {
+      const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })
+      const status = await machine.status()
+      return { state: status === 'running' ? 'running' : status === 'stopped' ? 'stopped' : 'unknown', ...details }
+    } catch (_error) {
+      return { state: 'unknown', ...details }
+    }
+  }
+
+  private hostFresh(environment: AgentEnvironment) {
+    return environment.status === 'online' && (environment.lastSeenAt ?? 0) >= this.now() - 45_000
   }
 
   /**
@@ -146,7 +280,7 @@ export class CloudAgentMachineService {
 
   private async hostIsOnline(args: { workspaceId: string; environmentId: string }) {
     const environment = await this.dependencies.repository.getEnvironment(args)
-    return environment?.status === 'online' && (environment.lastSeenAt ?? 0) >= this.now() - 45_000
+    return Boolean(environment && this.hostFresh(environment))
   }
 
   private async createLease(
@@ -253,4 +387,12 @@ export class CloudAgentMachineService {
   private now() {
     return this.dependencies.now?.() ?? Date.now()
   }
+}
+
+/** What a person is told when a machine fails to start: known causes by name, everything else generically. */
+export function provisionFailureMessage(error: unknown): string {
+  if (error instanceof CloudAgentMachineError) return error.message
+  const message = error instanceof Error ? error.message : ''
+  if (/credit|balance|quota|limit/i.test(message)) return 'The machine provider is out of capacity or credit. Try again later.'
+  return 'Could not start the machine. Try again.'
 }

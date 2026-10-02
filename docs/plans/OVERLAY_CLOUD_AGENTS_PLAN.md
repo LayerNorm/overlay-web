@@ -265,7 +265,7 @@ Completed:
 - [x] Overlay agent image: `infra/agent-image/provision.sh` + `publish-boat.mts`, published as Boat snapshot `overlay-agent-v1` (host 0.3.7, claude-agent-acp 0.81.1, codex-acp 1.13.1). E2B template script not written yet (no E2B adapter; part of Phase 6).
 - [x] Managed enrollment: single-use code redeemed by the host on boot, environment auto-approved with the fixed `/home/user/workspace` grant, lease created, agent bound (`CloudAgentMachineService`, `POST /api/v1/agent-environments/cloud`).
 - [x] Lifecycle: idle-stop via the lease meter (turns hold `activeUntil`), wake on every Overlay Cloud turn (resume + restart host), delete via revoke + reaper.
-- [x] Startup phases: not surfaced yet (Phase 2 UI); provisioning is synchronous and takes ~12–15 s.
+- [x] Startup phases: surfaced in Phase 2 (provisioning is now asynchronous with a durable phase record).
 
 Verified live (local dev server on dev Convex, exposed with a cloudflared tunnel, real Boat machines):
 
@@ -295,9 +295,25 @@ Verified live (local server on dev Convex, tunnel, real Boat machine, real WorkO
 
 Known gaps:
 
-- The chat shows Claude Code's own text for the failure ("Failed to authenticate…"); a reconnect prompt in the conversation and the agent page's status come with Phase 2.
+- The chat shows Claude Code's own text for the failure ("Failed to authenticate…"). The agent page now shows "Needs sign-in" with a Reconnect button (Phase 2); a reconnect prompt inside the conversation itself is still open.
 - ~~Account deletion removed rows but not their vault secrets.~~ Fixed: `AccountDeletionService` now deletes every stored credential (agent accounts and model-provider keys) from the vault before the rows go, and stops if one cannot be deleted so a secret is never orphaned.
 - Codex subscriptions need the credential broker (after launch).
+
+**Phase 2 status (2026-10-02): built and verified through the API; the UI is checked structurally only (see below).**
+
+- [x] Provisioning is asynchronous: `POST /api/v1/agent-environments/cloud` returns 202 at once and provisions after the response (`after()`); progress is a durable Convex record (`cloudAgentProvisions`: queued → allocating → booting → connecting → ready, or failed with a safe message), so any server instance can answer the poll. A second create while one is starting reports the current phase instead of booting another machine; a failed or lost (10 minutes without moving) start can be retried.
+- [x] Paid plans only: the create route returns `paid_plan_required` (403) for free plans. Free plans keep Overlay agents and their own machine.
+- [x] `GET/POST/DELETE /api/v1/agents/{agentId}/machine`: status (one provider read), pause / resume / restart, and delete (revokes the environment, deletes the machine at once, clears the record).
+- [x] New-agent dialog: "Other agent" is enabled where the deployment supports it (new `cloudAgents` capability = control plane + Overlay Cloud + remote runs). Fields: Agent (Claude Code / Codex), Runs on (Overlay Cloud / Your machine), Account (with inline "Connect an account…"), Machine size, Access. Creating shows the startup steps and opens the conversation when the agent is ready; closing mid-start keeps the agent starting. "Your machine" opens the existing full editor, where the connect command and approval live. A failed first start archives the just-created agent so none is left without a machine.
+- [x] Agent page: a Machine section replaces the behavior fields for cloud agents: state (Ready, Paused, Starting, Needs sign-in, Failed, Unavailable), startup steps, size, account, Pause / Resume / Restart / Try again, and a Reconnect button when the account needs it. Saving a cloud agent no longer rewrites its binding (that would drop the account); archiving deletes the machine first.
+
+Verified live (local server on dev Convex, tunnel, real Boat machine): create returns 202 in the request, phases advance to ready in 36 s, a second create reports the current phase, pause reads `paused` with the machine stopped, resume and restart return to `ready`, a bad action is a 400, delete leaves no machine on Boat and reads `unavailable`. 8 service tests, 4 Convex tests, and dialog tests cover the rest.
+
+Known gaps:
+
+- The dialog does not hide Overlay Cloud for free plans (the browser has no cheap plan check there); the server refuses and the dialog shows its message.
+- The create and agent-page UI was rendered only in a signed-out browser session, so the full click-through (including a visual pass) is still to do by hand: create → progress → conversation, then Pause / Resume / delete on the agent page.
+- No reconnect prompt inside the conversation yet, and no conversation cards for runs.
 
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |

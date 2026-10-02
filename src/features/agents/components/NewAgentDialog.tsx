@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import type {
   ComputerSize,
@@ -26,8 +26,14 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { FieldLabel } from './InfoTip'
+import { CloudAgentProgress } from './CloudAgentProgress'
+import { OtherAgentFields } from './OtherAgentFields'
+import { initialOtherAgentDraft, isOtherAgentDraftValid, type OtherAgentDraft } from './cloud-agent-draft'
+import { useCloudAgentCreate } from './use-cloud-agent-create'
 
 export type NewAgentDraft = {
+  kind: 'overlay' | 'other'
+  other: OtherAgentDraft
   name: string
   instructions: string
   avatarShape: WorkspaceAgentCreatureShape
@@ -41,6 +47,8 @@ export type NewAgentDraft = {
 
 export function initialNewAgentDraft(): NewAgentDraft {
   return {
+    kind: 'overlay',
+    other: initialOtherAgentDraft(),
     name: '',
     instructions: '',
     avatarShape: 'hexagon',
@@ -55,6 +63,7 @@ export function initialNewAgentDraft(): NewAgentDraft {
 
 /** Overlay agents need a name and instructions; nothing else is required. */
 export function isNewAgentDraftValid(draft: NewAgentDraft): boolean {
+  if (draft.kind === 'other') return isOtherAgentDraftValid(draft.name, draft.other)
   return Boolean(draft.name.trim() && draft.instructions.trim() && draft.modelId.trim())
 }
 
@@ -66,7 +75,7 @@ const COMPUTER_SIZE_OPTIONS = [
 
 const TYPE_OPTIONS = [
   { value: 'overlay', label: 'Overlay agent' },
-  { value: 'other', label: 'Other agent', description: 'Coming soon', disabled: true },
+  { value: 'other', label: 'Other agent' },
 ] as const
 
 const ACCESS_OPTIONS = [
@@ -190,12 +199,17 @@ function ComputerSection({ draft, onChange }: {
 }
 
 /** The dialog's fields. Presentational: all state lives in `draft`. */
-export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable }: {
+export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, onOpenMachineSetup }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
   modelOptions: ModelOption[]
   computersAvailable: boolean
+  /** Overlay Cloud agents are offered only where the deployment supports them. */
+  otherAgentsAvailable?: boolean
+  onOpenMachineSetup?(): void
 }) {
+  const other = draft.kind === 'other'
+  const patchOther = useCallback((patch: Partial<OtherAgentDraft>) => onChange({ other: { ...draft.other, ...patch } }), [draft.other, onChange])
   return (
     <div className="space-y-3.5">
       <AgentAvatarPicker
@@ -228,10 +242,26 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
         />
       </div>
       <div>
-        <FieldLabel info="Overlay agents are built into Overlay. Other agents (Claude Code, Codex, Hermes) are coming soon.">Type</FieldLabel>
-        <SegmentedControl ariaLabel="Agent type" layout="stretch" value="overlay" options={TYPE_OPTIONS} onChange={() => undefined} />
+        <FieldLabel info="Overlay agents are built into Overlay. Other agents (Claude Code, Codex) bring their own tools and run on a machine.">Type</FieldLabel>
+        <SegmentedControl
+          ariaLabel="Agent type"
+          layout="stretch"
+          value={draft.kind}
+          options={otherAgentsAvailable ? TYPE_OPTIONS : TYPE_OPTIONS.map((option) => (option.value === 'other' ? { ...option, description: 'Coming soon', disabled: true } : option))}
+          onChange={(kind) => onChange({ kind })}
+        />
       </div>
-      {computersAvailable ? <ComputerSection draft={draft} onChange={onChange} /> : null}
+      {other ? (
+        <OtherAgentFields
+          other={draft.other}
+          size={draft.computerSize}
+          onChange={patchOther}
+          onSizeChange={(computerSize) => onChange({ computerSize })}
+          onOpenMachineSetup={() => onOpenMachineSetup?.()}
+          active
+        />
+      ) : null}
+      {!other && computersAvailable ? <ComputerSection draft={draft} onChange={onChange} /> : null}
       <div>
         <FieldLabel info="Who can see, chat with, or @-mention this agent.">Access</FieldLabel>
         <SegmentedControl
@@ -242,7 +272,7 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           onChange={(visibility) => onChange({ visibility })}
         />
       </div>
-      <AdvancedSection draft={draft} onChange={onChange} modelOptions={modelOptions} />
+      {other ? null : <AdvancedSection draft={draft} onChange={onChange} modelOptions={modelOptions} />}
     </div>
   )
 }
@@ -298,31 +328,57 @@ async function createAgentFromDraft(workspaceId: string, draft: NewAgentDraft, c
   return { agent: created.agent, computerError }
 }
 
-/** New-agent dialog: Overlay agents only until other agents ship. */
-export function NewAgentDialog({ open, workspaceId, onClose, onCreated }: {
+/** New-agent dialog: an Overlay agent, or an agent (Claude Code, Codex) on Overlay Cloud. */
+export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMachineSetup }: {
   open: boolean
   workspaceId: string | null
   onClose(): void
   onCreated(agent: WorkspaceAgentDirectoryItem, warning: string | null): void
+  /** Opens the full agent editor, where "Your machine" agents are connected. */
+  onOpenMachineSetup?(): void
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
+  const otherAgentsAvailable = capabilities.cloudAgents === true
   const modelOptions = useModelOptions()
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
   const draft = { ...rawDraft, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const update = (patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch }))
+  const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])
+  const cloud = useCloudAgentCreate({
+    workspaceId,
+    onReady: (agent) => { setDraft(initialNewAgentDraft()); cloud.reset(); onCreated(agent, null) },
+  })
+  const working = busy || cloud.busy
 
   const close = () => {
-    if (busy) return
+    if (working) return
+    // Closing while a machine starts keeps the agent; its page shows the same progress.
+    if (cloud.view) {
+      const agent = cloud.view.agent
+      cloud.reset()
+      setDraft(initialNewAgentDraft())
+      onCreated(agent, null)
+      return
+    }
     setDraft(initialNewAgentDraft())
     setError(null)
     onClose()
   }
 
   const submit = async () => {
-    if (!workspaceId || busy || !isNewAgentDraftValid(draft)) return
+    if (!workspaceId || working || !isNewAgentDraftValid(draft)) return
+    if (draft.kind === 'other') {
+      await cloud.create({
+        name: draft.name,
+        description: draft.instructions,
+        avatarShape: draft.avatarShape,
+        avatarColor: draft.avatarColor,
+        visibility: draft.visibility,
+      }, draft.other, draft.computerSize)
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -336,11 +392,14 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated }: {
     }
   }
 
+  const shownError = error ?? cloud.error
+  const failed = cloud.view?.phase === 'failed'
+
   return (
     <DialogFrame
       open={open}
       onOpenChange={(next) => { if (!next) close() }}
-      title="New agent"
+      title={cloud.view ? `Starting ${cloud.view.agent.name}` : 'New agent'}
       aria-label="New agent"
       className="flex max-h-[min(860px,calc(100vh-32px))] !w-[min(440px,94vw)] flex-col !rounded-[20px] !p-0 [&>div:first-child]:px-5 [&>div:first-child]:pt-4"
       actions={(
@@ -355,14 +414,39 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated }: {
       )}
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-1">
-        <NewAgentFields draft={draft} onChange={update} modelOptions={modelOptions} computersAvailable={computersAvailable} />
-        {error ? <p role="alert" className="mt-3 text-xs text-red-500">{error}</p> : null}
+        {cloud.view ? (
+          <>
+            <CloudAgentProgress phase={cloud.view.phase} />
+            {failed ? <p role="alert" className="mt-2 text-xs text-red-500">{cloud.view.error}</p> : (
+              <p className="mt-2 text-xs text-[var(--muted)]">This takes about a minute. You can close this; the agent keeps starting.</p>
+            )}
+          </>
+        ) : (
+          <NewAgentFields
+            draft={draft}
+            onChange={update}
+            modelOptions={modelOptions}
+            computersAvailable={computersAvailable}
+            otherAgentsAvailable={otherAgentsAvailable}
+            {...(onOpenMachineSetup ? { onOpenMachineSetup } : {})}
+          />
+        )}
+        {shownError && !failed ? <p role="alert" className="mt-3 text-xs text-red-500">{shownError}</p> : null}
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
-        <Button variant="secondary" size="sm" onClick={close} disabled={busy}>Cancel</Button>
-        <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !isNewAgentDraftValid(draft)}>
-          {busy ? 'Creating…' : 'Create agent'}
-        </Button>
+        {cloud.view ? (
+          <>
+            <Button variant="secondary" size="sm" onClick={close}>{failed ? 'Close' : 'Continue in background'}</Button>
+            {failed ? <Button variant="primary" size="sm" onClick={() => void cloud.retry(draft.other, draft.computerSize)}>Try again</Button> : null}
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" size="sm" onClick={close} disabled={working}>Cancel</Button>
+            <Button variant="primary" size="sm" onClick={() => void submit()} disabled={working || !isNewAgentDraftValid(draft)}>
+              {working ? 'Creating…' : 'Create agent'}
+            </Button>
+          </>
+        )}
       </div>
     </DialogFrame>
   )

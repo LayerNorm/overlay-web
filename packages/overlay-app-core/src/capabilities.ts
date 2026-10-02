@@ -21,6 +21,8 @@ export interface CapabilityCheck {
   multiTenant: boolean
   connectedAgents: boolean
   computers: boolean
+  /** Agents (Claude Code, Codex) on Overlay Cloud machines. */
+  cloudAgents: boolean
 }
 
 export type OverlayCapability = keyof CapabilityCheck
@@ -48,6 +50,7 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   multiTenant: false,
   connectedAgents: false,
   computers: false,
+  cloudAgents: false,
 }
 
 export function deriveOverlayCapabilities(

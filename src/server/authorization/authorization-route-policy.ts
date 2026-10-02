@@ -69,6 +69,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agents/:agentId/automations', methods: { GET: authenticated() } },
   { path: '/api/v1/agents/:agentId/bundle', methods: { GET: authenticated() } },
   { path: '/api/v1/agents/:agentId/restore', methods: { POST: authenticated() } },
+  { path: '/api/v1/agents/:agentId/machine', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
   {
     path: '/api/v1/agents/:agentId/threads',
     methods: { GET: authenticated(), POST: authenticated() },

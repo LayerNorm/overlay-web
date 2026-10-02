@@ -70,6 +70,7 @@ export function AgentEditorPage({
   const byo = useByoConnection({
     activeWorkspaceId, showcase, agent, agentType: runtime.agentType, connectedAgentsEnabled,
     setAgentType: runtime.setAgentType, onLegacyHostedBinding: runtime.onLegacyHostedBinding,
+    onCloudBinding: runtime.onCloudBinding,
   })
 
   const form = useAgentEditorForm({
@@ -97,7 +98,7 @@ export function AgentEditorPage({
   const valid = isAgentEditorValid({
     name: form.name, instructions: form.instructions, modelId: form.modelId,
     agentType: runtime.agentType, legacyHostedRuntime: runtime.legacyHostedRuntime, connectedAgentsEnabled,
-    bindingValid: byo.bindingValid,
+    bindingValid: byo.bindingValid || runtime.cloudAgent,
   })
 
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)

@@ -1,9 +1,8 @@
 import 'server-only'
 
 import { after } from 'next/server'
-import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
-import { CloudAgentMachineService } from './CloudAgentMachineService'
+import { createCloudAgentMachineService } from './create-cloud-agent-machine-service'
 
 /**
  * Resume an Overlay Cloud agent's machine (and restart its host) after the
@@ -12,12 +11,7 @@ import { CloudAgentMachineService } from './CloudAgentMachineService'
  */
 export function wakeCloudAgentAfterResponse(args: { workspaceId: string; environmentId: string }) {
   const wake = async () => {
-    const server = getOverlayServerContext()
-    const service = new CloudAgentMachineService({
-      audit: server.auditService,
-      controlPlane: server.connectedAgentControlPlane,
-      repository: server.appData.repositories.connectedAgents,
-    })
+    const service = createCloudAgentMachineService()
     const outcome = await service.wake(args)
     logger.info('[cloud-agent] wake', { ...args, outcome })
   }

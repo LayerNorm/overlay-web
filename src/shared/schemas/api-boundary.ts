@@ -884,6 +884,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agents/[agentId]', reason: 'Agent detail management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/bundle', reason: 'Agent sidebar bundle (threads and agent-owned automations); boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/automations', reason: 'Agent-owned automation listing; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/agents/[agentId]/machine', reason: 'Overlay Cloud machine status/pause/resume/restart/delete; the action body is validated in the handler. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/restore', reason: 'Agent restore from archive; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/threads', reason: 'Agent thread management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/threads/resolve', reason: 'Agent main-thread resolution; boundary definition pending. Protected by workspace authorization.' },

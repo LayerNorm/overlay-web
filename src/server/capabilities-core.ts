@@ -23,6 +23,7 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   multiTenant: 'Multi-tenant support',
   connectedAgents: 'Connected agents',
   computers: 'Computers',
+  cloudAgents: 'Agents on Overlay Cloud',
 }
 
 export type CapabilityDisabledError = {

@@ -500,6 +500,13 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   (a turn holds `activeUntil` for its maximum run time). A turn queued for an offline machine
   resumes it and restarts the host from saved state after the response is sent. Revoking the
   environment stops and deletes the machine through the lease reaper.
+- **Startup and control.** Creating a machine returns 202 and provisions after the response;
+  `cloudAgentProvisions` (Convex) records the phase (queued, allocating, booting, connecting,
+  ready, or failed with a safe message) so any server instance can answer
+  `GET /api/v1/agents/{agentId}/machine`. That route also pauses, resumes, restarts, and deletes
+  the machine (`CloudAgentMachineService.status/control/teardown`). The new-agent dialog and the
+  agent page's Machine section are its only clients; a cloud agent's binding is never rewritten
+  by the agent editor's save (it would drop the account). Paid plans only.
 - **Provider accounts.** An Overlay Cloud agent runs on one of its creator's own accounts
   (Settings → Agent accounts): a `claude setup-token` token or Anthropic API key for Claude Code,
   an OpenAI API key for Codex. The secret goes to the credential vault (`ByokCredentialStore`:

@@ -25,6 +25,7 @@ import type { useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentRuntime } from './use-agent-runtime'
 import type { useAgentSurfaces } from './use-agent-surfaces'
 import { AgentSurfacesField } from './AgentSurfacesField'
+import { CloudAgentPanel } from './CloudAgentPanel'
 
 type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
@@ -152,12 +153,13 @@ function AgentEditorFormSection({
           onShapeChange={(next) => { setAvatarShape(next); markDirty() }}
         />
         <AgentTypeSelector
-          hidden={isDefaultMaster || !connectedAgentsEnabled}
+          hidden={isDefaultMaster || !connectedAgentsEnabled || runtime.cloudAgent}
           value={agentType}
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
         <div className="space-y-4">
-          <AgentBehaviorFields
+          {runtime.cloudAgent && agent ? <CloudAgentPanel agentId={agent.id} /> : null}
+          {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}
             connectedAgentsEnabled={connectedAgentsEnabled}
             computersAvailable={computersAvailable}
@@ -204,7 +206,7 @@ function AgentEditorFormSection({
               onDelete: () => void deleteAgentComputer(),
               disabled: showcase,
             } : undefined}
-          />
+          />}
 
           {agentType === 'overlay' ? (
             <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />

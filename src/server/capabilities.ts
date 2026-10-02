@@ -75,6 +75,9 @@ export function withObservabilityProviderCapabilities(
     // deployment actually has computer credentials (BOAT_API_KEY, or legacy BOX_API_KEY, for `box`).
     // Both are required, so self-host deployments without keys report the
     // capability absent instead of surfacing 503s in the UI.
+    cloudAgents: runtimeConfig.features?.connectedAgentControlPlane === true
+      && runtimeConfig.features?.overlayCloudEnvironments === true
+      && runtimeConfig.features?.remoteAgentRuns === true,
     computers: runtimeConfig.features?.computers === true
       && computerRuntimeForProvider(computerProviderFromEnv()) !== undefined,
   }

@@ -72,6 +72,8 @@ import {
   type WorkspaceConnectorRepository,
 } from '@/server/integrations'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
+import type { CloudAgentProvisionRepository } from '@/server/agents/cloud/CloudAgentProvisionRepository'
+import { ConvexCloudAgentProvisionRepository } from '@/server/agents/cloud/ConvexCloudAgentProvisionRepository'
 import type { AgentProviderAccountRepository } from '@/server/agents/provider-accounts/AgentProviderAccountRepository'
 import { ConvexAgentProviderAccountRepository } from '@/server/agents/provider-accounts/ConvexAgentProviderAccountRepository'
 import { ConvexConnectedAgentRepository } from '@/server/agents/ConvexConnectedAgentRepository'
@@ -86,6 +88,7 @@ import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceReposito
 
 export interface AppDataRepositories {
   agentProviderAccounts: AgentProviderAccountRepository
+  cloudAgentProvisions: CloudAgentProvisionRepository
   accountDeletion: AccountDataDeletionRepository
   administration: AdministrativeRepository
   apiKeys: ApiKeyRepository
@@ -133,6 +136,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     repositories: {
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
       agentProviderAccounts: new ConvexAgentProviderAccountRepository(),
+      cloudAgentProvisions: new ConvexCloudAgentProvisionRepository(),
       administration: new ConvexAdministrativeRepository(),
       apiKeys: new ConvexApiKeyRepository(),
       audit: new ConvexAuditRepository(),

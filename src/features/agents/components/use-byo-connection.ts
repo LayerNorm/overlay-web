@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AgentBinding } from '@overlay/workspace-contracts'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -29,8 +28,10 @@ export function useByoConnection(args: {
   setAgentType(value: AgentType): void
   /** Edit mode: a `protocol:'harness'` binding belongs to a hosted runtime that was removed — the page shows the agent read-only. */
   onLegacyHostedBinding?(): void
+  /** The agent's binding is an Overlay Cloud machine (it names a provider account), managed from its own panel. */
+  onCloudBinding?(): void
 }) {
-  const { activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding } = args
+  const { activeWorkspaceId, showcase, agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding } = args
   const [environmentChoice, setEnvironmentChoice] = useState<EnvironmentChoice>('existing')
   const [environments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
   const [environmentsLoading, setEnvironmentsLoading] = useState(false)
@@ -72,6 +73,12 @@ export function useByoConnection(args: {
       const bindingAdapterId = typeof binding.adapterConfig.adapterId === 'string'
         ? binding.adapterConfig.adapterId : 'codex'
       setAgentType('byo')
+      if (typeof binding.adapterConfig.providerAccountId === 'string') {
+        // Keep the harness so a save does not rewrite the agent's model; the machine panel owns the rest.
+        setAdapterId(bindingAdapterId)
+        onCloudBinding?.()
+        return
+      }
       setEnvironmentChoice('existing')
       setEnvironmentId(binding.environmentId)
       setAdapterId(bindingAdapterId)
@@ -85,7 +92,7 @@ export function useByoConnection(args: {
     return () => { cancelled = true }
     // `onLegacyHostedBinding` must be a stable useCallback from the page — a new
     // function identity every render would refetch environments in a loop.
-  }, [activeWorkspaceId, agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, showcase])
+  }, [activeWorkspaceId, agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding, showcase])
 
   useEffect(() => {
     if (!command || setupEnvironmentId) return
