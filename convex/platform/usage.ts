@@ -1092,6 +1092,66 @@ export const reconcileExpiredBudgetReservationsInternal = internalMutation({
   handler: async (ctx, args) => await reconcileExpiredBudgetReservations(ctx, args),
 })
 
+/**
+ * A reservation whose provider call failed or overran its estimate sits in `reconcile_required` until someone
+ * supplies provider evidence, and counts as held credit the whole time. Nothing supplied that evidence, so
+ * holds accumulated and quietly shrank people's remaining credit (one account had 356 holds, $11.66 of a $20
+ * allowance). After this long, a hold is settled by policy:
+ *  - the call finished but cost more than was held (`actual_cost_exceeds_reservation`): the work was done, so
+ *    the amount that was held is charged;
+ *  - anything else (the call failed, or its outcome never arrived): the hold is released; the person is not
+ *    charged for work they did not get.
+ */
+export const STALE_RECONCILIATION_AFTER_MS = 6 * 60 * 60_000
+
+async function settleStaleReconciliations(ctx: MutationCtx, args: { limit?: number; now?: number; staleAfterMs?: number }) {
+  const now = args.now ?? Date.now()
+  const stale = await ctx.db
+    .query('budgetReservations')
+    .withIndex('by_status_updatedAt', (q) => q.eq('status', 'reconcile_required')
+      .lte('updatedAt', now - (args.staleAfterMs ?? STALE_RECONCILIATION_AFTER_MS)))
+    .order('asc')
+    .take(Math.min(Math.max(args.limit ?? 200, 1), 500))
+  let finalized = 0
+  let released = 0
+  let failed = 0
+  for (const reservation of stale) {
+    const overran = reservation.errorMessage === 'actual_cost_exceeds_reservation'
+    try {
+      // Sequential on purpose: each settlement reads and rewrites the same usage buckets.
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop
+      await applyReservationReconciliation(ctx, {
+        userId: reservation.userId,
+        reservationId: reservation.reservationId,
+        resolution: overran ? 'finalize' : 'release',
+        ...(overran ? { actualCents: reservation.reservedCents } : {}),
+        evidence: {
+          source: 'system:stale-hold-policy',
+          reference: reservation.reservationId,
+          reason: overran
+            ? 'The call finished and cost more than was held; the held amount was charged.'
+            : 'The call failed or never reported an outcome; the hold was released after the grace period.',
+        },
+      })
+      if (overran) finalized += 1
+      else released += 1
+    } catch (error) {
+      failed += 1
+      console.warn('[UsageReconciliation] Could not settle a stale hold', {
+        reservationId: reservation.reservationId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  return { finalized, released, failed }
+}
+
+export const settleStaleBudgetReservationsInternal = internalMutation({
+  args: { limit: v.optional(v.number()), now: v.optional(v.number()), staleAfterMs: v.optional(v.number()) },
+  returns: v.object({ finalized: v.number(), released: v.number(), failed: v.number() }),
+  handler: async (ctx, args) => await settleStaleReconciliations(ctx, args),
+})
+
 export const listBudgetReservationReconciliationByServer = query({
   args: {
     serverSecret: v.string(),
@@ -1161,6 +1221,20 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    return await applyReservationReconciliation(ctx, args)
+  },
+})
+
+type ReservationReconciliationInput = {
+  userId: string
+  reservationId: string
+  resolution: 'finalize' | 'release'
+  actualCents?: number
+  evidence: { reason: string; reference: string; source: string }
+}
+
+/** Settles one `reconcile_required` reservation with evidence. Shared by the ops mutation and the stale-hold sweep. */
+async function applyReservationReconciliation(ctx: MutationCtx, args: ReservationReconciliationInput) {
     const reservation = await ctx.db
       .query('budgetReservations')
       .withIndex('by_reservationId', (q) => q.eq('reservationId', args.reservationId.trim()))
@@ -1301,8 +1375,7 @@ export const resolveBudgetReservationReconciliationByServer = mutation({
       idempotent: false,
       status: expectedStatus,
     }
-  },
-})
+}
 
 async function workspaceReservationLedger(
   ctx: MutationCtx,
