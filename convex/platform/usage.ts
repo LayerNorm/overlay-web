@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { internal } from '../_generated/api'
 import type { Doc } from '../_generated/dataModel'
 import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
@@ -1103,6 +1104,8 @@ export const reconcileExpiredBudgetReservationsInternal = internalMutation({
  *    charged for work they did not get.
  */
 export const STALE_RECONCILIATION_AFTER_MS = 6 * 60 * 60_000
+/** Each settlement reads the person's usage buckets and billing shadows, so a batch must stay small to fit one function's read limit. */
+const SETTLE_BATCH_SIZE = 8
 
 async function settleStaleReconciliations(ctx: MutationCtx, args: { limit?: number; now?: number; staleAfterMs?: number }) {
   const now = args.now ?? Date.now()
@@ -1111,7 +1114,7 @@ async function settleStaleReconciliations(ctx: MutationCtx, args: { limit?: numb
     .withIndex('by_status_updatedAt', (q) => q.eq('status', 'reconcile_required')
       .lte('updatedAt', now - (args.staleAfterMs ?? STALE_RECONCILIATION_AFTER_MS)))
     .order('asc')
-    .take(Math.min(Math.max(args.limit ?? 200, 1), 500))
+    .take(Math.min(Math.max(args.limit ?? SETTLE_BATCH_SIZE, 1), 50))
   let finalized = 0
   let released = 0
   let failed = 0
@@ -1142,6 +1145,11 @@ async function settleStaleReconciliations(ctx: MutationCtx, args: { limit?: numb
         error: error instanceof Error ? error.message : String(error),
       })
     }
+  }
+  // More than a batch of backlog: continue in a fresh function. Stop when a batch settled nothing, so a hold that
+  // cannot be settled does not make this reschedule forever.
+  if (stale.length >= Math.min(Math.max(args.limit ?? SETTLE_BATCH_SIZE, 1), 50) && finalized + released > 0) {
+    await ctx.scheduler.runAfter(500, internal.platform.usage.settleStaleBudgetReservationsInternal, { ...args, now: undefined })
   }
   return { finalized, released, failed }
 }

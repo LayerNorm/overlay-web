@@ -338,7 +338,7 @@ Bugs found by that run, all fixed and deployed:
 
 Known gaps:
 
-- Budget holds stuck in `reconcile_required` (found on the owner's account: 115 holds, about $7.62) make remaining credit read far below allowance minus spend; filed as a separate task. `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS=25` is set on prod so the owner's machine can run with under $1 left; unset it to restore the $1 floor.
+- ~~Budget holds stuck in `reconcile_required` made remaining credit read far below allowance minus spend.~~ Fixed 2026-10-02: an hourly sweep settles holds older than 6 hours (overruns charged what was held, failed calls released); see `docs/develop/billing-holds-and-machine-metering.md`. The failures that create holds (memory-profile schema errors, billing write conflicts, a provider path) are tracked in a separate task.
 - An approval is remembered per run: if the person answers after the agent has given up waiting (25 s), the next turn asks again.
 - Strict OAuth clients must use the `www` address (the apex redirects).
 - No "run now" automation tool: agents can create, update, pause, and delete automations (verified), but an automation runs on its schedule.
