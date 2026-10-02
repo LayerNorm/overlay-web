@@ -7,7 +7,8 @@ import { CLOUD_AGENT_ADAPTER_IDS } from '@/server/agents/cloud/cloud-agent-machi
 import { CloudAgentMachineError } from '@/server/agents/cloud/CloudAgentMachineService'
 import { createCloudAgentMachineService } from '@/server/agents/cloud/create-cloud-agent-machine-service'
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId } from '@/server/app-api/bff-context'
-import { isPaidPlan } from '@/server/billing/billing-runtime'
+import { getBudgetTotals, isPaidPlan } from '@/server/billing/billing-runtime'
+import { minimumBudgetToStartMachineCents } from '@/server/agents/ManagedAgentSandboxBilling'
 import { logger } from '@/server/observability/logger'
 import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { AgentProviderAccountError } from '@/server/agents/provider-accounts/AgentProviderAccountService'
@@ -48,6 +49,18 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       return NextResponse.json(
         { error: 'Agents on Overlay Cloud need a paid plan.', code: 'paid_plan_required' },
         { status: 403, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+    const needed = minimumBudgetToStartMachineCents()
+    const remaining = getBudgetTotals(entitlements).remainingCents
+    if (remaining < needed) {
+      // The meter would stop and delete a machine started below this, so refuse before creating one.
+      return NextResponse.json(
+        {
+          error: `Running an agent machine needs at least $${(needed / 100).toFixed(2)} of credit; you have $${Math.max(0, remaining / 100).toFixed(2)}. Add credit and try again.`,
+          code: 'insufficient_credit',
+        },
+        { status: 402, headers: { 'Cache-Control': 'no-store' } },
       )
     }
     const service = createCloudAgentMachineService()

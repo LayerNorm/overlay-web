@@ -138,6 +138,12 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
 
           {phase && isCloudAgentStarting(phase) ? <CloudAgentProgress phase={phase} /> : null}
 
+          {status.state === 'unavailable' && !isCloudAgentStarting(phase) ? (
+            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+              This agent&rsquo;s machine is gone, usually because your credit ran low. Messages will not be answered. Add credit, then archive this agent and create it again.
+            </p>
+          ) : null}
+
           {status.state === 'failed' ? (
             <p role="alert" className="mt-2 text-xs text-red-500">{status.provision?.error ?? 'Could not start the machine.'}</p>
           ) : null}

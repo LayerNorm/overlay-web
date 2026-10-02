@@ -5,7 +5,7 @@ import type { ComputerSize, WorkspaceAgentDirectoryItem, WorkspaceAgentVisibilit
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { rememberAgentOpened } from '@/shared/agents/last-agent-by-workspace'
-import { isCloudAgentStarting, type CloudAgentPhase } from '@/shared/agents/cloud-agent'
+import { cloudCreateProgress, type CloudAgentPhase } from '@/shared/agents/cloud-agent'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { OTHER_AGENT_LABEL, type OtherAgentDraft } from './cloud-agent-draft'
 
@@ -39,7 +39,10 @@ export function useCloudAgentCreate(args: { workspaceId: string | null; onReady(
   const readyRef = useRef(onReady)
   readyRef.current = onReady
   const agentId = view?.agent.id
-  const starting = view !== null && isCloudAgentStarting(view.phase)
+  // Keep following until the agent is ready or the start failed (provisioning done is not ready).
+  const starting = view !== null && view.phase !== 'ready' && view.phase !== 'failed'
+  const agentRef = useRef(view?.agent)
+  agentRef.current = view?.agent
 
   // Follow the machine's startup.
   useEffect(() => {
@@ -49,21 +52,15 @@ export function useCloudAgentCreate(args: { workspaceId: string | null; onReady(
       try {
         const status = await overlayAppClient.cloudAgents.status(workspaceId, agentId)
         if (cancelled) return
-        const phase = status.provision?.phase
-        if (status.state === 'ready') {
-          setView((current) => (current ? { ...current, phase: 'ready' } : current))
-          readyRef.current(view!.agent)
-        } else if (phase) {
-          setView((current) => (current ? { ...current, phase, error: phase === 'failed' ? (status.provision?.error ?? 'Could not start the machine.') : null } : current))
-        }
+        const progress = cloudCreateProgress(status)
+        setView((current) => (current ? { ...current, phase: progress.phase, error: progress.error } : current))
+        if (progress.done) readyRef.current(agentRef.current!)
       } catch (_error) {
         // A missed poll is not a failure; the next one decides.
       }
     }
     const timer = window.setInterval(() => void tick(), POLL_MS)
     return () => { cancelled = true; window.clearInterval(timer) }
-    // `view.agent` is stable for the lifetime of a creation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, agentId, starting])
 
   const start = useCallback(async (agent: WorkspaceAgentDirectoryItem, other: OtherAgentDraft, size: ComputerSize) => {

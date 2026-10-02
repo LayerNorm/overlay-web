@@ -852,6 +852,14 @@ function cleanupRetryDelayMs(attempts: number) {
   return Math.min(CLEANUP_RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1), CLEANUP_RETRY_MAX_MS)
 }
 
+/**
+ * The least remaining credit a machine can start with: the meter stops any machine whose payer is at or below
+ * the low-balance floor, so a machine started under it would be deleted within a minute.
+ */
+export function minimumBudgetToStartMachineCents(): number {
+  return sandboxLowBalanceCutoffCents() + 1
+}
+
 function sandboxLowBalanceCutoffCents() {
   const configured = Number(process.env.OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS)
   return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_LOW_BALANCE_CUTOFF_CENTS

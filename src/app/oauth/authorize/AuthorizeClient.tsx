@@ -20,10 +20,13 @@ function readRequest(params: URLSearchParams): Request | null {
   return { clientId, redirectUri, codeChallenge, state: params.get('state') ?? '', scope: params.get('scope') ?? '' }
 }
 
-/** An app that asks for a scope (`mcp:read`…) starts on that level; otherwise the middle one. */
-function initialAccess(scope: string): McpAccessLevel {
-  const requested = scope.split(/\s+/).map((entry) => entry.replace(/^mcp:/, '')).find(isMcpAccessLevel)
-  return requested ?? 'write'
+/**
+ * An app that asks for one level starts on it. Apps that list every scope they know about (Claude, the MCP SDK)
+ * are not asking for the maximum, so they, and apps that name none, start on the middle level.
+ */
+export function initialAccess(scope: string): McpAccessLevel {
+  const requested = scope.split(/\s+/).map((entry) => entry.replace(/^mcp:/, '')).filter(isMcpAccessLevel)
+  return requested.length === 1 ? requested[0]! : 'write'
 }
 
 function useSignInRedirect() {

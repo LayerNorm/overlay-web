@@ -38,7 +38,24 @@ export const CLOUD_AGENT_STATE_LABEL: Record<CloudAgentState, string> = {
   starting: 'Starting',
   needs_sign_in: 'Needs sign-in',
   failed: 'Failed',
-  unavailable: 'Unavailable',
+  unavailable: 'Machine stopped',
+}
+
+/**
+ * What the create dialog shows from one status read. Provisioning finishing is not the agent being ready:
+ * the machine's host still has to check in. Until it has, the last step stays "Connecting the agent", and
+ * the dialog keeps polling; only a `ready` state ends it (and only a failed provision ends it as an error).
+ */
+export function cloudCreateProgress(status: Pick<CloudAgentStatus, 'state' | 'provision'>): {
+  phase: CloudAgentPhase
+  error: string | null
+  done: boolean
+} {
+  if (status.state === 'ready') return { phase: 'ready', error: null, done: true }
+  const phase = status.provision?.phase
+  if (phase === 'failed') return { phase: 'failed', error: status.provision?.error ?? 'Could not start the machine.', done: false }
+  if (!phase) return { phase: 'queued', error: null, done: false }
+  return { phase: phase === 'ready' ? 'connecting' : phase, error: null, done: false }
 }
 
 export type CloudAgentAction = 'pause' | 'resume' | 'restart'
