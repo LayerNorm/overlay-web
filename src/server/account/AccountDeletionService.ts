@@ -25,6 +25,10 @@ export class AccountDeletionService {
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
     await this.deleteIntegrationConnectionsBestEffort(args.userId)
+    // Ends every other-AI-app connection the person made; their tokens stop working at once.
+    await this.ctx.appData.repositories.mcpGrants.deleteAllForUser({ userId: args.userId }).catch((error) => {
+      logger.error(`[account/delete] MCP grant cleanup failed for ${args.userId}:`, error instanceof Error ? error.name : 'unknown')
+    })
     // Before the rows that point at them are gone: a secret nothing references can never be removed.
     await this.deleteStoredCredentials(args.userId)
 

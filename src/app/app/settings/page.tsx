@@ -34,6 +34,7 @@ import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLo
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { AgentEnvironmentSettings } from '@/features/settings/components/AgentEnvironmentSettings'
 import { AgentAccountSettings } from '@/features/settings/components/AgentAccountSettings'
+import { ConnectedAppsSettings } from '@/features/settings/components/ConnectedAppsSettings'
 import { ComputerSettings } from '@/features/settings/components/ComputerSettings'
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
@@ -375,6 +376,7 @@ function SettingsSectionContent({
   if (section === 'webhooks') return <WebhookSettings />
   if (section === 'agent-environments') return <AgentEnvironmentSettings />
   if (section === 'agent-accounts') return <AgentAccountSettings />
+  if (section === 'connected-apps') return <ConnectedAppsSettings />
   if (section === 'computers') return <ComputerSettings />
   if (section === 'contact') return <ContactSettingsSection supportEmail={supportEmail} />
   return (

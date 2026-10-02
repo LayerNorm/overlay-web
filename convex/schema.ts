@@ -167,6 +167,28 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_provider', ['userId', 'provider']),
 
+  // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
+  // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
+  // them. No secret is stored here.
+  mcpGrants: defineTable({
+    userId: v.string(),
+    workspaceId: v.string(),
+    access: v.union(v.literal('read'), v.literal('write'), v.literal('full')),
+    kind: v.union(v.literal('oauth'), v.literal('token')),
+    clientName: v.string(),
+    clientId: v.optional(v.string()),
+    // The authorization code that created an OAuth grant; a code can be redeemed once.
+    codeId: v.optional(v.string()),
+    // Bumped each time a refresh token is used; a refresh token from an older version is a replay.
+    refreshVersion: v.number(),
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_codeId', ['codeId']),
+
   // Where an Overlay Cloud agent is in starting its machine, so the dialog and the agent
   // page can show progress after the request that started it has returned.
   cloudAgentProvisions: defineTable({

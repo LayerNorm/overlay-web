@@ -65,6 +65,7 @@ import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
+import { McpAccessService } from '@/server/mcp/McpAccessService'
 import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
 import { SurfaceService } from '@/server/surfaces/SurfaceService'
@@ -128,6 +129,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
   agentProviderAccounts: AgentProviderAccountService
+  mcpAccess: McpAccessService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
   surfaceService: SurfaceService
@@ -279,6 +281,11 @@ export function createOverlayServerContext(
     store: byokCredentialStore,
     audit: auditService,
   })
+  const mcpAccess = new McpAccessService({
+    grants: appData.repositories.mcpGrants,
+    workspaces: workspaceService,
+    audit: auditService,
+  })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
     agentProviderAccounts,
@@ -404,6 +411,7 @@ export function createOverlayServerContext(
     workspaceAgentService,
     connectedAgentControlPlane,
     agentProviderAccounts,
+    mcpAccess,
     managedAgentSandboxBilling,
     computerService,
     surfaceService,

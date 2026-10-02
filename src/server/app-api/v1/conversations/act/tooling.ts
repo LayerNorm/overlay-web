@@ -139,6 +139,12 @@ export async function prepareActTooling(params: {
   /** Set when a workspace agent drives the turn, for attribution on tool calls. */
   agentId?: string
   agentPrincipalId?: string
+  /**
+   * The account tool allow-list is the caller's whole tool surface (an outside app
+   * connected over MCP), as it is for a workspace agent, rather than a narrowing of
+   * personal chat's keyword-gated set.
+   */
+  grantedToolSurface?: boolean
   mediaToolIntent: MediaToolIntent
   mode?: ActMode
   paid: boolean
@@ -168,7 +174,7 @@ export async function prepareActTooling(params: {
   const baseToolIds = withAgentGrantToolIds(
     intentToolIds,
     params.accountAllowedToolIds,
-    params.agentId !== undefined,
+    params.agentId !== undefined || params.grantedToolSurface === true,
   )
   const allowedOverlayToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
     baseToolIds,

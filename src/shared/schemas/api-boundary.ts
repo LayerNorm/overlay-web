@@ -601,6 +601,29 @@ export const webApiBoundaryDefinitions = [
   { method: 'POST', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Create a model provider connection', tag: 'Model Providers' },
   { method: 'PATCH', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Update a model provider connection', tag: 'Model Providers' },
   { method: 'DELETE', path: '/api/v1/providers/connections', schema: { query: ProviderConnectionDeleteQuery }, summary: 'Delete a model provider connection', tag: 'Model Providers' },
+  {
+    method: 'POST', path: '/api/v1/mcp/authorize',
+    schema: {
+      json: z.object({
+        clientId: z.string().min(1).max(4096), redirectUri: z.string().min(1).max(1024), state: z.string().max(2048).optional(),
+        decision: z.enum(['approve', 'deny']), workspaceId: z.string().max(256).optional(), access: z.string().max(16).optional(),
+        codeChallenge: z.string().max(256).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Approve or deny another AI app\'s request to connect to Overlay over MCP', tag: 'MCP access',
+  },
+  { method: 'GET', path: '/api/v1/mcp/client', schema: { query: z.object({ clientId: z.string().min(1), redirectUri: z.string().min(1) }), response: UnknownResponse }, summary: 'Describe the AI app asking to connect', tag: 'MCP access' },
+  { method: 'GET', path: '/api/v1/mcp/connections', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the AI apps and tokens connected to Overlay over MCP', tag: 'MCP access' },
+  {
+    method: 'POST', path: '/api/v1/mcp/connections',
+    schema: {
+      json: z.object({ name: z.string().max(80).optional(), workspaceId: z.string().min(1).max(256), access: z.enum(['read', 'write', 'full']), ttlDays: z.number().int().min(1).max(365).optional() }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Create a personal MCP token for a local agent (returned once)', tag: 'MCP access',
+  },
+  { method: 'DELETE', path: '/api/v1/mcp/connections', schema: { query: z.object({ id: z.string().min(1) }), response: UnknownResponse }, summary: 'Disconnect an AI app or revoke a token', tag: 'MCP access' },
   { method: 'GET', path: '/api/v1/provider-accounts', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the Claude Code and Codex accounts agents run on', tag: 'Provider accounts' },
   {
     method: 'POST', path: '/api/v1/provider-accounts',

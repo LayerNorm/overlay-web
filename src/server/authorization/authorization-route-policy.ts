@@ -526,6 +526,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       DELETE: authenticated(),
     },
   },
+  // Other AI apps connected over MCP: every operation is scoped to the caller's own user id.
+  { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
+  { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
+  { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
   // Surfaces: SurfaceService enforces bind permission (visible agent, no
   // guests, personal agents only by their creator). connect/callback are browser
   // navigations that check the Overlay session themselves; the Slack webhook

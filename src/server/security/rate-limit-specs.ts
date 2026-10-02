@@ -116,6 +116,14 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'providers/connections:delete:ip', limit: 60, windowMs: TEN_MINUTES },
     { bucket: 'providers/connections:delete:user', limit: 30, windowMs: TEN_MINUTES },
   ],
+  'POST /api/v1/mcp/authorize': [
+    { bucket: 'mcp:authorize:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'mcp:authorize:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/mcp/connections': [
+    { bucket: 'mcp:token-create:ip', limit: 40, windowMs: TEN_MINUTES },
+    { bucket: 'mcp:token-create:user', limit: 20, windowMs: TEN_MINUTES },
+  ],
   'POST /api/v1/provider-accounts': [
     { bucket: 'provider-accounts:create:ip', limit: 40, windowMs: TEN_MINUTES },
     { bucket: 'provider-accounts:create:user', limit: 20, windowMs: TEN_MINUTES },

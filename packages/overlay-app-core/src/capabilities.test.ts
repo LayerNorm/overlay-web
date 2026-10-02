@@ -122,7 +122,7 @@ test('redacted capability bootstrap payload exposes capabilities without secrets
       canUseExtensions: true,
     },
     navigation: ['chat', 'files', 'extensions'],
-    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'models', 'contact'],
+    settingsSections: ['general', 'account', 'workspace', 'customization', 'shortcuts', 'memories', 'providers', 'models', 'connected-apps', 'contact'],
   })
   assert.equal(JSON.stringify(payload).includes('secret'), false)
 })

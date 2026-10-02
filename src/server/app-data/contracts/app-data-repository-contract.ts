@@ -1099,6 +1099,9 @@ async function deleteAccount(
         agentProviderAccounts: {
           listCredentialRefs: async () => [],
         },
+        mcpGrants: {
+          deleteAllForUser: async () => 0,
+        },
       },
     },
     auth: {

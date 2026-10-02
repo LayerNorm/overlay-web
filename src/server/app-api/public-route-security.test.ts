@@ -43,6 +43,10 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/entitlements': ['GET'],
   '/api/latest-release': ['GET'],
   '/api/latest-release/download': ['GET'],
+  // OAuth-granted bearer-token MCP server for outside AI apps, and its OAuth endpoints — not session auth.
+  '/api/mcp': ['DELETE', 'GET', 'OPTIONS', 'POST'],
+  '/api/oauth/register': ['GET', 'OPTIONS', 'POST'],
+  '/api/oauth/token': ['GET', 'OPTIONS', 'POST'],
   '/api/portal': ['POST'],
   '/api/security/csp-report': ['POST'],
   '/api/share/file/[token]': ['GET'],

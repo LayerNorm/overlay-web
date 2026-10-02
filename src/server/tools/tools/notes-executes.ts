@@ -130,33 +130,55 @@ async function patchNote(
   return { success: false as const, error: 'Failed to update note' }
 }
 
+const LIST_NOTES_LIMIT = 200
+
+type NotesPage = { data: NoteDoc[]; nextCursor?: string; hasMore?: boolean }
+
+/** The notes route answers a list with a page envelope; an older shape was a bare array. Read both. */
+function readNotesPage(payload: unknown): NotesPage {
+  if (Array.isArray(payload)) return { data: payload as NoteDoc[] }
+  const page = payload as Partial<NotesPage> | null
+  return { data: Array.isArray(page?.data) ? page.data : [], ...(page?.nextCursor ? { nextCursor: page.nextCursor } : {}), hasMore: page?.hasMore === true }
+}
+
 export async function executeListNotes(
   options: OverlayToolsOptions,
   _input: Record<string, never>,
 ) {
   try {
-    const res = await callInternalApiGet(
-      NOTES_PATH,
-      options.accessToken,
-      options.baseUrl,
-      options.forwardCookie,
-      options.serverSecret,
-      options.userId,
-      options.workspaceId,
-    )
-    if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list notes') }
-    const notes = await res.json() as NoteDoc[]
+    const notes: NoteDoc[] = []
+    let cursor: string | undefined
+    let truncated = false
+    do {
+      const params = new URLSearchParams({ limit: '100', sort: 'updatedAt', order: 'desc' })
+      if (cursor) params.set('cursor', cursor)
+      const res = await callInternalApiGet(
+        `${NOTES_PATH}?${params}`,
+        options.accessToken,
+        options.baseUrl,
+        options.forwardCookie,
+        options.serverSecret,
+        options.userId,
+        options.workspaceId,
+      )
+      if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list notes') }
+      const page = readNotesPage(await res.json())
+      notes.push(...page.data)
+      cursor = page.hasMore ? page.nextCursor : undefined
+      truncated = Boolean(cursor)
+    } while (cursor && notes.length < LIST_NOTES_LIMIT)
     return {
       success: true,
       notes: notes
         .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 200)
+        .slice(0, LIST_NOTES_LIMIT)
         .map((note) => ({
           noteId: note._id,
           title: note.title || 'Untitled',
           tags: note.tags ?? [],
           updatedAt: note.updatedAt,
         })),
+      ...(truncated || notes.length > LIST_NOTES_LIMIT ? { truncated: true } : {}),
     }
   } catch (err) {
     return failure(err, 'Failed to list notes')

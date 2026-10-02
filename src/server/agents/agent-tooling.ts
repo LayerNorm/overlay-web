@@ -94,6 +94,60 @@ export function applyAgentCapabilityFilter(args: {
 }
 
 /**
+ * The tool set for an outside AI app connected over MCP (ChatGPT, Claude, Cursor…).
+ * Same pipeline, policy, and capability filter as an agent turn, with no agent behind
+ * it: nothing is attributed to an agent, memory is the person's own (so every app
+ * they connect shares one memory), and there is no conversation to attach to.
+ */
+export async function buildExternalAppTooling(args: {
+  actorUserId: string
+  effectiveModelId: string
+  entitlements: Entitlements
+  grantToolIds: readonly string[]
+  idempotencyKey: string
+  paid: boolean
+  requestFingerprint: string
+  turnId: string
+  workspaceId: string
+}): Promise<WorkspaceAgentToolingResult> {
+  const { capabilities, overlayToolIds } = resolveAgentGrant({ agentId: '', allowedToolIds: args.grantToolIds, isDefaultMaster: false })
+  const tooling = await prepareActTooling({
+    accountAllowedToolIds: overlayToolIds,
+    baseUrl: getInternalApiBaseUrl(),
+    effectiveModelId: args.effectiveModelId,
+    entitlements: args.entitlements,
+    grantedToolSurface: true,
+    idempotencyKey: args.idempotencyKey,
+    isMultiModelFollowUpSlot: false,
+    mediaToolIntent: null,
+    memoryEnabled: true,
+    mode: 'chat',
+    paid: args.paid,
+    preloadTasks: preloadActExternalToolTasks({
+      userId: args.actorUserId,
+      serverSecret: getInternalApiSecret(),
+    }),
+    requestFingerprint: args.requestFingerprint,
+    serverSecret: getInternalApiSecret(),
+    turnId: args.turnId,
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+  })
+  const tools = applyAgentCapabilityFilter({
+    capabilities,
+    integrationToolIds: tooling.integrationToolIds,
+    overlayToolIds: tooling.allowedOverlayToolIds,
+    tools: tooling.tools,
+  })
+  return {
+    tools,
+    exposedToolIds: Object.keys(tools),
+    ...(tooling.toolApproval ? { toolApproval: tooling.toolApproval } : {}),
+    ...(tooling.toolsContext ? { toolsContext: tooling.toolsContext } : {}),
+  }
+}
+
+/**
  * Builds the tool set for a workspace agent turn.
  *
  * Agents run the same pipeline as personal chat rather than a reduced one, so

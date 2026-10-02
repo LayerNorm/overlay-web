@@ -48,10 +48,15 @@ export function adaptToolsForMcp(args: {
   tools: ToolSet
   toolApproval?: McpToolApprovalFn
   toolsContext?: Record<string, unknown>
+  /** Extra tools to withhold beyond the harness set. */
+  withheldToolIds?: readonly string[]
+  /** What a refused tool call tells the client; defaults to the managed-runtime wording. */
+  approvalRefusal?: string
 }): ToolSet {
   const adapted: ToolSet = {}
+  const withheld = new Set(args.withheldToolIds ?? [])
   for (const [name, definition] of Object.entries(args.tools)) {
-    if (HARNESS_WITHHELD_TOOL_IDS.has(name)) continue
+    if (HARNESS_WITHHELD_TOOL_IDS.has(name) || withheld.has(name)) continue
     const original = definition as ToolDefinition & {
       contextSchema?: unknown
       execute?: (input: unknown, options: ExecuteOptions) => unknown
@@ -66,7 +71,7 @@ export function adaptToolsForMcp(args: {
         const decision = args.toolApproval?.({
           toolCall: { toolName: name, input: (input ?? {}) as Record<string, unknown> },
         })
-        if (decision === 'user-approval') return { success: false, error: MCP_APPROVAL_REFUSAL }
+        if (decision === 'user-approval') return { success: false, error: args.approvalRefusal ?? MCP_APPROVAL_REFUSAL }
         const context = args.toolsContext?.[name]
         return await execute(input, context === undefined ? options : { ...options, context })
       },

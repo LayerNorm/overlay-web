@@ -146,6 +146,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'webhooks', label: 'Webhooks', requiredCapabilities: ['webhooks'] },
   { id: 'agent-environments', label: 'Environments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'] },
   { id: 'agent-accounts', label: 'Agent accounts', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'] },
+  { id: 'connected-apps', label: 'Connected apps' },
   { id: 'computers', label: 'Computers', requiredCapabilities: ['computers'] },
   { id: 'contact', label: 'Contact' },
 ] as const
@@ -244,6 +245,7 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'webhooks', sectionId: 'webhooks', label: 'Webhooks', componentKey: 'overlay.settings.webhooks', requiredCapabilities: ['webhooks'], order: 60 },
   { id: 'agent-environments', sectionId: 'agent-environments', label: 'Environments', componentKey: 'overlay.settings.agentEnvironments', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'], order: 65 },
   { id: 'agent-accounts', sectionId: 'agent-accounts', label: 'Agent accounts', componentKey: 'overlay.settings.agentAccounts', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'], order: 66 },
+  { id: 'connected-apps', sectionId: 'connected-apps', label: 'Connected apps', componentKey: 'overlay.settings.connectedApps', order: 66.5 },
   { id: 'computers', sectionId: 'computers', label: 'Computers', componentKey: 'overlay.settings.computers', requiredCapabilities: ['computers'], order: 67 },
   { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 70 },
 ] as const
