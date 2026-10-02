@@ -148,6 +148,25 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_providerId', ['userId', 'providerId']),
 
+  // Metadata for the credentials an Overlay Cloud agent runs on (a Claude Code
+  // setup-token or API key, an OpenAI API key). The secret itself lives in the
+  // credential vault; only its opaque reference is stored here, and it is
+  // delivered to a machine one run at a time.
+  agentProviderAccounts: defineTable({
+    userId: v.string(),
+    provider: v.union(v.literal('claude-code'), v.literal('codex')),
+    method: v.union(v.literal('subscription'), v.literal('api_key')),
+    label: v.string(),
+    credentialRef: v.string(),
+    status: v.union(v.literal('active'), v.literal('needs_reauth')),
+    lastError: v.optional(v.string()),
+    lastUsedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_provider', ['userId', 'provider']),
+
   // Single source of truth for a user's subscription, tier, and current-period credit spend.
   // creditsUsed is the live accumulator (in cents, may include fractional cents)
   // mutated on every usage event.

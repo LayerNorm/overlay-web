@@ -56,7 +56,6 @@ type PendingElicitation = { response: Deferred<AcpElicitationResponse> }
  */
 export class AcpxAgentAdapter implements AgentAdapter {
   readonly capability
-  private runtime: AcpRuntime | undefined
   private readonly registry: AcpAgentRegistry
   private readonly mcpBySession = new Map<string, McpServer[]>()
 
@@ -75,23 +74,28 @@ export class AcpxAgentAdapter implements AgentAdapter {
     return this.capability
   }
 
-  private runtimeFor(cwd: string): AcpRuntime {
-    this.runtime ??= createAcpRuntime({
+  /**
+   * A runtime per session: the agent process environment is fixed when a
+   * runtime is created, and each run brings its own credentials. Session
+   * records live on disk, so a later run's runtime resumes the same session.
+   */
+  private runtimeFor(cwd: string, credentials?: Record<string, string>): AcpRuntime {
+    const env = { ...this.options.env, ...credentials }
+    return createAcpRuntime({
       cwd,
       sessionStore: createFileSessionStore({ stateDir: join(this.options.stateDirectory, 'acpx') }),
       agentRegistry: this.registry,
-      ...(this.options.env ? { agentProcessEnv: this.options.env } : {}),
+      ...(Object.keys(env).length > 0 ? { agentProcessEnv: env } : {}),
       mcpServers: (session) => this.mcpBySession.get(session.sessionKey) ?? [],
       // Overlay decides every permission request through the bridge.
       permissionMode: 'deny-all',
       nonInteractivePermissions: 'deny',
       elicitationModes: ['form'],
     })
-    return this.runtime
   }
 
   async start(input: StartAdapterSessionInput, emit: EmitAgentEvent): Promise<AgentAdapterSession> {
-    const runtime = this.runtimeFor(input.workingDirectory)
+    const runtime = this.runtimeFor(input.workingDirectory, input.credentials)
     const sessionKey = input.remoteSessionId ?? `overlay-${randomUUID()}`
     this.mcpBySession.set(sessionKey, overlayMcpServers(input.metadata, true))
     const ensure = () => runtime.ensureSession({
@@ -167,7 +171,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
               },
             })
           }
-          await emitTurnResult(await turn.result, emit)
+          await emitTurnResult(await turn.result, emit, this.options.id)
         } finally {
           activeTurn = undefined
           await disconnect('overlay turn finished')
@@ -209,11 +213,31 @@ function permissionDecision(kind: string): AcpPermissionDecision {
   return { outcome: 'allow_once' }
 }
 
-async function emitTurnResult(result: AcpRuntimeTurnResult, emit: EmitAgentEvent) {
+/** Failure code for an agent that rejected its credentials; the control plane flags the account for reconnecting. */
+export const AGENT_AUTH_FAILURE_CODE = 'auth_required'
+
+const AUTH_FAILURE_PATTERN = /auth(entication)? (required|failed)|not logged in|invalid (api[- ]?key|x-api-key|token|credentials?)|unauthori[sz]ed|\b401\b|oauth token.*(expired|revoked|invalid)|please run \/login/i
+
+const REAUTH_MESSAGE: Record<string, string> = {
+  'claude-code': 'Claude Code could not sign in. Reconnect your Claude account in Settings → Agent accounts.',
+  codex: 'Codex could not sign in. Reconnect your OpenAI account in Settings → Agent accounts.',
+}
+
+export function isAuthFailureMessage(message: string): boolean {
+  return AUTH_FAILURE_PATTERN.test(message)
+}
+
+async function emitTurnResult(result: AcpRuntimeTurnResult, emit: EmitAgentEvent, adapterId: string) {
   if (result.status === 'completed') {
     await emit({ type: 'completed', payload: { summary: `ACP turn stopped: ${result.stopReason ?? 'end_turn'}`, usage: {} } })
   } else if (result.status === 'cancelled') {
     await emit({ type: 'cancelled', payload: {} })
+  } else if (isAuthFailureMessage(result.error.message)) {
+    await emit({ type: 'failed', payload: {
+      code: AGENT_AUTH_FAILURE_CODE,
+      message: REAUTH_MESSAGE[adapterId] ?? 'The agent could not sign in. Reconnect its account in Settings → Agent accounts.',
+      retryable: false,
+    } })
   } else {
     await emit({ type: 'failed', payload: {
       code: result.error.code ?? 'acp_turn_failed',

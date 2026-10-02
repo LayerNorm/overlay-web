@@ -500,6 +500,26 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   (a turn holds `activeUntil` for its maximum run time). A turn queued for an offline machine
   resumes it and restarts the host from saved state after the response is sent. Revoking the
   environment stops and deletes the machine through the lease reaper.
+- **Provider accounts.** An Overlay Cloud agent runs on one of its creator's own accounts
+  (Settings → Agent accounts): a `claude setup-token` token or Anthropic API key for Claude Code,
+  an OpenAI API key for Codex. The secret goes to the credential vault (`ByokCredentialStore`:
+  WorkOS Vault, or AWS Secrets Manager when configured); Convex keeps `agentProviderAccounts`
+  metadata and the opaque vault reference, which no API response includes. A binding records the
+  account and the user who chose it (`adapterConfig.providerAccountId`/`providerAccountOwnerUserId`).
+  On each run the host calls `POST /api/v1/agent-environments/{id}/run-credentials` (credential
+  method `agent:run-credentials`, issued only to `overlay_cloud` environments so published hosts keep
+  parsing their credentials) and passes the result to the agent process as environment variables
+  (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). The command carries only a
+  `runCredentials` flag, never a secret; the host holds the credentials in memory, creates one acpx
+  runtime per run so nothing carries over, and the control plane audits the release without the
+  value. API keys are checked against the vendor when connected; a subscription token has no public
+  check, so a bad one surfaces on first use.
+- **Auth failures.** An agent that rejects its credentials ends the run with the failure code
+  `auth_required`; the control plane marks that account `needs_reauth`, releases nothing for it until
+  it is reconnected (PATCH with a new secret clears the flag), and Settings shows "Needs reconnecting".
+- **Image v2.** The bridge protocol gained the run-credentials method, which v1 image hosts cannot
+  parse, so images are versioned: the host accepts only the image versions it was built for
+  (`SUPPORTED_OVERLAY_IMAGE_VERSIONS`) and `OVERLAY_CLOUD_AGENT_IMAGE` defaults to `overlay-agent-v2`.
 - **Boat quirk.** `~/.claude` and `~/.codex` on Boat are provider-managed mounts that fail with
   I/O errors when no Boat credentials are linked; agent config therefore lives under `~/.overlay`
   (Phase 4 imports go there).

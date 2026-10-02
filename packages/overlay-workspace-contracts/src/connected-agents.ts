@@ -318,6 +318,8 @@ export const AGENT_ENVIRONMENT_CREDENTIAL_METHODS = [
   'agent:events:write',
   'agent:artifacts:write',
   'agent:credentials:refresh',
+  /** Overlay Cloud machines only: fetch the provider credentials for one of their runs. */
+  'agent:run-credentials',
 ] as const
 export type AgentEnvironmentCredentialMethod = (typeof AGENT_ENVIRONMENT_CREDENTIAL_METHODS)[number]
 

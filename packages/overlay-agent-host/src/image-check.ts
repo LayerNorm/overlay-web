@@ -8,7 +8,8 @@ import { ACPX_AGENT_NAMES } from './acpx-adapter.js'
 export const OVERLAY_IMAGE_MANIFEST_PATHS = ['/etc/overlay/image.json', '/opt/overlay/image.json'] as const
 
 /** Image versions this host build accepts on an Overlay Cloud machine. */
-export const SUPPORTED_OVERLAY_IMAGE_VERSIONS = { min: 1, max: 1 } as const
+/** v2 adds the run-credentials method to the bridge protocol; v1 hosts cannot parse Overlay Cloud credentials. */
+export const SUPPORTED_OVERLAY_IMAGE_VERSIONS = { min: 2, max: 2 } as const
 
 export type OverlayImageManifest = {
   imageVersion: number

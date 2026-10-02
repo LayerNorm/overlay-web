@@ -59,6 +59,7 @@ export class CloudAgentMachineService {
     workspaceId: string
     agentId: string
     adapterId: CloudAgentAdapterId
+    providerAccountId: string
     size: ComputerSize
     serverUrl: string
   }) {
@@ -186,6 +187,7 @@ export class CloudAgentMachineService {
     agentId: string
     environmentId: string
     adapterId: CloudAgentAdapterId
+    providerAccountId: string
   }) {
     let lastError: unknown
     for (let attempt = 0; attempt < ENROLLMENT_WAIT_ATTEMPTS; attempt += 1) {
@@ -197,6 +199,7 @@ export class CloudAgentMachineService {
           environmentId: args.environmentId,
           adapterId: args.adapterId,
           workingDirectory: CLOUD_AGENT_WORKSPACE,
+          providerAccountId: args.providerAccountId,
         })
       } catch (error) {
         lastError = error

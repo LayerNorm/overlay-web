@@ -12,7 +12,7 @@ import { resolveFilesystemScope } from './filesystem-policy.js'
 import { StructuredLogger } from './logger.js'
 import { SqliteHostStateStore } from './state.js'
 import type { AgentControlPlaneClient } from './transport.js'
-import { nextReconnectDelay } from './transport.js'
+import { ControlPlaneRequestError, nextReconnectDelay } from './transport.js'
 
 export type AgentHostRuntimeOptions = {
   environmentId: string
@@ -23,6 +23,8 @@ export type AgentHostRuntimeOptions = {
   controlPlane: AgentControlPlaneClient
   logger?: StructuredLogger
   maxOutboxEvents?: number
+  /** Overlay Cloud machines fetch their provider credentials from the control plane for each run. */
+  fetchRunCredentials?: boolean
 }
 
 export class AgentHostRuntime {
@@ -186,6 +188,8 @@ export class AgentHostRuntime {
       } else if (this.sessions.has(command.runId)) return
       const adapter = this.requireAdapter(command.payload.adapterId)
       const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
+      const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
+      if (credentials === 'unavailable') return
       const session = await adapter.start({
         runId: command.runId,
         workingDirectory: scope.workingDirectory,
@@ -193,6 +197,7 @@ export class AgentHostRuntime {
         prompt: command.payload.prompt,
         ...(command.payload.sessionId ? { remoteSessionId: command.payload.sessionId } : {}),
         metadata: command.payload.metadata,
+        ...(credentials ? { credentials } : {}),
         adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
         persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
       }, (event) => this.emit(command.runId, event))
@@ -225,14 +230,46 @@ export class AgentHostRuntime {
     if (!stored) throw new Error(`remote session not found for run ${runId}`)
     if (requestedRemoteSessionId && requestedRemoteSessionId !== stored.remoteSessionId) throw new Error('reconnect session does not match persisted session')
     const scope = await resolveFilesystemScope(this.options.filesystem, stored.workingDirectory)
+    // A resumed session needs its credentials again; whether this run has an account is the server's call.
+    const credentials = await this.runCredentials(runId, this.options.fetchRunCredentials === true)
+    if (credentials === 'unavailable') throw new Error('provider credentials are unavailable for this run')
     const session = await this.requireAdapter(stored.adapterId).start({
       runId, workingDirectory: scope.workingDirectory, additionalDirectories: scope.additionalDirectories,
       prompt: '', remoteSessionId: stored.remoteSessionId, metadata: {},
+      ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(runId, stored.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),
     }, (event) => this.emit(runId, event))
     this.sessions.set(runId, session)
     return session
+  }
+
+  /**
+   * The provider credentials for a run. `undefined` means the run uses none
+   * (no account bound, or this host does not fetch them); 'unavailable' means
+   * the run cannot start, and the failure has already been reported.
+   */
+  private async runCredentials(runId: string, requested: boolean): Promise<Record<string, string> | undefined | 'unavailable'> {
+    const fetchCredentials = this.options.controlPlane.fetchRunCredentials?.bind(this.options.controlPlane)
+    // Only a host holding the run-credentials method (Overlay Cloud) asks, and only when the run says it has an account.
+    if (!fetchCredentials || !this.options.fetchRunCredentials || !requested) return undefined
+    try {
+      return await fetchCredentials(runId)
+    } catch (error) {
+      const code = error instanceof ControlPlaneRequestError ? error.code : undefined
+      // No account on this binding: nothing to inject, the run proceeds as configured.
+      if (code === 'provider_account_missing') return undefined
+      const needsSignIn = code === 'account_needs_reauth' || code === 'account_unavailable'
+      await this.emit(runId, { type: 'failed', payload: {
+        code: needsSignIn ? 'auth_required' : 'credentials_unavailable',
+        message: needsSignIn
+          ? 'This agent’s account needs to be reconnected in Settings → Agent accounts.'
+          : 'The agent could not get its credentials. Try again.',
+        retryable: !needsSignIn,
+      } })
+      this.logger.warn('run credentials unavailable', { runId, code: code ?? 'unknown' })
+      return 'unavailable'
+    }
   }
 
   private requireAdapter(adapterId: string): AgentAdapter {

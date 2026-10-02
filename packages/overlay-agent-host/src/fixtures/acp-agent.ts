@@ -38,6 +38,11 @@ await acp.agent({ name: 'overlay-agent-host-test-fixture' })
       sessionId: params.sessionId,
       update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ACP fixture output' } },
     })
+    // Lets tests see which environment the agent process received.
+    await client.notify(acp.methods.client.session.update, {
+      sessionId: params.sessionId,
+      update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ` [secret=${process.env.FIXTURE_SECRET ?? 'none'}]` } },
+    })
     const permission = await client.request(acp.methods.client.session.requestPermission, {
       sessionId: params.sessionId,
       toolCall: { toolCallId: 'fixture-write', title: 'Write fixture file', status: 'pending' },

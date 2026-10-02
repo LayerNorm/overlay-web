@@ -13,7 +13,8 @@ import { summarizeErrorForLog } from '@/shared/security/safe-log'
  */
 
 export type ByokVaultKeyContext = {
-  purpose: 'byok-provider-key'
+  /** `agent-provider-account` is a coding-agent credential (Claude Code, Codex), not a model-routing key. */
+  purpose: 'byok-provider-key' | 'agent-provider-account'
   userId: string
   providerId: string
   connectionId?: string

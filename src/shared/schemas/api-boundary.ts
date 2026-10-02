@@ -160,6 +160,7 @@ export const webApiBoundaryDefinitions = [
       json: z.object({
         agentId: z.string().min(1).max(256),
         adapterId: z.enum(['claude-code', 'codex']),
+        providerAccountId: z.string().min(1).max(64),
         size: z.enum(['small', 'default', 'large']).optional(),
       }).strict(),
       response: UnknownResponse,
@@ -600,6 +601,43 @@ export const webApiBoundaryDefinitions = [
   { method: 'POST', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Create a model provider connection', tag: 'Model Providers' },
   { method: 'PATCH', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Update a model provider connection', tag: 'Model Providers' },
   { method: 'DELETE', path: '/api/v1/providers/connections', schema: { query: ProviderConnectionDeleteQuery }, summary: 'Delete a model provider connection', tag: 'Model Providers' },
+  { method: 'GET', path: '/api/v1/provider-accounts', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the Claude Code and Codex accounts agents run on', tag: 'Provider accounts' },
+  {
+    method: 'POST', path: '/api/v1/provider-accounts',
+    schema: {
+      json: z.object({
+        provider: z.enum(['claude-code', 'codex']),
+        method: z.enum(['subscription', 'api_key']),
+        secret: z.string().min(1).max(4096),
+        label: z.string().max(80).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Connect a Claude Code or Codex account (setup token or API key) into the credential vault', tag: 'Provider accounts',
+  },
+  {
+    method: 'PATCH', path: '/api/v1/provider-accounts',
+    schema: {
+      json: z.object({
+        accountId: z.string().min(1).max(64),
+        secret: z.string().min(1).max(4096).optional(),
+        label: z.string().max(80).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Reconnect an account with a new credential, or rename it', tag: 'Provider accounts',
+  },
+  {
+    method: 'DELETE', path: '/api/v1/provider-accounts',
+    schema: { query: z.object({ accountId: z.string().min(1) }), response: UnknownResponse },
+    summary: 'Remove an account and delete its credential from the vault', tag: 'Provider accounts',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/run-credentials', routePath: '/api/v1/agent-environments/[environmentId]/run-credentials',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/run-credentials$/,
+    schema: { json: z.object({ protocolVersion: z.literal(1), runId: z.string().min(1) }).strict(), response: UnknownResponse },
+    summary: 'Release the provider credentials for one active run to an Overlay Cloud host', tag: 'Agent environments',
+  },
   { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },
   { method: 'POST', path: '/api/v1/memory', schema: { json: CreateMemoryRequest }, summary: 'Create a memory', tag: 'Memory' },

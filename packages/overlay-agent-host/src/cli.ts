@@ -143,6 +143,8 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
     workspaceId: config.workspaceId,
   })
   const runtime = new AgentHostRuntime({
+    // Only Overlay Cloud credentials carry this method (see the control plane's createCredential).
+    fetchRunCredentials: stored?.methods.includes('agent:run-credentials') === true,
     environmentId: config.environmentId,
     workspaceId: config.workspaceId,
     filesystem: stored?.filesystemGrant ?? config.filesystem,

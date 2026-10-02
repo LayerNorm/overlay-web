@@ -33,6 +33,7 @@ import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { AgentEnvironmentSettings } from '@/features/settings/components/AgentEnvironmentSettings'
+import { AgentAccountSettings } from '@/features/settings/components/AgentAccountSettings'
 import { ComputerSettings } from '@/features/settings/components/ComputerSettings'
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
@@ -373,6 +374,7 @@ function SettingsSectionContent({
   if (section === 'providers') return <ProviderConnectionsSetting />
   if (section === 'webhooks') return <WebhookSettings />
   if (section === 'agent-environments') return <AgentEnvironmentSettings />
+  if (section === 'agent-accounts') return <AgentAccountSettings />
   if (section === 'computers') return <ComputerSettings />
   if (section === 'contact') return <ContactSettingsSection supportEmail={supportEmail} />
   return (

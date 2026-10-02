@@ -124,6 +124,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agent-environments/enroll', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/run-credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/heartbeat', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/capabilities', methods: { PUT: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },
@@ -514,6 +515,16 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   { path: '/api/v1/providers/connections/test', methods: { POST: authenticated() } },
+  // Agent provider accounts (Claude Code / Codex credentials) are scoped to the caller's own user id.
+  {
+    path: '/api/v1/provider-accounts',
+    methods: {
+      GET: authenticated(),
+      POST: authenticated(),
+      PATCH: authenticated(),
+      DELETE: authenticated(),
+    },
+  },
   // Surfaces: SurfaceService enforces bind permission (visible agent, no
   // guests, personal agents only by their creator). connect/callback are browser
   // navigations that check the Overlay session themselves; the Slack webhook

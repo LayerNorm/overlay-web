@@ -65,6 +65,7 @@ import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
+import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
 import { SurfaceService } from '@/server/surfaces/SurfaceService'
 import { listSlackChannels } from '@/server/surfaces/slack-directory'
@@ -126,6 +127,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
+  agentProviderAccounts: AgentProviderAccountService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
   surfaceService: SurfaceService
@@ -272,8 +274,14 @@ export function createOverlayServerContext(
     policy: generationUsagePolicy,
     repository: appData.repositories.connectedAgents,
   })
+  const agentProviderAccounts = new AgentProviderAccountService({
+    repository: appData.repositories.agentProviderAccounts,
+    store: byokCredentialStore,
+    audit: auditService,
+  })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
+    agentProviderAccounts,
     objectStore,
     providerConnections: appData.repositories.providerConnections,
     repository: appData.repositories.connectedAgents,
@@ -395,6 +403,7 @@ export function createOverlayServerContext(
     workspaceGovernanceService,
     workspaceAgentService,
     connectedAgentControlPlane,
+    agentProviderAccounts,
     managedAgentSandboxBilling,
     computerService,
     surfaceService,

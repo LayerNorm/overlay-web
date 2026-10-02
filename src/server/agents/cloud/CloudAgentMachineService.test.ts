@@ -44,7 +44,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
   const { runtime, created } = fakeRuntime(machine)
   const service = new CloudAgentMachineService({
     audit: { record: async () => undefined } as never,
-    image: 'overlay-agent-v1',
+    image: 'overlay-agent-v2',
     runtime,
     sleep: async () => undefined,
     now: () => 1_000,
@@ -69,7 +69,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
 
 const provisionArgs = {
   actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1', adapterId: 'claude-code' as const,
-  size: 'default' as const, serverUrl: 'https://www.getoverlay.io',
+  providerAccountId: 'account-1', size: 'default' as const, serverUrl: 'https://www.getoverlay.io',
 }
 
 test('provision boots the image, redeems the code with acpx, approves the workspace root, leases, and binds', async () => {
@@ -77,7 +77,7 @@ test('provision boots the image, redeems the code with acpx, approves the worksp
   const { service, log, created } = deps(machine)
   const result = await service.provision(provisionArgs)
 
-  assert.equal(created[0]?.snapshotId, 'overlay-agent-v1')
+  assert.equal(created[0]?.snapshotId, 'overlay-agent-v2')
   assert.equal(created[0]?.hardTimeoutMs, 0)
   assert.deepEqual(created[0]?.resources, { vcpus: 4, memoryGiB: 8, diskGiB: 40 })
   assert.equal(commands[0], cloudAgentConnectCommand({
@@ -92,6 +92,7 @@ test('provision boots the image, redeems the code with acpx, approves the worksp
   const bind = log.find(([kind]) => kind === 'bind')?.[1] as { agentId: string; workingDirectory: string }
   assert.equal(bind.agentId, 'agent-1')
   assert.equal(bind.workingDirectory, CLOUD_AGENT_WORKSPACE)
+  assert.equal((bind as unknown as { providerAccountId: string }).providerAccountId, 'account-1')
   assert.equal(result.environment.id, 'env-1')
 })
 

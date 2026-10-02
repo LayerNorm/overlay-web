@@ -282,6 +282,23 @@ Fixes found by the live run:
 - Boat's `~/.claude` and `~/.codex` are provider mounts that error without Boat-linked credentials, so agent config lives under `~/.overlay` (Phase 4 imports go there). The Boat adapter dropped a command's own `environment` (fixed).
 - Remote runs also need `OVERLAY_FEATURE_REMOTE_AGENT_RUNS` (with the connected-agent control plane flag and rollout stage); provisioning should become asynchronous with visible startup phases in Phase 2 (Cloudflare and some proxies cut requests at 100 s).
 
+**Phase 1 status (2026-10-02): done and verified end to end.**
+
+- [x] Settings → Agent accounts (connect, reconnect, rename, remove; "Needs reconnecting" state), Claude Code via `claude setup-token` or API key, Codex via API key.
+- [x] Credential vault: secrets in `ByokCredentialStore` (WorkOS Vault live-tested for create, update, delete); Convex `agentProviderAccounts` holds metadata and the opaque reference only; no response, log line, command, or event carries a secret.
+- [x] Per-run delivery: `agent:run-credentials` host method (Overlay Cloud environments only), `POST …/run-credentials`, host fetch per run, one acpx runtime per run, in-memory only.
+- [x] Binding records the account and its chooser; the cloud route requires `providerAccountId` and validates it before booting a machine.
+- [x] Auth-error state: `auth_required` failure code, account flagged, nothing released until reconnected.
+- [x] Image v2 published (the protocol change made v1 hosts unable to parse Overlay Cloud credentials; v1 deleted).
+
+Verified live (local server on dev Convex, tunnel, real Boat machine, real WorkOS Vault): connect an account (secret never echoed), refusal of an API key pasted as a subscription token, provision a machine on the account in 12 s, the credential present in the Claude Code process environment during the run, Claude Code rejecting a deliberately fake token with a 401, the account flagged `needs_reauth`, reconnect clearing it, and cleanup (account deleted from the vault, environment revoked, machine deleted). Not verified: a run on a real working subscription token or API key, because none was available; the delivery path is the same one the fake token used.
+
+Known gaps:
+
+- The chat shows Claude Code's own text for the failure ("Failed to authenticate…"); a reconnect prompt in the conversation and the agent page's status come with Phase 2.
+- Account deletion removes `agentProviderAccounts` rows but not their vault secrets (the same gap as BYOK connections today; `AccountDeletionService.listCredentialRefs` returns nothing for both).
+- Codex subscriptions need the credential broker (after launch).
+
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
 | **0. Machine** | acpx spike and adoption in the Agent Host, Overlay layer (`provision.sh`) published as a Boat snapshot (E2B template build script alongside), managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |

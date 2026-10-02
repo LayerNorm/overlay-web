@@ -116,6 +116,18 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'providers/connections:delete:ip', limit: 60, windowMs: TEN_MINUTES },
     { bucket: 'providers/connections:delete:user', limit: 30, windowMs: TEN_MINUTES },
   ],
+  'POST /api/v1/provider-accounts': [
+    { bucket: 'provider-accounts:create:ip', limit: 40, windowMs: TEN_MINUTES },
+    { bucket: 'provider-accounts:create:user', limit: 20, windowMs: TEN_MINUTES },
+  ],
+  'PATCH /api/v1/provider-accounts': [
+    { bucket: 'provider-accounts:update:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'provider-accounts:update:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'DELETE /api/v1/provider-accounts': [
+    { bucket: 'provider-accounts:delete:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'provider-accounts:delete:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
   'GET /api/v1/files/presign': [
     { bucket: 'files/files:presign:ip', limit: 60, windowMs: ONE_HOUR },
     { bucket: 'files/files:presign:user', limit: 30, windowMs: ONE_HOUR },

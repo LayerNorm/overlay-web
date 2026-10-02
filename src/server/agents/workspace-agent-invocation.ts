@@ -218,6 +218,8 @@ export type WorkspaceAgentInvocation = {
     environmentId: string
     environmentName: string
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
+    /** The binding runs on a provider account; the host fetches its credentials for each run. */
+    usesProviderAccount: boolean
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
     protocolAdapter: AgentProtocolAdapter
@@ -439,6 +441,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
+          usesProviderAccount: typeof target.binding.adapterConfig.providerAccountId === 'string'
+            && target.binding.adapterConfig.providerAccountId.length > 0,
           protocolAdapter: target.binding.protocolAdapter,
           workingDirectory,
         },
@@ -644,6 +648,8 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           conversationId: args.conversationId,
           messageId: args.messageId,
           initiatorPrincipalId: args.initiatorPrincipalId,
+          // A flag only: the host asks the control plane for the credentials, so no secret is stored in the command.
+          ...(args.invocation.remoteTarget.usesProviderAccount ? { runCredentials: true } : {}),
           ...overlayMcpMetadata({
             actorUserId: args.actorUserId,
             conversationId: args.conversationId,

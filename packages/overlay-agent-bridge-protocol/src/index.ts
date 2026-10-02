@@ -45,6 +45,20 @@ export const hostCapabilitiesSchema = z.object({
 }).strict()
 export type HostCapabilities = z.infer<typeof hostCapabilitiesSchema>
 
+/** A host asks for the provider credentials of one run; the secret is never part of a stored command. */
+export const runCredentialsRequestSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  runId: identifier,
+}).strict()
+export type RunCredentialsRequest = z.infer<typeof runCredentialsRequestSchema>
+
+export const runCredentialsResponseSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  /** Environment variables for the agent process of this run only. */
+  env: z.record(z.string().min(1).max(128), z.string().min(1).max(8_192)),
+}).strict()
+export type RunCredentialsResponse = z.infer<typeof runCredentialsResponseSchema>
+
 export const enrollmentRequestSchema = z.object({
   code: z.string().trim().min(16).max(512),
   name: z.string().trim().min(1).max(200),
@@ -86,6 +100,7 @@ export const environmentCredentialResponseSchema = z.object({
     'agent:events:write',
     'agent:artifacts:write',
     'agent:credentials:refresh',
+    'agent:run-credentials',
   ])).min(1),
   token: z.string().trim().min(32).max(512),
   expiresAt: z.number().int().positive(),
