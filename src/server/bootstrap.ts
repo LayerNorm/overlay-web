@@ -65,6 +65,7 @@ import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
+import { AgentProfileService } from '@/server/agents/profiles/AgentProfileService'
 import { McpAccessService } from '@/server/mcp/McpAccessService'
 import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
@@ -130,6 +131,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
   agentProviderAccounts: AgentProviderAccountService
   mcpAccess: McpAccessService
+  agentProfiles: AgentProfileService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
   surfaceService: SurfaceService
@@ -286,8 +288,20 @@ export function createOverlayServerContext(
     workspaces: workspaceService,
     audit: auditService,
   })
+  const agentProfiles = new AgentProfileService({
+    repository: appData.repositories.agentProfiles,
+    agents: { requireEditable: (args) => workspaceAgentService.requireEditable(args) },
+    store: byokCredentialStore,
+    audit: auditService,
+    // Imported lazily: the machine service reads this context, so importing it here would be circular.
+    apply: async (args) => {
+      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
+      await createCloudAgentMachineService().applyProfile(args)
+    },
+  })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
+    agentSecretEnv: (agentId) => agentProfiles.envForAgent({ agentId }),
     agentProviderAccounts,
     objectStore,
     providerConnections: appData.repositories.providerConnections,
@@ -412,6 +426,7 @@ export function createOverlayServerContext(
     connectedAgentControlPlane,
     agentProviderAccounts,
     mcpAccess,
+    agentProfiles,
     managedAgentSandboxBilling,
     computerService,
     surfaceService,

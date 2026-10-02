@@ -123,6 +123,8 @@ export async function DELETE(_request: Request, context: AppApiRouteContext) {
       ownerType: 'agent',
       ownerId: agentId,
     }).catch((error) => logger.warn('[agents] bound computer cleanup failed', error))
+    // Its imported config and the values it was given go with it.
+    await server.agentProfiles.deleteForAgent(agentId).catch((error) => logger.warn('[agents] profile cleanup failed', error))
     return NextResponse.json({ archived: true })
   } catch (error) {
     return agentErrorResponse(error)

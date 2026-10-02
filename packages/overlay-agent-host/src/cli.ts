@@ -20,6 +20,8 @@ import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
 import { checkOverlayImage } from './image-check.js'
+import { exportConfig } from './export-config.js'
+import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
 
 const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.7'
 
@@ -31,6 +33,26 @@ if (command === 'image-check') {
   const checks = checkOverlayImage()
   for (const check of checks) process.stdout.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}: ${check.detail}\n`)
   if (checks.some((check) => !check.ok)) process.exitCode = 1
+} else if (command === 'export-config') {
+  // overlay-agent-host export-config <claude-code|codex> --server <url> --code <code> [--dry-run]
+  const harness = args.find((value) => !value.startsWith('--') && value !== option(args, '--server') && value !== option(args, '--code') && value !== option(args, '--home'))
+  const serverUrl = option(args, '--server')
+  const code = option(args, '--code')
+  const dryRun = args.includes('--dry-run')
+  if (!isAgentProfileHarness(harness === 'claude' ? 'claude-code' : harness) || (!dryRun && (!serverUrl || !code))) {
+    process.stderr.write('Usage: overlay-agent-host export-config <claude-code|codex> --server <url> --code <code> [--dry-run]\n')
+    process.exit(2)
+  }
+  try {
+    await exportConfig({
+      harness: (harness === 'claude' ? 'claude-code' : harness) as 'claude-code' | 'codex',
+      serverUrl: serverUrl ?? '', code: code ?? '', dryRun,
+      ...(option(args, '--home') ? { home: option(args, '--home')! } : {}),
+    })
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exit(1)
+  }
 } else if (command === 'connect') {
   const code = args.find((value) => !value.startsWith('--') && value !== option(args, '--server') && value !== option(args, '--state-dir') && value !== option(args, '--name'))
   const serverUrl = option(args, '--server')

@@ -14,6 +14,8 @@ import {
   type CloudAgentPhase,
   type CloudAgentStatus,
 } from '@/shared/agents/cloud-agent'
+import type { AgentProfileBundle } from '@layernorm/overlay-agent-bridge-protocol'
+import { CLAUDE_JSON_PATH, planProfileApply, PROFILE_MANAGED_PATH, type ManagedProfile } from '../profiles/agent-profile-apply'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from '../managed-sandbox-runtime'
 import {
   CLOUD_AGENT_RESOURCES,
@@ -206,6 +208,54 @@ export class CloudAgentMachineService {
     })
   }
 
+  /**
+   * Puts an imported profile on the agent's machine: its files under the harness's config folder, its MCP servers in
+   * `~/.claude.json`, and the removal of what an earlier version wrote. The machine is woken first (a stopped machine
+   * cannot be written to); the host is back up when this returns.
+   */
+  async applyProfile(args: { workspaceId: string; agentId: string; bundle: AgentProfileBundle; hooksEnabled: boolean; version: number }): Promise<void> {
+    const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
+    const found = await this.cloudBinding(args.workspaceId, bindings)
+    if (!found) throw new CloudAgentMachineError('This agent has no Overlay Cloud machine to apply a profile to', 409, 'cloud_agent_missing')
+    const woke = await this.wake({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+    const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+    if (woke === 'unavailable' || !lease?.providerReference) throw new CloudAgentMachineError('This agent\'s machine is not available', 409, 'cloud_agent_unavailable')
+    const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })
+    const text = async (path: string) => { const bytes = await machine.readFile(path).catch((_error) => null); return bytes ? new TextDecoder().decode(bytes) : null }
+    let previous: ManagedProfile | null = null
+    try { const raw = await text(PROFILE_MANAGED_PATH); previous = raw ? JSON.parse(raw) as ManagedProfile : null } catch (_error) { previous = null }
+    const existingClaudeJson = args.bundle.harness === 'claude-code' ? await text(CLAUDE_JSON_PATH) : null
+    let planned
+    try {
+      planned = planProfileApply({ bundle: args.bundle, hooksEnabled: args.hooksEnabled, version: args.version, previous, existingClaudeJson })
+    } catch (_error) {
+      throw new CloudAgentMachineError('The machine\'s existing Claude configuration could not be read, so nothing was changed.', 409, 'profile_apply_blocked')
+    }
+    const { plan, claudeJson } = planned
+    const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
+    if (plan.removes.length > 0) await this.runDetachedWait(machine, `rm -f ${plan.removes.map(shellQuote).join(' ')}`)
+    const directories = [...new Set(plan.writes.map((write) => write.path.slice(0, write.path.lastIndexOf('/'))))]
+    for (let index = 0; index < directories.length; index += 100) {
+      await this.runDetachedWait(machine, `mkdir -p ${directories.slice(index, index + 100).map(shellQuote).join(' ')} /home/user/.overlay`)
+    }
+    const encoder = new TextEncoder()
+    let batch: Array<{ path: string; contents: Uint8Array; mode?: number }> = []
+    let batchBytes = 0
+    const flush = async () => { if (batch.length) await machine.writeFiles(batch); batch = []; batchBytes = 0 }
+    for (const write of plan.writes) {
+      const contents = encoder.encode(write.content)
+      if (batch.length >= 80 || batchBytes + contents.length > 1_500_000) await flush()
+      batch.push({ path: write.path, contents, ...(write.executable ? { mode: 0o755 } : {}) })
+      batchBytes += contents.length
+    }
+    await flush()
+    if (claudeJson !== null) await machine.writeFiles([{ path: CLAUDE_JSON_PATH, contents: encoder.encode(claudeJson), mode: 0o600 }])
+    await machine.writeFiles([{ path: PROFILE_MANAGED_PATH, contents: encoder.encode(JSON.stringify(plan.manifest)) }])
+    await this.audit(args.workspaceId, 'agent_profile.machine_applied', found.environment.id, {
+      agentId: args.agentId, version: args.version, files: plan.writes.length, removed: plan.removes.length, mcpServers: plan.manifest.mcpServers.length,
+    })
+  }
+
   /** Stops using the machine: revoke its environment (which ends the lease and its bindings) and delete it now. */
   async teardown(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<void> {
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
@@ -222,6 +272,17 @@ export class CloudAgentMachineService {
       }
     }
     await this.dependencies.provisions.remove({ workspaceId: args.workspaceId, agentId: args.agentId })
+  }
+
+  private async runDetachedWait(machine: SandboxInstance, script: string) {
+    const result = await (await machine.runCommand({ command: 'bash', args: ['-lc', script], timeoutMs: COMMAND_TIMEOUT_MS })).wait()
+    if (result.exitCode !== 0) throw new CloudAgentMachineError('A command on the machine failed while applying the profile.', 502, 'profile_apply_failed')
+  }
+
+  private async audit(workspaceId: string, action: string, resourceId: string, metadata: Record<string, unknown>) {
+    await this.dependencies.audit.record({
+      action, actorType: 'system', outcome: 'success', resourceType: 'agent_environment', resourceId, workspaceId, metadata,
+    } as never).catch((_error) => undefined)
   }
 
   private async cloudBinding(workspaceId: string, bindings: AgentBinding[]) {

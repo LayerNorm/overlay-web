@@ -601,6 +601,24 @@ export const webApiBoundaryDefinitions = [
   { method: 'POST', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Create a model provider connection', tag: 'Model Providers' },
   { method: 'PATCH', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Update a model provider connection', tag: 'Model Providers' },
   { method: 'DELETE', path: '/api/v1/providers/connections', schema: { query: ProviderConnectionDeleteQuery }, summary: 'Delete a model provider connection', tag: 'Model Providers' },
+  { method: 'GET', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/, schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'An Overlay Cloud agent\'s imported config: versions, what each needs, and the values it lacks', tag: 'Agents' },
+  {
+    method: 'POST', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/,
+    schema: {
+      json: z.object({
+        action: z.enum(['import_code', 'apply', 'discard', 'hooks', 'set_secret', 'delete_secret']),
+        harness: z.string().max(32).optional(), profileId: z.string().max(64).optional(), hooksEnabled: z.boolean().optional(),
+        enabled: z.boolean().optional(), name: z.string().max(64).optional(), value: z.string().max(4096).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Create an import code, apply or discard a config version, turn imported hooks on or off, or set a needed value', tag: 'Agents',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-profiles/upload',
+    schema: { json: z.object({}).passthrough(), response: UnknownResponse },
+    summary: 'Upload a cleaned agent config (gzip) with a one-time import code', tag: 'Agents',
+  },
   {
     method: 'POST', path: '/api/v1/mcp/authorize',
     schema: {

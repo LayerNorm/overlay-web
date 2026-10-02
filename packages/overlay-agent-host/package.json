@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
-    "@layernorm/overlay-agent-bridge-protocol": "0.3.6",
+    "@layernorm/overlay-agent-bridge-protocol": "0.3.7",
     "acpx": "0.19.2",
     "ai": "7.0.65",
     "eve": "0.44.4",

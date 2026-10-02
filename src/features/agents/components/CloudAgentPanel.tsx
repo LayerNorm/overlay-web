@@ -7,6 +7,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { CLOUD_AGENT_STATE_LABEL, isCloudAgentStarting, type CloudAgentAction } from '@/shared/agents/cloud-agent'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
+import { CloudAgentConfig } from './CloudAgentConfig'
 import { CloudAgentProgress } from './CloudAgentProgress'
 import { FieldLabel } from './InfoTip'
 import { OTHER_AGENT_LABEL } from './cloud-agent-draft'
@@ -164,6 +165,10 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
           {actionError ? <p role="alert" className="mt-2 text-xs text-red-500">{actionError}</p> : null}
         </div>
       </div>
+
+      {status.machine?.adapterId === 'claude-code' || status.machine?.adapterId === 'codex' ? (
+        <CloudAgentConfig agentId={agentId} harness={status.machine.adapterId} />
+      ) : null}
 
       {reconnect ? (
         <AccountDialog

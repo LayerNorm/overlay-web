@@ -90,6 +90,8 @@ export class ConnectedAgentControlPlaneService {
     providerConnections?: Pick<ProviderConnectionRepository, 'get'>
     /** The credentials an Overlay Cloud agent runs on. */
     agentProviderAccounts?: Pick<AgentProviderAccountService, 'requireUsable' | 'resolveRunEnvironment' | 'markNeedsReauth'>
+    /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
+    agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
@@ -724,7 +726,9 @@ export class ConnectedAgentControlPlaneService {
         workspaceId: auth.credential.workspaceId, agentId, environmentId: auth.environment.id, runId,
         provider: resolved.provider, method: resolved.method,
       }, runId, 'agent_run')
-      return { env: resolved.env }
+      // The agent's own values go in first so they can never replace the account's credential.
+      const own = agentId && this.dependencies.agentSecretEnv ? await this.dependencies.agentSecretEnv(agentId).catch((_error) => ({})) : {}
+      return { env: { ...own, ...resolved.env } }
     } catch (error) {
       const detail = error as { message?: string; statusCode?: number; code?: string }
       throw controlPlaneError(detail.message ?? 'Account is unavailable', detail.statusCode ?? 409, detail.code ?? 'account_unavailable')

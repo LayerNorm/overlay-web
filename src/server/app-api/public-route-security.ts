@@ -19,6 +19,18 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/[environmentId]/events': agentHostException(['POST'], 'Signed, size-limited, sequenced event upload.'),
   '/api/v1/agent-environments/[environmentId]/artifacts': agentHostException(['POST'], 'Signed, scoped artifact upload-intent creation.'),
   '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete': agentHostException(['POST'], 'Signed artifact completion with checksum and malware validation.'),
+  '/api/v1/agent-profiles/upload': {
+    methods: ['POST'],
+    reason: 'A person\'s computer or browser uploads a cleaned agent config; the body is gzip, not a JSON envelope, and the caller has no session (the Agent Host runs on their machine).',
+    controls: {
+      authentication: 'single-use import code created from the signed-in agent page, hashed at rest, expires in 15 minutes',
+      authorization: 'the code is bound to one agent, one workspace, one harness, and the person who created it',
+      rateLimit: 'endpoint-specific IP and credential limits; compressed body capped at 4 MB, inflated at 24 MB',
+      csrf: 'no browser cookie authority; the bearer code is the only credential',
+      idempotency: 'the code redeems once; a second upload with it is refused',
+      audit: 'the staged version and its later apply are written as agent_profile audit events',
+    },
+  },
   '/api/v1/agent-environments/artifacts/cleanup': internalServiceException(['POST'], 'Internal-secret authenticated artifact retention cleanup.'),
   '/api/v1/agent-environments/operations/reconcile': internalServiceException(['POST'], 'Internal-secret authenticated remote-run supervision and settlement reconciliation.'),
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),

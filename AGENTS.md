@@ -82,6 +82,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/bring-your-own-agents.md` | Any change to connected-agent contracts, host protocol, enrollment, remote execution, managed environments, or rollout policy. |
 | `docs/develop/bring-your-own-agents-architecture.md` | Any change to the connected-agent topology, protocol layering, enrollment flow, Agent Host loop, ACP adapters, memory flow, or public package boundaries. |
 | `docs/develop/billing-holds-and-machine-metering.md` | Any change to budget reservations and holds, the stale-hold sweep, machine metering or its credit floor, `OVERLAY_AGENT_PUBLIC_URL`, or the production environment for Overlay Cloud agents. |
+| `docs/develop/agent-profiles.md` | Any change to importing Claude Code / Codex config into Overlay Cloud agents: the allowlist and cleaning rules, the export-config host command, upload/apply flow, versions, or needed-value (secret) handling. |
 | `docs/develop/mcp-access.md` | Any change to Overlay's MCP server for other AI apps: OAuth endpoints, grants, access levels, token formats, consent page, or Settings → Connected apps. |
 | `docs/develop/convex-only-self-hosting.md` | Any change to the Convex-only backend decision, the Postgres-layer deletion plan, self-hosted Convex topology/scaling, the data-mirror/Data Sync integration path, or the big-brain control-plane plan. |
 

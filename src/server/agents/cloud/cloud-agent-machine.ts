@@ -41,7 +41,8 @@ function shellQuote(value: string): string {
 /** Starts a detached host process that outlives the provider's command call. */
 function detached(command: string): string {
   return `mkdir -p ${shellQuote(CLOUD_AGENT_WORKSPACE)} ${shellQuote(CLOUD_AGENT_STATE_DIR)} && `
-    + `nohup ${command} >> ${shellQuote(CLOUD_AGENT_LOG_PATH)} 2>&1 < /dev/null &`
+    // acpx ignores ~/.claude (skills, commands, subagents, settings) unless told to; an imported profile lives there.
+    + `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1 nohup ${command} >> ${shellQuote(CLOUD_AGENT_LOG_PATH)} 2>&1 < /dev/null &`
 }
 
 /** First boot: redeem the one-time enrollment code and keep running. */

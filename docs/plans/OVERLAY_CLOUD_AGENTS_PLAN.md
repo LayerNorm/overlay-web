@@ -356,6 +356,17 @@ Known gaps:
 
 Phases 3 and 5 don't depend on 0–2 for native agents and can start in parallel.
 
+**Phase 4 status (2026-10-02): done and verified on production, except Codex.**
+
+- [x] Shared sanitizer in `@layernorm/overlay-agent-bridge-protocol` (allowlist, secret placeholders, hooks held back), run on the computer, on upload, and when a stored bundle is read.
+- [x] `export-config <claude-code|codex> --server --code [--dry-run] [--home]` in `@layernorm/overlay-agent-host`; folder upload in the agent page (Config section); one-time `ovprof_` codes; staged preview with counts, left-out items with reasons, needed values, and hooks.
+- [x] Apply writes `~/.claude` (or `~/.codex`), merges MCP servers into `~/.claude.json`, tracks what it owns, and rolls back to any of the last 10 versions. Needed values live in the credential vault and reach the agent per run.
+- [x] Exit criterion met on production: a real `~/.claude` imported and its skill invoked on the cloud agent, no secrets copied. Details in `docs/develop/agent-profiles.md`.
+
+Found by the live run: acpx ignores `~/.claude` unless `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1` (now set where the host starts; the earlier assumption that config lives under `~/.overlay` was wrong for Claude Code); a run cut off by a pause or restart blocked the machine until the sweep learned to fail abandoned cloud runs after 15 minutes; the export command needs Node 24 (the copied command pins it).
+
+Known gaps: Codex import untested live; imported stdio MCP servers not started on a machine; restarting a host mid-run still fails that run (it is now cleaned up instead of blocking).
+
 ## Decisions (2026-10-01)
 
 1. **Sharing subscription-backed agents is the creator's choice.** "Everyone in this workspace" shares their usage; "Only me" keeps it private. No extra restriction.

@@ -255,6 +255,20 @@ export class WorkspaceAgentService {
     })) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
   }
 
+  /** The agent, if the caller may change it: the creator, or an owner or admin of the workspace. */
+  async requireEditable(args: { actorUserId: string; workspaceId: string; agentId: string }) {
+    const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
+    if (!agent || agent.archivedAt || !canSeeAgent(agent, access.principal.id)) {
+      throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+    }
+    const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
+    if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
+      throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can change this agent')
+    }
+    return agent
+  }
+
   async unarchive(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })

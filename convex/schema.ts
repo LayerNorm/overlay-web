@@ -167,6 +167,48 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_provider', ['userId', 'provider']),
 
+  // A version of an Overlay Cloud agent's imported harness config (CLAUDE.md, skills, commands, subagents, MCP
+  // servers). The cleaned bundle lives in `agentProfileChunks`; secret values are never in either.
+  agentProfiles: defineTable({
+    workspaceId: v.string(),
+    agentId: v.string(),
+    userId: v.string(),
+    harness: v.union(v.literal('claude-code'), v.literal('codex')),
+    version: v.number(),
+    status: v.union(
+      v.literal('awaiting_upload'), v.literal('staged'), v.literal('active'), v.literal('superseded'), v.literal('discarded'),
+    ),
+    // A one-time code (hashed) a person's computer uploads with; cleared when used.
+    codeHash: v.optional(v.string()),
+    codeExpiresAt: v.optional(v.number()),
+    summary: v.optional(v.any()),
+    meta: v.optional(v.any()),
+    digest: v.optional(v.string()),
+    chunkCount: v.optional(v.number()),
+    hooksEnabled: v.boolean(),
+    createdAt: v.number(),
+    uploadedAt: v.optional(v.number()),
+    appliedAt: v.optional(v.number()),
+  })
+    .index('by_agentId', ['agentId'])
+    .index('by_codeHash', ['codeHash']),
+
+  agentProfileChunks: defineTable({
+    profileId: v.id('agentProfiles'),
+    index: v.number(),
+    data: v.string(),
+  }).index('by_profileId', ['profileId']),
+
+  // Values an agent's imported config asked for (an MCP server's token). The value is in the credential vault.
+  agentSecrets: defineTable({
+    workspaceId: v.string(),
+    agentId: v.string(),
+    userId: v.string(),
+    name: v.string(),
+    credentialRef: v.string(),
+    updatedAt: v.number(),
+  }).index('by_agentId', ['agentId']),
+
   // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
   // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
   // them. No secret is stored here.

@@ -59,6 +59,9 @@ function conversationParts(parts: Array<Record<string, unknown>>) {
   }) as unknown as NonNullable<Doc<'conversationMessages'>['parts']>
 }
 
+/** A cloud run with no events for this long, on a machine whose host has since restarted, will never finish. */
+const ABANDONED_CLOUD_RUN_MS = 15 * 60_000
+
 export const createEnvironmentByServer = mutation({
   args: { serverSecret: v.string(), id: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(), status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()), platform: v.optional(v.string()), capabilities: anyObject, filesystemGrant: v.optional(anyObject), approvedByUserId: v.optional(v.string()), approvedAt: v.optional(v.number()), lastSeenAt: v.optional(v.number()), revokedAt: v.optional(v.number()), now: v.number() },
   handler: async (ctx, args) => {
@@ -2466,11 +2469,18 @@ async function sweepRemoteRuns(
           .unique()
       : null
     const offline = (environment?.lastSeenAt ?? 0) <= args.hostOfflineBefore
-    if (!offline && (run.leaseExpiresAt ?? Number.MAX_SAFE_INTEGER) > args.now) return null
+    // A cloud machine that was paused or restarted mid-run comes back with a host that knows nothing of the run, so
+    // the host looks healthy while the run never finishes. Its events stop, which is how that is told apart from a
+    // long run.
+    const abandoned = environment?.kind === 'overlay_cloud' && session !== null
+      && Math.max(session.updatedAt ?? 0, session.startedAt ?? 0) < args.now - ABANDONED_CLOUD_RUN_MS
+    if (!offline && !abandoned && (run.leaseExpiresAt ?? Number.MAX_SAFE_INTEGER) > args.now) return null
     const message = await ctx.db.get(run.assistantMessageId)
     if (!session || !environment || !message || !run.externalRunId) return null
-    const code = offline ? 'remote_host_offline' : 'remote_run_timeout'
-    const failureMessage = offline ? 'The connected environment disappeared.' : 'The connected agent run timed out.'
+    const code = offline ? 'remote_host_offline' : abandoned ? 'remote_run_abandoned' : 'remote_run_timeout'
+    const failureMessage = offline
+      ? 'The connected environment disappeared.'
+      : abandoned ? 'The agent\'s machine restarted before this run finished. Send the message again.' : 'The connected agent run timed out.'
     await Promise.all([
       ctx.db.patch(run._id, { status: 'failed', failedAt: args.now,
         terminalError: { code, message: failureMessage, retryable: true }, updatedAt: args.now }),
