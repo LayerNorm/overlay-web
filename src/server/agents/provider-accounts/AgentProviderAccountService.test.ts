@@ -30,6 +30,7 @@ function harness(options: { fetchStatus?: number; fetchThrows?: boolean; createT
       Object.assign(row, patch, lastError === undefined ? {} : { lastError: lastError ?? undefined })
     },
     remove: async ({ accountId }) => { rows.delete(accountId) },
+    listCredentialRefs: async ({ userId }) => [...rows.values()].filter((row) => row.userId === userId).map((row) => row.credentialRef),
   }
   const store = {
     write: async ({ apiKey }: { apiKey: string }) => { const ref = `ref-${vault.size + 1}`; vault.set(ref, apiKey); return ref },

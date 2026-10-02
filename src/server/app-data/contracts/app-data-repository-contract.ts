@@ -1096,10 +1096,16 @@ async function deleteAccount(
         providerConnections: {
           listCredentialRefs: async () => [],
         },
+        agentProviderAccounts: {
+          listCredentialRefs: async () => [],
+        },
       },
     },
     auth: {
       deleteUser: async () => {},
+    },
+    byokCredentialStore: {
+      delete: async () => {},
     },
     objectStore: {
       deleteObject: async () => {},

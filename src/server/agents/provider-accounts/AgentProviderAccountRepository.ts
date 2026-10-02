@@ -33,4 +33,6 @@ export interface AgentProviderAccountRepository {
     lastUsedAt?: number
   }): Promise<void>
   remove(args: { accountId: string }): Promise<void>
+  /** Vault references of every account the user stored (for account deletion). */
+  listCredentialRefs(args: { userId: string }): Promise<string[]>
 }

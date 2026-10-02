@@ -32,6 +32,27 @@ describe('Convex agent provider accounts', () => {
     expect(await convex.query(query('listPublicByServer'), { serverSecret: secret, userId: 'user_2' })).toEqual([])
   })
 
+  test('credential references are listed per user for account deletion', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.mutation(mutation('createByServer'), { ...base, credentialRef: 'ref-a' })
+    await convex.mutation(mutation('createByServer'), { ...base, credentialRef: 'ref-b' })
+    await convex.mutation(mutation('createByServer'), { ...base, userId: 'user_2', credentialRef: 'ref-other' })
+    expect((await convex.query(query('listCredentialRefsByServer'), { serverSecret: secret, userId: 'user_1' })).sort()).toEqual(['ref-a', 'ref-b'])
+    await expect(convex.query(query('listCredentialRefsByServer'), { serverSecret: 'nope', userId: 'user_1' })).rejects.toThrow(/Unauthorized/)
+  })
+
+  test('model-provider connection credentials are listed too, and rows without a vault reference are skipped', async () => {
+    const convex = convexTest(schema, modules)
+    const row = { endpoint: 'https://api.example.com', displayName: 'x', vaultKeyName: '', enabledModelIds: [], status: 'untested' as const, isDefault: false, isDeletable: true, createdAt: 1, updatedAt: 1 }
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('userProviderConnections', { ...row, userId: 'user_1', providerId: 'openai', vaultObjectId: 'byok-ref-1' })
+      await ctx.db.insert('userProviderConnections', { ...row, userId: 'user_1', providerId: 'gateway' })
+      await ctx.db.insert('userProviderConnections', { ...row, userId: 'user_2', providerId: 'openai', vaultObjectId: 'byok-ref-2' })
+    })
+    expect(await convex.query(makeFunctionReference<'query'>('providers/connections:listCredentialRefsByServer'), { serverSecret: secret, userId: 'user_1' }))
+      .toEqual(['byok-ref-1'])
+  })
+
   test('accounts per user are capped', async () => {
     const convex = convexTest(schema, modules)
     for (let i = 0; i < 3; i += 1) await convex.mutation(mutation('createByServer'), { ...base, label: `a${i}` })

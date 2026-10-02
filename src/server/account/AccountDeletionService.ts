@@ -25,6 +25,8 @@ export class AccountDeletionService {
 
   async deleteAccount(args: { userId: string; request?: Request }): Promise<AccountDeletionResult> {
     await this.deleteIntegrationConnectionsBestEffort(args.userId)
+    // Before the rows that point at them are gone: a secret nothing references can never be removed.
+    await this.deleteStoredCredentials(args.userId)
 
     const { convex } = await import('@/server/database/convex')
     const convexResult = await convex.mutation<AccountDeletionResult>(
@@ -54,6 +56,34 @@ export class AccountDeletionService {
     })
 
     return convexResult
+  }
+
+  /**
+   * Removes every credential the user stored (model-provider keys and the
+   * Claude Code / Codex accounts) from the credential vault. Unlike the
+   * best-effort cleanups below, a failure stops the deletion: the vault
+   * reference lives in the rows the deletion is about to remove, so leaving
+   * the secret behind would orphan it permanently. Deleting is idempotent, so
+   * the person can simply retry.
+   */
+  private async deleteStoredCredentials(userId: string): Promise<void> {
+    const repositories = this.ctx.appData.repositories
+    const refs = [...new Set([
+      ...await repositories.providerConnections.listCredentialRefs({ userId }),
+      ...await repositories.agentProviderAccounts.listCredentialRefs({ userId }),
+    ])]
+    const failures = (await Promise.all(refs.map(async (ref) => {
+      try {
+        await this.ctx.byokCredentialStore.delete(ref)
+        return false
+      } catch (error) {
+        logger.error(`[account/delete] Credential deletion failed for ${userId}:`, error instanceof Error ? error.name : 'unknown')
+        return true
+      }
+    }))).filter(Boolean).length
+    if (failures > 0) {
+      throw new Error(`Could not delete ${failures} stored credential${failures === 1 ? '' : 's'}. Nothing else was deleted; try again.`)
+    }
   }
 
   private async deleteIntegrationConnectionsBestEffort(userId: string): Promise<void> {

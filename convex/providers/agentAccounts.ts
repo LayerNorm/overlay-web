@@ -75,6 +75,20 @@ export const getByServer = query({
   },
 })
 
+/** Vault references for every agent account this user stored, so account deletion can remove them from the vault. */
+export const listCredentialRefsByServer = query({
+  args: { serverSecret: v.string(), userId: v.string() },
+  returns: v.array(v.string()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const rows = await ctx.db
+      .query('agentProviderAccounts')
+      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .take(1_000)
+    return rows.map((row) => row.credentialRef)
+  },
+})
+
 export const createByServer = mutation({
   args: {
     serverSecret: v.string(),

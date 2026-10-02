@@ -43,6 +43,14 @@ export class ConvexAgentProviderAccountRepository implements AgentProviderAccoun
     )
   }
 
+  async listCredentialRefs(args: { userId: string }): Promise<string[]> {
+    return (await convex.query<string[]>(
+      'providers/agentAccounts:listCredentialRefsByServer',
+      { serverSecret: getInternalApiSecret(), userId: args.userId },
+      { throwOnError: true },
+    )) ?? []
+  }
+
   async remove(args: { accountId: string }): Promise<void> {
     await convex.mutation(
       'providers/agentAccounts:deleteByServer',

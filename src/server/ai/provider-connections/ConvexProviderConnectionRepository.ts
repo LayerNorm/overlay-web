@@ -111,9 +111,11 @@ export class ConvexProviderConnectionRepository implements ProviderConnectionRep
     return connection
   }
 
-  async listCredentialRefs(_args: { userId: string }): Promise<string[]> {
-    // Convex only exposes credential references per record to the trusted BFF.
-    // Account deletion remains owned by its existing Convex implementation.
-    return []
+  async listCredentialRefs(args: { userId: string }): Promise<string[]> {
+    return (await convex.query<string[]>(
+      'providers/connections:listCredentialRefsByServer',
+      { serverSecret: getInternalApiSecret(), userId: args.userId },
+      { throwOnError: true },
+    )) ?? []
   }
 }

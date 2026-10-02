@@ -296,7 +296,7 @@ Verified live (local server on dev Convex, tunnel, real Boat machine, real WorkO
 Known gaps:
 
 - The chat shows Claude Code's own text for the failure ("Failed to authenticate…"); a reconnect prompt in the conversation and the agent page's status come with Phase 2.
-- Account deletion removes `agentProviderAccounts` rows but not their vault secrets (the same gap as BYOK connections today; `AccountDeletionService.listCredentialRefs` returns nothing for both).
+- ~~Account deletion removed rows but not their vault secrets.~~ Fixed: `AccountDeletionService` now deletes every stored credential (agent accounts and model-provider keys) from the vault before the rows go, and stops if one cannot be deleted so a secret is never orphaned.
 - Codex subscriptions need the credential broker (after launch).
 
 | Phase | Ships | Exit criteria |
