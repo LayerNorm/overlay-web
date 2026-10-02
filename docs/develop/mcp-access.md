@@ -19,7 +19,11 @@ Consent binds one person, one workspace (personal or team), and one **access lev
 | Read and write | read, plus notes, files, memory, skills writes and web search. |
 | Everything | write, plus automations, connected apps, the person's MCP servers, image and video generation, the browser. |
 
-A level is a tool grant in the same shape an Overlay agent holds (`mcpToolGrantFor`, `src/shared/mcp/access.ts`), so the app gets the same tools through the same pipeline (`prepareActTooling`), policy, and entitlements as an Overlay agent with that grant: a level only narrows what the workspace allows. Never offered at any level: computer tools, agent editing (`create_agent`/`update_agent`, which would let an outside app rewrite what Overlay's agents may do), `present_generated_ui`, and tools that need an Overlay conversation (`draft_*_from_chat`). Tools whose server policy needs approval are refused with an explanation (the outside app has its own approval UI; Overlay's cannot be shown). Memory belongs to the person, so every connected app shares it.
+A level is a tool grant in the same shape an Overlay agent holds (`mcpToolGrantFor`, `src/shared/mcp/access.ts`), so the app gets the same tools through the same pipeline (`prepareActTooling`), policy, and entitlements as an Overlay agent with that grant: a level only narrows what the workspace allows. Never offered at any level: computer tools, agent editing (`create_agent`/`update_agent`, which would let an outside app rewrite what Overlay's agents may do), `present_generated_ui`, and tools that need an Overlay conversation (`draft_*_from_chat`). Tools whose server policy needs approval are refused with an explanation: an outside app has no Overlay conversation to show Overlay's approval card in (connected agents, which do, get a real approval round trip; see `bring-your-own-agents.md`). Memory belongs to the person, so every connected app shares it.
+
+## Skills as prompts
+
+The person's enabled Overlay skills are offered as MCP prompts (`prompts/list`, `prompts/get`) at every access level, since a prompt is text the person chooses to run. Claude shows them as `/mcp__overlay__<skill>`. Connected agents get the same prompts when their grant includes skills. Prompts need no write into the client's own skill folders.
 
 ## Security model
 

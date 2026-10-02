@@ -44,6 +44,36 @@ export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [
   'update_agent',
 ]
 
+/**
+ * Where each Overlay tool group stands over MCP, for the two ways Overlay is offered as an MCP server.
+ * A group is either exposed (its tools reach the client, at the access levels above) or withheld for
+ * a stated reason. `src/server/mcp/mcp-coverage.test.ts` fails when a group is added to
+ * `AGENT_TOOL_GROUPS` without being placed here, so a new capability cannot silently miss MCP.
+ */
+export type McpGroupCoverage = { exposed: true } | { exposed: false; reason: string }
+
+export const MCP_GROUP_COVERAGE: {
+  /** Connected agents (Claude Code, Codex, … on their own machine or an Overlay Cloud machine), grant-limited per agent. */
+  connectedAgents: Record<string, McpGroupCoverage>
+  /** Outside AI apps (ChatGPT, Claude, Cursor…) at the Everything level. */
+  externalApps: Record<string, McpGroupCoverage>
+} = {
+  connectedAgents: {
+    memory: { exposed: true }, knowledge: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
+    integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
+    automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
+    agents: { exposed: true },
+    computer: { exposed: false, reason: 'The agent already runs on a machine of its own; a second computer would only duplicate it.' },
+  },
+  externalApps: {
+    memory: { exposed: true }, knowledge: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
+    integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
+    automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
+    agents: { exposed: false, reason: 'Editing agents would let an outside app rewrite what Overlay\'s own agents may do.' },
+    computer: { exposed: false, reason: 'A paid desktop that belongs to the person\'s agents, not something an outside app should start.' },
+  },
+}
+
 export function isMcpAccessLevel(value: unknown): value is McpAccessLevel {
   return typeof value === 'string' && (MCP_ACCESS_LEVELS as readonly string[]).includes(value)
 }

@@ -109,6 +109,9 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   createApprovalRequest(input: Parameters<ConnectedAgentRepository['createApprovalRequest']>[0]) {
     return mutation<AgentApprovalRequest>('createApprovalRequestByServer', input)
   }
+  requestMcpApproval(input: Parameters<ConnectedAgentRepository['requestMcpApproval']>[0]) {
+    return mutation<Awaited<ReturnType<ConnectedAgentRepository['requestMcpApproval']>>>('requestMcpApprovalByServer', input)
+  }
   resolveApprovalRequest(input: Parameters<ConnectedAgentRepository['resolveApprovalRequest']>[0]) {
     return mutation<AgentApprovalRequest | null>('resolveApprovalRequestByServer', input)
   }

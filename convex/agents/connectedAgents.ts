@@ -948,6 +948,73 @@ export const createApprovalRequestByServer = mutation({
   },
 })
 
+/**
+ * An Overlay tool a connected agent called over MCP needs the person's approval. Shows the same
+ * approval card an agent's own permission request does, but the answer goes back to the waiting
+ * MCP call (it reads this row), never to the host as a command. Safe to call repeatedly for one
+ * `requestKey`: it reports the current state, and a resolved request stays resolved.
+ */
+/** Marks an approval request that belongs to an Overlay MCP tool call, not to the host's agent. */
+const MCP_APPROVAL_SOURCE = 'overlay_mcp'
+
+export const requestMcpApprovalByServer = mutation({
+  args: {
+    serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
+    requestKey: v.string(), prompt: v.string(), now: v.number(),
+  },
+  returns: v.object({
+    state: v.union(v.literal('pending'), v.literal('resolved'), v.literal('unavailable')),
+    decision: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const session = await ctx.db.query('agentRemoteSessions').withIndex('by_runId', (q) => q.eq('runId', args.runId)).unique()
+    if (!session || session.workspaceId !== args.workspaceId || session.environmentId !== args.environmentId) return { state: 'unavailable' as const }
+    const existing = await ctx.db.query('agentApprovalRequests')
+      .withIndex('by_remoteSessionId_requestKey', (q) => q.eq('remoteSessionId', session.sessionId).eq('requestKey', args.requestKey)).unique()
+    // A request keeps reporting its answer after the run ends (the run's end closes it), so a call still waiting is told.
+    if (existing) {
+      return existing.resolution
+        ? { state: 'resolved' as const, decision: existing.resolution.decision }
+        : { state: 'pending' as const }
+    }
+    if (['completed', 'failed', 'cancelled'].includes(session.status)) return { state: 'unavailable' as const }
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
+    const message = run?.assistantMessageId ? await ctx.db.get(run.assistantMessageId) : null
+    if (!run || !message) return { state: 'unavailable' as const }
+    const options = [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }]
+    await ctx.db.insert('agentApprovalRequests', {
+      approvalId: `approval_${crypto.randomUUID()}`, workspaceId: args.workspaceId, runId: args.runId,
+      remoteSessionId: session.sessionId, requestKey: args.requestKey, kind: 'permission', prompt: args.prompt,
+      options: options.map((option) => option.id),
+      payload: { source: MCP_APPROVAL_SOURCE, requestKey: args.requestKey, prompt: args.prompt, options },
+      requestedAt: args.now,
+    })
+    const snapshot = session.capabilitySnapshot && typeof session.capabilitySnapshot === 'object'
+      ? (session.capabilitySnapshot as Record<string, unknown>) : {}
+    const projection = projectRemoteAgentEvents({
+      content: message.content,
+      parts: Array.isArray(message.parts) ? (message.parts as unknown as Array<Record<string, unknown>>) : [],
+      events: [{
+        protocolVersion: 1, eventId: `mcp-approval:${args.requestKey}`, environmentId: args.environmentId, runId: args.runId,
+        sourceSequence: session.eventCursor, type: 'approval_requested', occurredAt: args.now,
+        payload: { requestKey: args.requestKey, prompt: args.prompt, options },
+      } as AgentRemoteEvent],
+      environmentName: typeof snapshot.environmentName === 'string' ? snapshot.environmentName : 'connected environment',
+      queueExpiresAt: typeof snapshot.queueExpiresAt === 'number' ? snapshot.queueExpiresAt : args.now,
+      runId: args.runId,
+    })
+    await ctx.db.patch(message._id, { parts: conversationParts(projection.parts), status: 'generating', updatedAt: args.now })
+    await ctx.db.patch(run._id, { status: 'waiting_for_approval', updatedAt: args.now })
+    await ctx.db.patch(session._id, { status: 'waiting_for_approval', updatedAt: args.now })
+    await ctx.db.insert('conversationEvents', {
+      conversationId: run.conversationId, workspaceId: args.workspaceId, messageId: message._id,
+      type: 'message.delta', userId: run.userId, createdAt: args.now,
+    })
+    return { state: 'pending' as const }
+  },
+})
+
 export const resolveApprovalRequestByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), approvalId: v.string(),
@@ -1069,6 +1136,23 @@ export const resolveRemoteRequestByServer = mutation({
     const resolution = { decision: args.decision, ...(args.response ? { response: args.response } : {}),
       resolvedByPrincipalId: actor.principalId, resolvedAt: args.now }
     await ctx.db.patch(request._id, { resolution })
+    if ((request.payload as { source?: unknown } | undefined)?.source === MCP_APPROVAL_SOURCE) {
+      // The waiting MCP call reads the resolution itself; the host has nothing to answer.
+      await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
+      await ctx.db.patch(session._id, { status: 'running', updatedAt: args.now })
+      await ctx.db.patch(message._id, {
+        parts: conversationParts(resolveRemoteRequestPart(
+          Array.isArray(message.parts) ? (message.parts as unknown as Array<Record<string, unknown>>) : [],
+          args.requestKey, resolution,
+        )),
+        status: 'generating', updatedAt: args.now,
+      })
+      await ctx.db.insert('conversationEvents', {
+        conversationId: run.conversationId, workspaceId: args.workspaceId, messageId: message._id,
+        type: 'message.delta', userId: run.userId, createdAt: args.now,
+      })
+      return { applied: true, messageId: message._id }
+    }
     const latest = await ctx.db
       .query('agentRunCommands')
       .withIndex('by_environmentId_sequence', (q) =>

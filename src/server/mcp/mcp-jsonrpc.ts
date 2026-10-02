@@ -25,6 +25,14 @@ export const rpcResult = (id: JsonRpcId, result: unknown): JsonRpcResponse => ({
 
 export type McpToolSource = () => Promise<{ tools: ToolSet; instructions: string }>
 
+export type McpPrompt = { name: string; description: string }
+export type McpPromptContent = { description: string; text: string }
+/** Reusable instructions the client can offer the person (Claude shows them as slash commands). */
+export type McpPromptSource = {
+  list(): Promise<McpPrompt[]>
+  get(name: string): Promise<McpPromptContent | null>
+}
+
 function toolOutputText(output: unknown): string {
   return typeof output === 'string' ? output : JSON.stringify(output ?? null)
 }
@@ -64,7 +72,7 @@ async function callTool(tools: ToolSet, params: Record<string, unknown> | undefi
 
 async function handleMessage(
   message: JsonRpcRequest,
-  context: { serverName: string; tools: McpToolSource; logContext: Record<string, unknown> },
+  context: { serverName: string; tools: McpToolSource; prompts?: McpPromptSource; logContext: Record<string, unknown> },
 ): Promise<JsonRpcResponse | null> {
   const id = message.id ?? null
   const isNotification = message.id === undefined
@@ -78,13 +86,23 @@ async function handleMessage(
       const { instructions } = await context.tools()
       return rpcResult(id, {
         protocolVersion: SUPPORTED_MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : SUPPORTED_MCP_PROTOCOL_VERSIONS[0],
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: false }, ...(context.prompts ? { prompts: { listChanged: false } } : {}) },
         serverInfo: { name: context.serverName, version: '1.0.0' },
         ...(instructions ? { instructions } : {}),
       })
     }
     case 'ping':
       return rpcResult(id, {})
+    case 'prompts/list':
+      if (!context.prompts) return rpcError(id, -32601, `Method not found: ${message.method}`)
+      return rpcResult(id, { prompts: (await context.prompts.list()).map((prompt) => ({ ...prompt, arguments: [] })) })
+    case 'prompts/get': {
+      if (!context.prompts) return rpcError(id, -32601, `Method not found: ${message.method}`)
+      const name = typeof message.params?.name === 'string' ? message.params.name : ''
+      const prompt = await context.prompts.get(name)
+      if (!prompt) return rpcError(id, -32602, `Unknown prompt: ${name}`)
+      return rpcResult(id, { description: prompt.description, messages: [{ role: 'user', content: { type: 'text', text: prompt.text } }] })
+    }
     case 'tools/list':
       return rpcResult(id, { tools: await listTools((await context.tools()).tools) })
     case 'tools/call':
@@ -97,7 +115,7 @@ async function handleMessage(
 /** Parses the request body and answers it (a batch gets a batch back, notifications get 202). */
 export async function serveMcpJsonRpc(
   request: Request,
-  options: { serverName: string; tools: McpToolSource; logContext?: Record<string, unknown> },
+  options: { serverName: string; tools: McpToolSource; prompts?: McpPromptSource; logContext?: Record<string, unknown> },
 ): Promise<Response> {
   let body: unknown
   try {
@@ -109,7 +127,7 @@ export async function serveMcpJsonRpc(
   let toolsPromise: ReturnType<McpToolSource> | null = null
   const tools: McpToolSource = () => (toolsPromise ??= options.tools())
   const responses = (await Promise.all(messages.map((message) => handleMessage(message ?? {}, {
-    serverName: options.serverName, tools, logContext: options.logContext ?? {},
+    serverName: options.serverName, tools, ...(options.prompts ? { prompts: options.prompts } : {}), logContext: options.logContext ?? {},
   })))).filter((response): response is JsonRpcResponse => response !== null)
   if (responses.length === 0) return new Response(null, { status: 202 })
   return NextResponse.json(Array.isArray(body) ? responses : responses[0])

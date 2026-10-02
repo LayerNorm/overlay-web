@@ -315,6 +315,20 @@ Known gaps:
 - The create and agent-page UI was rendered only in a signed-out browser session, so the full click-through (including a visual pass) is still to do by hand: create → progress → conversation, then Pause / Resume / delete on the agent page.
 - ~~No reconnect prompt inside the conversation.~~ Fixed: a sign-in failure shows the reconnect message with a link to Agent accounts instead of the agent's raw error. Conversation cards for runs are still open (to land with Phase 3's approval round trip).
 
+**Phase 3 status (2026-10-02): built; verified live except the approval round trip, which is verified at unit and Convex level.**
+
+- [x] **Overlay MCP for other AI apps** (added to the scope at the owner's request): `/api/mcp` with OAuth 2.1 (dynamic registration, PKCE, rotating refresh), a consent page, personal tokens, `mcpGrants`, and Settings → Connected apps. Three access levels (read, write, everything) that only narrow what the workspace allows. See `docs/develop/mcp-access.md`.
+- [x] **Coverage audit**: every tool an outside app or connected agent can hold was called against the dev backend; the audit found and fixed `list_notes` (broke on the notes API's page envelope) and `update_automation` / `pause_automation` / `delete_automation` (the tool's own id was erased by an empty one). Not executed because they spend money or need a third party: web search/fetch, image/video, the browser, `call_mcp_tool` (the one configured server's catalog is stale; a "test connection" refreshes it), Composio execution. Contract test `mcp-coverage.test.ts` fails when a tool group is added without an MCP decision.
+- [x] **Skills**: offered as MCP prompts to every client that shows prompts (verified with the official SDK). Writing into the harness's own skill folder was not needed and was left out.
+- [x] **Approvals**: a connected agent's MCP call that needs approval shows an approval card in the conversation and gets the answer (short wait, then "call again"); denial and run end refuse. Verified by Convex tests (card, authorization, option check, no host command, run end closes it) and gate unit tests, not by a live run.
+- [x] **Scope**: unchanged: token = invoking person ∩ the agent's grant, for the run only.
+
+Known gaps:
+
+- No "run now" automation tool: agents can create, update, pause, and delete automations (verified), but an automation runs on its schedule.
+- Approval round trip not exercised in a live run; hosted ChatGPT and Claude web were not connected (the OAuth flow was exercised end to end with the official SDK and a public tunnel, and Claude Code on a Boat machine reported the server connected with a personal token).
+- The consent page and Connected apps settings were not click-tested signed in (the browser session was signed out); the signed-out redirect to sign-in works.
+
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |
 | **0. Machine** | acpx spike and adoption in the Agent Host, Overlay layer (`provision.sh`) published as a Boat snapshot (E2B template build script alongside), managed enrollment, lifecycle reconciler (create, wake, pause, delete), startup phases | A Claude Code agent created behind a flag boots on Box, answers an @mention, pauses after idle, wakes on the next mention. |

@@ -399,6 +399,7 @@ export async function executeListSkills(
       options.forwardCookie,
       options.serverSecret,
       options.userId,
+      options.workspaceId,
     )
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch skills' }

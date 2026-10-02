@@ -348,8 +348,17 @@ automations, connected apps, and MCP servers — built by the same pipeline (`bu
 the agent's grant intersected with workspace policy, entitlements, and the summoning message's
 mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
 duplicate the agent's own machine (`computer_*`) and generated UI are
-withheld, and MCP calls whose server policy requires approval are refused with an explanation,
-because no room approval exists for them yet.
+withheld. An MCP call whose server policy requires approval asks in the run's conversation
+(`createMcpApprovalGate`, `requestMcpApprovalByServer`): the same approval card an agent's own
+permission request shows, but the answer goes to the waiting call and never to the host as a command
+(`resolveRemoteRequestByServer` skips the host command for requests marked `source: overlay_mcp`). The
+call waits about 25 seconds, since agent hosts time MCP calls out in about a minute; if the person has
+not answered it returns "waiting for approval, call again with the same arguments", and the answer
+(remembered for the run, per tool and arguments) makes the retry run at once. A denial or the run ending
+refuses. Overlay skills are also offered as MCP prompts (Claude shows them as slash commands), so no
+writes into the harness's own skill folders are needed. `MCP_GROUP_COVERAGE` (`src/shared/mcp/access.ts`)
+records, per tool group, whether it reaches MCP clients or why not, and a contract test fails when a
+group is added without being placed.
 
 - **Connected agents** receive an MCP server. The remote-turn start command carries
   `metadata.overlayMcp = { url: <app origin>/api/agent-mcp, token }`; the Agent Host passes it to ACP

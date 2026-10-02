@@ -7,7 +7,8 @@ import { enforceRateLimits } from '@/server/security/rate-limit'
 import { getClientIp } from '@/server/security/rate-limit'
 import { buildOverlayMcpTools } from './external-mcp-tools'
 import type { McpPrincipal } from './McpAccessService'
-import { rpcError, serveMcpJsonRpc } from './mcp-jsonrpc'
+import { rpcError, serveMcpJsonRpc, type McpPromptSource } from './mcp-jsonrpc'
+import { overlaySkillPrompts } from './skill-prompts'
 import { mcpUrls, withMcpCors } from './mcp-http'
 
 /**
@@ -23,11 +24,14 @@ const TEN_MINUTES = 10 * 60_000
 export type OverlayMcpDependencies = {
   authenticate: (bearer: string | null) => Promise<McpPrincipal | null>
   buildTools: (principal: McpPrincipal) => Promise<{ tools: ToolSet; instructions: string }>
+  /** The person's skills as prompts. Every access level can read them, since a prompt only offers text. */
+  buildPrompts?: (principal: McpPrincipal) => McpPromptSource
 }
 
 const defaultDependencies: OverlayMcpDependencies = {
   authenticate: (bearer) => getOverlayServerContext().mcpAccess.authenticate(bearer),
   buildTools: buildOverlayMcpTools,
+  buildPrompts: (principal) => overlaySkillPrompts({ userId: principal.userId, workspaceId: principal.workspaceId }),
 }
 
 function bearer(request: Request): string | null {
@@ -62,6 +66,7 @@ export async function handleOverlayMcpRequest(
   const response = await serveMcpJsonRpc(request, {
     serverName: 'overlay',
     tools: () => dependencies.buildTools(principal),
+    ...(dependencies.buildPrompts ? { prompts: dependencies.buildPrompts(principal) } : {}),
     logContext: { grantId: principal.grantId, client: principal.clientName },
   })
   return withMcpCors(response)

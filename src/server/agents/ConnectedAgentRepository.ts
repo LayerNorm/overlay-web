@@ -279,6 +279,15 @@ export interface ConnectedAgentRepository {
     now: number
   }): Promise<boolean>
   createApprovalRequest(input: ConnectedAgentCreateApprovalRequest): Promise<AgentApprovalRequest>
+  /** An Overlay tool the agent called over MCP needs the person's approval; reports where that request stands. */
+  requestMcpApproval(args: {
+    workspaceId: string
+    environmentId: string
+    runId: string
+    requestKey: string
+    prompt: string
+    now: number
+  }): Promise<{ state: 'pending' | 'resolved' | 'unavailable'; decision?: string }>
   resolveApprovalRequest(args: {
     workspaceId: string
     approvalId: string

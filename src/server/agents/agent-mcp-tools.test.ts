@@ -46,3 +46,23 @@ test('instructions name the tools and are empty without tools', () => {
   assert.equal(overlayMcpInstructions([]), '')
   assert.match(overlayMcpInstructions(['get_note', 'edit_note']), /Available: get_note, edit_note\./)
 })
+
+test('with a way to ask, an approval-required call runs only once allowed', async () => {
+  const ran: unknown[] = []
+  const asked: string[] = []
+  let answer: { allowed: true } | { allowed: false; message: string } = { allowed: false, message: 'waiting for the user' }
+  const tools = adaptToolsForMcp({
+    tools: {
+      call_mcp_tool: { description: 'm', inputSchema: {}, execute: async (input: unknown) => { ran.push(input); return 'ran' } },
+    } as never,
+    toolApproval: () => 'user-approval',
+    requestApproval: async (name) => { asked.push(name); return answer },
+  })
+  const execute = tools.call_mcp_tool!.execute as unknown as Execute
+  assert.deepEqual(await execute({ toolName: 'delete_repo' }, {}), { success: false, error: 'waiting for the user' })
+  assert.deepEqual(ran, [])
+  answer = { allowed: true }
+  assert.equal(await execute({ toolName: 'delete_repo' }, {}), 'ran')
+  assert.deepEqual(ran, [{ toolName: 'delete_repo' }])
+  assert.deepEqual(asked, ['call_mcp_tool', 'call_mcp_tool'])
+})

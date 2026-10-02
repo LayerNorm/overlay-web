@@ -3,7 +3,8 @@ import 'server-only'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { ToolSet } from '@/server/ai/sdk'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { rpcError, serveMcpJsonRpc } from '@/server/mcp/mcp-jsonrpc'
+import { rpcError, serveMcpJsonRpc, type McpPromptSource } from '@/server/mcp/mcp-jsonrpc'
+import { overlaySkillPrompts } from '@/server/mcp/skill-prompts'
 import { verifyAgentMcpToken, type AgentMcpTokenClaims } from './agent-mcp-token'
 import { buildAgentMcpTools } from './agent-mcp-tools'
 
@@ -23,10 +24,15 @@ export type AgentMcpDependencies = {
   verifyToken: (token: string | null) => AgentMcpTokenClaims | null
   isRunLive: (claims: AgentMcpTokenClaims) => Promise<boolean>
   buildTools: (claims: AgentMcpTokenClaims) => Promise<{ tools: ToolSet; instructions: string }>
+  /** Overlay skills as prompts, for agents granted the skills group. */
+  buildPrompts?: (claims: AgentMcpTokenClaims) => McpPromptSource | null
 }
 
 const defaultDependencies: AgentMcpDependencies = {
   verifyToken: verifyAgentMcpToken,
+  buildPrompts: (claims) => (claims.grant.isDefaultMaster || claims.grant.allowedToolIds.includes('list_skills')
+    ? overlaySkillPrompts({ userId: claims.userId, workspaceId: claims.workspaceId })
+    : null),
   async isRunLive(claims) {
     const session = await getOverlayServerContext().appData.repositories.connectedAgents.getRemoteSessionForRun({
       workspaceId: claims.workspaceId,
@@ -45,6 +51,7 @@ const defaultDependencies: AgentMcpDependencies = {
     memoryEnabled: claims.memoryEnabled,
     modelId: claims.modelId,
     toolGrant: claims.grant,
+    run: { environmentId: claims.environmentId, runId: claims.runId },
     turnId: claims.turnId,
     workspaceId: claims.workspaceId,
   }),
@@ -73,6 +80,7 @@ export async function handleAgentMcpRequest(
   return serveMcpJsonRpc(request, {
     serverName: 'overlay',
     tools: () => dependencies.buildTools(claims),
+    ...(() => { const prompts = dependencies.buildPrompts?.(claims); return prompts ? { prompts } : {} })(),
     logContext: { agentId: claims.agentId, runId: claims.runId },
   })
 }
