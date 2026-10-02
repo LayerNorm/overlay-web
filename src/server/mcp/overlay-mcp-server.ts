@@ -9,7 +9,7 @@ import { buildOverlayMcpTools } from './external-mcp-tools'
 import type { McpPrincipal } from './McpAccessService'
 import { rpcError, serveMcpJsonRpc, type McpPromptSource } from './mcp-jsonrpc'
 import { overlaySkillPrompts } from './skill-prompts'
-import { mcpUrls, withMcpCors } from './mcp-http'
+import { mcpBaseUrl, mcpUrls, withMcpCors } from './mcp-http'
 
 /**
  * Overlay's MCP server for outside AI apps (ChatGPT, Claude on the web or desktop,
@@ -39,9 +39,9 @@ function bearer(request: Request): string | null {
   return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : null
 }
 
-function unauthorized(presented: boolean): Response {
+function unauthorized(request: Request, presented: boolean): Response {
   // The resource-metadata pointer is how an OAuth-capable client finds where to sign in.
-  const challenge = `Bearer realm="overlay", resource_metadata="${mcpUrls().resourceMetadata}"${presented ? ', error="invalid_token"' : ''}`
+  const challenge = `Bearer realm="overlay", resource_metadata="${mcpUrls(mcpBaseUrl(request)).resourceMetadata}"${presented ? ', error="invalid_token"' : ''}`
   return NextResponse.json(rpcError(null, -32001, presented ? 'Invalid, expired, or revoked token' : 'Authorization required'), {
     status: 401,
     headers: { 'WWW-Authenticate': challenge },
@@ -54,7 +54,7 @@ export async function handleOverlayMcpRequest(
 ): Promise<Response> {
   const token = bearer(request)
   const principal = token ? await dependencies.authenticate(token) : null
-  if (!principal) return withMcpCors(unauthorized(Boolean(token)))
+  if (!principal) return withMcpCors(unauthorized(request, Boolean(token)))
 
   const limited = await enforceRateLimits(request, [
     { bucket: 'mcp:grant', key: principal.grantId, limit: 600, windowMs: TEN_MINUTES },

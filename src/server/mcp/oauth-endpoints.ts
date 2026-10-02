@@ -6,7 +6,7 @@ import { logger } from '@/server/observability/logger'
 import { rateLimitByIp } from '@/server/security/rate-limit'
 import { MCP_ACCESS_LEVELS } from '@/shared/mcp/access'
 import { McpOAuthError } from './McpAccessService'
-import { mcpUrls, withMcpCors } from './mcp-http'
+import { mcpBaseUrl, mcpUrls, withMcpCors } from './mcp-http'
 
 const NO_STORE = { 'Cache-Control': 'no-store', Pragma: 'no-cache' }
 const TEN_MINUTES = 10 * 60_000
@@ -30,8 +30,8 @@ async function readBody(request: NextRequest): Promise<string> {
   return text
 }
 
-export function protectedResourceMetadata(): Response {
-  const urls = mcpUrls()
+export function protectedResourceMetadata(request: Request): Response {
+  const urls = mcpUrls(mcpBaseUrl(request))
   return withMcpCors(NextResponse.json({
     resource: urls.resource,
     authorization_servers: [urls.issuer],
@@ -41,8 +41,8 @@ export function protectedResourceMetadata(): Response {
   }, { headers: { 'Cache-Control': 'public, max-age=300' } }))
 }
 
-export function authorizationServerMetadata(): Response {
-  const urls = mcpUrls()
+export function authorizationServerMetadata(request: Request): Response {
+  const urls = mcpUrls(mcpBaseUrl(request))
   return withMcpCors(NextResponse.json({
     issuer: urls.issuer,
     authorization_endpoint: urls.authorize,

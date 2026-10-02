@@ -24,6 +24,28 @@ export function withMcpCors(response: Response): Response {
   return response
 }
 
+/**
+ * The address clients should use. The app may be served from two hosts (an apex that redirects to
+ * `www`), and OAuth clients compare the resource and issuer they are told with the address they called,
+ * so the URLs advertised are built from the host the request arrived on, but only if that is the app's
+ * own host or its `www` twin. Anything else falls back to the configured app URL.
+ */
+export function mcpBaseUrl(request?: Pick<Request, 'url' | 'headers'>): string {
+  const configured = getBaseUrl()
+  if (!request) return configured
+  try {
+    const own = new URL(configured)
+    const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+    const seen = new URL(request.url)
+    const host = (forwardedHost || seen.host).toLowerCase()
+    const bare = (value: string) => value.replace(/^www\./, '')
+    if (bare(host) !== bare(own.host.toLowerCase())) return configured
+    return `${own.protocol}//${host}`
+  } catch (_error) {
+    return configured
+  }
+}
+
 export function mcpUrls(base = getBaseUrl()) {
   return {
     issuer: base,
