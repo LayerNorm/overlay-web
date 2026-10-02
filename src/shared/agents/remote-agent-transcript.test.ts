@@ -181,3 +181,15 @@ test('retryable failure becomes a recoverable transcript without losing complete
   assert.deepEqual({ state: status.state, retryable: status.retryable, retryClass: status.retryClass },
     { state: 'recoverable', retryable: true, retryClass: 'host_offline' })
 })
+
+test('a sign-in failure replaces the agent text with a reconnect message that links to Agent accounts', () => {
+  const projection = projectRemoteAgentEvents({
+    content: 'Failed to authenticate. API Error: 401', parts: [{ type: 'text', text: 'Failed to authenticate. API Error: 401' }],
+    events: [event(1, 'failed', { code: 'auth_required', message: 'Claude Code could not sign in. Reconnect your Claude account in Settings → Agent accounts.', retryable: false })],
+    environmentName: 'Cloud', queueExpiresAt: 5_000, runId: 'run-1',
+  })
+  assert.doesNotMatch(projection.content, /API Error/)
+  assert.match(projection.content, /Reconnect your Claude account/)
+  assert.match(projection.content, /\]\(\/app\/settings\?section=agent-accounts\)/)
+  assert.equal(projection.terminalError?.code, 'auth_required')
+})

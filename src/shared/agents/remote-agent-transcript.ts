@@ -1,5 +1,8 @@
 import type { AgentRemoteEvent, AgentRemoteSessionStatus } from '@overlay/workspace-contracts'
 import type { AgentRunStatus, AgentRunTerminalError } from './agent-run'
+import { AGENT_AUTH_FAILURE_CODE } from './provider-accounts'
+
+const AGENT_ACCOUNTS_SETTINGS_HREF = '/app/settings?section=agent-accounts'
 
 export const REMOTE_AGENT_STATUS_PART_TYPE = 'data-remote-agent-status'
 export const REMOTE_AGENT_REQUEST_PART_TYPE = 'data-remote-agent-request'
@@ -169,7 +172,10 @@ export function projectRemoteAgentEvents(input: {
         message,
         retryable: event.payload.retryable === true,
       }
-      if (!content.trim()) content = message
+      if (terminalError.code === AGENT_AUTH_FAILURE_CODE) {
+        // The agent's own text is a raw sign-in error; say what to do and link to it.
+        content = `${message}\n\n[Open Agent accounts](${AGENT_ACCOUNTS_SETTINGS_HREF})`
+      } else if (!content.trim()) content = message
       parts = replaceTextPart(parts, content)
       runStatus = 'failed'
       sessionStatus = 'failed'

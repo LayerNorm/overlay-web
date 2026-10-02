@@ -311,9 +311,9 @@ Verified live (local server on dev Convex, tunnel, real Boat machine): create re
 
 Known gaps:
 
-- The dialog does not hide Overlay Cloud for free plans (the browser has no cheap plan check there); the server refuses and the dialog shows its message.
+- ~~The dialog does not hide Overlay Cloud for free plans.~~ Fixed: on a free plan the "Other agent" option reads "Paid plans" and is disabled (the server still enforces).
 - The create and agent-page UI was rendered only in a signed-out browser session, so the full click-through (including a visual pass) is still to do by hand: create → progress → conversation, then Pause / Resume / delete on the agent page.
-- No reconnect prompt inside the conversation yet, and no conversation cards for runs.
+- ~~No reconnect prompt inside the conversation.~~ Fixed: a sign-in failure shows the reconnect message with a link to Agent accounts instead of the agent's raw error. Conversation cards for runs are still open (to land with Phase 3's approval round trip).
 
 | Phase | Ships | Exit criteria |
 | --- | --- | --- |

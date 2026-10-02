@@ -30,6 +30,7 @@ import { CloudAgentProgress } from './CloudAgentProgress'
 import { OtherAgentFields } from './OtherAgentFields'
 import { initialOtherAgentDraft, isOtherAgentDraftValid, type OtherAgentDraft } from './cloud-agent-draft'
 import { useCloudAgentCreate } from './use-cloud-agent-create'
+import { useIsFreePlan } from './use-paid-plan'
 
 export type NewAgentDraft = {
   kind: 'overlay' | 'other'
@@ -199,13 +200,15 @@ function ComputerSection({ draft, onChange }: {
 }
 
 /** The dialog's fields. Presentational: all state lives in `draft`. */
-export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, onOpenMachineSetup }: {
+export function NewAgentFields({ draft, onChange, modelOptions, computersAvailable, otherAgentsAvailable = false, otherAgentsNote = 'Coming soon', onOpenMachineSetup }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
   modelOptions: ModelOption[]
   computersAvailable: boolean
   /** Overlay Cloud agents are offered only where the deployment supports them. */
   otherAgentsAvailable?: boolean
+  /** Why Other agent is unavailable ("Coming soon", or "Paid plans" on a free plan). */
+  otherAgentsNote?: string
   onOpenMachineSetup?(): void
 }) {
   const other = draft.kind === 'other'
@@ -247,7 +250,7 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           ariaLabel="Agent type"
           layout="stretch"
           value={draft.kind}
-          options={otherAgentsAvailable ? TYPE_OPTIONS : TYPE_OPTIONS.map((option) => (option.value === 'other' ? { ...option, description: 'Coming soon', disabled: true } : option))}
+          options={otherAgentsAvailable ? TYPE_OPTIONS : TYPE_OPTIONS.map((option) => (option.value === 'other' ? { ...option, description: otherAgentsNote, disabled: true } : option))}
           onChange={(kind) => onChange({ kind })}
         />
       </div>
@@ -339,7 +342,9 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
-  const otherAgentsAvailable = capabilities.cloudAgents === true
+  const freePlan = useIsFreePlan(open && capabilities.cloudAgents === true && capabilities.billing === true, workspaceId)
+  const otherAgentsAvailable = capabilities.cloudAgents === true && !freePlan
+  const otherAgentsNote = freePlan ? 'Paid plans' : 'Coming soon'
   const modelOptions = useModelOptions()
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
   const draft = { ...rawDraft, modelId: resolveDraftModelId(rawDraft.modelId, modelOptions) }
@@ -428,6 +433,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
             modelOptions={modelOptions}
             computersAvailable={computersAvailable}
             otherAgentsAvailable={otherAgentsAvailable}
+            otherAgentsNote={otherAgentsNote}
             {...(onOpenMachineSetup ? { onOpenMachineSetup } : {})}
           />
         )}
