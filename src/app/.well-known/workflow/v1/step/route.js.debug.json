@@ -1,20 +1,20 @@
 {
   "stepFiles": [
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/node_modules/@ai-sdk/workflow/dist/index.js",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/node_modules/workflow/dist/stdlib.js",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/agents/workspace-agent-turn-lifecycle.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/conversations/personal-chat-work-lifecycle.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/conversations/personal-chat-work-tools.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/automation-agent-turn.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/automation-schedule.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/personal-chat-work.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/surface-agent-turn.ts"
+    "/home/ubuntu/repos/overlay-web/node_modules/@ai-sdk/workflow/dist/index.js",
+    "/home/ubuntu/repos/overlay-web/node_modules/workflow/dist/stdlib.js",
+    "/home/ubuntu/repos/overlay-web/src/server/agents/workspace-agent-turn-lifecycle.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/conversations/personal-chat-work-lifecycle.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/conversations/personal-chat-work-tools.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/automation-agent-turn.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/automation-schedule.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/personal-chat-work.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/surface-agent-turn.ts"
   ],
   "workflowFiles": [
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/automation-schedule.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/personal-chat-work.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/surface-agent-turn.ts",
-    "/Users/divyanshlalwani/Downloads/overlay-mono/overlay-landing/src/server/workflows/workspace-agent-turn.ts"
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/automation-schedule.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/personal-chat-work.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/surface-agent-turn.ts",
+    "/home/ubuntu/repos/overlay-web/src/server/workflows/workspace-agent-turn.ts"
   ],
   "serdeOnlyFiles": []
 }
