@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T22:56:37.914Z",
+  "generatedAt": "2026-10-03T23:18:37.687Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -176,8 +176,8 @@
     },
     {
       "file": "src/app/.well-known/workflow/v1/step/route.js",
-      "loc": 2757,
-      "complexity": 400,
+      "loc": 15098,
+      "complexity": 2181,
       "recordedAt": "2026-10-03T22:56:37.914Z"
     },
     {
@@ -490,10 +490,13 @@
     "src/components/providers/AppSettingsProvider.tsx#isAppSettingsPayload": 1,
     "src/server/app-api/v1/generate-video/route.ts#start": 1,
     "src/shared/tools/output-types.ts#classifyOutputType": 1,
+    "src/app/.well-known/workflow/v1/step/route.js#meterLease": 1,
+    "src/app/.well-known/workflow/v1/step/route.js#assertSelectedProviderConfig": 1,
     "src/server/agents/ManagedAgentSandboxBilling.ts#meterLease": 1,
     "src/server/bootstrap.ts#assertSelectedProviderConfig": 1,
     "packages/overlay-tools-core/src/mcp-schema-to-zod.ts#jsonSchemaToZod": 1,
     "src/shared/chat/persist-assistant-turn.ts#buildAssistantPersistenceFromSteps": 1,
+    "src/app/.well-known/workflow/v1/step/route.js#buildOverlayToolSet": 1,
     "src/server/tools/tools/build.ts#buildOverlayToolSet": 1,
     "packages/overlay-app-core/src/automations/run-status.ts#applyEvent": 1,
     "src/server/app-api/v1/providers/connections/route.ts#PATCH": 1,
@@ -504,6 +507,7 @@
     "src/server/app-api/v1/conversations/route.ts#GET": 1,
     "packages/overlay-chat-react/src/components/MarkdownMessage.tsx#a": 1,
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts#parseMarkdownLine": 1,
+    "src/app/.well-known/workflow/v1/step/route.js#runWorkspaceAgentTurn": 1,
     "src/server/agents/workspace-agent-invocation.ts#runWorkspaceAgentTurn": 1,
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts#parseMarkdownLines": 1,
     "src/shared/knowledge/temporal-query.ts#parseTemporalRange": 1,
@@ -517,12 +521,14 @@
     "src/features/chat/components/chat/chat-send-text.ts#sendTextTurn": 1,
     "src/features/chat/components/chat/toChatTranscriptView.ts#callback": 1,
     "packages/overlay-chat-react/src/components/SourcesPanel.tsx#callback": 1,
+    "src/app/.well-known/workflow/v1/step/route.js#resolveOne": 1,
     "src/app/.well-known/workflow/v1/step/route.js#buildAutomationUpdateNote": 1,
     "src/server/automations/AutomationService.ts#buildAutomationUpdateNote": 1,
     "src/server/knowledge/mention-resolver.ts#resolveOne": 1,
     "src/shared/agents/elicitation-schema.ts#matchesPropertySchema": 1,
     "packages/overlay-billing/src/adapters/stripe-billing-provider.ts#verifyPaidPlanCheckoutSession": 1,
     "packages/overlay-chat-react/src/components/MediaSlotOutput.tsx#MediaSlotOutput": 1,
+    "src/app/.well-known/workflow/v1/step/route.js#authorizeActRequest": 1,
     "src/server/app-api/v1/conversations/act/turn-authorization.ts#authorizeActRequest": 1,
     "src/server/app-api/v1/conversations/message/route.ts#POST": 1,
     "packages/overlay-chat-core/src/tool-labels.ts#describeComposioIntegrationTool": 1,
@@ -531,6 +537,7 @@
     "src/server/app-api/v1/conversations/act/extension-plan/route.ts#POST": 1,
     "src/server/database/convex.ts#callConvex": 1,
     "packages/overlay-chat-core/src/messages.ts#errorLabel": 1,
+    "src/app/.well-known/workflow/v1/step/route.js#callback": 1,
     "src/components/agents/AgentAccountDialog.tsx#AccountDialog": 1,
     "src/server/tools/mcp-tools.ts#execute": 1
   },
@@ -676,7 +683,7 @@
     {
       "file": "src/app/.well-known/workflow/v1/step/route.js",
       "layer": "src/app routes",
-      "loc": 2757,
+      "loc": 15098,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2762,11 +2769,11 @@
   ],
   "totals": {
     "files": 2062,
-    "code": 243246,
-    "total": 274895,
+    "code": 255591,
+    "total": 287477,
     "productionFiles": 1695,
-    "productionCode": 206620,
+    "productionCode": 218961,
     "testFiles": 367,
-    "testCode": 36626
+    "testCode": 36630
   }
 }
