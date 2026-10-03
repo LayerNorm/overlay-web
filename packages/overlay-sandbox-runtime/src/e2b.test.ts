@@ -12,9 +12,9 @@ import type { SandboxCreateRequest } from './contracts'
 
 /** An E2B stand-in: sandboxes in memory, with a real shell behind `commands.run` so behavior is not guessed. */
 function fakeE2b() {
-  type Record = { state: 'running' | 'paused' | 'killed'; files: Map<string, Uint8Array>; envs: Record<string, string>; startedAt: Date }
-  const sandboxes = new Map<string, Record>()
-  const snapshots = new Map<string, Record>()
+  type Box = { state: 'running' | 'paused' | 'killed'; files: Map<string, Uint8Array>; envs: Record<string, string>; startedAt: Date }
+  const sandboxes = new Map<string, Box>()
+  const snapshots = new Map<string, Box>()
   const calls: Array<{ method: string; args: unknown[] }> = []
   let counter = 0
 
@@ -105,13 +105,13 @@ test('a sandbox is created from the template with a pause-on-timeout lifecycle, 
   const { sdk, calls } = fakeE2b()
   const runtime = new E2BSandboxRuntime({ apiKey: 'secret-key', sandbox: sdk })
   await runtime.create(request('machine-1', { environment: { A: '1' }, metadata: { agentId: 'a1' } }))
-  const [template, options] = calls[0]!.args as [string, Record<string, any>]
+  const [template, options] = calls[0]!.args as [string, { apiKey?: string; envs?: Record<string, string>; metadata?: Record<string, string>; lifecycle?: unknown; timeoutMs?: number }]
   assert.equal(template, 'overlay-agent:v2')
   assert.equal(options.apiKey, 'secret-key')
   assert.deepEqual(options.envs, { A: '1' })
   assert.deepEqual(options.lifecycle, { onTimeout: 'pause', autoResume: false })
   assert.equal(options.timeoutMs, 2 * 60 * 60_000)
-  assert.equal(options.metadata.agentId, 'a1')
+  assert.equal(options.metadata?.agentId, 'a1')
   assert.ok(!JSON.stringify(options.metadata).includes('secret-key'))
   await assert.rejects(runtime.create(request('no-image', { image: undefined })), /template/i)
   await runtime.create(request('limit', { hardTimeoutMs: 999 * 60 * 60_000 }))
