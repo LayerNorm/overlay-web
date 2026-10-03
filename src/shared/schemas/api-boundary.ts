@@ -159,7 +159,7 @@ export const webApiBoundaryDefinitions = [
     schema: {
       json: z.object({
         agentId: z.string().min(1).max(256),
-        adapterId: z.enum(['claude-code', 'codex']),
+        adapterId: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
         providerAccountId: z.string().min(1).max(64),
         size: z.enum(['small', 'default', 'large']).optional(),
       }).strict(),
@@ -652,7 +652,7 @@ export const webApiBoundaryDefinitions = [
     method: 'POST', path: '/api/v1/provider-accounts',
     schema: {
       json: z.object({
-        provider: z.enum(['claude-code', 'codex']),
+        provider: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
         method: z.enum(['subscription', 'api_key']),
         secret: z.string().min(1).max(4096),
         label: z.string().max(80).optional(),

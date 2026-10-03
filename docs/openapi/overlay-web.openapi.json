@@ -3223,7 +3223,10 @@
                     "type": "string",
                     "enum": [
                       "claude-code",
-                      "codex"
+                      "codex",
+                      "opencode",
+                      "hermes",
+                      "cursor"
                     ]
                   },
                   "providerAccountId": {
@@ -11845,7 +11848,10 @@
                     "type": "string",
                     "enum": [
                       "claude-code",
-                      "codex"
+                      "codex",
+                      "opencode",
+                      "hermes",
+                      "cursor"
                     ]
                   },
                   "method": {

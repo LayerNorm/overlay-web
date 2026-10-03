@@ -24,3 +24,20 @@ test('automation run boundary rejects missing run IDs', () => {
     /Invalid POST \/api\/v1\/automations\/run body: Required/,
   )
 })
+
+test('agent accounts and cloud machines accept every agent provider', () => {
+  for (const provider of ['claude-code', 'codex', 'opencode', 'hermes', 'cursor']) {
+    assert.doesNotThrow(() => {
+      validateApiClientBoundary({
+        path: '/api/v1/provider-accounts',
+        method: 'POST',
+        body: { provider, method: 'api_key', secret: 'sk-test-secret-value' },
+      })
+      validateApiClientBoundary({
+        path: '/api/v1/agent-environments/cloud',
+        method: 'POST',
+        body: { agentId: 'a1', adapterId: provider, providerAccountId: 'acc1' },
+      })
+    }, provider)
+  }
+})
