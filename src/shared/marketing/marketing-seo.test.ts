@@ -13,6 +13,10 @@ test('the sitemap publishes clean marketing and legal URLs instead of app showca
   assert.deepEqual(urls, [
     'https://getoverlay.io/home',
     'https://getoverlay.io/pricing',
+    'https://getoverlay.io/download',
+    'https://getoverlay.io/self-hosting',
+    'https://getoverlay.io/blog',
+    'https://getoverlay.io/changelog',
     'https://getoverlay.io/manifesto',
     'https://getoverlay.io/docs',
     'https://getoverlay.io/terms',
