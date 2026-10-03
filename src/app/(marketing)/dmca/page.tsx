@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'DMCA and Takedown Policy',
+  description:
+    'How LayerNorm receives and responds to copyright notices and counter-notices for user-provided material on Overlay.',
+  alternates: { canonical: '/dmca' },
+}
+
 
 const sections = [
   { title: 'Copyright notices', body: 'A notice should identify the copyrighted work, identify the material to remove with information sufficient to locate it, provide the complaining party’s contact information, state a good-faith belief that use is unauthorized, state under penalty of perjury that the notice is accurate and the sender is authorized, and include a physical or electronic signature.' },

@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_DOCUMENTS, LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Privacy Policy',
+  description:
+    'How LayerNorm handles personal information in Overlay — what is collected, why it is used, whom it is shared with, and the choices available to users.',
+  alternates: { canonical: '/privacy' },
+}
+
 
 const sections = [
   { title: 'Scope and roles', body: [`This Privacy Policy (version ${LEGAL_DOCUMENTS.privacy.version}) explains how LayerNorm Inc. handles personal information through Overlay websites, applications, hosted services, APIs, support, and commercial activities.`, 'LayerNorm generally acts as a controller for account, billing, security, marketing, and service-administration data. For content an organization submits to Overlay, LayerNorm may act as its processor or service provider under the Data Processing Addendum. Self-hosted operators are responsible for their deployments.'] },

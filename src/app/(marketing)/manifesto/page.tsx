@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import ManifestoMarketingPage from '@/features/marketing/pages/ManifestoMarketingPage'
 
 export const metadata: Metadata = {
-  title: 'Manifesto — Overlay',
+  title: 'Manifesto',
   description:
     'Why AI should amplify human potential through an open, private, and controllable interface.',
   alternates: {

@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Cookie and Analytics Notice',
+  description:
+    'How Overlay uses browser storage, cookies, and analytics technologies — purposes, controls, and consent.',
+  alternates: { canonical: '/cookies' },
+}
+
 
 const sections = [
   { title: 'Necessary technologies', body: 'Overlay uses cookies and similar storage for authentication, session security, CSRF protection, load balancing, saved preferences, consent choices, and fraud prevention. Disabling these technologies may prevent the service from working.' },

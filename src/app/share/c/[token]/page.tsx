@@ -31,11 +31,11 @@ export async function generateMetadata(
   const { token } = await params
   const conv = await loadShared(token)
   if (!conv) {
-    return { title: 'Shared chat — Overlay', robots: { index: false } }
+    return { title: 'Shared chat', robots: { index: false } }
   }
   const description = firstUserSnippet(conv).slice(0, 200) || 'A conversation shared from Overlay.'
   return {
-    title: `${conv.title} — Overlay`,
+    title: conv.title,
     description,
     openGraph: {
       title: conv.title,

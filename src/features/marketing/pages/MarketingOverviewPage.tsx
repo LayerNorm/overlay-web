@@ -84,7 +84,7 @@ function HeroSection({ webAppHref }: { webAppHref: string }) {
         <div className="hero-grid">
           <div>
             <h1 className="rise" style={rise(0)}>
-              The control plane for your workspace.
+              The control plane for AI agents.
             </h1>
             <p className="hero-sub rise" style={rise(1)}>
               Create, deploy, and manage your agents in one workspace — or
@@ -818,6 +818,74 @@ function AudiencesSection({ webAppHref }: { webAppHref: string }) {
   );
 }
 
+const FAQ_ITEMS: { q: string; a: string }[] = [
+  {
+    q: "How do I run all my AI agents from one place?",
+    a: "Overlay gives every agent a home in one workspace: agents you create in Overlay and agents you already use — Codex, Claude Code, Hermes — connect to the same roster with shared context, tools, and a computer to work from.",
+  },
+  {
+    q: "Can I bring my own agents to Overlay?",
+    a: "Yes. Connect agents running on your own machine or deploy them on Overlay Cloud — they get the same workspace tools, memory, and supervision as agents built in Overlay.",
+  },
+  {
+    q: "Where do Overlay agents work?",
+    a: "In the Overlay app and wherever work already happens — Slack, Telegram, iMessage, and the web. Agents can be scheduled or triggered, and they report back to the same place.",
+  },
+  {
+    q: "How do I control what agents can do?",
+    a: "Permissions, tool approvals, spend limits, run history, and audit trails apply to every agent on the roster — not just the ones Overlay runs.",
+  },
+  {
+    q: "Is Overlay open source?",
+    a: "Yes — the core is AGPL-3.0 with hosted and self-hosted options, plus commercial licensing for organizations that need different terms. The free tier needs no card.",
+  },
+]
+
+const faqStructuredData = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ_ITEMS.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+}
+
+function FaqSection() {
+  return (
+    <section className="band" id="faq">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
+      />
+      <div className="wrap">
+        <div className="section-head">
+          <h2>Questions, answered</h2>
+          <div className="desc">
+            <p>
+              The short version of what Overlay is, what it works with, and
+              how it stays under your control.
+            </p>
+          </div>
+        </div>
+        <div className="faq">
+          {FAQ_ITEMS.map((item) => (
+            <details key={item.q}>
+              <summary>
+                {item.q}
+                <span className="faq-plus" aria-hidden>
+                  +
+                </span>
+              </summary>
+              <p className="a">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CloseSection({ webAppHref }: { webAppHref: string }) {
   return (
     <section className="band" style={{ paddingBottom: 140 }}>
@@ -887,6 +955,9 @@ function HomeLandingContent() {
 
           {/* ============ SOLO / ORGS ============ */}
           <AudiencesSection webAppHref={webAppHref} />
+
+          {/* ============ FAQ ============ */}
+          <FaqSection />
 
           {/* ============ CLOSE ============ */}
           <CloseSection webAppHref={webAppHref} />

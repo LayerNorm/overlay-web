@@ -4,7 +4,7 @@ import { LandingAuthBoundary } from '@/app/auth/_components/AuthPageChrome'
 import { AuthorizeClient } from './AuthorizeClient'
 
 export const metadata: Metadata = {
-  title: 'Connect to Overlay',
+  title: { absolute: 'Connect to Overlay' },
   robots: { index: false, follow: false },
 }
 
