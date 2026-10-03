@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { agentLineagePart, lineageForTriggerMessage, MAX_AGENT_HOPS, nextLineage } from './agent-lineage'
+import { agentLineagePart, lineageForTriggerMessage, MAX_AGENT_HOPS, nextLineage, nextLineageForMentions } from './agent-lineage'
 
 const start = lineageForTriggerMessage({ authorKind: 'human', turnId: 'turn-1' }, 'scout')
 
@@ -47,4 +47,15 @@ test('self-calls, cycles, too many hops, and too many questions in one turn are 
   assert.deepEqual(nextLineage({ lineage, callerAgentId: caller, targetAgentId: 'one-too-many', asksSoFarThisTurn: 0 }), { ok: false, refusal: 'hop_limit' })
 
   assert.deepEqual(nextLineage({ lineage: start, callerAgentId: 'scout', targetAgentId: 'planner', asksSoFarThisTurn: 3 }), { ok: false, refusal: 'turn_limit' })
+})
+
+test('one message that mentions several agents is checked for each and puts all of them in the chain, one hop on', () => {
+  const ok = nextLineageForMentions({ lineage: start, callerAgentId: 'scout', callerName: 'Scout', targetAgentIds: ['planner', 'writer'], parentConversationId: 'room-1' })
+  assert.ok(ok.ok)
+  assert.deepEqual(ok.lineage, { rootTurnId: 'turn-1', hop: 1, chain: ['scout', 'planner', 'writer'], askedByAgentId: 'scout', askedByName: 'Scout', parentConversationId: 'room-1' })
+  assert.deepEqual(nextLineageForMentions({ lineage: start, callerAgentId: 'scout', targetAgentIds: ['planner', 'scout'] }), { ok: false, refusal: 'self' })
+  const b = nextLineage({ lineage: start, callerAgentId: 'scout', targetAgentId: 'planner', asksSoFarThisTurn: 0 })
+  assert.ok(b.ok)
+  assert.deepEqual(nextLineageForMentions({ lineage: b.lineage, callerAgentId: 'planner', targetAgentIds: ['writer', 'scout'] }), { ok: false, refusal: 'cycle' })
+  assert.deepEqual(nextLineageForMentions({ lineage: start, callerAgentId: 'scout', targetAgentIds: [] }), { ok: false, refusal: 'self' })
 })

@@ -15,6 +15,16 @@ const bodySchema = z.discriminatedUnion('action', [
     agent: z.string().min(1).max(200),
     message: z.string().min(1).max(8_000),
     wait: z.boolean().optional(),
+    // Absent when an outside app asks for the person; all three are present when an agent asks.
+    callerAgentId: z.string().min(1).max(80).optional(),
+    callerConversationId: z.string().min(1).max(80).optional(),
+    callerTurnId: z.string().min(1).max(300).optional(),
+  }),
+  z.object({
+    action: z.literal('post'),
+    conversationId: z.string().min(1).max(80),
+    text: z.string().min(1).max(8_000),
+    mentions: z.array(z.string().min(1).max(200)).max(3).optional(),
     callerAgentId: z.string().min(1).max(80),
     callerConversationId: z.string().min(1).max(80),
     callerTurnId: z.string().min(1).max(300),
@@ -23,8 +33,9 @@ const bodySchema = z.discriminatedUnion('action', [
 ])
 
 /**
- * What agents use to ask each other: list who can be asked, ask one (waiting for the reply or not), and read a
- * reply that was still being written. The caller is the person; the agent asking is named in the body by the tool
+ * What agents use to ask each other: list who can be asked, ask one (waiting for the reply or not), post a message
+ * into a conversation (mentioning agents there), and read a reply that was still being written. An outside app
+ * asks the same way, without an agent identity, as the person. The caller is the person; the agent asking is named in the body by the tool
  * that runs inside the agent's own turn, and is checked against that turn (see AgentAskService).
  */
 export async function POST(_request: Request, context: AppApiRouteContext) {
@@ -35,16 +46,30 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     switch (input.action) {
       case 'list':
         return NextResponse.json({ agents: await asks.list({ ...base, ...(input.callerAgentId ? { callerAgentId: input.callerAgentId } : {}) }) }, { headers: NO_STORE })
-      case 'ask':
+      case 'ask': {
+        // An agent asking names itself; an outside app has no agent, whatever turn fields its tool context carries.
+        if (input.callerAgentId && (!input.callerConversationId || !input.callerTurnId)) {
+          throw new AgentAskError('That request is not valid.', 400, 'validation')
+        }
         return NextResponse.json(await asks.ask({
           ...base,
           actorPrincipalId: context.workspace.principal.id,
-          callerAgentId: input.callerAgentId,
-          callerConversationId: input.callerConversationId,
-          callerTurnId: input.callerTurnId,
+          ...(input.callerAgentId
+            ? { caller: { agentId: input.callerAgentId, conversationId: input.callerConversationId!, turnId: input.callerTurnId! } }
+            : {}),
           target: input.agent,
           message: input.message,
           wait: input.wait !== false,
+        }), { headers: NO_STORE })
+      }
+      case 'post':
+        return NextResponse.json(await asks.post({
+          ...base,
+          actorPrincipalId: context.workspace.principal.id,
+          caller: { agentId: input.callerAgentId, conversationId: input.callerConversationId, turnId: input.callerTurnId },
+          conversationId: input.conversationId,
+          text: input.text,
+          mentions: input.mentions ?? [],
         }), { headers: NO_STORE })
       case 'read':
         return NextResponse.json(await asks.read({ ...base, conversationId: input.conversationId, turnId: input.turnId }), { headers: NO_STORE })

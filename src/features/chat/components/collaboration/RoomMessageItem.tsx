@@ -81,7 +81,7 @@ export type RoomMessageView = {
   mentions: ChatMessageMention[]
   streaming?: boolean
   /** Set when this message is one agent's question to another, on a person's behalf: who asked, and how far down the chain it is. */
-  askedBy?: { name: string; hop: number }
+  askedBy?: { name: string; hop: number; parentConversationId?: string }
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
@@ -693,6 +693,17 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
       {message.askedBy ? (
         <p className="mb-1 text-[11px] text-[var(--muted)]">
           Agent question · step {message.askedBy.hop} of {MAX_AGENT_HOPS}
+          {message.askedBy.parentConversationId ? (
+            <>
+              {' · '}
+              <a
+                href={`/app/chat?id=${encodeURIComponent(message.askedBy.parentConversationId)}`}
+                className="underline underline-offset-2 hover:text-[var(--foreground)]"
+              >
+                see where it came from
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
       <AssistantVisualBlocks

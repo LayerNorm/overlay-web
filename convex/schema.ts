@@ -172,6 +172,8 @@ export default defineSchema({
   /** How many questions one person's message (rootKey) and one agent turn (turnKey) have asked other agents. */
   agentAskCounters: defineTable({
     workspaceId: v.string(), key: v.string(), count: v.number(), updatedAt: v.number(),
+    /** For a request's counter: the replies its questions started, so what they used can be added up. */
+    replies: v.optional(v.array(v.object({ conversationId: v.string(), turnId: v.string() }))),
   }).index('by_workspaceId_key', ['workspaceId', 'key']),
 
   agentProfiles: defineTable({

@@ -657,6 +657,7 @@
                     "enum": [
                       "list",
                       "ask",
+                      "post",
                       "read"
                     ]
                   }

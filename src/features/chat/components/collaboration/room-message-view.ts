@@ -16,7 +16,11 @@ function askedBy(message: { authorKind?: string; parts?: RoomMessagePart[] }): R
   if (message.authorKind !== 'agent') return undefined
   const data = message.parts?.find((part) => part.type === 'data-agent-lineage')?.data
   if (!data || typeof data.askedByName !== 'string' || typeof data.hop !== 'number') return undefined
-  return { name: data.askedByName, hop: data.hop }
+  return {
+    name: data.askedByName,
+    hop: data.hop,
+    ...(typeof data.parentConversationId === 'string' && data.parentConversationId ? { parentConversationId: data.parentConversationId } : {}),
+  }
 }
 
 function remoteQueueStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteQueue'] {

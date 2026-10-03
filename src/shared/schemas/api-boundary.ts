@@ -616,7 +616,7 @@ export const webApiBoundaryDefinitions = [
   },
   {
     method: 'POST', path: '/api/v1/agent-asks',
-    schema: { json: z.object({ action: z.enum(['list', 'ask', 'read']) }).passthrough(), response: UnknownResponse },
+    schema: { json: z.object({ action: z.enum(['list', 'ask', 'post', 'read']) }).passthrough(), response: UnknownResponse },
     summary: 'Agents asking agents: list who can be asked, ask one, or read a reply that was still being written', tag: 'Agents',
   },
   {

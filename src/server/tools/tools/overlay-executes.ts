@@ -1154,3 +1154,7 @@ export function executeAskAgent(options: OverlayToolsOptions, input: { agent: st
 export function executeReadAgentReply(options: OverlayToolsOptions, input: { conversationId: string; turnId: string }) {
   return callAgentAsks(options, { action: 'read', conversationId: input.conversationId, turnId: input.turnId })
 }
+
+export function executePostMessage(options: OverlayToolsOptions, input: { conversationId: string; text: string; mentions?: string[] }) {
+  return callAgentAsks(options, { action: 'post', conversationId: input.conversationId, text: input.text, mentions: input.mentions ?? [] })
+}

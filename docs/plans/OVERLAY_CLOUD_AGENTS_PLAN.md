@@ -369,7 +369,7 @@ Also found and fixed: machines idle longer than 15 minutes could not wake (expir
 
 Known gaps: Codex import untested live (needs a Codex API key). Restarting a host mid-run still fails that run, now immediately and with a message.
 
-**Phase 5 status (2026-10-03): built and verified on production, minus `post_message` and lineage links.**
+**Phase 5 status (2026-10-03): built and verified on production.**
 
 - [x] `agent_chat` tool group (`list_agents`, `ask_agent`, `read_agent_reply`) for native agents and, over MCP, for Claude Code / Codex cloud agents; withheld from outside apps.
 - [x] The asked agent runs for the same person (their access, their billing, their audit), in a visible group conversation; the question carries a lineage read back from the database.
@@ -377,7 +377,9 @@ Known gaps: Codex import untested live (needs a Codex API key). Restarting a hos
 - [x] UI: "Agent question · step N of 3" in the room view.
 - [x] Exit criterion met: an Overlay agent asked the cloud Claude Code agent and got the answer; the reverse worked over MCP; a cycle was stopped.
 
-Details and what the live run found: `docs/develop/agent-to-agent.md`. Not built: `post_message`, a spend budget per chain (counts only), parent-turn links, and agent threads in the personal Chats view.
+- [x] `post_message` (post into a room the agent is in, mention agents there), a per-chain token budget, "see where it came from" links, outside apps asking agents as the person, and agent conversations opening in the room view from a plain link.
+
+Details and what the live runs found: `docs/develop/agent-to-agent.md`. Not built: a spend limit in money (tokens only), and posting into a room the agent is not already in.
 
 ## Decisions (2026-10-01)
 

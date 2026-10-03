@@ -16,6 +16,17 @@ export const MAX_AGENT_HOPS = 3
 export const MAX_AGENT_ASKS_PER_ROOT = 12
 /** Questions one turn may ask directly. */
 export const MAX_AGENT_ASKS_PER_TURN = 3
+/** Messages one turn may post into other conversations, and one person's message may cause across a chain. */
+export const MAX_AGENT_POSTS_PER_TURN = 5
+export const MAX_AGENT_POSTS_PER_ROOT = 20
+/**
+ * What the asked agents of one chain may use in total (input plus output tokens of their replies). Counts alone do not
+ * bound cost, since one question can start a long turn; this stops the next question once the chain has used this much.
+ */
+export const MAX_CHAIN_TOKENS = 500_000
+/** An outside app (ChatGPT, Claude, …) asking an agent for a person: per hour and per day. */
+export const MAX_OUTSIDE_ASKS_PER_HOUR = 30
+export const MAX_OUTSIDE_ASKS_PER_DAY = 100
 
 export type AgentLineage = {
   /** The turn id of the person's message that started the whole chain. */
@@ -27,6 +38,8 @@ export type AgentLineage = {
   /** The agent that asked (absent at hop 0). */
   askedByAgentId?: string
   askedByName?: string
+  /** Where the asking turn was running, so the question can link back to it. */
+  parentConversationId?: string
 }
 
 export type AgentLineagePart = { type: typeof AGENT_LINEAGE_PART_TYPE; data: AgentLineage }
@@ -68,6 +81,7 @@ export function nextLineage(args: {
   callerName?: string
   targetAgentId: string
   asksSoFarThisTurn: number
+  parentConversationId?: string
 }): { ok: true; lineage: AgentLineage } | { ok: false; refusal: AskRefusal } {
   if (args.targetAgentId === args.callerAgentId) return { ok: false, refusal: 'self' }
   if (args.lineage.chain.includes(args.targetAgentId)) return { ok: false, refusal: 'cycle' }
@@ -81,14 +95,43 @@ export function nextLineage(args: {
       chain: [...args.lineage.chain, args.targetAgentId],
       askedByAgentId: args.callerAgentId,
       ...(args.callerName ? { askedByName: args.callerName } : {}),
+      ...(args.parentConversationId ? { parentConversationId: args.parentConversationId } : {}),
     },
   }
 }
 
-export const ASK_REFUSAL_MESSAGE: Record<AskRefusal | 'budget', string> = {
+export const ASK_REFUSAL_MESSAGE: Record<AskRefusal | 'budget' | 'spend' | 'post_limit' | 'outside_limit', string> = {
+  spend: 'The agents in this chain have already used as much as one request may. Answer with what you have.',
+  post_limit: `You have posted as many messages as one request may (${MAX_AGENT_POSTS_PER_TURN} per turn).`,
+  outside_limit: 'Too many questions to agents from outside apps recently. Try again later.',
   self: 'An agent cannot ask itself.',
   cycle: 'That agent is already part of this chain of questions, so asking it would loop. Answer with what you have.',
   hop_limit: `Agents can pass a question on at most ${MAX_AGENT_HOPS} times. Answer with what you have.`,
   turn_limit: `One turn can ask at most ${MAX_AGENT_ASKS_PER_TURN} questions. Combine them or answer with what you have.`,
   budget: 'This request has already asked other agents as many questions as one request may. Answer with what you have.',
+}
+
+/**
+ * The lineage for one message that addresses several agents at once (an agent posting a message that mentions them):
+ * each target is checked as an ask would be, and the chain gains all of them, one hop on.
+ */
+export function nextLineageForMentions(args: {
+  lineage: AgentLineage
+  callerAgentId: string
+  callerName?: string
+  targetAgentIds: readonly string[]
+  parentConversationId?: string
+}): { ok: true; lineage: AgentLineage } | { ok: false; refusal: AskRefusal } {
+  const targets = [...new Set(args.targetAgentIds)]
+  let first: AgentLineage | null = null
+  for (const targetAgentId of targets) {
+    const next = nextLineage({
+      lineage: args.lineage, callerAgentId: args.callerAgentId, callerName: args.callerName, targetAgentId, asksSoFarThisTurn: 0,
+      parentConversationId: args.parentConversationId,
+    })
+    if (!next.ok) return next
+    first ??= next.lineage
+  }
+  if (!first) return { ok: false, refusal: 'self' }
+  return { ok: true, lineage: { ...first, chain: [...args.lineage.chain, ...targets] } }
 }

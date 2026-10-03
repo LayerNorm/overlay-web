@@ -42,10 +42,8 @@ export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [
   // Changing agents would let an outside app rewrite what Overlay's own agents may do.
   'create_agent',
   'update_agent',
-  // An outside app is not one of the workspace's agents, so it has no place in a chain of agents asking agents.
-  'list_agents',
-  'ask_agent',
-  'read_agent_reply',
+  // Posting is something an agent does in a conversation it is part of. An outside app can still ask an agent.
+  'post_message',
 ]
 
 /**
@@ -74,7 +72,7 @@ export const MCP_GROUP_COVERAGE: {
     integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
     automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
     agents: { exposed: false, reason: 'Editing agents would let an outside app rewrite what Overlay\'s own agents may do.' },
-    agent_chat: { exposed: false, reason: 'Asking agents needs an agent identity to attribute and limit the chain; an outside app is not an agent of the workspace.' },
+    agent_chat: { exposed: true },
     computer: { exposed: false, reason: 'A paid desktop that belongs to the person\'s agents, not something an outside app should start.' },
   },
 }

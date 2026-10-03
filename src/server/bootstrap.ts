@@ -311,6 +311,12 @@ export function createOverlayServerContext(
       { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
       { throwOnError: true },
     )) ?? { ok: false, reason: 'budget' },
+    recordReply: async (args) => {
+      await lazyConvex.mutation('agents/agentAsks:recordAgentAskReplyByServer', { serverSecret: getInternalApiSecret(), now: Date.now(), ...args }, { throwOnError: true })
+    },
+    listReplies: async (args) => (await lazyConvex.query<Array<{ conversationId: string; turnId: string }>>(
+      'agents/agentAsks:listAgentAskRepliesByServer', { serverSecret: getInternalApiSecret(), ...args }, { throwOnError: true },
+    )) ?? [],
     releaseBudget: async (args) => {
       await lazyConvex.mutation('agents/agentAsks:releaseAgentAskByServer', { serverSecret: getInternalApiSecret(), now: Date.now(), ...args }, { throwOnError: true })
     },
