@@ -50,3 +50,12 @@ test('workedDurationMs is absent without a later updatedAt or for human messages
     undefined,
   )
 })
+
+test('an agent-authored question carries who asked and how deep the chain is; a person cannot fake one', () => {
+  const base = { id: 'm', createdAt: 1, content: 'Asked by Scout: hi', turnId: 't' }
+  const lineage = { type: 'data-agent-lineage', data: { rootTurnId: 'r', hop: 2, chain: ['a', 'b'], askedByAgentId: 'a', askedByName: 'Scout' } }
+  const asked = toRoomMessageView({ message: { ...base, authorKind: 'agent', parts: [lineage] } as never, currentPrincipalId: 'me', authorName: 'Scout' })
+  assert.deepEqual(asked.askedBy, { name: 'Scout', hop: 2 })
+  const forged = toRoomMessageView({ message: { ...base, authorKind: 'human', parts: [lineage] } as never, currentPrincipalId: 'me', authorName: 'Me' })
+  assert.equal(forged.askedBy, undefined)
+})

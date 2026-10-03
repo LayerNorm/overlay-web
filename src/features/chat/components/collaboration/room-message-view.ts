@@ -11,6 +11,14 @@ export type RoomMessagePart = {
   data?: Record<string, unknown>
 }
 
+/** Who asked, when another agent posted this message on a person's behalf. */
+function askedBy(message: { authorKind?: string; parts?: RoomMessagePart[] }): RoomMessageView['askedBy'] {
+  if (message.authorKind !== 'agent') return undefined
+  const data = message.parts?.find((part) => part.type === 'data-agent-lineage')?.data
+  if (!data || typeof data.askedByName !== 'string' || typeof data.hop !== 'number') return undefined
+  return { name: data.askedByName, hop: data.hop }
+}
+
 function remoteQueueStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteQueue'] {
   const part = parts?.find((candidate) => candidate.type === 'data-remote-agent-status')
   const data = part?.data
@@ -218,6 +226,7 @@ export function toRoomMessageView({
     images: imageAttachments(message.parts),
     documentNames: docNames,
     mentions,
+    askedBy: askedBy(message),
     remoteQueue: remoteQueueStatus(message.parts),
     remoteRequest: remoteRequest(message.parts),
     remoteRun: remoteRunStatus(message.parts),

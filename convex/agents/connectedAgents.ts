@@ -384,7 +384,9 @@ export const startRemoteAgentTurnByServer = mutation({
     ])
     if (!membership || membership.status !== 'active' || !actorParticipant || actorParticipant.status !== 'active' ||
       !conversation || conversation.deletedAt || conversation.workspaceId !== args.workspaceId ||
-      !userMessage || userMessage.conversationId !== args.conversationId || userMessage.role !== 'user' ||
+      // The message that asks is a person's, or an agent's question posted for that person (agent asks agent).
+      !userMessage || userMessage.conversationId !== args.conversationId ||
+      (userMessage.role !== 'user' && userMessage.authorKind !== 'agent') ||
       userMessage.userId !== args.actorUserId ||
       !agent || agent.type !== 'agent' || agent.archivedAt || agent.workspaceId !== args.workspaceId ||
       agent.agentId !== args.agentId || !agentParticipant || agentParticipant.status !== 'active') {

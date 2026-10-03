@@ -32,6 +32,7 @@ import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
+import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { roomMessageDomId } from './room-message-view'
 
 export type RoomMessageReaction = {
@@ -79,6 +80,8 @@ export type RoomMessageView = {
   /** Room members named in the body, so `@name` renders as a chip. */
   mentions: ChatMessageMention[]
   streaming?: boolean
+  /** Set when this message is one agent's question to another, on a person's behalf: who asked, and how far down the chain it is. */
+  askedBy?: { name: string; hop: number }
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
@@ -687,6 +690,11 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
 }) {
   return (
     <>
+      {message.askedBy ? (
+        <p className="mb-1 text-[11px] text-[var(--muted)]">
+          Agent question · step {message.askedBy.hop} of {MAX_AGENT_HOPS}
+        </p>
+      ) : null}
       <AssistantVisualBlocks
         blocks={message.blocks}
         blockKeyPrefix={message.id}

@@ -615,6 +615,11 @@ export const webApiBoundaryDefinitions = [
     summary: 'Create an import code, apply or discard a config version, turn imported hooks on or off, or set a needed value', tag: 'Agents',
   },
   {
+    method: 'POST', path: '/api/v1/agent-asks',
+    schema: { json: z.object({ action: z.enum(['list', 'ask', 'read']) }).passthrough(), response: UnknownResponse },
+    summary: 'Agents asking agents: list who can be asked, ask one, or read a reply that was still being written', tag: 'Agents',
+  },
+  {
     method: 'POST', path: '/api/v1/agent-profiles/upload',
     schema: { json: z.object({}).passthrough(), response: UnknownResponse },
     summary: 'Upload a cleaned agent config (gzip) with a one-time import code', tag: 'Agents',

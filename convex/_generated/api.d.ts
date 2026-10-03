@@ -10,6 +10,7 @@
 
 import type * as admin_administration from "../admin/administration.js";
 import type * as admin_authorization from "../admin/authorization.js";
+import type * as agents_agentAsks from "../agents/agentAsks.js";
 import type * as agents_agentThreads from "../agents/agentThreads.js";
 import type * as agents_artifactCleanup from "../agents/artifactCleanup.js";
 import type * as agents_connectedAgents from "../agents/connectedAgents.js";
@@ -109,6 +110,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "admin/administration": typeof admin_administration;
   "admin/authorization": typeof admin_authorization;
+  "agents/agentAsks": typeof agents_agentAsks;
   "agents/agentThreads": typeof agents_agentThreads;
   "agents/artifactCleanup": typeof agents_artifactCleanup;
   "agents/connectedAgents": typeof agents_connectedAgents;

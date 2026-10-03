@@ -65,6 +65,9 @@ import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
+import { lazyConvex } from '@/server/database/lazy-convex'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
 import { AgentProfileService } from '@/server/agents/profiles/AgentProfileService'
 import { McpAccessService } from '@/server/mcp/McpAccessService'
 import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
@@ -132,6 +135,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   agentProviderAccounts: AgentProviderAccountService
   mcpAccess: McpAccessService
   agentProfiles: AgentProfileService
+  agentAsks: AgentAskService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
   surfaceService: SurfaceService
@@ -299,6 +303,25 @@ export function createOverlayServerContext(
       await createCloudAgentMachineService().applyProfile(args)
     },
   })
+  const agentAsks = new AgentAskService({
+    collaboration: appData.repositories.conversationCollaboration,
+    directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
+    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }>(
+      'agents/agentAsks:claimAgentAskByServer',
+      { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
+      { throwOnError: true },
+    )) ?? { ok: false, reason: 'budget' },
+    releaseBudget: async (args) => {
+      await lazyConvex.mutation('agents/agentAsks:releaseAgentAskByServer', { serverSecret: getInternalApiSecret(), now: Date.now(), ...args }, { throwOnError: true })
+    },
+    // Imported lazily: starting a turn reads this context, so importing it here would be circular.
+    startTurns: async (args) => {
+      const { startWorkspaceAgentTurns } = await import('@/server/agents/start-agent-turns')
+      // No recalled memory for a delegated question: the answer should come from the question, not from whatever the person said elsewhere.
+      const invocations = await startWorkspaceAgentTurns({ ...args, memoryEnabled: false, extractHumanMemory: false })
+      return invocations.map((invocation) => ({ agentId: invocation.agentId, turnId: invocation.turnId }))
+    },
+  })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
     agentSecretEnv: (agentId) => agentProfiles.envForAgent({ agentId }),
@@ -427,6 +450,7 @@ export function createOverlayServerContext(
     agentProviderAccounts,
     mcpAccess,
     agentProfiles,
+    agentAsks,
     managedAgentSandboxBilling,
     computerService,
     surfaceService,

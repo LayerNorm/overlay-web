@@ -25,8 +25,11 @@ import {
   executeDeleteAutomation,
   executeDraftAutomationFromChat,
   executeDraftSkillFromChat,
+  executeAskAgent,
   executeCreateAgent,
   executeDeleteMemory,
+  executeListAgents,
+  executeReadAgentReply,
   executeGenerateImage,
   executeGenerateVideo,
   executePresentGeneratedUi,
@@ -341,6 +344,49 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('update_agent')
         return executeUpdateAgent(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('list_agents')) {
+    tools.list_agents = tool({
+      description:
+        'List the other agents in this workspace that you may ask for help, with what each is for. Use this before ask_agent when you do not already know which agent fits.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        assertToolAllowed('list_agents')
+        return executeListAgents(options)
+      },
+    })
+  }
+
+  if (shouldExposeTool('ask_agent')) {
+    tools.ask_agent = tool({
+      description:
+        'Ask another agent in this workspace to do something and return its answer. It works for the same person you do, with that person\'s access, and its answer comes back to you. Pass a self-contained message, since the agent does not see your conversation. With wait (the default) this returns the reply, or a handle if the agent is still working after about a minute; use read_agent_reply with that handle later. Asking is limited: an agent cannot ask itself, a question cannot loop back to an agent already in the chain, and a chain can pass a question on only a few times.',
+      inputSchema: z.object({
+        agent: z.string().min(1).describe('The agent id or its exact name, from list_agents.'),
+        message: z.string().min(1).max(8000).describe('What you need, with all the context the agent needs.'),
+        wait: z.boolean().optional().describe('Wait for the reply (default true).'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('ask_agent')
+        return executeAskAgent(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('read_agent_reply')) {
+    tools.read_agent_reply = tool({
+      description:
+        'Read the reply to an earlier ask_agent that was still working. Pass the conversationId and turnId ask_agent returned.',
+      inputSchema: z.object({
+        conversationId: z.string().min(1),
+        turnId: z.string().min(1),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('read_agent_reply')
+        return executeReadAgentReply(options, input)
       },
     })
   }

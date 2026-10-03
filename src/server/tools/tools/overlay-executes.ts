@@ -1115,3 +1115,42 @@ export async function executeComputerOpenUrl(
     return computerErrorResult(err, 'Failed to open the URL on the computer')
   }
 }
+
+/**
+ * Agents asking agents. Every call goes through one internal route that works out, from the database, which turn
+ * is asking and under what lineage; nothing about the chain is taken from the model.
+ */
+async function callAgentAsks(options: OverlayToolsOptions, body: Record<string, unknown>) {
+  try {
+    const res = await callInternalApi(
+      '/api/v1/agent-asks',
+      {
+        ...body,
+        ...toolAuthBody(options),
+        callerAgentId: options.agentId,
+        callerConversationId: options.conversationId,
+        callerTurnId: options.turnId,
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    const data = await res.json().catch((_error) => ({ error: 'The request failed.' })) as Record<string, unknown>
+    if (!res.ok) return { success: false, error: typeof data.error === 'string' ? data.error : 'The request failed.' }
+    return { success: true, ...data }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'The request failed.' }
+  }
+}
+
+export function executeListAgents(options: OverlayToolsOptions) {
+  return callAgentAsks(options, { action: 'list' })
+}
+
+export function executeAskAgent(options: OverlayToolsOptions, input: { agent: string; message: string; wait?: boolean }) {
+  return callAgentAsks(options, { action: 'ask', agent: input.agent, message: input.message, wait: input.wait !== false })
+}
+
+export function executeReadAgentReply(options: OverlayToolsOptions, input: { conversationId: string; turnId: string }) {
+  return callAgentAsks(options, { action: 'read', conversationId: input.conversationId, turnId: input.turnId })
+}

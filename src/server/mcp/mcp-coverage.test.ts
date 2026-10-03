@@ -33,7 +33,8 @@ test('outside apps: every exposed group reaches the client at Everything, and no
       const missing = ids.filter((id) => !full.has(id) && !withheld.has(id))
       assert.deepEqual(missing, [], `${group.id} is exposed but ${missing.join(', ')} are not granted`)
     } else {
-      assert.deepEqual(ids.filter((id) => full.has(id)), [], `${group.id} is withheld but is granted`)
+      // A tool in the Everything grant is still withheld from outside apps when the server filters it out by id.
+      assert.deepEqual(ids.filter((id) => full.has(id) && !withheld.has(id)), [], `${group.id} is withheld but is granted`)
     }
   }
 })

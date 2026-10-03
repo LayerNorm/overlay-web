@@ -6,7 +6,7 @@
  * policy as an Overlay agent with that grant: a level can narrow what the
  * workspace allows, never widen it.
  */
-import { AGENT_TOOL_GROUPS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
+import { AGENT_TOOL_GROUPS, normalizeAgentToolGrant, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 
 export const MCP_ACCESS_LEVELS = ['read', 'write', 'full'] as const
 export type McpAccessLevel = (typeof MCP_ACCESS_LEVELS)[number]
@@ -42,6 +42,10 @@ export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [
   // Changing agents would let an outside app rewrite what Overlay's own agents may do.
   'create_agent',
   'update_agent',
+  // An outside app is not one of the workspace's agents, so it has no place in a chain of agents asking agents.
+  'list_agents',
+  'ask_agent',
+  'read_agent_reply',
 ]
 
 /**
@@ -62,7 +66,7 @@ export const MCP_GROUP_COVERAGE: {
     memory: { exposed: true }, knowledge: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
     integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
     automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
-    agents: { exposed: true },
+    agents: { exposed: true }, agent_chat: { exposed: true },
     computer: { exposed: false, reason: 'The agent already runs on a machine of its own; a second computer would only duplicate it.' },
   },
   externalApps: {
@@ -70,6 +74,7 @@ export const MCP_GROUP_COVERAGE: {
     integrations: { exposed: true }, mcp: { exposed: true }, notes: { exposed: true }, skills: { exposed: true },
     automations: { exposed: true }, image: { exposed: true }, video: { exposed: true }, browser: { exposed: true },
     agents: { exposed: false, reason: 'Editing agents would let an outside app rewrite what Overlay\'s own agents may do.' },
+    agent_chat: { exposed: false, reason: 'Asking agents needs an agent identity to attribute and limit the chain; an outside app is not an agent of the workspace.' },
     computer: { exposed: false, reason: 'A paid desktop that belongs to the person\'s agents, not something an outside app should start.' },
   },
 }
@@ -80,7 +85,8 @@ export const MCP_GROUP_COVERAGE: {
  */
 export function mcpAccessForGrant(allowedToolIds: readonly string[]): McpAccessLevel | 'none' | 'custom' {
   if (allowedToolIds.length === 0) return 'none'
-  const held = new Set(allowedToolIds)
+  // Read as the tools a grant is understood to hold, so a level saved before a tool joined it still reads as that level.
+  const held = new Set(normalizeAgentToolGrant(allowedToolIds))
   // Highest level whose grant is exactly what is held.
   for (const level of [...MCP_ACCESS_LEVELS].reverse()) {
     const grant = mcpToolGrantFor(level)

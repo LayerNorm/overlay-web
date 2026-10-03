@@ -124,6 +124,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   { path: '/api/v1/agent-environments/enroll', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-profiles/upload', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-asks', methods: { POST: authenticated() } },
   { path: '/api/v1/agents/:agentId/profile', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },

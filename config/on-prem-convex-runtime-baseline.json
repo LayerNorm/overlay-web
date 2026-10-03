@@ -49,6 +49,7 @@
     "src/app/api/v1/admin/catalog/route.ts",
     "src/app/api/v1/admin/principals/route.ts",
     "src/app/api/v1/admin/usage/route.ts",
+    "src/app/api/v1/agent-asks/route.ts",
     "src/app/api/v1/agent-bindings/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/approve/route.ts",
     "src/app/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete/route.ts",

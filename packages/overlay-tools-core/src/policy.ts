@@ -57,6 +57,9 @@ export const OVERLAY_TOOL_IDS = [
   'delete_automation',
   'create_agent',
   'update_agent',
+  'list_agents',
+  'ask_agent',
+  'read_agent_reply',
   ...COMPUTER_TOOL_IDS,
   ...GENERATION_TOOL_IDS,
 ] as const

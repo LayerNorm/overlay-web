@@ -169,6 +169,11 @@ export default defineSchema({
 
   // A version of an Overlay Cloud agent's imported harness config (CLAUDE.md, skills, commands, subagents, MCP
   // servers). The cleaned bundle lives in `agentProfileChunks`; secret values are never in either.
+  /** How many questions one person's message (rootKey) and one agent turn (turnKey) have asked other agents. */
+  agentAskCounters: defineTable({
+    workspaceId: v.string(), key: v.string(), count: v.number(), updatedAt: v.number(),
+  }).index('by_workspaceId_key', ['workspaceId', 'key']),
+
   agentProfiles: defineTable({
     workspaceId: v.string(),
     agentId: v.string(),
@@ -1288,7 +1293,7 @@ export default defineSchema({
             }),
           }),
           v.object({
-            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands')),
+            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-agent-lineage')),
             data: v.any(),
           }),
           v.object({

@@ -141,6 +141,12 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     toolIds: COMPUTER_TOOL_IDS,
   },
   {
+    id: 'agent_chat',
+    label: 'Ask other agents',
+    description: 'Ask other agents in the workspace for help and read their answers. They act for the same person, under a limit on how far a question can be passed on.',
+    toolIds: ['list_agents', 'ask_agent', 'read_agent_reply'],
+  },
+  {
     id: 'agents',
     label: 'Agents',
     description: 'Create new agents and update existing ones from conversation.',
@@ -190,6 +196,8 @@ const LEGACY_MEMORY_WRITE_TOOL_IDS = ['save_memory', 'save_memory_batch', 'updat
 const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: readonly string[] }> = [
   { grantedBy: ['search_knowledge', 'search_in_files'], adds: ['list_files', 'read_file'] },
   { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
+  // Agents that hold the whole toolbox (automations, video, and the browser) can ask other agents.
+  { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply'] },
 ]
 
 export function normalizeAgentToolGrant(allowedToolIds: readonly string[]): string[] {

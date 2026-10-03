@@ -37,6 +37,26 @@ describe('Convex remote agent room turns', () => {
     expect(await read('findInvocationTargetByServer', { workspaceId, agentId, now: now + 1, onlineWithinMs: 45_000 })).toBeNull()
   })
 
+  test('a question one agent posts for another is a valid trigger that carries its lineage, for the same person only', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    // The lineage part must pass the message schema, or posting the question fails.
+    const questionId = await convex.run(async ctx => await ctx.db.insert('conversationMessages', {
+      conversationId: seeded.conversationId as never, userId: actorUserId, authorKind: 'agent', authorPrincipalId: agentPrincipalId,
+      turnId: 'ask-1', role: 'assistant', mode: 'act', content: 'Asked by Scout: hi', contentType: 'text', modelId: 'm', status: 'completed',
+      parts: [{ type: 'text', text: 'Asked by Scout: hi' }, { type: 'data-agent-lineage', data: { rootTurnId: 'r', hop: 1, chain: ['scout', 'planner'], askedByName: 'Scout' } }],
+      createdAt: now, updatedAt: now,
+    }))
+    const asked = await call<{ resumed: boolean }>('startRemoteAgentTurnByServer', startInput({ ...seeded, userMessageId: questionId as string }, { clientNonce: 'ask-nonce', commandId: 'ask-command', runId: 'ask-run', sessionId: 'ask-session' }))
+    expect(asked.resumed).toBe(false)
+    await expect(call('startRemoteAgentTurnByServer', startInput({ ...seeded, userMessageId: questionId as string }, {
+      actorUserId: 'someone-else', initiatorPrincipalId: 'foreign-principal', clientNonce: 'ask-nonce-2', commandId: 'ask-command-2', runId: 'ask-run-2', sessionId: 'ask-session-2',
+    }))).rejects.toThrow(/CONVERSATION_ACCESS_DENIED/)
+  })
+
   test('offline start is atomic, inaccessible callers are denied, and expired run leases cannot claim', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)
