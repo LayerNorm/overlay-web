@@ -25,7 +25,7 @@ export function isCloudAgentAdapterId(value: unknown): value is CloudAgentAdapte
 
 /** The published image (a Boat named snapshot), from server config only. */
 export function cloudAgentImageFromEnv(env: Record<string, string | undefined> = process.env): string {
-  return env.OVERLAY_CLOUD_AGENT_IMAGE?.trim() || 'overlay-agent-v2'
+  return env.OVERLAY_CLOUD_AGENT_IMAGE?.trim() || 'overlay-agent-v3'
 }
 
 export const CLOUD_AGENT_RESOURCES: Record<ComputerSize, SandboxCreateRequest['resources']> = {

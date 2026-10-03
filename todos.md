@@ -164,7 +164,7 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 
 - [ ] **Test the E2B adapter against real E2B** — it is only tested against a fake SDK.
   Needs an `E2B_API_KEY`; set `OVERLAY_MANAGED_SANDBOX_PROVIDER=e2b` and
-  `OVERLAY_CLOUD_AGENT_IMAGE=overlay-agent:v2`, run `npx tsx infra/agent-image/build-e2b.mts`,
+  `OVERLAY_CLOUD_AGENT_IMAGE=overlay-agent:v3`, run `npx tsx infra/agent-image/build-e2b.mts`,
   then create a cloud agent and check: create, wake after idle, pause, delete, `writeFiles`
   (Codex `auth.json`), and the E2B rate card in `ManagedAgentSandboxBilling.ts`.
   See `docs/develop/codex-subscription.md`.

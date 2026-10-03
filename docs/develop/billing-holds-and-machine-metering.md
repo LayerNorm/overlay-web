@@ -45,7 +45,7 @@ Production's app URL is the apex (`https://getoverlay.io`), which redirects to `
 
 ## Production environment for Overlay Cloud agents
 
-Flags (all set on production): `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`, `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` (`internal` limits cloud agents to `OVERLAY_CONNECTED_AGENTS_INTERNAL_WORKSPACE_IDS`), `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` (without it tool assembly throws the hosted-provider kill-switch error), `BOX_API_KEY` or `BOAT_API_KEY`, `OVERLAY_AGENT_PUBLIC_URL`. The machine image is the Boat snapshot `overlay-agent-v2` (`OVERLAY_CLOUD_AGENT_IMAGE` overrides it).
+Flags (all set on production): `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`, `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` (`internal` limits cloud agents to `OVERLAY_CONNECTED_AGENTS_INTERNAL_WORKSPACE_IDS`), `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` (without it tool assembly throws the hosted-provider kill-switch error), `BOX_API_KEY` or `BOAT_API_KEY`, `OVERLAY_AGENT_PUBLIC_URL`. The machine image is the Boat snapshot `overlay-agent-v3` (`OVERLAY_CLOUD_AGENT_IMAGE` overrides it).
 
 ## Checking production by hand
 

@@ -20,7 +20,7 @@ Phase 6 of `docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`. Three independent parts.
 
 ## B. Experimental bring-your-own-key agents
 
-OpenCode and Hermes run on an OpenRouter key (`OPENROUTER_API_KEY`); Cursor on `CURSOR_API_KEY`. They are marked `experimental` in `src/shared/agents/provider-accounts.ts`. The host maps them through acpx (`ACPX_SYSTEM_AGENT_NAMES`, `ACPX_AGENT_LAUNCH_OVERRIDES` — Hermes needs a launch override — in `packages/overlay-agent-host/src/acpx-adapter.ts`). The machine image already contains these CLIs. Host and protocol packages are 0.3.8; the machine runs the host through a pinned `npx` spec, so the image stays `overlay-agent-v2`.
+OpenCode and Hermes run on an OpenRouter key (`OPENROUTER_API_KEY`); Cursor on `CURSOR_API_KEY`. They are marked `experimental` in `src/shared/agents/provider-accounts.ts`. The host maps them through acpx (`ACPX_SYSTEM_AGENT_NAMES`, `ACPX_AGENT_LAUNCH_OVERRIDES` — Hermes needs a launch override — in `packages/overlay-agent-host/src/acpx-adapter.ts`). The machine image already contains these CLIs. Host and protocol packages are 0.3.8; the image bakes the host in, so it is `overlay-agent-v3` (host 0.3.8; v2 machines run only Claude Code and Codex).
 
 ## C. E2B adapter (self-hosting)
 
@@ -29,7 +29,7 @@ OpenCode and Hermes run on an OpenRouter key (`OPENROUTER_API_KEY`); Cursor on `
 ```
 OVERLAY_MANAGED_SANDBOX_PROVIDER=e2b
 E2B_API_KEY=...
-OVERLAY_CLOUD_AGENT_IMAGE=overlay-agent:v2     # printed by the build script
+OVERLAY_CLOUD_AGENT_IMAGE=overlay-agent:v3     # printed by the build script
 npx tsx infra/agent-image/build-e2b.mts        # builds the template
 ```
 

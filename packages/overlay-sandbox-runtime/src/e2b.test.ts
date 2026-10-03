@@ -92,7 +92,7 @@ function fakeE2b() {
 }
 
 const request = (name: string, overrides: Partial<SandboxCreateRequest> = {}): SandboxCreateRequest => ({
-  name, image: 'overlay-agent:v2', persistent: true, networkPolicy: { mode: 'allow_all' }, idleTimeoutMs: 0, hardTimeoutMs: 2 * 60 * 60_000, ports: [3000], ...overrides,
+  name, image: 'overlay-agent:v3', persistent: true, networkPolicy: { mode: 'allow_all' }, idleTimeoutMs: 0, hardTimeoutMs: 2 * 60 * 60_000, ports: [3000], ...overrides,
 })
 
 test('the E2B adapter satisfies the shared sandbox conformance suite', async () => {
@@ -106,7 +106,7 @@ test('a sandbox is created from the template with a pause-on-timeout lifecycle, 
   const runtime = new E2BSandboxRuntime({ apiKey: 'secret-key', sandbox: sdk })
   await runtime.create(request('machine-1', { environment: { A: '1' }, metadata: { agentId: 'a1' } }))
   const [template, options] = calls[0]!.args as [string, { apiKey?: string; envs?: Record<string, string>; metadata?: Record<string, string>; lifecycle?: unknown; timeoutMs?: number }]
-  assert.equal(template, 'overlay-agent:v2')
+  assert.equal(template, 'overlay-agent:v3')
   assert.equal(options.apiKey, 'secret-key')
   assert.deepEqual(options.envs, { A: '1' })
   assert.deepEqual(options.lifecycle, { onTimeout: 'pause', autoResume: false })
