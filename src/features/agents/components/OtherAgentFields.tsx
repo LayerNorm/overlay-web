@@ -5,7 +5,7 @@ import type { ComputerSize } from '@overlay/workspace-contracts'
 import type { ProviderAccountResource } from '@overlay/api-client'
 import { ListboxSelect, SegmentedControl } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { AGENT_PROVIDER_IDS, AGENT_PROVIDERS } from '@/shared/agents/provider-accounts'
+import { SELECTABLE_AGENT_PROVIDER_IDS, AGENT_PROVIDERS } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 import { OTHER_AGENT_LABEL, type OtherAgentDraft } from './cloud-agent-draft'
 import { FieldLabel } from './InfoTip'
@@ -61,12 +61,12 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
   return (
     <>
       <div>
-        <FieldLabel info="The agent that does the work. Claude Code and Codex are fully supported; OpenCode, Hermes, and Cursor are experimental and run with your own key.">Agent</FieldLabel>
+        <FieldLabel info="The agent that does the work. Claude Code and Codex are fully supported; OpenCode and Cursor are experimental and run with your own key.">Agent</FieldLabel>
         <SegmentedControl
           ariaLabel="Agent"
           layout="stretch"
           value={other.adapterId}
-          options={AGENT_PROVIDER_IDS.map((id) => ({ value: id, label: OTHER_AGENT_LABEL[id] }))}
+          options={SELECTABLE_AGENT_PROVIDER_IDS.map((id) => ({ value: id, label: OTHER_AGENT_LABEL[id] }))}
           onChange={(adapterId) => onChange({ adapterId, providerAccountId: '' })}
         />
         {AGENT_PROVIDERS[other.adapterId].experimental ? (

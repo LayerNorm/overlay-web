@@ -5,6 +5,11 @@
  */
 
 export const AGENT_PROVIDER_IDS = ['claude-code', 'codex', 'opencode', 'hermes', 'cursor'] as const
+/**
+ * Offered in pickers. Hermes is held back: its installer fails on the Boat base layer (it downloads Python 3.14 and
+ * cannot unpack it), so a Hermes machine never enrolls. Backend support stays so it can be switched back on.
+ */
+export const SELECTABLE_AGENT_PROVIDER_IDS = AGENT_PROVIDER_IDS.filter((id) => id !== 'hermes')
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number]
 
 export const AGENT_PROVIDER_AUTH_METHODS = ['subscription', 'api_key'] as const

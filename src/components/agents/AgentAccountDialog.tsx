@@ -7,7 +7,7 @@ import { Button, DialogFrame, Input, SegmentedControl } from '@overlay/ui/primit
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   AGENT_PROVIDERS,
-  AGENT_PROVIDER_IDS,
+  SELECTABLE_AGENT_PROVIDER_IDS,
   checkAgentProviderSecret,
   type AgentProviderAuthMethod,
   type AgentProviderId,
@@ -186,7 +186,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
                 ariaLabel="Agent"
                 layout="stretch"
                 value={provider}
-                options={AGENT_PROVIDER_IDS.map((id) => ({ value: id, label: AGENT_PROVIDERS[id].label }))}
+                options={SELECTABLE_AGENT_PROVIDER_IDS.map((id) => ({ value: id, label: AGENT_PROVIDERS[id].label }))}
                 onChange={pickProvider}
               />
             </div>
