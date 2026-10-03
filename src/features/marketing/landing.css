@@ -443,16 +443,17 @@
 
 /* faq */
 .landing .faq { border-top: var(--hairline); }
-.landing .faq details { border-bottom: var(--hairline); padding: 20px 4px; }
+.landing .faq details { border-bottom: var(--hairline); padding: 0 4px; }
 .landing .faq summary {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 20px 0;
   font-family: var(--serif); font-weight: 400; font-size: 19px; letter-spacing: -0.01em;
   color: var(--foreground); cursor: pointer; list-style: none;
 }
 .landing .faq summary::-webkit-details-marker { display: none; }
 .landing .faq summary .faq-plus { color: var(--muted-light); font-size: 20px; line-height: 1; transition: transform 0.15s ease; }
 .landing .faq details[open] summary .faq-plus { transform: rotate(45deg); }
-.landing .faq .a { margin-top: 10px; max-width: 68ch; font-size: 14.5px; color: var(--muted); line-height: 1.7; }
+.landing .faq .a { padding-bottom: 20px; max-width: 68ch; font-size: 14.5px; color: var(--muted); line-height: 1.7; }
 
 .landing .center-close { text-align: center; }
 .landing .center-close h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(30px, 3.8vw, 48px); letter-spacing: -0.02em; }
