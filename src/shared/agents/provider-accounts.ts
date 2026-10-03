@@ -92,7 +92,18 @@ export function agentProviderEnv(
   secret: string,
 ): Record<string, string> | null {
   const name = AGENT_PROVIDERS[provider].env[method]
-  return name ? { [name]: secret } : null
+  if (!name) return null
+  return { [name]: secret, ...EXPERIMENTAL_AGENT_DEFAULT_ENV[provider] }
+}
+
+/**
+ * Experimental agents run on OpenRouter, so they get a cheap default model instead of whatever the tool would pick.
+ * The agent's own config (imported or edited on the machine) can still override it.
+ */
+const CHEAP_OPENROUTER_MODEL = 'deepseek/deepseek-v4-flash'
+const EXPERIMENTAL_AGENT_DEFAULT_ENV: Partial<Record<AgentProviderId, Record<string, string>>> = {
+  opencode: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: `openrouter/${CHEAP_OPENROUTER_MODEL}` }) },
+  hermes: { HERMES_INFERENCE_PROVIDER: 'openrouter', LLM_MODEL: CHEAP_OPENROUTER_MODEL },
 }
 
 export type AgentProviderSecretCheck = { ok: true; secret: string } | { ok: false; reason: string }
