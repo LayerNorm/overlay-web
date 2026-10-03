@@ -529,6 +529,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
       DELETE: authenticated(),
     },
   },
+  { path: '/api/v1/provider-accounts/codex-sign-in', methods: { POST: authenticated() } },
   // Other AI apps connected over MCP: every operation is scoped to the caller's own user id.
   { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
   { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },

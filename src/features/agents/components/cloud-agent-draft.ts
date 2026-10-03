@@ -9,6 +9,9 @@ export type OtherAgentDraft = {
 export const OTHER_AGENT_LABEL: Record<AgentProviderId, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
+  opencode: 'OpenCode',
+  hermes: 'Hermes',
+  cursor: 'Cursor',
 }
 
 export function initialOtherAgentDraft(): OtherAgentDraft {

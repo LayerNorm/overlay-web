@@ -168,6 +168,7 @@
     "src/app/api/v1/onboarding/status/route.ts",
     "src/app/api/v1/outputs/[outputId]/content/route.ts",
     "src/app/api/v1/outputs/route.ts",
+    "src/app/api/v1/provider-accounts/codex-sign-in/route.ts",
     "src/app/api/v1/provider-accounts/route.ts",
     "src/app/api/v1/providers/connections/route.ts",
     "src/app/api/v1/providers/connections/test/route.ts",

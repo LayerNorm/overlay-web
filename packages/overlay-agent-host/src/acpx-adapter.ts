@@ -27,6 +27,34 @@ export const ACPX_AGENT_NAMES: Record<string, string> = {
   codex: 'codex',
 }
 
+/**
+ * Experimental agents whose own CLI is on the machine (Overlay Cloud's system layer) instead of being bundled and
+ * pinned in the Overlay image, so `image-check` does not require them. Bring-your-own-key only.
+ */
+export const ACPX_SYSTEM_AGENT_NAMES: Record<string, string> = {
+  opencode: 'opencode',
+  cursor: 'cursor',
+  hermes: 'hermes',
+}
+
+/** Agents acpx has no built-in launch for: how to start them speaking ACP. */
+export const ACPX_AGENT_LAUNCH_OVERRIDES: Record<string, string[]> = {
+  hermes: ['hermes', 'acp'],
+}
+
+export const ACPX_AGENT_DISPLAY_NAMES: Record<string, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+  cursor: 'Cursor',
+  hermes: 'Hermes',
+}
+
+/** The acpx agent name for an Overlay adapter id, or undefined when acpx does not run it. */
+export function acpxAgentNameFor(adapterId: string): string | undefined {
+  return ACPX_AGENT_NAMES[adapterId] ?? ACPX_SYSTEM_AGENT_NAMES[adapterId]
+}
+
 export type AcpxAdapterOptions = {
   id: string
   displayName: string

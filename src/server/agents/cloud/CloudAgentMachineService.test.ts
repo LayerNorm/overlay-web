@@ -212,3 +212,15 @@ test('applying a profile removes what the earlier version wrote, prunes the fold
   assert.ok(!prune?.includes("'/home/user/.claude'"), 'the harness folder itself is never removed')
   assert.ok(written.includes('/home/user/.claude/CLAUDE.md') && written.includes('/home/user/.overlay/profile-managed.json'))
 })
+
+test('files for a run go onto the running machine under the home folder, and nowhere else', async () => {
+  const { machine, commands, written } = fakeMachine('running')
+  const { service } = deps(machine)
+  await service.writeFiles({ workspaceId: 'ws', environmentId: 'env-1', files: [{ path: '/home/user/.codex/auth.json', contents: '{}', mode: 0o600 }] })
+  assert.deepEqual(written, ['/home/user/.codex/auth.json'])
+  assert.ok(commands.some((command) => command.startsWith('mkdir -p') && command.includes("'/home/user/.codex'")))
+  await assert.rejects(service.writeFiles({ workspaceId: 'ws', environmentId: 'env-1', files: [{ path: '/etc/passwd', contents: 'x' }] }), /not allowed/)
+  await assert.rejects(service.writeFiles({ workspaceId: 'ws', environmentId: 'env-1', files: [{ path: '/home/user/../etc/x', contents: 'x' }] }), /not allowed/)
+  const gone = deps(fakeMachine('running').machine, { lease: null })
+  await assert.rejects(gone.service.writeFiles({ workspaceId: 'ws', environmentId: 'env-1', files: [{ path: '/home/user/a', contents: 'x' }] }), /not available/)
+})

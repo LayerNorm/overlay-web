@@ -272,6 +272,24 @@ export class CloudAgentMachineService {
     })
   }
 
+  /**
+   * Puts files on an agent's running machine (a Codex subscription's auth.json for a run). The machine is already up:
+   * its host asked for them. Paths must be under the home folder.
+   */
+  async writeFiles(args: { workspaceId: string; environmentId: string; files: Array<{ path: string; contents: string; mode?: number }> }): Promise<void> {
+    const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: args.environmentId })
+    if (!lease?.providerReference) throw new CloudAgentMachineError('This agent\'s machine is not available', 409, 'cloud_agent_unavailable')
+    for (const file of args.files) {
+      if (!file.path.startsWith('/home/user/') || file.path.includes('..')) throw new CloudAgentMachineError('That path is not allowed', 400, 'path_not_allowed')
+    }
+    const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })
+    const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
+    const directories = [...new Set(args.files.map((file) => file.path.slice(0, file.path.lastIndexOf('/'))))]
+    await this.runDetachedWait(machine, `mkdir -p ${directories.map(shellQuote).join(' ')}`)
+    const encoder = new TextEncoder()
+    await machine.writeFiles(args.files.map((file) => ({ path: file.path, contents: encoder.encode(file.contents), ...(file.mode ? { mode: file.mode } : {}) })))
+  }
+
   /** Stops using the machine: revoke its environment (which ends the lease and its bindings) and delete it now. */
   async teardown(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<void> {
     const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })

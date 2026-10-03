@@ -96,6 +96,8 @@ export class ConnectedAgentControlPlaneService {
     providerConnections?: Pick<ProviderConnectionRepository, 'get'>
     /** The credentials an Overlay Cloud agent runs on. */
     agentProviderAccounts?: Pick<AgentProviderAccountService, 'requireUsable' | 'resolveRunEnvironment' | 'markNeedsReauth'>
+    /** Puts files on an Overlay Cloud machine for a run (a Codex subscription's auth.json), which an environment variable cannot carry. */
+    deliverMachineFiles?: (args: { workspaceId: string; environmentId: string; files: Array<{ path: string; contents: string; mode?: number }> }) => Promise<void>
     /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
     agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
     now?: () => number
@@ -742,6 +744,14 @@ export class ConnectedAgentControlPlaneService {
       }, runId, 'agent_run')
       // The agent's own values go in first so they can never replace the account's credential.
       const own = agentId && this.dependencies.agentSecretEnv ? await this.dependencies.agentSecretEnv(agentId).catch((_error) => ({})) : {}
+      if (resolved.files.length > 0) {
+        if (!this.dependencies.deliverMachineFiles) throw controlPlaneError('This account cannot be delivered to a machine', 501, 'machine_files_unavailable')
+        try {
+          await this.dependencies.deliverMachineFiles({ workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, files: resolved.files })
+        } catch (_error) {
+          throw controlPlaneError('The machine could not be prepared for this run. Try again.', 502, 'machine_files_failed')
+        }
+      }
       return { env: { ...own, ...resolved.env } }
     } catch (error) {
       const detail = error as { message?: string; statusCode?: number; code?: string }

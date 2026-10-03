@@ -154,13 +154,16 @@ export default defineSchema({
   // delivered to a machine one run at a time.
   agentProviderAccounts: defineTable({
     userId: v.string(),
-    provider: v.union(v.literal('claude-code'), v.literal('codex')),
+    provider: v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor')),
     method: v.union(v.literal('subscription'), v.literal('api_key')),
     label: v.string(),
     credentialRef: v.string(),
     status: v.union(v.literal('active'), v.literal('needs_reauth')),
     lastError: v.optional(v.string()),
     lastUsedAt: v.optional(v.number()),
+    /** Held while one server refreshes a rotating sign-in (a Codex subscription), so two never use the same refresh token. */
+    refreshLockOwner: v.optional(v.string()),
+    refreshLockUntil: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

@@ -27,7 +27,7 @@ export class CloudAgentsClient {
   /** Starts provisioning and returns at once (202); poll `status` for progress. */
   provision(
     workspaceId: string,
-    input: { agentId: string; adapterId: 'claude-code' | 'codex'; providerAccountId: string; size?: 'small' | 'default' | 'large' },
+    input: { agentId: string; adapterId: 'claude-code' | 'codex' | 'opencode' | 'hermes' | 'cursor'; providerAccountId: string; size?: 'small' | 'default' | 'large' },
     init?: RequestInit,
   ) {
     return this.http.json<{ phase: CloudAgentPhaseResource }>(

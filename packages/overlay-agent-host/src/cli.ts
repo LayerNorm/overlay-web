@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { AcpAgentAdapter } from './acp-adapter.js'
-import { ACPX_AGENT_NAMES, AcpxAgentAdapter } from './acpx-adapter.js'
+import { ACPX_AGENT_DISPLAY_NAMES, ACPX_AGENT_LAUNCH_OVERRIDES, AcpxAgentAdapter, acpxAgentNameFor } from './acpx-adapter.js'
 import type { AgentAdapter } from './adapter.js'
 import { loadAgentHostConfig, saveAgentHostConfig } from './config.js'
 import type { AgentHostConfig } from './config.js'
@@ -23,7 +23,7 @@ import { checkOverlayImage } from './image-check.js'
 import { exportConfig } from './export-config.js'
 import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.7'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.8'
 
 assertSupportedNodeVersion()
 
@@ -69,8 +69,8 @@ if (command === 'image-check') {
         ...(option(args, '--eve-auth-env') ? { bearerTokenEnv: option(args, '--eve-auth-env') } : {}) }
     }
     const manifest = resolveAcpAdapterManifest(id)
-    if (useAcpx && ACPX_AGENT_NAMES[id]) {
-      return { id, displayName: manifest?.displayName ?? id, protocol: 'acpx' as const, agent: ACPX_AGENT_NAMES[id]! }
+    if (useAcpx && acpxAgentNameFor(id)) {
+      return { id, displayName: manifest?.displayName ?? ACPX_AGENT_DISPLAY_NAMES[id] ?? id, protocol: 'acpx' as const, agent: acpxAgentNameFor(id)! }
     }
     if (!manifest) throw new Error(`unknown ACP adapter manifest: ${id}`)
     return { ...manifest, args: [...manifest.args] }
@@ -197,6 +197,7 @@ function buildAdapters(configs: AgentHostConfigAdapter[], stateDirectory: string
     if (adapter.protocol === 'acpx') return new AcpxAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, agent: adapter.agent, stateDirectory,
       ...(adapter.env ? { env: adapter.env } : {}),
+      ...(ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent] ? { registryOverrides: { [adapter.agent]: ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent]! } } : {}),
     })
     if (adapter.protocol === 'eve') return new EveAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, host: adapter.host,

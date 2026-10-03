@@ -716,6 +716,9 @@ export class ManagedAgentSandboxBudgetError extends Error {
   }
 }
 
+const E2B_USD_PER_VCPU_SECOND = 0.000014
+const E2B_USD_PER_GIB_SECOND = 0.0000045
+
 export function sandboxCostUsd(args: {
   provider: string
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
@@ -730,6 +733,11 @@ export function sandboxCostUsd(args: {
     const reported = providerReportedUsd(args.usage.providerMetrics)
     if (reported !== undefined) return reported
     return wallTimeMs / 1_000 / boxSecondsPerDollar()
+  }
+  if (args.provider === 'e2b') {
+    // E2B bills a running sandbox by the second for its CPUs and memory (list price); a paused one costs nothing here.
+    // A self-hosted deployment pays E2B directly, so this is Overlay's metering of its own credit, not E2B's invoice.
+    return (wallTimeMs / 1_000) * (args.resources.vcpus * E2B_USD_PER_VCPU_SECOND + args.resources.memoryGiB * E2B_USD_PER_GIB_SECOND)
   }
   throw new Error(`MANAGED_SANDBOX_PROVIDER_UNPRICED:${args.provider}`)
 }

@@ -51,6 +51,22 @@ export class ConvexAgentProviderAccountRepository implements AgentProviderAccoun
     )) ?? []
   }
 
+  async acquireRefreshLock(args: { accountId: string; owner: string; ttlMs: number; now: number }): Promise<boolean> {
+    return (await convex.mutation<boolean>(
+      'providers/agentAccounts:acquireRefreshLockByServer',
+      { serverSecret: getInternalApiSecret(), ...args },
+      { throwOnError: true },
+    )) === true
+  }
+
+  async releaseRefreshLock(args: { accountId: string; owner: string }): Promise<void> {
+    await convex.mutation(
+      'providers/agentAccounts:releaseRefreshLockByServer',
+      { serverSecret: getInternalApiSecret(), ...args },
+      { throwOnError: true },
+    )
+  }
+
   async remove(args: { accountId: string }): Promise<void> {
     await convex.mutation(
       'providers/agentAccounts:deleteByServer',

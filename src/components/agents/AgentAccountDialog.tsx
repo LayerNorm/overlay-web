@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import type { ProviderAccountResource } from '@overlay/api-client'
 import { Button, DialogFrame, Input, SegmentedControl } from '@overlay/ui/primitives'
@@ -37,6 +37,93 @@ function CopyCommand({ command }: { command: string }) {
   )
 }
 
+/**
+ * Signing in to Codex with ChatGPT: a one-time code to enter at OpenAI, then this waits for the approval. The sign-in
+ * goes straight into the vault on the server; nothing secret reaches this page.
+ */
+function CodexSignIn({ accountId, label, onConnected, onError }: {
+  accountId?: string
+  label: string
+  onConnected(account: ProviderAccountResource): void
+  onError(message: string | null): void
+}) {
+  const [code, setCode] = useState<{ deviceAuthId: string; userCode: string; verificationUrl: string; interval: number; expiresAt: number } | null>(null)
+  const [starting, setStarting] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const done = useRef(false)
+
+  const start = async () => {
+    setStarting(true)
+    onError(null)
+    try {
+      setCode(await overlayAppClient.providerAccounts.startCodexSignIn())
+    } catch (startError) {
+      onError(startError instanceof Error ? startError.message : 'Could not start the sign-in.')
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!code) return
+    done.current = false
+    const timer = window.setInterval(() => {
+      if (done.current) return
+      if (Date.now() > code.expiresAt) {
+        done.current = true
+        setCode(null)
+        onError('That code expired. Start again.')
+        return
+      }
+      void overlayAppClient.providerAccounts.pollCodexSignIn({
+        deviceAuthId: code.deviceAuthId, userCode: code.userCode,
+        ...(label.trim() ? { label: label.trim() } : {}), ...(accountId ? { accountId } : {}),
+      }).then((result) => {
+        if (done.current || result.status !== 'connected') return
+        done.current = true
+        onConnected(result.account)
+      }).catch((pollError: unknown) => {
+        if (done.current) return
+        done.current = true
+        setCode(null)
+        onError(pollError instanceof Error ? pollError.message : 'The sign-in did not complete.')
+      })
+    }, Math.max(2, code.interval) * 1_000)
+    return () => window.clearInterval(timer)
+  }, [code, label, accountId, onConnected, onError])
+
+  if (!code) {
+    return (
+      <div>
+        <Button variant="primary" size="sm" onClick={() => void start()} disabled={starting}>{starting ? 'Starting…' : 'Sign in with ChatGPT'}</Button>
+        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+          You get a one-time code to enter on OpenAI&rsquo;s site. Overlay keeps the sign-in refreshed and gives each run only a short-lived token.
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+      <p className="text-xs text-[var(--foreground)]">
+        1. Open <a href={code.verificationUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{code.verificationUrl.replace('https://', '')}</a> and sign in.
+      </p>
+      <div className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+        <span>2. Enter this code:</span>
+        <code className="rounded-md border border-[var(--border)] px-2 py-0.5 text-sm font-medium tracking-widest">{code.userCode}</code>
+        <button
+          type="button"
+          aria-label="Copy code"
+          className="text-[var(--muted)] hover:text-[var(--foreground)]"
+          onClick={() => { void navigator.clipboard?.writeText(code.userCode).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1_500) }).catch(() => undefined) }}
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+        </button>
+      </div>
+      <p className="text-[11px] text-[var(--muted)]" role="status">Waiting for you to approve it on OpenAI&rsquo;s site (the code expires in 15 minutes). Only enter it if you started this here.</p>
+    </div>
+  )
+}
+
 /** Connect a new account, or replace the credential on one that needs reconnecting. */
 export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
   target: ProviderAccountResource | null
@@ -56,6 +143,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
   const reconnecting = target !== null
   const check = checkAgentProviderSecret(provider, method, secret)
   const help = definition.help[method]
+  const chatgptSignIn = provider === 'codex' && method === 'subscription'
 
   const pickProvider = (next: AgentProviderId) => {
     setProvider(next)
@@ -111,7 +199,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
                 options={(['subscription', 'api_key'] as const).map((id) => ({
                   value: id,
                   label: METHOD_LABEL[id],
-                  ...(definition.methods.includes(id) ? {} : { disabled: true, description: 'Coming soon' }),
+                  ...(definition.methods.includes(id) ? {} : { disabled: true, description: 'Not available' }),
                 }))}
                 onChange={(next) => { setMethod(next); setError(null) }}
               />
@@ -119,6 +207,20 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
           </>
         ) : null}
 
+        {definition.experimental ? (
+          <p className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2 text-[11px] leading-4 text-[var(--muted)]">
+            {definition.label} is experimental on Overlay Cloud: it runs with your own key and has not been proven with as many accounts as Claude Code and Codex.
+          </p>
+        ) : null}
+
+        {chatgptSignIn ? (
+          <CodexSignIn
+            {...(target ? { accountId: target.id } : {})}
+            label={label}
+            onError={setError}
+            onConnected={(account) => onSaved(account)}
+          />
+        ) : (
         <div>
           <label htmlFor="agent-account-secret" className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">
             {method === 'subscription' ? 'Setup token' : 'API key'}
@@ -141,6 +243,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
             </p>
           ) : null}
         </div>
+        )}
 
         {!reconnecting ? (
           <div>
@@ -151,15 +254,17 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
           </div>
         ) : null}
 
-        {secret && !check.ok ? <p className="text-xs text-[var(--muted)]">{check.reason}</p> : null}
+        {!chatgptSignIn && secret && !check.ok ? <p className="text-xs text-[var(--muted)]">{check.reason}</p> : null}
         {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
       </div>
 
       <div className="mt-5 flex items-center justify-end gap-2">
         <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-        <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !check.ok}>
-          {busy ? 'Saving…' : reconnecting ? 'Reconnect' : 'Connect'}
-        </Button>
+        {chatgptSignIn ? null : (
+          <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || !check.ok}>
+            {busy ? 'Saving…' : reconnecting ? 'Reconnect' : 'Connect'}
+          </Button>
+        )}
       </div>
     </DialogFrame>
   )

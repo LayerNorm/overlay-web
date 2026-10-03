@@ -1,6 +1,6 @@
 /** Provider-neutral sandbox primitives owned by Overlay. Provider SDK types must not cross this boundary. */
 
-export type SandboxProviderId = 'box'
+export type SandboxProviderId = 'box' | 'e2b'
 export type SandboxLifecycleState =
   | 'provisioning'
   | 'running'

@@ -16,7 +16,7 @@ export const CLOUD_AGENT_CONFIG_PATH = `${CLOUD_AGENT_STATE_DIR}/config.json`
 export const CLOUD_AGENT_LOG_PATH = `${CLOUD_AGENT_HOME}/.overlay/agent-host.log`
 
 /** Agents offered on Overlay Cloud at launch (Overlay adapter ids). */
-export const CLOUD_AGENT_ADAPTER_IDS = ['claude-code', 'codex'] as const
+export const CLOUD_AGENT_ADAPTER_IDS = ['claude-code', 'codex', 'opencode', 'hermes', 'cursor'] as const
 export type CloudAgentAdapterId = (typeof CLOUD_AGENT_ADAPTER_IDS)[number]
 
 export function isCloudAgentAdapterId(value: unknown): value is CloudAgentAdapterId {

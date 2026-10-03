@@ -300,12 +300,14 @@ function providerAccountHarness(options: {
   bindingConfig?: Record<string, unknown>
   sessionStatus?: string
   environmentKind?: AgentEnvironment['kind']
-  resolve?: () => Promise<{ env: Record<string, string>; provider: 'claude-code'; method: 'subscription' }>
+  resolve?: () => Promise<{ env: Record<string, string>; files: Array<{ path: string; contents: string; mode?: number }>; provider: 'claude-code' | 'codex'; method: 'subscription' }>
+  deliver?: 'fail' | 'none'
 } = {}) {
+  const delivered: unknown[] = []
   const environment: AgentEnvironment = {
     id: 'environment-cloud', workspaceId: 'workspace-1', kind: options.environmentKind ?? 'overlay_cloud',
     name: 'Cloud machine', status: 'online', publicKey: 'public-key',
-    capabilities: { adapters: [{ id: 'claude-code', protocol: 'acp' }, { id: 'hermes', protocol: 'acp' }] },
+    capabilities: { adapters: [{ id: 'claude-code', protocol: 'acp' }, { id: 'hermes', protocol: 'acp' }, { id: 'eve', protocol: 'acp' }] },
     filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] },
     approvedAt: NOW - 1_000, approvedByUserId: 'user-1', createdAt: NOW - 2_000, updatedAt: NOW - 1_000,
   }
@@ -337,10 +339,11 @@ function providerAccountHarness(options: {
       },
       async resolveRunEnvironment(args: { accountId: string; ownerUserId: string; expectedProvider: string }) {
         issued.push(args)
-        return await (options.resolve ?? (async () => ({ env: { CLAUDE_CODE_OAUTH_TOKEN: 'secret-token' }, provider: 'claude-code' as const, method: 'subscription' as const })))()
+        return await (options.resolve ?? (async () => ({ env: { CLAUDE_CODE_OAUTH_TOKEN: 'secret-token' }, files: [], provider: 'claude-code' as const, method: 'subscription' as const })))()
       },
       async markNeedsReauth(accountId: string) { reauth.push(accountId) },
     },
+    ...(options.deliver === 'none' ? {} : { deliverMachineFiles: async (args: unknown) => { if (options.deliver === 'fail') throw new Error('machine down'); delivered.push(args) } }),
     now: () => NOW,
     isEnabled: () => true,
   })
@@ -348,7 +351,7 @@ function providerAccountHarness(options: {
     environment,
     credential: { id: 'credential-1', workspaceId: 'workspace-1', environmentId: environment.id, methods: ['agent:run-credentials'] },
   } as unknown as HostAuthentication
-  return { service, auth, upserts, reauth, issued }
+  return { service, auth, upserts, reauth, issued, delivered }
 }
 
 test('a binding records the account and who chose it, and refuses accounts that are not the actor\'s', async () => {
@@ -358,7 +361,7 @@ test('a binding records the account and who chose it, and refuses accounts that 
   assert.equal(upserts[0]?.adapterConfig.providerAccountId, 'account-1')
   assert.equal(upserts[0]?.adapterConfig.providerAccountOwnerUserId, 'user-1')
   await assertControlPlaneError(() => service.upsertBinding({ ...base, providerAccountId: 'someone-elses' }), 'provider_account_invalid')
-  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'hermes', providerAccountId: 'account-1' }), 'provider_account_unsupported')
+  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'eve', providerAccountId: 'account-1' }), 'provider_account_unsupported')
 })
 
 test('run credentials go only to the Overlay Cloud host running that active run, for the account the binding chose', async () => {
@@ -494,3 +497,16 @@ function artifactRecord(
     sha256: sha256('expired'), objectKey: `artifacts/${id}`, status: 'clean', expiresAt: NOW + 60_000,
     createdAt: NOW - 1_000, updatedAt: NOW - 1_000, ...overrides }
 }
+
+test('an account that needs a file on the machine (a Codex subscription) has it written first, and the run gets no secret in its environment', async () => {
+  const files = [{ path: '/home/user/.codex/auth.json', contents: '{"tokens":{}}', mode: 0o600 }]
+  const resolve = async () => ({ env: {}, files, provider: 'codex' as const, method: 'subscription' as const })
+  const ok = providerAccountHarness({ resolve, bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
+  assert.deepEqual(await ok.service.issueRunCredentials(ok.auth, 'run-1'), { env: {} })
+  assert.deepEqual(ok.delivered, [{ workspaceId: 'workspace-1', environmentId: 'environment-cloud', files }])
+
+  const down = providerAccountHarness({ resolve, deliver: 'fail', bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
+  await assertControlPlaneError(() => down.service.issueRunCredentials(down.auth, 'run-1'), 'machine_files_failed')
+  const none = providerAccountHarness({ resolve, deliver: 'none', bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
+  await assertControlPlaneError(() => none.service.issueRunCredentials(none.auth, 'run-1'), 'machine_files_unavailable')
+})

@@ -381,6 +381,15 @@ Known gaps: Codex import untested live (needs a Codex API key). Restarting a hos
 
 Details and what the live runs found: `docs/develop/agent-to-agent.md`. Not built: a spend limit in money (tokens only), and posting into a room the agent is not already in.
 
+**Phase 6 status (2026-10-03): built; deployed except host 0.3.8; Codex not yet verified live.**
+
+- [x] Codex ChatGPT sign-in, vault-held rotating tokens, refresh lease, per-run placeholder `auth.json`.
+- [x] OpenCode / Hermes / Cursor as experimental bring-your-own-key agents (host 0.3.8).
+- [x] E2B sandbox adapter, billing rates, and template build script (tested against a fake SDK only).
+- [ ] Exit criterion (two Codex agents on one ChatGPT account) needs a live run with the owner's device-code approval.
+
+Details: `docs/develop/codex-subscription.md`.
+
 ## Decisions (2026-10-01)
 
 1. **Sharing subscription-backed agents is the creator's choice.** "Everyone in this workspace" shares their usage; "Only me" keeps it private. No extra restriction.

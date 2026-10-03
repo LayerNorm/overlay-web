@@ -331,6 +331,11 @@ export function createOverlayServerContext(
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
     agentSecretEnv: (agentId) => agentProfiles.envForAgent({ agentId }),
+    // Imported lazily: the machine service reads this context, so importing it here would be circular.
+    deliverMachineFiles: async (args) => {
+      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
+      await createCloudAgentMachineService().writeFiles(args)
+    },
     agentProviderAccounts,
     objectStore,
     providerConnections: appData.repositories.providerConnections,

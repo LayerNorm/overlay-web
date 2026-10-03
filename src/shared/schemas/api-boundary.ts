@@ -662,6 +662,20 @@ export const webApiBoundaryDefinitions = [
     summary: 'Connect a Claude Code or Codex account (setup token or API key) into the credential vault', tag: 'Provider accounts',
   },
   {
+    method: 'POST', path: '/api/v1/provider-accounts/codex-sign-in',
+    schema: {
+      json: z.discriminatedUnion('action', [
+        z.object({ action: z.literal('start') }).strict(),
+        z.object({
+          action: z.literal('poll'), deviceAuthId: z.string().min(1).max(300), userCode: z.string().min(1).max(64),
+          label: z.string().max(80).optional(), accountId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+        }).strict(),
+      ]),
+      response: UnknownResponse,
+    },
+    summary: 'Sign in to Codex with ChatGPT (device code): start, then poll until approved', tag: 'Provider accounts',
+  },
+  {
     method: 'PATCH', path: '/api/v1/provider-accounts',
     schema: {
       json: z.object({

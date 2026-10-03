@@ -10,7 +10,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./conformance": "./src/conformance.ts",
-    "./box": "./src/box.ts"
+    "./box": "./src/box.ts",
+    "./e2b": "./src/e2b.ts"
   },
   "scripts": {
     "test": "tsx --test src/*.test.ts",
@@ -21,5 +22,8 @@
     "ai": "7.0.93",
     "tsx": "^4.8.1",
     "typescript": "^5"
+  },
+  "dependencies": {
+    "e2b": "^2.52.0"
   }
 }

@@ -4,7 +4,7 @@
  * secret; values live in the credential vault.
  */
 
-export const AGENT_PROVIDER_IDS = ['claude-code', 'codex'] as const
+export const AGENT_PROVIDER_IDS = ['claude-code', 'codex', 'opencode', 'hermes', 'cursor'] as const
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number]
 
 export const AGENT_PROVIDER_AUTH_METHODS = ['subscription', 'api_key'] as const
@@ -15,7 +15,9 @@ export type AgentProviderAccountStatus = 'active' | 'needs_reauth'
 export type AgentProviderDefinition = {
   id: AgentProviderId
   label: string
-  /** Methods offered at launch. Codex subscriptions need a credential broker (later). */
+  /** Not yet proven with real accounts: offered as bring-your-own-key and labelled as such. */
+  experimental?: boolean
+  /** Methods offered. Codex subscriptions are signed in with ChatGPT and kept alive by a credential broker. */
   methods: readonly AgentProviderAuthMethod[]
   /** Environment variable the agent process reads, per method. */
   env: Partial<Record<AgentProviderAuthMethod, string>>
@@ -37,12 +39,38 @@ export const AGENT_PROVIDERS: Record<AgentProviderId, AgentProviderDefinition> =
   codex: {
     id: 'codex',
     label: 'Codex',
-    methods: ['api_key'],
+    methods: ['subscription', 'api_key'],
+    // A subscription is not an environment variable: Codex reads an auth.json that Overlay writes for each run.
     env: { api_key: 'OPENAI_API_KEY' },
     help: {
-      subscription: null,
-      api_key: 'An OpenAI API key. Usage is billed to your OpenAI account. ChatGPT subscriptions are not supported on Overlay Cloud yet.',
+      subscription: 'Sign in with your ChatGPT account. Overlay keeps the sign-in refreshed and gives each run only a short-lived token.',
+      api_key: 'An OpenAI API key. Usage is billed to your OpenAI account.',
     },
+  },
+  // Experimental agents: their own CLIs are on the machine, each brings its own key (an environment variable).
+  opencode: {
+    id: 'opencode',
+    label: 'OpenCode',
+    experimental: true,
+    methods: ['api_key'],
+    env: { api_key: 'OPENROUTER_API_KEY' },
+    help: { subscription: null, api_key: 'An OpenRouter API key, which gives OpenCode access to most models. Usage is billed to your OpenRouter account.' },
+  },
+  hermes: {
+    id: 'hermes',
+    label: 'Hermes',
+    experimental: true,
+    methods: ['api_key'],
+    env: { api_key: 'OPENROUTER_API_KEY' },
+    help: { subscription: null, api_key: 'An OpenRouter API key. Usage is billed to your OpenRouter account.' },
+  },
+  cursor: {
+    id: 'cursor',
+    label: 'Cursor',
+    experimental: true,
+    methods: ['api_key'],
+    env: { api_key: 'CURSOR_API_KEY' },
+    help: { subscription: null, api_key: 'A Cursor API key from your Cursor account settings. Usage is billed to your Cursor plan.' },
   },
 }
 
@@ -118,6 +146,9 @@ export type AgentProviderAccount = {
 export const AGENT_PROVIDER_REAUTH_MESSAGE: Record<AgentProviderId, string> = {
   'claude-code': 'Claude Code could not sign in. Reconnect your Claude account in Settings → Agent accounts.',
   codex: 'Codex could not sign in. Reconnect your OpenAI account in Settings → Agent accounts.',
+  opencode: 'OpenCode could not sign in. Reconnect your OpenRouter key in Settings → Agent accounts.',
+  hermes: 'Hermes could not sign in. Reconnect your OpenRouter key in Settings → Agent accounts.',
+  cursor: 'Cursor could not sign in. Reconnect your Cursor key in Settings → Agent accounts.',
 }
 
 /** Failure code a host reports when the agent rejected its credentials. */
