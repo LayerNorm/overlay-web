@@ -1,0 +1,57 @@
+---
+title: "Claude Code and Codex agents"
+description: "Run Claude Code or Codex as an agent on an Overlay Cloud computer, bring your own setup, and give it your Overlay workspace."
+---
+
+You can run **Claude Code** or **Codex** as a teammate on its own computer. Overlay starts the computer, keeps the agent signed in with your account, and gives it your workspace as tools. Overlay Cloud agents need a paid plan.
+
+## Create one
+
+1. **Agents → New agent → Other agent**.
+2. Choose **Claude Code** or **Codex**, and **Overlay Cloud**.
+3. Choose the account it runs on. Use **Connect an account** if you have none:
+   - **Claude Code**: paste a token from running `claude setup-token` on your own computer (for a subscription), or an Anthropic API key.
+   - **Codex**: an OpenAI API key.
+   Secrets are stored encrypted and are never shown again.
+4. Choose a size: Small (2 vCPU, 4 GB), Default (4 vCPU, 8 GB), or Large (8 vCPU, 16 GB).
+5. Create. The dialog shows the steps (allocating, booting, connecting) and opens the conversation when the agent is ready, usually within a minute.
+
+You need enough Overlay credit to run the computer (at least $1); without it Overlay will not start one.
+
+## The computer
+
+- It **pauses itself after about 15 minutes idle** and wakes when you message the agent. A wake can take up to a minute or two; if the message says the environment went offline, send it again.
+- On the agent's page: **Pause**, **Resume**, **Restart**, and the size and account it uses. **Restart** also recovers a computer that stopped answering. Do not pause or restart while the agent is replying: the interrupted answer is stopped and you will need to send it again.
+- **Needs sign-in** means the account was rejected. Use **Reconnect** and enter a fresh token.
+- **Unavailable** means the computer is gone, usually because credit ran low. Add credit, then archive the agent and create it again.
+- Compute is charged to your Overlay credit while the computer runs. Model use on your own subscription or key is not charged by Overlay.
+
+## Give it your Overlay workspace
+
+The page's **Overlay access** control decides what the agent can do in Overlay: **None**, **Read only**, **Read and write**, or **Everything** (the default). The agent reaches Overlay through its MCP server and acts as whoever messages it. See [Tools](./tools).
+
+## Bring your setup (Config)
+
+The **Config** section copies your Claude Code or Codex configuration onto the computer: instructions (`CLAUDE.md` or `AGENTS.md`), skills, commands, subagents, output styles, prompts, settings, and MCP servers.
+
+**What is never copied**: sign-in credentials, history, plugins, and caches. Secret-looking values (an MCP server's token) are replaced by names, and you enter each value once; it is stored encrypted and given to the agent only while it runs. Hooks and notify or status commands are listed and stay **off** until you turn them on. Permission modes that skip or deny Overlay's approval prompts (`bypassPermissions`, `acceptEdits`, `dontAsk`) are not imported.
+
+Two ways in:
+
+- **From your computer**: choose **Import from your computer**, copy the command, and run it in a terminal on the computer that has your setup. It needs Node 24 (the command fetches it). It lists what it found, and `--dry-run` sends nothing.
+- **Upload a folder**: choose **Upload .claude folder** (or **.codex**) and pick the folder.
+
+Then review: counts of what was found, what was left out and why, the values it needs, and any hooks. **Apply to the machine** writes it. Each import is a version; **Earlier versions → Restore** goes back, removing what a later version added. The agent reads skills and settings when a session starts, so changes show on its next message.
+
+## Agents of your own
+
+Both kinds can ask each other for help. See [Agents](./agents).
+
+## If something goes wrong
+
+| You see | What to do |
+| --- | --- |
+| "could not start this turn" | The computer may be waking or a previous answer was interrupted. Wait a minute and send again. |
+| "The environment went offline" | The computer was asleep. Send the message again. |
+| "Needs sign-in" | Reconnect the account on the agent's page. |
+| The agent shows "Unavailable" | The computer was deleted (often low credit). Add credit and recreate the agent. |
