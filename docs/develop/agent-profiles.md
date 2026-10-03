@@ -38,13 +38,22 @@ The allowlist and every cleaning rule live in one file, `packages/overlay-agent-
 - acpx runs Claude Code with the user settings source **off** by default, so `~/.claude` (skills, commands, subagents, settings) is invisible to the agent even though the files are on disk. The machine's host is started with `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1` (`detached()` in `cloud-agent-machine.ts`). A machine whose host started before that change needs a Restart once.
 - Skills are read when a Claude Code session starts, so an applied profile shows up on the next turn, not mid-turn.
 - Applying wakes a paused machine and brings its host back; verified live (apply while paused: about 16 s).
-- A run that is cut off by a pause or restart leaves a `running` session that blocks every later turn on that machine (`managed_environment_concurrency`). The reconcile sweep now fails a cloud run with no events for 15 minutes (`ABANDONED_CLOUD_RUN_MS` in `convex/agents/connectedAgents.ts`). Until it runs, "could not start this turn" is this limit. Do not pause or restart a machine while an agent is replying.
+- Pausing or restarting a machine now fails the runs it was in the middle of right away (`control()` asks the control plane to sweep with `abandonEnvironmentId`), with a message to send the message again. A run that is cut off some other way is failed by the reconcile sweep after 15 minutes without events (`ABANDONED_CLOUD_RUN_MS`). Until then, "could not start this turn" is the one-run-per-machine limit (`managed_environment_concurrency`).
+- Imported permission modes: only `default` and `plan` are kept. `bypassPermissions`, `acceptEdits`, and `dontAsk` are dropped, because Overlay's approval cards are the prompt and a mode that skips or denies it would sidestep or silently break them. `allow` rules are kept.
+- Applying a version removes the files the previous version wrote and the folders that leaves empty (never the harness folder).
 - MCP servers: stdio servers run on the machine and need network for `npx` downloads; their secrets arrive as environment variables per run.
+
+## Machine wake and command numbering (found live, fixed)
+
+- **Waking a machine idle for more than 15 minutes failed.** Host credentials last 15 minutes and the host refreshes them, but the machine idle-stops after about the same time, so it woke with an expired credential and could not refresh. An expired credential may now refresh itself (and nothing else) for Overlay Cloud environments for 7 days, with the machine's device key still signing the request (`CLOUD_REFRESH_EXPIRED_GRACE_MS` in `ConnectedAgentControlPlaneService`; `expiredGraceMs` on the nonce check in Convex).
+- **A hole in the host's command numbers stuck it forever.** The host takes commands strictly in sequence and does not record a rejected gap, so one skipped or cancelled command made every later command fail ("the connected environment rejected this command"). Claiming now delivers a command whose run is over as a harmless `shutdown` (a host accepts it for a run it does not know), and the sweep no longer cancels undelivered commands. `repairUndeliveredCancelledCommands` (internal mutation, per environment) restores commands cancelled before acknowledgement on a machine that is already stuck.
 
 ## Verified on production (2026-10-02)
 
 - Real `~/.claude` (19 skills, settings, 750 files): exported with the host CLI, staged, applied, and the agent invoked an imported skill from `/home/user/.claude/skills`. Nothing sensitive left the machine (the CLI prints counts only; `.credentials.json`, history, and plugins are never read).
 - Fixture config (CLAUDE.md, command, subagent, skill, two MCP servers, a hook, a fake token): the agent answered from the imported CLAUDE.md; the command and subagent files landed; the MCP token became `${GITHUB_TOKEN}` and the stored value reached the agent only as an environment variable during runs; the hook did not run and was absent from the applied `settings.json`; Boat's own `computer` MCP server stayed in `~/.claude.json`.
 - Apply while the machine was paused (about 16 s), turning hooks on, restoring version 1, removing a value, and refusing to discard an active version.
-- The first machine tried was left with a dead host after an apply on a paused machine and was not diagnosed (a fresh machine behaved correctly in every later test, including apply while paused); treat a host that does not return after an apply as a Restart-then-report case.
-- Not verified live: Codex config, a stdio MCP server actually starting, and that restoring an earlier version deletes the later version's files (covered by unit tests of the apply plan).
+- The first machine's dead host was the credential-expiry bug above (it had been idle for hours), not the apply.
+- A stdio MCP server from an imported profile (`@modelcontextprotocol/server-everything` via `npx`) started on the machine and its `echo` tool answered through the agent.
+- Rolling back to version 1 removed version 2's command, subagent, CLAUDE.md, skill file, and MCP server.
+- Not verified live: Codex config (needs a Codex API key).

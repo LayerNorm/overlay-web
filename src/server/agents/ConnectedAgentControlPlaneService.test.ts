@@ -22,7 +22,7 @@ const TOKEN = 'test-environment-credential-with-enough-entropy'
 const { privateKey, publicKey } = generateKeyPairSync('ed25519')
 const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
 
-function fixture(overrides: Partial<AgentEnvironment> = {}) {
+function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides: Partial<AgentEnvironmentCredential> = {}) {
   const environment: AgentEnvironment = {
     id: 'environment-1', workspaceId: 'workspace-1', kind: 'local', name: 'Test host',
     status: 'online', publicKey: publicKeyPem, capabilities: {},
@@ -34,7 +34,7 @@ function fixture(overrides: Partial<AgentEnvironment> = {}) {
     id: 'credential-1', workspaceId: environment.workspaceId, environmentId: environment.id,
     tokenHash: sha256(TOKEN), audience: 'overlay-agent-control-plane',
     methods: ['agent:commands:poll', 'agent:events:write'], tokenNonce: 'token-nonce',
-    expiresAt: NOW + 60_000, createdAt: NOW - 1_000,
+    expiresAt: NOW + 60_000, createdAt: NOW - 1_000, ...credentialOverrides,
   }
   const consumed = new Set<string>()
   const repository = {
@@ -46,7 +46,8 @@ function fixture(overrides: Partial<AgentEnvironment> = {}) {
         ? environment
         : null
     },
-    async consumeEnvironmentProofNonce(args: { credentialId: string; nonceHash: string }) {
+    async consumeEnvironmentProofNonce(args: { credentialId: string; nonceHash: string; expiredGraceMs?: number }) {
+      if (credential.expiresAt <= NOW && NOW - credential.expiresAt >= (args.expiredGraceMs ?? 0)) return false
       if (environment.status === 'revoked' || args.credentialId !== credential.id || consumed.has(args.nonceHash)) return false
       consumed.add(args.nonceHash)
       return true
@@ -129,6 +130,28 @@ test('host authentication rejects cross-environment use, revoked hosts, and over
   const oversized = signedRequest({ target: '/api/v1/agent-environments/environment-1/events' })
   oversized.rawBody = new Uint8Array(MAX_HOST_REQUEST_BYTES + 1)
   await assertControlPlaneError(() => active.service.authenticateHostRequest(oversized), 'request_too_large')
+})
+
+test('an expired credential may only refresh itself, and only on an Overlay Cloud machine', async () => {
+  const methods: AgentEnvironmentCredential['methods'] = ['agent:commands:poll', 'agent:credentials:refresh']
+  const expired = { expiresAt: NOW - 3 * 60 * 60_000, methods }
+  const refresh = () => ({ ...signedRequest({ target: '/api/v1/agent-environments/environment-1/credentials/refresh' }), requiredMethod: 'agent:credentials:refresh' as const })
+
+  const cloud = fixture({ kind: 'overlay_cloud' }, expired)
+  assert.equal((await cloud.service.authenticateHostRequest(refresh())).environment.id, 'environment-1')
+
+  await assertControlPlaneError(() => cloud.service.authenticateHostRequest({
+    ...signedRequest({ target: '/api/v1/agent-environments/environment-1/events', nonce: 'nonce_nonce_nonce_nonce_02' }),
+  }), 'credential_invalid')
+
+  const laptop = fixture({ kind: 'local' }, expired)
+  await assertControlPlaneError(() => laptop.service.authenticateHostRequest(refresh()), 'credential_invalid')
+
+  const longGone = fixture({ kind: 'overlay_cloud' }, { ...expired, expiresAt: NOW - 8 * 24 * 60 * 60_000 })
+  await assertControlPlaneError(() => longGone.service.authenticateHostRequest(refresh()), 'credential_invalid')
+
+  const revoked = fixture({ kind: 'overlay_cloud' }, { ...expired, revokedAt: NOW - 1 })
+  await assertControlPlaneError(() => revoked.service.authenticateHostRequest(refresh()), 'credential_invalid')
 })
 
 test('working directories must stay within an explicitly approved project root', () => {

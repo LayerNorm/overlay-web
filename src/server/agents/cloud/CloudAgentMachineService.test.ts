@@ -5,7 +5,8 @@ import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-con
 import { CloudAgentMachineService } from './CloudAgentMachineService'
 import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
 
-function fakeMachine(status: 'running' | 'stopped' = 'running') {
+function fakeMachine(status: 'running' | 'stopped' = 'running', files: Record<string, string> = {}) {
+  const written: string[] = []
   const commands: string[] = []
   const calls: string[] = []
   const machine = {
@@ -14,12 +15,14 @@ function fakeMachine(status: 'running' | 'stopped' = 'running') {
     resume: async () => { calls.push('resume') },
     stop: async () => { calls.push('stop') },
     delete: async () => { calls.push('delete') },
+    readFile: async (path: string) => (path in files ? new TextEncoder().encode(files[path]) : null),
+    writeFiles: async (batch: Array<{ path: string }>) => { written.push(...batch.map((file) => file.path)) },
     runCommand: async (request: { args?: string[] }) => {
       commands.push(request.args?.[1] ?? '')
       return { wait: async () => ({ exitCode: 0, stdout: '', stderr: '' }) }
     },
   } as unknown as SandboxInstance
-  return { machine, commands, calls }
+  return { machine, commands, calls, written }
 }
 
 function fakeRuntime(machine: SandboxInstance) {
@@ -62,6 +65,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
       approveEnvironment: async (args: unknown) => { log.push(['approve', args]); return {} as never },
       upsertBinding: async (args: unknown) => { log.push(['bind', args]); return { id: 'binding-1' } as never },
       revokeEnvironment: async (args: unknown) => { log.push(['revoke', args]) },
+      sweepRemoteRuns: async (args?: unknown) => { log.push(['sweep', args]); return {} as never },
     },
     repository: {
       listEnvironments: async () => (options.enrolled === false ? [] : [environment()]),
@@ -146,6 +150,19 @@ test('provision records each startup phase and a safe message when it fails', as
   assert.doesNotMatch(String(broken.phases.at(-1)?.error), /stack|bx_agent|one-time-code/)
 })
 
+test('pausing or restarting first fails the runs the machine was in the middle of', async () => {
+  for (const action of ['pause', 'restart'] as const) {
+    const { machine } = fakeMachine()
+    const { service, log } = deps(machine)
+    await service.control({ workspaceId: 'ws', agentId: 'agent-1', action })
+    assert.deepEqual(log.filter(([name]) => name === 'sweep'), [['sweep', { abandonEnvironmentId: 'env-1' }]])
+  }
+  const { machine } = fakeMachine()
+  const resumed = deps(machine)
+  await resumed.service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'resume' })
+  assert.equal(resumed.log.filter(([name]) => name === 'sweep').length, 0)
+})
+
 test('pause stops the machine; restart replaces the host process', async () => {
   const paused = fakeMachine()
   await deps(paused.machine).service.control({ workspaceId: 'ws', agentId: 'agent-1', action: 'pause' })
@@ -177,4 +194,21 @@ test('teardown revokes the environment, deletes the machine, and clears the prov
   assert.ok(log.some(([name]) => name === 'revoke'))
   assert.deepEqual(calls, ['delete'])
   assert.equal(wasRemoved(), true)
+})
+
+test('applying a profile removes what the earlier version wrote, prunes the folders it empties, and records what it owns', async () => {
+  const previous = JSON.stringify({ version: 1, harness: 'claude-code', files: ['skills/old/SKILL.md', 'commands/old.md', 'CLAUDE.md'], mcpServers: [] })
+  const { machine, commands, written } = fakeMachine('running', { '/home/user/.overlay/profile-managed.json': previous })
+  const { service } = deps(machine, { env: environment({ status: 'online', lastSeenAt: 999 }) })
+  await service.applyProfile({
+    workspaceId: 'ws', agentId: 'agent-1', hooksEnabled: false, version: 2,
+    bundle: { version: 1, harness: 'claude-code', mcpServers: {}, hooks: [], secrets: [], files: [{ path: 'CLAUDE.md', content: 'new' }] },
+  })
+  const removal = commands.find((command) => command.startsWith('rm -f'))
+  assert.ok(removal?.includes("'/home/user/.claude/skills/old/SKILL.md'") && removal.includes("'/home/user/.claude/commands/old.md'"))
+  assert.ok(!removal?.includes("'/home/user/.claude/CLAUDE.md'"), 'a file the new version still has is kept')
+  const prune = commands.find((command) => command.startsWith('rmdir'))
+  assert.ok(prune?.includes("'/home/user/.claude/skills/old'") && prune.includes("'/home/user/.claude/commands'"))
+  assert.ok(!prune?.includes("'/home/user/.claude'"), 'the harness folder itself is never removed')
+  assert.ok(written.includes('/home/user/.claude/CLAUDE.md') && written.includes('/home/user/.overlay/profile-managed.json'))
 })

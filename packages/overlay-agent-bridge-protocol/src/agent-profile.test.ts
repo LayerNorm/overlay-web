@@ -73,6 +73,12 @@ test('settings keep preferences and lose credentials, commands, plugins, and per
   for (const key of ['env', 'apiKeyHelper', 'awsAuthRefresh', 'enabledPlugins', 'skipDangerousModePermissionPrompt', 'permissions.defaultMode', 'note']) assert.match(dropped, new RegExp(key))
 })
 
+test('only permission modes that ask are imported, so Overlay approval cards stay the prompt', () => {
+  const modes = (mode: string) => JSON.parse(analyzeAgentProfile('claude-code', [file('settings.json', JSON.stringify({ permissions: { allow: ['Bash(ls:*)'], defaultMode: mode } }))]).files[0]!.content).permissions
+  for (const mode of ['bypassPermissions', 'dontAsk', 'acceptEdits']) assert.deepEqual(modes(mode), { allow: ['Bash(ls:*)'] }, mode)
+  for (const mode of ['default', 'plan']) assert.deepEqual(modes(mode), { allow: ['Bash(ls:*)'], defaultMode: mode }, mode)
+})
+
 test('invalid settings JSON is dropped, not guessed at', () => {
   const result = analyzeAgentProfile('claude-code', [file('settings.json', '{nope')])
   assert.deepEqual(result.files, [])

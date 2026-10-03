@@ -1395,10 +1395,11 @@ export const markArtifactDeletedByServer = mutation({
 })
 
 export const sweepRemoteRunsByServer = mutation({
-  args: { serverSecret: v.string(), now: v.number(), hostOfflineBefore: v.number(), limit: v.number() },
+  args: { serverSecret: v.string(), now: v.number(), hostOfflineBefore: v.number(), limit: v.number(), abandonEnvironmentId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    return sweepRemoteRuns(ctx, { ...args, settleBilling: false })
+    const { serverSecret: _serverSecret, ...sweep } = args
+    return sweepRemoteRuns(ctx, { ...sweep, settleBilling: false })
   },
 })
 
@@ -1928,6 +1929,9 @@ export const claimCommandsByServer = mutation({
     ])
     const rows = [...pendingRows, ...expiredClaimRows].sort((left, right) => left.sequence - right.sequence)
     const claimable: typeof rows = []
+    // A command whose run is over must still be delivered, or the host sees a hole in its command numbers and rejects
+    // every later command. It goes out as a shutdown, which a host accepts for a run it does not know.
+    const neutralized = new Set<string>()
     const candidates = rows.filter((row) => (
       row.workspaceId === args.workspaceId
       && (row.status === 'pending' || (row.status === 'claimed' && (row.claimExpiresAt ?? 0) <= args.now))
@@ -1939,7 +1943,7 @@ export const claimCommandsByServer = mutation({
       const row = candidates[i]!
       const run = candidateRuns[i]
       if (run && row.type !== 'cancel' && (!['queued', 'running', 'waiting_for_approval'].includes(run.status) ||
-        (run.leaseExpiresAt !== undefined && run.leaseExpiresAt <= args.now))) continue
+        (run.leaseExpiresAt !== undefined && run.leaseExpiresAt <= args.now))) neutralized.add(row.commandId)
       claimable.push(row)
     }
     return await Promise.all(
@@ -1952,6 +1956,9 @@ export const claimCommandsByServer = mutation({
         })
         return {
           ...clean(row),
+          ...(neutralized.has(row.commandId)
+            ? { type: 'shutdown', payload: { reason: 'This run is no longer active.' } }
+            : {}),
           id: row.commandId,
           status: 'claimed',
           claimedAt: args.now,
@@ -2433,7 +2440,7 @@ function isCompatibleTerminalAcknowledgement(status: string, events: Array<{ typ
 
 async function sweepRemoteRuns(
   ctx: MutationCtx,
-  args: { now: number; hostOfflineBefore: number; limit: number; settleBilling?: boolean },
+  args: { now: number; hostOfflineBefore: number; limit: number; settleBilling?: boolean; abandonEnvironmentId?: string },
 ) {
   const statuses = ['queued', 'running', 'waiting_for_approval'] as const
   const active = (
@@ -2473,7 +2480,8 @@ async function sweepRemoteRuns(
     // the host looks healthy while the run never finishes. Its events stop, which is how that is told apart from a
     // long run.
     const abandoned = environment?.kind === 'overlay_cloud' && session !== null
-      && Math.max(session.updatedAt ?? 0, session.startedAt ?? 0) < args.now - ABANDONED_CLOUD_RUN_MS
+      && (session.environmentId === args.abandonEnvironmentId
+        || Math.max(session.updatedAt ?? 0, session.startedAt ?? 0) < args.now - ABANDONED_CLOUD_RUN_MS)
     if (!offline && !abandoned && (run.leaseExpiresAt ?? Number.MAX_SAFE_INTEGER) > args.now) return null
     const message = await ctx.db.get(run.assistantMessageId)
     if (!session || !environment || !message || !run.externalRunId) return null
@@ -2497,9 +2505,8 @@ async function sweepRemoteRuns(
         .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', session.workspaceId).eq('runId', run.externalRunId!)).take(100),
     ])
     await Promise.all([
-      ...commands
-        .filter((command) => command.status === 'pending' || command.status === 'claimed')
-        .map((command) => ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now })),
+      // Undelivered commands stay pending: the host's command numbers must stay contiguous, so the next poll hands
+      // them over as shutdowns (see claimCommandsByServer) instead of leaving a gap.
       ...requests
         .filter((request) => !request.resolution)
         .map((request) => ctx.db.patch(request._id, { resolution: {
@@ -2671,3 +2678,24 @@ function recoveryParts(
       retryClass: code.includes('offline') ? 'host_offline' : code.includes('timeout') ? 'timeout' : 'transient', message },
   }]
 }
+
+/**
+ * One-time repair: commands cancelled before the host acknowledged them (by the sweep, or by a host that rejected them
+ * for a gap) leave holes in a cloud host's command numbers. Put them back to pending so the next poll delivers them as shutdowns and the host's numbering closes up.
+ */
+export const repairUndeliveredCancelledCommands = internalMutation({
+  args: { environmentId: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db.query('agentRunCommands')
+      .withIndex('by_environmentId_sequence', (q) => q.eq('environmentId', args.environmentId))
+      .order('desc').take(300)
+    let repaired = 0
+    for (const row of rows) {
+      if (row.status === 'cancelled' && row.acknowledgedAt === undefined) {
+        await ctx.db.patch(row._id, { status: 'pending', claimExpiresAt: undefined, updatedAt: Date.now() })
+        repaired += 1
+      }
+    }
+    return { repaired }
+  },
+})

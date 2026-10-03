@@ -73,9 +73,11 @@ describe('Convex remote agent room turns', () => {
     expect(snapshot.runs).toHaveLength(1)
     expect(snapshot.commands).toHaveLength(1)
 
+    // The command of an expired run is not started; it still goes out, as a shutdown, so the host's command numbers
+    // have no hole.
     expect(await call('claimCommandsByServer', {
       workspaceId, environmentId, now: now + 60_001, leaseMs: 5_000, limit: 10,
-    })).toEqual([])
+    })).toEqual([expect.objectContaining({ type: 'shutdown', payload: { reason: 'This run is no longer active.' } })])
     expect(await call('controlRemoteAgentTurnByServer', {
       actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'retry',
       queueExpiresAt: now + 120_000, now: now + 60_002,

@@ -15,7 +15,7 @@ import {
   type CloudAgentStatus,
 } from '@/shared/agents/cloud-agent'
 import type { AgentProfileBundle } from '@layernorm/overlay-agent-bridge-protocol'
-import { CLAUDE_JSON_PATH, planProfileApply, PROFILE_MANAGED_PATH, type ManagedProfile } from '../profiles/agent-profile-apply'
+import { CLAUDE_JSON_PATH, planProfileApply, PROFILE_HARNESS_HOME, PROFILE_MANAGED_PATH, type ManagedProfile } from '../profiles/agent-profile-apply'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from '../managed-sandbox-runtime'
 import {
   CLOUD_AGENT_RESOURCES,
@@ -39,7 +39,7 @@ export class CloudAgentMachineError extends Error {
 }
 
 type ControlPlane = Pick<ConnectedAgentControlPlaneService,
-  'createEnrollmentSession' | 'approveEnvironment' | 'upsertBinding' | 'revokeEnvironment'>
+  'createEnrollmentSession' | 'approveEnvironment' | 'upsertBinding' | 'revokeEnvironment' | 'sweepRemoteRuns'>
 type Repository = Pick<ConnectedAgentRepository,
   'listEnvironments' | 'getEnvironment' | 'createSandboxLease' | 'getActiveSandboxLease' | 'patchSandboxLeaseUsage' | 'listBindings'>
 
@@ -191,6 +191,11 @@ export class CloudAgentMachineService {
     const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: found.environment.id })
     if (!lease?.providerReference) throw new CloudAgentMachineError('This agent\'s machine is not available', 409, 'cloud_agent_unavailable')
     const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })
+    // Pausing or restarting ends whatever the host was doing, and a replacement host knows nothing of it. Fail the
+    // run now, with a message, instead of leaving it to block the next turn until the sweep notices.
+    if (args.action === 'pause' || args.action === 'restart') {
+      await this.dependencies.controlPlane.sweepRemoteRuns({ abandonEnvironmentId: found.environment.id }).catch((_error) => undefined)
+    }
     if (args.action === 'pause') {
       await machine.stop()
       return
@@ -233,7 +238,18 @@ export class CloudAgentMachineService {
     }
     const { plan, claudeJson } = planned
     const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
-    if (plan.removes.length > 0) await this.runDetachedWait(machine, `rm -f ${plan.removes.map(shellQuote).join(' ')}`)
+    if (plan.removes.length > 0) {
+      await this.runDetachedWait(machine, `rm -f ${plan.removes.map(shellQuote).join(' ')}`)
+      // Folders a removed file leaves empty go too (never the harness's own folder). rmdir refuses a folder that still
+      // holds anything, so a person's own files are safe.
+      const home = PROFILE_HARNESS_HOME[args.bundle.harness]
+      const empty = new Set<string>()
+      for (const path of plan.removes) {
+        for (let dir = path.slice(0, path.lastIndexOf('/')); dir.startsWith(`${home}/`); dir = dir.slice(0, dir.lastIndexOf('/'))) empty.add(dir)
+      }
+      const deepestFirst = [...empty].sort((left, right) => right.split('/').length - left.split('/').length)
+      if (deepestFirst.length > 0) await this.runDetachedWait(machine, `rmdir ${deepestFirst.map(shellQuote).join(' ')} 2>/dev/null; true`)
+    }
     const directories = [...new Set(plan.writes.map((write) => write.path.slice(0, write.path.lastIndexOf('/'))))]
     for (let index = 0; index < directories.length; index += 100) {
       await this.runDetachedWait(machine, `mkdir -p ${directories.slice(index, index + 100).map(shellQuote).join(' ')} /home/user/.overlay`)

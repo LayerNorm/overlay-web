@@ -460,10 +460,14 @@ function sanitizeSettings(collector: Collector, path: string, text: string): Age
   for (const [key, reason] of Object.entries(SETTINGS_DROPPED_KEYS)) {
     if (key in settings) { delete settings[key]; collector.drop(`${path}: ${key}`, reason) }
   }
-  if (isRecord(settings.permissions) && settings.permissions.defaultMode === 'bypassPermissions') {
+  // Overlay's approval cards are the permission prompt for a cloud agent. A mode that skips the prompt (bypass,
+  // accept edits) would sidestep them, and one that denies whatever is not pre-approved (don't ask) would silently
+  // refuse every tool, so only the modes that ask are imported.
+  if (isRecord(settings.permissions) && typeof settings.permissions.defaultMode === 'string'
+    && !['default', 'plan'].includes(settings.permissions.defaultMode)) {
     const { defaultMode: _mode, ...rest } = settings.permissions
     settings.permissions = rest
-    collector.drop(`${path}: permissions.defaultMode`, 'Overlay asks for approval itself; bypassing permissions is not imported.')
+    collector.drop(`${path}: permissions.defaultMode`, 'Overlay asks for approval itself, so a mode that skips or denies the prompt is not imported.')
   }
   if (isRecord(settings.hooks)) {
     for (const [event, groups] of Object.entries(settings.hooks)) {

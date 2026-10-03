@@ -49,6 +49,12 @@ import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from
 const ENROLLMENT_TTL_MS = 10 * 60_000
 const PROOF_CHALLENGE_TTL_MS = 15 * 60_000
 const CREDENTIAL_TTL_MS = 15 * 60_000
+/**
+ * An Overlay Cloud machine is stopped when idle for about as long as a credential lives, so its host usually wakes
+ * with an expired one. That credential may still refresh itself (nothing else) for this long, and only with the
+ * machine's device key signing the request.
+ */
+const CLOUD_REFRESH_EXPIRED_GRACE_MS = 7 * 24 * 60 * 60_000
 const REQUEST_CLOCK_SKEW_MS = 60_000
 const PROOF_NONCE_TTL_MS = 2 * 60_000
 const INTERACTIVE_QUEUE_TTL_MS = 2 * 60_000
@@ -538,10 +544,11 @@ export class ConnectedAgentControlPlaneService {
     return { deleted: artifacts.length - failed, ...(failed > 0 ? { failed } : {}) }
   }
 
-  async sweepRemoteRuns() {
+  async sweepRemoteRuns(options: { abandonEnvironmentId?: string } = {}) {
     const now = this.now()
     const result = await this.dependencies.repository.sweepRemoteRuns({
       now, hostOfflineBefore: now - 90_000, limit: 100,
+      ...(options.abandonEnvironmentId ? { abandonEnvironmentId: options.abandonEnvironmentId } : {}),
     })
     if (this.dependencies.settleUsage) {
       await Promise.all(result.settlements
@@ -643,7 +650,10 @@ export class ConnectedAgentControlPlaneService {
     }
     const tokenHash = sha256(token)
     const credential = await this.dependencies.repository.findEnvironmentCredential({ tokenHash })
-    if (!credential || credential.revokedAt || credential.expiresAt <= now ||
+    const expired = Boolean(credential && credential.expiresAt <= now)
+    const refreshingWithinGrace = expired && args.requiredMethod === 'agent:credentials:refresh'
+      && now - credential!.expiresAt < CLOUD_REFRESH_EXPIRED_GRACE_MS
+    if (!credential || credential.revokedAt || (expired && !refreshingWithinGrace) ||
       credential.audience !== AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE ||
       credential.environmentId !== args.environmentId ||
       !credential.methods.includes(args.requiredMethod)) {
@@ -665,12 +675,16 @@ export class ConnectedAgentControlPlaneService {
       bodySha256: sha256(args.rawBody),
       tokenSha256: tokenHash,
     })
+    if (expired && environment.kind !== 'overlay_cloud') {
+      throw controlPlaneError('Environment credential is invalid or expired', 401, 'credential_invalid')
+    }
     verifyDeviceSignature(environment.publicKey, canonical, headers.data.signature)
     const consumed = await this.dependencies.repository.consumeEnvironmentProofNonce({
       credentialId: credential.id,
       nonceHash: sha256(headers.data.nonce),
       expiresAt: now + PROOF_NONCE_TTL_MS,
       now,
+      ...(expired ? { expiredGraceMs: CLOUD_REFRESH_EXPIRED_GRACE_MS } : {}),
     })
     if (!consumed) throw controlPlaneError('Device request proof was already used', 409, 'proof_replayed')
     return { credential, environment }

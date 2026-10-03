@@ -365,7 +365,9 @@ Phases 3 and 5 don't depend on 0–2 for native agents and can start in parallel
 
 Found by the live run: acpx ignores `~/.claude` unless `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1` (now set where the host starts; the earlier assumption that config lives under `~/.overlay` was wrong for Claude Code); a run cut off by a pause or restart blocked the machine until the sweep learned to fail abandoned cloud runs after 15 minutes; the export command needs Node 24 (the copied command pins it).
 
-Known gaps: Codex import untested live; imported stdio MCP servers not started on a machine; restarting a host mid-run still fails that run (it is now cleaned up instead of blocking).
+Also found and fixed: machines idle longer than 15 minutes could not wake (expired host credential could not refresh), and a hole in the host's command numbers rejected every later command. Verified: wake after idle, a stdio MCP server from a profile, rollback removing the later version's files.
+
+Known gaps: Codex import untested live (needs a Codex API key). Restarting a host mid-run still fails that run, now immediately and with a message.
 
 ## Decisions (2026-10-01)
 

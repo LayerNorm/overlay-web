@@ -219,6 +219,8 @@ export interface ConnectedAgentRepository {
     nonceHash: string
     expiresAt: number
     now: number
+    /** Accept a credential that expired up to this long ago (a cloud host refreshing itself). */
+    expiredGraceMs?: number
   }): Promise<boolean>
   rotateEnvironmentCredential(args: {
     currentCredentialId: string
@@ -329,6 +331,8 @@ export interface ConnectedAgentRepository {
     now: number
     hostOfflineBefore: number
     limit: number
+    /** Fail this cloud environment's active runs now (its machine is being paused or restarted). */
+    abandonEnvironmentId?: string
   }): Promise<ConnectedAgentSweepResult>
   listPendingSandboxSettlements(args: { limit: number }): Promise<RemoteAgentUsageSettlement[]>
   markSandboxSettlementComplete(args: {
