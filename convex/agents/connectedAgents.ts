@@ -2475,7 +2475,10 @@ async function sweepRemoteRuns(
           )
           .unique()
       : null
-    const offline = (environment?.lastSeenAt ?? 0) <= args.hostOfflineBefore
+    // A queued run on a cloud machine is waiting for the machine to wake; its host is offline by definition, so the
+    // queue's own expiry decides, not the offline check.
+    const waitingForWake = environment?.kind === 'overlay_cloud' && run.status === 'queued'
+    const offline = (environment?.lastSeenAt ?? 0) <= args.hostOfflineBefore && !waitingForWake
     // A cloud machine that was paused or restarted mid-run comes back with a host that knows nothing of the run, so
     // the host looks healthy while the run never finishes. Its events stop, which is how that is told apart from a
     // long run.

@@ -55,5 +55,7 @@ The allowlist and every cleaning rule live in one file, `packages/overlay-agent-
 - Apply while the machine was paused (about 16 s), turning hooks on, restoring version 1, removing a value, and refusing to discard an active version.
 - The first machine's dead host was the credential-expiry bug above (it had been idle for hours), not the apply.
 - A stdio MCP server from an imported profile (`@modelcontextprotocol/server-everything` via `npx`) started on the machine and its `echo` tool answered through the agent.
+- Wake after more than 15 minutes paused: the host came back by refreshing its expired credential. A queued turn on a cloud machine is no longer failed as "host offline" while the machine wakes (it waits for the queue's own 2-minute expiry), but a wake slower than that still shows "environment went offline" and the message must be sent again.
+- Codex: a real `~/.codex` (AGENTS.md, config.toml, 6 skills) exported, staged with the notify command held back, and applied; the files landed under `~/.codex` with no `notify` or secret-looking text. Whether a Codex agent then uses them was not run (needs a Codex API key).
 - Rolling back to version 1 removed version 2's command, subagent, CLAUDE.md, skill file, and MCP server.
-- Not verified live: Codex config (needs a Codex API key).
+- Not verified live: a Codex agent actually using the imported config.
