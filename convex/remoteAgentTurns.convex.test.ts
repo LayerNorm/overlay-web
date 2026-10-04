@@ -57,6 +57,31 @@ describe('Convex remote agent room turns', () => {
     }))).rejects.toThrow(/CONVERSATION_ACCESS_DENIED/)
   })
 
+  test('stopping a machine for lack of credit ends its runs: the chat row stops generating and the session is closed', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    await convex.run(async ctx => {
+      await ctx.db.insert('agentSandboxLeases', {
+        leaseId: 'lease-stop', workspaceId, environmentId, provider: 'box', providerReference: 'sandbox', status: 'running',
+        reservedUntil: Number.MAX_SAFE_INTEGER, usage: {}, cleanupAttempts: 0, createdAt: now, updatedAt: now,
+      })
+    })
+    await call('stopSandboxLeaseByServer', { workspaceId, leaseId: 'lease-stop', reason: 'budget_exhausted', now: now + 1_000 })
+    const after = await convex.run(async ctx => ({
+      message: await ctx.db.get(started.messageId as never) as { status?: string; content: string } | null,
+      session: (await ctx.db.query('agentRemoteSessions').withIndex('by_environmentId_status', q => q.eq('environmentId', environmentId).eq('status', 'cancelled')).collect()).length,
+    }))
+    expect(after.message?.status).toBe('completed')
+    expect(after.message?.content).toMatch(/credit ran low/)
+    expect(after.session).toBe(1)
+    const active = await convex.query(queryRef('environmentHasActiveRunsByServer'), { serverSecret: secret, environmentId })
+    expect(active).toBe(false)
+  })
+
   test('offline start is atomic, inaccessible callers are denied, and expired run leases cannot claim', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)

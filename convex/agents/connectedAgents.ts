@@ -1638,6 +1638,74 @@ export const environmentHasActiveRunsByServer = query({
   },
 })
 
+const USAGE_LIMITED_NOTICE = 'Stopped: your Overlay credit ran low, so the agent\'s computer was shut down. Add credit and send the message again.'
+
+/**
+ * Closes the chat row of a connected-agent run that ended without its machine saying so (its machine was shut down):
+ * the message stops showing as generating, unfinished actions are closed, the run's remote session is ended, and the
+ * room is told. Safe to repeat.
+ */
+async function finishRunMessage(
+  ctx: MutationCtx,
+  run: Doc<'conversationAgentRuns'>,
+  workspaceId: string,
+  now: number,
+  notice: string,
+) {
+  const message = await ctx.db.get(run.assistantMessageId)
+  if (message && message.status === 'generating') {
+    const environmentName = 'connected environment'
+    const projection = projectRemoteAgentEvents({
+      content: message.content,
+      parts: Array.isArray(message.parts) ? (message.parts as unknown as Array<Record<string, unknown>>) : [],
+      events: [{
+        protocolVersion: 1, eventId: `system-stop-${run._id}`, environmentId: run.environmentId ?? '', runId: run.externalRunId ?? '',
+        sourceSequence: 0, type: 'cancelled', occurredAt: now, payload: { reason: notice },
+      } as AgentRemoteEvent],
+      environmentName,
+      queueExpiresAt: now,
+      runId: run.externalRunId ?? '',
+    })
+    const base = message.content.trim() ? projection.content : ''
+    await ctx.db.patch(message._id, {
+      content: `${base.trimEnd()}${base.trim() ? '\n\n' : ''}${notice}`,
+      parts: [...(projection.parts as never[]), { type: 'text', text: `${base.trim() ? '\n\n' : ''}${notice}` }] as never,
+      status: 'completed',
+      updatedAt: now,
+    })
+    await ctx.db.insert('conversationEvents', {
+      conversationId: run.conversationId, workspaceId, messageId: message._id,
+      type: 'message.completed', userId: run.userId, createdAt: now,
+    })
+  }
+  if (run.externalRunId) {
+    const session = await ctx.db.query('agentRemoteSessions').withIndex('by_runId', (q) => q.eq('runId', run.externalRunId!)).unique()
+    if (session && !['completed', 'failed', 'cancelled'].includes(session.status)) {
+      await ctx.db.patch(session._id, { status: 'cancelled', endedAt: now, updatedAt: now })
+    }
+  }
+}
+
+/** One-off/operations repair: finishes the chat rows of cancelled connected-agent runs that still show as generating. */
+export const repairOrphanedRemoteMessages = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+    const cancelled = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_runner_status_leaseExpiresAt', (q) => q.eq('runner', 'remote').eq('status', 'cancelled'))
+      .take(500)
+    let repaired = 0
+    for (const run of cancelled) {
+      const message = await ctx.db.get(run.assistantMessageId)
+      if (message?.status !== 'generating') continue
+      const conversation = await ctx.db.get(run.conversationId)
+      await finishRunMessage(ctx, run, conversation?.workspaceId ?? '', now, USAGE_LIMITED_NOTICE)
+      repaired += 1
+    }
+    return { repaired }
+  },
+})
+
 export const stopSandboxLeaseByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string(),
@@ -1674,9 +1742,9 @@ export const stopSandboxLeaseByServer = mutation({
     // cancelling them here is what fails parked turns cleanly.
     const leaseRuns = await ctx.db.query('conversationAgentRuns')
       .withIndex('by_environmentId_createdAt', q => q.eq('environmentId', lease.environmentId)).take(1_000)
-    await Promise.all(leaseRuns
-      .filter((run) => ['queued', 'running', 'waiting_for_approval'].includes(run.status))
-      .map((run) => ctx.db.patch(run._id, {
+    const stoppedRuns = leaseRuns.filter((run) => ['queued', 'running', 'waiting_for_approval'].includes(run.status))
+    await Promise.all(stoppedRuns.map(async (run) => {
+      await ctx.db.patch(run._id, {
         status: 'cancelled',
         cancelledAt: args.now,
         terminalError: {
@@ -1685,7 +1753,9 @@ export const stopSandboxLeaseByServer = mutation({
           retryable: false,
         },
         updatedAt: args.now,
-      })))
+      })
+      await finishRunMessage(ctx, run, args.workspaceId, args.now, USAGE_LIMITED_NOTICE)
+    }))
     return {
       ...clean(lease), status: 'stopping', reservedUntil: args.now,
       runtimeEndedAt: lease.runtimeEndedAt ?? args.now, cleanupAfter: args.now,
