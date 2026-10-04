@@ -229,7 +229,6 @@ export function DirectMessageExperience({
               conversationType={conversationType}
               title={vm.title}
               channelTopic={collab.channel?.topic}
-              agentResponding={room.agentResponding}
               ctx={messageCtx}
             />
             {transcript.surfacePlatform ? (

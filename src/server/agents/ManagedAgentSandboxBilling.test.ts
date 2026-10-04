@@ -524,7 +524,7 @@ test('meterLease idle-stops a running sandbox whose lease shows no recent activi
   const lease = leaseFixture({
     usage: {
       lastActiveAt: 60_000,
-      idleTimeoutMs: 900_000,
+      idleTimeoutMs: 600_000,
       meteredUsage: { wallTimeMs: 60_000 },
       meteredProviderReference: 'sandbox-reference',
       meteredAt: 60_000,
@@ -561,7 +561,7 @@ test('meterLease leaves a recently-active sandbox running', async () => {
   const lease = leaseFixture({
     usage: {
       lastActiveAt: 990_000,
-      idleTimeoutMs: 900_000,
+      idleTimeoutMs: 600_000,
       meteredUsage: { wallTimeMs: 60_000 },
       meteredProviderReference: 'sandbox-reference',
       meteredAt: 60_000,
@@ -599,7 +599,7 @@ test('meterLease does not idle-stop a sandbox while a turn is in flight', async 
     usage: {
       lastActiveAt: 60_000,
       activeUntil: 2_000_000,
-      idleTimeoutMs: 900_000,
+      idleTimeoutMs: 600_000,
       meteredUsage: { wallTimeMs: 60_000 },
       meteredProviderReference: 'sandbox-reference',
       meteredAt: 60_000,

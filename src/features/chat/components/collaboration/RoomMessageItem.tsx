@@ -301,6 +301,14 @@ export function RoomMessageItem({
     ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
     : ''
 
+  // A connected agent's run is stopped by cancelling it; a native agent's response by stopping the response.
+  const activeRemoteRun = message.remoteRun && !['completed', 'cancelled', 'failed', 'recoverable'].includes(message.remoteRun.state)
+    ? message.remoteRun
+    : null
+  const stopHandler = activeRemoteRun && onControlRemoteQueue
+    ? () => onControlRemoteQueue(activeRemoteRun.runId, 'cancel')
+    : message.streaming ? onStopResponse : undefined
+
   const toolbar = (
     <RoomMessageToolbar
       alignEnd={mine}
@@ -311,7 +319,7 @@ export function RoomMessageItem({
       pinned={pinned}
       saved={saved}
       disabled={Boolean(message.delivery)}
-      onStop={message.streaming ? onStopResponse : undefined}
+      onStop={stopHandler}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
       onReport={onReport}
@@ -1010,15 +1018,8 @@ function RemoteRunControls({ run, onControl }: {
         </button>
     </div>
   )
-  return (
-    <button
-      type='button'
-      onClick={() => onControl(run.runId, 'cancel')}
-      className='mt-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-    >
-      Cancel run
-    </button>
-  )
+  // Cancelling an active run is the Stop button in the message toolbar.
+  return null
 }
 
 function RemoteQueueControls({

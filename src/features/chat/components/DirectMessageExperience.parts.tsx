@@ -557,7 +557,6 @@ export function RoomTranscript({
   conversationType,
   title,
   channelTopic,
-  agentResponding,
   ctx,
 }: {
   transcript: ReturnType<typeof useRoomTranscript>
@@ -567,7 +566,6 @@ export function RoomTranscript({
   conversationType: 'dm' | 'channel'
   title: string
   channelTopic: string | undefined
-  agentResponding: string | null
   ctx: RoomMessageContext
 }) {
   const {
@@ -578,12 +576,10 @@ export function RoomTranscript({
     loadingOlderMessages,
     loadOlderMessages,
     loading,
-    generatingMessages,
   } = transcript
   const { newMessageCount } = readMarkers
   const { jumpToLatest: onJumpToLatest } = navigation
   const { mainMessages, unreadBoundaryMessageId } = vm
-  const generatingCount = generatingMessages.length
   const onLoadOlder = () => void loadOlderMessages()
   return (
     <div className="overlay-chat-surface relative min-h-0 flex-1">
@@ -663,20 +659,6 @@ export function RoomTranscript({
               )
             })
           )}
-          {agentResponding && generatingCount === 0 ? (
-            <div className="flex items-center gap-2 px-1" aria-live="polite" aria-label={`${agentResponding} response pending`}>
-              <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
-              <span className="flex items-center gap-1">
-                {[0, 1, 2].map((dot) => (
-                  <span
-                    key={dot}
-                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
-                    style={{ animationDelay: `${dot * 120}ms` }}
-                  />
-                ))}
-              </span>
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

@@ -505,7 +505,7 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   machine, so the server approves the environment itself instead of a person confirming a phrase,
   with the filesystem grant fixed to `/home/user/workspace`. The short-lived credential, signed
   polling, and ACP bridge are unchanged.
-- **Lifecycle.** The sandbox lease meter idle-stops a machine after 15 minutes without a turn
+- **Lifecycle.** The sandbox lease meter idle-stops a machine after 10 minutes without a turn
   (a turn holds `activeUntil` for its maximum run time). A turn queued for an offline machine
   resumes it and restarts the host from saved state after the response is sent. Revoking the
   environment stops and deletes the machine through the lease reaper.

@@ -6,7 +6,7 @@ import { BoxSandboxRuntime, boatApiKeyFromEnv } from '@overlay/sandbox-runtime/b
 import { E2BSandboxRuntime, e2bApiKeyFromEnv, type E2BSandboxClass } from '@overlay/sandbox-runtime/e2b'
 
 /** Idle window after which the lease meter stops an Overlay Cloud machine. */
-export const MANAGED_SANDBOX_IDLE_TIMEOUT_MS = 15 * 60_000
+export const MANAGED_SANDBOX_IDLE_TIMEOUT_MS = 10 * 60_000
 
 export class ManagedSandboxError extends Error {
   constructor(message: string, readonly statusCode: number, readonly code: string) {
