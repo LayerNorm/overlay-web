@@ -168,6 +168,6 @@ touch it if a customer explicitly requires a Postgres app-data backend.
   then create a cloud agent and check: create, wake after idle, pause, delete, `writeFiles`
   (Codex `auth.json`), and the E2B rate card in `ManagedAgentSandboxBilling.ts`.
   See `docs/develop/codex-subscription.md`.
-- [ ] **Hermes on Overlay Cloud** — Boat's lazy Hermes install fails (`uv` Python 3.14 bootstrap: "missing a `_sysconfigdata_` file" / cannot create files under `/home/user/.local/share/uv`). Pre-install Hermes in `infra/agent-image/provision.sh` or fix the base layer, confirm `hermes acp --check` prints "Hermes ACP check OK", then add `hermes` back to `SELECTABLE_AGENT_PROVIDER_IDS`.
+- [x] **Hermes on Overlay Cloud — dropped (2026-10-03).** Boat's lazy Hermes install fails, and pre-installing with `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` on the real disk did not help: the base layer's filesystem drops files while uv unpacks (`EXTERNALLY-MANAGED`, `_sysconfigdata_`, wheel `.dist-info` errors). Hermes stays hidden from the pickers (`SELECTABLE_AGENT_PROVIDER_IDS`); retry only if Boat's base layer changes.
 - [ ] **Cursor agent live test** — needs a `CURSOR_API_KEY`.
 - [ ] **Codex live test** — needs an approved ChatGPT device code; then two Codex agents on one account.
