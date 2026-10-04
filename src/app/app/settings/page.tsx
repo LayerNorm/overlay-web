@@ -41,7 +41,6 @@ import { WorkspaceSettingsPanel } from '@/features/workspaces/components/Workspa
 import { isWorkspaceSettingsTab } from '@/features/workspaces/lib/workspace-settings-tabs'
 import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
 import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
-import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
 import { ProviderConnectionsSetting } from '@/features/settings/components/ProviderConnectionsSetting'
 
 const MemoriesView = dynamic(
@@ -154,15 +153,10 @@ function GeneralSettingsSection({
   )
 }
 
-function AccountSettingsSection({
-  supportsApiKeys,
-}: {
-  supportsApiKeys: OverlayCapabilitiesApi['appDataCapabilities']['supportsApiKeys']
-}) {
+function AccountSettingsSection() {
   return (
     <Suspense fallback={null}>
       <AccountPageContent embedded />
-      {supportsApiKeys ? <ApiKeySettings /> : null}
     </Suspense>
   )
 }
@@ -314,7 +308,6 @@ function SettingsSectionContent({
   busy,
   billingSettings,
   billingEnabled,
-  supportsApiKeys,
   publicShowcase,
   showcaseWorkspaceManagementClient,
   workspaceTabParam,
@@ -330,7 +323,6 @@ function SettingsSectionContent({
   busy: boolean
   billingSettings: BillingSettings | null
   billingEnabled: OverlayCapabilitiesApi['capabilities']['billing']
-  supportsApiKeys: OverlayCapabilitiesApi['appDataCapabilities']['supportsApiKeys']
   publicShowcase: boolean
   showcaseWorkspaceManagementClient: ReturnType<typeof createShowcaseWorkspaceManagementClient>
   workspaceTabParam: string | null | undefined
@@ -352,7 +344,7 @@ function SettingsSectionContent({
       />
     )
   }
-  if (section === 'account') return <AccountSettingsSection supportsApiKeys={supportsApiKeys} />
+  if (section === 'account') return <AccountSettingsSection />
   if (section === 'workspace') {
     return (
       <WorkspaceSettingsSection
@@ -492,7 +484,6 @@ function SettingsPage() {
           busy={busy}
           billingSettings={billingSettings}
           billingEnabled={capabilities.billing}
-          supportsApiKeys={appDataCapabilities.supportsApiKeys}
           publicShowcase={publicShowcase}
           showcaseWorkspaceManagementClient={showcaseWorkspaceManagementClient}
           workspaceTabParam={searchParams?.get('workspace_tab')}

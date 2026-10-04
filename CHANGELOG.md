@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- **Settings and dialog polish.** The unused API keys section is removed from Settings → Account (the `/api/v1/api-keys` routes stay for programmatic access). Providers and Computers now have their own icons in the settings sidebar instead of repeating General's. Info tooltips (the ⓘ in the new-agent dialog and elsewhere) now show above dialogs and menus instead of behind them.
 - **A machine stopped for lack of credit now finishes its chat rows.** The credit-stop path cancelled the run but left the agent's message "generating" forever (and its remote session open, which also counted as "a run is going"); it now closes the message with a note, closes unfinished actions, and ends the session.
 - **Agents can read chats.** New tools `list_chats` (find a chat by title) and `read_chat` (its messages, oldest first, labeled by speaker, newest 40 by default) are in the memory tool group, the outside-app Read only level, and personal chat's base set, so "summarize @some chat" works for native agents, Claude Code and Codex on Overlay Cloud, and outside MCP apps. Agents saved earlier gain them through `LATER_GROUP_MEMBERS`.
 - **Stopping a Claude Code / Codex run really stops it.** The generic Stop (`/api/v1/conversations/stop`) used to mark a connected agent's run cancelled in the database without telling its machine, so the agent kept working; it now cancels such runs through the control plane (cancel command to the host, billing settled).

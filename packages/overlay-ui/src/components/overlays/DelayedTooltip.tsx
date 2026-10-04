@@ -104,7 +104,7 @@ export function DelayedTooltip({
               top: coords.top,
               left: coords.left,
               transform: coords.transform,
-              zIndex: 400,
+              zIndex: 10100, // above dialogs (10070) and menus (10090)
               width: 'max-content',
               maxWidth: 'min(calc(100vw - 16px), 20rem)',
             }}
