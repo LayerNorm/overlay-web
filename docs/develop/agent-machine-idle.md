@@ -10,7 +10,7 @@ An Overlay Cloud agent's machine stops **10 minutes after its last run ends** (`
 
 ## The sweep (fallback)
 
-The per-minute meter pass (`operations/reconcile`, called by the Convex cron) is also the reconciler. For each running lease it (a) starts a timer when none is live (none, or one more than 2 minutes overdue, i.e. presumed lost) and no run is going, and (b) stops a machine that is idle more than the window plus a 2-minute grace, which covers a timer that was scheduled but never delivered. It does not idle-stop at the instant a run settles (`idleStop: 'none'`).
+The meter pass (`operations/reconcile`, called by the Convex cron every minute for billing and run supervision) is also the reconciler, but its idle part runs only once every 10 minutes: on the ticks in the first 90 seconds of each 10-minute block (`idleFallbackDue`). Between those, a machine with a lost timer can overstay by up to ~10 minutes plus the grace, which is the price of keeping the safety net cheap. For each running lease it (a) starts a timer when none is live (none, or one more than 2 minutes overdue, i.e. presumed lost) and no run is going, and (b) stops a machine that is idle more than the window plus a 2-minute grace, which covers a timer that was scheduled but never delivered. It does not idle-stop at the instant a run settles (`idleStop: 'none'`).
 
 ## "A run is going"
 

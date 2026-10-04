@@ -1129,10 +1129,14 @@ export const cancelAgentRuns = mutation({
       .query('conversationAgentRuns')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
-    const activeRuns = runs.filter((run) =>
+    const matching = runs.filter((run) =>
       ACTIVE_AGENT_RUN_STATUSES.has(run.status) &&
       (!args.messageId || run.assistantMessageId === args.messageId),
     )
+    // A connected agent's run is cancelled through the control plane (it tells the agent's machine to stop and settles
+    // billing); the caller does that for the ids returned here, so it is left untouched.
+    const remoteRunIds = matching.flatMap((run) => (run.runner === 'remote' && run.externalRunId ? [run.externalRunId] : []))
+    const activeRuns = matching.filter((run) => run.runner !== 'remote')
     const now = Date.now()
     const sentinel = '\n\n[Interrupted by user. Continue?]'
     for (const run of activeRuns) {
@@ -1182,7 +1186,8 @@ export const cancelAgentRuns = mutation({
       cancelledWorkflows: activeRuns.flatMap((run) => run.workflowRunId
         ? [{ agentRunId: run._id, workflowRunId: run.workflowRunId }]
         : []),
-      stoppedCount: activeRuns.length,
+      remoteRunIds,
+      stoppedCount: activeRuns.length + remoteRunIds.length,
     }
   },
 })

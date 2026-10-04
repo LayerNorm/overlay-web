@@ -213,9 +213,7 @@ export function DirectMessageExperience({
                 menuOpen={room.menuOpen}
                 setMenuOpen={room.setMenuOpen}
                 menuTriggerRef={room.menuTriggerRef}
-                onAttach={() => room.setAttachOpen(true)}
                 onShare={() => room.setShareOpen(true)}
-                readOnly={Boolean(transcript.surfacePlatform)}
               />
             )}
           />
@@ -259,8 +257,6 @@ export function DirectMessageExperience({
         isWorkspaceOwner={activeWorkspace?.role === 'owner'}
         shareOpen={room.shareOpen}
         onShareClose={() => room.setShareOpen(false)}
-        attachOpen={room.attachOpen}
-        onAttachClose={() => room.setAttachOpen(false)}
         addPeopleOpen={room.addPeopleOpen}
         onAddPeopleOpenChange={room.setAddPeopleOpen}
         conversationId={conversationId}
@@ -274,7 +270,6 @@ export function DirectMessageExperience({
           room.setAddPeopleOpen(false)
           void roster.loadParticipants()
         }}
-        sendMessage={room.sendMessage}
       />
     </>
   );

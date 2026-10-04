@@ -345,6 +345,8 @@ export interface ActConversationRepository {
     cancelledRunIds: string[]
     cancelledWorkflowRunIds: string[]
     cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+    /** Connected-agent runs the caller must cancel through the control plane (left untouched here). */
+    remoteRunIds?: string[]
     stoppedCount: number
   }>
   getLatestAgentRun(args: {

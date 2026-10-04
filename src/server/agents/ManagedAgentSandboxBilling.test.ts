@@ -575,6 +575,7 @@ test('meterLease idle-stops a running sandbox whose lease shows no recent activi
     deleteSnapshot: async () => undefined,
   }
   const service = new ManagedAgentSandboxBilling({
+    idleFallbackDue: () => true,
     now: () => 1_000_000,
     policy: {} as never,
     repository: {
@@ -810,6 +811,7 @@ function idleHarness(options: {
   usage: Record<string, unknown>
   activeRuns?: boolean
   status?: string
+  fallbackDue?: boolean
 }) {
   const events: string[] = []
   const patches: Array<{ patch: Record<string, unknown>; idleCheckInMs?: number }> = []
@@ -838,6 +840,7 @@ function idleHarness(options: {
   }
   const service = new ManagedAgentSandboxBilling({
     now: () => options.now,
+    idleFallbackDue: () => options.fallbackDue !== false,
     policy: {} as never,
     repository: {
       getSandboxLease: async () => lease,
@@ -902,4 +905,33 @@ test('the sweep leaves a machine with a live timer to its timer', async () => {
   await service.meterLease(lease)
   assert.deepEqual(events, [])
   assert.deepEqual(patches, [])
+})
+
+test('between its 10-minute ticks the sweep neither starts timers nor stops machines', async () => {
+  const { service, lease, events, patches } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 100_000, idleToken: 'lost', idleCheckAt: 700_000 }, fallbackDue: false })
+  await service.meterLease(lease)
+  assert.deepEqual(events, [])
+  assert.deepEqual(patches, [])
+})
+
+test('by default the idle fallback runs only in the first 90 seconds of each 10-minute block', async () => {
+  const run = async (now: number) => {
+    const events: string[] = []
+    const lease = leaseFixture({ usage: { idleTimeoutMs: 600_000, lastActiveAt: now - 5_000_000, idleToken: 'lost', idleCheckAt: now - 4_000_000, meteredUsage: { wallTimeMs: 60_000 }, meteredProviderReference: 'sandbox-reference', meteredAt: 60_000, meterVersion: 3, lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' } } } as never)
+    const runtime: SandboxRuntime = {
+      provider: 'box', capabilities: {} as never,
+      create: async () => { throw new Error('unreachable') },
+      reconnect: async () => ({ status: async () => 'running' as const, stop: async () => { events.push('stop') }, usage: async () => ({ wallTimeMs: 60_000 }) }) as SandboxInstance,
+      restore: async () => { throw new Error('unreachable') },
+      deleteSnapshot: async () => undefined,
+    }
+    const service = new ManagedAgentSandboxBilling({
+      now: () => now, policy: {} as never, runtime: () => runtime,
+      repository: { getActiveSandboxLease: async () => lease, environmentHasActiveRuns: async () => false, patchSandboxLeaseUsage: async () => null, meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }) } as never,
+    })
+    await service.meterLease(lease)
+    return events
+  }
+  assert.deepEqual(await run(6_000_000 + 30_000), ['stop'], 'inside the window')
+  assert.deepEqual(await run(6_000_000 + 300_000), [], 'between windows')
 })

@@ -33,6 +33,8 @@ export const OVERLAY_TOOL_IDS = [
   'move_file',
   'search_memory',
   'search_messages',
+  'list_chats',
+  'read_chat',
   'save_memory',
   'save_memory_batch',
   'update_memory',

@@ -54,6 +54,9 @@ import { buildTextTurnPayload } from './chat/chat-send-body-builders'
 
 export type OptimisticMessage = RoomMessageRecord
 
+/** Ids of the client-only rows that show an agent is about to reply (see `useSendMessage`). */
+const PENDING_AGENT_REPLY_PREFIX = 'optimistic_pending_reply_'
+
 export const SHOWCASE_CONVERSATION_ID = 'showcase-dm'
 export const SHOWCASE_WORKSPACE_ID = 'showcase-acme'
 export const SHOWCASE_CURRENT_PRINCIPAL_ID = 'showcase-divyansh'
@@ -1176,6 +1179,22 @@ export function useSendMessage({
   const threadRenameRequestedRef = useRef(false)
   const pendingCollaborationMessageSentRef = useRef(false)
 
+  // A pending reply row goes once the agent's real reply row exists (or after a minute, so none can linger).
+  useEffect(() => {
+    const pending = messages.filter((message) => message.id.startsWith(PENDING_AGENT_REPLY_PREFIX))
+    if (!pending.length) return
+    const settled = pending.filter((placeholder) => messages.some((message) => (
+      !message.id.startsWith(PENDING_AGENT_REPLY_PREFIX)
+      && message.authorKind === 'agent'
+      && message.authorPrincipalId === placeholder.authorPrincipalId
+      && message.createdAt >= placeholder.createdAt - 2_000
+    )))
+    const drop = (ids: Set<string>) => setMessages((current) => current.filter((message) => !ids.has(message.id)))
+    if (settled.length) drop(new Set(settled.map((message) => message.id)))
+    const timer = window.setTimeout(() => drop(new Set(pending.map((message) => message.id))), 60_000)
+    return () => window.clearTimeout(timer)
+  }, [messages, setMessages])
+
   function resolveMentionTargets(text: string): string[] {
     const fromChips = mentions
       .filter((mention) => mention.type === 'person')
@@ -1257,6 +1276,21 @@ export function useSendMessage({
       ))
       if (invokedAgents.length) {
         setAgentResponding(invokedAgents.length === 1 ? invokedAgents[0]!.displayName : 'Agents')
+        // Show each invoked agent's avatar with its loading dots at once; the real row replaces it when the server creates it.
+        const pendingAt = Date.now()
+        setMessages((current) => [
+          ...current.filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`)),
+          ...invokedAgents.map((agent) => ({
+            id: `${PENDING_AGENT_REPLY_PREFIX}${clientNonce}_${agent.principalId}`,
+            turnId: `${PENDING_AGENT_REPLY_PREFIX}${clientNonce}_${agent.principalId}`,
+            authorKind: 'agent' as const,
+            authorPrincipalId: agent.principalId,
+            content: '',
+            createdAt: pendingAt,
+            status: 'generating' as const,
+            threadRootMessageId,
+          } satisfies OptimisticMessage)),
+        ].sort(compareRoomMessageRecords))
       }
       const saved = await overlayAppClient.conversations.addMessage({
         conversationId,
@@ -1301,9 +1335,11 @@ export function useSendMessage({
       commitDraftConversation()
       void saved
     } catch {
-      setMessages((current) => current.map((message) => (
-        message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
-      )))
+      setMessages((current) => current
+        .filter((message) => !message.id.startsWith(`${PENDING_AGENT_REPLY_PREFIX}${clientNonce}`))
+        .map((message) => (
+          message.clientNonce === clientNonce ? { ...message, delivery: 'failed' } : message
+        )))
     } finally {
       setAgentResponding(null)
     }
@@ -2142,7 +2178,6 @@ export function useDirectMessageRoom({
   const [notice, setNotice] = useState<string | null>(null)
   const [agentResponding, setAgentResponding] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
-  const [attachOpen, setAttachOpen] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(() =>
     defaultMemoryEnabled({ temporary: false }),
   )
@@ -2314,8 +2349,6 @@ export function useDirectMessageRoom({
     setAgentResponding,
     shareOpen,
     setShareOpen,
-    attachOpen,
-    setAttachOpen,
     memoryEnabled,
     setMemoryEnabled,
     mentions,

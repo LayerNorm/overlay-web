@@ -378,12 +378,14 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     cancelledRunIds: string[]
     cancelledWorkflowRunIds: string[]
     cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+    remoteRunIds?: string[]
     stoppedCount: number
   }> {
     return await convex.mutation<{
       cancelledRunIds: string[]
       cancelledWorkflowRunIds: string[]
       cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+      remoteRunIds?: string[]
       stoppedCount: number
     }>(
       'chat/conversations:cancelAgentRuns',

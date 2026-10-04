@@ -25,7 +25,7 @@ export const MCP_ACCESS_DESCRIPTION: Record<McpAccessLevel, string> = {
 
 /** Tools that only read. Group membership alone cannot express "read": a group mixes both. */
 const READ_TOOL_IDS = [
-  'search_memory', 'search_messages',
+  'search_memory', 'search_messages', 'list_chats', 'read_chat',
   'search_knowledge', 'search_in_files', 'list_files', 'read_file',
   'list_notes', 'get_note',
   'list_skills',

@@ -15,6 +15,7 @@ import {
   executeUpdateNote,
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
+import { executeListChats, executeReadChat } from './chats-executes'
 import {
   executeComputerExec,
   executeComputerListFiles,
@@ -586,6 +587,40 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('search_messages')
         return executeSearchMessages(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('list_chats')) {
+    tools.list_chats = tool({
+      description:
+        'List the user\'s chats in Overlay (id, title, type), most recently active first. Pass a query to filter by title. ' +
+        'Use this to find a chat the user mentions by name before reading it with read_chat.',
+      inputSchema: z.object({
+        query: z.string().optional().describe('Part of the chat title to look for.'),
+        limit: z.number().int().min(1).max(50).optional().describe('How many chats to return (default 20).'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('list_chats')
+        return executeListChats(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('read_chat')) {
+    tools.read_chat = tool({
+      description:
+        'Read the messages of one of the user\'s chats, oldest to newest, labeled by speaker. ' +
+        'Use it when the user refers to a chat (for example by @mentioning its title) and you need what was said. ' +
+        'Give the chatId from list_chats, or the chat\'s exact title.',
+      inputSchema: z.object({
+        chatId: z.string().optional().describe('The chat id from list_chats.'),
+        title: z.string().optional().describe('The chat\'s title, when you do not have its id.'),
+        limit: z.number().int().min(1).max(100).optional().describe('How many of the latest messages to read (default 40).'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('read_chat')
+        return executeReadChat(options, input)
       },
     })
   }

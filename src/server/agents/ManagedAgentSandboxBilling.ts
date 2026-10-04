@@ -26,6 +26,12 @@ const CLEANUP_RETRY_MAX_MS = 30 * 60_000
 const MARKUP_MULTIPLIER = 1 + getMarkupBasisPoints() / 10_000
 /** How long past its idle window a machine may run before the sweep (the fallback) stops it itself. */
 const IDLE_FALLBACK_GRACE_MS = 2 * 60_000
+/**
+ * The meter sweep runs every minute (billing, run supervision), but its idle fallback only has to catch what the idle
+ * timer missed, so it runs on the ticks in the first 90 seconds of every 10-minute block (at least one tick lands in it).
+ */
+const IDLE_FALLBACK_INTERVAL_MS = 10 * 60_000
+const IDLE_FALLBACK_TICK_WINDOW_MS = 90_000
 const ACTIVE_STATUSES = ['reserved', 'provisioning', 'running'] as const
 const REAPABLE_STATUSES = ['stopping', 'cleanup_failed'] as const
 
@@ -55,6 +61,8 @@ export class ManagedAgentSandboxBilling {
     repository: ConnectedAgentRepository
     runtime?: (provider: string) => SandboxRuntime
     now?: () => number
+    /** Whether this sweep tick is one that runs the idle fallback (default: once every 10 minutes). */
+    idleFallbackDue?: (now: number) => boolean
   }) {}
 
   // A turn's upfront hold is only a bootstrap: enough to cover the low-balance
@@ -278,11 +286,13 @@ export class ManagedAgentSandboxBilling {
     // final post-stop total from double-charging.
     const instanceRunning = probe.status !== 'stopped' && probe.status !== 'archived' && probe.status !== 'deleted' && probe.status !== 'failed'
     let idleStoppedNow = false
+    const fallbackDue = options?.idleStop === 'timer'
+      || (this.dependencies.idleFallbackDue ?? ((at: number) => at % IDLE_FALLBACK_INTERVAL_MS < IDLE_FALLBACK_TICK_WINDOW_MS))(now)
     // Provider-side idle-stop: Box has no idle timer, so Overlay stops idle machines itself, the lease stays
     // 'running', and the next turn's acquire resumes it. The primary trigger is the idle timer (`idleCheck`, set when
     // a run ends); this sweep is the fallback for a timer that never fired, so it waits a grace period past the
     // window. The tick still bills the elapsed window it ran through.
-    if (!stopping && instanceRunning && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none'
+    if (!stopping && instanceRunning && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none' && fallbackDue
       && await this.leaseIsIdle(effectiveLease, now, options?.idleStop === 'timer' ? 0 : IDLE_FALLBACK_GRACE_MS)) {
       const idleForMs = now - idleActivityTimestamp(usage, effectiveLease, now)
       await probe.instance.stop().then(() => {
@@ -303,7 +313,7 @@ export class ManagedAgentSandboxBilling {
       })
     }
     // Fallback for a missing or overdue idle timer (a lost scheduled job, a run that ended without one): start it.
-    if (!stopping && instanceRunning && effectiveLease.status === 'running' && !idleStoppedNow && options?.idleStop !== 'none'
+    if (!stopping && instanceRunning && effectiveLease.status === 'running' && !idleStoppedNow && options?.idleStop !== 'none' && fallbackDue
       && !idleTimerIsLive(usage, now)
       && !(await this.environmentHasActiveRuns(effectiveLease))) {
       const remainingMs = idleActivityTimestamp(usage, effectiveLease, now) + idleWindowMs(usage) - now

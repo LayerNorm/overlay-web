@@ -37,6 +37,17 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
       userId: resourceUserId,
     })
+    // Connected agents (Claude Code, Codex…) are stopped through the control plane, which tells their machine to cancel.
+    const remoteRunIds = cancelled.remoteRunIds ?? []
+    await Promise.all(remoteRunIds.map((runId) => getOverlayServerContext().connectedAgentControlPlane.controlRemoteTurn({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      conversationId,
+      runId,
+      action: 'cancel',
+    }).catch((error) => {
+      logger.warn('[conversations/stop POST] Failed to cancel remote run', { runId, error })
+    })))
     const abortedLocalRunIds = abortToolLoopRunIds(cancelled.cancelledRunIds)
     const cancelledWorkflowAgentRunIds = (await Promise.all(cancelled.cancelledWorkflows.map(async (run) => {
       try {

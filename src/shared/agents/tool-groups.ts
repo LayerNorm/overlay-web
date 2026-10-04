@@ -40,7 +40,7 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     id: 'memory',
     label: 'Persistent memory',
     description: 'Recall and remember facts across conversations, including the agent\'s own memories.',
-    toolIds: ['search_memory', 'search_messages', 'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'],
+    toolIds: ['search_memory', 'search_messages', 'list_chats', 'read_chat', 'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'],
   },
   {
     id: 'knowledge',
@@ -195,6 +195,8 @@ const LEGACY_MEMORY_WRITE_TOOL_IDS = ['save_memory', 'save_memory_batch', 'updat
  */
 const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: readonly string[] }> = [
   { grantedBy: ['search_knowledge', 'search_in_files'], adds: ['list_files', 'read_file'] },
+  // Reading chats joined the memory group.
+  { grantedBy: ['search_messages'], adds: ['list_chats', 'read_chat'] },
   { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
   // Agents that hold the whole toolbox (automations, video, and the browser) can ask other agents.
   { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message'] },

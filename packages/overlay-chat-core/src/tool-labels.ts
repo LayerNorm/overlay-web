@@ -193,6 +193,8 @@ export function getDescriptiveToolLabel(
     write_file: 'Writing a file',
     create_folder: 'Creating a folder',
     move_file: 'Moving a file',
+    list_chats: 'Looking through your chats',
+    read_chat: 'Reading a chat',
     list_notes: 'Listing your notes',
     get_note: 'Opening a note',
     create_note: 'Creating a note',

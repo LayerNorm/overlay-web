@@ -6,7 +6,7 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 
 | Group | Tools |
 | --- | --- |
-| Memory | `search_memory`, `search_messages`, `save_memory`, `save_memory_batch`, `update_memory`, `delete_memory` |
+| Memory | `search_memory`, `search_messages`, `list_chats`, `read_chat`, `save_memory`, `save_memory_batch`, `update_memory`, `delete_memory` |
 | Knowledge and files (read) | `search_knowledge`, `search_in_files`, `list_files`, `read_file` |
 | File editing | `write_file`, `create_folder`, `move_file` |
 | Notes | `list_notes`, `get_note`, `create_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`, `delete_note` |
@@ -37,6 +37,6 @@ Not tool ids but granted as capabilities:
 
 ## Outside-app access levels (`src/shared/mcp/access.ts`)
 
-- **Read only**: `search_memory`, `search_messages`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`.
+- **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`.
 - **Read and write**: read, plus memory, knowledge, files, notes, and skills groups and web search.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, the browser, and asking agents. Never agent editing or computers. (A personal token at this level saw 46 tools on 2026-10-03.)
