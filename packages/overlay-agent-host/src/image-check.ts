@@ -9,7 +9,7 @@ export const OVERLAY_IMAGE_MANIFEST_PATHS = ['/etc/overlay/image.json', '/opt/ov
 
 /** Image versions this host build accepts on an Overlay Cloud machine. */
 /** v2 adds the run-credentials method to the bridge protocol; v1 hosts cannot parse Overlay Cloud credentials. */
-export const SUPPORTED_OVERLAY_IMAGE_VERSIONS = { min: 2, max: 3 } as const
+export const SUPPORTED_OVERLAY_IMAGE_VERSIONS = { min: 2, max: 4 } as const
 
 export type OverlayImageManifest = {
   imageVersion: number

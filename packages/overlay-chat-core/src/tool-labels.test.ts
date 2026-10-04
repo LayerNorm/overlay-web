@@ -17,3 +17,8 @@ test('MCP search labels settle after their result is available', () => {
     'Searched MCP integrations for “read an exact tweet”',
   )
 })
+
+test('a connected agent action shows the title the agent gave it', () => {
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Read notes/how-to-find-bugs.md' }), 'Read notes/how-to-find-bugs.md')
+  assert.equal(getDescriptiveToolLabel('remote_action', {}), 'Remote Action')
+})

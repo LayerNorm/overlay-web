@@ -129,7 +129,15 @@ export class AcpxAgentAdapter implements AgentAdapter {
     const ensure = () => runtime.ensureSession({
       sessionKey, agent: this.options.agent, mode: 'persistent', cwd: input.workingDirectory,
     })
+    const requestedModel = typeof input.metadata?.model === 'string' && input.metadata.model.trim() ? input.metadata.model.trim() : null
+    // The model an agent's owner chose, in the agent's own id (Claude Code `sonnet`, Codex `gpt-6-sol[high]`). A model the
+    // agent does not offer fails the run with the agent's own message instead of silently running another model.
+    const applyModel = async (target: AcpRuntimeHandle) => {
+      if (!requestedModel || !runtime.setModel) return
+      await runtime.setModel({ handle: target, model: requestedModel })
+    }
     let handle: AcpRuntimeHandle = await ensure()
+    await applyModel(handle)
     let activeTurn: AcpRuntimeTurn | undefined
     const permissions = new Map<string, PendingPermission>()
     const elicitations = new Map<string, PendingElicitation>()
@@ -182,6 +190,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
       prompt: async (prompt) => {
         if (!connected) {
           handle = await ensure()
+          await applyModel(handle)
           connected = true
         }
         textCheckpoint = ''

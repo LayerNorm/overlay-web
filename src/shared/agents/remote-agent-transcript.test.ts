@@ -25,15 +25,17 @@ test('remote checkpoints replace one stable markdown block and actions update in
       event(2, 'text_checkpoint', { text: '# Result\n\nFirst complete checkpoint' }),
       event(3, 'action', { actionId: 'shell-1', title: 'Run tests', status: 'started' }),
       event(4, 'action', { actionId: 'shell-1', title: 'Run tests', status: 'completed' }),
-      event(5, 'text_checkpoint', { text: '# Result\n\nFinal stable markdown' }),
+      event(5, 'text_checkpoint', { text: '# Result\n\nFirst complete checkpoint\n\nFinal stable markdown' }),
     ],
     environmentName: 'MacBook',
     queueExpiresAt: 5000,
     runId: 'run-1',
   })
-  assert.equal(projection.content, '# Result\n\nFinal stable markdown')
+  assert.equal(projection.content, '# Result\n\nFirst complete checkpoint\n\nFinal stable markdown')
   assert.equal(projection.remoteSessionId, 'codex-session')
-  assert.equal(projection.parts.filter((part) => part.type === 'text').length, 1)
+  // Text before the action stays before it; text after it follows.
+  assert.deepEqual(projection.parts.filter((part) => part.type === 'text' || part.type === 'tool-invocation').map((part) => part.type === 'text' ? part.text : 'tool'),
+    ['# Result\n\nFirst complete checkpoint', 'tool', '\n\nFinal stable markdown'])
   assert.equal(projection.parts.filter((part) => part.type === 'tool-invocation').length, 1)
   assert.equal(projection.terminal, false)
 })
@@ -192,4 +194,38 @@ test('a sign-in failure replaces the agent text with a reconnect message that li
   assert.match(projection.content, /Reconnect your Claude account/)
   assert.match(projection.content, /\]\(\/app\/settings\?section=agent-accounts\)/)
   assert.equal(projection.terminalError?.code, 'auth_required')
+})
+
+test('text and actions keep the order they happened in, across several actions', () => {
+  const projection = projectRemoteAgentEvents({
+    content: '',
+    parts: [],
+    events: [
+      event(1, 'text_checkpoint', { text: 'Looking.' }),
+      event(2, 'action', { actionId: 'a', title: 'Search notes', status: 'completed' }),
+      event(3, 'text_checkpoint', { text: 'Looking. Found it.' }),
+      event(4, 'action', { actionId: 'b', title: 'Read note', status: 'completed' }),
+      event(5, 'action', { actionId: 'a', title: 'Search notes', status: 'completed' }),
+      event(6, 'text_checkpoint', { text: 'Looking. Found it. Here it is.' }),
+    ],
+    environmentName: 'Cloud', queueExpiresAt: 5000, runId: 'run-1',
+  })
+  const order = projection.parts
+    .filter((part) => part.type === 'text' || part.type === 'tool-invocation')
+    .map((part) => part.type === 'text' ? part.text : (part.toolInvocation as { toolCallId: string }).toolCallId)
+  assert.deepEqual(order, ['Looking.', 'a', ' Found it.', 'b', ' Here it is.'])
+})
+
+test('rewritten text falls back to one block instead of repeating', () => {
+  const projection = projectRemoteAgentEvents({
+    content: '',
+    parts: [],
+    events: [
+      event(1, 'text_checkpoint', { text: 'Draft one.' }),
+      event(2, 'action', { actionId: 'a', title: 'Check', status: 'completed' }),
+      event(3, 'text_checkpoint', { text: 'A different answer.' }),
+    ],
+    environmentName: 'Cloud', queueExpiresAt: 5000, runId: 'run-1',
+  })
+  assert.deepEqual(projection.parts.filter((part) => part.type === 'text').map((part) => part.text), ['A different answer.'])
 })

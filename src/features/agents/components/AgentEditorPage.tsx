@@ -124,7 +124,11 @@ export function AgentEditorPage({
     }
     // An Overlay Cloud agent's Overlay access is set by its own control on this page, not by Save; sending the
     // editor's copy (empty for connected agents) would wipe it.
-    if (runtime.cloudAgent) delete built.allowedToolIds
+    // Its model is likewise set by its own control (Model).
+    if (runtime.cloudAgent) {
+      delete built.allowedToolIds
+      delete (built as { modelId?: string }).modelId
+    }
     return built
   }, [runtime.cloudAgent, byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
     runtime.agentType,

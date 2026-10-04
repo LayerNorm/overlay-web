@@ -275,10 +275,32 @@ function isTerminalToolState(value: unknown) {
     || value === 'completed'
 }
 
+/**
+ * The agent's text arrives as one growing string. Actions it took in between split it: text written before an action
+ * stays where it was, and later text goes after that action, so the transcript reads in the order things happened.
+ */
 function replaceTextPart(parts: Array<Record<string, unknown>>, text: string) {
-  const next = parts.filter((part) => part.type !== 'text' && part.type !== 'output-text')
-  if (text) next.unshift({ type: 'text', text })
-  return next
+  const isText = (part: Record<string, unknown>) => part.type === 'text' || part.type === 'output-text'
+  const lastAction = parts.reduce((found, part, index) => (part.type === 'tool-invocation' ? index : found), -1)
+  // A text part followed by an action is finished; the unfinished one, if any, is the last text part after the last action.
+  const finished = parts.filter((part, index) => isText(part) && index < lastAction)
+  const consumedText = finished.map((part) => (typeof part.text === 'string' ? part.text : '')).join('')
+  // The agent rewrote text it had already placed: fall back to one block at the start rather than repeat or lose any.
+  if (!text.startsWith(consumedText)) {
+    const without = parts.filter((part) => !isText(part))
+    return text ? [{ type: 'text', text }, ...without] : without
+  }
+  const rest = text.slice(consumedText.length)
+  const openIndex = parts.findIndex((part, index) => isText(part) && index > lastAction)
+  if (openIndex >= 0) {
+    const next = [...parts]
+    if (rest) next[openIndex] = { ...parts[openIndex]!, type: 'text', text: rest }
+    else next.splice(openIndex, 1)
+    return next
+  }
+  if (!rest) return parts
+  // No text yet after the last action: it starts a new part there, or leads the message when there is no action yet.
+  return lastAction < 0 ? [{ type: 'text', text: rest }, ...parts] : [...parts, { type: 'text', text: rest }]
 }
 
 function upsertActionPart(parts: Array<Record<string, unknown>>, payload: Record<string, unknown>) {

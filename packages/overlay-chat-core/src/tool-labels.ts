@@ -158,6 +158,12 @@ export function getDescriptiveToolLabel(
   toolInput?: Record<string, unknown>,
   phase: ToolLabelPhase = 'running',
 ): string {
+  // A connected agent (Claude Code, Codex…) names its own actions; show that, not the generic tool name.
+  if (toolName === 'remote_action') {
+    const title = pickFirstStringFromInput(toolInput, ['title'])
+    if (title) return title.length > 140 ? `${title.slice(0, 140)}…` : title
+  }
+
   if (toolName === 'call_mcp_tool') {
     return describeMcpToolCall(toolInput, phase)
   }

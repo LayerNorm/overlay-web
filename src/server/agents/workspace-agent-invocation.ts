@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import { streamText, type ModelMessage } from 'ai'
 import { start } from 'workflow/api'
 import { isStepCount, type ToolApprovalConfiguration } from '@/server/ai/sdk'
@@ -490,6 +491,11 @@ export function buildRemoteAgentPrompt(args: {
  * so the agent gets the same workspace tools as a managed harness. The token
  * is scoped to this run; older hosts ignore the metadata key.
  */
+function connectedAgentModelMetadata(modelId: string): { model?: string } {
+  const model = parseByoModelId(modelId)?.model
+  return model ? { model } : {}
+}
+
 function overlayMcpMetadata(args: {
   actorUserId: string
   conversationId: string
@@ -650,6 +656,8 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           initiatorPrincipalId: args.initiatorPrincipalId,
           // A flag only: the host asks the control plane for the credentials, so no secret is stored in the command.
           ...(args.invocation.remoteTarget.usesProviderAccount ? { runCredentials: true } : {}),
+          // The agent's own model id, when its owner chose one; otherwise the agent uses its default.
+          ...connectedAgentModelMetadata(args.invocation.modelId),
           ...overlayMcpMetadata({
             actorUserId: args.actorUserId,
             conversationId: args.conversationId,

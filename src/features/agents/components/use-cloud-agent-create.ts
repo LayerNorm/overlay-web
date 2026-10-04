@@ -92,6 +92,7 @@ export function useCloudAgentCreate(args: { workspaceId: string | null; onReady(
           visibility: identity.visibility,
           // The agent reaches Overlay's notes, files, memory and the rest over MCP; with no grant it would have no tools at all.
           mcpToolIds: mcpToolGrantFor('full'),
+          byoModel: other.model,
         }),
         teamIds: [],
       })

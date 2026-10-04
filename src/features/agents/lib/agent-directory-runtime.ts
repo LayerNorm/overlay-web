@@ -1,4 +1,5 @@
 import type { AgentBinding } from '@overlay/workspace-contracts'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 
 export function indexActiveAgentBindings(bindings: AgentBinding[]) {
   const byAgentId = new Map<string, AgentBinding>()
@@ -20,7 +21,6 @@ export function getAgentRuntimeLabel(modelId: string, binding?: AgentBinding) {
       : `${adapterId} · connected`
   }
 
-  return modelId.startsWith('byo/')
-    ? `${modelId.slice(4)} · connected`
-    : modelId
+  const byo = parseByoModelId(modelId)
+  return byo ? `${byo.adapterId}${byo.model ? ` · ${byo.model}` : ''} · connected` : modelId
 }

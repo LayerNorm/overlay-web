@@ -50,7 +50,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
   const { runtime, created } = fakeRuntime(machine)
   const service = new CloudAgentMachineService({
     audit: { record: async () => undefined } as never,
-    image: 'overlay-agent-v3',
+    image: 'overlay-agent-v4',
     provisions: {
       get: async () => null,
       begin: async () => ({ started: true, phase: 'queued' }),
@@ -94,7 +94,7 @@ test('provision boots the image, redeems the code with acpx, approves the worksp
   const { service, log, created } = deps(machine)
   const result = await service.provision(provisionArgs)
 
-  assert.equal(created[0]?.snapshotId, 'overlay-agent-v3')
+  assert.equal(created[0]?.snapshotId, 'overlay-agent-v4')
   assert.equal(created[0]?.hardTimeoutMs, 0)
   assert.deepEqual(created[0]?.resources, { vcpus: 4, memoryGiB: 8, diskGiB: 40 })
   assert.equal(commands[0], cloudAgentConnectCommand({

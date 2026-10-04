@@ -4,6 +4,8 @@ export type OtherAgentDraft = {
   adapterId: AgentProviderId
   runsOn: 'cloud' | 'machine'
   providerAccountId: string
+  /** The agent's own model id; empty is the agent's default. */
+  model: string
 }
 
 export const OTHER_AGENT_LABEL: Record<AgentProviderId, string> = {
@@ -15,7 +17,7 @@ export const OTHER_AGENT_LABEL: Record<AgentProviderId, string> = {
 }
 
 export function initialOtherAgentDraft(): OtherAgentDraft {
-  return { adapterId: 'claude-code', runsOn: 'cloud', providerAccountId: '' }
+  return { adapterId: 'claude-code', runsOn: 'cloud', providerAccountId: '', model: '' }
 }
 
 /** An agent on Overlay Cloud needs a name and an account; its instructions are optional (the agent has its own). */

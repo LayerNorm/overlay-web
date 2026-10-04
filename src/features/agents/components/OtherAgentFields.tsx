@@ -8,6 +8,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SELECTABLE_AGENT_PROVIDER_IDS, AGENT_PROVIDERS } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 import { OTHER_AGENT_LABEL, type OtherAgentDraft } from './cloud-agent-draft'
+import { AgentModelField } from './AgentModelField'
 import { FieldLabel } from './InfoTip'
 
 const CONNECT_VALUE = '__connect__'
@@ -67,7 +68,7 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
           layout="stretch"
           value={other.adapterId}
           options={SELECTABLE_AGENT_PROVIDER_IDS.map((id) => ({ value: id, label: OTHER_AGENT_LABEL[id] }))}
-          onChange={(adapterId) => onChange({ adapterId, providerAccountId: '' })}
+          onChange={(adapterId) => onChange({ adapterId, providerAccountId: '', model: '' })}
         />
         {AGENT_PROVIDERS[other.adapterId].experimental ? (
           <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
@@ -82,19 +83,31 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
       {other.runsOn === 'cloud' ? (
         <>
           <div>
-            <FieldLabel info={`The ${AGENT_PROVIDERS[other.adapterId].label} sign-in this agent uses. Stored encrypted; sent to the agent only while it works.`}>Account</FieldLabel>
-            <ListboxSelect
-              aria-label="Account"
-              value={chosen || ''}
-              options={[
-                ...(chosen ? [] : [{ value: '', label: 'Choose an account' }]),
-                ...matching.map((account) => ({ value: account.id, label: `${account.label}${account.status === 'needs_reauth' ? ' · needs reconnecting' : ''}` })),
-                { value: CONNECT_VALUE, label: 'Connect an account…' },
-              ]}
-              onChange={(value) => (value === CONNECT_VALUE ? setConnecting(true) : onChange({ providerAccountId: value }))}
-              portal
-            />
+            <FieldLabel info={`The ${AGENT_PROVIDERS[other.adapterId].label} sign-in this agent uses. Stored encrypted; sent to the agent only while it works. It is also saved under Settings → Agent accounts.`}>Account</FieldLabel>
+            {accounts !== null && matching.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => setConnecting(true)}
+                className="flex w-full items-center justify-between rounded-xl border border-[var(--border)] px-3 py-2.5 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+              >
+                <span>Connect {AGENT_PROVIDERS[other.adapterId].label}</span>
+                <span className="text-xs text-[var(--muted)]">{other.adapterId === 'codex' ? 'Sign in with ChatGPT' : 'Sign in or add a key'}</span>
+              </button>
+            ) : (
+              <ListboxSelect
+                aria-label="Account"
+                value={chosen || ''}
+                options={[
+                  ...(chosen ? [] : [{ value: '', label: 'Choose an account' }]),
+                  ...matching.map((account) => ({ value: account.id, label: `${account.label}${account.status === 'needs_reauth' ? ' · needs reconnecting' : ''}` })),
+                  { value: CONNECT_VALUE, label: 'Connect another account…' },
+                ]}
+                onChange={(value) => (value === CONNECT_VALUE ? setConnecting(true) : onChange({ providerAccountId: value }))}
+                portal
+              />
+            )}
           </div>
+          <AgentModelField adapterId={other.adapterId} model={other.model} onChange={(model) => onChange({ model })} />
           <div>
             <FieldLabel info="The machine the agent runs on. Billed while it runs; it pauses when idle.">Machine</FieldLabel>
             <ListboxSelect
