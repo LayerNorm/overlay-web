@@ -10,6 +10,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const server = getOverlayServerContext()
+    // A machine's idle timer (scheduled by Convex when a run ends) calls this route with one lease to check.
+    const idleCheck = await idleCheckFrom(request)
+    if (idleCheck) {
+      const result = await server.managedAgentSandboxBilling.idleCheck(idleCheck)
+      return NextResponse.json({ idleCheck: result }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     const controlPlane = server.connectedAgentControlPlane
     const [supervised, reconciliation, meter] = await Promise.all([
       controlPlane.sweepRemoteRuns(),
@@ -32,4 +38,13 @@ export async function POST(request: Request) {
   } catch (error) {
     return agentEnvironmentErrorResponse(error)
   }
+}
+
+async function idleCheckFrom(request: Request): Promise<{ workspaceId: string; leaseId: string; token: string } | null> {
+  const body = await request.json().catch((_error) => null) as { idleCheck?: Record<string, unknown> } | null
+  const check = body?.idleCheck
+  if (!check) return null
+  const { workspaceId, leaseId, token } = check
+  if (typeof workspaceId !== 'string' || typeof leaseId !== 'string' || typeof token !== 'string') return null
+  return { workspaceId, leaseId, token }
 }

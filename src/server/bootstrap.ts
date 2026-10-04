@@ -367,7 +367,7 @@ export function createOverlayServerContext(
       })
     },
     meterSandboxLease: async (lease) => {
-      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0 })
+      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0, idleStop: 'none' })
     },
     settleUsage: async (usage) => {
       if (!usage.userId) return

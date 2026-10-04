@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
+import { internal } from '../_generated/api'
 import { internalMutation, mutation, query, type MutationCtx } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
@@ -1595,6 +1596,9 @@ export const patchSandboxLeaseUsageByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string(),
     patch: anyObject, now: v.number(),
+    // Schedule the idle check for this long from now. A new token replaces any earlier one, so an earlier
+    // timer finds its token stale and does nothing: patching with `idleToken: null` cancels without deleting.
+    idleCheckInMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -1603,9 +1607,34 @@ export const patchSandboxLeaseUsageByServer = mutation({
       .withIndex('by_leaseId', (q) => q.eq('leaseId', args.leaseId))
       .unique()
     if (!current || current.workspaceId !== args.workspaceId) return null
-    const usage = { ...((current.usage ?? {}) as Record<string, unknown>), ...args.patch }
+    const usage: Record<string, unknown> = { ...((current.usage ?? {}) as Record<string, unknown>), ...args.patch }
+    if (args.idleCheckInMs !== undefined) {
+      const delay = Math.max(1_000, Math.floor(args.idleCheckInMs))
+      const token = `${args.now.toString(36)}${Math.random().toString(36).slice(2, 10)}`
+      usage.idleToken = token
+      usage.idleCheckAt = args.now + delay
+      await ctx.scheduler.runAfter(delay, internal.agents.idleStop.runIdleCheck, {
+        workspaceId: args.workspaceId, leaseId: args.leaseId, token,
+      })
+    }
     await ctx.db.patch(current._id, { usage, updatedAt: args.now })
     return { ...clean(current), usage, updatedAt: args.now, id: current.leaseId }
+  },
+})
+
+/** Whether a run on this environment is still going (so its machine must stay up). */
+export const environmentHasActiveRunsByServer = query({
+  args: { serverSecret: v.string(), environmentId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    for (const status of ['starting', 'running', 'waiting_for_approval', 'recovering'] as const) {
+      const row = await ctx.db
+        .query('agentRemoteSessions')
+        .withIndex('by_environmentId_status', (q) => q.eq('environmentId', args.environmentId).eq('status', status))
+        .first()
+      if (row) return true
+    }
+    return false
   },
 })
 

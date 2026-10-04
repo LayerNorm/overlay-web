@@ -86,6 +86,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/mcp-servers-overview.md` | Any change to what Overlay's MCP servers are for, how they sign in, or how they differ. |
 | `docs/develop/agent-to-agent.md` | Any change to agents asking agents: the `agent_chat` tools, `/api/v1/agent-asks`, lineage and limits, the budget counters, or how an asked agent's turn is started. |
 | `docs/develop/agent-profiles.md` | Any change to importing Claude Code / Codex config into Overlay Cloud agents: the allowlist and cleaning rules, the export-config host command, upload/apply flow, versions, or needed-value (secret) handling. |
+| `docs/develop/agent-machine-idle.md` | Any change to when an agent machine goes idle: the idle window, the Convex idle timer and token, the `idleCheck` BFF path, the meter sweep fallback, or the "a run is going" check. |
 | `docs/develop/codex-subscription.md` | Any change to Codex ChatGPT sign-in, the token broker and refresh lock, per-run `auth.json` delivery, experimental OpenCode/Hermes/Cursor agents, or the E2B sandbox adapter. |
 | `docs/develop/mcp-access.md` | Any change to Overlay's MCP server for other AI apps: OAuth endpoints, grants, access levels, token formats, consent page, or Settings → Connected apps. |
 | `docs/develop/convex-only-self-hosting.md` | Any change to the Convex-only backend decision, the Postgres-layer deletion plan, self-hosted Convex topology/scaling, the data-mirror/Data Sync integration path, or the big-brain control-plane plan. |

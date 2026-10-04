@@ -17,6 +17,7 @@ test('reserve holds a bootstrap reservation and records the payer on the lease',
     now: () => 5_000,
     policy: policy as never,
     repository: {
+      environmentHasActiveRuns: async () => false,
       getActiveSandboxLease: async () => leaseFixture({
         usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, meteredUsage: {}, meterVersion: 0 },
       }),
@@ -42,6 +43,8 @@ test('reserve holds a bootstrap reservation and records the payer on the lease',
   // The payer write is best-effort: resolving needs the app context, which is
   // absent under test — either zero or one patch, never a throw.
   assert.equal(usagePatches.length <= 1, true)
+  // A starting turn cancels the machine's idle timer.
+  if (usagePatches[0]) assert.equal(usagePatches[0].idleToken, null)
 })
 
 test('meterLease debits the usage delta against the lease cursor', async () => {
@@ -61,6 +64,8 @@ test('meterLease debits the usage delta against the lease cursor', async () => {
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)
         return { applied: true as const, meterVersion: 4, remainingCents: 500 }
@@ -91,6 +96,8 @@ test('meterLease adopts current counters for a legacy lease without charging', a
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)
         return { applied: true as const, meterVersion: 1 }
@@ -121,6 +128,8 @@ test('meterLease bills a repointed sandbox from zero', async () => {
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)
         return { applied: true as const, meterVersion: 8, remainingCents: 900 }
@@ -162,6 +171,8 @@ test('meterLeases kills a lease when the meter debit is declined', async () => {
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
       meterSandboxLease: async () => ({ applied: false as const, reason: 'insufficient_budget' as const, remainingCents: 12 }),
       stopSandboxLease: async () => { stopping = true; stopped.push('lease'); return { ...lease, status: 'stopping' as const } },
@@ -206,6 +217,8 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 1, remainingCents: 42 }),
       stopSandboxLease: async (args: { reason: string }) => { stopReasons.push(args.reason); return { ...lease, status: 'stopping' as const } },
@@ -248,6 +261,8 @@ test('meterLeases reaps a running lease past its reserved window even when the s
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 2 }),
       stopSandboxLease: async () => ({ ...lease, status: 'stopping' as const }),
@@ -279,6 +294,8 @@ test('meterLeases reaps stopping leases and retries provider cleanup', async () 
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
         args.statuses.includes('stopping') ? [stoppingLease] : [],
       meterSandboxLease: async () => { throw new Error('unmeterable') },
@@ -296,6 +313,7 @@ test('meterLeases reaps stopping leases and retries provider cleanup', async () 
 test('metered settle runs a final tick, releases the bootstrap hold, and tolerates a missing marker', async () => {
   const released: Array<Record<string, unknown>> = []
   const patches: Array<Record<string, unknown>> = []
+  const idleChecks: number[] = []
   const lease = leaseFixture({
     usage: {
       meteredUsage: { wallTimeMs: 60_000 },
@@ -311,10 +329,15 @@ test('metered settle runs a final tick, releases the bootstrap hold, and tolerat
       markForReconcile: async () => { throw new Error('must not reconcile') },
     } as never,
     repository: {
+      environmentHasActiveRuns: async () => false,
       getSandboxLease: async () => lease,
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 6, remainingCents: 800 }),
       markSandboxSettlementComplete: async () => false,
-      patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown> }) => { patches.push(args.patch); return lease },
+      patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown>; idleCheckInMs?: number }) => {
+        patches.push(args.patch)
+        if (args.idleCheckInMs !== undefined) idleChecks.push(args.idleCheckInMs)
+        return lease
+      },
     } as never,
     runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 90_000 })),
   })
@@ -329,6 +352,8 @@ test('metered settle runs a final tick, releases the bootstrap hold, and tolerat
     },
   })
   assert.deepEqual(released, [{ reservationId: 'sandbox-reservation', userId: 'user', reason: 'sandbox_metered' }])
+  // The run's end starts the machine's idle timer for one full window.
+  assert.deepEqual(idleChecks, [600_000])
   assert.equal(typeof (patches[0]?.lastSettlement as Record<string, unknown>)?.providerCostUsd, 'number')
 })
 
@@ -342,6 +367,8 @@ test('managed sandbox settlement failure marks its reservation for reconciliatio
       },
     } as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       getSandboxLease: async () => null,
     } as never,
     runtime: () => { throw new Error('provider unavailable') },
@@ -457,6 +484,8 @@ test('meterLease bills elapsed wall-clock when provider counters are stalled mid
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)
         return { applied: true as const, meterVersion: 4, remainingCents: 500 }
@@ -501,6 +530,8 @@ test('meterLease bills real counter totals on a stopped instance without elapsed
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)
         return { applied: true as const, meterVersion: 4, remainingCents: 500 }
@@ -547,6 +578,8 @@ test('meterLease idle-stops a running sandbox whose lease shows no recent activi
     now: () => 1_000_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
     } as never,
     runtime: () => runtime,
@@ -584,6 +617,8 @@ test('meterLease leaves a recently-active sandbox running', async () => {
     now: () => 1_000_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
     } as never,
     runtime: () => runtime,
@@ -593,7 +628,7 @@ test('meterLease leaves a recently-active sandbox running', async () => {
   assert.deepEqual(events, [])
 })
 
-test('meterLease does not idle-stop a sandbox while a turn is in flight', async () => {
+test('meterLease does not idle-stop a sandbox while a run is still going', async () => {
   const events: string[] = []
   const lease = leaseFixture({
     usage: {
@@ -622,6 +657,8 @@ test('meterLease does not idle-stop a sandbox while a turn is in flight', async 
     now: () => 1_000_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => true,
       meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
     } as never,
     runtime: () => runtime,
@@ -650,6 +687,8 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[]; cleanupBefore?: number }) =>
         args.statuses.includes('stopping') ? [stoppingLease] : [],
       meterSandboxLease: async (args: Record<string, unknown>) => {
@@ -729,6 +768,8 @@ test('meterLease bills the provider-reported dollar delta on a box lease', async
     now: () => 190_000,
     policy: {} as never,
     repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => false,
       meterSandboxLease: async (args: Record<string, unknown>) => {
         meterCalls.push(args)
         return { applied: true as const, meterVersion: 4, remainingCents: 500 }
@@ -762,3 +803,103 @@ function runtimeWithUsage(read: () => { wallTimeMs: number; activeCpuTimeMs?: nu
     restore: async () => instance, deleteSnapshot: async () => undefined,
   }
 }
+
+/** A lease with the timer state under test, a fake provider that records stops, and a repository that records patches. */
+function idleHarness(options: {
+  now: number
+  usage: Record<string, unknown>
+  activeRuns?: boolean
+  status?: string
+}) {
+  const events: string[] = []
+  const patches: Array<{ patch: Record<string, unknown>; idleCheckInMs?: number }> = []
+  const lease = leaseFixture({
+    status: options.status ?? 'running',
+    usage: {
+      idleTimeoutMs: 600_000,
+      meteredUsage: { wallTimeMs: 60_000 },
+      meteredProviderReference: 'sandbox-reference',
+      meteredAt: 60_000,
+      meterVersion: 3,
+      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+      ...options.usage,
+    },
+  } as never)
+  const runtime: SandboxRuntime = {
+    provider: 'box', capabilities: {} as never,
+    create: async () => { throw new Error('unreachable') },
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      stop: async () => { events.push('stop') },
+      usage: async () => ({ wallTimeMs: 60_000 }),
+    }) as SandboxInstance,
+    restore: async () => { throw new Error('unreachable') },
+    deleteSnapshot: async () => undefined,
+  }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => options.now,
+    policy: {} as never,
+    repository: {
+      getSandboxLease: async () => lease,
+      getActiveSandboxLease: async () => lease,
+      environmentHasActiveRuns: async () => options.activeRuns === true,
+      patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown>; idleCheckInMs?: number }) => { patches.push(args); return lease },
+      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 4, remainingCents: 500 }),
+    } as never,
+    runtime: () => runtime,
+  })
+  return { service, lease, events, patches }
+}
+
+test('idleCheck ignores a timer whose token was replaced', async () => {
+  const { service, events, patches } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 100_000, idleToken: 'current', idleCheckAt: 700_000 } })
+  assert.deepEqual(await service.idleCheck({ workspaceId: 'workspace', leaseId: 'lease', token: 'old' }), { outcome: 'stale' })
+  assert.deepEqual(events, [])
+  assert.deepEqual(patches, [])
+})
+
+test('idleCheck stops a machine that was idle for the whole window', async () => {
+  const { service, events } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 100_000, idleToken: 'current', idleCheckAt: 700_000 } })
+  assert.deepEqual(await service.idleCheck({ workspaceId: 'workspace', leaseId: 'lease', token: 'current' }), { outcome: 'checked' })
+  assert.deepEqual(events, ['stop'])
+})
+
+test('idleCheck moves to the end of the window when something happened since it was scheduled', async () => {
+  const { service, events, patches } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 700_000, idleToken: 'current', idleCheckAt: 700_000 } })
+  assert.deepEqual(await service.idleCheck({ workspaceId: 'workspace', leaseId: 'lease', token: 'current' }), { outcome: 'rescheduled' })
+  assert.deepEqual(events, [])
+  assert.equal(patches[0]?.idleCheckInMs, 300_000)
+})
+
+test('idleCheck leaves a machine alone while a run is going', async () => {
+  const { service, events } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 100_000, idleToken: 'current', idleCheckAt: 700_000 }, activeRuns: true })
+  assert.deepEqual(await service.idleCheck({ workspaceId: 'workspace', leaseId: 'lease', token: 'current' }), { outcome: 'busy' })
+  assert.deepEqual(events, [])
+})
+
+test('idleCheck does nothing for a lease that is gone or no longer running', async () => {
+  const { service, events } = idleHarness({ now: 1_000_000, usage: { idleToken: 'current' }, status: 'stopping' })
+  assert.deepEqual(await service.idleCheck({ workspaceId: 'workspace', leaseId: 'lease', token: 'current' }), { outcome: 'gone' })
+  assert.deepEqual(events, [])
+})
+
+test('the sweep starts a missing idle timer for an idle machine and does not stop it before the grace period', async () => {
+  const { service, lease, events, patches } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 450_000 } })
+  await service.meterLease(lease)
+  assert.deepEqual(events, [], 'idle for 550s of a 600s window: not yet')
+  assert.equal(patches.length, 1)
+  assert.equal(patches[0]?.idleCheckInMs, 50_000, 'timer set for the rest of the window')
+})
+
+test('the sweep stops a machine whose timer was lost, once past the grace period', async () => {
+  const { service, lease, events } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 100_000, idleToken: 'lost', idleCheckAt: 700_000 } })
+  await service.meterLease(lease)
+  assert.deepEqual(events, ['stop'])
+})
+
+test('the sweep leaves a machine with a live timer to its timer', async () => {
+  const { service, lease, events, patches } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 450_000, idleToken: 'live', idleCheckAt: 1_050_000 } })
+  await service.meterLease(lease)
+  assert.deepEqual(events, [])
+  assert.deepEqual(patches, [])
+})

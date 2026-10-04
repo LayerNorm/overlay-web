@@ -210,6 +210,8 @@ export class CloudAgentMachineService {
     await this.runDetached(machine, cloudAgentRunCommand())
     await this.dependencies.repository.patchSandboxLeaseUsage({
       workspaceId: args.workspaceId, leaseId: lease.id, patch: { lastActiveAt: this.now() }, now: this.now(),
+      // A machine woken for something other than a run still stops after the idle window.
+      idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
     })
   }
 
@@ -369,6 +371,7 @@ export class CloudAgentMachineService {
       leaseId: lease.id,
       patch: { lastActiveAt: this.now() },
       now: this.now(),
+      idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
     })
     return status === 'running' ? 'running' : 'resumed'
   }
@@ -386,7 +389,7 @@ export class CloudAgentMachineService {
     details: { resources: unknown; adapterId: string; agentId: string; image: string },
   ): Promise<AgentSandboxLease> {
     const now = this.now()
-    return await this.dependencies.repository.createSandboxLease({
+    const created = await this.dependencies.repository.createSandboxLease({
       id: randomUUID(),
       workspaceId,
       environmentId,
@@ -407,6 +410,11 @@ export class CloudAgentMachineService {
       cleanupAttempts: 0,
       now,
     })
+    // The machine starts idle: its first idle check is one window from now (a run's end restarts it).
+    await this.dependencies.repository.patchSandboxLeaseUsage({
+      workspaceId, leaseId: created.id, patch: {}, now, idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
+    }).catch((_error) => undefined)
+    return created
   }
 
   /** The host advertises its adapters on its first poll; binding needs them. */
