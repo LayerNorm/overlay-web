@@ -221,7 +221,7 @@ Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-brid
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
 package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.5`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.9 overlay-agent-host ...`
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.10 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
@@ -535,7 +535,7 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   it is reconnected (PATCH with a new secret clears the flag), and Settings shows "Needs reconnecting".
 - **Image v2.** The bridge protocol gained the run-credentials method, which v1 image hosts cannot
   parse, so images are versioned: the host accepts only the image versions it was built for
-  (`SUPPORTED_OVERLAY_IMAGE_VERSIONS`) and `OVERLAY_CLOUD_AGENT_IMAGE` defaults to `overlay-agent-v4`.
+  (`SUPPORTED_OVERLAY_IMAGE_VERSIONS`) and `OVERLAY_CLOUD_AGENT_IMAGE` defaults to `overlay-agent-v5`.
 - **Boat quirk.** `~/.claude` and `~/.codex` on Boat are provider-managed mounts that fail with
   I/O errors when no Boat credentials are linked; agent config therefore lives under `~/.overlay`
   (Phase 4 imports go there).

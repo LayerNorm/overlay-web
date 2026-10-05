@@ -44,3 +44,32 @@ test('an agent acpx has no launch for (Hermes) is started through its override, 
   const missing = new AcpxAgentAdapter({ id: 'hermes', displayName: 'Hermes', agent: 'hermes', stateDirectory: '/tmp/x' })
   await assert.rejects(missing.discover(), /does not know/)
 })
+
+test('a name[level] model falls back to the plain name plus a reasoning effort when only names are offered', async () => {
+  const { applyRequestedModel } = await import('./acpx-adapter.js')
+  const calls: string[] = []
+  const handle = {} as never
+  const runtime = {
+    setModel: async ({ model }: { model: string }) => {
+      calls.push(`model:${model}`)
+      if (model.includes('[')) throw new Error('did not advertise that model')
+    },
+    setConfigOption: async ({ key, value }: { key: string; value: string }) => {
+      calls.push(`config:${key}=${value}`)
+      if (key !== 'reasoning_effort') throw new Error('unsupported')
+    },
+  }
+  await applyRequestedModel(runtime as never, handle, 'gpt-6-luna[high]')
+  assert.deepEqual(calls, ['model:gpt-6-luna[high]', 'model:gpt-6-luna', 'config:reasoning_effort=high'])
+})
+
+test('a model the agent does not offer still fails, and one without a level is not retried', async () => {
+  const { applyRequestedModel } = await import('./acpx-adapter.js')
+  const calls: string[] = []
+  const runtime = { setModel: async ({ model }: { model: string }) => { calls.push(model); throw new Error('nope') } }
+  await assert.rejects(applyRequestedModel(runtime as never, {} as never, 'sonnet'), /nope/)
+  assert.deepEqual(calls, ['sonnet'])
+  calls.length = 0
+  await assert.rejects(applyRequestedModel(runtime as never, {} as never, 'gpt-x[low]'), /nope/)
+  assert.deepEqual(calls, ['gpt-x[low]', 'gpt-x'])
+})

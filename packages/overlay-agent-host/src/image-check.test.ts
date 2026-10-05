@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { checkOverlayImage, credentialFilePaths } from './image-check'
 
-const manifest = { imageVersion: 4, hostVersion: '0.3.9', packages: {}, builtAt: '2026-10-01T00:00:00Z' }
+const manifest = { imageVersion: 5, hostVersion: '0.3.10', packages: {}, builtAt: '2026-10-01T00:00:00Z' }
 const byName = (checks: ReturnType<typeof checkOverlayImage>) => Object.fromEntries(checks.map((check) => [check.name, check.ok]))
 
 test('a prepared image passes every check', () => {

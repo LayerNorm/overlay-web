@@ -23,7 +23,7 @@ import { checkOverlayImage } from './image-check.js'
 import { exportConfig } from './export-config.js'
 import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.9'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.10'
 
 assertSupportedNodeVersion()
 
