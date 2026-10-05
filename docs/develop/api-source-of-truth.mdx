@@ -189,10 +189,6 @@ When the version changes, the client fetches only the delta via `GET /api/v1/con
 
 `watchPresence` (in `convex/collaboration/directMessages.ts`) provides a Convex subscription for conversation presence and typing state. When Convex realtime is available, `DirectMessageExperience` skips the 15-second HTTP presence polling fallback. The heartbeat (45s) remains to keep the user's own presence row alive. The query catches `Unauthorized`, `WORKSPACE_ACCESS_DENIED`, and `CONVERSATION_ACCESS_DENIED` errors gracefully (returning `{ok: false, presence: []}`) so that self-scoped conversation deletion/archive does not crash the React error boundary when the subscription is still active.
 
-### Knowledge source ingestion subscription
-
-`watchKnowledgeSourceStatus` (in `convex/knowledge/bases.ts`) provides a Convex subscription for knowledge source status changes within a knowledge base. When Convex realtime is available, `KnowledgeBaseWorkspace` patches individual source statuses into local state instead of polling `listSources` every 2 seconds. The `useVisibleReconciliation` interval backs off from 15s to 120s when Convex is active.
-
 ### Indexed mention and workspace search
 
 Convex search indexes have been added to:
