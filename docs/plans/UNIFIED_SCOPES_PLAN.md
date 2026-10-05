@@ -1,6 +1,6 @@
 # Unified scopes: Personal, Workspace, Archived
 
-Status: proposed (2026-10-05). Nothing here is built yet.
+Status: decisions made (2026-10-05); nothing here is built yet.
 
 ## Goal
 
@@ -49,25 +49,43 @@ Field-level scan only; access rules were not audited line by line (see Phase 0).
 
 Knowledge bases and projects are no longer features. Five knowledge-base tables have no code references, `knowledgeBases` and `projects` still hold production rows, and 21 `projectId` fields remain across other tables. They are removed in Phase 1 so the unification does not have to carry them.
 
-## Decisions
+## Decisions (owner, 2026-10-05)
 
-Decided:
+Who may do what is a **workspace admin setting**, not a hard-coded rule. The settings live in the existing workspace policy (`/api/v1/workspaces/[workspaceId]/policies`, next to `memberCanCreateChannels`, `memberCanCreateAgents`, `memberCanInvite`) and are edited in Workspace settings.
+
+| Setting (proposed field) | Options | Default |
+| --- | --- | --- |
+| **Who can create or edit workspace-scoped skills, MCP servers, and connectors** (`workspaceExtensionsEditors`) | `admins` (admins and owners only), or `members` (anyone in the workspace) | `members` |
+| **Who can create or edit workspace-scoped notes, files, outputs, and automations** (`workspaceContentEditors`) | `admins` or `members` | `members` |
+| **Members can move their own items between Personal and Workspace** (`memberCanMoveScope`) | yes / no. One switch for every resource: if yes, a member can move any resource they created in either direction; if no, they cannot. | yes |
+| **Who can add usage to the workspace** (`usageTopUpBy`) | `admins` (admins and owners only), or `members` (anyone in the workspace) | `admins` |
+
+Decided, not settings:
 
 1. Scope names are `personal` and `workspace`; archive is a state, not a scope.
 2. Existing rows default to `personal`, which matches how they behave today (creator-only).
-3. Backend first, then UI.
-4. The first workspace a new user creates is an ordinary, named workspace (Phase 5).
+3. **No admin can move someone else's workspace item back to Personal.** (Dropped.) An admin can archive it; only its creator can move it between scopes, and only when `memberCanMoveScope` allows.
+4. **Archived shows both scopes**, each row tagged Personal or Workspace. Restoring returns an item to the scope it came from.
+5. Backend first, then UI.
+6. The first workspace a new user creates is an ordinary, named workspace (Phase 5).
+7. **Billing is at the workspace level**, like Slack (below).
 
-Needs a decision before Phase 2 (recommendations in bold):
+Assumptions to confirm (small):
 
-| Question | Options |
-| --- | --- |
-| Who may create or edit **workspace-scoped** skills, MCP servers, and connectors | **Admins and owners only** (they hold credentials and execute code); or all members |
-| Who may create or edit workspace-scoped notes, files, outputs, automations | **Any member can create; the creator and admins can edit or archive; anyone with edit rights can be added later**; or admins only |
-| Can a member move their own item Personal → Workspace | **Yes for notes, files, outputs, automations; for skills, MCP servers, connectors it needs the admin rule above** |
-| Can an admin move someone else's workspace item back to Personal | **No. They can archive it; the creator can move it back.** |
-| Archived default view | **Both scopes, each row tagged**; or only the scope you came from |
-| Billing owner once personal workspaces go away (Phase 5) | **Plan per person (owner pays, workspaces draw from the owner's balance)**; or plan per workspace |
+- With `memberCanMoveScope` off, owners and admins can still move items they created themselves.
+- The `usageTopUpBy` default is `admins` (Slack keeps billing with owners; adding usage is a smaller action, so it is a setting). Say if you want `members` as the default.
+- Managing the plan and payment method is a separate, fixed permission: **owners only** (see billing).
+
+### How Slack does billing
+
+Slack bills at the **workspace** level. Billing is managed by the Primary Owner and workspace Owners; Admins cannot open the billing page. The person who creates a workspace becomes its Primary Owner, so in practice the creator is the first billing owner, but the role is held by owners, not by "whoever created it". Source: Slack's "Types of roles in Slack" help page (checked 2026-10-05; the page confirms the role split, not per-seat pricing, so seat pricing is not assumed here).
+
+What we adopt:
+
+- **The workspace is the billing unit.** Each workspace has its own plan, allowance, and top-up balance. Members draw from the workspace's balance.
+- **Owners (including the first owner, who is the creator) manage the plan and payment method.** Admins do not, unless promoted to owner.
+- **Who can add usage** is the `usageTopUpBy` admin setting above.
+- This changes my earlier recommendation of one plan per person. It is a bigger change than that option, but the groundwork exists: `billingAccounts` already has `scope: 'personal' | 'workspace'`, `workspaceId`, and `primaryBillingContactUserId`; workspace billing routes (checkout, portal, top-ups, verify) exist under `/api/v1/workspaces/[workspaceId]/billing`; and metering already records a `workspace` payer. Phase 5 is therefore mostly making workspace billing the only mode and moving existing personal plans onto workspaces.
 
 ## Principles
 
@@ -110,7 +128,10 @@ Indexes: add `by_workspaceId_scope_archivedAt` (and `by_workspaceId_userId_scope
 A shared helper, `canReadResource` / `canWriteResource` in `src/shared` (isomorphic, used by Convex and the BFF), decides:
 
 - **Read**: `personal` → creator only. `workspace` → any active member of the workspace. Archived rows follow their `archivedFromScope`.
-- **Write / archive**: creator always; admins and owners for `workspace` scope; plus the per-resource creation rule from the decisions table.
+- **Create / edit in `workspace` scope**: governed by the two admin settings (`workspaceExtensionsEditors` for skills, MCP servers, connectors; `workspaceContentEditors` for notes, files, outputs, automations). `members` = any active member; `admins` = admins and owners only.
+- **Edit / archive an existing item**: its creator; owners and admins for workspace-scoped items (to archive or edit, never to move someone else's item to Personal).
+- **Move between scopes**: the creator, only when `memberCanMoveScope` is on (owners and admins can always move items they created). Nobody moves another person's item.
+- **Archive** is allowed to the same people who can edit the item.
 - **Agents acting for a person**: an agent run sees what the person sees, nothing more (unchanged principle). Workspace-scoped skills, MCP servers, and connectors become available to workspace agents only through the person's access.
 - Guests: read workspace-scoped items only where already shared with them; no scope changes.
 
@@ -136,10 +157,11 @@ A shared helper, `canReadResource` / `canWriteResource` in `src/shared` (isomorp
 1. Add the optional fields and indexes above (Convex push; additive, safe).
 2. Add the shared access helper and its tests (`src/shared`, with a table-driven test per rule).
 3. Read paths: every list and get for the listed resources goes through "mine plus workspace-scoped" and respects `archivedAt`. Add scope and archive filters to the list APIs (`?scope=personal|workspace|archived`).
-4. Write paths: create takes a `scope` (default `personal`); move-between-scopes and archive/restore endpoints with the rules above and audit events.
-5. Backfill: a migration that sets `scope: 'personal'` explicitly on existing rows in batches (reads already default, so this can run later), and copies `deletedAt` → archived only where the product wants it (decision: deleted stays deleted).
-6. Update `@overlay/api-client` per-resource modules, `docs/develop/api-route-catalog.mdx`, `compact-api-route-catalog.mdx`, and `docs/openapi` (`npm run docs:generate:api`).
-7. Chats: expose a derived `scope` and an Archived list for the viewer; DMs/channels/activity are workspace scope.
+4. Policy: add `workspaceExtensionsEditors`, `workspaceContentEditors`, `memberCanMoveScope`, and `usageTopUpBy` to the workspace policy (contracts, Convex, `/policies` route, defaults above, and the Workspace settings page).
+5. Write paths: create takes a `scope` (default `personal`); move-between-scopes and archive/restore endpoints enforce the rules above and write audit events.
+6. Backfill: a migration that sets `scope: 'personal'` explicitly on existing rows in batches (reads already default, so this can run later), and copies `deletedAt` → archived only where the product wants it (decision: deleted stays deleted).
+7. Update `@overlay/api-client` per-resource modules, `docs/develop/api-route-catalog.mdx`, `compact-api-route-catalog.mdx`, and `docs/openapi` (`npm run docs:generate:api`).
+8. Chats: expose a derived `scope` and an Archived list for the viewer; DMs/channels/activity are workspace scope.
 - Exit: every resource can be listed by scope and by archived, with tests for read, write, move, and archive on both scopes; production rows unchanged in what each person can see.
 
 ### Phase 3: unified secondary panel
@@ -152,11 +174,13 @@ A shared helper, `canReadResource` / `canWriteResource` in `src/shared` (isomorp
 - Docs: `docs/develop/interface-design.md`, the sidebar notes in `docs/develop/architecture.mdx`. Prototype the panel in `artifacts/` first (per AGENTS.md) and get sign-off before app code.
 - Exit: all five pages use the shell; visual check in production on each; the Agents page is unchanged except for the shared shell.
 
-### Phase 4: tighten access and sharing
+### Phase 4: sharing and admin controls
 
-- Move-to-workspace UI on items and bulk actions; admin controls for who may create workspace-scoped skills, MCP servers, connectors.
+- Workspace settings UI for the four policy settings; clear copy for each, and disabled controls with an explanation for non-admins.
+- Move-to-workspace and move-to-personal actions on items (and bulk), hidden when `memberCanMoveScope` is off.
 - Connectors and MCP servers: separate "shared use" from "owner's credential"; workspace agents can use a workspace-scoped connector without ever receiving the secret.
 - Search (global search, mentions, MCP tools such as `list_notes`) filters by what the caller can read, and tools gain an optional `scope` argument. Update `docs/develop/tool-catalog.md`.
+- "Add usage" actions (top-up) check `usageTopUpBy`.
 
 ### Phase 5: retire the special personal workspace
 
@@ -164,7 +188,7 @@ Separate project, after Phases 1–4; depends on the billing decision.
 
 - Onboarding creates the first workspace, named by the user; stop auto-creating `personal-<user>` in `WorkspaceService`.
 - Existing personal workspaces become ordinary workspaces (rename to something like "<Name>'s workspace", owner-editable). Remove the `kind === 'personal'` special cases (about 20 places: switcher and avatar, workspace settings, the integrations route, `WorkspaceService`, `convex/collaboration/workspaces.ts`, the showcase client).
-- Billing: with the recommended plan-per-person model, the allowance and top-up balance stay on the person's billing account and workspaces draw from the owner. If plan-per-workspace is chosen instead, this phase grows to include moving subscriptions and credits.
+- Billing becomes workspace-level (decided; see "How Slack does billing"). Each existing personal workspace's current plan, allowance, and top-up balance become that workspace's, with its owner as the billing contact. A person who owns several workspaces has a plan per workspace, and the free tier is per workspace. Needs a migration of `billingAccounts` rows from `scope: 'personal'` to `scope: 'workspace'`, an update of the Account page's usage and billing UI into Workspace settings (owners see the plan, admins and members see usage), and a fallback path for the moment between sign-up and workspace creation.
 - A person always has at least one workspace; leaving or deleting the last one prompts them to create another.
 - User-level data stays user-level: provider keys, Agent accounts (for example a ChatGPT sign-in), billing, account settings. Settings pages split cleanly into Account and Workspace.
 - Cross-workspace "all my stuff" view is out of scope; note it as a later idea.
@@ -184,7 +208,8 @@ Separate project, after Phases 1–4; depends on the billing decision.
 - **Sharing semantics** for files (`shareVisibility` links versus workspace scope) and for chats (`channelVisibility`) must not be conflated; scope controls who sees the item in lists, sharing links remain separate.
 - **Credentials** in MCP servers and connectors: workspace scope must share use, not secrets.
 - **Archive meaning** for chats is per participant today; a workspace-wide archive of a channel is a different action and is not changed by this plan.
-- **Billing model** (Phase 5) is the one decision that can reshape the work; settle it before starting that phase.
+- **Billing move** (Phase 5): moving personal subscriptions and credits onto workspaces touches live Stripe subscriptions and customer balances; it needs a dry run on a copy, an owner-approved cutover, and no change to live Stripe objects until then.
+- **Policy defaults** are permissive (`members`) for editing, so a workspace that wants tighter control must turn the setting to `admins` itself.
 
 ## Order and rough size
 
@@ -195,4 +220,4 @@ Separate project, after Phases 1–4; depends on the billing decision.
 | 2 scope and archive fields | large | 0, 1, decisions table |
 | 3 unified panel | medium | 2, prototype sign-off |
 | 4 sharing and admin controls | medium | 2 |
-| 5 retire personal workspace | large | 1–4, billing decision |
+| 5 retire personal workspace, workspace billing | large | 1–4 |
