@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Commercial Licensing',
+  description:
+    'Commercial licensing for Overlay — terms outside AGPL-3.0 for proprietary modifications, private distribution, and enterprise requirements.',
+  alternates: { canonical: '/commercial-license' },
+}
+
 
 const sections = [
   { title: 'Open-source option', body: 'First-party material in the public repository is available under AGPL-3.0-only, subject to repository notices, third-party licenses, and trademark rules. Network use of a modified version may require offering Corresponding Source under AGPL section 13.' },

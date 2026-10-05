@@ -3,9 +3,9 @@ import PricingClient from '@/app/pricing/PricingClient'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 
 export const metadata: Metadata = {
-  title: 'Pricing — Overlay',
+  title: 'Pricing',
   description:
-    'Choose an Overlay plan for private AI chat, files, agents, browser tasks, and automations.',
+    'Choose an Overlay plan — the control plane for AI agents with private chat, files, browser tasks, and automations. Free tier included.',
   alternates: {
     canonical: '/pricing',
   },

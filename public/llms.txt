@@ -1,0 +1,28 @@
+# Overlay
+
+> Overlay is the control plane for AI agents — one workspace to create,
+> deploy, and manage every AI agent in one place. Bring your own agents
+> (Codex, Claude Code, Hermes) or run Overlay's own, and put them to work in
+> chat, Slack, Telegram, iMessage, and the web. Built by LayerNorm Inc.
+> Open source under AGPL-3.0, with hosted and self-hosted options.
+
+Overlay unifies AI agents: a single roster, shared context and memory,
+per-agent computers, schedules and durable automations, spend and
+permission controls, and audit trails — with a free tier that requires no
+card.
+
+## Product
+
+- [Home](https://getoverlay.io/home): product overview — the control plane for AI agents
+- [Pricing](https://getoverlay.io/pricing): free tier and paid plans
+- [Download](https://getoverlay.io/download): Overlay Desktop for macOS
+- [Manifesto](https://getoverlay.io/manifesto): why AI should amplify human potential
+- [Self-hosting](https://getoverlay.io/self-hosting): run Overlay on infrastructure you control
+
+## Docs
+
+- [Documentation](https://getoverlay.io/docs): product and developer documentation
+
+## Source
+
+- [GitHub](https://github.com/LayerNorm/overlay-web): source code (AGPL-3.0)

@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_DOCUMENTS, LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Terms of Service',
+  description:
+    'The terms governing use of Overlay — hosted services, subscriptions, integrations, user content, and AI features.',
+  alternates: { canonical: '/terms' },
+}
+
 
 const sections = [
   {

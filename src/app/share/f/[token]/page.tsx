@@ -42,11 +42,11 @@ export async function generateMetadata(
   const { token } = await params
   const file = await loadShared(token)
   if (!file) {
-    return { title: 'Shared file — Overlay', robots: { index: false } }
+    return { title: 'Shared file', robots: { index: false } }
   }
   const description = describe(file)
   return {
-    title: `${file.name} — Overlay`,
+    title: file.name,
     description,
     openGraph: {
       title: file.name,

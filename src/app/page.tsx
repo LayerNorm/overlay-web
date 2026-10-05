@@ -16,8 +16,12 @@ function RootEntryFallback() {
 
 async function SessionGate() {
   let session: Awaited<ReturnType<typeof getOverlaySession>> = null
+  let sessionResolved = false
   try {
-    session = await getOverlaySession()
+    // Refresh-capable so a resolved-null session below means a confirmed
+    // guest — matching the client resolver's /api/auth/session check.
+    session = await getOverlaySession(undefined, { refresh: true })
+    sessionResolved = true
   } catch {
     // The refresh-capable client resolver below deliberately handles
     // transient provider/configuration failures without treating them as a
@@ -25,6 +29,10 @@ async function SessionGate() {
   }
 
   if (session) redirect(ROOT_APP_DESTINATION)
+  // A resolved empty session is a confirmed guest: send visitors (and
+  // crawlers) to the marketing page with a real redirect instead of a
+  // client-side navigation.
+  if (sessionResolved) redirect('/home')
   return <RootEntryResolver />
 }
 
