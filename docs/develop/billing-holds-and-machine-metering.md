@@ -53,3 +53,8 @@ Flags (all set on production): `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`, 
 - A Boat machine's state, its host log (`~/.overlay/agent-host.log`), and whether the host is checking in can be read through the Boat API with the same key the app uses.
 - The in-app browser renders only while its pane is shown (a hidden or wedged tab sits on the loading shell); open a fresh tab with `preview_start`.
 - Real model runs need a real credential entered by the owner; never type credentials into production on their behalf.
+
+
+## A machine deleted for lack of credit
+
+When the meter kills a lease (`budget_exhausted`, `low_balance`) the Boat machine and lease are deleted but the agent keeps its environment and a `ready` provision record. The agent page derives `unavailable` (`deriveCloudAgentState`: provision `ready`, no machine) and offers **Start a new machine**, which POSTs `/api/v1/agent-environments/cloud` again; `CloudAgentMachineService.reviveIfMachineGone` then revokes the old environment and clears the record so the normal provisioning runs (it still needs the $1 floor). A message to such an agent fails with the `machine_gone` start-failure message.

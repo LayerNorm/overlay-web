@@ -6,6 +6,7 @@ import { Button } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { CLOUD_AGENT_STATE_LABEL, isCloudAgentStarting, type CloudAgentAction } from '@/shared/agents/cloud-agent'
+import { AGENT_PROVIDER_IDS, type AgentProviderId } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 import { CloudAgentConfig } from './CloudAgentConfig'
 import { CloudAgentProgress } from './CloudAgentProgress'
@@ -47,7 +48,7 @@ function MachineActions({ state, busy, onRun, onRetry }: {
   onRun(action: CloudAgentAction): void
   onRetry(): void
 }) {
-  const canRestart = state === 'ready' || state === 'unavailable' || state === 'needs_sign_in'
+  const canRestart = state === 'ready' || state === 'needs_sign_in'
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       {state === 'paused' ? (
@@ -61,6 +62,9 @@ function MachineActions({ state, busy, onRun, onRetry }: {
       ) : null}
       {state === 'failed' ? (
         <Button variant="primary" size="sm" disabled={busy !== null} onClick={onRetry}>{busy === 'retry' ? 'Starting…' : 'Try again'}</Button>
+      ) : null}
+      {state === 'unavailable' ? (
+        <Button variant="primary" size="sm" disabled={busy !== null} onClick={onRetry}>{busy === 'retry' ? 'Starting…' : 'Start a new machine'}</Button>
       ) : null}
     </div>
   )
@@ -92,12 +96,12 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   }
 
   const retry = async () => {
-    const adapterId = status?.machine?.adapterId
-    if (!workspaceId || !status?.account || (adapterId !== 'claude-code' && adapterId !== 'codex') || busy) return
+    const adapterId = status?.machine?.adapterId ?? status?.adapterId
+    if (!workspaceId || !status?.account || (!adapterId || !(AGENT_PROVIDER_IDS as readonly string[]).includes(adapterId)) || busy) return
     setBusy('retry')
     setActionError(null)
     try {
-      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId, providerAccountId: status.account.id })
+      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId: adapterId as AgentProviderId, providerAccountId: status.account.id, size: 'small' })
       refresh()
     } catch (retryError) {
       setActionError(retryError instanceof Error ? retryError.message : 'Could not start the machine.')
@@ -141,7 +145,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
 
           {status.state === 'unavailable' && !isCloudAgentStarting(phase) ? (
             <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-              This agent&rsquo;s machine is gone, usually because your credit ran low. Messages will not be answered. Add credit, then archive this agent and create it again.
+              This agent&rsquo;s machine is gone, usually because your credit ran low. Messages will not be answered until you start a new one (it needs at least $1 of credit).
             </p>
           ) : null}
 

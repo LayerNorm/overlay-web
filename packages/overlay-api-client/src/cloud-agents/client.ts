@@ -7,6 +7,7 @@ export type CloudAgentStateResource = 'ready' | 'paused' | 'starting' | 'needs_s
 
 export type CloudAgentStatusResource = {
   agentId: string
+  adapterId?: string
   provision: { phase: CloudAgentPhaseResource; error?: string; updatedAt: number } | null
   environment: { id: string; status: string; lastSeenAt?: number; createdAt: number } | null
   machine: { state: 'running' | 'stopped' | 'unknown'; size?: string; image?: string; adapterId?: string } | null

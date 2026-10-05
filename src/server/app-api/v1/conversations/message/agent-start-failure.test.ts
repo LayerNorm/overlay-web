@@ -14,3 +14,10 @@ test('agent-start failures expose safe recovery guidance without leaking server 
     'Hermes could not start this turn. Your message was saved; please try sending it again.',
   )
 })
+
+test('a computer that is gone says so and says what to do', async () => {
+  const { agentStartFailureClass, agentStartFailureMessage } = await import('./agent-start-failure')
+  const error = new Error('MANAGED_SANDBOX_LEASE_UNAVAILABLE')
+  assert.equal(agentStartFailureClass(error), 'machine_gone')
+  assert.match(agentStartFailureMessage('Codex agent', error), /Start a new machine/)
+})

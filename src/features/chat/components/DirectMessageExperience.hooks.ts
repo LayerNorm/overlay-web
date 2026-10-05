@@ -56,6 +56,7 @@ export type OptimisticMessage = RoomMessageRecord
 
 /** Ids of the client-only rows that show an agent is about to reply (see `useSendMessage`). */
 const PENDING_AGENT_REPLY_PREFIX = 'optimistic_pending_reply_'
+const PENDING_AGENT_REPLY_SORT_LEAD_MS = 30_000
 
 export const SHOWCASE_CONVERSATION_ID = 'showcase-dm'
 export const SHOWCASE_WORKSPACE_ID = 'showcase-acme'
@@ -1187,7 +1188,7 @@ export function useSendMessage({
       !message.id.startsWith(PENDING_AGENT_REPLY_PREFIX)
       && message.authorKind === 'agent'
       && message.authorPrincipalId === placeholder.authorPrincipalId
-      && message.createdAt >= placeholder.createdAt - 2_000
+      && message.createdAt >= (placeholder.updatedAt ?? placeholder.createdAt) - 2_000
     )))
     const drop = (ids: Set<string>) => setMessages((current) => current.filter((message) => !ids.has(message.id)))
     if (settled.length) drop(new Set(settled.map((message) => message.id)))
@@ -1286,7 +1287,10 @@ export function useSendMessage({
             authorKind: 'agent' as const,
             authorPrincipalId: agent.principalId,
             content: '',
-            createdAt: pendingAt,
+            // Sorts after the message it answers even once that message takes the server's (possibly later) timestamp;
+            // the real send time is kept in updatedAt for matching the real reply.
+            createdAt: pendingAt + PENDING_AGENT_REPLY_SORT_LEAD_MS,
+            updatedAt: pendingAt,
             status: 'generating' as const,
             threadRootMessageId,
           } satisfies OptimisticMessage)),

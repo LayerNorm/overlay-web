@@ -149,6 +149,24 @@ export class CloudAgentMachineService {
   }
 
   /**
+   * An agent whose machine is gone (deleted when credit ran out, or by hand) still has its environment and a finished
+   * provision record, so provisioning again would be skipped as "already done". This clears both, so a new machine can
+   * be provisioned for the same agent. Returns whether it did; a live machine is never touched.
+   */
+  async reviveIfMachineGone(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<boolean> {
+    const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
+    const found = await this.cloudBinding(args.workspaceId, bindings)
+    if (!found) return false
+    const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+    if (lease) return false
+    await this.dependencies.controlPlane.revokeEnvironment({
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId, environmentId: found.environment.id,
+    }).catch((_error) => undefined)
+    await this.dependencies.provisions.remove({ workspaceId: args.workspaceId, agentId: args.agentId })
+    return true
+  }
+
+  /**
    * Everything the agent page shows. The provider is asked for the machine's
    * state (one read), so this is called when the page opens, not per message.
    */
@@ -176,7 +194,9 @@ export class CloudAgentMachineService {
       machine,
       account,
     }
-    return { agentId: args.agentId, ...parts, state: deriveCloudAgentState({
+    const configuredAdapter = found?.binding.adapterConfig.adapterId
+    const adapterId = typeof configuredAdapter === 'string' && configuredAdapter ? configuredAdapter : (found?.binding as { adapterId?: string } | undefined)?.adapterId
+    return { agentId: args.agentId, ...(adapterId ? { adapterId } : {}), ...parts, state: deriveCloudAgentState({
       ...parts,
       // A host is "online" only while it keeps checking in.
       environment: found ? { ...parts.environment!, status: this.hostFresh(found.environment) ? 'online' : 'offline' } : null,

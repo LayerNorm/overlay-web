@@ -26,3 +26,7 @@ test('the agent page reports starting while the host is offline and ready once i
   assert.equal(deriveCloudAgentState({ ...base, environment: { id: 'e', status: 'offline', createdAt: 1 } }), 'starting')
   assert.equal(deriveCloudAgentState({ ...base, environment: { id: 'e', status: 'online', createdAt: 1 } }), 'ready')
 })
+
+test('an agent with a finished provision but no machine is unavailable', () => {
+  assert.equal(deriveCloudAgentState({ provision: provision('ready'), machine: null, account: null, environment: { id: 'e', status: 'online', createdAt: 1 } }), 'unavailable')
+})
