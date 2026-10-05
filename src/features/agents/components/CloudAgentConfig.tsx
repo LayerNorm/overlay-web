@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Copy, FolderUp } from 'lucide-react'
+import { Copy, FolderUp, Terminal } from 'lucide-react'
 import type { AgentProfileImportCodeResource, AgentProfileResource, AgentProfileStateResource } from '@overlay/api-client'
 import { Button } from '@overlay/ui/primitives'
 import { AGENT_PROFILE_TOP_LEVEL, AGENT_PROFILE_LIMITS } from '@layernorm/overlay-agent-bridge-protocol'
@@ -158,12 +158,12 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
                 <p className="text-[11px] text-[var(--muted)]" role="status">Waiting for your computer…</p>
               </div>
             ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void startImport()}>
-                {busy === 'code' ? 'Preparing…' : code ? 'New command' : 'Import from your computer'}
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" size="sm" className="w-full" disabled={busy !== null} onClick={() => void startImport()}>
+                <Terminal size={13} />{busy === 'code' ? 'Preparing…' : code ? 'New command' : 'From your computer'}
               </Button>
-              <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => folderRef.current?.click()}>
-                <FolderUp size={13} />{busy === 'upload' ? 'Uploading…' : `Upload ${harness === 'codex' ? '.codex' : '.claude'} folder`}
+              <Button variant="secondary" size="sm" className="w-full" disabled={busy !== null} onClick={() => folderRef.current?.click()}>
+                <FolderUp size={13} />{busy === 'upload' ? 'Uploading…' : 'Upload folder'}
               </Button>
               <input
                 ref={folderRef} type="file" className="hidden" multiple aria-label="Choose a config folder"

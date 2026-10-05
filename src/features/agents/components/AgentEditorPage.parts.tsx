@@ -159,7 +159,7 @@ function AgentEditorFormSection({
           value={agentType}
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
-        <div className="space-y-4">
+        <div className="space-y-5">
           {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} /><CloudAgentModel agentId={agent.id} /></> : null}
           {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}

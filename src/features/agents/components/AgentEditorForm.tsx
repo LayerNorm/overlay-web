@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
-import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
+import { Button, Input, ListboxSelect, Textarea, Toggle } from '@overlay/ui/primitives'
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
@@ -12,6 +12,7 @@ import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
+import { FieldLabel } from './InfoTip'
 import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
 export type AgentType = 'overlay' | 'byo'
@@ -625,30 +626,21 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
   onShapeChange(shape: WorkspaceAgentCreatureShape): void
 }) {
   return (
-    <div>
-      <p className="text-xs font-medium">Identity</p>
-      <div className="mt-2 flex items-start gap-3">
-        <div className="flex h-[76px] w-[76px] shrink-0 items-center justify-center">
-          <AgentAvatarPicker shape={shape} color={color} onShapeChange={onShapeChange} onColorChange={onChange} align="start" />
-        </div>
-        <div className="min-w-0 flex-1 space-y-3">
-          <label className="block text-xs font-medium">
-            Agent name
-            <Input autoFocus className="mt-1.5" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={namePlaceholder} />
-          </label>
-          <label className="block text-xs font-medium">
-            Short description{' '}
-            <span className='font-normal text-[var(--muted-light)]'>
-              optional
-            </span>
-            <Input
-              className='mt-1.5'
-              value={description}
-              onChange={(event) => onDescriptionChange(event.target.value)}
-              placeholder={descriptionPlaceholder}
-            />
-          </label>
-        </div>
+    <div className="space-y-3.5">
+      <AgentAvatarPicker shape={shape} color={color} onShapeChange={onShapeChange} onColorChange={onChange} />
+      <div>
+        <FieldLabel htmlFor="agent-editor-name">Name</FieldLabel>
+        <Input id="agent-editor-name" autoComplete="off" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={namePlaceholder} />
+      </div>
+      <div>
+        <FieldLabel htmlFor="agent-editor-description" info="A short line about what this agent is for. It shows next to the agent in lists.">Description</FieldLabel>
+        <Textarea
+          id="agent-editor-description"
+          value={description}
+          onChange={(event) => onDescriptionChange(event.target.value)}
+          placeholder={descriptionPlaceholder}
+          className="min-h-16 !resize-none"
+        />
       </div>
     </div>
   )

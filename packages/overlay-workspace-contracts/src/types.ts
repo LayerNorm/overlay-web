@@ -261,6 +261,9 @@ export type WorkspaceManagementItem = {
   badge?: string
   principalId?: string
   principalType?: WorkspacePrincipalType
+  /** An agent's own avatar, so pickers can show it instead of a generic icon. */
+  avatarColor?: string
+  avatarShape?: string
   role?: WorkspaceMembershipRole
   status?: WorkspaceMembershipStatus | WorkspaceInvitationStatus
   invitationId?: string
