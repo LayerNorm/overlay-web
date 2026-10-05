@@ -155,7 +155,16 @@ export function buildAssistantVisualSegments(blocks: AssistantVisualBlock[]): As
  * files, generated UI — stay inline so the transcript keeps every artifact
  * visible in both modes.
  */
-export function planAssistantWorkCollapse(segments: AssistantVisualSegment[]): {
+export function planAssistantWorkCollapse(
+  segments: AssistantVisualSegment[],
+  options?: {
+    /**
+     * Also fold the text written before the last piece of work, so the collapsed reply is the final answer only.
+     * Used for agent replies; a reply with no work keeps all its text.
+     */
+    foldTextBeforeLastWork?: boolean
+  },
+): {
   /** Work segment indexes folded behind the top "Worked" row, in original order. */
   collapsedIndexes: number[]
   /** Tool calls inside the collapsed set — drives the row's "— N tool calls" suffix. */
@@ -180,6 +189,18 @@ export function planAssistantWorkCollapse(segments: AssistantVisualSegment[]): {
       collapsedIndexes.push(i)
       collapsedToolCallCount += seg.items.filter((item) => item.kind === 'tool').length
       continue
+    }
+  }
+  if (options?.foldTextBeforeLastWork && collapsedIndexes.length > 0) {
+    const lastWork = collapsedIndexes[collapsedIndexes.length - 1]!
+    const textBefore: number[] = []
+    for (let i = 0; i < lastWork; i++) if (segments[i]!.kind === 'text') textBefore.push(i)
+    // Something must stay visible: with no text after the last work, the last text before it stays.
+    const hasTextAfter = segments.slice(lastWork + 1).some((segment) => segment.kind === 'text')
+    if (!hasTextAfter) textBefore.pop()
+    if (textBefore.length > 0) {
+      collapsedIndexes.push(...textBefore)
+      collapsedIndexes.sort((left, right) => left - right)
     }
   }
   return { collapsedIndexes, collapsedToolCallCount }

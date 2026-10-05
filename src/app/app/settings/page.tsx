@@ -5,7 +5,7 @@
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Link2, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { AccountPageContent } from '@/app/app/account/page'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
@@ -158,6 +158,33 @@ function AccountSettingsSection() {
     <Suspense fallback={null}>
       <AccountPageContent embedded />
     </Suspense>
+  )
+}
+
+/** Settings for agents: how their replies read, then the accounts agents on Overlay Cloud run on. */
+function AgentsSettingsSection({
+  settings,
+  busy,
+  updateSettings,
+}: {
+  settings: AppSettingsApi['settings']
+  busy: boolean
+  updateSettings: AppSettingsApi['updateSettings']
+}) {
+  return (
+    <div className="space-y-6">
+      <SettingsGroup>
+        <SettingRow
+          icon={<ListCollapse size={18} strokeWidth={1.8} />}
+          title="Collapse working details in responses"
+          description="An agent's reply shows its final answer, with the tool calls and the text written between them folded behind “Worked for…”. Turn off to show the whole response."
+          checked={settings.collapseAgentWork !== false}
+          disabled={busy}
+          onChange={() => void updateSettings({ collapseAgentWork: settings.collapseAgentWork === false })}
+        />
+      </SettingsGroup>
+      <AgentAccountSettings />
+    </div>
   )
 }
 
@@ -367,7 +394,7 @@ function SettingsSectionContent({
   if (section === 'providers') return <ProviderConnectionsSetting />
   if (section === 'webhooks') return <WebhookSettings />
   if (section === 'agent-environments') return <AgentEnvironmentSettings />
-  if (section === 'agent-accounts') return <AgentAccountSettings />
+  if (section === 'agent-accounts') return <AgentsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
   if (section === 'connected-apps') return <ConnectedAppsSettings />
   if (section === 'computers') return <ComputerSettings />
   if (section === 'contact') return <ContactSettingsSection supportEmail={supportEmail} />

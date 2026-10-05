@@ -33,6 +33,7 @@ import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
+import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { roomMessageDomId } from './room-message-view'
 
 export type RoomMessageReaction = {
@@ -696,6 +697,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
   onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
+  const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
   return (
     <>
       {message.askedBy ? (
@@ -719,6 +721,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         blockKeyPrefix={message.id}
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}
+        foldWorkIntoSummary={collapseAgentWork}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
         onOpenDraft={NOOP_DRAFT}

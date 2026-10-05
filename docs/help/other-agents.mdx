@@ -9,9 +9,9 @@ You can run **Claude Code** or **Codex** as a teammate on its own computer. Over
 
 1. **Agents → New agent → Other agent**.
 2. Choose **Claude Code** or **Codex**, and **Overlay Cloud**.
-3. Choose the account it runs on. If you have none, the dialog offers **Connect** right there, and the account is also saved under Settings → Agent accounts:
+3. Choose the account it runs on. If you have none, the dialog offers **Connect** right there, and the account is also saved under Settings → Agents → Agent accounts:
    - **Claude Code**: paste a token from running `claude setup-token` on your own computer (for a subscription), or an Anthropic API key.
-   - **Codex**: sign in with ChatGPT (Agent accounts shows a code and a link to enter it), or an OpenAI API key.
+   - **Codex**: sign in with ChatGPT (Settings → Agents shows a code and a link to enter it), or an OpenAI API key.
    - **OpenCode, Cursor** (experimental): an OpenRouter key (OpenCode) or a Cursor key.
    Secrets are stored encrypted and are never shown again.
 4. Choose a model (Claude Code and Codex): leave it on Default, or pick one. Codex also has a Reasoning level. You can change it later on the agent page; it applies from the next message.
@@ -57,3 +57,7 @@ Both kinds can ask each other for help. See [Agents](./agents).
 | "The environment went offline" | The computer was asleep. Send the message again. |
 | "Needs sign-in" | Reconnect the account on the agent's page. |
 | The agent shows "Unavailable" | The computer was deleted (often low credit). Add credit and recreate the agent. |
+
+## How replies read
+
+An agent's reply shows its final answer, with its tool calls and the text it wrote between them folded behind **Worked for…**; click it to see everything in order. Agents are asked to end with a short summary of what they did. Turn this off in Settings → Agents (**Collapse working details in responses**) to show the whole response. Chats with Overlay's own models are not affected.

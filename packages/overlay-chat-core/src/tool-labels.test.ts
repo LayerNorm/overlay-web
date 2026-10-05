@@ -22,3 +22,9 @@ test('a connected agent action shows the title the agent gave it', () => {
   assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Read notes/how-to-find-bugs.md' }), 'Read notes/how-to-find-bugs.md')
   assert.equal(getDescriptiveToolLabel('remote_action', {}), 'Remote Action')
 })
+
+test('an action with no real name is shown as Tool call', () => {
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'tool call' }), 'Tool call')
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Tool' }), 'Tool call')
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Read notes.md' }), 'Read notes.md')
+})

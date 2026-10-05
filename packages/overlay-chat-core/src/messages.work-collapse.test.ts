@@ -108,3 +108,24 @@ test('a full answer before a trailing tool call is not hidden by the close-out t
   const plan = planAssistantWorkCollapse(segments)
   assert.deepEqual(plan.collapsedIndexes, [1])
 })
+
+test('agent replies fold the text written before the last piece of work, keeping only the final answer', () => {
+  const segments = buildAssistantVisualSegments([
+    text('I will look into it.'),
+    tool('search_knowledge'),
+    text('The guide will cover three things.'),
+    tool('create_note'),
+    text('Created the note.'),
+  ])
+  const plan = planAssistantWorkCollapse(segments, { foldTextBeforeLastWork: true })
+  // Everything before "Created the note." folds; expanding shows it all in order.
+  assert.deepEqual(plan.collapsedIndexes, [0, 1, 2, 3])
+  assert.equal(plan.collapsedToolCallCount, 2)
+})
+
+test('a reply with no work keeps all its text, and one that ends on work keeps its last text', () => {
+  assert.deepEqual(planAssistantWorkCollapse(buildAssistantVisualSegments([text('Just an answer.')]), { foldTextBeforeLastWork: true }).collapsedIndexes, [])
+  const endsOnWork = buildAssistantVisualSegments([text('First.'), tool('a'), text('Then this.'), tool('b')])
+  const plan = planAssistantWorkCollapse(endsOnWork, { foldTextBeforeLastWork: true })
+  assert.deepEqual(plan.collapsedIndexes, [0, 1, 3], 'the last text before the final tool stays visible')
+})

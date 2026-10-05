@@ -161,6 +161,8 @@ export function getDescriptiveToolLabel(
   // A connected agent (Claude Code, Codex…) names its own actions; show that, not the generic tool name.
   if (toolName === 'remote_action') {
     const title = pickFirstStringFromInput(toolInput, ['title'])
+    // An action the agent gave no real name (it says "tool call"/"tool") is shown as a plain "Tool call".
+    if (title && /^(tool( call)?|tool_call|action)$/i.test(title)) return 'Tool call'
     if (title) return title.length > 140 ? `${title.slice(0, 140)}…` : title
   }
 

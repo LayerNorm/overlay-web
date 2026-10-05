@@ -10,6 +10,8 @@ export default defineSchema({
     useSecondarySidebar: v.boolean(),
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     autoContinue: v.optional(v.boolean()),
+    /** Agent responses fold their working details (tool calls, intermediate text) behind "Worked for…"; default on. */
+    collapseAgentWork: v.optional(v.boolean()),
     linkOpenPreference: v.optional(
       v.union(v.literal('ask'), v.literal('overlay'), v.literal('new-tab')),
     ),

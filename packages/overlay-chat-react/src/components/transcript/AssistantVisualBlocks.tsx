@@ -36,6 +36,8 @@ export interface AssistantVisualBlocksProps {
   suppressTypingIndicator?: boolean
   /** Persisted turn duration when the host has one; the live-measured value otherwise. */
   workedDurationMs?: number | null
+  /** Agent replies: the collapsed view is the final answer only (earlier text folds with the work). */
+  foldWorkIntoSummary?: boolean
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: AutomationDraftModalState) => void | Promise<void>
   onOpenAttachmentPreview?: (
@@ -67,6 +69,7 @@ export function AssistantVisualBlocks({
   sourceCitations,
   suppressTypingIndicator = false,
   workedDurationMs,
+  foldWorkIntoSummary = false,
   onOpenDraft,
   onCreateAutomationDraft,
   onOpenAttachmentPreview,
@@ -102,8 +105,8 @@ export function AssistantVisualBlocks({
   const collapsePlan = useMemo(
     () => isStreaming
       ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
-      : planAssistantWorkCollapse(segments),
-    [segments, isStreaming],
+      : planAssistantWorkCollapse(segments, { foldTextBeforeLastWork: foldWorkIntoSummary }),
+    [segments, isStreaming, foldWorkIntoSummary],
   )
   const collapsedSet = useMemo(
     () => new Set(collapsePlan.collapsedIndexes),

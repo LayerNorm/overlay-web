@@ -54,6 +54,7 @@ export interface AppSettings {
   darkThemePreset: ThemePresetId
   chatStreamingMode: ChatStreamingMode
   autoContinue: boolean
+  collapseAgentWork: boolean
   linkOpenPreference: LinkOpenPreference
   defaultChatMode: ChatModePreference
   modelPreference: ModelPreference
@@ -80,6 +81,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   darkThemePreset: 'default-dark',
   chatStreamingMode: 'token',
   autoContinue: false,
+  collapseAgentWork: true,
   linkOpenPreference: 'ask',
   defaultChatMode: 'act',
   modelPreference: 'same-for-each-chat',

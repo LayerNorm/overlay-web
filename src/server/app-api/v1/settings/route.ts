@@ -67,6 +67,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lightThemePreset?: ThemePresetId
       darkThemePreset?: ThemePresetId
       autoContinue?: boolean
+      collapseAgentWork?: boolean
       linkOpenPreference?: AppSettings['linkOpenPreference']
       defaultChatMode?: ChatModePreference
       modelPreference?: AppSettings['modelPreference']
@@ -100,6 +101,9 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     }
     if (body.autoContinue !== undefined && typeof body.autoContinue !== 'boolean') {
       return NextResponse.json({ error: 'Invalid autoContinue' }, { status: 400 })
+    }
+    if (body.collapseAgentWork !== undefined && typeof body.collapseAgentWork !== 'boolean') {
+      return NextResponse.json({ error: 'Invalid collapseAgentWork' }, { status: 400 })
     }
     if (
       body.linkOpenPreference !== undefined &&
@@ -205,6 +209,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       lightThemePreset?: string
       darkThemePreset?: string
       autoContinue?: boolean
+      collapseAgentWork?: boolean
       linkOpenPreference?: AppSettings['linkOpenPreference']
       defaultChatMode?: ChatModePreference
       modelPreference?: AppSettings['modelPreference']
@@ -241,6 +246,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     if (body.autoContinue !== undefined) {
       mutationArgs.autoContinue = body.autoContinue
       settingsPatch.autoContinue = body.autoContinue
+    }
+    if (body.collapseAgentWork !== undefined) {
+      mutationArgs.collapseAgentWork = body.collapseAgentWork
+      settingsPatch.collapseAgentWork = body.collapseAgentWork
     }
     if (body.linkOpenPreference !== undefined) {
       mutationArgs.linkOpenPreference = body.linkOpenPreference
