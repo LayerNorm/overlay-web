@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ResourceViewQuery } from './misc'
 import { AuthFields, BooleanQueryValue, FormDataBoundary, IdQuery, IntegerQueryValue, PaginationQuery, UnknownResponse } from './common'
 
 export const FileListQuery = PaginationQuery.extend({
@@ -9,6 +10,7 @@ export const FileListQuery = PaginationQuery.extend({
   outputType: z.string().optional(),
   type: z.string().optional(),
   summary: BooleanQueryValue,
+  view: ResourceViewQuery,
 })
 
 export const FileContentQuery = z.object({})

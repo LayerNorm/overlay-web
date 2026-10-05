@@ -77,6 +77,9 @@ export type McpServerRecord = {
   oauthConnectedAt?: number
   oauthError?: string
   oauthTokenVersion?: number
+  scope?: 'personal' | 'workspace'
+  archivedAt?: number
+  archivedFromScope?: 'personal' | 'workspace'
   createdAt: number
   updatedAt: number
 }
@@ -98,6 +101,7 @@ export type CreateMcpServerInput = {
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
   workspaceId?: string
+  scope?: 'personal' | 'workspace'
 }
 
 export type UpdateMcpServerInput = Partial<Omit<CreateMcpServerInput, 'userId'>> & {
@@ -122,7 +126,7 @@ export type McpExecutionRecord = {
 }
 
 export interface McpServerRepository {
-  list(args: { userId: string; workspaceId?: string }): Promise<McpServerSummary[]>
+  list(args: { userId: string; workspaceId?: string; view?: 'personal' | 'workspace' | 'archived' }): Promise<McpServerSummary[]>
   listEnabled(args: { userId: string; workspaceId?: string }): Promise<McpServerRecord[]>
   get(args: { mcpServerId: string; userId: string; workspaceId?: string }): Promise<McpServerRecord | null>
   create(args: CreateMcpServerInput): Promise<string>

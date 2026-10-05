@@ -96,6 +96,9 @@
     },
     {
       "name": "Webhooks"
+    },
+    {
+      "name": "Workspaces"
     }
   ],
   "paths": {
@@ -4101,6 +4104,19 @@
                 "0"
               ]
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "personal",
+                "workspace",
+                "archived"
+              ]
+            }
           }
         ]
       },
@@ -7454,6 +7470,19 @@
                 "0"
               ]
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "personal",
+                "workspace",
+                "archived"
+              ]
+            }
           }
         ]
       },
@@ -9597,6 +9626,19 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "personal",
+                "workspace",
+                "archived"
+              ]
             }
           }
         ]
@@ -12415,6 +12457,112 @@
         }
       }
     },
+    "/api/v1/scope": {
+      "post": {
+        "operationId": "postScope",
+        "summary": "Move a resource between Personal and Workspace, archive it, or restore it",
+        "tags": [
+          "Workspaces"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resource": {
+                    "type": "string",
+                    "enum": [
+                      "files",
+                      "skills",
+                      "mcp-servers",
+                      "connectors",
+                      "automations"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "move",
+                      "archive",
+                      "restore"
+                    ]
+                  },
+                  "to": {
+                    "type": "string",
+                    "enum": [
+                      "personal",
+                      "workspace"
+                    ]
+                  }
+                },
+                "required": [
+                  "resource",
+                  "id",
+                  "action"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings": {
       "get": {
         "operationId": "getSettings",
@@ -12558,6 +12706,9 @@
                     "type": "string"
                   },
                   "autoContinue": {
+                    "type": "boolean"
+                  },
+                  "collapseAgentWork": {
                     "type": "boolean"
                   },
                   "linkOpenPreference": {
@@ -12874,6 +13025,19 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "personal",
+                "workspace",
+                "archived"
+              ]
             }
           }
         ]

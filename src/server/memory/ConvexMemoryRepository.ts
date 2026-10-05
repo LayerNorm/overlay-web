@@ -34,9 +34,10 @@ export class ConvexMemoryRepository implements MemoryRepository {
   }): Promise<MemoryRecord[]> {
     if (args.scope === 'workspace') {
       if (!args.workspaceId) throw new Error('workspaceId required for workspace memory listing')
-      const { scope: _scope, userId: _actorUserId, ...queryArgs } = args
+      const { scope: _scope, userId: actorUserId, ...queryArgs } = args
       return await convex.query<MemoryRecord[]>('knowledge/memories:listWorkspace', {
         ...queryArgs,
+        viewerUserId: actorUserId,
         serverSecret: this.serverSecret,
       }) ?? []
     }

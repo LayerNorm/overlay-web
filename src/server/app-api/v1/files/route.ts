@@ -2,6 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileErrorResponse, fileService } from '@/server/files/http'
+import { parseResourceView } from '@/shared/workspaces/resource-scope'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       conversationId: searchParams.get('conversationId'),
       outputType: searchParams.get('outputType') ?? searchParams.get('type'),
       summary: ['true', '1'].includes(searchParams.get('summary') ?? ''),
+      view: parseResourceView(searchParams.get('view')),
       fullText: ['true', '1'].includes(searchParams.get('fullText') ?? ''),
     })
     if (

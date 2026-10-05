@@ -1,6 +1,14 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { assertCanCreateInScope, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
+import { scopeMutations } from '../lib/scopeMutations'
+
+const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
+
+// Archiving stops a server being offered to agents.
+export const { setScope, archive, restore } = scopeMutations('mcpServers', 'extension', { onArchive: { enabled: false } })
 
 /** Basic URL format validation at creation time. Full SSRF validation
  *  (DNS resolution, private IP blocking) runs at connection time in mcp-tools.ts. */
@@ -41,22 +49,29 @@ export const list = query({
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    /** personal, workspace, or archived; omitted means everything active that the caller can see. */
+    view: viewArg,
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, view }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
-    const all = await ctx.db
-      .query('mcpServers')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .order('desc')
-      .collect()
-    // Scrub authConfig from the response
-    return all.filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)).map((s) => ({
+    const all = await listScopedRows(ctx, {
+      userId, workspaceId, view,
+      fetchMine: async () => (await ctx.db.query('mcpServers').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').collect())
+        .filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)),
+      fetchShared: async (ws) => await ctx.db.query('mcpServers')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+    })
+    // Scrub authConfig from the response (a workspace-scoped server shares its use, never its credentials)
+    return all.map((s) => ({
       _id: s._id,
       userId: s.userId,
+      scope: s.scope ?? ('personal' as const),
+      archivedAt: s.archivedAt,
+      archivedFromScope: s.archivedFromScope,
       name: s.name,
       description: s.description,
       transport: s.transport,
@@ -104,7 +119,8 @@ export const listEnabled = query({
         q.eq('userId', userId).eq('enabled', true)
       )
       .collect()
-    return all.filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
+    // Archived servers are not offered to agents.
+    return all.filter((server) => server.archivedAt === undefined).filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
   },
 })
 
@@ -151,14 +167,17 @@ export const create = mutation({
     timeoutMs: v.optional(v.number()),
     defaultToolPolicy: v.optional(v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny'))),
     toolPolicies: v.optional(v.record(v.string(), v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny')))),
+    scope: scopeArg,
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     validateMcpUrl(args.url)
+    const scope = await assertCanCreateInScope(ctx, { kind: 'extension', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     const now = Date.now()
     return await ctx.db.insert('mcpServers', {
       userId: args.userId,
       workspaceId: args.workspaceId,
+      scope,
       name: args.name,
       description: args.description,
       transport: args.transport,
@@ -206,7 +225,7 @@ export const update = mutation({
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (updates.url !== undefined) validateMcpUrl(updates.url)
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId || (workspaceId !== undefined && server.workspaceId !== workspaceId)) {
+    if (!server || (workspaceId !== undefined && server.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(server))) {
       throw new Error('Unauthorized')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -245,7 +264,7 @@ export const remove = mutation({
   handler: async (ctx, { mcpServerId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const server = await ctx.db.get(mcpServerId)
-    if (!server || server.userId !== userId || (workspaceId !== undefined && server.workspaceId !== workspaceId)) {
+    if (!server || (workspaceId !== undefined && server.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(server))) {
       throw new Error('Unauthorized')
     }
     const executions = await ctx.db

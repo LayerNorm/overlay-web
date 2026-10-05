@@ -23,6 +23,7 @@ import { MemoryClient } from './memory/client'
 import { NotesClient } from './notes/client'
 import { OnboardingClient } from './onboarding/client'
 import { OutputsClient } from './outputs/client'
+import { ScopeClient } from './scope/client'
 import { SettingsClient } from './settings/client'
 import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
@@ -47,6 +48,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     notes: new NotesClient(http),
     integrations: new IntegrationsClient(http),
     skills: new SkillsClient(http),
+    scope: new ScopeClient(http),
     mcpServers: new McpServersClient(http),
     automations: new AutomationsClient(http),
     settings: new SettingsClient(http),

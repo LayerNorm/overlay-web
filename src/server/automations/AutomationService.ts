@@ -79,6 +79,7 @@ type CreateAutomationBody = {
   graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
+  scope?: 'personal' | 'workspace'
 }
 
 type UpdateAutomationBody = {
@@ -269,6 +270,7 @@ export class AutomationService {
     includeDeleted?: boolean
     includeRuns?: boolean
     userId: string
+    view?: 'personal' | 'workspace' | 'archived'
     workspaceId?: string
   }): Promise<unknown> {
     if (args.automationId && args.includeRuns) {
@@ -293,6 +295,7 @@ export class AutomationService {
       userId: args.userId,
       includeDeleted: args.includeDeleted,
       workspaceId: args.workspaceId,
+      view: args.view,
       excludeAgentBound: true,
     })
   }
@@ -326,6 +329,7 @@ export class AutomationService {
       sourceConversationId: body.sourceConversationId,
       concurrencyPolicy: body.concurrencyPolicy,
       workspaceId: args.workspaceId,
+      ...(body.scope === 'workspace' || body.scope === 'personal' ? { scope: body.scope } : {}),
     })
     if (!id) throw new Error('Automation create returned no id')
     return { success: true, id }

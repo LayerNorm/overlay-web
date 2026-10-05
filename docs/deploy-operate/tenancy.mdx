@@ -85,7 +85,6 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `administrativePrincipals` | `userId` | Deployment boundary | Add `tenantId`; administrative role grants and revocations must be tenant-scoped and audited. |
 | `toolInvocations` | `userId` | Deployment boundary | Add `tenantId`; audit/cost views must include tenant context. |
 | `dailyUsage` | `userId` | Deployment boundary | Add `tenantId`; usage counters must include tenant context. |
-| `projects` | `userId` | Deployment boundary | Add `tenantId`; project hierarchy indexes must include tenant context. |
 | `skills` | `userId` | Deployment boundary | Add `tenantId`; project and enabled-skill indexes must include tenant context. |
 | `automations` | `userId` | Deployment boundary | Add `tenantId`; scheduling and runner queries must not cross tenants. |
 | `automationRuns` | `userId` | Deployment boundary | Add `tenantId`; run history and scheduler claims must be tenant-scoped. |
@@ -94,11 +93,9 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `conversations` | `userId` | Deployment boundary | Add `tenantId`; share tokens need explicit cross-tenant policy. |
 | `conversationMessages` | `userId` | Deployment boundary | Add `tenantId`; conversation/message indexes must include tenant context. |
 | `conversationContextSummaries` | `userId` | Deployment boundary | Add `tenantId`; context summary indexes must include tenant context. |
-| `notes` | `userId` | Deployment boundary | Add `tenantId`; note/project indexes must include tenant context. |
 | `memories` | `userId` | Deployment boundary | Add `tenantId`; memory extraction and search must enforce tenant context. |
 | `knowledgeChunks` | `userId` | Deployment boundary | Add `tenantId`; search indexes must include `tenantId` as a filter field. |
 | `knowledgeChunkEmbeddings` | `userId` | Deployment boundary | Add `tenantId`; vector indexes must include `tenantId` as a filter field. |
-| `outputs` | `userId` | Deployment boundary | Add `tenantId`; generated output and storage ownership must be tenant-scoped. |
 | `r2UploadIntents` | `userId` | Deployment boundary | Add `tenantId`; upload finalization must include tenant context. |
 | `files` | `userId` | Deployment boundary | Add `tenantId`; file/folder/share indexes must define cross-tenant behavior. |
 | `webhookSubscriptions` | `userId` | Deployment boundary | Add `tenantId`; subscriptions, signing secrets, and event ownership must be tenant-scoped. |

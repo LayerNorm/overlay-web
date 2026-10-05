@@ -213,7 +213,28 @@ Commit: `WORKSPACE SCOPING 1`. What was done, in order:
 
 Corrections to Phase 0: `knowledgeChunks` holds 2,913 rows and `mcpToolExecutions` 73 (an earlier read returned 0 because the CLI limit was too high); none used `projectId`.
 
-### Phase 2: scope and archive fields
+### Phase 2: scope and archive fields (done 2026-10-05)
+
+Commit: `WORKSPACE SCOPING 2`. What was done:
+
+- **Rules** in `src/shared/workspaces/resource-scope.ts` (isomorphic; table-driven tests): who can read, create, edit, move, archive, and which view (personal, workspace, archived) a row is in. Convex loads the viewer's role and the workspace policy once per request (`convex/lib/resourceScope.ts`) and applies the same rules.
+- **Policy** `workspaceExtensionsEditors`, `workspaceContentEditors`, `memberCanMoveScope` (and `usageTopUpBy`, stored now and enforced in Phase 4) on the workspace sharing policy: contracts, Convex, `/policies` route (admins only, as before), defaults, and four new toggles on the Workspace settings page.
+- **Fields and indexes** `scope`, `archivedAt`, `archivedBy`, `archivedFromScope` plus two indexes (`by_workspaceId_scope_archivedAt`, `by_workspaceId_userId_archivedAt`) on `files`, `skills`, `mcpServers`, `workspaceConnectors`, `automations`. Existing rows have no `scope`, which reads as personal, so nothing changes for anyone until something is moved.
+- **Reads and writes** for all five resources: lists take `view`, creates take `scope`, update/delete follow "creator, plus owners/admins for workspace items", and each module exports `setScope`, `archive`, `restore` (`convex/lib/scopeMutations.ts`). Archiving a folder takes its contents; archiving an automation turns it off; archiving an MCP server disables it. Another member's connector is listed without its account id, and an MCP server's credentials are never returned to anyone but the creator.
+- **BFF and clients** `?view=` on the skills, MCP, automations, and files lists; `scope` on their creates; new `POST /api/v1/scope` (`{resource, id, action, to?}`) with denials as 403/404/409 and a plain message; `@overlay/api-client` `scope` client and `view` queries; route catalogs and OpenAPI regenerated. A forbidden create returns 403 (`resource_scope_forbidden`) instead of a 500. Reading a single file now works for any member when the file is workspace-scoped (the old "owner only" check in `FileService` is gone; Convex decides).
+- **Memories**: `listWorkspace` now hides other people's `visibility: 'owner'` memories.
+- **Tests** `convex/resourceScope.convex.test.ts` (9 tests: private until moved, shared after, archive/restore round trip, admin vs member rights, policy variants including move off, folder cascade, credential and account-id scrubbing, memory visibility).
+
+Not done, on purpose:
+
+- **Audit events** for moves and archives (Phase 4 adds them with the activity feed).
+- **Agents using workspace-shared skills, MCP servers, and connectors**: the agent-facing lists (`listDirectory`, `listEnabled`, `listByWorkspace`) stay creator-only and skip archived rows (Phase 4).
+- **Connector list route** (`/api/v1/integrations`) does not yet take `view`; the Convex side (`listScopedByWorkspace`) and `POST /api/v1/scope` already work for connectors. The connectors UI arrives with Phase 3.
+- **Derived `scope` for chats and agents** and the Archived list for them: Phase 3, together with the panel that needs them.
+- **Backfill** of the 2 empty "New Chat" conversations and 1 memory with no `workspaceId` (invisible and harmless) and an explicit `scope: 'personal'` on old rows (reads already default). Rows moved to Archived keep `deletedAt` semantics unchanged.
+- The `resource(...)` owner check in `authorization-route-policy.ts` is not wired into the BFF at runtime today; Convex is the enforcement point. If it is ever wired, workspace-scoped rows need an exception.
+
+Original steps, for reference:
 
 1. Add the optional fields and indexes above (Convex push; additive, safe).
 2. Add the shared access helper and its tests (`src/shared`, with a table-driven test per rule).

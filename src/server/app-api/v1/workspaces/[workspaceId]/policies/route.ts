@@ -34,8 +34,11 @@ const BOOLEAN_FIELDS = [
   'memberCanCreateChannels',
   'memberCanCreateAgents',
   'memberCanInvite',
+  'memberCanMoveScope',
   'legalHold',
 ] as const
+
+const SCOPE_EDITOR_FIELDS = ['workspaceExtensionsEditors', 'workspaceContentEditors', 'usageTopUpBy'] as const
 
 const NUMBER_FIELDS = [
   'guestExpirationDays',
@@ -67,6 +70,11 @@ function parsePatch(body: Record<string, unknown>): WorkspaceSharingPolicyPatch 
     if (body[field] === undefined) continue
     if (typeof body[field] !== 'boolean') throw validation(`${field} must be a boolean`)
     patch[field] = body[field] as boolean
+  }
+  for (const field of SCOPE_EDITOR_FIELDS) {
+    if (body[field] === undefined) continue
+    if (body[field] !== 'members' && body[field] !== 'admins') throw validation(`${field} must be members or admins`)
+    patch[field] = body[field] as 'members' | 'admins'
   }
   for (const field of NUMBER_FIELDS) {
     if (body[field] === undefined) continue

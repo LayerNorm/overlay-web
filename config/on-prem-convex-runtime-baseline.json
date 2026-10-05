@@ -172,6 +172,7 @@
     "src/app/api/v1/provider-accounts/route.ts",
     "src/app/api/v1/providers/connections/route.ts",
     "src/app/api/v1/providers/connections/test/route.ts",
+    "src/app/api/v1/scope/route.ts",
     "src/app/api/v1/search/route.ts",
     "src/app/api/v1/settings/route.ts",
     "src/app/api/v1/shares/impact/route.ts",
@@ -362,6 +363,7 @@
     "src/server/app-api/v1/onboarding/complete/route.ts",
     "src/server/app-api/v1/onboarding/reset/route.ts",
     "src/server/app-api/v1/onboarding/status/route.ts",
+    "src/server/app-api/v1/scope/route.ts",
     "src/server/app-api/v1/settings/route.ts",
     "src/server/app-data/repositories.ts",
     "src/server/auth/api-keys/ConvexApiKeyRepository.ts",
@@ -430,6 +432,7 @@
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [
+    "convex/agents/connectedAgents.ts",
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/chat/conversations.ts",

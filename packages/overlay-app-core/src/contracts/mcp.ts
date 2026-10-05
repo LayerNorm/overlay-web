@@ -1,4 +1,6 @@
-export interface McpServerSummary {
+import type { ResourceScope, ScopedResourceFields } from './resource-scope'
+
+export interface McpServerSummary extends ScopedResourceFields {
   _id: string
   name: string
   description?: string
@@ -46,6 +48,8 @@ export interface CreateMcpServerRequest {
   timeoutMs?: number
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
+  /** Defaults to personal. */
+  scope?: ResourceScope
   accessToken?: string
   userId?: string
 }

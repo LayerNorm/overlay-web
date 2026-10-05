@@ -235,6 +235,13 @@ export type WorkspaceSharingPolicyState =
     memberCanCreateChannels: boolean
     memberCanCreateAgents: boolean
     memberCanInvite: boolean
+    /** True when anyone in the workspace (not only admins) may create or edit workspace-scoped skills, MCP servers, and connectors. */
+    membersCanEditExtensions: boolean
+    /** True when anyone in the workspace may create or edit workspace-scoped notes, files, outputs, and automations. */
+    membersCanEditContent: boolean
+    memberCanMoveScope: boolean
+    /** True when anyone in the workspace (not only admins) may add usage. */
+    membersCanTopUp: boolean
     legalHold: boolean
     rolloutStage: WorkspaceRolloutStage
     guestExpirationDays?: number
@@ -247,7 +254,20 @@ type PolicyToggleKey =
   | 'memberCanCreateChannels'
   | 'memberCanCreateAgents'
   | 'memberCanInvite'
+  | 'membersCanEditExtensions'
+  | 'membersCanEditContent'
+  | 'memberCanMoveScope'
+  | 'membersCanTopUp'
   | 'legalHold'
+
+/** The policy patch for a toggle: most are plain booleans, the "who may" ones are `members` or `admins`. */
+function policyPatchFor(key: PolicyToggleKey, value: boolean): Record<string, unknown> {
+  const editors = value ? 'members' : 'admins'
+  if (key === 'membersCanEditExtensions') return { workspaceExtensionsEditors: editors }
+  if (key === 'membersCanEditContent') return { workspaceContentEditors: editors }
+  if (key === 'membersCanTopUp') return { usageTopUpBy: editors }
+  return { [key]: value }
+}
 
 const POLICY_TOGGLES: ReadonlyArray<{
   key: PolicyToggleKey
@@ -282,6 +302,34 @@ const POLICY_TOGGLES: ReadonlyArray<{
     label: 'Members can invite people',
     description: 'When on, members may send workspace invitations. Owners and admins always may.',
     onLabel: 'Members may invite',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanEditExtensions',
+    label: 'Anyone can share skills, MCP servers, and connectors',
+    description: 'When off, only owners and admins create or edit workspace-scoped skills, MCP servers, and connectors (they hold credentials or run code). Personal ones stay with their creator.',
+    onLabel: 'Anyone in the workspace',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanEditContent',
+    label: 'Anyone can share notes, files, outputs, and automations',
+    description: 'When off, only owners and admins create or edit workspace-scoped notes, files, outputs, and automations.',
+    onLabel: 'Anyone in the workspace',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'memberCanMoveScope',
+    label: 'Members can move their own items between Personal and Workspace',
+    description: 'When off, members cannot move items between scopes; owners and admins still can for items they created. Nobody moves someone else’s item.',
+    onLabel: 'Members may move their own items',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanTopUp',
+    label: 'Anyone can add usage to the workspace',
+    description: 'When off, only owners and admins add usage (top-ups) to this workspace.',
+    onLabel: 'Anyone in the workspace',
     offLabel: 'Owners and admins only',
   },
   {
@@ -639,6 +687,10 @@ export function WorkspaceSettingsPanel({
           memberCanCreateChannels: result.policy.memberCanCreateChannels,
           memberCanCreateAgents: result.policy.memberCanCreateAgents,
           memberCanInvite: result.policy.memberCanInvite,
+          membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
+          membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
+          memberCanMoveScope: result.policy.memberCanMoveScope !== false,
+          membersCanTopUp: result.policy.usageTopUpBy === 'members',
           legalHold: result.policy.legalHold,
           rolloutStage: result.policy.rolloutStage,
           guestExpirationDays: result.policy.guestExpirationDays,
@@ -917,7 +969,7 @@ function WorkspaceSharingTab({
   function handleToggle(key: PolicyToggleKey, value: boolean) {
     setPolicyBusy(true)
     setActionError(null)
-    void client.setSharingPolicy(workspaceId, { [key]: value })
+    void client.setSharingPolicy(workspaceId, policyPatchFor(key, value))
       .then((result) => setPolicyState((current) => ({
         ...(current.status === 'ready' ? current : {}),
         status: 'ready',
@@ -927,6 +979,10 @@ function WorkspaceSharingTab({
         memberCanCreateChannels: result.policy.memberCanCreateChannels,
         memberCanCreateAgents: result.policy.memberCanCreateAgents,
         memberCanInvite: result.policy.memberCanInvite,
+        membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
+        membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
+        memberCanMoveScope: result.policy.memberCanMoveScope !== false,
+        membersCanTopUp: result.policy.usageTopUpBy === 'members',
         legalHold: result.policy.legalHold,
         rolloutStage: result.policy.rolloutStage,
         guestExpirationDays: result.policy.guestExpirationDays,

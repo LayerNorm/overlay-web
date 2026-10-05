@@ -1,3 +1,5 @@
+import type { ResourceScope, ScopedResourceFields } from './resource-scope'
+
 export type IntegrationProviderId = 'composio' | 'executor'
 export type IntegrationOAuthOwnership = 'provider-managed' | 'customer-managed' | 'mixed'
 export type IntegrationConnectionSetup = 'in-app-oauth' | 'provider-console' | 'manual-credential'
@@ -74,7 +76,7 @@ export interface IntegrationConnectionResponse {
   error?: string
 }
 
-export interface SkillSummary {
+export interface SkillSummary extends ScopedResourceFields {
   _id: string
   name: string
   description: string
@@ -89,6 +91,8 @@ export interface CreateSkillRequest {
   description: string
   instructions: string
   enabled?: boolean
+  /** Defaults to personal. Creating in the workspace follows the workspace's admin settings. */
+  scope?: ResourceScope
   accessToken?: string
   userId?: string
 }

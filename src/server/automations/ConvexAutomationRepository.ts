@@ -23,6 +23,8 @@ export class ConvexAutomationRepository implements AutomationRepository {
     excludeAgentBound?: boolean
     includeDeleted?: boolean
     userId: string
+    view?: 'personal' | 'workspace' | 'archived'
+    workspaceId?: string
   }): Promise<AutomationRecord[]> {
     return await convex.query<AutomationRecord[]>('automations/automations:list', {
       ...args,

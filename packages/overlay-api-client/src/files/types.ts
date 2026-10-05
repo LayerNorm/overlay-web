@@ -1,3 +1,4 @@
+import type { ResourceView } from '@overlay/app-core'
 import type { PaginationQuery } from '../shared/types'
 
 export interface FileQuery extends PaginationQuery {
@@ -9,4 +10,5 @@ export interface FileQuery extends PaginationQuery {
   page?: boolean
   type?: string
   summary?: boolean
+  view?: ResourceView
 }

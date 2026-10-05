@@ -1,6 +1,8 @@
 import { v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
+import { scopeMutations } from '../lib/scopeMutations'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { derivePlanKind } from '../../src/shared/billing/billing-pricing'
@@ -26,6 +28,11 @@ const automationSchedule = v.object({
 })
 
 const automationDoc = v.any()
+const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
+
+// An archived automation stops running (the scheduler only picks up enabled ones); restoring leaves it paused.
+export const { setScope, archive, restore } = scopeMutations('automations', 'content', { onArchive: { enabled: false, nextRunAt: undefined } })
 const automationRunDoc = v.any()
 
 async function authorizeUserAccess(params: {
@@ -157,15 +164,33 @@ export const list = query({
     excludeAgentBound: v.optional(v.boolean()),
     limit: v.optional(v.number()),
     beforeUpdatedAt: v.optional(v.number()),
+    /** personal, workspace, or archived; omitted means everything active that the caller can see. */
+    view: viewArg,
   },
   returns: v.array(automationDoc),
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, excludeAgentBound, limit, beforeUpdatedAt }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeDeleted, excludeAgentBound, limit, beforeUpdatedAt, view }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
     const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 100)))
+    if (workspaceId !== undefined) {
+      // With a workspace: the caller's own automations plus other members' workspace-scoped ones, for the requested view.
+      const scoped = await listScopedRows(ctx, {
+        userId, workspaceId, view,
+        fetchMine: async () => await ctx.db.query('automations')
+          .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId)).collect(),
+        fetchShared: async (ws) => await ctx.db.query('automations')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+      })
+      return scoped
+        .filter((row) => (includeDeleted ? true : !row.deletedAt))
+        .filter((row) => (excludeAgentBound ? !row.agentId : true))
+        .filter((row) => (beforeUpdatedAt !== undefined && Number.isFinite(beforeUpdatedAt) ? row.updatedAt < beforeUpdatedAt : true))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, pageLimit)
+    }
     // Over-fetch by 3x to account for in-memory filters (deletedAt, workspaceId).
     const scanLimit = Math.min(300, Math.max(pageLimit * 3, 100))
     const rows = await ctx.db
@@ -181,10 +206,8 @@ export const list = query({
     return (
       rows
       .filter((row) => row.userId === userId)
+      .filter((row) => (view === 'archived' ? row.archivedAt !== undefined : row.archivedAt === undefined))
       .filter((row) => (includeDeleted ? true : !row.deletedAt))
-        .filter((row) =>
-          workspaceId !== undefined ? row.workspaceId === workspaceId : true,
-        )
       // The standalone Automations page lists only standalone automations;
       // agent-owned automations live as threads under their agent.
       .filter((row) => (excludeAgentBound ? !row.agentId : true))
@@ -208,8 +231,8 @@ export const get = query({
     } catch {
       return null
     }
-    const automation = await ctx.db.get(automationId)
-    return automation && automation.userId === userId && !automation.deletedAt && (workspaceId === undefined || automation.workspaceId === workspaceId) ? automation : null
+    const automation = await getReadableRow(ctx, { row: await ctx.db.get(automationId), userId, workspaceId })
+    return automation && !automation.deletedAt ? automation : null
   },
 })
 
@@ -230,10 +253,12 @@ export const create = mutation({
     graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
+    scope: scopeArg,
   },
   returns: v.id('automations'),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     let sourceAgentId: string | undefined
     if (args.sourceConversationId) {
       const conversation = await ctx.db.get(args.sourceConversationId)
@@ -256,6 +281,7 @@ export const create = mutation({
     return await ctx.db.insert('automations', {
       userId: args.userId,
       workspaceId: args.workspaceId,
+      scope,
       name: args.name.trim() || 'Untitled automation',
       description: args.description?.trim() || '',
       instructions: args.instructions.trim(),
@@ -298,7 +324,7 @@ export const update = mutation({
   handler: async (ctx, { automationId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const automation = await ctx.db.get(automationId)
-    if (!automation || automation.userId !== userId || automation.deletedAt || (workspaceId !== undefined && automation.workspaceId !== workspaceId)) {
+    if (!automation || automation.deletedAt || (workspaceId !== undefined && automation.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(automation))) {
       throw new Error('Unauthorized')
     }
     if (updates.sourceConversationId) {
@@ -359,7 +385,7 @@ export const pause = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
+    if (!automation || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId) || !(await scopeContextLoader(ctx, args.userId).canEdit(automation))) {
       throw new Error('Unauthorized')
     }
     await ctx.db.patch(args.automationId, {
@@ -383,7 +409,7 @@ export const resume = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
+    if (!automation || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId) || !(await scopeContextLoader(ctx, args.userId).canEdit(automation))) {
       throw new Error('Unauthorized')
     }
     const now = Date.now()
@@ -414,7 +440,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
     const automation = await ctx.db.get(args.automationId)
-    if (!automation || automation.userId !== args.userId || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId)) {
+    if (!automation || automation.deletedAt || (args.workspaceId !== undefined && automation.workspaceId !== args.workspaceId) || !(await scopeContextLoader(ctx, args.userId).canEdit(automation))) {
       throw new Error('Unauthorized')
     }
     await ctx.db.patch(args.automationId, {

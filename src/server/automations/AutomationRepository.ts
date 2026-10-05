@@ -37,6 +37,7 @@ export type CreateAutomationInput = {
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
   workspaceId?: string
+  scope?: 'personal' | 'workspace'
 }
 
 export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'>> & {
@@ -49,6 +50,7 @@ export interface AutomationRepository {
     excludeAgentBound?: boolean
     includeDeleted?: boolean
     userId: string
+    view?: 'personal' | 'workspace' | 'archived'
     workspaceId?: string
   }): Promise<AutomationRecord[]>
   listRuns(args: {

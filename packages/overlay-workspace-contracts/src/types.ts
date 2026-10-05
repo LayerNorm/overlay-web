@@ -668,6 +668,9 @@ export type WorkspaceResourceShareResponse = {
 export const WORKSPACE_ROLLOUT_STAGES = ['dogfood', 'invited', 'general'] as const
 export type WorkspaceRolloutStage = (typeof WORKSPACE_ROLLOUT_STAGES)[number]
 
+/** `members`: anyone in the workspace. `admins`: owners and admins only. */
+export type WorkspaceScopeEditors = 'members' | 'admins'
+
 export type WorkspaceSharingPolicy = {
   workspaceId: string
   publicLinksEnabled: boolean
@@ -677,6 +680,14 @@ export type WorkspaceSharingPolicy = {
   memberCanCreateAgents: boolean
   /** Members may invite people; owners and admins always may. */
   memberCanInvite: boolean
+  /** Who may create or edit workspace-scoped skills, MCP servers, and connectors. */
+  workspaceExtensionsEditors: WorkspaceScopeEditors
+  /** Who may create or edit workspace-scoped notes, files, outputs, and automations. */
+  workspaceContentEditors: WorkspaceScopeEditors
+  /** Members may move their own items between Personal and Workspace; owners and admins always may. */
+  memberCanMoveScope: boolean
+  /** Who may add usage (top up) to the workspace. */
+  usageTopUpBy: WorkspaceScopeEditors
   /** Resource guests expire after this many days when set. */
   guestExpirationDays?: number
   /** When set, only these agent harnesses may run in this workspace. */
@@ -709,6 +720,10 @@ export const DEFAULT_WORKSPACE_POLICY: Omit<
   memberCanCreateChannels: true,
   memberCanCreateAgents: true,
   memberCanInvite: false,
+  workspaceExtensionsEditors: 'members',
+  workspaceContentEditors: 'members',
+  memberCanMoveScope: true,
+  usageTopUpBy: 'admins',
   legalHold: false,
   rolloutStage: 'general',
 }

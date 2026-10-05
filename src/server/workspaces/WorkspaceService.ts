@@ -1054,10 +1054,16 @@ function validatePolicyPatch(patch: WorkspaceSharingPolicyPatch): WorkspaceShari
     'memberCanCreateChannels',
     'memberCanCreateAgents',
     'memberCanInvite',
+    'memberCanMoveScope',
     'legalHold',
   ] as const) {
     if (validated[key] !== undefined && typeof validated[key] !== 'boolean') {
       throw new WorkspaceServiceError(`${key} must be a boolean`, 400, 'validation')
+    }
+  }
+  for (const key of ['workspaceExtensionsEditors', 'workspaceContentEditors', 'usageTopUpBy'] as const) {
+    if (validated[key] !== undefined && validated[key] !== 'members' && validated[key] !== 'admins') {
+      throw new WorkspaceServiceError(`${key} must be members or admins`, 400, 'validation')
     }
   }
   assertRange(validated.guestExpirationDays, 'guestExpirationDays', 1, 365)

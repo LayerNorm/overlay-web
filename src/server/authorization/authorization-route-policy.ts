@@ -554,6 +554,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/integrations',
     methods: { GET: capability('integrations.use'), POST: capability('integrations.use') },
   },
+  // Convex enforces who may move, archive, or restore a given item; any signed-in member may ask.
+  { path: '/api/v1/scope', methods: { POST: authenticated() } },
   {
     path: '/api/v1/skills',
     methods: {

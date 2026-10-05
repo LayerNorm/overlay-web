@@ -1,4 +1,6 @@
 import { v } from 'convex/values'
+import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
+import { scopeMutations } from '../lib/scopeMutations'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
@@ -424,6 +426,29 @@ export const expireUploadIntentsByServer = mutation({
   },
 })
 
+// ─── Scope: Personal / Workspace / Archived ──────────────────────────────────
+
+const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
+const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+
+// A folder's contents move, archive, and restore with it.
+export const { setScope, archive, restore } = scopeMutations('files', 'content', {
+  descendants: async (db, id) => {
+    const reader = db as { query(table: 'files'): { withIndex(name: 'by_parentId', range: (q: { eq(field: 'parentId', value: string): unknown }) => unknown): { collect(): Promise<Array<{ _id: string; type: string }>> } } }
+    const out: string[] = []
+    const queue = [id]
+    while (queue.length > 0 && out.length < 5_000) {
+      const parent = queue.shift()!
+      const children = await reader.query('files').withIndex('by_parentId', (q) => q.eq('parentId', parent)).collect()
+      for (const child of children) {
+        out.push(child._id)
+        if (child.type === 'folder') queue.push(child._id)
+      }
+    }
+    return out
+  },
+})
+
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 type FileListArgs = {
@@ -488,6 +513,8 @@ const fileListArgs = {
   )),
   summary: v.optional(v.boolean()),
   includeDeleted: v.optional(v.boolean()),
+  /** personal, workspace, or archived. Omitted: everything active that the caller can see (listPage: the caller's own). */
+  view: viewArg,
 }
 
 export const list = query({
@@ -507,6 +534,7 @@ export const list = query({
     limit,
     summary,
     includeDeleted,
+    view,
   }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -514,12 +542,18 @@ export const list = query({
       return []
     }
     const requestedLimit = Math.max(1, Math.min(100, Math.floor(limit ?? 100)))
-    const candidates = await fileListQuery(ctx, {
-      userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted,
-    }).take(Math.min(300, requestedLimit * 3))
-    const filteredFiles = filterFileList(candidates, {
-      userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted,
-    }).slice(0, requestedLimit)
+    const listArgs = { userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted }
+    const scanLimit = Math.min(300, requestedLimit * 3)
+    // The caller's own files plus other members' workspace-scoped ones, for the requested view.
+    const visible = await listScopedRows(ctx, {
+      userId, workspaceId, view,
+      fetchMine: async () => await fileListQuery(ctx, listArgs).take(scanLimit),
+      fetchShared: async (ws) => await ctx.db.query('files')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).take(scanLimit),
+    })
+    const filteredFiles = filterFileList(visible, listArgs)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, requestedLimit)
 
     return summary
       ? filteredFiles.map(normalizeFileSummary)
@@ -541,11 +575,31 @@ export const listPage = query({
       return { data: [], nextCursor: null, hasMore: false }
     }
     const limit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)))
-    const page = await fileListQuery(ctx, args).paginate({
-      cursor: args.cursor ?? null,
-      numItems: limit,
-    })
-    const filtered = filterFileList(page.page, args)
+    // The archived view spans personal and workspace rows from two indexes, so it is returned as one (capped) page.
+    if (args.view === 'archived' && args.workspaceId) {
+      const rows = await listScopedRows(ctx, {
+        userId: args.userId, workspaceId: args.workspaceId, view: 'archived',
+        fetchMine: async () => await ctx.db.query('files')
+          .withIndex('by_workspaceId_userId_archivedAt', (q) => q.eq('workspaceId', args.workspaceId!).eq('userId', args.userId).gt('archivedAt', 0)).take(500),
+        fetchShared: async (ws) => await ctx.db.query('files')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').gt('archivedAt', 0)).take(500),
+      })
+      const archived = filterFileList(rows, args).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit)
+      return { data: args.summary ? archived.map(normalizeFileSummary) : archived.map(normalizeFile), nextCursor: null, hasMore: false }
+    }
+    // The workspace view pages over everyone's workspace-scoped files; every other view pages over the caller's own.
+    const shared = args.view === 'workspace' && args.workspaceId !== undefined
+    const page = shared
+      ? await ctx.db.query('files')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', args.workspaceId!).eq('scope', 'workspace').eq('archivedAt', undefined))
+        .paginate({ cursor: args.cursor ?? null, numItems: limit })
+      : await fileListQuery(ctx, args).paginate({ cursor: args.cursor ?? null, numItems: limit })
+    const scopeFilter = scopeContextLoader(ctx, args.userId)
+    const visible = []
+    for (const row of page.page) {
+      if (shared ? await scopeFilter.canRead(row) : (row.archivedAt === undefined && (args.view !== 'personal' || (row.scope ?? 'personal') === 'personal'))) visible.push(row)
+    }
+    const filtered = filterFileList(visible, args)
     return {
       data: args.summary
         ? filtered.map(normalizeFileSummary)
@@ -571,8 +625,8 @@ export const get = query({
     } catch {
       return null
     }
-    const file = await ctx.db.get(fileId)
-    if (!file || file.userId !== userId || (workspaceId !== undefined && file.workspaceId !== workspaceId)) return null
+    const file = await getReadableRow(ctx, { row: await ctx.db.get(fileId), userId, workspaceId })
+    if (!file) return null
     if (file.deletedAt && !includeDeleted) return null
     return normalizeFile(file)
   },
@@ -754,9 +808,12 @@ export const create = mutation({
     legacyOutputId: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
+    /** Scope of a new row (default personal); an existing note keeps its scope. */
+    scope: scopeArg,
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     const kind = args.kind ?? (args.type === 'folder' ? 'folder' : 'upload')
     const type = kind === 'folder' ? 'folder' : 'file'
     if (args.r2Key) {
@@ -857,6 +914,7 @@ export const create = mutation({
     const id = await ctx.db.insert('files', {
       userId: args.userId,
       workspaceId: args.workspaceId,
+      scope,
       clientId,
       name,
       tags,
@@ -1059,10 +1117,12 @@ export const update = mutation({
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
+    await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
-    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) throw new Error('Unauthorized')
+    if (!existing || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(existing))) throw new Error('Unauthorized')
+    // Storage, keys, and indexing belong to the file's owner, even when an admin edits a workspace-scoped file.
+    const userId = existing.userId
     if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
       throw new Error('NOTE_REVISION_CONFLICT')
     }
@@ -1171,10 +1231,12 @@ export const remove = mutation({
     serverSecret: v.optional(v.string()),
     r2CleanupConfirmed: v.optional(v.boolean()),
   },
-  handler: async (ctx, { fileId, userId, workspaceId, accessToken, serverSecret, r2CleanupConfirmed }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+  handler: async (ctx, { fileId, userId: callerId, workspaceId, accessToken, serverSecret, r2CleanupConfirmed }) => {
+    await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const root = await ctx.db.get(fileId)
-    if (!root || root.userId !== userId || root.deletedAt || (workspaceId !== undefined && root.workspaceId !== workspaceId)) throw new Error('Unauthorized')
+    if (!root || root.deletedAt || (workspaceId !== undefined && root.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(root))) throw new Error('Unauthorized')
+    // Storage and indexing belong to the file's owner, even when an admin removes a workspace-scoped file.
+    const userId = root.userId
     const now = Date.now()
     async function deleteSubtree(id: Id<'files'>) {
       const children = await ctx.db

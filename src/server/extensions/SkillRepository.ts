@@ -8,6 +8,9 @@ export type SkillRecord = {
   instructions: string
   enabled: boolean
   version: number
+  scope?: 'personal' | 'workspace'
+  archivedAt?: number
+  archivedFromScope?: 'personal' | 'workspace'
   createdAt: number
   updatedAt: number
 }
@@ -19,6 +22,7 @@ export type CreateSkillInput = {
   instructions: string
   enabled?: boolean
   workspaceId?: string
+  scope?: 'personal' | 'workspace'
 }
 
 export type UpdateSkillInput = {
@@ -32,7 +36,7 @@ export type UpdateSkillInput = {
 }
 
 export interface SkillRepository {
-  list(args: { userId: string; workspaceId?: string }): Promise<SkillRecord[]>
+  list(args: { userId: string; workspaceId?: string; view?: 'personal' | 'workspace' | 'archived' }): Promise<SkillRecord[]>
   get(args: { skillId: string; userId: string; workspaceId?: string }): Promise<SkillRecord | null>
   create(args: CreateSkillInput): Promise<string>
   update(args: UpdateSkillInput): Promise<void>

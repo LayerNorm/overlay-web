@@ -772,6 +772,11 @@ export default defineSchema({
 
 
   skills: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
     name: v.string(),
@@ -781,13 +786,19 @@ export default defineSchema({
     version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
+  }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
+    .index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
     }),
 
   automations: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
     name: v.optional(v.string()),
@@ -851,6 +862,7 @@ export default defineSchema({
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   })
+    .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
@@ -936,6 +948,11 @@ export default defineSchema({
     .index('by_automationRunId_createdAt', ['automationRunId', 'createdAt']),
 
   mcpServers: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
     name: v.string(),
@@ -993,6 +1010,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
@@ -1519,6 +1537,11 @@ export default defineSchema({
     .index('by_status_createdAt', ['status', 'createdAt']),
 
   files: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
     clientId: v.optional(v.string()),
@@ -1584,7 +1607,8 @@ export default defineSchema({
     shareToken: v.optional(v.string()),
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
+  }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
+    .index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
     .index('by_workspaceId_userId_parentId_updatedAt', ['workspaceId', 'userId', 'parentId', 'updatedAt'])
     .index('by_workspaceId_userId_conversationId_updatedAt', ['workspaceId', 'userId', 'conversationId', 'updatedAt'])
@@ -1946,6 +1970,11 @@ export default defineSchema({
     memberCanCreateChannels: v.optional(v.boolean()),
     memberCanCreateAgents: v.optional(v.boolean()),
     memberCanInvite: v.optional(v.boolean()),
+    // Who may create or edit workspace-scoped items; defaults are `members`, `members`, true, `admins`.
+    workspaceExtensionsEditors: v.optional(v.union(v.literal('members'), v.literal('admins'))),
+    workspaceContentEditors: v.optional(v.union(v.literal('members'), v.literal('admins'))),
+    memberCanMoveScope: v.optional(v.boolean()),
+    usageTopUpBy: v.optional(v.union(v.literal('members'), v.literal('admins'))),
     guestExpirationDays: v.optional(v.number()),
     allowedAgentHarnesses: v.optional(v.array(v.string())),
     agentRunBudgetCents: v.optional(v.number()),
@@ -2192,6 +2221,11 @@ export default defineSchema({
     .index('by_resource_createdAt', ['resourceType', 'resourceId', 'createdAt']),
 
   workspaceConnectors: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.string(),
     userId: v.string(),
     providerKey: v.string(),
@@ -2199,6 +2233,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_providerKey', ['workspaceId', 'providerKey'])
     .index('by_workspaceId_userId_providerKey', ['workspaceId', 'userId', 'providerKey'])

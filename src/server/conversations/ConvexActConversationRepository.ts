@@ -208,6 +208,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     return args.workspaceId
       ? await convex.query<ActMemoryRow[]>('knowledge/memories:listWorkspace', {
           workspaceId: args.workspaceId,
+          viewerUserId: args.userId,
           serverSecret: this.serverSecret,
         })
       : await convex.query<ActMemoryRow[]>('knowledge/memories:list', {
