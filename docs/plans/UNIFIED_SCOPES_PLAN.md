@@ -1,6 +1,6 @@
 # Unified scopes: Personal, Workspace, Archived
 
-Status: decisions made (2026-10-05); nothing here is built yet.
+Status: decisions made and Phase 0 (audit) done, 2026-10-05; Phases 1–5 not started.
 
 ## Goal
 
@@ -48,6 +48,66 @@ Field-level scan only; access rules were not audited line by line (see Phase 0).
 | Projects | yes | no | `archivedAt`, `deletedAt` |
 
 Knowledge bases and projects are no longer features. Five knowledge-base tables have no code references, `knowledgeBases` and `projects` still hold production rows, and 21 `projectId` fields remain across other tables. They are removed in Phase 1 so the unification does not have to carry them.
+
+## Phase 0 results (audit, 2026-10-05)
+
+Source: production Convex (`colorful-chickadee-419`), read-only; code read in `convex/` and `src/server/`.
+
+### How access works today
+
+- **Creator-only, enforced in Convex by `userId` equality.** Notes, files, skills, MCP servers, automations, and their writes all check `row.userId === userId`. `workspaceId` is an *optional* filter: with it, rows are narrowed to that workspace; without it, a creator gets their rows from every workspace. There is no "readable by other members" path for these tables.
+- **No membership check in Convex** for these tables (only `workspaceConnectors` calls `requireActiveWorkspaceMembership`). Membership is enforced in the BFF, which resolves the active workspace before calling Convex with the server secret.
+- **Two existing extension points in the BFF** (`src/server/app-api/bff-context.ts`): `getAuthorizedResourceUserId` (today returns the caller's own id) and `getGrantedResources` (today returns `[]`, commented "until workspace sharing is fully wired"). The shared access helper in Phase 2 plugs in here.
+- **Lists scan by user, then filter in memory.** Notes and automations lists read `by_userId_updatedAt`, over-fetch 3x, and filter `workspaceId`/`deletedAt` in code; skills and MCP servers read `by_userId` and filter. The scope views need real indexes (`workspaceId + scope + archivedAt`), not more in-memory filtering.
+- **Skills and MCP servers also filter out rows with a `projectId`** (leftover from projects).
+- **MCP server credentials** (`authType`, `oauthScope`, OAuth state and sessions) are read and written only by the creator (`server.userId === userId`). Workspace scope must share *use* without sharing these.
+- **Memories** have the reference pattern: `visibility` (`owner` | `workspace`) and a `listWorkspace` query. Finding: `listWorkspace` returns every memory in the workspace (up to 100) **without** applying `visibility`; the caller filters (`convex/knowledge/knowledge.ts` skips `visibility === 'owner'` rows of other users). The shared helper should apply it, so a caller cannot forget.
+- **Agents** default to `visibility: 'workspace'` on create and treat a missing value as `workspace`; `creator` hides it from others.
+- **Chats**: access is by participant (`conversationParticipants`) for DMs and channels, creator for personal chats; `shareVisibility` (`private` | `public`) controls public links, `channelVisibility` controls channels. These stay separate from scope.
+
+### Notes and outputs live in `files` now
+
+- `files.kind` is `note` (89), `output` (52), `upload` (62), `folder` (4), and unset (13). The app reads and writes notes and outputs through `files/files:*`; **nothing calls `files/notes:*`**, and the `outputs` table is only read by a migration helper. The old `notes` (53 rows) and `outputs` (47 rows) tables are legacy.
+- Consequence for scope work: **Notes, Files, and Outputs are one table (`files`)**, so they get `scope` and the archive fields once. The legacy `notes` and `outputs` tables are removed in Phase 1 instead of being migrated.
+- Check before dropping: 30 of the 47 legacy outputs are linked to a `files` row (`legacyOutputId`); none of the 53 legacy notes carry a `legacyNoteId` link. Phase 1 must compare the legacy rows against `files` (by title and creator) and either confirm they were migrated or migrate the rest.
+- `files.shareVisibility` is unset on all 220 rows.
+
+### Production row counts (whole deployment)
+
+| Table | Rows | Live (not deleted) | Rows with `projectId` | Rows without `workspaceId` |
+| --- | --- | --- | --- | --- |
+| `files` | 220 | 142 | 3 | 0 |
+| `notes` (legacy) | 53 | 33 | 1 | 0 |
+| `outputs` (legacy) | 47 | 47 | n/a | 0 |
+| `skills` | 3 | 3 | 0 | 0 |
+| `mcpServers` | 5 | 5 | 0 | 0 |
+| `workspaceConnectors` | 12 | 12 | n/a | 0 |
+| `automations` | 91 | 39 | 0 | 0 |
+| `conversations` | 1,328 | 1,111 | 5 | 2 |
+| `memories` | 1,726 | 1,720 | 0 | 1 |
+| `projects` | 34 | 29 | n/a | 0 |
+| `knowledgeBases` | 5 | 5 | n/a | 0 (no `workspaceId` column) |
+| `knowledgeBaseSources` | 1 | 1 | n/a | n/a |
+| `knowledgeBaseConversations`, `projectKnowledgeBases`, `knowledgeBaseGroupDefaults` | 0 | 0 | 0 | n/a |
+| `knowledgeChunks`, `documentIngestionJobs`, `mcpToolExecutions` | 0 | 0 | 0 | n/a |
+
+Of the 11 tables that carry a `projectId` column, only `files` (3), `notes` (1), and `conversations` (5) have rows that use it; the other columns can be dropped with no data work.
+
+### Who actually shares a workspace
+
+- 252 workspaces: 249 of kind `personal`, 3 of kind `organization` (QA Test WS, Allen Demo Workspace, Demo workspace).
+- 379 principals: 253 human, 126 agent. Agents count as workspace members, so a raw "more than one member" count is misleading.
+- **Only one workspace has more than one active human member: `personal-1n34zae` (the owner's own, with 2).** Every other workspace has exactly one human.
+- Rows with more than one creator in a workspace exist only there (2 creators of conversations, 3 of memories).
+- Consequence: the migration risk is low. Defaulting every row to `personal` changes what nobody sees, and "silent exposure" can only affect that one workspace. It also means workspace-scoped features have effectively no multi-person production data to test against, so tests must create their own.
+
+### Findings that change the plan
+
+1. **`files` carries Notes, Files, and Outputs**; add scope and archive fields there once, and drop the legacy `notes` and `outputs` tables in Phase 1.
+2. **Phase 1 is smaller than expected**: only `files`, `notes`, and `conversations` have `projectId` data; knowledge bases hold 6 rows in total.
+3. **Add indexes** for scope views; the current in-memory filtering over `by_userId` does not scale to shared lists.
+4. **The helper goes in the two BFF seams** and also fixes the memories `listWorkspace` visibility gap.
+5. **Conversations** (2) and **memories** (1) have rows with no `workspaceId`; Phase 2's backfill assigns them or marks them for cleanup.
 
 ## Decisions (owner, 2026-10-05)
 
@@ -110,9 +170,8 @@ Per resource:
 
 | Resource | Change |
 | --- | --- |
-| Notes | add `scope`, archive fields; keep `deletedAt` for deletion |
-| Files | add `scope`, archive fields; fold `shareVisibility` into the scope rules (sharing links stay; scope is about who sees it in lists) |
-| Outputs | add `scope`, archive fields |
+| Files (kinds note, upload, output, folder) | add `scope`, archive fields **once on `files`**: this covers Notes, Files, and Outputs; keep `deletedAt` for deletion; `shareVisibility` stays about public links and is separate from scope |
+| Notes, Outputs (legacy tables) | no change; removed in Phase 1 |
 | Skills | add `scope`, archive fields |
 | MCP servers | add `scope`, archive fields; the stored credential stays with its creator, workspace scope shares *use*, not the secret |
 | Connectors | add `scope`, archive fields; a workspace-scoped connector is one shared connection that workspace agents may use |
@@ -121,7 +180,7 @@ Per resource:
 | Agents | already has `visibility` (`creator`/`workspace`) and `archivedAt`; treat as the reference implementation and expose it as `scope` in the API |
 | Memories | already `owner`/`workspace`; no archive needed |
 
-Indexes: add `by_workspaceId_scope_archivedAt` (and `by_workspaceId_userId_scope_archivedAt` for Personal) on each table, so the three views are single indexed reads.
+Indexes (replace today's in-memory filtering over `by_userId`): add `by_workspaceId_scope_archivedAt` (and `by_workspaceId_userId_scope_archivedAt` for Personal) on each table, so the three views are single indexed reads.
 
 ## Access rules (one helper)
 
@@ -137,18 +196,17 @@ A shared helper, `canReadResource` / `canWriteResource` in `src/shared` (isomorp
 
 ## Phases
 
-### Phase 0: audit (small, do first)
+### Phase 0: audit (done 2026-10-05)
 
-- Read the access rules for each listed resource (the Convex functions in `convex/files`, `convex/automations`, `convex/integrations`, `convex/mcp`, `convex/knowledge`, the notes and skills services) and record who can read and write today.
-- Confirm how many production rows exist per table and how many have `projectId` set.
-- Output: a short table appended to this plan, and any surprises (rows visible to more people than expected).
+Results are in "Phase 0 results" above. Remaining item carried into Phase 1: verify the legacy `notes` and `outputs` rows against `files` before dropping them.
 
 ### Phase 1: remove knowledge bases and projects
 
-1. Make `projectId` optional wherever required, in all 21 places.
-2. Export the production `knowledgeBases` and `projects` rows to a file for safekeeping (ask the owner whether to keep it).
+0. Compare the legacy `notes` (53) and `outputs` (47) rows with `files` (kind `note` / `output`): migrate anything missing, then plan their removal alongside the tables below.
+1. Make `projectId` optional wherever required (11 tables carry the column; only `files`, `notes`, `conversations` have data in it).
+2. Export the production `knowledgeBases` (5), `knowledgeBaseSources` (1), `projects` (34), legacy `notes` (53), and legacy `outputs` (47) rows to a file for safekeeping (ask the owner whether to keep it).
 3. Clear the rows; remove their code paths: `convex/migrations/backfillWorkspaceIds.ts` project parts, `convex/auth/users.ts`, `convex/files/storageAdmin.ts`, `src/server/tools/tools/build.ts`, `src/server/account/AccountDataDeletionRepository.ts`, `MarketingOverviewPage.tsx`.
-4. Drop the five knowledge-base tables, then `projects`, then the `projectId` fields and their indexes.
+4. Drop the five knowledge-base tables, then `projects`, the legacy `notes` and `outputs` tables, then the `projectId` fields and their indexes.
 5. Update `docs/develop/architecture.mdx`, the on-prem Convex runtime baseline, and the account-deletion tests.
 - Exit: schema has no project or knowledge-base tables; account deletion still removes everything; full tests green; Convex pushed to production after the web deploy.
 
@@ -156,10 +214,10 @@ A shared helper, `canReadResource` / `canWriteResource` in `src/shared` (isomorp
 
 1. Add the optional fields and indexes above (Convex push; additive, safe).
 2. Add the shared access helper and its tests (`src/shared`, with a table-driven test per rule).
-3. Read paths: every list and get for the listed resources goes through "mine plus workspace-scoped" and respects `archivedAt`. Add scope and archive filters to the list APIs (`?scope=personal|workspace|archived`).
+3. Read paths: plug the shared helper into the two BFF seams (`getAuthorizedResourceUserId`, `getGrantedResources`) and into the Convex queries; fix `memories.listWorkspace` to apply `visibility`. Every list and get for the listed resources goes through "mine plus workspace-scoped" and respects `archivedAt`. Add scope and archive filters to the list APIs (`?scope=personal|workspace|archived`).
 4. Policy: add `workspaceExtensionsEditors`, `workspaceContentEditors`, `memberCanMoveScope`, and `usageTopUpBy` to the workspace policy (contracts, Convex, `/policies` route, defaults above, and the Workspace settings page).
 5. Write paths: create takes a `scope` (default `personal`); move-between-scopes and archive/restore endpoints enforce the rules above and write audit events.
-6. Backfill: a migration that sets `scope: 'personal'` explicitly on existing rows in batches (reads already default, so this can run later), and copies `deletedAt` → archived only where the product wants it (decision: deleted stays deleted).
+6. Backfill: assign or clean up the 2 conversations and 1 memory with no `workspaceId`; a migration that sets `scope: 'personal'` explicitly on existing rows in batches (reads already default, so this can run later), and copies `deletedAt` → archived only where the product wants it (decision: deleted stays deleted).
 7. Update `@overlay/api-client` per-resource modules, `docs/develop/api-route-catalog.mdx`, `compact-api-route-catalog.mdx`, and `docs/openapi` (`npm run docs:generate:api`).
 8. Chats: expose a derived `scope` and an Archived list for the viewer; DMs/channels/activity are workspace scope.
 - Exit: every resource can be listed by scope and by archived, with tests for read, write, move, and archive on both scopes; production rows unchanged in what each person can see.
