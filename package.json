@@ -257,7 +257,7 @@
     "hast-util-raw": "^9.1.0",
     "hast-util-sanitize": "^5.0.2",
     "hast-util-to-html": "^9.0.4",
-    "hast-util-to-mdast": "^10.1.0",
+    "hast-util-to-mdast": "^10.1.2",
     "html2canvas": "^1.4.1",
     "jose": "^6.2.12",
     "jspdf": "^4.2.1",
