@@ -1,6 +1,6 @@
 # Unified scopes: Personal, Workspace, Archived
 
-Status: decisions made and Phase 0 (audit) done, 2026-10-05; Phases 1–5 not started.
+Status: decisions made; Phase 0 (audit) and Phase 1 (cleanup) done, 2026-10-05; Phases 2–5 not started.
 
 ## Goal
 
@@ -89,7 +89,9 @@ Source: production Convex (`colorful-chickadee-419`), read-only; code read in `c
 | `knowledgeBases` | 5 | 5 | n/a | 0 (no `workspaceId` column) |
 | `knowledgeBaseSources` | 1 | 1 | n/a | n/a |
 | `knowledgeBaseConversations`, `projectKnowledgeBases`, `knowledgeBaseGroupDefaults` | 0 | 0 | 0 | n/a |
-| `knowledgeChunks`, `documentIngestionJobs`, `mcpToolExecutions` | 0 | 0 | 0 | n/a |
+| `knowledgeChunks` (live search chunks: memory, file, message) | 2,913 | n/a | 0 | n/a |
+| `documentIngestionJobs` | 0 | 0 | 0 | n/a |
+| `mcpToolExecutions` | 73 | n/a | 0 | n/a |
 
 Of the 11 tables that carry a `projectId` column, only `files` (3), `notes` (1), and `conversations` (5) have rows that use it; the other columns can be dropped with no data work.
 
@@ -200,15 +202,16 @@ A shared helper, `canReadResource` / `canWriteResource` in `src/shared` (isomorp
 
 Results are in "Phase 0 results" above. Remaining item carried into Phase 1: verify the legacy `notes` and `outputs` rows against `files` before dropping them.
 
-### Phase 1: remove knowledge bases and projects
+### Phase 1: remove knowledge bases and projects (done 2026-10-05)
 
-0. Compare the legacy `notes` (53) and `outputs` (47) rows with `files` (kind `note` / `output`): migrate anything missing, then plan their removal alongside the tables below.
-1. Make `projectId` optional wherever required (11 tables carry the column; only `files`, `notes`, `conversations` have data in it).
-2. Export the production `knowledgeBases` (5), `knowledgeBaseSources` (1), `projects` (34), legacy `notes` (53), and legacy `outputs` (47) rows to a file for safekeeping (ask the owner whether to keep it).
-3. Clear the rows; remove their code paths: `convex/migrations/backfillWorkspaceIds.ts` project parts, `convex/auth/users.ts`, `convex/files/storageAdmin.ts`, `src/server/tools/tools/build.ts`, `src/server/account/AccountDataDeletionRepository.ts`, `MarketingOverviewPage.tsx`.
-4. Drop the five knowledge-base tables, then `projects`, the legacy `notes` and `outputs` tables, then the `projectId` fields and their indexes.
-5. Update `docs/develop/architecture.mdx`, the on-prem Convex runtime baseline, and the account-deletion tests.
-- Exit: schema has no project or knowledge-base tables; account deletion still removes everything; full tests green; Convex pushed to production after the web deploy.
+Commit: `WORKSPACE SCOPING 1`. What was done, in order:
+
+1. **Backup.** Exported the rows of every affected table (`knowledgeBases` 5, `knowledgeBaseSources` 1, `projects` 34, legacy `notes` 53, legacy `outputs` 47, plus `files` and `conversations`) to `artifacts/backups/workspace-scoping-phase1/` (gitignored, local only).
+2. **Carried legacy data into `files`.** The old `notes` and `outputs` tables had data that was never copied (34 of 53 notes had no `files` row; only 30 of 47 outputs were linked). A one-off migration copied the **33 live notes** (as Markdown, with workspace, tags, dates) and **18 completed outputs** (workspace and stored object kept) into `files`; the 20 deleted notes and the 1 failed output were not copied. `files` went from 220 to 271 rows. Verified: every live legacy note and every completed output has a `files` row with the same user, workspace, and R2 key, no HTML left in migrated notes, and a rerun copies nothing. This also resurfaces those people's old notes and outputs in their Files list.
+3. **Cleared and dropped.** Deleted the rows of the five knowledge-base tables, `projects`, `notes`, and `outputs`; unset `projectId` on the 3 files, 5 conversations, and 1 deleted automation that carried one (that last one held an empty string, which my first count missed and which made the first schema push fail validation, harmlessly); then pushed the schema without those eight tables, their indexes, and every `projectId` field.
+4. **Code.** Removed `convex/files/notes.ts`, `backfillCanonicalFilesystem` (and its script), the legacy-table parts of account deletion, storage admin tooling, mention search, turn deletion, the workspace backfill list, and the demo-account seed (which now creates Markdown `files` notes). `legacyNoteId` and `legacyOutputId` on `files` are now plain text (so old links still resolve through `getByLegacyNoteId` and `getByLegacyOutputId`), and the admin resource lookup finds legacy ids through them.
+
+Corrections to Phase 0: `knowledgeChunks` holds 2,913 rows and `mcpToolExecutions` 73 (an earlier read returned 0 because the CLI limit was too high); none used `projectId`.
 
 ### Phase 2: scope and archive fields
 

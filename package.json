@@ -140,7 +140,6 @@
     "test:unified-tools": "NODE_OPTIONS=--conditions=react-server node --experimental-strip-types scripts/qa/unified-tools-sanity.ts",
     "convex:audit:storage": "node --experimental-strip-types scripts/qa/convex-storage-audit.ts",
     "convex:backfill:storage": "node --experimental-strip-types scripts/db/convex-storage-backfill.ts",
-    "convex:backfill:filesystem": "node --experimental-strip-types scripts/db/backfill-canonical-filesystem.ts",
     "convex:backfill:workspace-ids": "NODE_OPTIONS=--conditions=react-server tsx scripts/db/backfill-workspace-ids.ts",
     "convex:reindex:knowledge": "node --experimental-strip-types scripts/db/convex-knowledge-reindex.ts",
     "test:jwt": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/qa/smoke-jwt.ts",

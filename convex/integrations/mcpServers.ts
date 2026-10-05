@@ -54,7 +54,7 @@ export const list = query({
       .order('desc')
       .collect()
     // Scrub authConfig from the response
-    return all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)).map((s) => ({
+    return all.filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)).map((s) => ({
       _id: s._id,
       userId: s.userId,
       name: s.name,
@@ -104,7 +104,7 @@ export const listEnabled = query({
         q.eq('userId', userId).eq('enabled', true)
       )
       .collect()
-    return all.filter((server) => !server.projectId).filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
+    return all.filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
   },
 })
 

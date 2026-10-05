@@ -580,7 +580,8 @@ export const get = query({
 
 export const getByLegacyNoteId = query({
   args: {
-    noteId: v.id('notes'),
+    // The id the note had before notes moved into `files`; kept as text so old links still resolve.
+    noteId: v.string(),
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
@@ -601,7 +602,8 @@ export const getByLegacyNoteId = query({
 
 export const getByLegacyOutputId = query({
   args: {
-    outputId: v.id('outputs'),
+    // The id the output had before outputs moved into `files`; kept as text so old links still resolve.
+    outputId: v.string(),
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
@@ -748,8 +750,8 @@ export const create = mutation({
     outputErrorMessage: v.optional(v.string()),
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
-    legacyNoteId: v.optional(v.id('notes')),
-    legacyOutputId: v.optional(v.id('outputs')),
+    legacyNoteId: v.optional(v.string()),
+    legacyOutputId: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   },
@@ -1208,140 +1210,6 @@ export const remove = mutation({
       }
     }
     await deleteSubtree(fileId)
-  },
-})
-
-// ─── Migration / backfill ─────────────────────────────────────────────────────
-
-export const backfillCanonicalFilesystem = mutation({
-  args: {
-    serverSecret: v.string(),
-    dryRun: v.optional(v.boolean()),
-    userId: v.optional(v.string()),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, { serverSecret, dryRun, userId, limit }) => {
-    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
-    const max = Math.min(5000, Math.max(1, limit ?? 1000))
-    const [notes, outputs, existingFiles] = await Promise.all([
-      ctx.db.query('notes').collect(),
-      ctx.db.query('outputs').collect(),
-      ctx.db.query('files').collect(),
-    ])
-    const targetNotes = notes.filter((note) => !userId || note.userId === userId).slice(0, max)
-    const targetOutputs = outputs.filter((output) => !userId || output.userId === userId).slice(0, max)
-    const targetFiles = existingFiles.filter((file) => !userId || file.userId === userId).slice(0, max)
-
-    const existingNoteIds = new Set(
-      existingFiles.flatMap((file) => file.legacyNoteId ? [String(file.legacyNoteId)] : []),
-    )
-    const existingOutputIds = new Set(
-      existingFiles.flatMap((file) => file.legacyOutputId ? [String(file.legacyOutputId)] : []),
-    )
-
-    let notesMigrated = 0
-    let outputsMigrated = 0
-    let filesPatched = 0
-    let notesSkipped = 0
-    let outputsSkipped = 0
-    const now = Date.now()
-
-    const filesToPatch = targetFiles.filter((file) => !file.kind)
-    filesPatched += filesToPatch.length
-    if (!dryRun) {
-      await Promise.all(filesToPatch.flatMap((file) => {
-        const text = textOf(file)
-        const kind = file.type === 'folder' ? 'folder' : 'upload'
-        const writes: Promise<unknown>[] = [ctx.db.patch(file._id, {
-          kind,
-          extension: file.extension ?? extensionOf(file.name),
-          indexable: isTextIndexable(kind, text),
-          indexStatus: isTextIndexable(kind, text) ? 'pending' : 'skipped',
-        })]
-        if (isTextIndexable(kind, text)) {
-          writes.push(ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: file._id }))
-        }
-        return writes
-      }))
-    }
-
-    const notesToMigrate = targetNotes.filter((note) => !(note.deletedAt || existingNoteIds.has(String(note._id))))
-    notesSkipped += targetNotes.length - notesToMigrate.length
-    notesMigrated += notesToMigrate.length
-    if (!dryRun) {
-      await Promise.all(notesToMigrate.map(async (note) => {
-        const fileId = await ctx.db.insert('files', {
-          userId: note.userId,
-          name: note.title || 'Untitled',
-          type: 'file',
-          kind: 'note',
-          content: note.content,
-          sizeBytes: utf8ByteLength(note.content),
-          contentHash: undefined,
-          extension: 'md',
-          indexable: note.content.trim().length > 0,
-          indexStatus: note.content.trim().length > 0 ? 'pending' : 'skipped',
-          legacyNoteId: note._id,
-          createdAt: note.createdAt ?? note.updatedAt,
-          updatedAt: note.updatedAt,
-        })
-        if (note.content.trim()) {
-          await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
-        }
-      }))
-    }
-
-    const outputsToMigrate = targetOutputs.filter((output) => !existingOutputIds.has(String(output._id)))
-    outputsSkipped += targetOutputs.length - outputsToMigrate.length
-    outputsMigrated += outputsToMigrate.length
-    if (!dryRun) {
-      await Promise.all(outputsToMigrate.map(async (output) => {
-        const name = output.fileName || `${output.type}-${output._id}`
-        const textContent =
-          output.type === 'text' || output.type === 'code' || output.type === 'document'
-            ? String(output.metadata?.text ?? output.metadata?.content ?? '')
-            : ''
-        const fileId = await ctx.db.insert('files', {
-          userId: output.userId,
-          name,
-          type: 'file',
-          kind: 'output',
-          content: textContent,
-          storageId: output.storageId,
-          r2Key: output.r2Key,
-          mimeType: output.mimeType,
-          extension: extensionOf(name),
-          sizeBytes: output.sizeBytes ?? (textContent ? utf8ByteLength(textContent) : 0),
-          indexable: textContent.trim().length > 0,
-          indexStatus: textContent.trim().length > 0 ? 'pending' : 'skipped',
-          conversationId: output.conversationId,
-          turnId: output.turnId,
-          modelId: output.modelId,
-          prompt: output.prompt,
-          outputType: output.type,
-          legacyOutputId: output._id,
-          createdAt: output.createdAt,
-          updatedAt: output.completedAt ?? output.createdAt,
-        })
-        await ctx.db.patch(output._id, { fileId })
-        if (textContent.trim()) {
-          await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
-        }
-      }))
-    }
-
-    return {
-      dryRun: Boolean(dryRun),
-      filesInspected: targetFiles.length,
-      filesPatched,
-      notesInspected: targetNotes.length,
-      notesMigrated,
-      notesSkipped,
-      outputsInspected: targetOutputs.length,
-      outputsMigrated,
-      outputsSkipped,
-      completedAt: now,
-    }
   },
 })
 

@@ -506,12 +506,6 @@ export const deleteUserAccountByServer = mutation({
     await Promise.all(actorAuditRows.map((row) => ctx.db.patch(row._id, { actorUserId: undefined })))
     await deleteIndexed(() =>
       ctx.db
-        .query('projects')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
         .query('skills')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
@@ -560,12 +554,6 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
-        .query('notes')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
         .query('memories')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
@@ -573,12 +561,6 @@ export const deleteUserAccountByServer = mutation({
     await deleteIndexed(() =>
       ctx.db
         .query('knowledgeChunks')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('outputs')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )

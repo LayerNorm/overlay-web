@@ -55,11 +55,6 @@ type BackfillFileRow = Pick<
   '_id' | '_creationTime' | 'userId' | 'name' | 'type' | 'content' | 'storageId' | 'sizeBytes' | 'contentHash' | 'duplicateOfFileId'
 >
 
-type BackfillOutputRow = Pick<
-  Doc<'outputs'>,
-  '_id' | '_creationTime' | 'userId' | 'type' | 'storageId' | 'sizeBytes'
->
-
 type BackfillSubscriptionRow = Pick<
   Doc<'subscriptions'>,
   '_id' | '_creationTime' | 'userId' | 'currentPeriodStart'
@@ -76,15 +71,12 @@ export const auditByServer = query({
       toolInvocations,
       dailyUsage,
       sessionTransferTokens,
-      projects,
       skills,
       conversations,
       conversationMessages,
-      notes,
       memories,
       knowledgeChunks,
       sampledKnowledgeChunkEmbeddings,
-      outputs,
       files,
     ] = await Promise.all([
       ctx.db.query('subscriptions').collect(),
@@ -92,15 +84,12 @@ export const auditByServer = query({
       ctx.db.query('toolInvocations').collect(),
       ctx.db.query('dailyUsage').collect(),
       ctx.db.query('sessionTransferTokens').collect(),
-      ctx.db.query('projects').collect(),
       ctx.db.query('skills').collect(),
       ctx.db.query('conversations').collect(),
       ctx.db.query('conversationMessages').collect(),
-      ctx.db.query('notes').collect(),
       ctx.db.query('memories').collect(),
       ctx.db.query('knowledgeChunks').collect(),
       ctx.db.query('knowledgeChunkEmbeddings').take(1),
-      ctx.db.query('outputs').collect(),
       ctx.db.query('files').collect(),
     ])
 
@@ -110,15 +99,12 @@ export const auditByServer = query({
       toolInvocations: toolInvocations.length,
       dailyUsage: dailyUsage.length,
       sessionTransferTokens: sessionTransferTokens.length,
-      projects: projects.length,
       skills: skills.length,
       conversations: conversations.length,
       conversationMessages: conversationMessages.length,
-      notes: notes.length,
       memories: memories.length,
       knowledgeChunks: knowledgeChunks.length,
       knowledgeChunkEmbeddings: knowledgeChunks.length,
-      outputs: outputs.length,
       files: files.length,
     }
 
@@ -126,15 +112,16 @@ export const auditByServer = query({
     for (const file of files) {
       if (file.type !== 'file') continue
       const entry = storageByUser.get(file.userId) ?? { fileBytes: 0, outputBytes: 0, fileCount: 0, outputCount: 0 }
-      entry.fileBytes += Math.max(0, file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0))
-      entry.fileCount += 1
+      const bytes = Math.max(0, file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0))
+      // Outputs are `files` rows of kind "output".
+      if (file.kind === 'output') {
+        entry.outputBytes += bytes
+        entry.outputCount += 1
+      } else {
+        entry.fileBytes += bytes
+        entry.fileCount += 1
+      }
       storageByUser.set(file.userId, entry)
-    }
-    for (const output of outputs) {
-      const entry = storageByUser.get(output.userId) ?? { fileBytes: 0, outputBytes: 0, fileCount: 0, outputCount: 0 }
-      entry.outputBytes += Math.max(0, output.sizeBytes ?? 0)
-      entry.outputCount += 1
-      storageByUser.set(output.userId, entry)
     }
 
     const topStorageUsers = topEntries(
@@ -207,7 +194,7 @@ export const auditByServer = query({
       },
       totals: {
         inlineFileBytes: files.reduce((sum, file) => sum + (file.type === 'file' && !file.storageId ? Math.max(0, file.sizeBytes ?? (file.content ? utf8ByteLength(file.content) : 0)) : 0), 0),
-        outputBytes: outputs.reduce((sum, output) => sum + Math.max(0, output.sizeBytes ?? 0), 0),
+        outputBytes: files.reduce((sum, file) => sum + (file.type === 'file' && file.kind === 'output' ? Math.max(0, file.sizeBytes ?? 0) : 0), 0),
         knowledgeChunks: knowledgeChunks.length,
         knowledgeChunkEmbeddings: knowledgeChunks.length,
       },
@@ -221,9 +208,8 @@ export const auditByServer = query({
 export const getBackfillSnapshotInternal = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const [files, outputs, subscriptions] = await Promise.all([
+    const [files, subscriptions] = await Promise.all([
       ctx.db.query('files').collect(),
-      ctx.db.query('outputs').collect(),
       ctx.db.query('subscriptions').collect(),
     ])
     return {
@@ -238,14 +224,6 @@ export const getBackfillSnapshotInternal = internalQuery({
         sizeBytes: file.sizeBytes,
         contentHash: file.contentHash,
         duplicateOfFileId: file.duplicateOfFileId,
-      })),
-      outputs: outputs.map((output) => ({
-        _id: output._id,
-        _creationTime: output._creationTime,
-        userId: output.userId,
-        type: output.type,
-        storageId: output.storageId,
-        sizeBytes: output.sizeBytes,
       })),
       subscriptions: subscriptions.map((subscription) => ({
         _id: subscription._id,
@@ -266,15 +244,6 @@ export const getFileStorageUrlInternal = internalQuery({
   },
 })
 
-export const getOutputStorageUrlInternal = internalQuery({
-  args: { outputId: v.id('outputs') },
-  handler: async (ctx, { outputId }) => {
-    const output = await ctx.db.get(outputId)
-    if (!output?.storageId) return null
-    return await ctx.storage.getUrl(output.storageId)
-  },
-})
-
 export const applyBackfillBatchInternal = internalMutation({
   args: {
     filePatches: v.array(v.object({
@@ -283,23 +252,17 @@ export const applyBackfillBatchInternal = internalMutation({
       contentHash: v.optional(v.string()),
       duplicateOfFileId: v.union(v.id('files'), v.null()),
     })),
-    outputPatches: v.array(v.object({
-      outputId: v.id('outputs'),
-      sizeBytes: v.number(),
-    })),
     userStorageTotals: v.array(v.object({
       userId: v.string(),
       bytesUsed: v.number(),
     })),
   },
-  handler: async (ctx, { filePatches, outputPatches, userStorageTotals }) => {
+  handler: async (ctx, { filePatches, userStorageTotals }) => {
     await Promise.all(filePatches.map((patch) => ctx.db.patch(patch.fileId, {
       sizeBytes: patch.sizeBytes,
       contentHash: patch.contentHash,
       duplicateOfFileId: patch.duplicateOfFileId ?? undefined,
     })))
-
-    await Promise.all(outputPatches.map((patch) => ctx.db.patch(patch.outputId, { sizeBytes: patch.sizeBytes })))
 
     const subscriptions = await Promise.all(userStorageTotals.map((usage) =>
       getOrCreateSubscription(ctx, usage.userId)))
@@ -309,7 +272,6 @@ export const applyBackfillBatchInternal = internalMutation({
 
     return {
       filePatchesApplied: filePatches.length,
-      outputPatchesApplied: outputPatches.length,
       subscriptionsUpdated: userStorageTotals.length,
     }
   },
@@ -333,7 +295,6 @@ export const backfillStorageUsageByServer = action({
 
     const snapshot = await ctx.runQuery(internal.files.storageAdmin.getBackfillSnapshotInternal, {})
     const files = [...snapshot.files].sort((a, b) => a._creationTime - b._creationTime) as BackfillFileRow[]
-    const outputs = [...snapshot.outputs].sort((a, b) => a._creationTime - b._creationTime) as BackfillOutputRow[]
     const existingSubscriptions = snapshot.subscriptions as BackfillSubscriptionRow[]
 
     const filePatches: Array<{
@@ -342,10 +303,9 @@ export const backfillStorageUsageByServer = action({
       contentHash?: string
       duplicateOfFileId: Id<'files'> | null
     }> = []
-    const outputPatches: Array<{ outputId: Id<'outputs'>; sizeBytes: number }> = []
     const duplicateFileIdsToPurge = new Set<Id<'files'>>()
     const canonicalByHash = new Map<string, Id<'files'>>()
-    const measurementFailures: Array<{ kind: 'file' | 'output'; id: string; error: string }> = []
+    const measurementFailures: Array<{ kind: 'file'; id: string; error: string }> = []
     const userStorageTotals = new Map<string, number>()
 
     const measuredFiles = await Promise.all(files.map(async (file) => {
@@ -405,25 +365,6 @@ export const backfillStorageUsageByServer = action({
       }
     }
 
-    const measuredOutputs = await Promise.all(outputs.map(async (output) => {
-      let sizeBytes = Math.max(0, output.sizeBytes ?? 0)
-      if (output.storageId && sizeBytes <= 0) {
-        try {
-          const url = await ctx.runQuery(internal.files.storageAdmin.getOutputStorageUrlInternal, { outputId: output._id })
-          sizeBytes = url ? await measureRemoteSize(url) : 0
-        } catch (error) {
-          measurementFailures.push({ kind: 'output', id: output._id, error: error instanceof Error ? error.message : String(error) })
-        }
-      }
-      return { output, sizeBytes }
-    }))
-    for (const { output, sizeBytes } of measuredOutputs) {
-      if (sizeBytes !== Math.max(0, output.sizeBytes ?? 0)) {
-        outputPatches.push({ outputId: output._id, sizeBytes })
-      }
-      userStorageTotals.set(output.userId, (userStorageTotals.get(output.userId) ?? 0) + sizeBytes)
-    }
-
     const allUsers = new Set<string>([
       ...existingSubscriptions.map((subscription) => subscription.userId),
       ...userStorageTotals.keys(),
@@ -438,21 +379,18 @@ export const backfillStorageUsageByServer = action({
 
     const batchSize = 100
     let filePatchesApplied = 0
-    let outputPatchesApplied = 0
     let subscriptionsUpdated = 0
 
-    const totalBatches = Math.ceil(Math.max(filePatches.length, outputPatches.length, userStorageTotalRows.length) / batchSize)
+    const totalBatches = Math.ceil(Math.max(filePatches.length, userStorageTotalRows.length) / batchSize)
     const batchResults = await Promise.all(Array.from({ length: totalBatches }, (_, i) => {
       const start = i * batchSize
       return ctx.runMutation(internal.files.storageAdmin.applyBackfillBatchInternal, {
         filePatches: filePatches.slice(start, start + batchSize),
-        outputPatches: outputPatches.slice(start, start + batchSize),
         userStorageTotals: userStorageTotalRows.slice(start, start + batchSize),
       })
     }))
     for (const result of batchResults) {
       filePatchesApplied += result.filePatchesApplied
-      outputPatchesApplied += result.outputPatchesApplied
       subscriptionsUpdated += result.subscriptionsUpdated
     }
 
@@ -466,10 +404,8 @@ export const backfillStorageUsageByServer = action({
 
     return {
       filesInspected: files.length,
-      outputsInspected: outputs.length,
       subscriptionsInspected: existingSubscriptions.length,
       filePatchesApplied,
-      outputPatchesApplied,
       duplicateKnowledgePurged,
       subscriptionsUpdated,
       measurementFailures,

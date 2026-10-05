@@ -29,46 +29,32 @@ export default mutation({
       throw new Error(`No subscription found for userId: ${userId}`);
     }
 
-    // 1. Create sample notes
-    const note1 = await ctx.db.insert("notes", {
-      title: "Getting Started",
-      content: JSON.stringify({
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: [
-              { type: "text", text: "Welcome to Overlay! This is a rich text note where you can write ideas, drafts, and documents with AI assistance." },
-            ],
-          },
-        ],
-      }),
-      tags: ["welcome", "getting-started"],
+    // 1. Create sample notes (notes are Markdown `files` rows of kind "note")
+    const insertNote = (name: string, content: string, tags: string[], createdAt: number) => ctx.db.insert("files", {
+      name,
+      type: "file",
+      kind: "note",
+      extension: "md",
+      content,
+      sizeBytes: new TextEncoder().encode(content).length,
+      tags,
       userId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt,
+      updatedAt: createdAt,
     });
+    const note1 = await insertNote(
+      "Getting Started",
+      "Welcome to Overlay! This is a note where you can write ideas, drafts, and documents with AI assistance.",
+      ["welcome", "getting-started"],
+      Date.now(),
+    );
 
-    const note2Promise = ctx.db.insert('notes', {
-      title: "Project Ideas",
-      content: JSON.stringify({
-        type: "doc",
-        content: [
-          {
-            type: "bullet_list",
-            content: [
-              { type: "list_item", content: [{ type: "paragraph", content: [{ type: "text", text: "Build an AI-powered mobile app" }] }] },
-              { type: "list_item", content: [{ type: "paragraph", content: [{ type: "text", text: "Launch on Product Hunt" }] }] },
-              { type: "list_item", content: [{ type: "paragraph", content: [{ type: "text", text: "Write blog posts about AI workflows" }] }] },
-            ],
-          },
-        ],
-      }),
-      tags: ["ideas", "getting-started"],
-      userId,
-      createdAt: Date.now() - 86400000,
-      updatedAt: Date.now() - 86400000,
-    });
+    const note2Promise = insertNote(
+      "Project Ideas",
+      "- Build an AI-powered mobile app\n- Launch on Product Hunt\n- Write blog posts about AI workflows",
+      ["ideas", "getting-started"],
+      Date.now() - 86400000,
+    );
 
     // 2. Create a saved memory
     const memoriesPromise = ctx.db.insert('memories', {

@@ -2,10 +2,9 @@ import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
-import type { Doc, Id } from '../_generated/dataModel'
+import type { Doc } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import { applyStorageUsageDelta } from '../files/lib/storageQuota'
 import { recordConversationEvent } from '../collaboration/events'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 
@@ -1516,27 +1515,8 @@ export const deleteTurn = mutation({
     ]))
     const deletedMessages = turnMessages.length
 
-    const cid = conversationId as string
-    const outputs = await ctx.db
-      .query('outputs')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', cid))
-      .collect()
-
-    const turnOutputs = outputs.filter((o) => o.turnId === tid && o.userId === userId)
-    await Promise.all(turnOutputs.map(async (o) => {
-      if (o.storageId) {
-        try {
-          await ctx.storage.delete(o.storageId)
-        } catch {
-          // best-effort
-        }
-      }
-      if (o.sizeBytes) {
-        await applyStorageUsageDelta(ctx as never, userId, -o.sizeBytes)
-      }
-      await ctx.db.delete(o._id)
-    }))
-    const deletedOutputs = turnOutputs.length
+    // Outputs now live in `files` and are managed there; nothing in this turn's own rows remains to delete.
+    const deletedOutputs = 0
 
     const now = Date.now()
     await ctx.db.patch(conversationId, { lastModified: now, updatedAt: now })

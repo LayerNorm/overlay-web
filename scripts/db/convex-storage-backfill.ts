@@ -2,10 +2,8 @@ import { callConvex, getInternalApiSecret, loadLocalEnv, readArg, resolveTargets
 
 type BackfillResult = {
   filesInspected: number
-  outputsInspected: number
   subscriptionsInspected: number
   filePatchesApplied: number
-  outputPatchesApplied: number
   duplicateKnowledgePurged: number
   subscriptionsUpdated: number
   measurementFailures: Array<{ kind: 'file' | 'output'; id: string; error: string }>

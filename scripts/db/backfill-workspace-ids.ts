@@ -4,26 +4,20 @@ import { getInternalApiSecret } from '../../src/server/shared/internal-api-secre
 type Table =
   | 'conversations'
   | 'files'
-  | 'notes'
   | 'skills'
   | 'mcpServers'
-  | 'projects'
   | 'automations'
   | 'memories'
-  | 'outputs'
   | 'webhookSubscriptions'
   | 'knowledgeChunks'
 
 const TABLES: Table[] = [
   'conversations',
   'files',
-  'notes',
   'skills',
   'mcpServers',
-  'projects',
   'automations',
   'memories',
-  'outputs',
   'webhookSubscriptions',
   'knowledgeChunks',
 ]

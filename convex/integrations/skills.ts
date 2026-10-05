@@ -26,7 +26,7 @@ export const list = query({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .order('desc')
       .collect()
-    return all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
+    return all.filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
   },
 })
 
@@ -62,7 +62,7 @@ export const listDirectory = query({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .order('desc')
       .collect()
-    const filtered = all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
+    const filtered = all.filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
     return filtered.map((s) => ({
       _id: s._id,
       name: s.name,

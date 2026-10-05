@@ -74,7 +74,7 @@ export const searchMentions = query({
     const workspaceId = args.workspaceId
     const userId = args.userId
 
-    const [conversationsRaw, filesRaw, notesRaw, automationsRaw, skills, mcpServers] = await Promise.all([
+    const [conversationsRaw, filesRaw, automationsRaw, skills, mcpServers] = await Promise.all([
       // Conversations: search by title, scoped to user + workspace
       ctx.db
         .query('conversations')
@@ -88,14 +88,6 @@ export const searchMentions = query({
         .query('files')
         .withSearchIndex('search_name', (search) => {
           const scoped = search.search('name', q).eq('userId', userId)
-          return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
-        })
-        .take(MENTION_SEARCH_LIMIT * 2),
-      // Notes: search by title, scoped to user + workspace
-      ctx.db
-        .query('notes')
-        .withSearchIndex('search_title', (search) => {
-          const scoped = search.search('title', q).eq('userId', userId)
           return workspaceId === undefined ? scoped : scoped.eq('workspaceId', workspaceId)
         })
         .take(MENTION_SEARCH_LIMIT * 2),
@@ -129,7 +121,6 @@ export const searchMentions = query({
     // expose optional fields like deletedAt in the filter builder).
     const conversations = conversationsRaw.filter((r) => r.deletedAt === undefined).slice(0, MENTION_SEARCH_LIMIT)
     const files = filesRaw.filter((r) => r.deletedAt === undefined).slice(0, MENTION_SEARCH_LIMIT)
-    const notes = notesRaw.filter((r) => r.deletedAt === undefined).slice(0, MENTION_SEARCH_LIMIT)
     const automations = automationsRaw.filter((r) => r.deletedAt === undefined).slice(0, MENTION_SEARCH_LIMIT)
 
     return {
@@ -144,10 +135,8 @@ export const searchMentions = query({
         kind: f.kind,
         mimeType: f.mimeType,
       })),
-      notes: notes.map((n) => ({
-        _id: n._id,
-        title: n.title,
-      })),
+      // Notes are `files` rows of kind "note" and arrive in `files`; the separate list is kept for the response shape.
+      notes: [],
       automations: automations.map((a) => ({
         _id: a._id,
         name: a.name,

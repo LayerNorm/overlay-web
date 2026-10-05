@@ -770,26 +770,6 @@ export default defineSchema({
     .index('by_namespace_key', ['namespace', 'key'])
     .index('by_expiresAt', ['expiresAt']),
 
-  projects: defineTable({
-    workspaceId: v.optional(v.string()),
-    userId: v.string(),
-    clientId: v.optional(v.string()),
-    name: v.string(),
-    instructions: v.optional(v.string()),
-    parentId: v.optional(v.string()),
-    knowledgeBaseId: v.optional(v.string()),
-    settings: v.optional(v.any()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    deletedAt: v.optional(v.number()),
-    archivedAt: v.optional(v.number()),
-  })
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
-    .index('by_userId', ['userId'])
-    .index('by_userId_clientId', ['userId', 'clientId'])
-    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   skills: defineTable({
     workspaceId: v.optional(v.string()),
@@ -798,11 +778,10 @@ export default defineSchema({
     description: v.string(),
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
-    projectId: v.optional(v.string()),
     version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId']).index('by_projectId', ['projectId'])
+  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
@@ -832,7 +811,6 @@ export default defineSchema({
     nextRunAt: v.optional(v.number()),
     lastRunAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
     graph: v.optional(v.any()),
@@ -880,7 +858,6 @@ export default defineSchema({
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_agentId', ['agentId'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
-    .index('by_projectId', ['projectId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
@@ -961,7 +938,6 @@ export default defineSchema({
   mcpServers: defineTable({
     workspaceId: v.optional(v.string()),
     userId: v.string(),
-    projectId: v.optional(v.string()),
     name: v.string(),
     description: v.optional(v.string()),
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
@@ -1021,7 +997,6 @@ export default defineSchema({
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_enabled', ['userId', 'enabled'])
-    .index('by_projectId', ['projectId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
@@ -1052,7 +1027,6 @@ export default defineSchema({
 
   mcpToolExecutions: defineTable({
     userId: v.string(),
-    projectId: v.optional(v.string()),
     mcpServerId: v.id('mcpServers'),
     toolName: v.string(),
     argumentsHash: v.string(),
@@ -1070,8 +1044,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_mcpServerId_createdAt', ['mcpServerId', 'createdAt'])
-    .index('by_projectId', ['projectId']),
+    .index('by_mcpServerId_createdAt', ['mcpServerId', 'createdAt']),
 
   conversations: defineTable({
     userId: v.string(),
@@ -1087,7 +1060,6 @@ export default defineSchema({
     createdByPrincipalId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     title: v.string(),
-    projectId: v.optional(v.string()),
     lastModified: v.number(),
     updatedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -1119,7 +1091,6 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_projectId', ['projectId'])
     .index('by_shareToken', ['shareToken'])
     .index('by_createdAt', ['createdAt'])
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
@@ -1375,26 +1346,6 @@ export default defineSchema({
   }).index('by_conversationId_scope', ['conversationId', 'scope'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
-  notes: defineTable({
-    workspaceId: v.optional(v.string()),
-    userId: v.string(),
-    clientId: v.optional(v.string()),
-    title: v.string(),
-    icon: v.optional(v.string()),
-    content: v.string(),
-    tags: v.array(v.string()),
-    projectId: v.optional(v.string()),
-    createdAt: v.optional(v.number()),
-    updatedAt: v.number(),
-    deletedAt: v.optional(v.number()),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
-    .index('by_userId_clientId', ['userId', 'clientId'])
-    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_projectId', ['projectId'])
-    .searchIndex('search_title', {
-      searchField: 'title',
-      filterFields: ['userId', 'workspaceId', 'deletedAt'],
-    }),
 
   memories: defineTable({
     workspaceId: v.optional(v.string()),
@@ -1412,7 +1363,6 @@ export default defineSchema({
       ),
     ),
     importance: v.optional(v.number()),
-    projectId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
     messageId: v.optional(v.string()),
@@ -1458,7 +1408,6 @@ export default defineSchema({
   knowledgeChunks: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('message')),
     sourceId: v.string(),
     knowledgeSourceId: v.optional(v.string()),
@@ -1515,47 +1464,6 @@ export default defineSchema({
       filterFields: ['userId', 'sourceKind'],
     }),
 
-  // Generated images and videos from Chat and Agent sessions.
-  outputs: defineTable({
-    workspaceId: v.optional(v.string()),
-    userId: v.string(),
-    type: v.union(
-      v.literal('image'),
-      v.literal('video'),
-      v.literal('audio'),
-      v.literal('document'),
-      v.literal('archive'),
-      v.literal('code'),
-      v.literal('text'),
-      v.literal('other'),
-    ),
-    source: v.optional(
-      v.union(
-        v.literal('image_generation'),
-        v.literal('video_generation'),
-        v.literal('sandbox'),
-      ),
-    ),
-    status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
-    prompt: v.string(),
-    modelId: v.string(),
-    storageId: v.optional(v.id('_storage')),
-    r2Key: v.optional(v.string()),
-    url: v.optional(v.string()),
-    fileName: v.optional(v.string()),
-    mimeType: v.optional(v.string()),
-    sizeBytes: v.optional(v.number()),
-    metadata: v.optional(v.any()),
-    fileId: v.optional(v.id('files')),
-    conversationId: v.optional(v.string()),
-    turnId: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
-    createdAt: v.number(),
-    completedAt: v.optional(v.number()),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
-    .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_conversationId', ['conversationId'])
-    .index('by_turnId', ['turnId']),
 
   // Knowledge base and project files. Text content is stored in `content`.
   // Binary originals (images, PDFs, etc.) use Cloudflare R2 via `r2Key`; served via /api/v1/files/[id]/content.
@@ -1590,7 +1498,6 @@ export default defineSchema({
     fileName: v.string(),
     mimeType: v.string(),
     sizeBytes: v.number(),
-    projectId: v.optional(v.string()),
     parentId: v.optional(v.string()),
     status: v.union(
       v.literal('queued'),
@@ -1663,9 +1570,9 @@ export default defineSchema({
     outputErrorMessage: v.optional(v.string()),
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
-    legacyNoteId: v.optional(v.id('notes')),
-    legacyOutputId: v.optional(v.id('outputs')),
-    projectId: v.optional(v.string()),
+    // Ids the note/output had before they moved into `files` (the old tables are gone); kept so old links resolve.
+    legacyNoteId: v.optional(v.string()),
+    legacyOutputId: v.optional(v.string()),
     // Note tags (kind 'note' only).
     tags: v.optional(v.array(v.string())),
     // Text too large for a Convex document: the full text is the object at
@@ -1679,14 +1586,12 @@ export default defineSchema({
     sharedAt: v.optional(v.number()),
   }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
-    .index('by_workspaceId_userId_projectId_updatedAt', ['workspaceId', 'userId', 'projectId', 'updatedAt'])
     .index('by_workspaceId_userId_parentId_updatedAt', ['workspaceId', 'userId', 'parentId', 'updatedAt'])
     .index('by_workspaceId_userId_conversationId_updatedAt', ['workspaceId', 'userId', 'conversationId', 'updatedAt'])
     .index('by_workspaceId_userId_outputType_updatedAt', ['workspaceId', 'userId', 'outputType', 'updatedAt'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
-    .index('by_projectId', ['projectId'])
     .index('by_parentId', ['parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
@@ -1819,19 +1724,6 @@ export default defineSchema({
   // Knowledge base tables
   // ────────────────────────────────────────────────────────────────────────────
 
-  knowledgeBases: defineTable({
-    knowledgeBaseId: v.string(),
-    ownerUserId: v.string(),
-    title: v.string(),
-    description: v.optional(v.string()),
-    kind: v.union(v.literal('personal'), v.literal('organization')),
-    status: v.union(v.literal('active'), v.literal('archived')),
-    createdBy: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    archivedAt: v.optional(v.number()),
-  })
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   knowledgeSources: defineTable({
     sourceId: v.string(),
@@ -1888,46 +1780,9 @@ export default defineSchema({
     .index('by_sourceId_version', ['sourceId'])
     .index('by_sourceVersionId', ['sourceVersionId']),
 
-  knowledgeBaseSources: defineTable({
-    knowledgeBaseId: v.string(),
-    sourceId: v.string(),
-    addedBy: v.optional(v.string()),
-    enabled: v.boolean(),
-    createdAt: v.number(),
-  })
-    .index('by_base_source', ['knowledgeBaseId', 'sourceId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId'])
-    .index('by_sourceId', ['sourceId']),
 
-  knowledgeBaseConversations: defineTable({
-    knowledgeBaseId: v.string(),
-    conversationId: v.string(),
-    createdBy: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index('by_conversation_base', ['conversationId', 'knowledgeBaseId'])
-    .index('by_conversationId', ['conversationId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
-  projectKnowledgeBases: defineTable({
-    knowledgeBaseId: v.string(),
-    projectId: v.string(),
-    attachedBy: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index('by_project_base', ['projectId', 'knowledgeBaseId'])
-    .index('by_projectId', ['projectId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
-  knowledgeBaseGroupDefaults: defineTable({
-    groupId: v.string(),
-    knowledgeBaseId: v.string(),
-    createdBy: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index('by_group_base', ['groupId', 'knowledgeBaseId'])
-    .index('by_groupId', ['groupId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   // ────────────────────────────────────────────────────────────────────────────
   // Workspace tables
