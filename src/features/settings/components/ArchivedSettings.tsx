@@ -290,8 +290,8 @@ export function ArchivedSettings() {
                   ) : (
                     <div className="min-w-0 flex-1">{label}</div>
                   )}
-                  <span className="hidden shrink-0 text-xs text-[var(--muted-light)] sm:inline">{ARCHIVED_KIND_LABELS[item.kind]}</span>
-                  {item.scope ? <ScopeTag scope={item.scope} /> : null}
+                  <span className="hidden w-24 shrink-0 text-right text-xs text-[var(--muted-light)] sm:inline">{ARCHIVED_KIND_LABELS[item.kind]}</span>
+                  <span className="flex w-[4.5rem] shrink-0 justify-end">{item.scope ? <ScopeTag scope={item.scope} /> : null}</span>
                   <span className="hidden w-12 shrink-0 text-right text-xs text-[var(--muted-light)] sm:inline">{archivedOn(item.archivedAt)}</span>
                   <button
                     type="button"
