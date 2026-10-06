@@ -299,7 +299,7 @@ Original steps, for reference:
 
 ### Phase 5: retire the special personal workspace
 
-Split in two because the second half moves live money. **5a is done (2026-10-05); 5b is designed below and waits for the owner's go-ahead.**
+Split in two because the second half moves live money. **5a is done (2026-10-05); 5b was redesigned on 2026-10-06 (below) and is not built.**
 
 #### 5a: the workspace stops looking special (done)
 
@@ -309,37 +309,35 @@ Split in two because the second half moves live money. **5a is done (2026-10-05)
 - **Look.** One avatar, one label ("N members") for every workspace; the corner icon and "Personal workspace / Organization workspace" wording are gone.
 - **Still special, on purpose, until 5b:** the data field `kind: 'personal'` (it decides who pays), the rule that a first workspace cannot be archived, and the owner being bound to it. Archiving or transferring it today would strand the person with no workspace they can pay from, because organization workspaces have no wallet yet.
 
-#### 5b: workspace-level billing (designed, not built)
+#### 5b: one billing pool per workspace (decided 2026-10-06, not built)
 
-Facts (production, 2026-10-05): 252 workspaces (249 first workspaces, 3 organizations); 346 billing accounts, all `scope: personal`; subscriptions: 303 free, 5 paid and active, 1 paid and past due (all with Stripe subscriptions). Workspace wallets exist in code (`BillingPayerResolver`, `WorkspaceBillingService`, `/api/v1/workspaces/{id}/billing/*`) but are gated by a rollout flag and used by no real workspace.
+**Model.** Every workspace has the same shape: members, and one billing pool. The pool is either the workspace's **free allowance** or a **plan** (a wallet) an owner funds. Usage is charged to the workspace you are working in, whoever triggers it and whoever owns the agent, so talking to a teammate's agent draws from the same pool. There is no separate "personal" kind and no "each person pays their own" mode. The first workspace is a workspace that happens to be free and solo; people can invite others into it, and they can create more workspaces and fund those. This partly reverses 5a: the first workspace may read as personal again (a quiet "Personal · Free" label derived from its billing and member count, not a stored kind); renaming, onboarding naming and the uniform avatar stay.
 
-The smallest reversible design: **link, do not move.** Everything billing-related is keyed by `billingAccountId` (subscriptions, Stripe customer and subscription ids, top-ups, reservations, spend limits). So instead of rewriting accounts:
+Rules:
 
-1. **Link.** For each first workspace, set `workspaceId` on its owner's existing personal billing account (same `billingAccountId`; `scope` and `userId` unchanged; `primaryBillingContactUserId` = the owner). No Stripe object, balance, or subscription row changes. Undo = clear `workspaceId`.
-2. **Resolve by workspace.** `BillingPayerResolver` looks for a billing account on the *workspace* first (any kind, regardless of the wallet rollout flag), and only then falls back to the person's own personal account. Solo workspaces behave exactly as today; a member who joins someone's workspace draws from that workspace's account instead of their own.
-3. **New workspaces** get a free-tier account at creation (an organization workspace with wallets switched on but none created fails with "wallet not configured"; with wallets off it silently bills the actor's personal account), so a person can live in any workspace.
-4. **UI.** Workspace settings → Billing is available for every workspace: owners see plan, payment, and top-up; admins and members see usage (and top-up when `usageTopUpBy` allows). The Account page keeps personal data only and links to the workspace's billing. The workspace routes need to accept the linked account.
-5. **Then** (not before) the special cases come out: first workspaces may be archived or ownership transferred, "at least one workspace" replaces "has a personal workspace", and `ensurePersonalWorkspace` becomes "ensure the person has a workspace".
+1. **Free allowance is per workspace.** The free tier is a count (15 ask, write and agent turns per week, 600 seconds of transcription), tracked per person today in `dailyUsage`. It moves to the workspace. One person means one allowance, so 251 of 252 production workspaces behave exactly as now; a free workspace with several people runs out sooner, which is the upgrade prompt.
+2. **Cap free workspaces per owner (3).** Otherwise creating workspaces multiplies the free allowance. A further workspace needs a plan.
+3. **A plan replaces the free allowance** for that workspace (the existing workspace wallet: `BillingPayerResolver`, `WorkspaceBillingService`, account-keyed tables). Owners manage plan, payment and top-up; `usageTopUpBy` controls who may add usage.
+4. **Attribution is a tag, not a payer.** Each charge records who triggered it, which resource (agent or automation) and that resource's owner, so reports can slice by member or resource. Runs with no human trigger (schedules, webhooks) are attributed to the resource owner. Per-member spend limits already exist; **per-agent caps are deferred** (`todos.md`).
+5. **Existing paid personal plans do not move.** Today's 5 paid and 1 past-due subscribers keep the current personal pipeline: the owner's own usage stays on their plan; until they convert, other people in that workspace use the workspace's free allowance. Converting a plan into a workspace pool is a billing-system project done last, on request: it needs the shadow-sync top-up bug fixed first (`todos.md`), a staging dry run with the parity checker (`accountMigration.ts`), and a per-account cutover. No Stripe object changes until the owner approves a cutover.
 
-**Review before building (2026-10-06): the "link" design above does not work as written.** Reading the billing code before touching it found two blockers:
+**Why not "link the personal account to the workspace".** A billing account is a person's or a workspace's, never both (`assertBillingAccountOwnership` throws `billing_account_owner_mismatch`), and personal payers run on the legacy per-person tables copied into the account tables by `syncPersonalBillingShadows`, while workspace payers use the account tables directly. Two writers on one balance, and the shadow sync already silently reverts canonical top-ups.
 
-1. **A billing account is either a person's or a workspace's, never both.** `assertBillingAccountOwnership` (`src/shared/billing/billing-account.ts`) requires a personal account to have a `userId` and no `workspaceId`, and a workspace account the reverse; every lookup (`uniquePersonalAccount`, `uniqueWorkspaceAccount`) enforces it. Setting `workspaceId` on a personal account would make both throw `billing_account_owner_mismatch`.
-2. **Personal and workspace payers run on two different accounting systems.** A *personal* payer uses the legacy per-person tables (`subscriptions`, usage and reservations keyed by user, free-tier counters), and `syncPersonalBillingShadows` copies them into the account-keyed tables (`billingAccountSubscriptions`, `billingAccountBalances`) after every billing change. A *workspace* payer reads and writes the account-keyed tables directly (`reserveWorkspace`, `getBillingAccountEntitlementsByServer`). Pointing a workspace at a personal account's shadow tables would have two writers on one balance, and the shadow sync overwrites the workspace side. `todos.md` already records this as a live bug: canonical top-ups are silently reverted by the shadow sync.
+**Adaptive UI (no setting).** The sidebar follows the number of human members rather than a "workspace features" toggle:
 
-So moving a person's plan onto a workspace is not a re-pointing; it is making the account-keyed tables the only source of truth for that account (stop the shadow sync for it, route its Stripe events to the account, move free-tier counters and plan gating to the payer, fix the top-up revert), then flipping the account to `scope: 'workspace'`. That is a billing-system project with its own staging pass, not an additive change.
+- One human: no Personal/Workspace tabs, no person-to-person DMs section, no Channels section until one is created (it stays in the + menu, because rooms with several agents are a real solo use). Items a solo user creates **stay `personal`**: hiding the tabs must not save them as workspace-scoped, or the first invite would expose them.
+- A second human joins: tabs, DMs and Channels appear; nothing becomes visible to the new member until its creator moves it.
+- Several personal workspaces are just several workspaces created by the same person.
+- DMs with an agent are left alone: they already carry `agentId`, nest under the agent as threads, and the stored type stays `dm`. The DMs section lists only conversations with no agent.
 
-Options (owner to choose):
+Evidence (production, 2026-10-06): 252 workspaces, 251 with one human and 1 with two; 6 channels (2 in solo workspaces); 92 DMs, 88 with an agent and 4 person-to-person, all in the two-person workspace. Hiding Channels and person-to-person DMs for solo workspaces affects almost nobody.
 
-- **A. Bill the workspace owner's existing plan** (smallest): in a first workspace, the payer resolver returns the *workspace owner* as the billed person, so members' usage goes through the same personal pipeline and tables, charged to the owner's plan. No data moves, no Stripe change, no shadow-sync conflict; undo is a one-line change. Limits: one plan per owner (not per workspace: a person's second workspace also draws from it unless it is an organization with a wallet); usage attribution to the member is lost in the legacy tables.
-- **B. Real workspace plans** (the plan above, done properly): convert accounts in place and make the account-keyed tables canonical for them. Needs the shadow-sync top-up bug fixed first, a staging dry run with the parity checker (`accountMigration.ts`), and a cutover per account batch.
-- **C. Wallets only for organizations** (nothing migrates): first workspaces stay personal-billed; finish and enable organization wallets, and let people create organization workspaces for shared billing.
+Build order:
 
-Decisions needed from the owner before 5b is built:
-
-- **Free tier**: one free allowance per workspace (as decided), but per-person daily limits (`dailyUsage`) stay per person. Is that acceptable, or should free limits be per workspace too?
-- **A person with several workspaces** pays for each separately (as decided). The 5 paid subscribers each have exactly one linked workspace after step 1, so nothing changes for them.
-- **Cutover**: step 1 on the 6 paid accounts first, then the 303 free ones, after a dry run that prints every account and workspace it would link and the 1 workspace with 2 members; no Stripe change at any step.
-- **Invites into a first workspace** (one exists today) start drawing from the owner's account at step 2.
+1. **B1, adaptive UI.** Derive human member count, apply the rules above, guard solo creation scope. No billing change.
+2. **B2, free allowance per workspace.** Counters keyed by workspace, usage charged to the active workspace, the 3-workspace cap, usage attribution fields. Dry run the counter migration first.
+3. **B3, workspace plans.** Enable wallets, "free or plan" step when creating a workspace, billing tab for every workspace (owners: plan, payment, top-up; others: usage), then remove the first-workspace special cases (archive rule, owner binding).
+4. **B4, convert an existing personal plan** into a pool (on request, per the rule above).
 
 ## Testing
 

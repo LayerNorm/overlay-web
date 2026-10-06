@@ -171,3 +171,7 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 - [x] **Hermes on Overlay Cloud — dropped (2026-10-03).** Boat's lazy Hermes install fails, and pre-installing with `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` on the real disk did not help: the base layer's filesystem drops files while uv unpacks (`EXTERNALLY-MANAGED`, `_sysconfigdata_`, wheel `.dist-info` errors). Hermes stays hidden from the pickers (`SELECTABLE_AGENT_PROVIDER_IDS`); retry only if Boat's base layer changes.
 - [ ] **Cursor agent live test** — needs a `CURSOR_API_KEY`.
 - [ ] **Codex live test** — needs an approved ChatGPT device code; then two Codex agents on one account.
+
+## Workspace billing (deferred)
+
+- [ ] **Per-agent spend caps** (deferred 2026-10-06). A workspace with a plan draws every run from one shared pool; per-member limits already exist (`configureSpendLimit`). A cap per agent or automation would stop one runaway resource from draining the pool. Not in the first version of workspace billing: build it when a pool is actually shared by several people. Needs: a limit keyed by resource id beside the member limit, checked in the same reservation path as `reserveWorkspace`, and a row on the workspace billing tab. Plan: `docs/plans/UNIFIED_SCOPES_PLAN.md` (5b).
