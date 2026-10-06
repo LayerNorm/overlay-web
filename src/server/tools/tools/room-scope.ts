@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { OverlayToolsOptions } from './types'
 
-type ListScope = 'personal' | 'workspace' | 'archived'
+type ListScope = 'personal' | 'workspace'
 
 /**
  * The scope a list tool actually reads. In a room others can read the answer is shown to everyone there, so the list is

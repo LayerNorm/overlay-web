@@ -240,7 +240,9 @@ test('remote supervised state survives transcript reload as actionable view data
   assert.deepEqual(view.remoteRequest, { runId: 'run-1', requestKey: 'input-1', kind: 'elicitation',
     prompt: 'Choose branch', options: [], requestedSchema: { type: 'object', properties: { branch: { title: 'Branch' } }, required: ['branch'] } })
   assert.deepEqual(view.remoteRun, { runId: 'run-1', state: 'waiting_for_input', retryable: false, retryClass: undefined })
-  assert.ok(view.blocks.some((block) => block.kind === 'tool' && block.name === 'remote_plan'))
+  // The plan came after the card, so it waits for the answer; what came before shows.
+  assert.ok(!view.blocks.some((block) => block.kind === 'tool' && block.name === 'remote_plan'))
+  assert.deepEqual(view.blocks, [{ kind: 'text', text: 'I need a branch name.' }])
 })
 
 test('room reconciliation uses deterministic ordering and replaces optimistic duplicates', () => {

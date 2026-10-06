@@ -398,7 +398,7 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
 
 export async function executeListSkills(
   options: OverlayToolsOptions,
-  input: { query?: string; scope?: 'personal' | 'workspace' | 'archived' },
+  input: { query?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const res = await callInternalApiGet(
@@ -442,7 +442,7 @@ export async function executeListSkills(
 
 export async function executeListAutomations(
   options: OverlayToolsOptions,
-  input: { query?: string; scope?: 'personal' | 'workspace' | 'archived' },
+  input: { query?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const res = await callInternalApiGet(

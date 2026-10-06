@@ -144,7 +144,7 @@ function readNotesPage(payload: unknown): NotesPage {
 
 export async function executeListNotes(
   options: OverlayToolsOptions,
-  input: { scope?: 'personal' | 'workspace' | 'archived' },
+  input: { scope?: 'personal' | 'workspace' },
 ) {
   try {
     const notes: NoteDoc[] = []

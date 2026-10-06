@@ -62,11 +62,11 @@ import type { OverlayToolsOptions } from './types'
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
  */
-/** Optional on every list tool: narrows the list to one scope. Omitted means everything active the caller can see. */
+/** Optional on every list tool: narrows the list to one scope (archived items are not offered to agents). Omitted means everything active the caller can see. */
 const toolScopeSchema = z
-  .enum(['personal', 'workspace', 'archived'])
+  .enum(['personal', 'workspace'])
   .optional()
-  .describe('Which items to list: personal (only yours), workspace (shared with the workspace), or archived. Omit for everything active that you can see.')
+  .describe('Which items to list: personal (only yours) or workspace (shared with the workspace). Omit for everything active that you can see. Archived items are never listed.')
 
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}

@@ -88,3 +88,17 @@ test('once the agent starts working the connecting row is gone and the real cont
   assert.equal(view.remoteQueue, undefined)
   assert.deepEqual(view.blocks, [{ kind: 'text', text: 'Working on it' }])
 })
+
+test('the transcript stops at a pending permission card and continues once it is answered', () => {
+  const request = (state: string) => ({ type: 'data-remote-agent-request', data: { state, runId: 'run_1', requestKey: 'k1', kind: 'permission', prompt: 'Allow the command?' } })
+  const parts = (state: string) => [
+    { type: 'text', text: 'Let me run that.' },
+    request(state),
+    { type: 'text', text: 'It printed 3 lines.' },
+  ]
+  const blocks = (state: string) => toRoomMessageView({ message: record({ parts: parts(state) }), currentPrincipalId: 'me', authorName: 'Claude Code' }).blocks
+  // Waiting: only what came before the card.
+  assert.deepEqual(blocks('pending'), [{ kind: 'text', text: 'Let me run that.' }])
+  // Answered: everything, in order.
+  assert.deepEqual(blocks('resolved'), [{ kind: 'text', text: 'Let me run that.\n\nIt printed 3 lines.' }])
+})

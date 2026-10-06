@@ -179,3 +179,8 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 ## Workspace billing (deferred)
 
 - [ ] **Per-agent spend caps** (deferred 2026-10-06). A workspace with a plan draws every run from one shared pool; per-member limits already exist (`configureSpendLimit`). A cap per agent or automation would stop one runaway resource from draining the pool. Not in the first version of workspace billing: build it when a pool is actually shared by several people. Needs: a limit keyed by resource id beside the member limit, checked in the same reservation path as `reserveWorkspace`, and a row on the workspace billing tab. Plan: `docs/plans/UNIFIED_SCOPES_PLAN.md` (5b).
+
+## Agent permission cards
+
+- [ ] **MCP approval gate (Overlay tools called by Claude Code / Codex over MCP) still lets the agent move on.** `mcp-approval-gate.ts` waits 25 s for the answer, then returns "waiting for approval, call again" and the agent keeps responding meanwhile (hosts time MCP calls out in about a minute). The permission cards for the agent's own shell/file/tool requests now stop the transcript at the card (`partsUntilPendingRequest`); this path needs a real pause (progress notifications to extend the host's timeout, or holding the call until answered). Cards stay; improve, do not remove (owner, 2026-10-07).
+- [ ] **Hold the agent's own output while a card is pending, on the host.** Today only the view stops at the card; sibling tool calls the agent started in parallel still run and appear after the answer.

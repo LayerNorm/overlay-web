@@ -98,7 +98,7 @@ function summarize(file: FileSummary) {
 
 export async function executeListFiles(
   options: OverlayToolsOptions,
-  input: { folderId?: string; scope?: 'personal' | 'workspace' | 'archived' },
+  input: { folderId?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     // The list endpoint returns at most 100 rows per page.
