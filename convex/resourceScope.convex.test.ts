@@ -272,6 +272,11 @@ describe('what agents and search may use from the workspace', () => {
     expect(await names('bob', true)).toEqual(['Shared server'])
     expect(await names('alice', true)).toEqual(['Private server', 'Shared server'])
     expect(await names('gus', true)).toEqual([])
+    // An agent in a room others can read gets the workspace's servers only, including the caller's own that they shared.
+    const roomNames = async (userId: string) =>
+      ((await convex.query(q('integrations/mcpServers:listEnabled'), { workspaceId, userId, serverSecret: secret, includeShared: true, workspaceOnly: true })) as Array<{ name: string }>).map((x) => x.name).sort()
+    expect(await roomNames('alice')).toEqual(['Shared server'])
+    expect(await roomNames('bob')).toEqual(['Shared server'])
     const record = (userId: string, mcpServerId: string) => convex.mutation(m('integrations/mcpServers:recordExecution'), {
       serverSecret: secret, userId, mcpServerId, toolName: 't', argumentsHash: 'h', policyDecision: 'allow', status: 'succeeded',
     })

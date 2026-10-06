@@ -43,6 +43,7 @@ import {
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
+import { withoutSharedRoomWithheldTools, workspaceToolsOnly } from '@/server/tools/shared-room-policy'
 
 type ActMode = 'chat' | 'automate'
 type MediaToolIntent = 'image' | 'video' | null
@@ -149,6 +150,12 @@ export async function prepareActTooling(params: {
   agentId?: string
   agentPrincipalId?: string
   /**
+   * The turn is in a room others can read (docs/plans/TOOL_SCOPING_PLAN.md, T4): the person's private reach is withheld.
+   * Searches and lists see only what the workspace shares, tools that read the person's own chats and files are not
+   * offered, connected accounts are the workspace's only, and MCP servers are the workspace's shared ones.
+   */
+  sharedRoom?: boolean
+  /**
    * The account tool allow-list is the caller's whole tool surface (an outside app
    * connected over MCP), as it is for a workspace agent, rather than a narrowing of
    * personal chat's keyword-gated set.
@@ -185,10 +192,13 @@ export async function prepareActTooling(params: {
     params.accountAllowedToolIds,
     params.agentId !== undefined || params.grantedToolSurface === true,
   )
-  const allowedOverlayToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
+  const policyToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
     baseToolIds,
     capabilities,
   ), params.accountAllowedToolIds)
+  const allowedOverlayToolIds = params.sharedRoom
+    ? withoutSharedRoomWithheldTools(policyToolIds)
+    : policyToolIds
 
   const mcpCatalogStartedAt = performance.now()
   const mcpToolsTask: Promise<{ tools: ToolSet; toolApproval?: McpToolApprovalFn; toolsContext?: Record<string, unknown> }> =
@@ -202,8 +212,9 @@ export async function prepareActTooling(params: {
           conversationId: params.conversationId,
           turnId: params.turnId,
           modelId: params.effectiveModelId,
+          workspaceOnly: params.sharedRoom,
         })
-  const [integrationRaw, mcpToolsResult, webToolSet, webSearchTool, deepSearchTool, webFetchTool] = await Promise.all([
+  const [integrationRawAll, mcpToolsResult, webToolSet, webSearchTool, deepSearchTool, webFetchTool] = await Promise.all([
     capabilities.integrations ? params.preloadTasks.integrationToolsTask : Promise.resolve({} as ToolSet),
     mcpToolsTask,
     Promise.resolve(
@@ -222,6 +233,7 @@ export async function prepareActTooling(params: {
         memoryOwnerId: params.memoryOwnerId,
         agentId: params.agentId,
         agentPrincipalId: params.agentPrincipalId,
+        sharedRoom: params.sharedRoom,
         workspaceId: params.workspaceId,
         idempotencyKey: params.idempotencyKey,
       }),
@@ -254,6 +266,9 @@ export async function prepareActTooling(params: {
         })
       : Promise.resolve(null),
   ])
+
+  // Connected accounts in such a room are the workspace's (`workspace_…`); the person's own are not offered.
+  const integrationRaw = params.sharedRoom ? workspaceToolsOnly(integrationRawAll) : integrationRawAll
 
   const mcpCatalogMs = params.isMultiModelFollowUpSlot
     ? 0

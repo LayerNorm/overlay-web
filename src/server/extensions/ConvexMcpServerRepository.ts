@@ -60,7 +60,7 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     }))
   }
 
-  async listEnabled(args: { userId: string; workspaceId?: string; includeShared?: boolean }): Promise<McpServerRecord[]> {
+  async listEnabled(args: { userId: string; workspaceId?: string; includeShared?: boolean; workspaceOnly?: boolean }): Promise<McpServerRecord[]> {
     const rows = await convex.query<ConvexMcpRecord[]>('integrations/mcpServers:listEnabled', {
       ...args,
       serverSecret: this.serverSecret,

@@ -7,6 +7,7 @@ import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
+import { resolveSharedRoom } from '@/server/agents/shared-room'
 import {
   agentToolCapabilities,
   allAgentToolGrantIds,
@@ -179,6 +180,12 @@ export async function buildWorkspaceAgentTooling(args: {
   workspaceId: string
 }): Promise<WorkspaceAgentToolingResult> {
   const { capabilities, overlayToolIds } = resolveAgentGrant(args.grant)
+  // The room rule: in a room others can read, the summoner's private reach is withheld (see `prepareActTooling`).
+  const sharedRoom = await resolveSharedRoom({
+    actorUserId: args.actorUserId,
+    conversationId: args.conversationId,
+    workspaceId: args.workspaceId,
+  })
   const tooling = await prepareActTooling({
     accessToken: args.accessToken,
     // The agent's overlay grant enters as account policy, which the pipeline
@@ -209,6 +216,7 @@ export async function buildWorkspaceAgentTooling(args: {
     }),
     requestFingerprint: args.requestFingerprint,
     serverSecret: getInternalApiSecret(),
+    sharedRoom,
     turnId: args.turnId,
     userId: args.actorUserId,
     workspaceId: args.workspaceId,
@@ -226,6 +234,7 @@ export async function buildWorkspaceAgentTooling(args: {
     capabilities: [...capabilities].join(',') || '(none)',
     conversationId: args.conversationId,
     exposedToolCount: Object.keys(tools).length,
+    sharedRoom,
     overlayToolIds: tooling.allowedOverlayToolIds.join(',') || '(none)',
   })
 

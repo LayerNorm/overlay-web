@@ -111,8 +111,10 @@ export const listEnabled = query({
      * may ask: the rows carry the creator's sealed credentials, which are used on the server and never sent to a member).
      */
     includeShared: v.optional(v.boolean()),
+    /** Only servers shared with the workspace: what an agent in a room others can read may use (a person's own are left out). */
+    workspaceOnly: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeShared }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeShared, workspaceOnly }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -127,6 +129,8 @@ export const listEnabled = query({
     // Archived servers are not offered to agents.
     // Running tools has always used all of the caller's own enabled servers, whichever workspace they were made in.
     const mine = all.filter((server) => server.archivedAt === undefined).filter((server) => (workspaceId !== undefined && !includeShared ? server.workspaceId === workspaceId : true))
+      // A room others can read gets the workspace's servers only, including the caller's own that they shared.
+      .filter((server) => !workspaceOnly || (server.scope === 'workspace' && server.workspaceId === workspaceId))
     if (!includeShared || workspaceId === undefined || !validateServerSecret(serverSecret)) return mine
     const shared = await listScopedRows(ctx, {
       userId, workspaceId, view: 'workspace',

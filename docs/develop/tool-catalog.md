@@ -35,6 +35,27 @@ in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool
 the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the
 server's name and tools, never the secret. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
 
+## Rooms others can read
+
+An agent summoned in a room others can read does not bring the person's private reach into it. A room is shared when more
+than one person is in it, or when it is a channel anyone in the workspace can read; a chat between one person and an agent,
+and a private channel with one person, are not. The server decides this from the conversation
+(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared), for native agents and
+for Claude Code / Codex over `/api/agent-mcp` alike. In a shared room:
+
+- **Loaded automatically** (`buildAgentTurnContext`): the person's memories and memory profile, retrieval over their files,
+  notes and memories, and their personal skills are not loaded; what the workspace shares still is.
+- **Searches** (`search_knowledge`, `search_memory`, `search_messages`) send `workspaceOnly`: nothing private is returned,
+  not even the person's own, and files are not searched (`chunkVisibleToSearch`).
+- **Lists** (`list_files`, `list_notes`, `list_skills`, `list_automations`) read the Workspace scope whatever `scope` was asked.
+- **Not offered**: `list_chats`, `read_chat`, `search_in_files`.
+- **Connected apps**: only the workspace's (`workspace_…`) tools; the person's own accounts are not offered.
+- **MCP servers**: only the ones shared with the workspace.
+
+Not covered: reading a specific item by id (`read_file`, `get_note`), the write tools (which create the person's personal
+items), computer and browser tools, and agents asking agents. Naming an item in the message is how a person includes it on
+purpose, but there is no per-message opt-in yet.
+
 ## Who gets what
 
 | Surface | What it gets |

@@ -28,6 +28,8 @@ export type KnowledgeSearchArgs = {
   /** Parse a time window out of the query and fuse in-window chunks. */
   temporalQuery?: boolean
   userId: string
+  /** A search for a room others can read: nothing private is returned (even the caller's own), and files are not searched. */
+  workspaceOnly?: boolean
   workspaceId?: string
 }
 

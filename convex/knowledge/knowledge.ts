@@ -26,6 +26,7 @@ import {
 import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 import { canRecallMessageChunk, messageChunkVisibility } from '../../src/shared/knowledge/message-visibility'
 import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
+import { chunkVisibleToSearch, workspaceOnlySourceKinds } from '../../src/shared/knowledge/chunk-visibility'
 
 export type HybridSearchChunk = {
   text: string
@@ -1508,6 +1509,11 @@ export const hybridSearch = action({
      * source turn — distilled fact plus the raw wording it came from.
      */
     includeProvenance: v.optional(v.boolean()),
+    /**
+     * A search for a room others can read: nothing private comes back (not even the caller's own), and files, which are
+     * indexed per person, are not searched. See `chunkVisibleToSearch`.
+     */
+    workspaceOnly: v.optional(v.boolean()),
     workspaceId: v.optional(v.string()),
     kVec: v.optional(v.number()),
     kLex: v.optional(v.number()),
@@ -1524,6 +1530,10 @@ export const hybridSearch = action({
     if (!q) {
       return { chunks: [] }
     }
+    const requestedKinds = args.sourceKinds ?? (args.sourceKind !== undefined ? [args.sourceKind] : undefined)
+    const searchKinds = args.workspaceOnly ? workspaceOnlySourceKinds(requestedKinds) : requestedKinds
+    // Nothing a room may see is left to search (the caller asked only for files).
+    if (searchKinds !== undefined && searchKinds.length === 0) return { chunks: [] }
 
     const estimatedTokens = estimateEmbeddingTokens([q])
     const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
@@ -1616,7 +1626,7 @@ export const hybridSearch = action({
       }
     }
 
-    const callerKinds = args.sourceKinds ?? (args.sourceKind !== undefined ? [args.sourceKind] : undefined)
+    const callerKinds = searchKinds
     const wantsMemory = callerKinds === undefined || callerKinds.includes('memory')
     const wantsMessage = callerKinds === undefined || callerKinds.includes('message')
     const memoryUserIds: string[] = args.workspaceId && wantsMemory
@@ -1747,7 +1757,7 @@ export const hybridSearch = action({
       // searches must not see them.
       .filter((row) => !row.superseded)
       .filter((row) => row.expiresAt === undefined || row.expiresAt > now)
-      .filter((row) => row.userId === args.userId || row.visibility !== 'owner')
+      .filter((row) => chunkVisibleToSearch({ chunk: row, viewerUserId: args.userId, workspaceOnly: args.workspaceOnly }))
     // Other people's message chunks are checked against their conversation too, so a chunk indexed under the old rule
     // (every message shared with the workspace) cannot leak before it is backfilled.
     const recallable = await ctx.runQuery(internal.knowledge.knowledge.recallableForeignMessageChunks, {
@@ -1822,7 +1832,7 @@ export const hybridSearch = action({
             const key = `message:${row.sourceId}:${row.chunkIndex}`
             if (have.has(key) || row.superseded) continue
             if (row.expiresAt !== undefined && row.expiresAt <= now) continue
-            if (row.userId !== args.userId && row.visibility === 'owner') continue
+            if (!chunkVisibleToSearch({ chunk: row, viewerUserId: args.userId, workspaceOnly: args.workspaceOnly })) continue
             if (row.userId !== args.userId && !provenanceRecallable.has(row._id)) continue
             have.add(key)
             perTurn.set(turnId, (perTurn.get(turnId) ?? 0) + 1)
