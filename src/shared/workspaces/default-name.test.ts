@@ -7,6 +7,8 @@ test('a first workspace is named after its owner, never "Personal"', () => {
   assert.equal(defaultWorkspaceName({ displayName: 'maya chen' }), 'Maya’s workspace')
   assert.equal(defaultWorkspaceName({ displayName: 'Personal', email: 'sam.ortiz@example.com' }), 'Sam’s workspace')
   assert.equal(defaultWorkspaceName({ displayName: 'sam@example.com' }), 'Sam’s workspace')
+  assert.equal(defaultWorkspaceName({ displayName: 'Member' }), 'My workspace')
+  assert.equal(defaultWorkspaceName({ displayName: 'Member', email: 'chin@example.com' }), 'Chin’s workspace')
   assert.equal(defaultWorkspaceName({}), 'My workspace')
   assert.equal(defaultWorkspaceName({ displayName: '  ', email: '' }), 'My workspace')
 })

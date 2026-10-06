@@ -22,10 +22,13 @@ export function isStartingWorkspaceName(name: string): boolean {
   return isGenericWorkspaceName(name) || /^My workspace$/i.test(name.trim()) || /^\S+[’']s workspace$/.test(name.trim())
 }
 
+/** Names the system filled in when it knew nothing about the person. */
+const STAND_IN_NAMES = /^(personal|member|user|guest|owner|unknown)$/i
+
 function firstName(displayName?: string | null): string | null {
   const value = displayName?.trim()
   // An email address or a stand-in is not a name.
-  if (!value || value.includes('@') || /^personal$/i.test(value)) return null
+  if (!value || value.includes('@') || STAND_IN_NAMES.test(value)) return null
   const first = value.split(/\s+/)[0]
   return first ? capitalize(first) : null
 }
