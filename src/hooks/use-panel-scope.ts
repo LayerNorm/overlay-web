@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 import {
   PANEL_SCOPE_PARAM,
   PANEL_SCOPE_STORAGE_KEY,
@@ -32,18 +32,26 @@ export function rememberPanelScope(scope: PanelScope): void {
   window.dispatchEvent(new Event(CHANGED_EVENT))
 }
 
-function subscribe(onChange: () => void) {
-  window.addEventListener('storage', onChange)
-  window.addEventListener(CHANGED_EVENT, onChange)
-  return () => {
-    window.removeEventListener('storage', onChange)
-    window.removeEventListener(CHANGED_EVENT, onChange)
-  }
-}
-
-/** The remembered scope, or null on the server and before anything was chosen. */
+/**
+ * The remembered scope, or null on the server, on the first render, and before anything was chosen.
+ *
+ * It is read after mount rather than through useSyncExternalStore: a snapshot that differs from the server's during
+ * hydration made the production app shell hang on its loading screen. Reading it in an effect keeps the first client
+ * render identical to the server's; the saved scope applies right after.
+ */
 export function useSavedPanelScope(): PanelScope | null {
-  return useSyncExternalStore(subscribe, readSavedPanelScope, () => null)
+  const [saved, setSaved] = useState<PanelScope | null>(null)
+  useEffect(() => {
+    const read = () => setSaved(readSavedPanelScope())
+    read()
+    window.addEventListener('storage', read)
+    window.addEventListener(CHANGED_EVENT, read)
+    return () => {
+      window.removeEventListener('storage', read)
+      window.removeEventListener(CHANGED_EVENT, read)
+    }
+  }, [])
+  return saved
 }
 
 /**

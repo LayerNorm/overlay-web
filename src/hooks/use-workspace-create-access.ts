@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import {
@@ -59,11 +59,6 @@ export function invalidateWorkspaceScopePolicy(workspaceId: string): void {
   window.dispatchEvent(new Event(CHANGED_EVENT))
 }
 
-function subscribe(onChange: () => void) {
-  window.addEventListener(CHANGED_EVENT, onChange)
-  return () => window.removeEventListener(CHANGED_EVENT, onChange)
-}
-
 /**
  * The creation rules of the active workspace, for hiding buttons. Convex enforces them regardless, so while the policy
  * loads (or if it cannot be read) this is permissive rather than hiding something the person may be allowed to do.
@@ -76,7 +71,12 @@ export function useWorkspaceCreateAccess(): {
   const { activeWorkspace } = useWorkspace()
   const workspaceId = activeWorkspace?.id ?? null
   const [, setVersion] = useState(0)
-  useSyncExternalStore(subscribe, () => workspaceId ? cache.get(workspaceId) : undefined, () => undefined)
+  // Re-render when a policy loads or an admin changes it. (Not useSyncExternalStore: see useSavedPanelScope.)
+  useEffect(() => {
+    const bump = () => setVersion((value) => value + 1)
+    window.addEventListener(CHANGED_EVENT, bump)
+    return () => window.removeEventListener(CHANGED_EVENT, bump)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId || cache.has(workspaceId) || inflight.has(workspaceId)) return
@@ -86,7 +86,6 @@ export function useWorkspaceCreateAccess(): {
       .catch(() => undefined)
       .finally(() => {
         inflight.delete(workspaceId)
-        setVersion((value) => value + 1)
         window.dispatchEvent(new Event(CHANGED_EVENT))
       })
   }, [workspaceId])
