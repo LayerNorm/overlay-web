@@ -5,11 +5,12 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   type MutationCtx,
 } from '../_generated/server'
 import { internal, api } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
-import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
@@ -23,6 +24,7 @@ import {
   chunkKnowledgeText,
 } from '../../src/shared/knowledge/chunking'
 import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
+import { canRecallMessageChunk, messageChunkVisibility } from '../../src/shared/knowledge/message-visibility'
 
 export type HybridSearchChunk = {
   text: string
@@ -469,6 +471,69 @@ export const embeddingChunkIdsForVectorResults = internalQuery({
   },
 })
 
+/**
+ * Of other people's message chunks, the ids the viewer may recall: those from a conversation shared with the whole
+ * workspace (a public channel). A chunk whose message or conversation is gone is never recalled.
+ */
+export const recallableForeignMessageChunks = internalQuery({
+  args: {
+    viewerUserId: v.string(),
+    chunks: v.array(v.object({ chunkId: v.id('knowledgeChunks'), sourceId: v.string(), userId: v.string() })),
+  },
+  handler: async (ctx, { viewerUserId, chunks }) => {
+    const conversations = new Map<string, Doc<'conversations'> | null>()
+    const allowed: Id<'knowledgeChunks'>[] = []
+    for (const chunk of chunks) {
+      const messageId = ctx.db.normalizeId('conversationMessages', chunk.sourceId)
+      const message = messageId ? await ctx.db.get(messageId) : null
+      if (!message || message.deletedAt) continue
+      if (!conversations.has(message.conversationId)) conversations.set(message.conversationId, await ctx.db.get(message.conversationId))
+      if (canRecallMessageChunk({ viewerUserId, chunkUserId: chunk.userId, conversation: conversations.get(message.conversationId) })) {
+        allowed.push(chunk.chunkId)
+      }
+    }
+    return allowed
+  },
+})
+
+/**
+ * Re-stamps message chunks written under the old rule (every message shared with the workspace) with the current one.
+ * Pure patches, no re-embedding. `dryRun` reports what would change. Run until `isDone`.
+ */
+export const backfillMessageChunkVisibilityByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    dryRun: v.boolean(),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { serverSecret, dryRun, cursor, numItems }) => {
+    requireServerSecret(serverSecret)
+    const page = await ctx.db
+      .query('knowledgeChunks')
+      .withIndex('by_source', (q) => q.eq('sourceKind', 'message'))
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 200 })
+    const conversations = new Map<string, Parameters<typeof messageChunkVisibility>[0]>()
+    let wasShared = 0
+    let nowOwner = 0
+    for (const chunk of page.page) {
+      const messageId = ctx.db.normalizeId('conversationMessages', chunk.sourceId)
+      const message = messageId ? await ctx.db.get(messageId) : null
+      let conversation: Parameters<typeof messageChunkVisibility>[0] = null
+      if (message) {
+        if (!conversations.has(message.conversationId)) conversations.set(message.conversationId, await ctx.db.get(message.conversationId))
+        conversation = conversations.get(message.conversationId)
+      }
+      const wanted = messageChunkVisibility(conversation)
+      if (chunk.visibility === wanted) continue
+      if (chunk.visibility === 'workspace') wasShared++
+      if (wanted === 'owner') nowOwner++
+      if (!dryRun) await ctx.db.patch(chunk._id, { visibility: wanted })
+    }
+    return { scanned: page.page.length, wasShared, nowOwner, isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor }
+  },
+})
+
 export const fetchChunkPayloads = internalQuery({
   args: { ids: v.array(v.id('knowledgeChunks')) },
   handler: async (ctx, { ids }) => {
@@ -903,6 +968,7 @@ export const getMessageForReindex = internalQuery({
     return {
       userId: m.userId,
       workspaceId: convo?.workspaceId,
+      visibility: messageChunkVisibility(convo),
       turnId: m.turnId,
       speaker: messageSpeakerLabel(m),
       text,
@@ -933,8 +999,8 @@ export const reindexMessageInternal = internalAction({
       updatedAt: meta.createdAt,
       turnId: meta.turnId,
       eventAt: meta.createdAt,
-      // Workspace conversations are shared context; personal chats are not.
-      visibility: meta.workspaceId ? 'workspace' : 'owner',
+      // Only public channels are shared context; personal chats, DMs, and private channels are not.
+      visibility: meta.visibility,
       operationId: 'knowledge.reindex-message',
     })
   },
@@ -957,6 +1023,7 @@ export const listConversationMessagesPage = internalQuery({
     ])
     return {
       workspaceId: convo?.workspaceId,
+      visibility: messageChunkVisibility(convo),
       isDone: page.isDone,
       continueCursor: page.continueCursor,
       messages: page.page
@@ -1001,7 +1068,7 @@ export const backfillConversationMessages = internalAction({
         updatedAt: m.createdAt,
         turnId: m.turnId,
         eventAt: m.createdAt,
-        visibility: page.workspaceId ? 'workspace' : 'owner',
+        visibility: page.visibility,
         operationId: 'knowledge.backfill-message',
       })
     }
@@ -1083,7 +1150,8 @@ export const indexMessageContent = action({
       updatedAt: createdAt,
       turnId: args.turnId,
       eventAt: createdAt,
-      visibility: args.workspaceId ? 'workspace' : 'owner',
+      // No conversation is known here, so nothing is assumed to be shared.
+      visibility: 'owner',
       operationId: 'knowledge.index-message-content',
       trustedInternal,
       reservationNonce: trustedInternal ? args.reservationNonce : undefined,
@@ -1620,7 +1688,7 @@ export const hybridSearch = action({
       payloads.map((p) => [p._id, p]),
     )
     const now = Date.now()
-    const filtered = rankedIds
+    const filteredByVisibility = rankedIds
       .map((id) => byId.get(id))
       .filter((row): row is NonNullable<typeof row> => !!row)
       // M1 memory lifecycle: superseded and expired memory chunks are dropped
@@ -1630,6 +1698,16 @@ export const hybridSearch = action({
       .filter((row) => !row.superseded)
       .filter((row) => row.expiresAt === undefined || row.expiresAt > now)
       .filter((row) => row.userId === args.userId || row.visibility !== 'owner')
+    // Other people's message chunks are checked against their conversation too, so a chunk indexed under the old rule
+    // (every message shared with the workspace) cannot leak before it is backfilled.
+    const recallable = await ctx.runQuery(internal.knowledge.knowledge.recallableForeignMessageChunks, {
+      viewerUserId: args.userId,
+      chunks: filteredByVisibility.filter((row) => row.sourceKind === 'message' && row.userId !== args.userId)
+        .map((row) => ({ chunkId: row._id, sourceId: row.sourceId, userId: row.userId })),
+    })
+    const recallableSet = new Set<string>(recallable)
+    const filtered = filteredByVisibility.filter((row) =>
+      row.sourceKind !== 'message' || row.userId === args.userId || recallableSet.has(row._id))
 
     // Recency decay × corroboration on memory chunks: the fused score halves
     // every 30 days since the fact was last confirmed (updatedAt, which
@@ -1679,6 +1757,11 @@ export const hybridSearch = action({
             limit: 8,
           }),
         ] as const)))
+        const provenanceRecallable = new Set<string>(await ctx.runQuery(internal.knowledge.knowledge.recallableForeignMessageChunks, {
+          viewerUserId: args.userId,
+          chunks: [...rowsByTurn.values()].flat().filter((row) => row.userId !== args.userId)
+            .map((row) => ({ chunkId: row._id, sourceId: row.sourceId, userId: row.userId })),
+        }))
         for (const hit of memoryHits) {
           if (attached >= 4) break
           const turnId = turnByMemory.get(hit.sourceId)
@@ -1690,6 +1773,7 @@ export const hybridSearch = action({
             if (have.has(key) || row.superseded) continue
             if (row.expiresAt !== undefined && row.expiresAt <= now) continue
             if (row.userId !== args.userId && row.visibility === 'owner') continue
+            if (row.userId !== args.userId && !provenanceRecallable.has(row._id)) continue
             have.add(key)
             perTurn.set(turnId, (perTurn.get(turnId) ?? 0) + 1)
             attached++

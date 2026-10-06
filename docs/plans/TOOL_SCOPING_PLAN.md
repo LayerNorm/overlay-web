@@ -87,7 +87,7 @@ Tool grants (what an agent may call) stay as they are. New: a grant may also be 
 
 Each phase is shippable alone and ends with the checks listed.
 
-**T0: stop the leak (small, do first).**
+**T0: stop the leak (small, do first). Done 2026-10-06 for messages; memory default still open.**
 - Make message chunk visibility depend on the conversation type as above (personal chat: owner; DM: participants; channel: by `channelVisibility`); add `scope`/participant data the filter needs.
 - Backfill existing message chunks (about 2.9k chunk rows in total across kinds); idempotent migration with a dry run.
 - Make new memories default to Personal (`owner`) unless the tool or person says workspace; leave existing memories as they are and report how many are unscoped.
