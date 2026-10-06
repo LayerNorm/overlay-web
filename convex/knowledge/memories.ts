@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { internal } from '../_generated/api'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -246,7 +247,8 @@ export const add = mutation({
       actor: args.actor,
       expiresAt: args.expiresAt,
       eventAt: args.eventAt,
-      visibility: args.visibility,
+      // A person's memory is theirs unless it is saved as shared; an agent's is workspace knowledge.
+      visibility: args.visibility ?? defaultMemoryVisibility(args.userId),
       sourceCount: 1,
       inferred: args.inferred,
       derivedFrom: args.derivedFrom,
