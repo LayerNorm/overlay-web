@@ -40,16 +40,20 @@ export class BillingPayerResolver {
     }
 
     const access = await this.deps.workspaces.resolveActiveWorkspace(userId, args.workspaceId)
-    if (access.workspace.kind !== 'organization') {
-      return personalPayer(await this.deps.billing.ensurePersonalBillingAccount({ userId }), subject, userId)
-    }
     if (!this.deps.workspaceWalletsEnabled(access.workspace.id)) {
       return personalPayer(await this.deps.billing.ensurePersonalBillingAccount({ userId }), subject, userId)
     }
+    // Any workspace may have a plan. Without one (no wallet yet, or a wallet that is not on a paid plan) the workspace
+    // is on the free allowance, which runs through the person's own pipeline and is counted per workspace.
     const account = await this.deps.billing.getWorkspaceBillingAccountByWorkspaceIdByServer({
       workspaceId: access.workspace.id,
     })
-    if (!account) throw new BillingPayerResolutionError('workspace_wallet_not_configured')
+    const plan = account
+      ? await this.deps.billing.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId })
+      : null
+    if (!account || plan?.planKind !== 'paid') {
+      return personalPayer(await this.deps.billing.ensurePersonalBillingAccount({ userId }), subject, userId)
+    }
     if (account.status !== 'active') throw new BillingPayerResolutionError('billing_account_inactive')
     return {
       billingAccountId: account.billingAccountId,
@@ -64,7 +68,7 @@ export class BillingPayerResolver {
     workspaceId: string
   }) {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind !== 'organization' || !canManageWorkspace(access.membership.role)) {
+    if (!canManageWorkspace(access.membership.role)) {
       throw new BillingPayerResolutionError('workspace_wallet_forbidden')
     }
     return await this.deps.billing.ensureWorkspaceBillingAccount({
@@ -83,7 +87,7 @@ export class BillingPayerResolver {
   }): Promise<BillingAccountSpendLimitRecord> {
     assertBillingSpendSubject(args.subject)
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind !== 'organization' || !canManageWorkspace(access.membership.role)) {
+    if (!canManageWorkspace(access.membership.role)) {
       throw new BillingPayerResolutionError('workspace_wallet_forbidden')
     }
     const account = await this.deps.billing.getWorkspaceBillingAccountByWorkspaceIdByServer({

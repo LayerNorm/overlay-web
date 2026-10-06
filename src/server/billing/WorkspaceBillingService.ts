@@ -39,7 +39,6 @@ export class WorkspaceBillingService {
 
   async summary(args: { actorUserId: string; workspaceId: string }): Promise<WorkspaceBillingSummaryResponse> {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind !== 'organization') this.fail('Organization workspace required.', 400)
     const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
       workspaceId: access.workspace.id,
     })
@@ -228,7 +227,7 @@ export class WorkspaceBillingService {
 
   private async requireManager(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind !== 'organization' || !canManageWorkspace(access.membership.role)) {
+    if (!canManageWorkspace(access.membership.role)) {
       this.fail('Workspace billing can only be managed by owners and admins.', 403)
     }
     return access
@@ -254,7 +253,7 @@ export class WorkspaceBillingService {
 
   private async requireTopUpAccount(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind !== 'organization' || !(await this.memberMayTopUp(access, args.actorUserId))) {
+    if (!(await this.memberMayTopUp(access, args.actorUserId))) {
       this.fail('Adding usage to this workspace is limited to its owners and admins.', 403)
     }
     const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({

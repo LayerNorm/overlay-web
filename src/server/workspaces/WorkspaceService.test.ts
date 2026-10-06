@@ -728,3 +728,31 @@ test('archived workspaces and workspaces someone else owns do not count toward t
   await service.createOrganization({ actorUserId: 'user_1', name: 'Third' })
   assert.deepEqual(created, ['Third'])
 })
+
+test('workspaces on a paid plan do not count toward the free-workspace limit', async () => {
+  const owned = ['workspace_personal', 'workspace_a', 'workspace_b', 'workspace_c'].map((workspaceId) => access({ workspaceId }))
+  const created: string[] = []
+  // Four owned, one on a plan: three free ones is the limit, so a fifth workspace is refused...
+  const service = new WorkspaceService(repository({
+    async listForUser() { return owned },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }), { hasWorkspacePlan: async (workspaceId) => workspaceId === 'workspace_c' })
+
+  await assert.rejects(
+    () => service.createOrganization({ actorUserId: 'user_1', name: 'Fifth' }),
+    (error) => assertServiceError(error, 'free_workspace_limit'),
+  )
+  // ...but with two plans there are only two free ones, so there is room for another.
+  const roomy = new WorkspaceService(repository({
+    async listForUser() { return owned },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }), { hasWorkspacePlan: async (workspaceId) => workspaceId === 'workspace_b' || workspaceId === 'workspace_c' })
+  await roomy.createOrganization({ actorUserId: 'user_1', name: 'Fifth' })
+  assert.deepEqual(created, ['Fifth'])
+})

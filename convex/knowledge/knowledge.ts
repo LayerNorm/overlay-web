@@ -75,11 +75,17 @@ export const resolveKnowledgeBillingPayer = internalQuery({
     const workspace = await ctx.db.query('workspaces')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId!))
       .unique()
-    if (!workspace || workspace.kind !== 'organization') return { scope: 'personal' }
+    if (!workspace) return { scope: 'personal' }
+    // Any workspace may have a plan. Without a wallet on a paid plan it is on the free allowance, which runs through
+    // the person's own pipeline (the same rule as BillingPayerResolver).
     const account = await ctx.db.query('billingAccounts')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId!))
       .unique()
-    if (!account) throw new Error('workspace_wallet_not_configured')
+    if (!account) return { scope: 'personal' }
+    const plan = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId))
+      .first()
+    if (plan?.planKind !== 'paid') return { scope: 'personal' }
     if (account.status !== 'active') throw new Error('billing_account_inactive')
     return {
       billingAccountId: account.billingAccountId,

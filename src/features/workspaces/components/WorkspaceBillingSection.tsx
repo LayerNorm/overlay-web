@@ -22,21 +22,8 @@ export function WorkspaceBillingSection({
   client: WorkspaceManagementClient
   workspace: WorkspaceSummary
 }) {
-  const router = useRouter()
   const billing = useWorkspaceBilling(client, workspace)
   const { state } = billing
-
-  if (workspace.kind !== 'organization') {
-    return (
-      <EmptyState
-        className="min-h-72 px-6 py-12"
-        icon={<WalletCards size={28} />}
-        title="Personal billing stays personal"
-        description="Your subscription and top-up credits remain in Account. Workspace wallets are only for organization workspaces."
-        action={<Button size="sm" onClick={() => router.push('/app/settings?section=account')}>Open account billing</Button>}
-      />
-    )
-  }
 
   if (state.status === 'loading') {
     return <div className="flex min-h-72 items-center justify-center text-sm text-[var(--muted)]"><Loader2 size={16} className="mr-2 animate-spin" />Loading workspace billing…</div>
@@ -70,7 +57,6 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
   const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
 
   useEffect(() => {
-    if (workspace.kind !== 'organization') return
     const controller = new AbortController()
     setState({ status: 'loading' })
     void client
@@ -88,7 +74,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
         }
       })
     return () => controller.abort()
-  }, [client, refreshKey, workspace.id, workspace.kind])
+  }, [client, refreshKey, workspace.id])
 
   useEffect(() => {
     const sessionId = searchParams?.get('workspace_session_id')
@@ -97,7 +83,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
       : searchParams?.get('workspace_topup_success') === 'true'
         ? 'budget_topup'
         : null
-    if (!sessionId || !kind || workspace.kind !== 'organization') return
+    if (!sessionId || !kind) return
     setBusy('verify')
     void client
       .verifyBillingCheckout(workspace.id, { kind, sessionId })
@@ -114,7 +100,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
           '/app/settings?section=workspace&workspace_tab=billing',
         )
       })
-  }, [client, router, searchParams, workspace.id, workspace.kind])
+  }, [client, router, searchParams, workspace.id])
 
   const run = async (key: string, operation: () => Promise<{ url: string | null } | WorkspaceBillingSummaryResponse>) => {
     setBusy(key)
@@ -173,7 +159,7 @@ function WorkspaceBillingLoaded({
       ) : null}
 
       {!summary.rollout.eligible ? (
-        <RolloutNotice stage={summary.rollout.stage} />
+        <RolloutNotice />
       ) : !summary.initialized ? (
         <WalletSetupCard
           canManage={summary.canManage}
@@ -187,12 +173,11 @@ function WorkspaceBillingLoaded({
   )
 }
 
-function RolloutNotice({ stage }: { stage: string }) {
+function RolloutNotice() {
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
-      <p className="text-sm font-medium text-[var(--foreground)]">Controlled rollout</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Workspace wallets are not enabled for this workspace yet. Personal billing remains unchanged until this workspace is selected.</p>
-      <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-[var(--muted-light)]">Stage: {stage}</p>
+      <p className="text-sm font-medium text-[var(--foreground)]">Free</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Everyone working in this workspace shares one free weekly allowance of chat turns. Workspace plans are not open for this workspace yet.</p>
     </div>
   )
 }
@@ -210,10 +195,10 @@ function WalletSetupCard({
     <div className="rounded-xl border border-[var(--border)] p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-[var(--foreground)]">Set up the workspace wallet</p>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-[var(--muted)]">Shared agents, files, automations, browser runs, and other hosted work will use this wallet. If it is empty, shared work stops—there is no personal fallback.</p>
+          <p className="text-sm font-medium text-[var(--foreground)]">Free</p>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-[var(--muted)]">Everyone working in this workspace shares one free weekly allowance of chat turns. Add a plan to give the workspace its own pool of credits for agents, files, automations, browser runs, and other hosted work, shared by every member.</p>
         </div>
-        {canManage ? <Button size="sm" disabled={busy !== null} onClick={onSetup}>{busy === 'initialize' ? <Loader2 size={13} className="animate-spin" /> : <WalletCards size={13} />}Set up wallet</Button> : null}
+        {canManage ? <Button size="sm" disabled={busy !== null} onClick={onSetup}>{busy === 'initialize' ? <Loader2 size={13} className="animate-spin" /> : <WalletCards size={13} />}Add a plan</Button> : null}
       </div>
     </div>
   )
@@ -277,7 +262,7 @@ function WalletSubscriptionCard({ summary }: { summary: WorkspaceBillingSummaryR
   return (
     <div className="rounded-xl border border-[var(--border)] p-4">
       <p className="text-sm font-medium text-[var(--foreground)]">{summary.subscription.planKind === 'paid' ? `$${summary.subscription.planAmountCents / 100}/month` : 'No subscription'}</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">One workspace wallet. Unlimited members. Owners and admins control funding.</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">One plan for the whole workspace. Unlimited members. Owners and admins control funding.</p>
       {summary.subscription.status ? <span className="mt-3 inline-flex rounded-full bg-[var(--surface-subtle)] px-2 py-1 text-[10px] font-medium capitalize text-[var(--muted)]">{summary.subscription.status}</span> : null}
     </div>
   )

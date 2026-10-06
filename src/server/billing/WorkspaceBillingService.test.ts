@@ -105,11 +105,32 @@ test('workspace verification writes only the account-keyed subscription', async 
   assert.equal(accountUpserts[0]?.stripeSubscriptionId, 'sub_workspace')
 })
 
+test('any workspace, including a first one, can be set up for a plan; until then it reads as free', async () => {
+  const noWallet = fixture({
+    role: 'owner',
+    kind: 'personal',
+    repository: repository({ async getWorkspaceBillingAccountByWorkspaceIdByServer() { return null } }),
+  })
+  const free = await noWallet.summary({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
+  assert.equal(free.initialized, false)
+  assert.equal(free.canManage, true)
+  assert.equal(free.subscription.planKind, 'free')
+
+  const initialized = await fixture({ role: 'owner', kind: 'personal' }).initialize({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
+  assert.equal(initialized.initialized, true)
+
+  await assert.rejects(
+    fixture({ role: 'member', kind: 'personal' }).initialize({ actorUserId: 'member_1', workspaceId: 'workspace_1' }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
+  )
+})
+
 function fixture(args: {
   provider?: BillingProvider
   repository?: BillingRepository
   role: 'owner' | 'admin' | 'member' | 'guest'
   usageTopUpBy?: 'members' | 'admins'
+  kind?: 'organization' | 'personal'
 }) {
   return new WorkspaceBillingService({
     baseUrl: () => 'https://overlay.test',
@@ -134,7 +155,7 @@ function fixture(args: {
       },
     } as UsageRepository,
     workspaces: {
-      resolveActiveWorkspace: async () => access(args.role as 'member'),
+      resolveActiveWorkspace: async () => access(args.role as 'member', args.kind),
       getSharingPolicy: async () => ({ usageTopUpBy: args.usageTopUpBy ?? 'admins' }) as never,
     },
   })
@@ -189,9 +210,9 @@ function account() {
   }
 }
 
-function access(role: 'owner' | 'admin' | 'member'): WorkspaceAccess {
+function access(role: 'owner' | 'admin' | 'member', kind: 'organization' | 'personal' = 'organization'): WorkspaceAccess {
   return {
-    workspace: { id: 'workspace_1', kind: 'organization', status: 'active' },
+    workspace: { id: 'workspace_1', kind, status: 'active' },
     membership: { role, status: 'active' },
     principal: { id: 'principal_1', type: 'human' },
   } as WorkspaceAccess
