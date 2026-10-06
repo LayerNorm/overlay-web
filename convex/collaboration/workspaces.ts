@@ -1115,6 +1115,25 @@ export const transferOwnershipByServer = mutation({
   },
 })
 
+/** Renames a workspace. Who may is decided by the service; the name is trimmed and must be 1–80 characters. */
+export const renameByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    name: v.string(),
+    now: v.number(),
+  },
+  returns: workspaceValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await requireWorkspace(ctx, args.workspaceId)
+    const name = requiredName(args.name, 'Workspace name')
+    if (name.length > 80) throw new Error('WORKSPACE_NAME_TOO_LONG')
+    await ctx.db.patch(workspace._id, { name, updatedAt: args.now })
+    return workspaceValue({ ...workspace, name, updatedAt: args.now })
+  },
+})
+
 export const archiveByServer = mutation({
   args: {
     serverSecret: v.string(),

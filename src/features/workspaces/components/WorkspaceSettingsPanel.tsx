@@ -45,6 +45,7 @@ import type {
   WorkspaceSettingsTab,
 } from '@/shared/workspaces/types'
 import { WorkspaceAvatar } from './WorkspaceAvatar'
+import { WorkspaceNameEditor } from './WorkspaceNameEditor'
 import {
   ConfirmWorkspaceActionDialog,
   CreateTeamDialog,
@@ -773,7 +774,7 @@ export function WorkspaceSettingsPanel({
     const memberLabel = typeof activeWorkspace.memberCount === 'number'
       ? ` · ${activeWorkspace.memberCount} ${activeWorkspace.memberCount === 1 ? 'member' : 'members'}`
       : ''
-    return `${activeWorkspace.kind === 'personal' ? 'Personal workspace' : 'Organization workspace'}${memberLabel}`
+    return `Workspace${memberLabel}`
   }, [activeWorkspace])
 
   function openPrimaryAction() {
@@ -1067,7 +1068,7 @@ function WorkspacePanelBody({
       <header className="flex items-center gap-3 px-5 py-4">
         <WorkspaceAvatar workspace={activeWorkspace} size="lg" />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{activeWorkspace.name}</h2>
+          <WorkspaceNameEditor workspace={activeWorkspace} client={client} />
           <p className="mt-0.5 truncate text-xs text-[var(--muted)]">{workspaceLabel}</p>
         </div>
         {showPrimaryAction ? (

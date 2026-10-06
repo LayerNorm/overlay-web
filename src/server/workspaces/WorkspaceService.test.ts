@@ -647,3 +647,24 @@ test('invite rejects an active member but allows re-inviting a removed member', 
   })
   assert.equal(result.id, 'invite_new')
 })
+
+test('owners and admins rename any workspace, the first one included; members cannot', async () => {
+  const renames: string[] = []
+  const make = (role: 'owner' | 'admin' | 'member', workspaceId = 'workspace_personal') => {
+    const actor = access({ workspaceId, role })
+    return new WorkspaceService(repository({
+      async getAccess() { return actor },
+      async renameWorkspace(input) {
+        renames.push(input.name)
+        return { ...actor.workspace, name: input.name }
+      },
+    }))
+  }
+  const rename = (service: WorkspaceService, name: string) => service.renameWorkspace({ actorUserId: 'user_1', workspaceId: 'workspace_personal', name })
+  assert.equal((await rename(make('owner'), '  Maya’s workspace ')).name, 'Maya’s workspace')
+  assert.equal((await rename(make('admin', 'workspace_org'), 'Acme Labs')).name, 'Acme Labs')
+  await assert.rejects(() => rename(make('member'), 'Mine now'), (error) => assertServiceError(error, 'forbidden'))
+  await assert.rejects(() => rename(make('owner'), '   '), (error) => assertServiceError(error, 'validation'))
+  await assert.rejects(() => rename(make('owner'), 'x'.repeat(81)), (error) => assertServiceError(error, 'validation'))
+  assert.deepEqual(renames, ['Maya’s workspace', 'Acme Labs'])
+})

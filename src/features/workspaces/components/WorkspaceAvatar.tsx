@@ -1,4 +1,3 @@
-import { Building2, UserRound } from 'lucide-react'
 import type { WorkspaceSummary } from '@/shared/workspaces/types'
 
 function initials(name: string): string {
@@ -10,11 +9,12 @@ function initials(name: string): string {
     .join('') || 'W'
 }
 
+/** Every workspace looks the same: its initials. (There is no longer a separate look for a personal workspace.) */
 export function WorkspaceAvatar({
   workspace,
   size = 'md',
 }: {
-  workspace: Pick<WorkspaceSummary, 'name' | 'kind'>
+  workspace: Pick<WorkspaceSummary, 'name'>
   size?: 'sm' | 'md' | 'lg'
 }) {
   const sizeClass = {
@@ -22,19 +22,13 @@ export function WorkspaceAvatar({
     md: 'h-8 w-8 rounded-lg text-[10px]',
     lg: 'h-10 w-10 rounded-xl text-xs',
   }[size]
-  const Icon = workspace.kind === 'personal' ? UserRound : Building2
 
   return (
     <span
-      className={`relative inline-flex shrink-0 items-center justify-center border border-[var(--border)] bg-[var(--surface-subtle)] font-semibold text-[var(--foreground)] ${sizeClass}`}
+      className={`inline-flex shrink-0 items-center justify-center border border-[var(--border)] bg-[var(--surface-subtle)] font-semibold text-[var(--foreground)] ${sizeClass}`}
       aria-hidden
     >
-      <span>{initials(workspace.name)}</span>
-      <Icon
-        size={9}
-        strokeWidth={2}
-        className="absolute -bottom-0.5 -right-0.5 rounded-sm bg-[var(--surface-elevated)] p-px text-[var(--muted)]"
-      />
+      {initials(workspace.name)}
     </span>
   )
 }

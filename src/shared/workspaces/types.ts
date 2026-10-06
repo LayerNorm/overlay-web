@@ -103,4 +103,5 @@ export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
   addTeamMember(workspaceId: string, teamId: string, principalId: string): Promise<void>
   removeTeamMember(workspaceId: string, teamId: string, principalId: string): Promise<void>
   archiveWorkspace(workspaceId: string): Promise<void>
+  renameWorkspace(workspaceId: string, name: string): Promise<void>
 }

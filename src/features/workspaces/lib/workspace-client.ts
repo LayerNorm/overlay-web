@@ -262,6 +262,15 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
     )
   },
 
+  async renameWorkspace(workspaceId, name) {
+    await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/lifecycle`,
+      'PATCH',
+      { name },
+    )
+  },
+
   async archiveWorkspace(workspaceId) {
     await workspaceMutation(
       workspaceId,

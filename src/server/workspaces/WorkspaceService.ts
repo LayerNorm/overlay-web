@@ -1,3 +1,4 @@
+import { defaultWorkspaceName } from '@/shared/workspaces/default-name'
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
@@ -79,6 +80,7 @@ export class WorkspaceService {
       userId,
       displayName: optional(args.displayName) ?? optional(args.email) ?? 'Personal',
       email: normalizeOptionalEmail(args.email),
+      workspaceName: defaultWorkspaceName({ displayName: args.displayName, email: args.email }),
       now: this.now(),
     })
   }
@@ -204,6 +206,20 @@ export class WorkspaceService {
       slug: normalizeOptionalSlug(args.slug) ?? slugify(name),
       now: this.now(),
     })
+  }
+
+  /** Owners and admins may rename their workspace (names are 1–80 characters). */
+  async renameWorkspace(args: {
+    actorUserId: string
+    workspaceId: string
+    name: string
+  }): Promise<WorkspaceAccess['workspace']> {
+    const actor = await this.requireManager(args)
+    const name = required(args.name, 'name')
+    if (name.length > 80) throw validation('Workspace names are at most 80 characters')
+    const renamed = await this.repository.renameWorkspace({ workspaceId: actor.workspace.id, name, now: this.now() })
+    if (!renamed) throw notFound()
+    return renamed
   }
 
   async archiveWorkspace(args: {

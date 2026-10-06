@@ -78,9 +78,9 @@ function WorkspaceList({
       {status === 'ready' ? workspaces.map((workspace) => {
         const selected = workspace.id === activeWorkspaceId
         const switching = workspace.id === switchingWorkspaceId
-        const memberLabel = workspace.kind === 'personal'
-          ? 'Personal'
-          : `${workspace.memberCount ?? 1} ${workspace.memberCount === 1 ? 'member' : 'members'}`
+        // Every workspace reads the same: a name and how many people are in it.
+        const memberCount = workspace.memberCount ?? 1
+        const memberLabel = `${memberCount} ${memberCount === 1 ? 'member' : 'members'}`
         return (
           <MenuItem
             key={workspace.id}

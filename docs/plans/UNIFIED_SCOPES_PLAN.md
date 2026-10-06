@@ -299,14 +299,34 @@ Original steps, for reference:
 
 ### Phase 5: retire the special personal workspace
 
-Separate project, after Phases 1–4; depends on the billing decision.
+Split in two because the second half moves live money. **5a is done (2026-10-05); 5b is designed below and waits for the owner's go-ahead.**
 
-- Onboarding creates the first workspace, named by the user; stop auto-creating `personal-<user>` in `WorkspaceService`.
-- Existing personal workspaces become ordinary workspaces (rename to something like "<Name>'s workspace", owner-editable). Remove the `kind === 'personal'` special cases (about 20 places: switcher and avatar, workspace settings, the integrations route, `WorkspaceService`, `convex/collaboration/workspaces.ts`, the showcase client).
-- Billing becomes workspace-level (decided; see "How Slack does billing"). Each existing personal workspace's current plan, allowance, and top-up balance become that workspace's, with its owner as the billing contact. A person who owns several workspaces has a plan per workspace, and the free tier is per workspace. Needs a migration of `billingAccounts` rows from `scope: 'personal'` to `scope: 'workspace'`, an update of the Account page's usage and billing UI into Workspace settings (owners see the plan, admins and members see usage), and a fallback path for the moment between sign-up and workspace creation.
-- A person always has at least one workspace; leaving or deleting the last one prompts them to create another.
-- User-level data stays user-level: provider keys, Agent accounts (for example a ChatGPT sign-in), billing, account settings. Settings pages split cleanly into Account and Workspace.
-- Cross-workspace "all my stuff" view is out of scope; note it as a later idea.
+#### 5a: the workspace stops looking special (done)
+
+- **Names.** The generated name is now "<First name>’s workspace" (fallback "My workspace"), never "Personal" (`defaultWorkspaceName`, `src/shared/workspaces/default-name.ts`). A migration (`convex/migrations/renameGenericWorkspaces.ts`, dry run first) renamed the 249 existing first workspaces that were still called "Personal" (174) or "Personal’s workspace" (75, a bug from a missing display name); names an owner chose are untouched.
+- **Rename.** Owners and admins can rename any workspace (new `PATCH /api/v1/workspaces/{id}/lifecycle`, inline in Workspace settings). Before this nobody could.
+- **Onboarding.** A new person is asked to name their workspace (keep the default, or type one) before the tour.
+- **Look.** One avatar, one label ("N members") for every workspace; the corner icon and "Personal workspace / Organization workspace" wording are gone.
+- **Still special, on purpose, until 5b:** the data field `kind: 'personal'` (it decides who pays), the rule that a first workspace cannot be archived, and the owner being bound to it. Archiving or transferring it today would strand the person with no workspace they can pay from, because organization workspaces have no wallet yet.
+
+#### 5b: workspace-level billing (designed, not built)
+
+Facts (production, 2026-10-05): 252 workspaces (249 first workspaces, 3 organizations); 346 billing accounts, all `scope: personal`; subscriptions: 303 free, 5 paid and active, 1 paid and past due (all with Stripe subscriptions). Workspace wallets exist in code (`BillingPayerResolver`, `WorkspaceBillingService`, `/api/v1/workspaces/{id}/billing/*`) but are gated by a rollout flag and used by no real workspace.
+
+The smallest reversible design: **link, do not move.** Everything billing-related is keyed by `billingAccountId` (subscriptions, Stripe customer and subscription ids, top-ups, reservations, spend limits). So instead of rewriting accounts:
+
+1. **Link.** For each first workspace, set `workspaceId` on its owner's existing personal billing account (same `billingAccountId`; `scope` and `userId` unchanged; `primaryBillingContactUserId` = the owner). No Stripe object, balance, or subscription row changes. Undo = clear `workspaceId`.
+2. **Resolve by workspace.** `BillingPayerResolver` looks for a billing account on the *workspace* first (any kind, regardless of the wallet rollout flag), and only then falls back to the person's own personal account. Solo workspaces behave exactly as today; a member who joins someone's workspace draws from that workspace's account instead of their own.
+3. **New workspaces** get a free-tier account at creation (an organization workspace with wallets switched on but none created fails with "wallet not configured"; with wallets off it silently bills the actor's personal account), so a person can live in any workspace.
+4. **UI.** Workspace settings → Billing is available for every workspace: owners see plan, payment, and top-up; admins and members see usage (and top-up when `usageTopUpBy` allows). The Account page keeps personal data only and links to the workspace's billing. The workspace routes need to accept the linked account.
+5. **Then** (not before) the special cases come out: first workspaces may be archived or ownership transferred, "at least one workspace" replaces "has a personal workspace", and `ensurePersonalWorkspace` becomes "ensure the person has a workspace".
+
+Decisions needed from the owner before 5b is built:
+
+- **Free tier**: one free allowance per workspace (as decided), but per-person daily limits (`dailyUsage`) stay per person. Is that acceptable, or should free limits be per workspace too?
+- **A person with several workspaces** pays for each separately (as decided). The 5 paid subscribers each have exactly one linked workspace after step 1, so nothing changes for them.
+- **Cutover**: step 1 on the 6 paid accounts first, then the 303 free ones, after a dry run that prints every account and workspace it would link and the 1 workspace with 2 members; no Stripe change at any step.
+- **Invites into a first workspace** (one exists today) start drawing from the owner's account at step 2.
 
 ## Testing
 

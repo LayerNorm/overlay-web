@@ -340,6 +340,11 @@ export function createShowcaseWorkspaceManagementClient(
           : item
       )))
     },
+    async renameWorkspace(workspaceId, name) {
+      const workspace = workspaceById.get(workspaceId)
+      if (!workspace) throw new Error('Workspace not found')
+      workspaceById.set(workspaceId, { ...workspace, name: name.trim() || workspace.name })
+    },
     async archiveWorkspace(workspaceId) {
       const workspace = workspaceById.get(workspaceId)
       if (!workspace || workspace.kind === 'personal') throw new Error('Workspace cannot be archived')

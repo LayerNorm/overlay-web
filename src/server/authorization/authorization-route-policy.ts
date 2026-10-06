@@ -189,7 +189,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   {
     path: '/api/v1/workspaces/:workspaceId/lifecycle',
-    methods: { DELETE: authenticated() },
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
   },
   {
     path: '/api/v1/workspaces/:workspaceId/policies',
