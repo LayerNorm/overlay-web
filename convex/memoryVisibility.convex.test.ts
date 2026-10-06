@@ -39,6 +39,14 @@ describe('who a new memory is for', () => {
     expect(await recalledBy(convex, 'bob')).toEqual(['Customers ask about pricing first'])
   })
 
+  test('asked with no viewer (what an agent in a shared room gets), even the saver’s own private memory is left out', async () => {
+    const convex = convexTest(schema, modules)
+    await save(convex, 'alice', 'Alice is vegetarian')
+    await save(convex, 'alice', 'The team standup is at 10', 'workspace')
+    const noViewer = (await convex.query(listWorkspace, { serverSecret: secret, workspaceId: 'ws-1' })).map((memory: { content: string }) => memory.content)
+    expect(noViewer).toEqual(['The team standup is at 10'])
+  })
+
   test('memories from before the rule (no value stored) still read as shared', async () => {
     const convex = convexTest(schema, modules)
     await convex.run(async (ctx) => {

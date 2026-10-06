@@ -204,11 +204,13 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   async listMemories(args: {
     userId: string
     workspaceId?: string
+    workspaceOnly?: boolean
   }): Promise<ActMemoryRow[] | null> {
     return args.workspaceId
       ? await convex.query<ActMemoryRow[]>('knowledge/memories:listWorkspace', {
           workspaceId: args.workspaceId,
-          viewerUserId: args.userId,
+          // With no viewer the workspace query leaves out every owner-only memory, including the asker's.
+          ...(args.workspaceOnly ? {} : { viewerUserId: args.userId }),
           serverSecret: this.serverSecret,
         })
       : await convex.query<ActMemoryRow[]>('knowledge/memories:list', {
@@ -240,10 +242,16 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   async listSkillDirectory(args: {
     userId: string
     workspaceId?: string
+    workspaceOnly?: boolean
   }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>> {
     return await convex.query<Array<{ _id: string; name: string; description: string; enabled: boolean }>>(
       'integrations/skills:listDirectory',
-      { userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}), serverSecret: this.serverSecret },
+      {
+        userId: args.userId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+        ...(args.workspaceId && args.workspaceOnly ? { workspaceOnly: true } : {}),
+        serverSecret: this.serverSecret,
+      },
     ) ?? []
   }
 

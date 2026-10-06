@@ -61,6 +61,18 @@ describe('skills (an extension resource)', () => {
     expect(await names('bob', 'workspace')).toEqual(['Brief'])
   })
 
+  test('the skill directory an agent gets in a room others can read leaves out the summoner\'s personal skills', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    await convex.mutation(m('integrations/skills:create'), { ...auth, userId: 'alice', name: 'Mine', description: 'd', instructions: 'i' })
+    await convex.mutation(m('integrations/skills:create'), { ...auth, userId: 'alice', name: 'Ours', description: 'd', instructions: 'i', scope: 'workspace' })
+    await convex.mutation(m('integrations/skills:create'), { ...auth, userId: 'bob', name: 'Bobs shared', description: 'd', instructions: 'i', scope: 'workspace' })
+    const directory = async (workspaceOnly?: boolean) =>
+      ((await convex.query(q('integrations/skills:listDirectory'), { ...auth, userId: 'alice', ...(workspaceOnly ? { workspaceOnly } : {}) })) as Array<{ name: string }>).map((s) => s.name).sort()
+    expect(await directory()).toEqual(['Bobs shared', 'Mine', 'Ours'])
+    expect(await directory(true)).toEqual(['Bobs shared', 'Ours'])
+  })
+
   test('a member cannot edit or delete another member\'s workspace skill; an admin can edit it', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)

@@ -3,6 +3,7 @@ import 'server-only'
 import type { ModelMessage } from 'ai'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
+import { isSharedRoom, roomContextAccess } from '@/shared/agents/room-access'
 import {
   buildMemoryContext,
   buildSkillDirectoryContext,
@@ -57,6 +58,8 @@ export async function buildAgentTurnContext(args: {
   billingProgrammaticSubjectId?: string
   conversationTitle?: string
   conversationType: 'personal' | 'dm' | 'channel'
+  /** Whether a channel is public or private; part of deciding whether the room is shared. */
+  channelVisibility?: string | null
   history: readonly AgentRoomMessage[]
   idempotencyKey: string
   latestUserText: string
@@ -66,6 +69,13 @@ export async function buildAgentTurnContext(args: {
   workspaceId: string
 }): Promise<AgentTurnContext> {
   const server = getOverlayServerContext()
+  // The room rule: in a room others can read, the summoner's private memory, files, and skills are not loaded for the agent
+  // (its reply is visible to everyone there). What the workspace shares still is.
+  const access = roomContextAccess(isSharedRoom({
+    conversationType: args.conversationType,
+    channelVisibility: args.channelVisibility,
+    humanParticipants: args.participants.filter((participant) => participant.principalType === 'human').length,
+  }))
 
   const memoriesTask: Promise<string> = args.memoryEnabled
     ? (async () => {
@@ -74,11 +84,14 @@ export async function buildAgentTurnContext(args: {
             server.appData.repositories.conversations.listMemories({
               userId: args.actorUserId,
               workspaceId: args.workspaceId,
+              workspaceOnly: !access.personalMemory,
             }),
-            server.appData.repositories.conversations.getMemoryProfile?.({
-              userId: args.actorUserId,
-              workspaceId: args.workspaceId,
-            }) ?? Promise.resolve(null),
+            access.personalMemory
+              ? server.appData.repositories.conversations.getMemoryProfile?.({
+                  userId: args.actorUserId,
+                  workspaceId: args.workspaceId,
+                }) ?? Promise.resolve(null)
+              : Promise.resolve(null),
           ])
           return buildMemoryContext(memories ?? [], profile)
         } catch (error) {
@@ -89,7 +102,7 @@ export async function buildAgentTurnContext(args: {
     : Promise.resolve('')
 
   const retrievalTask: Promise<string> = (async () => {
-    if (!args.latestUserText.trim()) return ''
+    if (!args.latestUserText.trim() || !access.personalRetrieval) return ''
     try {
       const { buildAutoRetrievalBundle } = await import('@/server/knowledge/ask-knowledge-context')
       const bundle = await buildAutoRetrievalBundle({
@@ -120,6 +133,7 @@ export async function buildAgentTurnContext(args: {
       const directory = await server.appData.repositories.conversations.listSkillDirectory({
         userId: args.actorUserId,
         workspaceId: args.workspaceId,
+        workspaceOnly: !access.personalSkills,
       })
       return buildSkillDirectoryContext(
         (directory ?? [])

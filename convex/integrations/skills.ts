@@ -61,8 +61,15 @@ export const get = query({
  * instead of injecting every skill's full instructions into every turn.
  */
 export const listDirectory = query({
-  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
+  args: {
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+    /** Only skills shared with the workspace (what an agent in a room others can read may be offered). */
+    workspaceOnly: v.optional(v.boolean()),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { userId, workspaceId, workspaceOnly, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -72,7 +79,7 @@ export const listDirectory = query({
     // anyone's agent may use what the workspace shares.
     const filtered = workspaceId !== undefined
       ? await listScopedRows(ctx, {
-        userId, workspaceId, view: undefined,
+        userId, workspaceId, view: workspaceOnly ? 'workspace' : undefined,
         fetchMine: async () => (await ctx.db.query('skills').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').collect())
           // Skills from before workspaces carry no workspace and stay with their creator everywhere.
           .filter((s) => s.workspaceId === workspaceId || s.workspaceId === undefined),

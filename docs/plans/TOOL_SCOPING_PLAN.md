@@ -108,7 +108,7 @@ Each phase is shippable alone and ends with the checks listed.
 - Global search dialog scope chips and tags.
 - Exit: shared notes and files are found by content; nothing private is; latency within the current budget (the filter is an index field, not a join).
 
-**T4: rooms and grants.**
+**T4: rooms and grants.** *First slice done 2026-10-06 (`src/shared/agents/room-access.ts`): in a shared room (more than one person, or a channel anyone in the workspace can read) the automatically loaded context for an agent no longer includes the summoner's personal memory, memory profile, retrieval, or personal skills. Tools the agent calls during the turn are not yet limited.*
 - The room rule (workspace-only default, explicit include), scope-limited tool grants, and the same limit on outside-app access levels.
 - Connector account choice: label both account sets in the prompt, `account` argument on connector calls.
 - Exit: an agent summoned in a channel by someone with private files cannot quote them; including a Personal item on purpose still works.
