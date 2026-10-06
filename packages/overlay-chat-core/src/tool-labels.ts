@@ -166,6 +166,11 @@ export function getDescriptiveToolLabel(
     if (title) return title.length > 140 ? `${title.slice(0, 140)}…` : title
   }
 
+  // Not a real tool: the row shown while a connected agent's computer is woken up or reconnecting.
+  if (toolName === 'connect_computer') {
+    return phase === 'running' ? 'Connecting to computer' : 'Connected to computer'
+  }
+
   if (toolName === 'call_mcp_tool') {
     return describeMcpToolCall(toolInput, phase)
   }

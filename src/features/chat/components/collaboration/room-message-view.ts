@@ -201,8 +201,12 @@ export function toRoomMessageView({
   const mine = isOwnRoomMessage(message, currentPrincipalId)
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const { bodyText, docNames } = splitUserDisplayText(stripAttachmentSummary(message.content ?? ''))
+  const remoteQueue = remoteQueueStatus(message.parts)
   const blocks: AssistantVisualBlock[] = (() => {
     if (!isAgent) return []
+    // While a connected agent's computer wakes up the row reads like a tool call that is running ("Connecting to
+    // computer", shimmering) instead of the stored "Waiting for <name>" text.
+    if (remoteQueue) return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }]
     const sequence = buildAssistantVisualSequence(displayParts(message.parts))
     if (sequence.length > 0) return sequence
     return bodyText ? [{ kind: 'text', text: bodyText }] : []
@@ -231,7 +235,7 @@ export function toRoomMessageView({
     documentNames: docNames,
     mentions,
     askedBy: askedBy(message),
-    remoteQueue: remoteQueueStatus(message.parts),
+    remoteQueue,
     remoteRequest: remoteRequest(message.parts),
     remoteRun: remoteRunStatus(message.parts),
     // Assistant rows are inserted with status 'generating' at turn start and

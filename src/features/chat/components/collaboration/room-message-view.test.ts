@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
+import { getDescriptiveToolLabel } from '@overlay/chat-core'
 import { toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
@@ -58,4 +59,32 @@ test('an agent-authored question carries who asked and how deep the chain is; a 
   assert.deepEqual(asked.askedBy, { name: 'Scout', hop: 2, parentConversationId: 'room-1' })
   const forged = toRoomMessageView({ message: { ...base, authorKind: 'human', parts: [lineage] } as never, currentPrincipalId: 'me', authorName: 'Me' })
   assert.equal(forged.askedBy, undefined)
+})
+
+test('while a connected agent’s computer wakes up the row is a running "Connecting to computer" tool line, not stored text', () => {
+  const view = toRoomMessageView({
+    message: record({
+      content: 'Waiting for overlay-cloud-5d291a64',
+      parts: [
+        { type: 'text', text: 'Waiting for overlay-cloud-5d291a64' },
+        { type: 'data-remote-agent-status', data: { state: 'waiting', runId: 'run_1', environmentName: 'overlay-cloud-5d291a64', queueExpiresAt: 9 } },
+      ],
+    }),
+    currentPrincipalId: 'me',
+    authorName: 'Claude Code',
+  })
+  assert.deepEqual(view.blocks, [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }])
+  assert.equal(getDescriptiveToolLabel('connect_computer', undefined, 'running'), 'Connecting to computer')
+  // Its controls (Cancel, Retry) are unchanged.
+  assert.equal(view.remoteQueue?.environmentName, 'overlay-cloud-5d291a64')
+})
+
+test('once the agent starts working the connecting row is gone and the real content shows', () => {
+  const view = toRoomMessageView({
+    message: record({ content: 'Working on it', parts: [{ type: 'text', text: 'Working on it' }, { type: 'data-remote-agent-status', data: { state: 'running', runId: 'run_1', environmentName: 'e', queueExpiresAt: 9 } }] }),
+    currentPrincipalId: 'me',
+    authorName: 'Claude Code',
+  })
+  assert.equal(view.remoteQueue, undefined)
+  assert.deepEqual(view.blocks, [{ kind: 'text', text: 'Working on it' }])
 })

@@ -138,7 +138,7 @@ function AgentEditorFormSection({
   } = computer
 
   return (
-    <div className="mx-auto w-full max-w-2xl pb-24">
+    <div className="mx-auto w-full max-w-2xl">
       {isDefaultMaster ? <MasterAgentNotice /> : null}
 
       <div className="mt-5 space-y-5">
@@ -387,7 +387,7 @@ export function AgentEditorView({
         />
       ) : undefined}
     >
-      <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full" style={inPanel ? { background: 'transparent' } : undefined}>
+      <AppScreenBody padding="lg" maxWidth="xl" className={inPanel ? 'min-h-full pb-4 sm:pb-4' : 'min-h-full'} style={inPanel ? { background: 'transparent' } : undefined}>
         {loading ? (
           <div className="mx-auto w-full max-w-2xl space-y-4" aria-label="Loading agent">
             <div className="h-9 w-48 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
