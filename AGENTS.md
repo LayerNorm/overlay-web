@@ -84,6 +84,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/billing-holds-and-machine-metering.md` | Any change to budget reservations and holds, the stale-hold sweep, machine metering or its credit floor, `OVERLAY_AGENT_PUBLIC_URL`, or the production environment for Overlay Cloud agents. |
 | `docs/develop/tool-catalog.md` | Any change to Overlay's tool ids, tool groups, who gets which tools (chat, native agents, connected agents, outside apps), or the outside-app access levels. |
 | `docs/develop/mcp-servers-overview.md` | Any change to what Overlay's MCP servers are for, how they sign in, or how they differ. |
+| `docs/develop/billing-plan-conversion.md` | Any change to moving a personal plan onto a workspace: the conversion/revert functions, the preconditions, webhook routing for converted subscriptions, or the operator runbook. |
 | `docs/develop/agent-to-agent.md` | Any change to agents asking agents: the `agent_chat` tools, `/api/v1/agent-asks`, lineage and limits, the budget counters, or how an asked agent's turn is started. |
 | `docs/develop/agent-profiles.md` | Any change to importing Claude Code / Codex config into Overlay Cloud agents: the allowlist and cleaning rules, the export-config host command, upload/apply flow, versions, or needed-value (secret) handling. |
 | `docs/develop/agent-machine-idle.md` | Any change to when an agent machine goes idle: the idle window, the Convex idle timer and token, the `idleCheck` BFF path, the meter sweep fallback, or the "a run is going" check. |

@@ -33,6 +33,7 @@ import type * as billing_accountModel from "../billing/accountModel.js";
 import type * as billing_accountSubscriptions from "../billing/accountSubscriptions.js";
 import type * as billing_accounts from "../billing/accounts.js";
 import type * as billing_lib_stripeOverlaySubscription from "../billing/lib/stripeOverlaySubscription.js";
+import type * as billing_planConversion from "../billing/planConversion.js";
 import type * as billing_spendLimits from "../billing/spendLimits.js";
 import type * as billing_stripe from "../billing/stripe.js";
 import type * as billing_stripeSync from "../billing/stripeSync.js";
@@ -136,6 +137,7 @@ declare const fullApi: ApiFromModules<{
   "billing/accountSubscriptions": typeof billing_accountSubscriptions;
   "billing/accounts": typeof billing_accounts;
   "billing/lib/stripeOverlaySubscription": typeof billing_lib_stripeOverlaySubscription;
+  "billing/planConversion": typeof billing_planConversion;
   "billing/spendLimits": typeof billing_spendLimits;
   "billing/stripe": typeof billing_stripe;
   "billing/stripeSync": typeof billing_stripeSync;

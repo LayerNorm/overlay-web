@@ -24,6 +24,20 @@ function readNumberMetadata(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
 }
 
+// A plan moved onto a workspace (convex/billing/planConversion.ts) keeps its Stripe subscription, whose metadata still
+// names the person. Events for it route to the workspace's billing account; everything else keeps its route.
+async function convertedAccountId(
+  ctx: Pick<GenericActionCtx<DataModel>, 'runQuery'>,
+  reference: { customer?: unknown; subscription?: unknown },
+): Promise<string | undefined> {
+  const idOf = (value: unknown): string | undefined =>
+    typeof value === 'string' ? value : value && typeof value === 'object' && 'id' in value && typeof value.id === 'string' ? value.id : undefined
+  const stripeCustomerId = idOf(reference.customer)
+  const stripeSubscriptionId = idOf(reference.subscription)
+  if (!stripeCustomerId && !stripeSubscriptionId) return undefined
+  return (await ctx.runQuery(internal.billing.planConversion.resolveWorkspaceAccountByProviderReference, { stripeCustomerId, stripeSubscriptionId })) ?? undefined
+}
+
 // Returns true if this is a new event and handlers should run, false if the
 // event is a duplicate / stale replay and handlers must be a no-op. `ctx` is
 // the handler context provided by @convex-dev/stripe.
@@ -55,6 +69,7 @@ registerRoutes(http, components.stripe, {
 
       const userId = subscription.metadata?.userId
       const billingAccountId = subscription.metadata?.billingAccountId
+        ?? await convertedAccountId(ctx, { customer: subscription.customer, subscription: subscription.id })
 
       if (billingAccountId) {
         const plan = extractPlanFromSubscription(subscription)
@@ -119,6 +134,7 @@ registerRoutes(http, components.stripe, {
       const subscription = event.data.object
       const userId = subscription.metadata?.userId
       const billingAccountId = subscription.metadata?.billingAccountId
+        ?? await convertedAccountId(ctx, { customer: subscription.customer, subscription: subscription.id })
 
       if (billingAccountId) {
         const plan = extractPlanFromSubscription(subscription)
@@ -184,6 +200,7 @@ registerRoutes(http, components.stripe, {
 
       const userId = subscription.metadata?.userId
       const billingAccountId = subscription.metadata?.billingAccountId
+        ?? await convertedAccountId(ctx, { customer: subscription.customer, subscription: subscription.id })
 
       if (billingAccountId) {
         const plan = extractPlanFromSubscription(subscription)
@@ -221,7 +238,11 @@ registerRoutes(http, components.stripe, {
         invoice.metadata?.userId
       const billingAccountId =
         invoice.parent?.subscription_details?.metadata?.billingAccountId ??
-        invoice.metadata?.billingAccountId
+        invoice.metadata?.billingAccountId ??
+        await convertedAccountId(ctx, {
+          customer: invoice.customer,
+          subscription: invoice.parent?.subscription_details?.subscription,
+        })
 
       if (billingAccountId) {
         await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {

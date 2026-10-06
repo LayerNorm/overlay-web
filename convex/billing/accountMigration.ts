@@ -373,7 +373,7 @@ async function syncCanonicalBalance(
   })
 }
 
-async function activeReservationSummary(ctx: QueryCtx | MutationCtx, billingAccountId: string) {
+export async function activeReservationSummary(ctx: QueryCtx | MutationCtx, billingAccountId: string) {
   const [reserved, reconcileRequired] = await Promise.all([
     ctx.db
       .query('budgetReservations')
@@ -397,7 +397,7 @@ async function activeReservationSummary(ctx: QueryCtx | MutationCtx, billingAcco
   }
 }
 
-function legacyBalanceSnapshot(
+export function legacyBalanceSnapshot(
   billingAccountId: string,
   subscription: Doc<'subscriptions'> | null,
   reservedCents: number,
@@ -429,7 +429,7 @@ function legacyBalanceSnapshot(
   }
 }
 
-function balanceDifferences(
+export function balanceDifferences(
   legacy: ReturnType<typeof legacyBalanceSnapshot>,
   canonical: Omit<ReturnType<typeof legacyBalanceSnapshot>, 'mode'> & {
     mode: 'budgeted' | 'unlimited'
