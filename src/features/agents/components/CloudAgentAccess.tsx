@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { SegmentedControl } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -27,21 +27,12 @@ const NONE_DESCRIPTION = 'The agent can only use what is on its own machine.'
  * What the agent can do in Overlay (notes, files, memory, knowledge…), given to it through Overlay's MCP
  * server. Without this an agent on its own machine cannot see any of the person's Overlay data.
  */
-export function CloudAgentAccess({ agentId }: { agentId: string }) {
+export function CloudAgentAccess({ agentId, allowedToolIds }: { agentId: string; allowedToolIds: readonly string[] }) {
   const { activeWorkspaceId } = useWorkspace()
-  const [grant, setGrant] = useState<readonly string[] | null>(null)
+  // The agent was already loaded by the page, so this starts with its grant rather than fetching it again.
+  const [grant, setGrant] = useState<readonly string[] | null>(allowedToolIds)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    if (!activeWorkspaceId) return
-    let cancelled = false
-    void overlayAppClient.agents.get(activeWorkspaceId, agentId).then(
-      (result) => { if (!cancelled) setGrant(result.agent.allowedToolIds) },
-      () => { if (!cancelled) setError('Could not load the agent.') },
-    )
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, agentId])
 
   const choose = useCallback(async (choice: Choice) => {
     if (!activeWorkspaceId || busy) return

@@ -56,6 +56,9 @@ export function useAgentSurfaces(args: {
   const enabled = Boolean(
     !showcase && activeWorkspaceId && agent && !agent.archivedAt && agentType === 'overlay',
   )
+  // Which agent's connections have been read once (derived, so the first render already knows it is loading).
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
+  const initialLoading = enabled && loadedFor !== agent?.id
 
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId || !agent) return
@@ -75,9 +78,9 @@ export function useAgentSurfaces(args: {
     setError(null)
     void refresh()
       .catch(() => { if (!cancelled) setError('Could not load surface connections.') })
-      .finally(() => { if (!cancelled) setLoading(false) })
+      .finally(() => { if (!cancelled) { setLoading(false); setLoadedFor(agent?.id ?? null) } })
     return () => { cancelled = true }
-  }, [enabled, refresh])
+  }, [enabled, refresh, agent?.id])
 
   const connectSlack = useCallback(() => {
     if (!agent) return
@@ -160,6 +163,7 @@ export function useAgentSurfaces(args: {
   return {
     enabled,
     loading,
+    initialLoading,
     connections,
     bindings: activeBindings,
     canBind,

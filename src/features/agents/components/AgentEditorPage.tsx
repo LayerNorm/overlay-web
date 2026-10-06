@@ -63,7 +63,7 @@ export function AgentEditorPage({
   const [error, setError] = useState<string | null>(null)
 
   const bootstrap = useAgentEditorBootstrap({ showcase, mode, agentId, activeWorkspaceId, initial })
-  const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled } = bootstrap
+  const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked } = bootstrap
 
   const runtime = useAgentRuntime({ showcaseAgent })
 
@@ -190,6 +190,7 @@ export function AgentEditorPage({
       showcase={showcase}
       computersAvailable={computersAvailable}
       connectedAgentsEnabled={connectedAgentsEnabled}
+      connectedAgentsChecked={connectedAgentsChecked}
       modelOptions={modelOptions}
       form={form}
       runtime={runtime}

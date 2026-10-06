@@ -9,6 +9,7 @@ import { CLOUD_AGENT_STATE_LABEL, isCloudAgentStarting, type CloudAgentAction } 
 import { AGENT_PROVIDER_IDS, type AgentProviderId } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 import { CloudAgentConfig } from './CloudAgentConfig'
+import { useEditorLoad } from './EditorLoadGate'
 import { CloudAgentProgress } from './CloudAgentProgress'
 import { FieldLabel } from './InfoTip'
 import { OTHER_AGENT_LABEL } from './cloud-agent-draft'
@@ -100,6 +101,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   const [busy, setBusy] = useState<PanelBusy>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [reconnect, setReconnect] = useState<ProviderAccountResource | null>(null)
+  useEditorLoad(!status && !error)
 
   const run = async (action: CloudAgentAction) => {
     if (!workspaceId || busy) return

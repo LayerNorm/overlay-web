@@ -5,6 +5,7 @@ import { Copy, FolderUp, Terminal } from 'lucide-react'
 import type { AgentProfileImportCodeResource, AgentProfileResource, AgentProfileStateResource } from '@overlay/api-client'
 import { Button } from '@overlay/ui/primitives'
 import { AGENT_PROFILE_TOP_LEVEL, AGENT_PROFILE_LIMITS } from '@layernorm/overlay-agent-bridge-protocol'
+import { useEditorLoad } from './EditorLoadGate'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { FieldLabel } from './InfoTip'
@@ -71,6 +72,7 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
   const [hooksOn, setHooksOn] = useState(false)
   const [showDropped, setShowDropped] = useState(false)
   const folderRef = useRef<HTMLInputElement>(null)
+  useEditorLoad(state === null && error === null)
 
   const load = useCallback(async () => {
     if (!workspaceId) return

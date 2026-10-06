@@ -5,6 +5,7 @@ import { Pencil } from 'lucide-react'
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Creature, CREATURE_SHAPES } from '@/components/orb/Creature'
 import { AVATAR_COLORS } from '../lib/agent-editor-utils'
+import { AvatarColorPicker } from './AvatarColorPicker'
 
 /**
  * The agent's creature, editable in place: hover shows a pencil, click opens a
@@ -21,6 +22,9 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
   align?: 'center' | 'start'
 }) {
   const [open, setOpen] = useState(false)
+  // Whether the custom color editor is showing under the swatches. 
+  const isCustomColor = !(AVATAR_COLORS as readonly string[]).includes(color.toLowerCase())
+  const [customOpen, setCustomOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -49,7 +53,11 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
         aria-label="Edit avatar"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          // Opening shows the custom color editor straight away when the agent already has a custom color.
+          if (!open) setCustomOpen(isCustomColor)
+          setOpen((current) => !current)
+        }}
         className="group relative rounded-2xl outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
       >
         <Creature shape={shape} color={color} size={size} label="Agent avatar" />
@@ -97,7 +105,20 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
                   className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${color === option ? 'ring-[1.5px] ring-[var(--muted)] ring-offset-2 ring-offset-[var(--surface-elevated)]' : ''}`}
                 />
               ))}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={isCustomColor}
+                aria-label="Custom color"
+                title="Custom color"
+                onClick={() => setCustomOpen((current) => !current)}
+                style={isCustomColor
+                  ? { backgroundColor: color }
+                  : { backgroundImage: 'conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
+                className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${isCustomColor ? 'ring-[1.5px] ring-[var(--muted)] ring-offset-2 ring-offset-[var(--surface-elevated)]' : ''}`}
+              />
             </div>
+            {customOpen ? <AvatarColorPicker color={color} onChange={onColorChange} /> : null}
           </div>
         </div>
       ) : null}

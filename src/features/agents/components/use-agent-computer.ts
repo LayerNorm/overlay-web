@@ -32,6 +32,11 @@ export function useAgentComputer({
   const [computerSize, setComputerSize] = useState<ComputerSize>('default')
   const [computerOpenBusy, setComputerOpenBusy] = useState(false)
   const [computerLifecycleBusy, setComputerLifecycleBusy] = useState<'start' | 'stop' | 'delete' | null>(null)
+  // Which agent's computer has been read once (derived, so the first render already knows it is loading).
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
+  const initialLoading = Boolean(
+    !showcase && computersAvailable && activeWorkspaceId && agent && agentType === 'overlay' && loadedFor !== agent.id,
+  )
 
   // Load this agent's computer (edit mode, Overlay agents, capability on).
   // A bound machine implies the Computer tool group: force it on so the merged
@@ -39,9 +44,11 @@ export function useAgentComputer({
   useEffect(() => {
     if (showcase || !computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
     let cancelled = false
+    const agentIdForLoad = agent.id
     void overlayAppClient.computers.list(activeWorkspaceId).then(
       (result) => {
         if (cancelled) return
+        setLoadedFor(agentIdForLoad)
         const existing = result.computers.find(
           (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
         ) ?? null
@@ -54,7 +61,7 @@ export function useAgentComputer({
           }
         }
       },
-      () => undefined,
+      () => { if (!cancelled) setLoadedFor(agentIdForLoad) },
     )
     return () => { cancelled = true }
   }, [showcase, computersAvailable, activeWorkspaceId, agent, agentType, markDirty, setEnabledToolGroups])
@@ -116,6 +123,7 @@ export function useAgentComputer({
   }
 
   return {
+    initialLoading,
     agentComputer,
     setAgentComputer,
     computerSize,

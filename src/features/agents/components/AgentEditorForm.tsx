@@ -13,6 +13,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { FieldLabel } from './InfoTip'
+import { useEditorLoad } from './EditorLoadGate'
 import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
 export type AgentType = 'overlay' | 'byo'
@@ -139,6 +140,7 @@ const MEMORY_PREVIEW_COUNT = 5
 export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: string }) {
   const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  useEditorLoad(rows === null)
 
   // cancelled flag makes the fetch safe against overlapping re-runs.
   // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
