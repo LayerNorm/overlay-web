@@ -15,6 +15,7 @@ import {
   type MemoryRow,
 } from '@overlay/app-core'
 import {
+  KnowledgeCreateAccessContext,
   SharedKnowledgeSurface,
   type SharedKnowledgeFilePort,
   type SharedKnowledgeMemoryPort,
@@ -24,6 +25,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
 
@@ -175,6 +177,9 @@ export default function KnowledgeView({
 
   // The Files page shows one scope at a time (Personal, Workspace, or Archived), the same one as the secondary panel.
   const scope = usePanelScope()
+  // Nothing is added to Archived, nor to a Workspace its admin restricted.
+  const { canCreate } = useWorkspaceCreateAccess()
+  const canAdd = scope !== 'archived' && canCreate('content', newItemScope(scope) ?? 'personal')
 
   const adapters = useMemo(() => createWebKnowledgeSurfaceAdapters({
     navigate: (url, options) => options?.replace ? router.replace(url) : router.push(url),
@@ -211,20 +216,22 @@ export default function KnowledgeView({
   }), [scope])
 
   return (
-    <SharedKnowledgeSurface
-      // A new scope is a different list: start it fresh rather than patching the old one.
-      key={scope}
-      mode={mode}
-      // The server renders the Personal list, so it only seeds that scope.
-      initialFiles={scope === 'personal' ? initialFiles : undefined}
-      initialMemories={initialMemories}
-      route={route}
-      queryPending={queryPending}
-      onUpdateQuery={updateQuery}
-      adapters={adapters}
-      memories={memories}
-      files={files}
-      renderFileViewer={renderFileViewer}
-    />
+    <KnowledgeCreateAccessContext.Provider value={canAdd}>
+      <SharedKnowledgeSurface
+        // A new scope is a different list: start it fresh rather than patching the old one.
+        key={scope}
+        mode={mode}
+        // The server renders the Personal list, so it only seeds that scope.
+        initialFiles={scope === 'personal' ? initialFiles : undefined}
+        initialMemories={initialMemories}
+        route={route}
+        queryPending={queryPending}
+        onUpdateQuery={updateQuery}
+        adapters={adapters}
+        memories={memories}
+        files={files}
+        renderFileViewer={renderFileViewer}
+      />
+    </KnowledgeCreateAccessContext.Provider>
   )
 }

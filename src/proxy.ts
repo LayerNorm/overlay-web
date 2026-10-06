@@ -154,11 +154,12 @@ function createCspNonce(): string {
  * Inline scripts that ship in the statically prerendered shell, where a per-request nonce cannot be stamped, so they
  * are allowed by hash instead (only while a nonce is in force; otherwise 'unsafe-inline' covers them):
  *
- * - React's shell-time script, `requestAnimationFrame(function(){$RT=performance.now()});`. Without it `$RT` is never
- *   defined and React's Suspense reveal (`$RC`) throws a ReferenceError whenever the stream lands within ~2s of
- *   navigation start, leaving the app on its loading screen. Its text belongs to React: the CSP test recomputes this
- *   hash from the installed react-dom and fails when an upgrade changes it.
- * - The theme initializer in the root layout (`THEME_INIT_SCRIPT`), so the saved theme applies before first paint.
+ * - React's shell-time script, `requestAnimationFrame(function(){$RT=performance.now()});`. Blocked, `$RT` is never
+ *   defined, so React's batched Suspense reveal (`$RC`) skips its timing logic and falls back to requestAnimationFrame.
+ *   Its text belongs to React: the CSP test recomputes this hash from the installed react-dom and fails when an upgrade
+ *   changes it.
+ * - The theme initializer in the root layout (`THEME_INIT_SCRIPT`), so the saved theme applies before first paint
+ *   instead of after hydration.
  */
 export const INLINE_SCRIPT_HASHES = [
   "'sha256-7mu4H06fwDCjmnxxr/xNHyuQC6pLTHr4M2E4jXw5WZs='",

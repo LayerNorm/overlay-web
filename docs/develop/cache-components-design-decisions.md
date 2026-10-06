@@ -206,8 +206,7 @@ for details.
 
 With `SECURITY_CSP_NONCE=true`, only dynamically rendered paths get a per-request nonce; the static shell (PPR) ships
 inline scripts with none. Two exist and are allowed by hash in `buildCspPolicy` (`INLINE_SCRIPT_HASHES`, `src/proxy.ts`):
-React's shell-time script (`$RT`) and the theme initializer (`THEME_INIT_SCRIPT`). If `$RT` is blocked, React's Suspense
-reveal (`$RC`) throws a ReferenceError whenever the stream arrives within ~2s of navigation, and the page stays on its
-loading screen, so the app hangs on fast loads. `csp-nonce.test.ts` recomputes both hashes (React's from the installed
+React's shell-time script (`$RT`) and the theme initializer (`THEME_INIT_SCRIPT`). Blocked, the saved theme applies only after hydration and React's batched Suspense reveal falls back to `requestAnimationFrame`.
+`csp-nonce.test.ts` recomputes both hashes (React's from the installed
 `next/dist/compiled/react-dom`) and fails when an upgrade or edit changes them. Any new inline script in a prerendered
 shell needs the same treatment.

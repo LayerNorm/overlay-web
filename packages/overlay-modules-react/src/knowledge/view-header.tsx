@@ -1,6 +1,6 @@
 'use client'
 
-import type React from 'react'
+import React, { createContext, useContext } from 'react'
 import {
   ArrowLeft,
   ChevronRight,
@@ -332,6 +332,12 @@ function HeaderSearchForTab({
   return null
 }
 
+/**
+ * Whether the person may add files here. A host that shows a place where nothing can be added (an archive, or a
+ * workspace whose admin restricted creating) provides `false` and the create and upload controls are left out.
+ */
+export const KnowledgeCreateAccessContext = createContext(true)
+
 function TabActionControls({
   activeTab,
   activeFolder,
@@ -371,6 +377,7 @@ function TabActionControls({
   uploadMenuOpen: boolean
   uploadMenuRef: React.RefObject<HTMLDivElement | null>
 }) {
+  const canCreate = useContext(KnowledgeCreateAccessContext)
   if (activeTab === 'memories') {
     return (
       <>
@@ -386,6 +393,7 @@ function TabActionControls({
     )
   }
   if (activeTab === 'files') {
+    if (!canCreate) return null
     return (
       <FilesCreateUploadControls
         activeFolder={activeFolder}
