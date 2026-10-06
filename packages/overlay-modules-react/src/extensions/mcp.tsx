@@ -24,7 +24,7 @@ Trash2,
 X,
 Zap
 } from 'lucide-react'
-import { useEffect, useState,type MouseEvent } from 'react'
+import { useEffect, useState,type MouseEvent,type ReactNode } from 'react'
 import { ListboxSelect, Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
 import { useDialogFocus } from '@overlay/ui'
 
@@ -45,6 +45,8 @@ export interface McpServerDialogProps {
    */
   onConnectOAuth?: (values: McpServerFormValues) => Promise<McpMutationResult>
   onDisconnectOAuth?: (server: McpServerSummary) => Promise<McpMutationResult>
+  /** Move and archive controls for an existing server, supplied by the host (they depend on who is viewing). */
+  scopeActions?: ReactNode
 }
 
 type FormValuesUpdate = <Key extends keyof McpServerFormValues>(key: Key, value: McpServerFormValues[Key]) => void
@@ -413,9 +415,11 @@ export function McpServerDialog({
   onTest,
   onConnectOAuth,
   onDisconnectOAuth,
+  scopeActions,
 }: McpServerDialogProps) {
   const isEdit = state.mode === 'edit'
   const initial = state.server
+  const scopeLabel = initial?.archivedAt !== undefined ? 'Archived' : (initial?.scope ?? 'personal') === 'workspace' ? 'Shared with the workspace' : 'Only you'
   const [values, setValues] = useState<McpServerFormValues>(() => mcpServerToFormValues(initial))
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -459,6 +463,12 @@ export function McpServerDialog({
           <h3 id="mcp-server-dialog-title" className="text-sm font-medium text-[var(--foreground)]">{isEdit ? 'Edit MCP Server' : 'Add MCP Server'}</h3>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"><X size={16} /></button>
         </div>
+        {isEdit && scopeActions ? (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3">
+            <span className="text-xs text-[var(--muted)]">{scopeLabel}</span>
+            {scopeActions}
+          </div>
+        ) : null}
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           <McpServerFormFields values={values} update={update} />
           {isOAuth ? (

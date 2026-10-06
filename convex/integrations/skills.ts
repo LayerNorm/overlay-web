@@ -68,13 +68,19 @@ export const listDirectory = query({
     } catch {
       return []
     }
-    const all = await ctx.db
-      .query('skills')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .order('desc')
-      .collect()
-    // Archived skills are not offered to agents.
-    const filtered = all.filter((s) => s.archivedAt === undefined).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
+    // Archived skills are not offered to agents. In a workspace, skills other members shared with it are offered too:
+    // anyone's agent may use what the workspace shares.
+    const filtered = workspaceId !== undefined
+      ? await listScopedRows(ctx, {
+        userId, workspaceId, view: undefined,
+        fetchMine: async () => (await ctx.db.query('skills').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').collect())
+          // Skills from before workspaces carry no workspace and stay with their creator everywhere.
+          .filter((s) => s.workspaceId === workspaceId || s.workspaceId === undefined),
+        fetchShared: async (ws) => await ctx.db.query('skills')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+      })
+      : (await ctx.db.query('skills').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').collect())
+        .filter((s) => s.archivedAt === undefined)
     return filtered.map((s) => ({
       _id: s._id,
       name: s.name,
@@ -96,8 +102,9 @@ export const getInstructions = query({
     } catch {
       return null
     }
-    const skill = await ctx.db.get(skillId)
-    if (!skill || skill.userId !== userId) return null
+    // The creator's, or one shared with a workspace the caller belongs to.
+    const skill = await getReadableRow(ctx, { row: await ctx.db.get(skillId), userId })
+    if (!skill) return null
     return { _id: skill._id, name: skill.name, instructions: skill.instructions }
   },
 })

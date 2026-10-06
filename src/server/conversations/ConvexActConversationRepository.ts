@@ -239,10 +239,11 @@ export class ConvexActConversationRepository implements ActConversationRepositor
 
   async listSkillDirectory(args: {
     userId: string
+    workspaceId?: string
   }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>> {
     return await convex.query<Array<{ _id: string; name: string; description: string; enabled: boolean }>>(
       'integrations/skills:listDirectory',
-      { userId: args.userId, serverSecret: this.serverSecret },
+      { userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}), serverSecret: this.serverSecret },
     ) ?? []
   }
 

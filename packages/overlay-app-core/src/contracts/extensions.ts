@@ -78,6 +78,8 @@ export interface IntegrationConnectionResponse {
 
 export interface SkillSummary extends ScopedResourceFields {
   _id: string
+  /** The creator; only they can move it between scopes. */
+  userId?: string
   name: string
   description: string
   instructions: string

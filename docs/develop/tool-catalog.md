@@ -26,6 +26,15 @@ Not tool ids but granted as capabilities:
 - **Connected apps** (`integrations`): the connector provider's meta-tools (Composio: search tools, execute tools, manage connections), named by the provider at run time. They act through the person's connected accounts.
 - **Your MCP servers** (`mcp`): `search_mcp_tools` and `call_mcp_tool`, which stand in for every tool on every MCP server the person connected. A server's policy can require approval per tool.
 
+## Scope on list tools
+
+`list_notes`, `list_files`, `list_skills`, and `list_automations` take an optional `scope`: `personal` (only yours),
+`workspace` (shared with the workspace), or `archived`. Omitted, they return everything active the caller can read, which
+includes what other members shared with the workspace but never their personal items. Skills the workspace shares are also
+in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
+the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the
+server's name and tools, never the secret. Connectors are not shared yet; they stay with the account that connected them.
+
 ## Who gets what
 
 | Surface | What it gets |

@@ -168,6 +168,7 @@ export function createShowcaseWorkspaceManagementClient(
       return {
         workspaceId,
         canManage: workspace.role === 'owner' || workspace.role === 'admin',
+        canTopUp: workspace.role === 'owner' || workspace.role === 'admin',
         initialized,
         pricingVersion: 'markup_25_v1' as const,
         rollout: initialized

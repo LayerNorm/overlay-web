@@ -105,3 +105,28 @@ test('archiving records who archived and from which scope; views split by scope 
   assert.equal(rowInView(archived, 'workspace', other), false)
   assert.equal(rowInView({ ...personalByMember, archivedAt: 1, archivedFromScope: 'personal' }, 'archived', other), false)
 })
+
+test('item options offer only what the server would allow', async () => {
+  const { scopeItemOptions } = await import('./resource-scope')
+  const mine = { userId: 'member', scope: 'personal' as const }
+  const owner = { userId: 'member', role: 'member' as const }
+  const admin = { userId: 'admin', role: 'admin' as const }
+  const sharedByMember = { userId: 'member', scope: 'workspace' as const }
+  // Own personal item: move to Workspace, archive.
+  assert.deepEqual(scopeItemOptions('content', mine, owner), { moveTo: 'workspace', canArchive: true, canRestore: false })
+  // Own shared item: move back to Personal.
+  assert.equal(scopeItemOptions('content', sharedByMember, owner).moveTo, 'personal')
+  // An admin may archive someone else's workspace item, never move it.
+  assert.deepEqual(scopeItemOptions('content', sharedByMember, admin), { moveTo: null, canArchive: true, canRestore: false })
+  // Nobody touches another member's personal item.
+  assert.deepEqual(scopeItemOptions('content', mine, admin), { moveTo: null, canArchive: false, canRestore: false })
+  // Archived: restore, no move.
+  assert.deepEqual(scopeItemOptions('content', { ...mine, archivedAt: 1, archivedFromScope: 'personal' }, owner), { moveTo: null, canArchive: false, canRestore: true })
+  // Policy: moving off for members, extensions limited to admins.
+  const noMove = { workspaceExtensionsEditors: 'members' as const, workspaceContentEditors: 'members' as const, memberCanMoveScope: false }
+  assert.equal(scopeItemOptions('content', mine, owner, noMove).moveTo, null)
+  assert.equal(scopeItemOptions('content', { userId: 'admin', scope: 'personal' }, admin, noMove).moveTo, 'workspace')
+  const adminsOnlyExt = { workspaceExtensionsEditors: 'admins' as const, workspaceContentEditors: 'members' as const, memberCanMoveScope: true }
+  assert.equal(scopeItemOptions('extension', mine, owner, adminsOnlyExt).moveTo, null)
+  assert.equal(scopeItemOptions('content', mine, owner, adminsOnlyExt).moveTo, 'workspace')
+})

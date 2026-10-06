@@ -21,7 +21,7 @@ type Deps = {
   repository: BillingRepository
   rollout: (workspaceId: string) => WorkspaceBillingRolloutDecision
   usage: UsageRepository
-  workspaces: Pick<WorkspaceService, 'resolveActiveWorkspace'>
+  workspaces: Pick<WorkspaceService, 'resolveActiveWorkspace' | 'getSharingPolicy'>
 }
 
 export class WorkspaceBillingService {
@@ -45,7 +45,8 @@ export class WorkspaceBillingService {
     })
     const rollout = this.deps.rollout(access.workspace.id)
     const canManage = canManageWorkspace(access.membership.role)
-    if (!account) return emptySummary(access.workspace.id, canManage, rollout)
+    const canTopUp = await this.memberMayTopUp(access, args.actorUserId)
+    if (!account) return emptySummary(access.workspace.id, canManage, canTopUp, rollout)
     const [entitlements, subscription] = await Promise.all([
       this.deps.repository.getBillingAccountEntitlementsByServer({ billingAccountId: account.billingAccountId }),
       this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }),
@@ -64,6 +65,7 @@ export class WorkspaceBillingService {
     return {
       workspaceId: access.workspace.id,
       canManage,
+      canTopUp,
       initialized: true,
       pricingVersion: account.pricingVersion,
       rollout,
@@ -133,7 +135,7 @@ export class WorkspaceBillingService {
     workspaceId: string
     legalMetadata?: Record<string, string>
   }): Promise<{ url: string | null }> {
-    const { account, workspaceId } = await this.requireEligibleAccountManager(args)
+    const { account, workspaceId } = await this.requireEligibleTopUpAccount(args)
     if (!isValidTopUpAmount(args.amountCents)) this.fail('Unsupported top-up amount.', 400)
     const result = await this.deps.billingProvider().createCheckoutSession({
       userId: args.actorUserId,
@@ -173,7 +175,10 @@ export class WorkspaceBillingService {
     sessionId: string
     workspaceId: string
   }): Promise<{ success: true; amountCents: number; kind: 'paid_plan' | 'budget_topup' }> {
-    const { account, workspaceId } = await this.requireAccountManager(args)
+    // Whoever may start a top-up may confirm it; a plan change stays with owners and admins.
+    const { account, workspaceId } = args.kind === 'budget_topup'
+      ? await this.requireTopUpAccount(args)
+      : await this.requireAccountManager(args)
     const provider = this.deps.billingProvider()
     if (!provider.verifyCheckoutSession) this.fail('Checkout verification is unavailable.', 501)
     const verification = await provider.verifyCheckoutSession({
@@ -239,6 +244,33 @@ export class WorkspaceBillingService {
     return { account, workspaceId: access.workspace.id }
   }
 
+  /** Owners and admins may always add usage; members only when the workspace's `usageTopUpBy` setting says so. */
+  private async memberMayTopUp(access: Awaited<ReturnType<Deps['workspaces']['resolveActiveWorkspace']>>, actorUserId: string): Promise<boolean> {
+    if (canManageWorkspace(access.membership.role)) return true
+    if (access.membership.role !== 'member') return false
+    const policy = await this.deps.workspaces.getSharingPolicy({ actorUserId, workspaceId: access.workspace.id })
+    return policy.usageTopUpBy === 'members'
+  }
+
+  private async requireTopUpAccount(args: { actorUserId: string; workspaceId: string }) {
+    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    if (access.workspace.kind !== 'organization' || !(await this.memberMayTopUp(access, args.actorUserId))) {
+      this.fail('Adding usage to this workspace is limited to its owners and admins.', 403)
+    }
+    const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
+      workspaceId: access.workspace.id,
+    })
+    if (!account) this.fail('Workspace wallet is not initialized.', 404)
+    if (account.status !== 'active') this.fail('Workspace billing account is inactive.', 409)
+    return { account, workspaceId: access.workspace.id }
+  }
+
+  private async requireEligibleTopUpAccount(args: { actorUserId: string; workspaceId: string }) {
+    const result = await this.requireTopUpAccount(args)
+    this.requireRollout(result.workspaceId)
+    return result
+  }
+
   private async requireEligibleAccountManager(args: { actorUserId: string; workspaceId: string }) {
     const result = await this.requireAccountManager(args)
     this.requireRollout(result.workspaceId)
@@ -261,11 +293,13 @@ export class WorkspaceBillingService {
 function emptySummary(
   workspaceId: string,
   canManage: boolean,
+  canTopUp: boolean,
   rollout: WorkspaceBillingRolloutDecision,
 ): WorkspaceBillingSummaryResponse {
   return {
     workspaceId,
     canManage,
+    canTopUp,
     initialized: false,
     pricingVersion: 'markup_25_v1',
     rollout,

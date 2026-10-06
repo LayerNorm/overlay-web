@@ -127,7 +127,8 @@ export type McpExecutionRecord = {
 
 export interface McpServerRepository {
   list(args: { userId: string; workspaceId?: string; view?: 'personal' | 'workspace' | 'archived' }): Promise<McpServerSummary[]>
-  listEnabled(args: { userId: string; workspaceId?: string }): Promise<McpServerRecord[]>
+  /** `includeShared` adds the servers other members shared with the workspace (their creator's credentials stay server-side). */
+  listEnabled(args: { userId: string; workspaceId?: string; includeShared?: boolean }): Promise<McpServerRecord[]>
   get(args: { mcpServerId: string; userId: string; workspaceId?: string }): Promise<McpServerRecord | null>
   create(args: CreateMcpServerInput): Promise<string>
   update(args: UpdateMcpServerInput): Promise<void>

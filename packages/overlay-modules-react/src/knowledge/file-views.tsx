@@ -3,10 +3,16 @@
 import type { KnowledgeFileNode } from '@overlay/app-core'
 import { filePathLabel } from '@overlay/app-core'
 import { BookOpen, Folder, Trash2 } from 'lucide-react'
-import { useState, type MouseEvent } from 'react'
+import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { FileTypeIcon } from '../shared/file-type-icon'
 import { BulkSelectMarker } from './selection'
+
+/**
+ * Extra hover controls for a row (the web app puts Move to Workspace/Personal and Archive here, since they depend on who
+ * is viewing). Absent means none.
+ */
+export const KnowledgeRowActionsContext = createContext<((node: KnowledgeFileNode) => ReactNode) | null>(null)
 
 export function KnowledgeFileList({
   nodes,
@@ -71,6 +77,7 @@ export function FileTreeRow({
   onMove?: (fileId: string, parentId: string | null) => void
 }) {
   const [dragOver, setDragOver] = useState(false)
+  const renderRowActions = useContext(KnowledgeRowActionsContext)
   const isFileViewerSelected = node.type === 'file' && node._id === selectedId
   const isBulkSelected = Boolean(bulkSelectedIds?.has(node._id))
 
@@ -134,6 +141,11 @@ export function FileTreeRow({
           )}
           <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
         </button>
+        {!bulkSelectMode ? (
+          <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {renderRowActions?.(node)}
+          </span>
+        ) : null}
         {!bulkSelectMode ? (
           <button
             type="button"

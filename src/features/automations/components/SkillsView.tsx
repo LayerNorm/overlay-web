@@ -23,6 +23,7 @@ import { ExtensionPageHeader, SkillDialog, SkillsPanel } from '@overlay/modules-
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
 
@@ -143,6 +144,19 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           onClose={() => setDialog(null)}
           onSave={handleSaveSkill}
           onDelete={handleDeleteSkill}
+          scopeActions={dialog.mode === 'edit' && dialog.skill ? (
+            <ScopeItemActions
+              kind="extension"
+              resource="skills"
+              item={dialog.skill}
+              variant="buttons"
+              onChanged={() => {
+                setDialog(null)
+                void loadSkills()
+                dispatchSkillsChanged()
+              }}
+            />
+          ) : undefined}
         />
       ) : null}
     </AppScreenShell>

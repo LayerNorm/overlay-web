@@ -1,6 +1,6 @@
 'use client'
 
-import type { MouseEvent } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { Loader2, Pencil, Trash2, Workflow } from 'lucide-react'
 import type { AutomationSummary } from '@overlay/app-core'
 import {
@@ -30,6 +30,8 @@ export interface AutomationsInlineListProps {
   onRequestDelete: (automation: AutomationSummary, event: React.MouseEvent) => void
   onConfirmDelete: (automation: AutomationSummary, event: React.MouseEvent) => void
   onClearPendingDelete: () => void
+  /** Extra hover controls for a row (the web app adds Move and Archive, which depend on who is viewing). */
+  renderRowActions?: (automation: AutomationSummary) => ReactNode
 }
 
 export function AutomationsInlineList({
@@ -49,6 +51,7 @@ export function AutomationsInlineList({
   onRequestDelete,
   onConfirmDelete,
   onClearPendingDelete,
+  renderRowActions,
 }: AutomationsInlineListProps) {
   if (automations.length === 0) {
     return <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No automations yet</p>
@@ -139,6 +142,11 @@ export function AutomationsInlineList({
                   </button>
                 ) : (
                   <>
+                    {renderRowActions ? (
+                      <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/automation-row:opacity-100 group-focus-within/automation-row:opacity-100">
+                        {renderRowActions(automation)}
+                      </span>
+                    ) : null}
                     <button
                       type="button"
                       onClick={(event) => onBeginRename(automation, event)}

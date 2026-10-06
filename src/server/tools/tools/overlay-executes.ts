@@ -389,11 +389,11 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
 
 export async function executeListSkills(
   options: OverlayToolsOptions,
-  input: { query?: string },
+  input: { query?: string; scope?: 'personal' | 'workspace' | 'archived' },
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/skills?limit=100',
+      `/api/v1/skills?limit=100${input.scope ? `&view=${input.scope}` : ''}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -433,16 +433,17 @@ export async function executeListSkills(
 
 export async function executeListAutomations(
   options: OverlayToolsOptions,
-  input: { query?: string },
+  input: { query?: string; scope?: 'personal' | 'workspace' | 'archived' },
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/automations?limit=100',
+      `/api/v1/automations?limit=100${input.scope ? `&view=${input.scope}` : ''}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
       options.serverSecret,
       options.userId,
+      options.workspaceId,
     )
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch automations' }

@@ -222,3 +222,68 @@ describe('memories', () => {
     expect(await contents()).toEqual(['legacy', 'shared'])
   })
 })
+
+describe('what agents and search may use from the workspace', () => {
+  test("a member's agent sees skills the workspace shares, never private or archived ones", async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const mk = (userId: string, name: string, scope?: 'workspace') =>
+      convex.mutation(m('integrations/skills:create'), { ...auth, userId, name, description: 'd', instructions: `secret ${name}`, ...(scope ? { scope } : {}) }) as Promise<string>
+    const shared = await mk('alice', 'Shared', 'workspace')
+    await mk('alice', 'Private')
+    const archived = await mk('alice', 'Archived shared', 'workspace')
+    await convex.mutation(m('integrations/skills:archive'), { ...auth, userId: 'alice', id: archived })
+    await mk('bob', 'Bobs own')
+    const names = async (userId: string) =>
+      ((await convex.query(q('integrations/skills:listDirectory'), { ...auth, userId })) as Array<{ name: string }>).map((x) => x.name).sort()
+    expect(await names('bob')).toEqual(['Bobs own', 'Shared'])
+    expect(await names('alice')).toEqual(['Private', 'Shared'])
+    expect(await names('gus')).toEqual([])
+    const instructions = (userId: string, skillId: string) => convex.query(q('integrations/skills:getInstructions'), { serverSecret: secret, userId, skillId })
+    expect(await instructions('bob', shared)).toMatchObject({ name: 'Shared' })
+    expect(await instructions('gus', shared)).toBeNull()
+  })
+
+  test("a shared MCP server is offered to a member's agent only through the app server, and running it is recorded against the runner", async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const create = (name: string, scope?: 'workspace') => convex.mutation(m('integrations/mcpServers:create'), {
+      ...auth, userId: 'alice', name, transport: 'streamable-http', url: 'https://example.com/mcp', authType: 'bearer', authConfig: { bearerToken: 'sekrit' }, ...(scope ? { scope } : {}),
+    }) as Promise<string>
+    const shared = await create('Shared server', 'workspace')
+    const priv = await create('Private server')
+    const names = async (userId: string, includeShared?: boolean, withSecret = true) =>
+      ((await convex.query(q('integrations/mcpServers:listEnabled'), {
+        workspaceId, userId, ...(withSecret ? { serverSecret: secret } : {}), ...(includeShared ? { includeShared } : {}),
+      })) as Array<{ name: string }>).map((x) => x.name).sort()
+    expect(await names('bob')).toEqual([])
+    expect(await names('bob', true)).toEqual(['Shared server'])
+    expect(await names('alice', true)).toEqual(['Private server', 'Shared server'])
+    expect(await names('gus', true)).toEqual([])
+    const record = (userId: string, mcpServerId: string) => convex.mutation(m('integrations/mcpServers:recordExecution'), {
+      serverSecret: secret, userId, mcpServerId, toolName: 't', argumentsHash: 'h', policyDecision: 'allow', status: 'succeeded',
+    })
+    await record('bob', shared)
+    await expect(record('bob', priv)).rejects.toThrow(/Unauthorized/)
+    // A disabled or archived shared server is not offered.
+    await convex.mutation(m('integrations/mcpServers:archive'), { ...auth, userId: 'alice', id: shared })
+    expect(await names('bob', true)).toEqual([])
+  })
+
+  test('mention search finds what the workspace shares, not private or archived items', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const mk = (name: string, scope?: 'workspace') =>
+      convex.mutation(m('integrations/skills:create'), { ...auth, userId: 'alice', name, description: 'd', instructions: 'i', ...(scope ? { scope } : {}) }) as Promise<string>
+    await mk('roadmap shared', 'workspace')
+    await mk('roadmap private')
+    const archived = await mk('roadmap archived', 'workspace')
+    await convex.mutation(m('integrations/skills:archive'), { ...auth, userId: 'alice', id: archived })
+    const found = async (userId: string) =>
+      ((await convex.query(q('search/mentions:searchMentions'), { serverSecret: secret, workspaceId, userId, query: 'roadmap' })) as { skills: Array<{ name: string }> })
+        .skills.map((x) => x.name).sort()
+    expect(await found('bob')).toEqual(['roadmap shared'])
+    expect(await found('alice')).toEqual(['roadmap private', 'roadmap shared'])
+    expect(await found('gus')).toEqual([])
+  })
+})

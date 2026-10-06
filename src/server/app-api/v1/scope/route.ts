@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { logger } from '@/server/observability/logger'
 import { parseResourceScope, scopeErrorMessage } from '@/shared/workspaces/resource-scope'
 
 /** The Convex module behind each kind of scoped resource. Notes, outputs, and uploads are all `files`. */
@@ -56,6 +58,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ...(action === 'move' ? { to } : {}),
     }, { throwOnError: true })
     if (!outcome) return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
+    await recordScopeAudit({ context, resource, id, action, to, outcome })
     if (!outcome.ok) {
       return NextResponse.json(
         { error: scopeErrorMessage(outcome.reason), code: 'resource_scope_denied', reason: outcome.reason },
@@ -65,5 +68,33 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return NextResponse.json({ success: true })
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
+  }
+}
+
+/** Moves, archives, and restores go in the workspace's audit log (best effort: a logging failure never undoes the change). */
+async function recordScopeAudit(args: {
+  context: AppApiRouteContext
+  resource: Resource
+  id: string
+  action: Action
+  to: string | undefined
+  outcome: Outcome
+}) {
+  try {
+    await getOverlayServerContext().appData.repositories.audit.append({
+      action: `resource.${args.action}`,
+      actorType: 'user',
+      actorUserId: args.context.auth.userId,
+      outcome: args.outcome.ok ? 'success' : 'denied',
+      resourceType: args.resource,
+      resourceId: args.id,
+      metadata: {
+        workspaceId: args.context.workspace.workspace.id,
+        ...(args.to ? { to: args.to } : {}),
+        ...(args.outcome.ok ? {} : { reason: args.outcome.reason }),
+      },
+    })
+  } catch (error) {
+    logger.warn('[scope] audit event not recorded', error)
   }
 }

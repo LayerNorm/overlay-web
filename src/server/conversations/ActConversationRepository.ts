@@ -271,6 +271,7 @@ export interface ActConversationRepository {
   }): Promise<ActSkillRow[]>
   listSkillDirectory(args: {
     userId: string
+    workspaceId?: string
   }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>>
   getConversation(args: {
     conversationId: ConversationId

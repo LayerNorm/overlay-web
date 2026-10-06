@@ -171,6 +171,8 @@ export type WorkspaceBillingSubscription = {
 export type WorkspaceBillingSummaryResponse = {
   workspaceId: string
   canManage: boolean
+  /** May add credits: owners and admins always, members when the workspace lets them (`usageTopUpBy`). */
+  canTopUp: boolean
   initialized: boolean
   pricingVersion: 'markup_25_v1'
   rollout: {

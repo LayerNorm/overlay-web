@@ -2,6 +2,8 @@ import type { ResourceScope, ScopedResourceFields } from './resource-scope'
 
 export interface McpServerSummary extends ScopedResourceFields {
   _id: string
+  /** The creator; only they can move it between scopes. */
+  userId?: string
   name: string
   description?: string
   transport: 'sse' | 'streamable-http'

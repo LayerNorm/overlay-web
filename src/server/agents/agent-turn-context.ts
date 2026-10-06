@@ -119,6 +119,7 @@ export async function buildAgentTurnContext(args: {
     try {
       const directory = await server.appData.repositories.conversations.listSkillDirectory({
         userId: args.actorUserId,
+        workspaceId: args.workspaceId,
       })
       return buildSkillDirectoryContext(
         (directory ?? [])

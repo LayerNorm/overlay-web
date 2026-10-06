@@ -17,6 +17,7 @@ import {
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ArchivedScopeList, type ArchivedScopeItem } from '@/components/layout/ArchivedScopeList'
 
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
@@ -206,6 +207,18 @@ export function AutomationsInlinePanel({
         }}
         onConfirmDelete={(automation, event) => void performDeleteAutomation(automation, event)}
         onClearPendingDelete={() => setPendingDeleteAutomationId(null)}
+        renderRowActions={(automation) => (
+          <ScopeItemActions
+            kind="content"
+            resource="automations"
+            item={automation}
+            onChanged={() => {
+              // It leaves the list being viewed (moved to the other scope, or archived).
+              setAutomations((current) => removeAutomationById(current, automation._id))
+              window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
+            }}
+          />
+        )}
       />
       {hasMore ? (
         <button

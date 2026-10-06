@@ -143,7 +143,7 @@ function readNotesPage(payload: unknown): NotesPage {
 
 export async function executeListNotes(
   options: OverlayToolsOptions,
-  _input: Record<string, never>,
+  input: { scope?: 'personal' | 'workspace' | 'archived' },
 ) {
   try {
     const notes: NoteDoc[] = []
@@ -151,6 +151,7 @@ export async function executeListNotes(
     let truncated = false
     do {
       const params = new URLSearchParams({ limit: '100', sort: 'updatedAt', order: 'desc' })
+      if (input.scope) params.set('view', input.scope)
       if (cursor) params.set('cursor', cursor)
       const res = await callInternalApiGet(
         `${NOTES_PATH}?${params}`,

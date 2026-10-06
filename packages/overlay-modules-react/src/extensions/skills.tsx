@@ -16,7 +16,7 @@ ToggleRight,
 Trash2,
 X
 } from 'lucide-react'
-import { useEffect,useRef,useState,type MouseEvent } from 'react'
+import { useEffect,useRef,useState,type MouseEvent,type ReactNode } from 'react'
 import { Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
 import { useDialogFocus } from '@overlay/ui'
 
@@ -28,9 +28,11 @@ export interface SkillDialogProps {
   onClose: () => void
   onSave: (values: SkillFormValues) => Promise<boolean | void>
   onDelete: (skill: SkillSummary) => Promise<boolean | void>
+  /** Move and archive controls for an existing skill, supplied by the host (they depend on who is viewing). */
+  scopeActions?: ReactNode
 }
 
-export function SkillDialog({ state, onClose, onSave, onDelete }: SkillDialogProps) {
+export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: SkillDialogProps) {
   const isEdit = state.mode === 'edit'
   const initial = state.skill
   const [values, setValues] = useState<SkillFormValues>(() => skillToFormValues(initial))
@@ -76,6 +78,7 @@ export function SkillDialog({ state, onClose, onSave, onDelete }: SkillDialogPro
   }
 
   const dialogRef = useDialogFocus<HTMLDivElement>(true)
+  const scopeLabel = initial?.archivedAt !== undefined ? 'Archived' : (initial?.scope ?? 'personal') === 'workspace' ? 'Shared with the workspace' : 'Only you'
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -98,6 +101,12 @@ export function SkillDialog({ state, onClose, onSave, onDelete }: SkillDialogPro
             <X size={16} />
           </button>
         </div>
+        {isEdit && scopeActions ? (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3">
+            <span className="text-xs text-[var(--muted)]">{scopeLabel}</span>
+            {scopeActions}
+          </div>
+        ) : null}
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           <Field label="Name">

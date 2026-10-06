@@ -1,7 +1,10 @@
 import type { MutationSuccessResponse, PaginationQueryContract } from './common'
+import type { ScopedResourceFields } from './resource-scope'
 
-export interface KnowledgeFile {
+export interface KnowledgeFile extends ScopedResourceFields {
   _id: string
+  /** The creator; only they can move it between scopes. */
+  userId?: string
   clientId?: string
   name: string
   type: 'file' | 'folder' | 'note' | 'output' | string

@@ -123,6 +123,26 @@ export function checkMoveResource(
   return { ok: true }
 }
 
+/** What an item row offers the viewer: the scope they may move it to, and whether they may archive or restore it. */
+export type ScopeItemOptions = { moveTo: ResourceScope | null; canArchive: boolean; canRestore: boolean }
+
+/**
+ * The same rules the server enforces, as the buttons to show: only what will work. Move goes to the other scope;
+ * archive and restore are for whoever may edit the item.
+ */
+export function scopeItemOptions(
+  kind: ResourceKind,
+  row: ScopedRow,
+  viewer: ResourceViewer,
+  policy: ResourceScopePolicy = DEFAULT_RESOURCE_SCOPE_POLICY,
+): ScopeItemOptions {
+  const archived = row.archivedAt !== undefined
+  const editable = canEditResource(row, viewer)
+  const to: ResourceScope = rowScope(row) === 'workspace' ? 'personal' : 'workspace'
+  const move = checkMoveResource(kind, row, to, viewer, policy)
+  return { moveTo: move.ok ? to : null, canArchive: editable && !archived, canRestore: editable && archived }
+}
+
 /** The fields to write when archiving: the row remembers who archived it and from which scope. */
 export function archivePatch(row: ScopedRow, viewer: ResourceViewer, now: number): Required<Pick<ScopedRow, 'archivedAt' | 'archivedFromScope'>> & { archivedBy: string } {
   return { archivedAt: now, archivedBy: viewer.userId, archivedFromScope: rowScope(row) }

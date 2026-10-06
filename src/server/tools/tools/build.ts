@@ -62,6 +62,12 @@ import type { OverlayToolsOptions } from './types'
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
  */
+/** Optional on every list tool: narrows the list to one scope. Omitted means everything active the caller can see. */
+const toolScopeSchema = z
+  .enum(['personal', 'workspace', 'archived'])
+  .optional()
+  .describe('Which items to list: personal (only yours), workspace (shared with the workspace), or archived. Omit for everything active that you can see.')
+
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
@@ -199,6 +205,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       'Use the optional query parameter to filter skills by keyword.',
     inputSchema: z.object({
       query: z.string().optional().describe('Optional keyword to filter skills by name, description, or instructions'),
+      scope: toolScopeSchema,
     }),
     execute: async (input) => {
       assertToolAllowed('list_skills')
@@ -213,6 +220,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         'List the user\'s saved automations, including enabled state, schedule metadata, next run, last run, and last error. Use this in Automate mode or when the user asks about automations.',
       inputSchema: z.object({
         query: z.string().optional().describe('Optional keyword to filter automations by name, description, or instructions'),
+        scope: toolScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('list_automations')
@@ -459,6 +467,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree.',
       inputSchema: z.object({
         folderId: z.string().optional().describe('Folder id from a previous list_files result'),
+        scope: toolScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('list_files')
@@ -534,7 +543,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('list_notes')) {
     tools.list_notes = tool({
     description: 'List the user\'s notes in Overlay (id, title, tags), most recently edited first.',
-    inputSchema: z.object({}),
+    inputSchema: z.object({ scope: toolScopeSchema }),
     execute: async (input) => {
       assertToolAllowed('list_notes')
       return executeListNotes(options, input)

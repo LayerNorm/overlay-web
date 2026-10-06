@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import { assertCanCreateInScope, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
+import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 
 const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
@@ -106,8 +106,13 @@ export const listEnabled = query({
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    /**
+     * Also return the enabled servers other members shared with the workspace, for running tools (only the app server
+     * may ask: the rows carry the creator's sealed credentials, which are used on the server and never sent to a member).
+     */
+    includeShared: v.optional(v.boolean()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, includeShared }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
@@ -120,7 +125,17 @@ export const listEnabled = query({
       )
       .collect()
     // Archived servers are not offered to agents.
-    return all.filter((server) => server.archivedAt === undefined).filter((server) => (workspaceId !== undefined ? server.workspaceId === workspaceId : true))
+    // Running tools has always used all of the caller's own enabled servers, whichever workspace they were made in.
+    const mine = all.filter((server) => server.archivedAt === undefined).filter((server) => (workspaceId !== undefined && !includeShared ? server.workspaceId === workspaceId : true))
+    if (!includeShared || workspaceId === undefined || !validateServerSecret(serverSecret)) return mine
+    const shared = await listScopedRows(ctx, {
+      userId, workspaceId, view: 'workspace',
+      fetchMine: async () => [],
+      fetchShared: async (ws) => await ctx.db.query('mcpServers')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+    })
+    const have = new Set(mine.map((server) => server._id))
+    return [...mine, ...shared.filter((server) => server.enabled && !have.has(server._id))]
   },
 })
 
@@ -297,8 +312,9 @@ export const recordExecution = mutation({
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
-    const server = await ctx.db.get(args.mcpServerId)
-    if (!server || server.userId !== args.userId) throw new Error('Unauthorized')
+    // Running a tool is recorded against whoever ran it: the creator, or any member of a workspace the server is shared with.
+    const server = await getReadableRow(ctx, { row: await ctx.db.get(args.mcpServerId), userId: args.userId })
+    if (!server) throw new Error('Unauthorized')
     return await ctx.db.insert('mcpToolExecutions', {
       userId: args.userId,
       mcpServerId: args.mcpServerId,

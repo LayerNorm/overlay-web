@@ -187,6 +187,7 @@ export async function prepareActTooling(params: {
       ? Promise.resolve({ tools: {} })
       : createMcpLazyMetaTools({
           userId: params.userId,
+          workspaceId: params.workspaceId,
           accessToken: params.accessToken,
           serverSecret: params.serverSecret,
           conversationId: params.conversationId,

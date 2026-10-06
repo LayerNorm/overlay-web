@@ -123,6 +123,10 @@ function normalizeFile(file: Doc<'files'>) {
     legacyOutputId: file.legacyOutputId,
     tags: file.tags,
     textInObjectStore: file.textInObjectStore,
+    // Personal when absent; archived rows keep the scope they were archived from.
+    scope: file.scope ?? ('personal' as const),
+    archivedAt: file.archivedAt,
+    archivedFromScope: file.archivedFromScope,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     deletedAt: file.deletedAt,

@@ -29,6 +29,7 @@ import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
 
@@ -245,6 +246,19 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
           onTest={handleTestServer}
           onConnectOAuth={handleConnectOAuth}
           onDisconnectOAuth={handleDisconnectOAuth}
+          scopeActions={dialog.mode === 'edit' && dialog.server ? (
+            <ScopeItemActions
+              kind="extension"
+              resource="mcp-servers"
+              item={dialog.server}
+              variant="buttons"
+              onChanged={() => {
+                setDialog(null)
+                void loadServers()
+                dispatchMcpsChanged()
+              }}
+            />
+          ) : undefined}
         />
       ) : null}
     </AppScreenShell>

@@ -48,6 +48,38 @@ test('workspace billing rejects members before any Stripe operation', async () =
   assert.equal(providerCalls, 0)
 })
 
+test('members may add usage only when the workspace lets them, and never change the plan', async () => {
+  const checkouts: Array<Record<string, unknown>> = []
+  const recording = provider({
+    async createCheckoutSession(input) {
+      checkouts.push(input as unknown as Record<string, unknown>)
+      return { url: 'https://checkout.test' }
+    },
+  })
+  const allowed = fixture({ role: 'member', usageTopUpBy: 'members', provider: recording })
+  assert.deepEqual(
+    await allowed.createTopUp({ actorUserId: 'member_1', workspaceId: 'workspace_1', amountCents: 800 }),
+    { url: 'https://checkout.test' },
+  )
+  assert.equal(checkouts[0]?.kind, 'budget_topup')
+  assert.equal((await allowed.summary({ actorUserId: 'member_1', workspaceId: 'workspace_1' })).canTopUp, true)
+  assert.equal((await allowed.summary({ actorUserId: 'member_1', workspaceId: 'workspace_1' })).canManage, false)
+  await assert.rejects(
+    allowed.createSubscriptionCheckout({
+      actorUserId: 'member_1', workspaceId: 'workspace_1', planAmountCents: 800, topUpAmountCents: 800,
+    }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
+  )
+  const restricted = fixture({ role: 'member', usageTopUpBy: 'admins', provider: recording })
+  assert.equal((await restricted.summary({ actorUserId: 'member_1', workspaceId: 'workspace_1' })).canTopUp, false)
+  const guest = fixture({ role: 'guest', usageTopUpBy: 'members', provider: recording })
+  await assert.rejects(
+    guest.createTopUp({ actorUserId: 'guest_1', workspaceId: 'workspace_1', amountCents: 800 }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
+  )
+  assert.equal(checkouts.length, 1)
+})
+
 test('workspace verification writes only the account-keyed subscription', async () => {
   const accountUpserts: Array<Record<string, unknown>> = []
   const service = fixture({
@@ -76,7 +108,8 @@ test('workspace verification writes only the account-keyed subscription', async 
 function fixture(args: {
   provider?: BillingProvider
   repository?: BillingRepository
-  role: 'owner' | 'admin' | 'member'
+  role: 'owner' | 'admin' | 'member' | 'guest'
+  usageTopUpBy?: 'members' | 'admins'
 }) {
   return new WorkspaceBillingService({
     baseUrl: () => 'https://overlay.test',
@@ -100,7 +133,10 @@ function fixture(args: {
         }
       },
     } as UsageRepository,
-    workspaces: { resolveActiveWorkspace: async () => access(args.role) },
+    workspaces: {
+      resolveActiveWorkspace: async () => access(args.role as 'member'),
+      getSharingPolicy: async () => ({ usageTopUpBy: args.usageTopUpBy ?? 'admins' }) as never,
+    },
   })
 }
 

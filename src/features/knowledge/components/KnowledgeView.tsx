@@ -15,16 +15,21 @@ import {
   type MemoryRow,
 } from '@overlay/app-core'
 import {
+  KnowledgeBulkActionsContext,
   KnowledgeCreateAccessContext,
+  KnowledgeRowActionsContext,
   SharedKnowledgeSurface,
   type SharedKnowledgeFilePort,
   type SharedKnowledgeMemoryPort,
+  type KnowledgeBulkSelection,
   type SharedKnowledgeRouteState,
 } from '@overlay/modules-react/knowledge'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
+import { ScopeBulkActions } from '@/components/layout/ScopeBulkActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
@@ -215,8 +220,35 @@ export default function KnowledgeView({
     },
   }), [scope])
 
+  // Move and Archive on a hovered row. The item leaves the list being viewed either way, so it is dropped from it.
+  const renderRowActions = useCallback((node: KnowledgeFileNode) => (
+    <ScopeItemActions
+      kind="content"
+      resource="files"
+      item={node}
+      onChanged={() => publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')}
+    />
+  ), [])
+
+  const renderBulkActions = useCallback(({ nodes, afterChange }: KnowledgeBulkSelection) => (
+    <ScopeBulkActions
+      kind="content"
+      resource="files"
+      items={nodes}
+      onDone={(changedIds, all) => {
+        // The changed items left this list; when every one did, select mode ends too.
+        if (all) afterChange()
+        for (const node of nodes) {
+          if (changedIds.includes(node._id)) publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')
+        }
+      }}
+    />
+  ), [])
+
   return (
     <KnowledgeCreateAccessContext.Provider value={canAdd}>
+    <KnowledgeRowActionsContext.Provider value={renderRowActions}>
+    <KnowledgeBulkActionsContext.Provider value={renderBulkActions}>
       <SharedKnowledgeSurface
         // A new scope is a different list: start it fresh rather than patching the old one.
         key={scope}
@@ -232,6 +264,8 @@ export default function KnowledgeView({
         files={files}
         renderFileViewer={renderFileViewer}
       />
+    </KnowledgeBulkActionsContext.Provider>
+    </KnowledgeRowActionsContext.Provider>
     </KnowledgeCreateAccessContext.Provider>
   )
 }

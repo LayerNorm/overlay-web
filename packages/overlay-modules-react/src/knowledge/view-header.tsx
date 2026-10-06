@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext } from 'react'
+import React, { createContext, useContext, type ReactNode } from 'react'
 import {
   ArrowLeft,
   ChevronRight,
@@ -199,6 +199,8 @@ function BulkSelectControls({
   selectedMemoryCount: number
   selectedOutputCount: number
 }) {
+  const renderBulkActions = useContext(KnowledgeBulkActionsContext)
+  const bulkSelection = useContext(KnowledgeBulkSelectionContext)
   if (activeTab !== 'memories' && activeTab !== 'files' && activeTab !== 'outputs') return null
   const selectedCount =
     activeTab === 'memories'
@@ -226,6 +228,7 @@ function BulkSelectControls({
       <button type="button" onClick={onExitSelectMode} className={TOOLBAR_FILLED_BUTTON_CLASS}>
         Cancel
       </button>
+      {activeTab === 'files' && bulkSelection && selectedCount > 0 ? renderBulkActions?.(bulkSelection) : null}
       <button
         type="button"
         disabled={bulkDeleting || selectedCount === 0}
@@ -337,6 +340,20 @@ function HeaderSearchForTab({
  * workspace whose admin restricted creating) provides `false` and the create and upload controls are left out.
  */
 export const KnowledgeCreateAccessContext = createContext(true)
+
+/** The files selected in select mode, and what to call once they have left this list. */
+export interface KnowledgeBulkSelection {
+  nodes: readonly FileNode[]
+  afterChange: () => void
+}
+
+export const KnowledgeBulkSelectionContext = createContext<KnowledgeBulkSelection | null>(null)
+
+/**
+ * Extra bulk controls shown beside Delete in select mode (the web app adds Move and Archive, which depend on who is
+ * viewing). Absent means none.
+ */
+export const KnowledgeBulkActionsContext = createContext<((selection: KnowledgeBulkSelection) => ReactNode) | null>(null)
 
 function TabActionControls({
   activeTab,

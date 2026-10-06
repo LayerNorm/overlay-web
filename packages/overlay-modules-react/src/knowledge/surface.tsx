@@ -19,7 +19,7 @@ import {
 } from './dialogs'
 import { KnowledgeFileDetailPanel } from './file-detail-panel'
 import { HiddenKnowledgeFileInputs, KnowledgeFilesPanel, KnowledgeMemoriesPanel } from './panels'
-import { KnowledgeViewHeader } from './view-header'
+import { KnowledgeBulkSelectionContext, KnowledgeViewHeader, type KnowledgeBulkSelection } from './view-header'
 import { AppScreenBody, AppScreenShell } from '../shell'
 import {
   useFileMutations,
@@ -432,6 +432,11 @@ export function SharedKnowledgeSurface({
     updateQuery,
   })
 
+  const bulkSelection: KnowledgeBulkSelection = {
+    nodes: files.filter((file) => select.selectedFileIds.has(file._id)),
+    afterChange: select.dropSelectedFromView,
+  }
+
   const uploads = useFileUploads({
     adapters,
     filePort,
@@ -478,6 +483,7 @@ export function SharedKnowledgeSurface({
           void uploads.uploadFiles(Array.from(event.dataTransfer.files), false)
         } : undefined}
         header={
+          <KnowledgeBulkSelectionContext.Provider value={bulkSelection}>
           <KnowledgeViewHeader
             activeFolder={activeFolder}
             activeTab={activeTab}
@@ -536,6 +542,7 @@ export function SharedKnowledgeSurface({
             uploadMenuOpen={uploadMenuOpen}
             uploadMenuRef={uploadMenuRef}
           />
+          </KnowledgeBulkSelectionContext.Provider>
         }
       >
         {/* ── Main content ── */}

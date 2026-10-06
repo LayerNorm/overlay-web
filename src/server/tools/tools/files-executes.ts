@@ -97,7 +97,7 @@ function summarize(file: FileSummary) {
 
 export async function executeListFiles(
   options: OverlayToolsOptions,
-  input: { folderId?: string },
+  input: { folderId?: string; scope?: 'personal' | 'workspace' | 'archived' },
 ) {
   try {
     // The list endpoint returns at most 100 rows per page.
@@ -107,6 +107,7 @@ export async function executeListFiles(
     do {
       const params = new URLSearchParams({ summary: 'true', page: 'true', limit: '100' })
       if (input.folderId) params.set('parentId', input.folderId)
+      if (input.scope) params.set('view', input.scope)
       if (cursor) params.set('cursor', cursor)
       const res = await get(options, params)
       if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list files') }

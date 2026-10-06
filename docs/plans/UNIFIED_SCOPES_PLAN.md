@@ -266,7 +266,26 @@ Original steps, for reference:
 - Docs: `docs/develop/interface-design.md`, the sidebar notes in `docs/develop/architecture.mdx`. Prototype the panel in `artifacts/` first (per AGENTS.md) and get sign-off before app code.
 - Exit: all five pages use the shell; visual check in production on each; the Agents page is unchanged except for the shared shell.
 
-### Phase 4: sharing and admin controls
+### Phase 4: sharing and admin controls (done 2026-10-05)
+
+Commit: `WORKSPACE SCOPING 4`.
+
+- **Item actions**: Move to Workspace/Personal, Archive, and Restore on hovered file/note rows, on automation rows, in the skill and MCP server dialogs, and in bulk for selected files (`ScopeItemActions`, `ScopeBulkActions`, rules in `scopeItemOptions`). A button shows only when the server would allow it, so Move disappears for members when `memberCanMoveScope` is off.
+- **Audit**: every move, archive, restore, and denial is written to the audit log (`resource.move|archive|restore`).
+- **Usage top-ups** follow `usageTopUpBy`: owners and admins always; members (not guests) when the setting is `members`. The billing summary has `canTopUp`; members who may top up see only the top-up card (plan changes stay with owners and admins).
+- **Agents use what the workspace shares**: skills (the directory every agent gets, `getInstructions`) and MCP servers (`search_mcp_tools`/`call_mcp_tool`; the server runs with its creator's credentials server-side, the member and the model never receive them, and only the app server may ask for shared rows). Running a shared tool is recorded against whoever ran it.
+- **Search and tools**: mention search finds what the workspace shares (never private or archived items); `list_notes`, `list_files`, `list_skills`, and `list_automations` take an optional `scope`. `tool-catalog.md` updated.
+- **Fix**: file rows now carry `scope`, `archivedAt`, `archivedFromScope` (the Archived tag was always "Personal" for files).
+- The settings page toggles and their copy were already in place from Phase 2 (disabled with an explanation for non-admins).
+
+Not done:
+
+- **Connector sharing** (running a member's agent through a teammate's connected account). Connectors are Composio accounts; sharing needs the integration provider to act with another user's account, which I could not verify, so connectors stay with their owner and the Workspace connectors page still says "coming soon".
+- **Note editor and file detail panes** have no Move/Archive buttons yet (rows and bulk do); card layout rows have none either.
+- Full-text/semantic file search (`search_knowledge`, `search_in_files`) still covers only the caller's own files; shared files are found by name (mentions) and listed by `list_files`.
+- Restoring an archived automation leaves it off; turn it back on by hand.
+
+Original steps, for reference:
 
 - Workspace settings UI for the four policy settings; clear copy for each, and disabled controls with an explanation for non-admins.
 - Move-to-workspace and move-to-personal actions on items (and bulk), hidden when `memberCanMoveScope` is off.

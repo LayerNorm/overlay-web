@@ -231,7 +231,7 @@ function WalletOverview({
   billing: WorkspaceBilling
 }) {
   const { busy, run } = billing
-  const checkoutAvailable = summary.canManage && summary.rollout.checkoutEnabled
+  const checkoutAvailable = summary.canTopUp && summary.rollout.checkoutEnabled
 
   return (
     <>
@@ -244,7 +244,7 @@ function WalletOverview({
 
       {summary.canManage ? (
         <div className="flex justify-end"><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspaceId))}>Manage billing</Button></div>
-      ) : <p className="text-xs text-[var(--muted)]">Only workspace owners and admins can add credits or change the subscription.</p>}
+      ) : <p className="text-xs text-[var(--muted)]">{summary.canTopUp ? 'Only workspace owners and admins can change the subscription.' : 'Only workspace owners and admins can add credits or change the subscription.'}</p>}
 
       {summary.observability ? <MarginPanel report={summary.observability} /> : null}
     </>
@@ -308,10 +308,10 @@ function CheckoutActions({
   return (
     <>
       <div className="grid gap-3 lg:grid-cols-2">
-        <BillingActionCard title="Monthly workspace credits" description="Choose a recurring allowance from $8 to $200. Existing personal subscriptions are untouched.">
+        {summary.canManage ? <BillingActionCard title="Monthly workspace credits" description="Choose a recurring allowance from $8 to $200. Existing personal subscriptions are untouched.">
           <Select aria-label="Workspace monthly plan" value={String(planAmountCents)} onChange={(event) => setPlanAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100}/month`}</option>)}</Select>
           <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspaceId, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
-        </BillingActionCard>
+        </BillingActionCard> : null}
         <BillingActionCard title="One-time top-up" description="Add credits directly to this workspace. Personal-wallet transfers are not supported.">
           <Select aria-label="Workspace top-up" value={String(topUpAmountCents)} onChange={(event) => setTopUpAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100} in credits`}</option>)}</Select>
           <Button size="sm" variant="ghost" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('topup', () => client.createBillingTopUp(workspaceId, { amountCents: topUpAmountCents, ...currentLegalAcceptancePayload() }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
