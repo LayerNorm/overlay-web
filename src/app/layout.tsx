@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "katex/dist/katex.min.css";
 import "@overlay/chat-react/chat-surface.css";
 import "./globals.css";
+import { THEME_INIT_SCRIPT } from "@/shared/app/theme-init-script";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://getoverlay.io"),
@@ -57,23 +58,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function () {
-                try {
-                  var raw = window.localStorage.getItem('overlay.app.settings');
-                  if (!raw) return;
-                  var theme = JSON.parse(raw).theme;
-                  if (theme === 'light' || theme === 'dark') {
-                    document.documentElement.dataset.theme = theme;
-                    document.documentElement.style.colorScheme = theme;
-                  }
-                } catch (_) {}
-              })();
-            `,
-          }}
-        />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="antialiased bg-background text-foreground">
         {children}
