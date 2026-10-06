@@ -10906,6 +10906,19 @@
                 "0"
               ]
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "personal",
+                "workspace",
+                "archived"
+              ]
+            }
           }
         ]
       },
@@ -10986,6 +10999,13 @@
                   },
                   "content": {
                     "type": "string"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "personal",
+                      "workspace"
+                    ]
                   },
                   "noteId": {
                     "type": "string",
@@ -11078,6 +11098,13 @@
                   },
                   "content": {
                     "type": "string"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "personal",
+                      "workspace"
+                    ]
                   }
                 },
                 "additionalProperties": false

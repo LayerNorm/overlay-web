@@ -75,6 +75,8 @@ import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js
 import type * as lib_gatewayCredits from "../lib/gatewayCredits.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_metrics from "../lib/metrics.js";
+import type * as lib_resourceScope from "../lib/resourceScope.js";
+import type * as lib_scopeMutations from "../lib/scopeMutations.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
 import type * as mcp_grants from "../mcp/grants.js";
 import type * as migrations_backfillAgentThreads from "../migrations/backfillAgentThreads.js";
@@ -175,6 +177,8 @@ declare const fullApi: ApiFromModules<{
   "lib/gatewayCredits": typeof lib_gatewayCredits;
   "lib/logging": typeof lib_logging;
   "lib/metrics": typeof lib_metrics;
+  "lib/resourceScope": typeof lib_resourceScope;
+  "lib/scopeMutations": typeof lib_scopeMutations;
   "lib/workspaceMembership": typeof lib_workspaceMembership;
   "mcp/grants": typeof mcp_grants;
   "migrations/backfillAgentThreads": typeof migrations_backfillAgentThreads;

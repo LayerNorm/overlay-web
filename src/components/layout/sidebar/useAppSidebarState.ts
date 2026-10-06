@@ -8,6 +8,8 @@ import {
   resolveSidebarActionForPath,
 } from '@overlay/app-core'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSavedPanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { toolsInlineItems } from '@/components/layout/sidebar-nav'
@@ -35,6 +37,7 @@ import {
   resolveNavItemDestination,
   resolveResourceAction,
   resolveShowcasePrimaryLinks,
+  scopePanelAction,
   resolveSidebarRouteState,
   selectMobileAdmin,
   selectMobileNavItem,
@@ -345,7 +348,21 @@ function useSidebarPanelChrome(args: {
     beginSecondaryNavigation,
   })
 
-  const panelAction = routeState.hasResourcePanel ? resourceAction : null
+  const { access: createAccess, viewer: createViewer, canCreate } = useWorkspaceCreateAccess()
+  const panelAction = routeState.hasResourcePanel
+    ? scopePanelAction({
+      action: resourceAction,
+      panelKind: routeState.panelKind,
+      scope: routeState.scope,
+      chatsView: routeState.chatsView,
+      rules: {
+        canCreate,
+        isManager: createViewer?.role === 'owner' || createViewer?.role === 'admin',
+        memberCanCreateChannels: createAccess.memberCanCreateChannels,
+        memberCanCreateAgents: createAccess.memberCanCreateAgents,
+      },
+    })
+    : null
   const panelSearch = routeState.hasResourcePanel && contextualSearchCategory
     ? {
       title: contextualSearchCategory === 'chat' ? 'Search chats (⌘K)' : 'Search files (⌘K)',
@@ -478,11 +495,13 @@ function useSidebarDerivedPanels(args: {
     mobileAccountRef,
     mobileMenuOpen,
   } = args
+  const savedScope = useSavedPanelScope()
   const routeState = resolveSidebarRouteState({
     pathname,
     searchParams: currentSearchParams,
     resolveWorkspaceSurface,
     automationsEnabled,
+    savedScope,
   })
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
 

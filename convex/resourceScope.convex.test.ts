@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import { fileKeyPrefixForUser } from '../src/shared/storage/storage-keys'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'resource-scope-secret'
@@ -180,6 +181,28 @@ describe('MCP servers and connectors', () => {
     expect(seenByBob[0]).not.toHaveProperty('connectedAccountId')
     const seenByAlice = await convex.query(q('integrations/workspaceConnectors:listScopedByWorkspace'), { workspaceId, userId: 'alice', serverSecret: secret }) as Array<Record<string, unknown>>
     expect(seenByAlice[0]).toHaveProperty('connectedAccountId', 'acct-secret')
+  })
+})
+
+describe('uploads', () => {
+  test('an upload and an extracted document follow the same create rule as other files', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex, { workspaceContentEditors: 'admins' })
+    const upload = (userId: string, scope?: 'personal' | 'workspace') => convex.mutation(m('files/files:createWithStorage'), {
+      ...auth, userId, name: 'a.png', r2Key: `${fileKeyPrefixForUser(userId)}a.png`, sizeBytes: 10, ...(scope ? { scope } : {}),
+    })
+    const extracted = (userId: string, scope?: 'personal' | 'workspace') => convex.mutation(m('files/files:createExtractedDocument'), {
+      ...auth, userId, r2Key: `${fileKeyPrefixForUser(userId)}b.pdf`, mimeType: 'application/pdf', sourceSizeBytes: 10,
+      parts: [{ name: 'b.pdf', content: 'text', contentHash: 'h' }], ...(scope ? { scope } : {}),
+    })
+    // Personal needs no scope, and a member may not put either into the workspace here.
+    await upload('alice')
+    await expect(upload('alice', 'workspace')).rejects.toThrow(/workspace_creation_restricted/)
+    await expect(extracted('alice', 'workspace')).rejects.toThrow(/workspace_creation_restricted/)
+    // An admin may, and what they add is visible to members.
+    await upload('admin', 'workspace')
+    const names = ((await convex.query(q('files/files:list'), { ...auth, userId: 'bob', view: 'workspace' })) as Array<{ name: string }>).map((f) => f.name)
+    expect(names).toEqual(['a.png'])
   })
 })
 

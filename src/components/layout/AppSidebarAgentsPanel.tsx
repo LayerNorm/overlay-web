@@ -641,7 +641,8 @@ export function AgentsInlinePanel({
   // deliberate tab choice and stays untouched.
   useEffect(() => {
     if (loading || !activeAgentId || !searchParams || viewerPrincipalId == null) return
-    const viewParam = searchParams.get('view')
+    // `?view=` is how the tab was spelled before scopes.
+    const viewParam = searchParams.get('scope') ?? searchParams.get('view')
     if (viewParam === 'personal' || viewParam === 'workspace' || viewParam === 'archived') return
     const active = agents.find((agent) => agent.id === activeAgentId)
     if (!active) return
@@ -653,8 +654,9 @@ export function AgentsInlinePanel({
     const wanted = correctView === 'personal' ? null : correctView
     if (viewParam === wanted) return
     const params = new URLSearchParams(searchParams.toString())
-    if (wanted) params.set('view', wanted)
-    else params.delete('view')
+    params.delete('view')
+    if (wanted) params.set('scope', wanted)
+    else params.delete('scope')
     router.replace(`${pathname}?${params.toString()}`)
   }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname])
 

@@ -18,11 +18,12 @@ export const resourceRowClass =
 export type AgentsPanelView = 'personal' | 'workspace' | 'archived'
 
 function agentViewParams(init: Record<string, string>, view?: AgentsPanelView) {
-  // `view` is the agents panel's own tab (personal|workspace|archived), not
-  // the chats vocabulary — a 'dms' marker here resolves to 'personal' and
-  // hides workspace agents from the list. Personal stays param-free.
+  // `scope` is the panel's scope (personal|workspace|archived; it replaced the
+  // agents-only `?view=` tab, which is still read from old links) — never the
+  // chats `view` vocabulary, where a 'dms' marker would hide workspace agents.
+  // Personal stays param-free.
   const params = new URLSearchParams(init)
-  if (view === 'workspace' || view === 'archived') params.set('view', view)
+  if (view === 'workspace' || view === 'archived') params.set('scope', view)
   return params
 }
 

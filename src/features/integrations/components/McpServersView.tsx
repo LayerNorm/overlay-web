@@ -28,6 +28,9 @@ import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
+import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
 
 interface DialogState {
   mode: 'create' | 'edit'
@@ -40,6 +43,9 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const scope = usePanelScope()
+  const { canCreate } = useWorkspaceCreateAccess()
+  const canAdd = canCreate('extension', scopeForNewItem(scope))
 
   const dispatchMcpsChanged = useCallback(() => {
     window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
@@ -48,15 +54,16 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
 
   const loadServers = useCallback(async () => {
     try {
-      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100 }))
+      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100, view: scope }))
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [scope])
 
   useEffect(() => {
+    setLoading(true)
     void loadServers()
   }, [loadServers])
 
@@ -89,7 +96,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       return { ok: true }
     }
 
-    const res = await overlayAppClient.mcpServers.createResponse(createMcpCreateRequest(values))
+    const res = await overlayAppClient.mcpServers.createResponse({ ...createMcpCreateRequest(values), scope: newItemScope(scope) })
     if (!res.ok) return failure(res, 'Could not add this MCP server.')
     const { id } = (await res.json()) as { id: string }
     setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values)))
@@ -108,7 +115,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       let mcpServerId = dialog?.mode === 'edit' ? dialog.server?._id : undefined
 
       if (!mcpServerId) {
-        const created = await overlayAppClient.mcpServers.createResponse(createMcpCreateRequest(values))
+        const created = await overlayAppClient.mcpServers.createResponse({ ...createMcpCreateRequest(values), scope: newItemScope(scope) })
         if (!created.ok) {
           oauthTab?.close()
           return failure(created, 'Could not save this MCP server.')
@@ -207,7 +214,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
           searchQuery={searchQuery}
           searchPlaceholder="Search servers…"
           searchTitle="Search servers"
-          action={(
+          action={canAdd ? (
             <button
               onClick={() => setDialog({ mode: 'create' })}
               className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
@@ -215,7 +222,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
               <Plus size={12} />
               Add Server
             </button>
-          )}
+          ) : undefined}
           onSearchQueryChange={setSearchQuery}
         />
       }
@@ -224,7 +231,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
         loading={loading}
         servers={servers}
         filteredServers={filteredServers}
-        onCreate={() => setDialog({ mode: 'create' })}
+        onCreate={canAdd ? () => setDialog({ mode: 'create' }) : undefined}
         onEdit={(server) => setDialog({ mode: 'edit', server })}
         onToggle={(server, event) => void handleQuickToggle(server, event)}
       />

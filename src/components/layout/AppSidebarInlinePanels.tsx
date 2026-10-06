@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
-import { Loader2 } from 'lucide-react'
+import { ChevronRight, Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
@@ -24,12 +24,40 @@ import {
 import { FilesInlineTree } from '@overlay/modules-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { ArchivedScopeList, type ArchivedScopeItem } from '@/components/layout/ArchivedScopeList'
+import { withPanelScope } from '@/shared/workspaces/panel-scope'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 
 import { arrayOrEmpty } from './sidebar-nav'
 const nextSidebarMutation = createKnowledgeMutationPublisher(
   `web-sidebar:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
 )
+
+async function loadArchivedFiles(): Promise<ArchivedScopeItem[]> {
+  const [fileRows, noteRows] = await Promise.all([
+    overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true, view: 'archived' }),
+    overlayAppClient.notes.get<NoteDoc[]>({ limit: 100, view: 'archived' }),
+  ])
+  const files = arrayOrEmpty<FileTreeEntry>(fileRows)
+  const seen = new Set(files.map((file) => file._id))
+  const notes = arrayOrEmpty<NoteDoc>(noteRows).map(noteDocToKnowledgeFile).filter((note) => !seen.has(note._id))
+  return [...files, ...notes]
+    // A folder's contents are archived with it; list only the top of each archived subtree.
+    .filter((file, _index, all) => !file.parentId || !all.some((other) => other._id === file.parentId))
+    .map((file) => {
+      const scoped = file as FileTreeEntry & { archivedFromScope?: 'personal' | 'workspace'; scope?: 'personal' | 'workspace' }
+      const params = new URLSearchParams(file.type === 'folder' ? { folder: file._id } : { [fileTreeRouteView(file) === 'note' ? 'id' : 'file']: file._id })
+      params.set('scope', 'archived')
+      const base = file.type !== 'folder' && fileTreeRouteView(file) === 'note' ? '/app/notes' : '/app/files'
+      return {
+        id: file._id,
+        name: file.name,
+        from: scoped.archivedFromScope ?? scoped.scope ?? 'personal',
+        href: `${base}?${params}`,
+      }
+    })
+}
 
 export function FilesInlinePanel({
   searchQuery = '',
@@ -46,11 +74,12 @@ export function FilesInlinePanel({
   const activeFileId = searchParams?.get('file') ?? null
   const activeNoteId = searchParams?.get('id') ?? null
   const activeCanonicalFileId = activeFileId ?? activeNoteId
+  const scope = usePanelScope()
 
   const fetchItems = useCallback(async (signal?: AbortSignal): Promise<FileTreeEntry[]> => {
     const [fileRows, noteRows] = await Promise.all([
-      overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true }, { signal }),
-      overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),
+      overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true, view: scope }, { signal }),
+      overlayAppClient.notes.get<NoteDoc[]>({ limit: 100, view: scope }, { signal }),
     ])
     const files = arrayOrEmpty<FileTreeEntry>(fileRows)
     const fileIds = new Set(files.map((file) => file._id))
@@ -58,7 +87,7 @@ export function FilesInlinePanel({
       .map(noteDocToKnowledgeFile)
       .filter((note) => !fileIds.has(note._id))
     return [...files, ...notes]
-  }, [])
+  }, [scope])
 
   const loadItems = useCallback(async () => {
     try {
@@ -141,14 +170,14 @@ export function FilesInlinePanel({
 
   function openFile(file: FileTreeEntry) {
     if (file.type === 'folder') {
-      router.push(`/app/files?folder=${encodeURIComponent(file._id)}`)
+      router.push(`/app/files?${withPanelScope(new URLSearchParams({ folder: file._id }), scope)}`)
       onNavigate?.()
       return
     }
     if (fileTreeRouteView(file) === 'note') {
-      router.push(`/app/notes?id=${encodeURIComponent(file._id)}`)
+      router.push(`/app/notes?${withPanelScope(new URLSearchParams({ id: file._id }), scope)}`)
     } else {
-      router.push(`/app/files?file=${encodeURIComponent(file._id)}`)
+      router.push(`/app/files?${withPanelScope(new URLSearchParams({ file: file._id }), scope)}`)
     }
     onNavigate?.()
   }
@@ -166,6 +195,19 @@ export function FilesInlinePanel({
 
   const q = searchQuery.trim()
   const filteredFiles = useMemo(() => filterFilesForTreeSearch(files, q), [files, q])
+
+  // Archived is one flat list of everything archived, each tagged with where it came from.
+  if (scope === 'archived') {
+    return (
+      <ArchivedScopeList
+        resource="files"
+        emptyLabel="Nothing archived"
+        onOpen={onNavigate}
+        load={loadArchivedFiles}
+        onRestored={() => window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))}
+      />
+    )
+  }
 
   return (
     <SidebarResourceList>
@@ -197,12 +239,16 @@ export interface InlineNavItem {
   /** Items with an href render as links so they support open-in-new-tab. */
   href?: string
   badgeCount?: number
+  /** Rows shown indented beneath this one while it is `expanded`. */
+  children?: ReadonlyArray<InlineNavItem>
+  expanded?: boolean
 }
 
 export function InlineNavChildren({
   id,
   items,
   activeId,
+  activeChildId,
   pendingId,
   onSelect,
   className = 'mt-1 space-y-0.5 pl-7',
@@ -212,67 +258,84 @@ export function InlineNavChildren({
   /** Empty when the section is open but not the current route, so an expanded
    * dropdown never implies a selection the person did not make. */
   activeId: string
+  /** The selected row among an expanded item's `children`. */
+  activeChildId?: string
   pendingId?: string | null
   /** Also fires for href items on link click, so callers can close chrome. */
   onSelect: (id: string) => void
   /** Container override — the default indents children under a nav row. */
   className?: string
 }) {
+  function renderRow(item: InlineNavItem, active: boolean, nested: boolean) {
+    const itemClass = `flex ${nested ? 'h-8' : 'h-9'} w-full items-center gap-2.5 rounded-md px-3 ${nested ? 'text-[13px]' : 'text-sm'} transition-colors ${
+      item.locked
+        ? 'cursor-default text-[var(--muted-light)]'
+        : active
+          ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+    }`
+    const content = (
+      <>
+        {pendingId === item.id ? (
+          <Loader2 size={nested ? 14 : 15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
+        ) : item.icon ? <item.icon size={nested ? 14 : 15} className="shrink-0" aria-hidden /> : null}
+        <span className="flex-1 text-left">{item.label}</span>
+        {item.badgeCount ? (
+          <span
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium leading-none text-[var(--foreground)]"
+            aria-label={`${item.badgeCount} unread`}
+          >
+            {item.badgeCount > 9 ? '9+' : item.badgeCount}
+          </span>
+        ) : null}
+        {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
+        {item.expanded && item.children?.length ? (
+          <ChevronRight size={13} className="shrink-0 rotate-90 text-[var(--muted-light)]" aria-hidden />
+        ) : null}
+      </>
+    )
+    if (item.href && !item.locked) {
+      return (
+        <Link
+          key={item.id}
+          href={item.href}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+            onSelect(item.id)
+          }}
+          className={itemClass}
+        >
+          {content}
+        </Link>
+      )
+    }
+    return (
+      <button
+        key={item.id}
+        type="button"
+        aria-expanded={item.children?.length ? Boolean(item.expanded) : undefined}
+        onClick={() => {
+          if (!item.locked) onSelect(item.id)
+        }}
+        className={itemClass}
+      >
+        {content}
+      </button>
+    )
+  }
+
   return (
     <div id={id} className={className}>
-      {items.map((item) => {
-        const itemClass = `flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
-          item.locked
-            ? 'cursor-default text-[var(--muted-light)]'
-            : activeId === item.id
-              ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-              : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-        }`
-        const content = (
-          <>
-            {pendingId === item.id ? (
-              <Loader2 size={15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
-            ) : item.icon ? <item.icon size={15} className="shrink-0" aria-hidden /> : null}
-            <span className="flex-1 text-left">{item.label}</span>
-            {item.badgeCount ? (
-              <span
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium leading-none text-[var(--foreground)]"
-                aria-label={`${item.badgeCount} unread`}
-              >
-                {item.badgeCount > 9 ? '9+' : item.badgeCount}
-              </span>
-            ) : null}
-            {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
-          </>
-        )
-        if (item.href && !item.locked) {
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              onClick={(event) => {
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-                onSelect(item.id)
-              }}
-              className={itemClass}
-            >
-              {content}
-            </Link>
-          )
-        }
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => {
-              if (!item.locked) onSelect(item.id)
-            }}
-            className={itemClass}
-          >
-            {content}
-          </button>
-        )
-      })}
+      {items.map((item) => (
+        <div key={item.id}>
+          {renderRow(item, activeId === item.id, false)}
+          {item.expanded && item.children?.length ? (
+            <div className="space-y-0.5 pb-1 pl-7 pt-0.5">
+              {item.children.map((child) => renderRow(child, activeChildId === child.id, true))}
+            </div>
+          ) : null}
+        </div>
+      ))}
     </div>
   )
 }

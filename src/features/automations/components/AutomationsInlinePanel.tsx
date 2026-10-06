@@ -9,14 +9,27 @@ import type { AutomationSummary } from '@overlay/app-core'
 import type { DeleteAutomationResponse } from '@overlay/app-core/automations'
 import {
   applyAutomationRename,
+  automationHref,
   AUTOMATIONS_UPDATED_EVENT,
   getAutomationDisplayName,
   removeAutomationById,
 } from '@overlay/app-core/automations'
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { ArchivedScopeList, type ArchivedScopeItem } from '@/components/layout/ArchivedScopeList'
 
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
+
+async function loadArchivedAutomations(): Promise<ArchivedScopeItem[]> {
+  const page = await overlayAppClient.automations.getPage<AutomationSummary>({ limit: 100, view: 'archived' })
+  return (Array.isArray(page.data) ? page.data : []).map((automation) => ({
+    id: automation._id,
+    name: getAutomationDisplayName(automation),
+    from: automation.archivedFromScope ?? automation.scope ?? 'personal',
+    href: `${automationHref(automation)}&scope=archived`,
+  }))
+}
 
 export function AutomationsInlinePanel({
   onNavigate,
@@ -37,11 +50,13 @@ export function AutomationsInlinePanel({
   const [pendingNavId, setPendingNavId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
   const activeAutomationId = searchParams?.get('automationId') ?? null
+  const scope = usePanelScope()
 
   const loadAutomations = useCallback(async () => {
     try {
       const page = await overlayAppClient.automations.getPage<AutomationSummary>({
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
+        view: scope,
       })
       setAutomations(Array.isArray(page.data) ? page.data : [])
       nextCursorRef.current = page.nextCursor
@@ -51,7 +66,7 @@ export function AutomationsInlinePanel({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [scope])
 
   async function loadMoreAutomations() {
     if (!nextCursorRef.current) return
@@ -60,6 +75,7 @@ export function AutomationsInlinePanel({
       const page = await overlayAppClient.automations.getPage<AutomationSummary>({
         cursor: nextCursorRef.current,
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
+        view: scope,
       })
       setAutomations((current) => {
         const byId = new Map(current.map((automation) => [automation._id, automation]))
@@ -76,6 +92,7 @@ export function AutomationsInlinePanel({
   }
 
   useEffect(() => {
+    setLoading(true)
     void loadAutomations()
   }, [loadAutomations])
 
@@ -139,6 +156,18 @@ export function AutomationsInlinePanel({
     } finally {
       setDeletingAutomationIds((prev) => prev.filter((id) => id !== automation._id))
     }
+  }
+
+  if (scope === 'archived') {
+    return (
+      <ArchivedScopeList
+        resource="automations"
+        emptyLabel="No archived automations"
+        onOpen={onNavigate}
+        load={loadArchivedAutomations}
+        onRestored={() => window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))}
+      />
+    )
   }
 
   if (loading) return <SidebarListSkeleton rows={3} />

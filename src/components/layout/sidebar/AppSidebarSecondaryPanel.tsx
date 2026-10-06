@@ -15,6 +15,8 @@ export interface SecondaryPanelNav {
   items: ReadonlyArray<InlineNavItem>
   /** Empty when no subview is selected, so nothing reads as pre-selected. */
   activeId: string
+  /** The selected row among an expanded item's `children` (scope sub-rows). */
+  activeChildId?: string
   /** The subpage whose navigation has started but has not committed yet. */
   pendingId?: string | null
   onSelect: (id: string) => void
@@ -70,6 +72,7 @@ export function SecondaryPanelContent({
           className="shrink-0 space-y-0.5 px-2 py-3"
           items={nav.items}
           activeId={nav.activeId}
+          activeChildId={nav.activeChildId}
           pendingId={nav.pendingId}
           onSelect={nav.onSelect}
         />

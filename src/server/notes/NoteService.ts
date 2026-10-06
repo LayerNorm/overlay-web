@@ -38,6 +38,7 @@ export interface NoteRepository {
     userId: string
     includeDeleted?: boolean
     workspaceId?: string
+    view?: 'personal' | 'workspace' | 'archived'
   }): Promise<NoteRecord[]>
   createNote(args: {
     userId: string
@@ -46,6 +47,7 @@ export interface NoteRepository {
     tags?: string[]
     clientId?: string
     workspaceId?: string
+    scope?: 'personal' | 'workspace'
   }): Promise<{ id: string; note: NoteRecord | null }>
   updateNote(args: {
     noteId: string
@@ -122,6 +124,7 @@ export class NoteService {
     userId: string
     includeDeleted?: boolean
     workspaceId?: string
+    view?: 'personal' | 'workspace' | 'archived'
   }): Promise<ServerNoteDoc[]> {
     const notes = await this.context.noteRepository.listNotes(args)
     return notes.map(noteRecordToDoc)
@@ -140,6 +143,7 @@ export class NoteService {
       tags: args.tags,
       clientId: args.clientId,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      ...(args.scope ? { scope: args.scope } : {}),
     })
     return {
       id: result.id,

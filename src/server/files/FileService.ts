@@ -614,6 +614,7 @@ export class FileService {
   async ingestDocument(args: {
     file: File | null
     parentId?: string
+    scope?: 'personal' | 'workspace'
     userId: string
     workspaceId?: string
   }): Promise<{ id: string | undefined; ids: string[]; name: string; parts: number }> {
@@ -697,6 +698,7 @@ export class FileService {
           sourceSizeBytes: Math.max(0, Math.round(buf.byteLength)),
           userId: args.userId,
           ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+          ...(args.scope ? { scope: args.scope } : {}),
         })
         uploadedR2RetainedByFileRecord = ids.length > 0
         if (ids.length !== partWrites.length) {

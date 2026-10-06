@@ -23,6 +23,8 @@ import {
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
 
 const nextKnowledgeMutation = createKnowledgeMutationPublisher(
@@ -49,6 +51,7 @@ async function responseError(response: Response, fallback: string): Promise<stri
 async function uploadWebFile(
   file: File,
   parentId: string | null,
+  scope?: 'workspace',
 ): Promise<{ ok: boolean; error?: string; file?: KnowledgeFileNode }> {
   const createdResult = async (response: Response, fallback: string) => {
     if (!response.ok) return { ok: false, error: await responseError(response, fallback) }
@@ -77,6 +80,7 @@ async function uploadWebFile(
       const form = new FormData()
       form.append('file', file)
       if (parentId) form.append('parentId', parentId)
+      if (scope) form.append('scope', scope)
       const response = await overlayAppClient.files.ingestDocumentResponse(form)
       return createdResult(response, 'Failed to index document')
     }
@@ -88,6 +92,7 @@ async function uploadWebFile(
         type: 'file',
         parentId,
         content: await file.text(),
+        scope,
       })
       return createdResult(response, 'Failed to save file')
     }
@@ -118,6 +123,7 @@ async function uploadWebFile(
       parentId,
       r2Key,
       sizeBytes: file.size,
+      scope,
     })
     return createdResult(createResponse, 'Failed to save file')
   } catch (error) {
@@ -167,9 +173,13 @@ export default function KnowledgeView({
     })
   }, [mode, pathname, router, searchParams])
 
+  // The Files page shows one scope at a time (Personal, Workspace, or Archived), the same one as the secondary panel.
+  const scope = usePanelScope()
+
   const adapters = useMemo(() => createWebKnowledgeSurfaceAdapters({
     navigate: (url, options) => options?.replace ? router.replace(url) : router.push(url),
-  }), [router])
+    getScope: () => scope,
+  }), [router, scope])
 
   const memories = useMemo<SharedKnowledgeMemoryPort>(() => ({
     list: () => overlayAppClient.memory.get<MemoryRow[]>({ limit: 100 }),
@@ -188,7 +198,7 @@ export default function KnowledgeView({
     async saveContent(fileId, content) {
       return (await overlayAppClient.files.updateResponse({ fileId, textContent: content })).ok
     },
-    upload: uploadWebFile,
+    upload: (file, parentId) => uploadWebFile(file, parentId, newItemScope(scope)),
     isEditable: isEditableType,
     contentUrl(file) {
       return file.downloadUrl || file.isStorageBacked
@@ -198,12 +208,15 @@ export default function KnowledgeView({
     entityChanged(entity, id, operation) {
       publishKnowledgeMutation(entity, id, operation)
     },
-  }), [])
+  }), [scope])
 
   return (
     <SharedKnowledgeSurface
+      // A new scope is a different list: start it fresh rather than patching the old one.
+      key={scope}
       mode={mode}
-      initialFiles={initialFiles}
+      // The server renders the Personal list, so it only seeds that scope.
+      initialFiles={scope === 'personal' ? initialFiles : undefined}
       initialMemories={initialMemories}
       route={route}
       queryPending={queryPending}

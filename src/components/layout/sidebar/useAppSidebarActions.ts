@@ -11,6 +11,8 @@ import {
 import { createIdempotencyKey, toRequestInit } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { newItemScope, withPanelScope } from '@/shared/workspaces/panel-scope'
 
 const nextSidebarActionMutation = createKnowledgeMutationPublisher(
   `web-sidebar-action:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
@@ -50,6 +52,8 @@ export function useAppSidebarActions({
   onChatCreated,
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
+  // New notes land in the scope being viewed.
+  const scope = usePanelScope()
   const createChat = useCallback(async () => {
     if (!user) {
       requireAuth('send')
@@ -96,6 +100,7 @@ export function useAppSidebarActions({
       {
         title: 'Untitled',
         content: '',
+        scope: newItemScope(scope),
       },
       toRequestInit({ idempotencyKey }),
     )
@@ -115,9 +120,9 @@ export function useAppSidebarActions({
     if (!noteId) return false
     publishCreatedNote(noteId)
     onCloseMobileMenu()
-    router.push(`/app/notes?id=${encodeURIComponent(noteId)}`)
+    router.push(`/app/notes?${withPanelScope(new URLSearchParams({ id: noteId }), scope)}`)
     return true
-  }, [onCloseMobileMenu, requireAuth, router, user])
+  }, [onCloseMobileMenu, requireAuth, router, scope, user])
 
   const runSidebarAction = useCallback(async (action: OverlaySidebarAction | null | undefined) => {
     if (!action) return false

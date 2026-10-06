@@ -11,6 +11,7 @@ import {
   type AuthorizationService,
 } from '@/server/authorization'
 import { normalizeIntegrationProviderKey } from '@overlay/app-core'
+import { parseResourceView } from '@/shared/workspaces/resource-scope'
 
 function getAllowedAppOrigins(): string[] {
   const values = [process.env.NEXT_PUBLIC_APP_URL, process.env.DEV_NEXT_PUBLIC_APP_URL, getBaseUrl()]
@@ -148,7 +149,12 @@ export async function GET(
         })
       }
     }
-    const mappedProviderKeys = new Set(mappings.map((mapping) => mapping.providerKey))
+    // A scope view (Personal, Workspace, Archived) narrows the mappings to that slice.
+    const view = parseResourceView(searchParams.get('view'))
+    const visibleMappings = view
+      ? await workspaceConnectors.listScopedByWorkspace({ workspaceId: context.workspace.workspace.id, userId: context.auth.userId, view })
+      : mappings
+    const mappedProviderKeys = new Set(visibleMappings.map((mapping) => mapping.providerKey))
     const filteredConnections = await withAllowedConnectors(
       context,
       dependencies,

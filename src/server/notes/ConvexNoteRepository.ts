@@ -53,6 +53,7 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     includeDeleted?: boolean
     workspaceId?: string
+    view?: 'personal' | 'workspace' | 'archived'
   }): Promise<NoteRecord[]> {
     return await convex.query<NoteRecord[]>('files/files:list', {
       userId: args.userId,
@@ -60,6 +61,7 @@ export class ConvexNoteRepository implements NoteRepository {
       kind: 'note',
       ...(args.includeDeleted !== undefined ? { includeDeleted: args.includeDeleted } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      ...(args.view ? { view: args.view } : {}),
     }) ?? []
   }
 
@@ -70,6 +72,7 @@ export class ConvexNoteRepository implements NoteRepository {
     tags?: string[]
     clientId?: string
     workspaceId?: string
+    scope?: 'personal' | 'workspace'
   }): Promise<{ id: string; note: NoteRecord | null }> {
     const fileId = await convex.mutation<string>('files/files:create', {
       userId: args.userId,
@@ -82,6 +85,7 @@ export class ConvexNoteRepository implements NoteRepository {
       content: args.content,
       contentHash: args.content ? hashTextContent(args.content) : undefined,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      ...(args.scope ? { scope: args.scope } : {}),
     })
     if (!fileId) {
       throw new Error('Failed to create note')

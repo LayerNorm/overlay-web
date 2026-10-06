@@ -16,6 +16,13 @@ export class ConvexWorkspaceConnectorRepository implements WorkspaceConnectorRep
     }) ?? []
   }
 
+  async listScopedByWorkspace(args: { workspaceId: string; userId: string; view?: 'personal' | 'workspace' | 'archived' }) {
+    return await convex.query<Awaited<ReturnType<WorkspaceConnectorRepository['listScopedByWorkspace']>>>('integrations/workspaceConnectors:listScopedByWorkspace', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }) ?? []
+  }
+
   async listByUser(args: { userId: string }): Promise<WorkspaceConnectorRecord[]> {
     return await convex.query<WorkspaceConnectorRecord[]>('integrations/workspaceConnectors:listByUser', {
       ...args,

@@ -71,3 +71,29 @@ between the docked side panel and a centered dialog from a single icon in its
 title row (`PanelRight` to dock, `AppWindow` to float). The two presentations
 share the same body, border, and chrome; only the frame differs, so switching
 never remounts form state.
+
+## The secondary panel: Personal, Workspace, Archived
+
+Chats, Files, Extensions, Automations, and Agents share one panel anatomy (see
+`docs/plans/UNIFIED_SCOPES_PLAN.md`): page title, then the scope rows, then
+New + search, then the list. New is never above the scope rows.
+
+- **Scope rows** are Personal (mine within this workspace), Workspace (shared
+  with its members), and Archived (what was archived from either, tagged
+  Personal or Workspace). Built by `buildScopedPanelNav`
+  (`src/components/layout/sidebar/scopedPanelNav.ts`); the selected scope opens
+  its page's sub-rows beneath it (Files: All/Notes/Files/Outputs; Chats →
+  Workspace: Direct Messages/Channels/Activity; Extensions: Connectors/Skills/
+  MCPs/Apps). Archived has no sub-rows; its list is flat and tagged.
+- **One scope across pages.** The URL carries `?scope=` (Personal is the
+  default and stays out of the URL); the last choice is remembered
+  (`overlay:panel-scope` in local storage) so the next page opens on it. Read it
+  with `usePanelScope()`; never keep a second copy. Chats derive their scope from
+  the subview route instead (DMs, channels, activity are Workspace).
+- **New follows the scope.** `scopePanelAction` hides New in Archived and, in
+  Workspace, when the person may not create there (the workspace's admin
+  settings; owners and admins always may). In Workspace it reads "… in
+  workspace". Create flows send `scope: 'workspace'` only for Workspace
+  (`newItemScope`); Personal is what an absent scope means.
+- **Archived rows** (`ArchivedScopeList`) show a Personal/Workspace tag and a
+  restore button on hover; restoring returns the item to where it came from.

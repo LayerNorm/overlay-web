@@ -11,7 +11,9 @@ import { chatsInlineItems, agentsInlineItems } from '@/components/layout/sidebar
 import { filesInlineItems } from '@/components/layout/FilesCategorySidebar'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
-import { SETTINGS_SECTION_ICONS, type SidebarRouteState } from './appSidebarNav'
+import { SETTINGS_SECTION_ICONS, chatScopeForView, type SidebarRouteState } from './appSidebarNav'
+import { buildScopedPanelNav } from './scopedPanelNav'
+import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 
 interface SidebarRouter {
   push: (href: string) => void
@@ -101,7 +103,7 @@ function buildChatPanelNav({
   const chatItems = (publicShowcase
     ? chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
     : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
-  return {
+  const flat: SecondaryPanelNav = {
     items: chatItems,
     activeId: chatsView,
     pendingId: effectivePendingSecondaryNavId,
@@ -143,10 +145,24 @@ function buildChatPanelNav({
       }).toString()}`)
     },
   }
+
+  const chatScope = chatScopeForView(chatsView)
+  const unreadOf = (id: string) => chatItems.find((item) => item.id === id)?.badgeCount ?? 0
+  return buildScopedPanelNav({
+    scope: chatScope,
+    sub: chatScope === 'workspace' ? chatsView : null,
+    // Direct messages, channels, and activity are the Workspace scope; personal chats and archived chats have no sub-rows.
+    subItems: { workspace: chatItems.filter((item) => item.id === 'dms' || item.id === 'channels' || item.id === 'activity') },
+    pendingId: effectivePendingSecondaryNavId,
+    badges: { workspace: unreadOf('dms') + unreadOf('channels') },
+    hiddenScopes: publicShowcase ? ['archived'] : [],
+    onSelect: (scope, sub) => flat.onSelect(sub ?? (scope === 'workspace' ? (chatScope === 'workspace' ? chatsView : 'dms') : scope)),
+  })
 }
 
 function buildFilesPanelNav({
   filesView,
+  scope,
   effectivePendingSecondaryNavId,
   notesOpen,
   currentSearchParams,
@@ -159,6 +175,7 @@ function buildFilesPanelNav({
   beginSecondaryNavigation,
 }: {
   filesView: string
+  scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   notesOpen: boolean
   currentSearchParams: URLSearchParams
@@ -170,22 +187,25 @@ function buildFilesPanelNav({
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
 }): SecondaryPanelNav {
-  return {
-    items: filesInlineItems,
-    activeId: filesView,
+  return buildScopedPanelNav({
+    scope,
+    // Archived is one list of everything archived, so the category rows only exist under Personal and Workspace.
+    sub: scope === 'archived' ? null : filesView,
+    subItems: { personal: filesInlineItems, workspace: filesInlineItems },
     pendingId: effectivePendingSecondaryNavId,
-    onSelect: (next) => {
+    onSelect: (nextScope, nextSub) => {
       closeMobileDrawer()
+      const nextView = nextScope === 'archived' ? 'all' : (nextSub ?? filesView)
       // With a file or folder open the category row is still "current", so a
       // plain equality check swallowed the click and nothing happened. Selecting
       // the category you are already in is how you get back out to its list.
       const hasOpenItem = notesOpen || currentSearchParams.has('file') || currentSearchParams.has('folder') || currentSearchParams.has('id')
-      if (next === filesView && !hasOpenItem) return
-      beginSecondaryNavigation(next)
-      const params = new URLSearchParams(currentSearchParams.toString())
+      if (nextScope === scope && nextView === filesView && !hasOpenItem) return
+      beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
+      const params = withPanelScope(currentSearchParams, nextScope)
       if (publicShowcase) params.set('showcase', '1')
-      if (next === 'all') params.delete('view')
-      else params.set('view', next)
+      if (nextView === 'all') params.delete('view')
+      else params.set('view', nextView)
       params.delete('file')
       params.delete('folder')
       params.delete('id')
@@ -196,11 +216,11 @@ function buildFilesPanelNav({
         : '/app/files'
       router.push(query ? `${filesHref}?${query}` : filesHref)
     },
-  }
+  })
 }
 
 function buildAgentsPanelNav({
-  agentsView,
+  scope,
   effectivePendingSecondaryNavId,
   currentSearchParams,
   publicShowcase,
@@ -211,7 +231,7 @@ function buildAgentsPanelNav({
   closeMobileDrawer,
   beginSecondaryNavigation,
 }: {
-  agentsView: string
+  scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
   publicShowcase: boolean
@@ -222,62 +242,118 @@ function buildAgentsPanelNav({
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
 }): SecondaryPanelNav {
-  return {
-    items: agentsInlineItems,
-    activeId: agentsView,
+  return buildScopedPanelNav({
+    scope,
+    sub: null,
+    subItems: {},
     pendingId: effectivePendingSecondaryNavId,
     onSelect: (next) => {
       closeMobileDrawer()
-      if (next === agentsView) return
+      if (next === scope) return
       beginSecondaryNavigation(next)
-      const params = new URLSearchParams(currentSearchParams.toString())
+      const params = withPanelScope(currentSearchParams, next)
+      // The tab used to be `?view=`; the scope replaces it.
+      params.delete('view')
       if (publicShowcase) params.set('showcase', '1')
       // With an agent open, Personal must stay explicit in the URL — the
       // panel auto-corrects bare `?agent=` links to the agent's own tab, so
-      // a missing `view` would read as an uncorrected link and fight the
+      // a missing `scope` would read as an uncorrected link and fight the
       // deliberate switch.
-      if (next === 'personal' && !params.has('agent')) params.delete('view')
-      else params.set('view', next)
+      if (next === 'personal' && params.has('agent')) params.set('scope', 'personal')
       const query = params.toString()
       const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
         ? buildWorkspaceHref(activeWorkspaceId, '/app/agents')
         : '/app/agents'
       router.push(query ? `${agentsHref}?${query}` : agentsHref)
     },
-  }
+  })
 }
 
 function buildToolsPanelNav({
   toolsView,
+  scope,
   effectivePendingSecondaryNavId,
   toolsItems,
+  currentSearchParams,
   publicShowcase,
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
 }: {
   toolsView: string
+  scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   toolsItems: ReadonlyArray<InlineNavItem>
+  currentSearchParams: URLSearchParams
   publicShowcase: boolean
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
 }): SecondaryPanelNav {
-  return {
-    items: toolsItems,
-    activeId: toolsView,
+  return buildScopedPanelNav({
+    scope,
+    // Archived lists every kind of extension together, so the kind rows only exist under Personal and Workspace.
+    sub: scope === 'archived' ? null : toolsView,
+    subItems: { personal: toolsItems, workspace: toolsItems },
+    pendingId: effectivePendingSecondaryNavId,
+    onSelect: (nextScope, nextSub) => {
+      closeMobileDrawer()
+      const nextView = nextSub ?? toolsView
+      if (nextScope === scope && (nextScope === 'archived' || nextView === toolsView)) return
+      beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
+      const params = withPanelScope(new URLSearchParams(currentSearchParams.toString()), nextScope)
+      if (publicShowcase) params.set('showcase', '1')
+      if (nextScope === 'archived') params.delete('view')
+      else params.set('view', nextView)
+      router.push(`/app/tools?${params.toString()}`)
+    },
+  })
+}
+
+function buildAutomationsPanelNav({
+  scope,
+  effectivePendingSecondaryNavId,
+  currentSearchParams,
+  publicShowcase,
+  canonicalWorkspaceRoute,
+  activeWorkspaceId,
+  buildWorkspaceHref,
+  router,
+  closeMobileDrawer,
+  beginSecondaryNavigation,
+}: {
+  scope: PanelScope
+  effectivePendingSecondaryNavId: string | null
+  currentSearchParams: URLSearchParams
+  publicShowcase: boolean
+  canonicalWorkspaceRoute: boolean
+  activeWorkspaceId: string | null
+  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  router: SidebarRouter
+  closeMobileDrawer: () => void
+  beginSecondaryNavigation: (id: string) => void
+}): SecondaryPanelNav {
+  return buildScopedPanelNav({
+    scope,
+    sub: null,
+    subItems: {},
     pendingId: effectivePendingSecondaryNavId,
     onSelect: (next) => {
       closeMobileDrawer()
-      if (next === toolsView) return
+      if (next === scope) return
       beginSecondaryNavigation(next)
-      router.push(`/app/tools?${new URLSearchParams({
-        ...(publicShowcase ? { showcase: '1' } : {}),
-        view: next,
-      }).toString()}`)
+      const params = withPanelScope(currentSearchParams, next)
+      // Leave an open automation behind: it may not exist in the scope being switched to.
+      params.delete('id')
+      params.delete('automation')
+      if (publicShowcase) params.set('showcase', '1')
+      const query = params.toString()
+      const href = canonicalWorkspaceRoute && activeWorkspaceId
+        ? buildWorkspaceHref(activeWorkspaceId, '/app/automations')
+        : '/app/automations'
+      router.push(query ? `${href}?${query}` : href)
     },
-  }
+  })
 }
 
 function buildSettingsPanelNav({
@@ -328,7 +404,7 @@ export function resolveSecondaryPanelNav({
 }: {
   panelKind: SidebarRouteState['panelKind']
   publicShowcase: boolean
-  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'agentsView' | 'toolsView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
+  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
   effectivePendingSecondaryNavId: string | null
   totalUnread: number
   collaborationUnread: { dms: number; channels: number; total: number }
@@ -368,6 +444,7 @@ export function resolveSecondaryPanelNav({
   if (panelKind === 'files' || panelKind === 'notes') {
     return buildFilesPanelNav({
       filesView: routeState.filesView,
+      scope: routeState.scope,
       effectivePendingSecondaryNavId,
       notesOpen: routeState.notesOpen,
       currentSearchParams,
@@ -382,7 +459,21 @@ export function resolveSecondaryPanelNav({
   }
   if (panelKind === 'agents') {
     return buildAgentsPanelNav({
-      agentsView: routeState.agentsView,
+      scope: routeState.scope,
+      effectivePendingSecondaryNavId,
+      currentSearchParams,
+      publicShowcase,
+      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
+      activeWorkspaceId,
+      buildWorkspaceHref,
+      router,
+      closeMobileDrawer,
+      beginSecondaryNavigation,
+    })
+  }
+  if (panelKind === 'automations') {
+    return buildAutomationsPanelNav({
+      scope: routeState.scope,
       effectivePendingSecondaryNavId,
       currentSearchParams,
       publicShowcase,
@@ -397,6 +488,8 @@ export function resolveSecondaryPanelNav({
   if (panelKind === 'tools') {
     return buildToolsPanelNav({
       toolsView: routeState.toolsView,
+      scope: routeState.scope,
+      currentSearchParams,
       effectivePendingSecondaryNavId,
       toolsItems,
       publicShowcase,

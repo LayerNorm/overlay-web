@@ -33,6 +33,7 @@ import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 import { resolveFilesCategory, type FilesCategory } from '@/components/layout/FilesCategorySidebar'
 import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
+import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 
 export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'settings'
@@ -101,6 +102,8 @@ export interface SidebarRouteState {
   agentsView: AgentsPanelView
   chatViewParam: string | null
   chatsView: string
+  /** Personal, Workspace, or Archived, from the URL, then the remembered choice. Chats derive it from their subview. */
+  scope: PanelScope
   panelKind: SecondaryPanelKind | null
   hasResourcePanel: boolean
   showSecondaryPanel: boolean
@@ -114,9 +117,10 @@ function resolveToolsView(current: string | null): string {
   return 'connectors'
 }
 
-function resolveAgentsView(current: string | null): AgentsPanelView {
-  if (current === 'workspace') return 'workspace'
-  if (current === 'archived') return 'archived'
+/** Chats keep their own routes: direct messages, channels, and activity are the Workspace scope; archived chats are Archived. */
+export function chatScopeForView(chatsView: string): PanelScope {
+  if (chatsView === 'archived') return 'archived'
+  if (chatsView === 'dms' || chatsView === 'channels' || chatsView === 'activity') return 'workspace'
   return 'personal'
 }
 
@@ -142,11 +146,14 @@ export function resolveSidebarRouteState({
   searchParams,
   resolveWorkspaceSurface,
   automationsEnabled,
+  savedScope = null,
 }: {
   pathname: string
   searchParams: URLSearchParams
   resolveWorkspaceSurface: (path: string) => string | null
   automationsEnabled: boolean
+  /** The scope remembered from the last scoped page. */
+  savedScope?: PanelScope | null
 }): SidebarRouteState {
   const workspaceSurface = resolveWorkspaceSurface(pathname)
   const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
@@ -170,8 +177,11 @@ export function resolveSidebarRouteState({
   const chatViewParam = searchParams.get('view')
   const toolsView = resolveToolsView(chatViewParam)
   const filesView = resolveFilesCategory(chatViewParam)
-  const agentsView = resolveAgentsView(chatViewParam)
   const chatsView = resolveChatsView({ activityOpen, archivedOpen, chatViewParam })
+  // Agent links from before scopes carried the tab as `?view=`.
+  const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
+  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope })
+  const agentsView = scope
   const panelKind: SecondaryPanelKind | null = chatOpen
     ? 'chat'
     : filesOpen
@@ -208,6 +218,7 @@ export function resolveSidebarRouteState({
     agentsView,
     chatViewParam,
     chatsView,
+    scope,
     panelKind,
     hasResourcePanel: panelKind != null && RESOURCE_PANEL_KINDS.has(panelKind),
     showSecondaryPanel: panelKind != null,
@@ -458,6 +469,49 @@ export function resolveResourceAction({
     }
   }
   return null
+}
+
+export interface PanelCreateRules {
+  /** Whether the person may create this kind of thing in the Workspace scope. */
+  canCreate: (kind: 'extension' | 'content', scope: 'personal' | 'workspace') => boolean
+  /** Owners and admins always may; members follow the workspace's settings. */
+  isManager: boolean
+  memberCanCreateChannels: boolean
+  memberCanCreateAgents: boolean
+}
+
+/**
+ * The panel's New button for the scope on screen: none in Archived, none where the person is not allowed to create in the
+ * Workspace scope (their admin decides), and in Workspace it says where the item will land.
+ */
+export function scopePanelAction({
+  action,
+  panelKind,
+  scope,
+  chatsView,
+  rules,
+}: {
+  action: { label: string; onClick: () => void } | null
+  panelKind: SecondaryPanelKind | null
+  scope: PanelScope
+  chatsView: string
+  rules: PanelCreateRules
+}): { label: string; onClick: () => void } | null {
+  if (!action) return null
+  if (scope === 'archived') return null
+  if (scope === 'personal') return action
+  if (panelKind === 'chat') {
+    return chatsView === 'channels' && !rules.isManager && !rules.memberCanCreateChannels ? null : action
+  }
+  if (panelKind === 'agents') {
+    return !rules.isManager && !rules.memberCanCreateAgents ? null : action
+  }
+  if (panelKind === 'files' || panelKind === 'notes' || panelKind === 'automations') {
+    return rules.canCreate('content', 'workspace')
+      ? { ...action, label: `${action.label} in workspace` }
+      : null
+  }
+  return action
 }
 
 export function buildPrimaryRailItems({

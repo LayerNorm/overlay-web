@@ -7,6 +7,8 @@ import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { useChatPreferences } from './useChatPreferences'
+import { usePanelScope } from '@/hooks/use-panel-scope'
+import { newItemScope } from '@/shared/workspaces/panel-scope'
 
 type ChatPrefs = ReturnType<typeof useChatPreferences>
 
@@ -158,6 +160,8 @@ export function useAutomationDetail({
     setSelectedModels,
   ])
 
+  // A new automation lands in the scope being viewed.
+  const panelScope = usePanelScope()
   const selectAutomationDetailTab = useCallback(async (tab: AutomationDetailTab) => {
     // A brand-new automation has no saved doc yet. Switching to "edit" creates an
     // empty draft so the full editor can load and persist, then routes to it.
@@ -172,6 +176,7 @@ export function useAutomationDetail({
           schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
           modelId: selectedActModel,
           enabled: false,
+          scope: newItemScope(panelScope),
         })
         const payload = (await res.json().catch(() => ({}))) as { id?: string; error?: string }
         if (!res.ok || !payload.id) {
@@ -197,7 +202,7 @@ export function useAutomationDetail({
     }
     const query = params.toString()
     router.replace(`${pathname}${query ? `?${query}` : ''}`)
-  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, setComposerNotice])
+  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, setComposerNotice, panelScope])
 
   const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
     // Mark the model as user-chosen so the new-chat-surface default-model effect

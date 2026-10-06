@@ -60,6 +60,8 @@ export interface CreateFileRequest {
   prompt?: string
   outputType?: string
   legacyOutputId?: string
+  /** Defaults to personal. */
+  scope?: 'personal' | 'workspace'
   accessToken?: string
   userId?: string
 }

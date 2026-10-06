@@ -78,6 +78,7 @@ export interface FileRepository {
     parts: ExtractedDocumentPart[]
     r2Key: string
     sourceSizeBytes: number
+    scope?: 'personal' | 'workspace'
     userId: string
     workspaceId?: string
   }): Promise<string[]>

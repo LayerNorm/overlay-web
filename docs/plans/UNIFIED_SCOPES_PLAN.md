@@ -246,7 +246,17 @@ Original steps, for reference:
 8. Chats: expose a derived `scope` and an Archived list for the viewer; DMs/channels/activity are workspace scope.
 - Exit: every resource can be listed by scope and by archived, with tests for read, write, move, and archive on both scopes; production rows unchanged in what each person can see.
 
-### Phase 3: unified secondary panel
+### Phase 3: unified secondary panel (done 2026-10-05; item actions come in Phase 4)
+
+Commit: `WORKSPACE SCOPING 3`. Prototype: `artifacts/unified-secondary-panel.html` (approved). Decisions from the review: Archived has no sub-rows; the selected scope starts expanded; New is hidden for members who may not create in Workspace.
+
+- **Shell**: `buildScopedPanelNav` + nested rows in `InlineNavChildren`; all five pages use it. The scope is `?scope=` (Personal omitted), remembered per user, and read with `usePanelScope()` (`src/hooks/use-panel-scope.ts`, rules in `src/shared/workspaces/panel-scope.ts`). Agents' old `?view=` tab is still read.
+- **Pages**: Chats (scope from the subview; Workspace holds Direct Messages, Channels, Activity), Files (list, tree, notes, uploads, and new notes follow the scope; the page remounts on a scope change), Extensions (Skills and MCP servers list and create by scope; Archived is one combined list), Automations (list and new drafts follow the scope), Agents (unchanged behavior, shared shell).
+- **New button** hidden in Archived, and in Workspace when the admin settings (or `memberCanCreateChannels`/`memberCanCreateAgents`) do not let a member create there.
+- **Backend additions**: notes and integrations lists take `view`; notes, uploads, and document ingestion take `scope`; `createWithStorage` and `createExtractedDocument` check the create rule.
+- **Not yet** (Phase 4): Move to Workspace/Personal and Archive actions on items (until then, `POST /api/v1/scope` is the only way to move or archive, so Archived is empty in practice); the connectors list in Workspace shows a placeholder until connector sharing exists; archived connectors are not in the combined Extensions list; archived chats and agents keep their own existing rows (no tag); Activity keeps its own list.
+
+Original steps, for reference:
 
 - One panel shell component for all five pages: title, scope rows (Personal, Workspace, Archived), selected scope opens its sub-rows, then New + search, then the list. New is absent in Archived.
 - Per-page sub-rows: Chats → Workspace has Direct Messages, Channels, Activity; Files has All, Notes, Files, Outputs under each scope; Extensions has Connectors, Skills, MCPs, Apps; Automations and Agents have none.

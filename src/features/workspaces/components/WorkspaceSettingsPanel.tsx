@@ -53,6 +53,7 @@ import {
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
 import { ImportPanel } from './ImportPanel'
+import { invalidateWorkspaceScopePolicy } from '@/hooks/use-workspace-create-access'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -970,6 +971,11 @@ function WorkspaceSharingTab({
     setPolicyBusy(true)
     setActionError(null)
     void client.setSharingPolicy(workspaceId, policyPatchFor(key, value))
+      .then((result) => {
+        // The sidebar's New buttons follow these settings.
+        invalidateWorkspaceScopePolicy(workspaceId)
+        return result
+      })
       .then((result) => setPolicyState((current) => ({
         ...(current.status === 'ready' ? current : {}),
         status: 'ready',

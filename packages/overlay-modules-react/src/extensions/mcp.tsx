@@ -504,7 +504,8 @@ export interface McpServersPanelProps {
   loading: boolean
   servers: readonly McpServerSummary[]
   filteredServers: readonly McpServerSummary[]
-  onCreate: () => void
+  /** Omitted when the person may not create here (the empty state then offers no button). */
+  onCreate?: () => void
   onEdit: (server: McpServerSummary) => void
   onToggle: (server: McpServerSummary, event: MouseEvent) => void
 }
@@ -526,7 +527,7 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
           <p className="text-sm font-medium text-[var(--foreground)]">No MCP servers configured</p>
           <p className="text-xs text-[var(--muted-light)]">Add remote MCP servers to extend the AI agent with custom tools</p>
         </div>
-        <button onClick={onCreate} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"><Plus size={14} />Add Server</button>
+        {onCreate ? <button onClick={onCreate} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"><Plus size={14} />Add Server</button> : null}
       </AppScreenBody>
     )
   }

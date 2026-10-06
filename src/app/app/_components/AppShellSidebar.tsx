@@ -9,6 +9,8 @@ import {
 } from '@/features/chat/components/ChatSubviewInlinePanels'
 import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
 import { useSearchParams } from 'next/navigation'
+import { useSavedPanelScope } from '@/hooks/use-panel-scope'
+import { resolvePanelScope } from '@/shared/workspaces/panel-scope'
 import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
 import {
   PublicShowcaseAutomationsInlinePanel,
@@ -30,10 +32,11 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
   const chatBaseHref = activeWorkspaceId
     ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
     : '/app/chat'
-  const agentsViewParam = searchParams?.get('view')
-  const agentsView = agentsViewParam === 'workspace' || agentsViewParam === 'archived'
-    ? agentsViewParam
-    : 'personal'
+  // `?view=` is the pre-scope spelling of the agents tab.
+  const agentsView = resolvePanelScope({
+    param: searchParams?.get('scope') ?? searchParams?.get('view'),
+    saved: useSavedPanelScope(),
+  })
 
   return (
     <AppSidebar

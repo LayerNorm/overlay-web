@@ -85,12 +85,12 @@ export function getInitialChatHistory(): Promise<PaginatedEnvelope<CachedConvers
 export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
   const [files, notes] = await Promise.all([
     callAppApi<KnowledgeFileNode[]>(
-      '/api/v1/files?limit=100&summary=true',
+      '/api/v1/files?limit=100&summary=true&view=personal',
       filesService.GET as BffDomainService,
       [],
     ),
     callAppApi<NoteDoc[]>(
-      '/api/v1/notes?limit=100',
+      '/api/v1/notes?limit=100&view=personal',
       notesService.GET as BffDomainService,
       [],
     ),

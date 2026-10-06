@@ -171,7 +171,8 @@ export interface SkillsPanelProps {
   loading: boolean
   skills: readonly SkillSummary[]
   filteredSkills: readonly SkillSummary[]
-  onCreate: () => void
+  /** Omitted when the person may not create here (the empty state then offers no button). */
+  onCreate?: () => void
   onEdit: (skill: SkillSummary) => void
   onToggle: (skill: SkillSummary, event: MouseEvent) => void
 }
@@ -193,13 +194,15 @@ export function SkillsPanel({ loading, skills, filteredSkills, onCreate, onEdit,
           <p className="text-sm font-medium text-[var(--foreground)]">No skills yet</p>
           <p className="text-xs text-[var(--muted-light)]">Create reusable instructions that are automatically injected into every conversation</p>
         </div>
-        <button
-          onClick={onCreate}
-          className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
-        >
-          <Plus size={14} />
-          New Skill
-        </button>
+        {onCreate ? (
+          <button
+            onClick={onCreate}
+            className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+          >
+            <Plus size={14} />
+            New Skill
+          </button>
+        ) : null}
       </AppScreenBody>
     )
   }

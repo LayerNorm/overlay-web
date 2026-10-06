@@ -14,6 +14,8 @@ export interface NoteDoc {
 export interface NoteQueryContract extends PaginationQueryContract {
   noteId?: string
   includeDeleted?: boolean
+  /** Personal, workspace, or archived. Omitted means everything active the caller can see. */
+  view?: 'personal' | 'workspace' | 'archived'
 }
 
 export interface CreateNoteRequest {
@@ -24,6 +26,8 @@ export interface CreateNoteRequest {
   accessToken?: string
   userId?: string
   workspaceId?: string
+  /** Defaults to personal. */
+  scope?: 'personal' | 'workspace'
 }
 
 export interface CreateNoteResponse {

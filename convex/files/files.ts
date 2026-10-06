@@ -972,6 +972,7 @@ export const createWithStorage = mutation({
     sizeBytes: v.number(),
     mimeType: v.optional(v.string()),
     extension: v.optional(v.string()),
+    scope: scopeArg,
   },
   handler: async (ctx, args) => {
     if (args.storageId) {
@@ -981,11 +982,13 @@ export const createWithStorage = mutation({
     await authorizeUserAccess(args)
     assertOwnedFileR2Key(args.userId, args.r2Key)
     await assertParentAndProject(ctx, args)
+    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     await ensureStorageAvailable(ctx as never, args.userId, args.sizeBytes)
     const now = Date.now()
     const id = await ctx.db.insert('files', {
       userId: args.userId,
       workspaceId: args.workspaceId,
+      scope,
       name: args.name,
       type: 'file',
       kind: 'upload',
@@ -1014,6 +1017,7 @@ export const createExtractedDocument = mutation({
     mimeType: v.string(),
     sourceSizeBytes: v.number(),
     parentId: v.optional(v.string()),
+    scope: scopeArg,
     parts: v.array(v.object({
       name: v.string(),
       content: v.string(),
@@ -1025,6 +1029,7 @@ export const createExtractedDocument = mutation({
     assertOwnedFileR2Key(args.userId, args.r2Key)
     await assertParentAndProject(ctx, args)
     if (args.parts.length === 0) throw new Error('Extracted document requires at least one part')
+    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
 
     const totalBytes = args.parts.reduce((total, part, index) => (
       total + (index === 0
@@ -1045,6 +1050,7 @@ export const createExtractedDocument = mutation({
       const id = await ctx.db.insert('files', {
         userId: args.userId,
         workspaceId: args.workspaceId,
+        scope,
         name: part.name,
         type: 'file',
         kind: 'upload',
