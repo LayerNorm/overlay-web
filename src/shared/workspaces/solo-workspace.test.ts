@@ -27,8 +27,7 @@ test('the member label counts people', () => {
   assert.equal(workspaceMemberLabel(null), null)
 })
 
-test('solo turns the Workspace scope into the Personal one and leaves Archived alone', () => {
+test('solo turns the Workspace scope into the Personal one', () => {
   assert.equal(soloPanelScope('workspace', true), 'personal')
-  assert.equal(soloPanelScope('archived', true), 'archived')
   assert.equal(soloPanelScope('workspace', false), 'workspace')
 })

@@ -35,6 +35,7 @@ import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { AgentEnvironmentSettings } from '@/features/settings/components/AgentEnvironmentSettings'
 import { AgentAccountSettings } from '@/features/settings/components/AgentAccountSettings'
 import { ConnectedAppsSettings } from '@/features/settings/components/ConnectedAppsSettings'
+import { ArchivedSettings } from '@/features/settings/components/ArchivedSettings'
 import { ComputerSettings } from '@/features/settings/components/ComputerSettings'
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
@@ -397,6 +398,7 @@ function SettingsSectionContent({
   if (section === 'agent-accounts') return <AgentsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
   if (section === 'connected-apps') return <ConnectedAppsSettings />
   if (section === 'computers') return <ComputerSettings />
+  if (section === 'archived') return <ArchivedSettings />
   if (section === 'contact') return <ContactSettingsSection supportEmail={supportEmail} />
   return (
     <UnimplementedSettingsPanel

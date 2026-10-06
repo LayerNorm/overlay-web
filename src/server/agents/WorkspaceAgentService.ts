@@ -8,6 +8,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentUpdateInput,
   WorkspaceAgentVisibility,
+  WorkspaceArchivedAgentThread,
   WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
 import {
@@ -49,11 +50,11 @@ export class WorkspaceAgentService {
     const creators = await Promise.all(
       visible.map((agent) => this.workspaces.resolvePrincipal(agent.createdByPrincipalId)),
     )
-    const archivedThreadAgentIds = args.includeArchived
-      ? await this.repository.listArchivedAgentIds({
+    const archivedThreads = args.includeArchived
+      ? await this.repository.listArchivedThreads({
         workspaceId: access.workspace.id,
         userId: args.actorUserId,
-      }).catch((_error) => [] as string[])
+      }).catch((_error) => [] as WorkspaceArchivedAgentThread[])
       : []
     return {
       agents: visible.map((agent, index) => {
@@ -62,7 +63,7 @@ export class WorkspaceAgentService {
       }),
       canCreate: canCreateAgent(access.membership.role),
       viewerPrincipalId: access.principal.id,
-      archivedThreadAgentIds,
+      archivedThreads,
     }
   }
 
@@ -253,6 +254,30 @@ export class WorkspaceAgentService {
       agentId: agent.id,
       now: this.now(),
     })) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
+  }
+
+  /**
+   * Deletes an archived agent for good (Settings → Archived). Same people as restore: the creator or an owner/admin.
+   * Only an archived agent can be deleted; a live agent must be archived first.
+   */
+  async deleteArchived(args: { actorUserId: string; workspaceId: string; agentId: string }) {
+    const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
+    if (!agent || !agent.archivedAt || !canSeeAgent(agent, access.principal.id)) {
+      throw new WorkspaceAgentServiceError('not_found', 'Archived agent not found')
+    }
+    const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
+    if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
+      throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can delete this agent')
+    }
+    if (agent.isDefault || agent.name.toLowerCase() === 'overlay') {
+      throw new WorkspaceAgentServiceError('forbidden', 'The default Overlay agent cannot be deleted')
+    }
+    if (!await this.repository.deleteArchived({
+      workspaceId: access.workspace.id,
+      agentId: agent.id,
+      now: this.now(),
+    })) throw new WorkspaceAgentServiceError('not_found', 'Archived agent not found')
   }
 
   /** The agent, if the caller may change it: the creator, or an owner or admin of the workspace. */

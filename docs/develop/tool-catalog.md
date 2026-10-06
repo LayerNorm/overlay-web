@@ -29,7 +29,7 @@ Not tool ids but granted as capabilities:
 ## Scope on list tools
 
 `list_notes`, `list_files`, `list_skills`, and `list_automations` take an optional `scope`: `personal` (only yours),
-or `workspace` (shared with the workspace); archived items are not offered to agents (they are a UI view, not a scope). Omitted, they return everything active the caller can read, which
+or `workspace` (shared with the workspace); archived items are not offered to agents (they live in Settings → Archived, not in any scope). Omitted, they return everything active the caller can read, which
 includes what other members shared with the workspace but never their personal items. Skills the workspace shares are also
 in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
 the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the

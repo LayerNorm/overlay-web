@@ -13,7 +13,7 @@ const FILE_ROWS = [
   { id: 'notes', label: 'Notes' },
 ]
 
-function nav(scope: 'personal' | 'workspace' | 'archived', sub: string | null, onSelect = () => undefined) {
+function nav(scope: 'personal' | 'workspace', sub: string | null, onSelect = () => undefined) {
   return buildScopedPanelNav({
     scope,
     sub,
@@ -25,7 +25,7 @@ function nav(scope: 'personal' | 'workspace' | 'archived', sub: string | null, o
 
 test('the selected scope opens its sub-rows beneath it, and the others stay closed', () => {
   const built = nav('workspace', 'notes')
-  assert.deepEqual(built.items.map((item) => item.id), ['personal', 'workspace', 'archived'])
+  assert.deepEqual(built.items.map((item) => item.id), ['personal', 'workspace'])
   assert.equal(built.items[0]!.expanded, false)
   assert.equal(built.items[1]!.expanded, true)
   assert.deepEqual(built.items[1]!.children?.map((child) => child.id), ['workspace:all', 'workspace:notes'])
@@ -33,19 +33,17 @@ test('the selected scope opens its sub-rows beneath it, and the others stay clos
   assert.equal(built.activeChildId, 'workspace:notes')
 })
 
-test('Archived has no sub-rows even when the page defines them', () => {
-  const built = nav('archived', null)
-  assert.equal(built.items[2]!.expanded, false)
-  assert.equal(built.items[2]!.children, undefined)
-  assert.equal(built.activeChildId, undefined)
+test('there is no Archived row: archived items live in Settings', () => {
+  const built = nav('personal', 'all')
+  assert.ok(built.items.every((item) => item.id !== 'archived'))
 })
 
 test('selecting a scope row or a sub-row reports the scope and the sub-row', () => {
   const calls: Array<[string, string | null]> = []
   const built = nav('personal', 'all', (scope, sub) => { calls.push([scope, sub]) })
-  built.onSelect('archived')
+  built.onSelect('workspace')
   built.onSelect('workspace:notes')
-  assert.deepEqual(calls, [['archived', null], ['workspace', 'notes']])
+  assert.deepEqual(calls, [['workspace', null], ['workspace', 'notes']])
 })
 
 test('the scope rows and the open sub-rows render in order, with the sub-rows flush under their parent', () => {
@@ -53,9 +51,9 @@ test('the scope rows and the open sub-rows render in order, with the sub-rows fl
   const html = renderToStaticMarkup(
     <InlineNavChildren items={built.items} activeId={built.activeId} activeChildId={built.activeChildId} onSelect={() => undefined} />,
   )
-  const order = ['Personal', 'All', 'Notes', 'Workspace', 'Archived'].map((label) => html.indexOf(`>${label}<`))
+  const order = ['Personal', 'All', 'Notes', 'Workspace'].map((label) => html.indexOf(`>${label}<`))
   assert.ok(order.every((index) => index >= 0), 'every row renders')
-  assert.deepEqual([...order].sort((a, b) => a - b), order, 'in the order Personal, its sub-rows, Workspace, Archived')
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'in the order Personal, its sub-rows, Workspace')
   // What an expansion reveals lines up with the row that opened it: no left padding on the nested rows.
   assert.doesNotMatch(html, /\bpl-\d/)
   assert.doesNotMatch(html, /\bml-\d/)
@@ -77,10 +75,9 @@ test('chat subviews map onto the scopes', () => {
   assert.equal(chatScopeForView('dms'), 'workspace')
   assert.equal(chatScopeForView('channels'), 'workspace')
   assert.equal(chatScopeForView('activity'), 'workspace')
-  assert.equal(chatScopeForView('archived'), 'archived')
 })
 
-function routeState(pathname: string, search: string, savedScope: 'personal' | 'workspace' | 'archived' | null = null) {
+function routeState(pathname: string, search: string, savedScope: 'personal' | 'workspace' | null = null) {
   return resolveSidebarRouteState({
     pathname,
     searchParams: new URLSearchParams(search),
@@ -91,22 +88,23 @@ function routeState(pathname: string, search: string, savedScope: 'personal' | '
 }
 
 test('the URL scope wins, then the remembered one, then Personal', () => {
-  assert.equal(routeState('/app/files', 'scope=workspace', 'archived').scope, 'workspace')
-  assert.equal(routeState('/app/files', '', 'archived').scope, 'archived')
+  assert.equal(routeState('/app/files', 'scope=workspace', 'personal').scope, 'workspace')
+  assert.equal(routeState('/app/files', '', 'workspace').scope, 'workspace')
   assert.equal(routeState('/app/files', '').scope, 'personal')
+  // The retired Archived scope (old links, or a value remembered before it went) falls back to Personal.
+  assert.equal(routeState('/app/files', 'scope=archived').scope, 'personal')
 })
 
 test('old agent links that carried the tab as ?view= still open the right scope', () => {
   assert.equal(routeState('/app/agents', 'view=workspace').scope, 'workspace')
-  assert.equal(routeState('/app/agents', 'view=archived').scope, 'archived')
+  assert.equal(routeState('/app/agents', 'view=archived').scope, 'personal')
   // `view` means something else on other pages (Files categories) and must not leak into the scope.
   assert.equal(routeState('/app/files', 'view=archived').scope, 'personal')
 })
 
 test('chats take their scope from the subview, not from the remembered scope', () => {
-  assert.equal(routeState('/app/chat', 'view=dms', 'archived').scope, 'workspace')
+  assert.equal(routeState('/app/chat', 'view=dms', 'personal').scope, 'workspace')
   assert.equal(routeState('/app/chat', '', 'workspace').scope, 'personal')
-  assert.equal(routeState('/app/archived', '', 'personal').scope, 'archived')
   assert.equal(routeState('/app/activity', '', 'personal').scope, 'workspace')
 })
 
@@ -118,8 +116,7 @@ const baseRules: PanelCreateRules = {
 }
 const action = { label: 'New note', onClick: () => undefined }
 
-test('New is hidden in Archived and says where it lands in Workspace', () => {
-  assert.equal(scopePanelAction({ action, panelKind: 'files', scope: 'archived', chatsView: 'personal', rules: baseRules }), null)
+test('New says where it lands in Workspace', () => {
   assert.equal(scopePanelAction({ action, panelKind: 'files', scope: 'personal', chatsView: 'personal', rules: baseRules }), action)
   assert.equal(
     scopePanelAction({ action, panelKind: 'files', scope: 'workspace', chatsView: 'personal', rules: baseRules })?.label,
@@ -143,7 +140,7 @@ test('New is hidden in Workspace for a member whose admin restricted it, and sho
   )
 })
 
-test('a workspace of one person lists the page rows on their own, then Archived, with no scope rows', () => {
+test('a workspace of one person lists the page rows on their own, with no scope rows', () => {
   const built = buildScopedPanelNav({
     scope: 'personal',
     sub: 'notes',
@@ -152,8 +149,8 @@ test('a workspace of one person lists the page rows on their own, then Archived,
     solo: true,
     onSelect: () => undefined,
   })
-  assert.deepEqual(built.items.map((item) => item.id), ['personal:all', 'personal:notes', 'archived'])
-  assert.deepEqual(built.items.map((item) => item.label), ['All', 'Notes', 'Archived'])
+  assert.deepEqual(built.items.map((item) => item.id), ['personal:all', 'personal:notes'])
+  assert.deepEqual(built.items.map((item) => item.label), ['All', 'Notes'])
   assert.equal(built.activeId, 'personal:notes')
   assert.ok(built.items.every((item) => !item.children), 'nothing is nested')
 })
@@ -169,11 +166,11 @@ test('solo selections still report the Personal scope and the sub-row', () => {
     onSelect: (scope, sub) => { calls.push([scope, sub]) },
   })
   built.onSelect('personal:notes')
-  built.onSelect('archived')
-  assert.deepEqual(calls, [['personal', 'notes'], ['archived', null]])
+  built.onSelect('personal')
+  assert.deepEqual(calls, [['personal', 'notes'], ['personal', null]])
 })
 
-test('a solo page with no sub-rows gets one row named for the page, then Archived', () => {
+test('a solo page with no sub-rows gets one row named for the page', () => {
   const built = buildScopedPanelNav({
     scope: 'personal',
     sub: null,
@@ -183,13 +180,6 @@ test('a solo page with no sub-rows gets one row named for the page, then Archive
     soloLabel: 'Agents',
     onSelect: () => undefined,
   })
-  assert.deepEqual(built.items.map((item) => [item.id, item.label]), [['personal', 'Agents'], ['archived', 'Archived']])
+  assert.deepEqual(built.items.map((item) => [item.id, item.label]), [['personal', 'Agents']])
   assert.equal(built.activeId, 'personal')
-})
-
-test('solo Archived is the active row when archived is on screen, and can be hidden', () => {
-  const shown = buildScopedPanelNav({ scope: 'archived', sub: null, subItems: { personal: FILE_ROWS }, pendingId: null, solo: true, onSelect: () => undefined })
-  assert.equal(shown.activeId, 'archived')
-  const hidden = buildScopedPanelNav({ scope: 'personal', sub: 'all', subItems: { personal: FILE_ROWS }, pendingId: null, solo: true, hiddenScopes: ['archived'], onSelect: () => undefined })
-  assert.deepEqual(hidden.items.map((item) => item.id), ['personal:all', 'personal:notes'])
 })

@@ -6,6 +6,7 @@ import type {
   WorkspaceAgentAutomation,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentThread,
+  WorkspaceArchivedAgentThread,
   WorkspaceMembershipRole,
 } from '@overlay/workspace-contracts'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
@@ -47,8 +48,9 @@ function agentFixture(overrides: Partial<WorkspaceAgentDirectoryItem> = {}): Wor
   }
 }
 
-function defaultAgentFixture(): WorkspaceAgentDirectoryItem {
+function defaultAgentFixture(overrides: Partial<WorkspaceAgentDirectoryItem> = {}): WorkspaceAgentDirectoryItem {
   return agentFixture({
+    ...overrides,
     id: 'agent-default',
     principalId: 'agent-principal-default',
     name: 'Overlay',
@@ -90,7 +92,7 @@ function serviceFor(
     automations?: Array<WorkspaceAgentAutomation & { agentId: string }>
     deleteThreadError?: string
     resolveThreadError?: string
-    archivedThreadAgentIds?: string[]
+    archivedThreadRows?: WorkspaceArchivedAgentThread[]
   } = {},
 ) {
   const store = new Map(seed.map((agent) => [agent.id, agent]))
@@ -101,6 +103,7 @@ function serviceFor(
   const threadStore = [...(options.threads ?? [])]
   const automationStore = [...(options.automations ?? [])]
   const deletedThreads: string[] = []
+  const deletedAgents: string[] = []
   const archivedThreads: Array<{ conversationId: string; archived: boolean }> = []
   let idCounter = 0
   const service = new WorkspaceAgentService(
@@ -177,8 +180,15 @@ function serviceFor(
       async listAgentAutomations({ agentId }: { agentId: string; userId: string }) {
         return automationStore.filter((automation) => automation.agentId === agentId)
       },
-      async listArchivedAgentIds() {
-        return [...options.archivedThreadAgentIds ?? []]
+      async listArchivedThreads() {
+        return [...options.archivedThreadRows ?? []]
+      },
+      async deleteArchived({ agentId }: { agentId: string }) {
+        const row = store.get(agentId)
+        if (!row?.archivedAt) return false
+        store.delete(agentId)
+        deletedAgents.push(agentId)
+        return true
       },
       async setThreadArchived({ conversationId, archived }: { conversationId: string; archived: boolean }) {
         archivedThreads.push({ conversationId, archived })
@@ -192,7 +202,7 @@ function serviceFor(
     () => `generated-${++idCounter}`,
     () => NOW,
   )
-  return { service, created, updated, archived, unarchived, deletedThreads, archivedThreads }
+  return { service, created, updated, archived, unarchived, deletedThreads, deletedAgents, archivedThreads }
 }
 
 async function serviceError(promise: Promise<unknown>): Promise<WorkspaceAgentServiceError> {
@@ -391,7 +401,10 @@ test('list excludes archived agents unless includeArchived is set', async () => 
     agentFixture({ id: 'agent-archived', archivedAt: NOW }),
   ]
   const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, {
-    archivedThreadAgentIds: ['agent-live'],
+    archivedThreadRows: [{
+      conversationId: 'conv-archived', agentId: 'agent-live', agentName: 'Live', agentArchived: false,
+      title: 'Old thread', archivedAt: NOW, lastModified: NOW,
+    }],
   })
   const live = await service.list({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID })
   assert.deepEqual(live.agents.map((agent) => agent.id).sort(), ['agent-default', 'agent-live'])
@@ -404,8 +417,37 @@ test('list excludes archived agents unless includeArchived is set', async () => 
     all.agents.map((agent) => agent.id).sort(),
     ['agent-archived', 'agent-default', 'agent-live'],
   )
-  assert.deepEqual(all.archivedThreadAgentIds, ['agent-live'])
-  assert.deepEqual(live.archivedThreadAgentIds, [])
+  // An archived thread is its own row; its agent stays live and is not in the archived-agents list.
+  assert.deepEqual(all.archivedThreads.map((thread) => [thread.conversationId, thread.agentId, thread.agentArchived]), [['conv-archived', 'agent-live', false]])
+  assert.ok(!all.agents.find((agent) => agent.id === 'agent-live')?.archivedAt)
+  assert.deepEqual(live.archivedThreads, [])
+})
+
+test('deleteArchived deletes an archived agent for its creator and for a manager', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-archived', archivedAt: NOW }), agentFixture({ id: 'agent-archived-2', archivedAt: NOW })]
+  const creator = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  await creator.service.deleteArchived({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-archived' })
+  assert.deepEqual(creator.deletedAgents, ['agent-archived'])
+  const admin = serviceFor(OTHER_PRINCIPAL_ID, 'admin', seed)
+  await admin.service.deleteArchived({ actorUserId: 'user-admin', workspaceId: WORKSPACE_ID, agentId: 'agent-archived-2' })
+  assert.deepEqual(admin.deletedAgents, ['agent-archived-2'])
+})
+
+test('deleteArchived refuses a live agent, the default agent and someone else\'s agent', async () => {
+  const seed = [
+    defaultAgentFixture({ archivedAt: NOW }),
+    agentFixture({ id: 'agent-live' }),
+    agentFixture({ id: 'agent-archived', archivedAt: NOW }),
+  ]
+  const member = serviceFor(OTHER_PRINCIPAL_ID, 'member', seed)
+  const live = await serviceError(member.service.deleteArchived({ actorUserId: 'user-other', workspaceId: WORKSPACE_ID, agentId: 'agent-live' }))
+  assert.equal(live.code, 'not_found')
+  const notYours = await serviceError(member.service.deleteArchived({ actorUserId: 'user-other', workspaceId: WORKSPACE_ID, agentId: 'agent-archived' }))
+  assert.equal(notYours.code, 'forbidden')
+  const admin = serviceFor(OTHER_PRINCIPAL_ID, 'admin', seed)
+  const isDefault = await serviceError(admin.service.deleteArchived({ actorUserId: 'user-admin', workspaceId: WORKSPACE_ID, agentId: 'agent-default' }))
+  assert.equal(isDefault.code, 'forbidden')
+  assert.deepEqual([...member.deletedAgents, ...admin.deletedAgents], [])
 })
 
 test('unarchive restores an archived agent for its creator', async () => {

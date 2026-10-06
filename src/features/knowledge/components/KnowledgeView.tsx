@@ -180,12 +180,12 @@ export default function KnowledgeView({
     })
   }, [mode, pathname, router, searchParams])
 
-  // The Files page shows one scope at a time (Personal, Workspace, or Archived), the same one as the secondary panel.
+  // The Files page shows one scope at a time (Personal or Workspace), the same one as the secondary panel.
   const scope = usePanelScope()
   const listView = usePanelListView()
-  // Nothing is added to Archived, nor to a Workspace its admin restricted.
+  // Nothing is added to a Workspace its admin restricted.
   const { canCreate } = useWorkspaceCreateAccess()
-  const canAdd = scope !== 'archived' && canCreate('content', newItemScope(scope) ?? 'personal')
+  const canAdd = canCreate('content', newItemScope(scope) ?? 'personal')
 
   const adapters = useMemo(() => createWebKnowledgeSurfaceAdapters({
     navigate: (url, options) => options?.replace ? router.replace(url) : router.push(url),

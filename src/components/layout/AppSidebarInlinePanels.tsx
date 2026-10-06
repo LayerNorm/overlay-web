@@ -25,7 +25,6 @@ import { FilesInlineTree } from '@overlay/modules-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
-import { ArchivedScopeList, type ArchivedScopeItem } from '@/components/layout/ArchivedScopeList'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
 import { SidebarResourceList } from '@overlay/ui/primitives'
 
@@ -33,31 +32,6 @@ import { arrayOrEmpty } from './sidebar-nav'
 const nextSidebarMutation = createKnowledgeMutationPublisher(
   `web-sidebar:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
 )
-
-async function loadArchivedFiles(): Promise<ArchivedScopeItem[]> {
-  const [fileRows, noteRows] = await Promise.all([
-    overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true, view: 'archived' }),
-    overlayAppClient.notes.get<NoteDoc[]>({ limit: 100, view: 'archived' }),
-  ])
-  const files = arrayOrEmpty<FileTreeEntry>(fileRows)
-  const seen = new Set(files.map((file) => file._id))
-  const notes = arrayOrEmpty<NoteDoc>(noteRows).map(noteDocToKnowledgeFile).filter((note) => !seen.has(note._id))
-  return [...files, ...notes]
-    // A folder's contents are archived with it; list only the top of each archived subtree.
-    .filter((file, _index, all) => !file.parentId || !all.some((other) => other._id === file.parentId))
-    .map((file) => {
-      const scoped = file as FileTreeEntry & { archivedFromScope?: 'personal' | 'workspace'; scope?: 'personal' | 'workspace' }
-      const params = new URLSearchParams(file.type === 'folder' ? { folder: file._id } : { [fileTreeRouteView(file) === 'note' ? 'id' : 'file']: file._id })
-      params.set('scope', 'archived')
-      const base = file.type !== 'folder' && fileTreeRouteView(file) === 'note' ? '/app/notes' : '/app/files'
-      return {
-        id: file._id,
-        name: file.name,
-        from: scoped.archivedFromScope ?? scoped.scope ?? 'personal',
-        href: `${base}?${params}`,
-      }
-    })
-}
 
 export function FilesInlinePanel({
   searchQuery = '',
@@ -196,19 +170,6 @@ export function FilesInlinePanel({
 
   const q = searchQuery.trim()
   const filteredFiles = useMemo(() => filterFilesForTreeSearch(files, q), [files, q])
-
-  // Archived is one flat list of everything archived, each tagged with where it came from.
-  if (scope === 'archived') {
-    return (
-      <ArchivedScopeList
-        resource="files"
-        emptyLabel="Nothing archived"
-        onOpen={onNavigate}
-        load={loadArchivedFiles}
-        onRestored={() => window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))}
-      />
-    )
-  }
 
   return (
     <SidebarResourceList>

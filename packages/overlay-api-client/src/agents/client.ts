@@ -64,6 +64,14 @@ export class AgentsClient {
     )
   }
 
+  /** Deletes an archived agent for good. A live agent must be archived first. */
+  deleteArchived(workspaceId: string, agentId: string, init?: RequestInit) {
+    return this.http.json<{ deleted: true }>(
+      `/api/v1/agents/${encodeURIComponent(agentId)}/permanent`,
+      workspaceInit(workspaceId, { ...init, method: 'DELETE' }),
+    )
+  }
+
   bundle(workspaceId: string, agentId: string, init?: RequestInit) {
     return this.http.json<WorkspaceAgentBundle>(
       `/api/v1/agents/${encodeURIComponent(agentId)}/bundle`,

@@ -300,8 +300,8 @@ function useSidebarPanelChrome(args: {
   } = args
 
   const contextualAction = resolveSidebarActionForPath(
-    // Activity and Archived live under the Chats secondary panel, so keep New chat + search.
-    routeState.activityOpen || routeState.archivedOpen || routeState.chatsView === 'activity' || routeState.chatsView === 'archived'
+    // Activity and the archived-chat viewer live under the Chats secondary panel, so keep New chat + search.
+    routeState.activityOpen || routeState.archivedOpen || routeState.chatsView === 'activity'
       ? '/app/chat'
       : routeState.canonicalWorkspaceRoute
         ? `/app/${routeState.workspaceSurface}`

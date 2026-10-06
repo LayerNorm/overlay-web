@@ -4,6 +4,7 @@ import type {
   WorkspaceAgentAutomation,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentThread,
+  WorkspaceArchivedAgentThread,
 } from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -61,8 +62,12 @@ export class ConvexWorkspaceAgentRepository implements WorkspaceAgentRepository 
     return await threadQuery<WorkspaceAgentAutomation[]>('listAutomationsByServer', args) ?? []
   }
 
-  async listArchivedAgentIds(args: { workspaceId: string; userId: string }) {
-    return await threadQuery<string[]>('listArchivedAgentsByServer', args) ?? []
+  async listArchivedThreads(args: { workspaceId: string; userId: string }) {
+    return await threadQuery<WorkspaceArchivedAgentThread[]>('listArchivedThreadsByServer', args) ?? []
+  }
+
+  async deleteArchived(args: { agentId: string; workspaceId: string; now: number }) {
+    return await mutation<boolean>('deleteArchivedByServer', args) ?? false
   }
 
   async setThreadArchived(args: { conversationId: string; agentId: string; userId: string; archived: boolean }) {

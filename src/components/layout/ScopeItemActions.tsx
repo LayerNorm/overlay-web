@@ -5,6 +5,7 @@ import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
 import { useScopeItemActions, type ScopedItem } from '@/hooks/use-scope-item-actions'
 import type { ResourceKind, ResourceScope } from '@/shared/workspaces/resource-scope'
+import { announceArchived, refreshAfterRestore } from '@/shared/app/archive-toast'
 
 export type ScopeChange =
   | { action: 'move'; to: ResourceScope }
@@ -27,12 +28,15 @@ export function ScopeItemActions({
   resource,
   item,
   variant = 'icons',
+  label,
   onChanged,
 }: {
   kind: ResourceKind
   resource: ScopedResourceKind
   item: ScopedItem
   variant?: 'icons' | 'buttons'
+  /** The item's name, for the "Archived" note; read from the item's `name` or `title` when omitted. */
+  label?: string
   onChanged?: (change: ScopeChange) => void
 }) {
   const actions = useScopeItemActions(kind, resource)
@@ -47,6 +51,14 @@ export function ScopeItemActions({
     try {
       await request
       onChanged?.(change)
+      if (change.action === 'archive') {
+        const named = item as ScopedItem & { name?: string; title?: string }
+        announceArchived({
+          name: label ?? named.name ?? named.title ?? 'Item',
+          undo: async () => { await actions.restore(item._id) },
+          onUndone: () => refreshAfterRestore(resource),
+        })
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'That did not work.')
     } finally {

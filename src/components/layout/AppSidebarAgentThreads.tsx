@@ -1,14 +1,13 @@
 'use client'
 
-import { Loader2, MessageSquare, Plus, Archive, ArchiveRestore, Trash2, Workflow } from 'lucide-react'
+import { Loader2, MessageSquare, Plus, Archive, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 
-import { resourceRowClass, type AgentsPanelView } from './sidebar-nav'
+import { resourceRowClass } from './sidebar-nav'
 
 export function AgentThreadRows({
   agent,
   bundle,
-  view,
   activeConversationId,
   onOpenThread,
   onCreateThread,
@@ -18,7 +17,6 @@ export function AgentThreadRows({
 }: {
   agent: WorkspaceAgentDirectoryItem
   bundle: WorkspaceAgentBundle | 'loading' | 'error'
-  view: AgentsPanelView
   activeConversationId: string | null
   onOpenThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
   onCreateThread(agent: WorkspaceAgentDirectoryItem): void
@@ -36,11 +34,9 @@ export function AgentThreadRows({
   if (bundle === 'error') {
     return <p className="py-1.5 pl-[34px] text-xs text-[var(--muted-light)]">Could not load threads</p>
   }
-  // Live tabs show live threads; the Archived tab shows only archived ones.
-  const threads = bundle.threads.filter((thread) => (
-    view === 'archived' ? Boolean(thread.archivedAt) : !thread.archivedAt
-  ))
-  const automations = view === 'archived' && !agent.archivedAt ? [] : bundle.automations
+  // Archived threads are in Settings → Archived, not under the agent.
+  const threads = bundle.threads.filter((thread) => !thread.archivedAt)
+  const automations = bundle.automations
   return (
     <div className="space-y-0.5 pb-1">
       {threads.map((thread) => {
@@ -61,15 +57,15 @@ export function AgentThreadRows({
             <span className="absolute inset-y-1 right-1 hidden items-center gap-0.5 rounded-md bg-[var(--surface-subtle)] px-0.5 group-hover/thread:flex">
               <button
                 type="button"
-                aria-label={thread.archivedAt ? 'Unarchive thread' : 'Archive thread'}
-                title={thread.archivedAt ? 'Unarchive thread' : 'Archive thread'}
+                aria-label="Archive thread"
+                title="Archive thread"
                 onClick={(event) => {
                   event.stopPropagation()
-                  onArchiveThread(agent, thread.conversationId, !thread.archivedAt)
+                  onArchiveThread(agent, thread.conversationId, true)
                 }}
                 className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--muted)] transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
               >
-                {thread.archivedAt ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                <Archive size={13} />
               </button>
               <button
                 type="button"

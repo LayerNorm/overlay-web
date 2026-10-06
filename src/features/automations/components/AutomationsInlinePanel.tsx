@@ -9,28 +9,16 @@ import type { AutomationSummary } from '@overlay/app-core'
 import type { DeleteAutomationResponse } from '@overlay/app-core/automations'
 import {
   applyAutomationRename,
-  automationHref,
   AUTOMATIONS_UPDATED_EVENT,
   getAutomationDisplayName,
   removeAutomationById,
 } from '@overlay/app-core/automations'
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
-import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
+import { usePanelListView } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
-import { ArchivedScopeList, type ArchivedScopeItem } from '@/components/layout/ArchivedScopeList'
 
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
-
-async function loadArchivedAutomations(): Promise<ArchivedScopeItem[]> {
-  const page = await overlayAppClient.automations.getPage<AutomationSummary>({ limit: 100, view: 'archived' })
-  return (Array.isArray(page.data) ? page.data : []).map((automation) => ({
-    id: automation._id,
-    name: getAutomationDisplayName(automation),
-    from: automation.archivedFromScope ?? automation.scope ?? 'personal',
-    href: `${automationHref(automation)}&scope=archived`,
-  }))
-}
 
 export function AutomationsInlinePanel({
   onNavigate,
@@ -51,7 +39,6 @@ export function AutomationsInlinePanel({
   const [pendingNavId, setPendingNavId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
   const activeAutomationId = searchParams?.get('automationId') ?? null
-  const scope = usePanelScope()
   const listView = usePanelListView()
 
   const loadAutomations = useCallback(async () => {
@@ -158,18 +145,6 @@ export function AutomationsInlinePanel({
     } finally {
       setDeletingAutomationIds((prev) => prev.filter((id) => id !== automation._id))
     }
-  }
-
-  if (scope === 'archived') {
-    return (
-      <ArchivedScopeList
-        resource="automations"
-        emptyLabel="No archived automations"
-        onOpen={onNavigate}
-        load={loadArchivedAutomations}
-        onRestored={() => window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))}
-      />
-    )
   }
 
   if (loading) return <SidebarListSkeleton rows={3} />

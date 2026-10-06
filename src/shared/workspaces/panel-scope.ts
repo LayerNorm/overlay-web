@@ -1,14 +1,23 @@
 /**
- * The scope a person is looking at in the secondary panel (Personal / Workspace / Archived). It is one setting shared by
- * every page: the URL carries it as `?scope=`, and the last choice is remembered so the next page opens on it.
- * Archived is a view, not a scope: it shows what was archived from either. See docs/plans/UNIFIED_SCOPES_PLAN.md.
+ * The scope a person is looking at in the secondary panel (Personal / Workspace). It is one setting shared by every page:
+ * the URL carries it as `?scope=`, and the last choice is remembered so the next page opens on it. Archived items are not a
+ * scope: they all live in Settings → Archived (older links with `?scope=archived` are sent there). See
+ * docs/plans/UNIFIED_SCOPES_PLAN.md.
  */
-import type { ResourceView } from './resource-scope'
+import type { ResourceScope } from './resource-scope'
 import { soloPanelScope } from './solo-workspace'
 
-export type PanelScope = ResourceView
+export type PanelScope = ResourceScope
 
-export const PANEL_SCOPES: readonly PanelScope[] = ['personal', 'workspace', 'archived']
+export const PANEL_SCOPES: readonly PanelScope[] = ['personal', 'workspace']
+
+/** Where Archived lives now; `?scope=archived` and `/app/archived` links go here. */
+export const ARCHIVED_SETTINGS_PATH = '/app/settings?section=archived'
+
+/** Whether a `?scope=` value is the retired Archived scope, so the link should be redirected. */
+export function isLegacyArchivedScope(value: unknown): boolean {
+  return value === 'archived'
+}
 
 export const DEFAULT_PANEL_SCOPE: PanelScope = 'personal'
 
@@ -18,7 +27,7 @@ export const PANEL_SCOPE_PARAM = 'scope'
 export const PANEL_SCOPE_STORAGE_KEY = 'overlay:panel-scope'
 
 export function parsePanelScope(value: unknown): PanelScope | null {
-  return value === 'personal' || value === 'workspace' || value === 'archived' ? value : null
+  return value === 'personal' || value === 'workspace' ? value : null
 }
 
 /**
@@ -36,13 +45,13 @@ export function resolvePanelScope(args: {
 
 /**
  * The `view` to ask a list for. A workspace of one person has a single list, so it asks for everything active (no view):
- * what the person made and anything shared into the workspace, such as the default agent. Archived stays its own list.
+ * what the person made and anything shared into the workspace, such as the default agent.
  */
 export function listViewForScope(scope: PanelScope, solo: boolean): PanelScope | undefined {
-  return solo && scope !== 'archived' ? undefined : scope
+  return solo ? undefined : scope
 }
 
-/** What a creation should default to: Archived has no New, so a create made from there lands in Personal. */
+/** What a creation should default to. */
 export function scopeForNewItem(scope: PanelScope): 'personal' | 'workspace' {
   return scope === 'workspace' ? 'workspace' : 'personal'
 }
@@ -53,11 +62,6 @@ export function scopeForNewItem(scope: PanelScope): 'personal' | 'workspace' {
  */
 export function newItemScope(scope: PanelScope): 'workspace' | undefined {
   return scope === 'workspace' ? 'workspace' : undefined
-}
-
-/** The sub-rows shown under a scope: Archived has none. */
-export function scopeHasSubRows(scope: PanelScope): scope is 'personal' | 'workspace' {
-  return scope !== 'archived'
 }
 
 /** Sets or clears `scope` on a copy of `params`. Personal is the default, so it stays out of the URL. */

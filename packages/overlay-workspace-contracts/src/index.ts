@@ -91,6 +91,7 @@ export {
   type WorkspaceAgentDirectoryItem,
   type WorkspaceAgentListResponse,
   type WorkspaceAgentThread,
+  type WorkspaceArchivedAgentThread,
   type WorkspaceAgentAutomation,
   type WorkspaceAgentBundle,
   WORKSPACE_SHARE_RESOURCE_TYPES,

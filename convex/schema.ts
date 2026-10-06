@@ -2026,6 +2026,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     archivedAt: v.optional(v.number()),
+    /** Deleted forever from the Archived page: hidden from every list; the row stays so history in shared rooms still renders. */
+    deletedAt: v.optional(v.number()),
     teamIds: v.optional(v.array(v.string())),
     roomCount: v.optional(v.number()),
     isDefault: v.optional(v.boolean()),

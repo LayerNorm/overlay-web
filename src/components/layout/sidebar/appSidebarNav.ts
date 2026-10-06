@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  Archive,
   Bot,
   Brain,
   Cloud,
@@ -63,6 +64,7 @@ export const SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   webhooks: Webhook,
   contact: Mail,
   workspace: UsersRound,
+  archived: Archive,
 }
 
 /** Sidebar navigation chords stay inert while typing and ignore key repeat. */
@@ -102,7 +104,7 @@ export interface SidebarRouteState {
   agentsView: AgentsPanelView
   chatViewParam: string | null
   chatsView: string
-  /** Personal, Workspace, or Archived, from the URL, then the remembered choice. Chats derive it from their subview. */
+  /** Personal or Workspace, from the URL, then the remembered choice. Chats derive it from their subview. */
   scope: PanelScope
   panelKind: SecondaryPanelKind | null
   hasResourcePanel: boolean
@@ -117,24 +119,20 @@ function resolveToolsView(current: string | null): string {
   return 'connectors'
 }
 
-/** Chats keep their own routes: direct messages, channels, and activity are the Workspace scope; archived chats are Archived. */
+/** Chats keep their own routes: direct messages, channels, and activity are the Workspace scope. */
 export function chatScopeForView(chatsView: string): PanelScope {
-  if (chatsView === 'archived') return 'archived'
   if (chatsView === 'dms' || chatsView === 'channels' || chatsView === 'activity') return 'workspace'
   return 'personal'
 }
 
 function resolveChatsView({
   activityOpen,
-  archivedOpen,
   chatViewParam,
 }: {
   activityOpen: boolean
-  archivedOpen: boolean
   chatViewParam: string | null
 }): string {
   if (activityOpen) return 'activity'
-  if (archivedOpen) return 'archived'
   if (chatViewParam === 'dms') return 'dms'
   if (chatViewParam === 'channels') return 'channels'
   if (chatViewParam === 'all') return 'all'
@@ -180,7 +178,7 @@ export function resolveSidebarRouteState({
   const chatViewParam = searchParams.get('view')
   const toolsView = resolveToolsView(chatViewParam)
   const filesView = resolveFilesCategory(chatViewParam)
-  const chatsView = resolveChatsView({ activityOpen, archivedOpen, chatViewParam })
+  const chatsView = resolveChatsView({ activityOpen, chatViewParam })
   // Agent links from before scopes carried the tab as `?view=`.
   const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
   const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo })
@@ -501,7 +499,6 @@ export function scopePanelAction({
   rules: PanelCreateRules
 }): { label: string; onClick: () => void } | null {
   if (!action) return null
-  if (scope === 'archived') return null
   if (scope === 'personal') return action
   if (panelKind === 'chat') {
     return chatsView === 'channels' && !rules.isManager && !rules.memberCanCreateChannels ? null : action

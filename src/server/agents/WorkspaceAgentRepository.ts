@@ -7,6 +7,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentHarness,
   WorkspaceAgentThread,
+  WorkspaceArchivedAgentThread,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 
@@ -54,8 +55,10 @@ export interface WorkspaceAgentRepository {
   createThread(args: { workspaceId: string; agentId: string; userId: string; title?: string }): Promise<AgentThreadRef | null>
   listThreads(args: { workspaceId: string; agentId: string; userId: string }): Promise<WorkspaceAgentThread[]>
   listAgentAutomations(args: { workspaceId: string; agentId: string; userId: string }): Promise<WorkspaceAgentAutomation[]>
-  /** Agents (live or archived) owning at least one thread the user archived. */
-  listArchivedAgentIds(args: { workspaceId: string; userId: string }): Promise<string[]>
+  /** Every thread the user archived, across agents. */
+  listArchivedThreads(args: { workspaceId: string; userId: string }): Promise<WorkspaceArchivedAgentThread[]>
+  /** Deletes an archived agent for good; false when it is not archived (or is the default agent). */
+  deleteArchived(args: { agentId: string; workspaceId: string; now: number }): Promise<boolean>
   setThreadArchived(args: { conversationId: string; agentId: string; userId: string; archived: boolean }): Promise<void>
   deleteThread(args: { conversationId: string; agentId: string; userId: string }): Promise<void>
 }

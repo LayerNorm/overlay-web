@@ -8,7 +8,7 @@ Every resource in a workspace has one of two scopes, and every page's secondary 
 
 - **Personal**: mine, within the current workspace. Private to me.
 - **Workspace**: shared with the workspace's members.
-- **Archived**: whatever was archived from either scope. Restoring returns an item to the scope it came from.
+- **Archived** (revised 2026-10-06): not a sidebar view. Everything archived from either scope lives in one page, Settings → Archived, with a kind filter, search, bulk Restore and bulk Delete forever. Restoring returns an item to the scope it came from.
 
 "Personal" means *mine within this workspace*. It is not the personal workspace (the one created at sign-up). A later phase retires that special workspace entirely.
 
@@ -195,6 +195,10 @@ A shared helper, `canReadResource` / `canWriteResource` in `src/shared` (isomorp
 - **Archive** is allowed to the same people who can edit the item.
 - **Agents acting for a person**: an agent run sees what the person sees, nothing more (unchanged principle). Workspace-scoped skills, MCP servers, and connectors become available to workspace agents only through the person's access.
 - Guests: read workspace-scoped items only where already shared with them; no scope changes.
+
+## Archived page (2026-10-06)
+
+The Archived row and subpage were removed from every secondary sidebar (`PanelScope` is now `personal | workspace`; the API `view=archived` stays for the page's lists). Settings → Archived (`src/features/settings/components/ArchivedSettings.tsx`, logic in `src/features/settings/lib/`) lists chats, files/notes/folders, agents, agent threads, skills, MCP servers and automations; connectors are not listed (they were never shown in the old Archived view either). Restore uses the existing per-kind endpoints; Delete forever uses the existing per-kind delete endpoints, plus `DELETE /api/v1/agents/[agentId]/permanent` (new: only archived agents; marks the definition `deletedAt`, deletes its threads). Agent threads are archived per person (`conversationParticipants.archivedAt`) and are never the agent: archiving a thread leaves the agent live; deleting an archived thread leaves the agent; an agent whose threads are all archived starts a fresh one when opened (`resolveMainThreadByServer` skips threads the caller archived). Each list call is capped at 100 rows. Channels and direct messages are removed for the person only. Old `?scope=archived` links redirect to the page.
 
 ## Phases
 

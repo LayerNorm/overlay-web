@@ -8,6 +8,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
+import { announceArchived } from '@/shared/app/archive-toast'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { buildAgentEditorHref, startAgentChat } from '../lib/agent-chat'
@@ -216,6 +217,15 @@ export function useAgentEditorActions({
       if (cloudAgent) await overlayAppClient.cloudAgents.remove(activeWorkspaceId, agent.id)
       await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
       dispatchAgentDirectoryChanged(activeWorkspaceId)
+      const workspaceId = activeWorkspaceId
+      announceArchived({
+        name: agent.name,
+        // An agent's machine is deleted when it is archived, so restoring a cloud agent does not bring that back.
+        ...(cloudAgent ? {} : {
+          undo: async () => { await overlayAppClient.agents.restore(workspaceId, agent.id) },
+          onUndone: () => dispatchAgentDirectoryChanged(workspaceId),
+        }),
+      })
       if (onArchived) onArchived()
       else router.push(directoryHref)
     } catch (archiveError) {

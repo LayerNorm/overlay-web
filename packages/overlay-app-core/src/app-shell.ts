@@ -148,6 +148,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
   { id: 'agent-accounts', label: 'Agents', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'] },
   { id: 'connected-apps', label: 'Connected apps' },
   { id: 'computers', label: 'Computers', requiredCapabilities: ['computers'] },
+  { id: 'archived', label: 'Archived' },
   { id: 'contact', label: 'Contact' },
 ] as const
 
@@ -247,6 +248,7 @@ export const DEFAULT_OVERLAY_SETTINGS_PANELS: readonly OverlaySettingsPanel[] = 
   { id: 'agent-accounts', sectionId: 'agent-accounts', label: 'Agents', componentKey: 'overlay.settings.agentAccounts', featureFlagId: 'agents', requiredCapabilities: ['connectedAgents'], order: 66 },
   { id: 'connected-apps', sectionId: 'connected-apps', label: 'Connected apps', componentKey: 'overlay.settings.connectedApps', order: 66.5 },
   { id: 'computers', sectionId: 'computers', label: 'Computers', componentKey: 'overlay.settings.computers', requiredCapabilities: ['computers'], order: 67 },
+  { id: 'archived', sectionId: 'archived', label: 'Archived', componentKey: 'overlay.settings.archived', order: 68 },
   { id: 'contact', sectionId: 'contact', label: 'Contact', componentKey: 'overlay.settings.contact', order: 70 },
 ] as const
 

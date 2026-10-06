@@ -7,7 +7,7 @@ import {
   type CollaborationChatView,
 } from '@/shared/chat/chat-view-navigation'
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
-import { chatsInlineItems, agentsInlineItems } from '@/components/layout/sidebar-nav'
+import { chatsInlineItems } from '@/components/layout/sidebar-nav'
 import { filesInlineItems } from '@/components/layout/FilesCategorySidebar'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
@@ -23,31 +23,6 @@ interface SidebarRouter {
 // Incremented per chats-subview select; an in-flight fetch that resolves after
 // a newer selection is stale and must not steer the route.
 let chatViewNavigationVersion = 0
-
-async function pushArchivedDestination(router: SidebarRouter, surface: string) {
-  try {
-    const response = await fetch('/api/v1/conversations?archived=true', {
-      cache: 'no-store',
-      credentials: 'same-origin',
-    })
-    if (response.ok) {
-      const body = await response.json() as unknown
-      const conversations = Array.isArray(body)
-        ? body as Array<{ _id?: string }>
-        : (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
-          ? (body as { data: Array<{ _id?: string }> }).data
-          : [])
-      const mostRecentId = conversations[0]?._id
-      if (mostRecentId) {
-        router.push(`${surface}?id=${encodeURIComponent(mostRecentId)}`)
-        return
-      }
-    }
-  } catch {
-    // Empty archived surface is still the right destination.
-  }
-  router.push(surface)
-}
 
 async function resolveViewConversationId({
   view,
@@ -104,7 +79,7 @@ function buildChatPanelNav({
   solo: boolean
 }): SecondaryPanelNav {
   const chatItems = (publicShowcase
-    ? chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
+    ? chatsInlineItems.filter((item) => item.id !== 'activity')
     : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
   const flat: SecondaryPanelNav = {
     items: chatItems,
@@ -118,13 +93,6 @@ function buildChatPanelNav({
         router.push(activeWorkspaceId
           ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
           : '/app/activity')
-        return
-      }
-      if (next === 'archived') {
-        const surface = activeWorkspaceId
-          ? buildWorkspaceHref(activeWorkspaceId, '/app/archived')
-          : '/app/archived'
-        await pushArchivedDestination(router, surface)
         return
       }
       const baseHref = activeWorkspaceId
@@ -152,7 +120,7 @@ function buildChatPanelNav({
   const chatScope = chatScopeForView(chatsView)
   const unreadOf = (id: string) => chatItems.find((item) => item.id === id)?.badgeCount ?? 0
   if (solo) {
-    // One person: no direct messages or activity feed, just chats and channels (rooms with agents), then Archived.
+    // One person: no direct messages or activity feed, just chats and channels (rooms with agents).
     const soloRows = chatItems
       .filter((item) => item.id === 'personal' || item.id === 'channels')
       .map((item) => (item.id === 'personal' ? { ...item, label: 'Chats' } : item))
@@ -161,7 +129,6 @@ function buildChatPanelNav({
       sub: chatsView === 'channels' ? 'channels' : chatScope === 'personal' ? 'personal' : null,
       subItems: { personal: soloRows },
       pendingId: effectivePendingSecondaryNavId,
-      hiddenScopes: publicShowcase ? ['archived'] : [],
       solo: true,
       onSelect: (scope, sub) => flat.onSelect(sub ?? scope),
     })
@@ -173,7 +140,6 @@ function buildChatPanelNav({
     subItems: { workspace: chatItems.filter((item) => item.id === 'dms' || item.id === 'channels' || item.id === 'activity') },
     pendingId: effectivePendingSecondaryNavId,
     badges: { workspace: unreadOf('dms') + unreadOf('channels') },
-    hiddenScopes: publicShowcase ? ['archived'] : [],
     onSelect: (scope, sub) => flat.onSelect(sub ?? (scope === 'workspace' ? (chatScope === 'workspace' ? chatsView : 'dms') : scope)),
   })
 }
@@ -210,13 +176,12 @@ function buildFilesPanelNav({
   return buildScopedPanelNav({
     scope,
     solo,
-    // Archived is one list of everything archived, so the category rows only exist under Personal and Workspace.
-    sub: scope === 'archived' ? null : filesView,
+    sub: filesView,
     subItems: { personal: filesInlineItems, workspace: filesInlineItems },
     pendingId: effectivePendingSecondaryNavId,
     onSelect: (nextScope, nextSub) => {
       closeMobileDrawer()
-      const nextView = nextScope === 'archived' ? 'all' : (nextSub ?? filesView)
+      const nextView = nextSub ?? filesView
       // With a file or folder open the category row is still "current", so a
       // plain equality check swallowed the click and nothing happened. Selecting
       // the category you are already in is how you get back out to its list.
@@ -320,19 +285,17 @@ function buildToolsPanelNav({
   return buildScopedPanelNav({
     scope,
     solo,
-    // Archived lists every kind of extension together, so the kind rows only exist under Personal and Workspace.
-    sub: scope === 'archived' ? null : toolsView,
+    sub: toolsView,
     subItems: { personal: toolsItems, workspace: toolsItems },
     pendingId: effectivePendingSecondaryNavId,
     onSelect: (nextScope, nextSub) => {
       closeMobileDrawer()
       const nextView = nextSub ?? toolsView
-      if (nextScope === scope && (nextScope === 'archived' || nextView === toolsView)) return
+      if (nextScope === scope && nextView === toolsView) return
       beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
       const params = withPanelScope(new URLSearchParams(currentSearchParams.toString()), nextScope)
       if (publicShowcase) params.set('showcase', '1')
-      if (nextScope === 'archived') params.delete('view')
-      else params.set('view', nextView)
+      params.set('view', nextView)
       router.push(`/app/tools?${params.toString()}`)
     },
   })
@@ -460,9 +423,6 @@ export function resolveSecondaryPanelNav({
       dms: shouldLoadCollaborationUnread ? collaborationUnread.dms : 0,
       channels: shouldLoadCollaborationUnread ? collaborationUnread.channels : 0,
       activity: cumulativeChatUnread,
-      // Archived chats are deliberately out of the unread count: they were put
-      // away, so surfacing a badge would pull attention back to them.
-      archived: 0,
     }
     return buildChatPanelNav({
       publicShowcase,

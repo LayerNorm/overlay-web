@@ -72,36 +72,53 @@ title row (`PanelRight` to dock, `AppWindow` to float). The two presentations
 share the same body, border, and chrome; only the frame differs, so switching
 never remounts form state.
 
-## The secondary panel: Personal, Workspace, Archived
+## The secondary panel: Personal, Workspace
 
 Chats, Files, Extensions, Automations, and Agents share one panel anatomy (see
 `docs/plans/UNIFIED_SCOPES_PLAN.md`): page title, then the scope rows, then
 New + search, then the list. New is never above the scope rows.
 
-- **Scope rows** are Personal (mine within this workspace), Workspace (shared
-  with its members), and Archived (what was archived from either, tagged
-  Personal or Workspace). Built by `buildScopedPanelNav`
+- **Scope rows** are Personal (mine within this workspace) and Workspace
+  (shared with its members). There is no Archived row: everything archived
+  lives in Settings → Archived (see below). Built by `buildScopedPanelNav`
   (`src/components/layout/sidebar/scopedPanelNav.ts`); the selected scope opens
   its page's sub-rows beneath it (Files: All/Notes/Files/Outputs; Chats →
   Workspace: Direct Messages/Channels/Activity; Extensions: Connectors/Skills/
-  MCPs/Apps). Archived has no sub-rows; its list is flat and tagged.
+  MCPs/Apps).
 - **One scope across pages.** The URL carries `?scope=` (Personal is the
   default and stays out of the URL); the last choice is remembered
   (`overlay:panel-scope` in local storage) so the next page opens on it. Read it
   with `usePanelScope()`; never keep a second copy. Chats derive their scope from
   the subview route instead (DMs, channels, activity are Workspace).
-- **New follows the scope.** `scopePanelAction` hides New in Archived and, in
+- **New follows the scope.** `scopePanelAction` hides New, in
   Workspace, when the person may not create there (the workspace's admin
   settings; owners and admins always may). In Workspace it reads "… in
   workspace". Create flows send `scope: 'workspace'` only for Workspace
   (`newItemScope`); Personal is what an absent scope means.
-- **Archived rows** (`ArchivedScopeList`) show a Personal/Workspace tag and a
-  restore button on hover; restoring returns the item to where it came from.
+- **Archived is one page, Settings → Archived** (`ArchivedSettings`), not a row
+  in each sidebar. A dropdown (All, Chats, Files & notes, Agents, Extensions,
+  Automations) and a search filter one list; each row carries a Personal/
+  Workspace tag (hidden in a solo workspace), a Restore button, and a Delete
+  forever button; rows can be multi-selected (checkbox, shift-click for a
+  range) for bulk Restore and Delete forever, always behind a confirmation.
+  Restore returns an item to where it came from; the server decides who may
+  restore or delete (creator, or owner/admin for workspace items); a partial
+  failure is reported, not hidden. Archiving anything shows a toast with Undo
+  and "View archived" (`announceArchived`, `ArchiveToastHost`). Old
+  `?scope=archived` links redirect to the page; `/app/archived` remains only as
+  the reader for one archived chat (`?id=`).
+- **Agent threads are not agents.** Archiving a thread (per person, from the
+  agent's thread list) puts only that thread in Settings → Archived; the agent
+  stays live and in its list, and opening it goes to its next active thread (a
+  fresh one if none is left). Deleting an archived thread deletes only that
+  thread; the agent is untouched. Archived agents are separate rows
+  (archive/restore/delete forever of the agent itself; deleting an agent also
+  deletes its threads). Bulk delete removes threads before their agent.
 - **A workspace of one person has no scope rows.** The interface follows the
   number of *people* in the workspace (`humanMemberCount`; agents do not count,
   and every workspace holds the default Overlay agent), not a setting.
   `isSoloWorkspace` / `useIsSoloWorkspace()` decide: the page's own rows stand
-  alone with Archived below (`buildScopedPanelNav({ solo })`), the Workspace
+  alone (`buildScopedPanelNav({ solo })`), the Workspace
   scope turns into Personal (`soloPanelScope`, `usePanelScope()`), lists ask for
   everything active (`usePanelListView()`: no `view`, so a shared item such as
   the default agent still shows), Chats shows Chats and Channels only (no

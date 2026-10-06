@@ -28,7 +28,7 @@ test('an expanded section lists every visible chat subview without an All shortc
   assert.match(html, /id="sidebar-section-app-chat"/)
   assert.deepEqual(
     chatsInlineItems.map((item) => item.id),
-    ['personal', 'dms', 'channels', 'activity', 'archived'],
+    ['personal', 'dms', 'channels', 'activity'],
   )
 })
 

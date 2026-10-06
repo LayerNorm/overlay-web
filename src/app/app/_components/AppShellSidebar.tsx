@@ -5,13 +5,13 @@ import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
 import { ChatInlinePanel } from '@/features/chat/components/ChatInlinePanel'
 import {
   ActivityInlinePanel,
-  ArchivedInlinePanel,
 } from '@/features/chat/components/ChatSubviewInlinePanels'
 import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
-import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useSavedPanelScope } from '@/hooks/use-panel-scope'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
-import { resolvePanelScope } from '@/shared/workspaces/panel-scope'
+import { ARCHIVED_SETTINGS_PATH, isLegacyArchivedScope, resolvePanelScope } from '@/shared/workspaces/panel-scope'
 import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
 import {
   PublicShowcaseAutomationsInlinePanel,
@@ -27,6 +27,13 @@ import { useCollaborationRealtime } from '@/features/chat/components/collaborati
 
 export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }: { publicShowcase?: boolean }) {
   const searchParams = useSearchParams()
+  const router = useRouter()
+  // Archived used to be a scope (`?scope=archived`, or `?view=archived` on agents); old links and bookmarks now open
+  // Settings → Archived, where everything archived lives.
+  const legacyArchived = isLegacyArchivedScope(searchParams?.get('scope')) || isLegacyArchivedScope(searchParams?.get('view'))
+  useEffect(() => {
+    if (legacyArchived) router.replace(ARCHIVED_SETTINGS_PATH)
+  }, [legacyArchived, router])
   const publicShowcase = forcedPublicShowcase || searchParams?.get('showcase') === '1'
   const { activeWorkspaceId } = useWorkspace()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
@@ -60,10 +67,8 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
         ),
       }}
       renderChatPanel={({ refreshKey, onNavigate, view }) => (
-        // Activity and Archived are their own routes with their own lists; only
-        // the conversation subviews should render the chat list.
+        // Activity is its own route with its own list; only the conversation subviews render the chat list.
         view === 'activity' ? <ActivityInlinePanel onNavigate={onNavigate} />
-        : view === 'archived' ? <ArchivedInlinePanel onNavigate={onNavigate} />
         : (
           <ChatInlinePanel
             refreshKey={refreshKey}

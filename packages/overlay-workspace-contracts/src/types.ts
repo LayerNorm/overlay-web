@@ -584,11 +584,22 @@ export type WorkspaceAgentListResponse = {
   /** The caller's principal, so clients can bucket personal vs workspace agents. */
   viewerPrincipalId?: string
   /**
-   * Agents (including live ones) owning at least one thread the caller
-   * archived; the Archived tab is their union with fully-archived agents.
-   * Populated only when the list request asks for archived agents.
+   * Threads the caller archived, across all agents (live or archived), for Settings → Archived.
+   * Archiving a thread never archives its agent. Populated only when the list request asks for archived items.
    */
-  archivedThreadAgentIds?: string[]
+  archivedThreads?: WorkspaceArchivedAgentThread[]
+}
+
+/** A thread the caller archived, with the agent it belongs to. */
+export type WorkspaceArchivedAgentThread = {
+  conversationId: string
+  agentId: string
+  agentName: string
+  /** Whether the agent itself is archived. A thread can be archived while its agent stays live. */
+  agentArchived: boolean
+  title: string
+  archivedAt: number
+  lastModified: number
 }
 
 /** A chat thread nested under a workspace agent. */
@@ -598,7 +609,7 @@ export type WorkspaceAgentThread = {
   lastModified: number
   createdAt: number
   archivedAt?: number
-  /** The main thread is the oldest surviving thread and can never be deleted last. */
+  /** The main thread is the oldest thread the caller has not archived; the agent opens into it. */
   isMain: boolean
 }
 

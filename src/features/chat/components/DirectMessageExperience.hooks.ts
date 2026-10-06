@@ -27,7 +27,8 @@ import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-ty
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { resolveMentionedPrincipalIds } from '@/shared/mentions/principal-mentions'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
-import { dispatchChatArchived, dispatchChatCreated, dispatchChatTitleUpdated, sanitizeChatTitle } from '@/shared/chat/chat-title'
+import { dispatchChatArchived, dispatchChatCreated, dispatchChatModified, dispatchChatTitleUpdated, sanitizeChatTitle } from '@/shared/chat/chat-title'
+import { announceArchived } from '@/shared/app/archive-toast'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
@@ -1918,6 +1919,13 @@ export function useRoomActions({
           lastModified: Date.now(),
           conversationType,
         },
+      })
+      announceArchived({
+        name: title || 'Conversation',
+        undo: async () => {
+          await overlayAppClient.conversations.updateParticipantState(conversationId, { archived: false, archiveScope: scope })
+        },
+        onUndone: () => dispatchChatModified({ chat: { _id: conversationId, title, lastModified: Date.now(), conversationType } }),
       })
       setPendingArchiveScope(false)
     } catch (error) {
