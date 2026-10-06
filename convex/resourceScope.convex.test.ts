@@ -287,3 +287,47 @@ describe('what agents and search may use from the workspace', () => {
     expect(await found('gus')).toEqual([])
   })
 })
+
+describe('workspace connectors (the workspace\'s own accounts)', () => {
+  const insert = (convex: Convex, userId: string, providerKey: string, connectedAccountId: string, scope?: 'workspace') =>
+    convex.mutation(m('integrations/workspaceConnectors:insert'), { workspaceId, userId, providerKey, connectedAccountId, serverSecret: secret, ...(scope ? { scope } : {}) })
+
+  test('a person keeps a personal account and the workspace gets its own, kept apart', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    await insert(convex, 'alice', 'gmail', 'acct-personal')
+    await insert(convex, 'alice', 'gmail', 'acct-workspace', 'workspace')
+    const personal = await convex.query(q('integrations/workspaceConnectors:listByWorkspace'), { workspaceId, userId: 'alice', serverSecret: secret }) as Array<{ connectedAccountId: string }>
+    expect(personal.map((row) => row.connectedAccountId)).toEqual(['acct-personal'])
+    const shared = await convex.query(q('integrations/workspaceConnectors:listScopedByWorkspace'), { workspaceId, userId: 'bob', serverSecret: secret, view: 'workspace' }) as Array<Record<string, unknown>>
+    expect(shared).toHaveLength(1)
+    expect(shared[0]).toMatchObject({ providerKey: 'gmail', userId: 'alice' })
+    expect(shared[0]).not.toHaveProperty('connectedAccountId')
+    // Bob has no personal connectors of his own, and Alice's workspace one is not in his personal list.
+    expect(await convex.query(q('integrations/workspaceConnectors:listByWorkspace'), { workspaceId, userId: 'bob', serverSecret: secret })).toEqual([])
+  })
+
+  test('only one workspace account per connector, and only its creator or an admin may remove it', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    await insert(convex, 'alice', 'slack', 'acct-1', 'workspace')
+    await expect(insert(convex, 'bob', 'slack', 'acct-2', 'workspace')).rejects.toThrow(/WORKSPACE_CONNECTOR_EXISTS/)
+    const remove = (userId: string) => convex.mutation(m('integrations/workspaceConnectors:removeWorkspaceConnector'), { workspaceId, providerKey: 'slack', userId, serverSecret: secret })
+    expect(await remove('bob')).toEqual({ ok: false, reason: 'forbidden' })
+    expect(await remove('admin')).toEqual({ ok: true, creatorUserId: 'alice' })
+    expect(await remove('alice')).toEqual({ ok: false, reason: 'not_found' })
+    await insert(convex, 'bob', 'slack', 'acct-2', 'workspace')
+  })
+
+  test('the admin setting can limit who connects the workspace\'s accounts', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex, { workspaceExtensionsEditors: 'admins' })
+    await expect(insert(convex, 'alice', 'gmail', 'a', 'workspace')).rejects.toThrow(/workspace_creation_restricted/)
+    await insert(convex, 'admin', 'gmail', 'a', 'workspace')
+    // Removing the personal connector never touches the workspace one.
+    await insert(convex, 'admin', 'gmail', 'p')
+    await convex.mutation(m('integrations/workspaceConnectors:remove'), { workspaceId, userId: 'admin', providerKey: 'gmail', serverSecret: secret })
+    const shared = await convex.query(q('integrations/workspaceConnectors:listScopedByWorkspace'), { workspaceId, userId: 'bob', serverSecret: secret, view: 'workspace' }) as unknown[]
+    expect(shared).toHaveLength(1)
+  })
+})

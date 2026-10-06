@@ -226,9 +226,13 @@ export default function KnowledgeView({
       kind="content"
       resource="files"
       item={node}
-      onChanged={() => publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')}
+      onChanged={() => {
+        publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')
+        // From an open file, go back to the list it just left.
+        if (route.file) updateQuery({ file: null })
+      }}
     />
-  ), [])
+  ), [route.file, updateQuery])
 
   const renderBulkActions = useCallback(({ nodes, afterChange }: KnowledgeBulkSelection) => (
     <ScopeBulkActions

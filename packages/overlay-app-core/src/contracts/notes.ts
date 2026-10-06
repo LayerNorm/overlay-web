@@ -1,7 +1,10 @@
+import type { ScopedResourceFields } from './resource-scope'
 import type { MutationSuccessResponse, PaginationQueryContract } from './common'
 
-export interface NoteDoc {
+export interface NoteDoc extends ScopedResourceFields {
   _id: string
+  /** The creator; only they can move it between scopes. */
+  userId?: string
   title: string
   content: string
   tags: string[]

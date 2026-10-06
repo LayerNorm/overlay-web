@@ -7,8 +7,6 @@ import dynamic from 'next/dynamic'
 import { AllExtensionsComingSoonView, AppsComingSoonView } from '@overlay/modules-react/extensions'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { usePanelScope } from '@/hooks/use-panel-scope'
-import { Plug } from 'lucide-react'
-import { ToolsComingSoonView } from '@overlay/modules-react/extensions'
 
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'))
 const SkillsView = dynamic(() => import('@/features/automations/components/SkillsView'))
@@ -23,10 +21,6 @@ export default function ToolsView({ userId }: { userId: string }) {
 
   // Archived is one list of everything archived, whatever its kind.
   if (scope === 'archived') return <ArchivedExtensionsView />
-  // Connectors are the person's own accounts; sharing one with the workspace arrives with workspace sharing.
-  if (scope === 'workspace' && ((view === null && capabilities.integrations) || view === 'connectors')) {
-    return <ToolsComingSoonView title="Workspace connectors" icon={Plug} />
-  }
 
   if (view === 'skills' && capabilities.skills) return <SkillsView userId={userId} />
   if (view === 'mcps' && capabilities.mcpServers) return <McpServersView userId={userId} />
@@ -35,5 +29,6 @@ export default function ToolsView({ userId }: { userId: string }) {
   if (!capabilities.integrations && capabilities.skills) return <SkillsView userId={userId} />
   if (!capabilities.integrations && capabilities.mcpServers) return <McpServersView userId={userId} />
 
-  return <IntegrationsView userId={userId} />
+  // A fresh view per scope: the personal and workspace accounts are different lists.
+  return <IntegrationsView key={scope} userId={userId} />
 }

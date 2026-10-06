@@ -30,7 +30,7 @@ export class ConvexWorkspaceConnectorRepository implements WorkspaceConnectorRep
     }) ?? []
   }
 
-  async insert(args: { workspaceId: string; userId: string; providerKey: string; connectedAccountId: string }): Promise<string> {
+  async insert(args: { workspaceId: string; userId: string; providerKey: string; connectedAccountId: string; scope?: 'personal' | 'workspace' }): Promise<string> {
     const id = await convex.mutation<string>('integrations/workspaceConnectors:insert', {
       ...args,
       serverSecret: this.serverSecret,
@@ -44,6 +44,15 @@ export class ConvexWorkspaceConnectorRepository implements WorkspaceConnectorRep
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+  }
+
+  async removeWorkspaceConnector(args: { workspaceId: string; providerKey: string; userId: string }) {
+    const result = await convex.mutation<{ ok: true; creatorUserId: string } | { ok: false; reason: 'not_found' | 'forbidden' }>(
+      'integrations/workspaceConnectors:removeWorkspaceConnector',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    return result ?? { ok: false as const, reason: 'not_found' as const }
   }
 
   async removeByUser(args: { userId: string }): Promise<number> {

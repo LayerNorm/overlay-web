@@ -48,7 +48,7 @@ test('selecting a scope row or a sub-row reports the scope and the sub-row', () 
   assert.deepEqual(calls, [['archived', null], ['workspace', 'notes']])
 })
 
-test('the scope rows and the open sub-rows render in order with the sub-rows indented', () => {
+test('the scope rows and the open sub-rows render in order, with the sub-rows flush under their parent', () => {
   const built = nav('personal', 'all')
   const html = renderToStaticMarkup(
     <InlineNavChildren items={built.items} activeId={built.activeId} activeChildId={built.activeChildId} onSelect={() => undefined} />,
@@ -56,7 +56,9 @@ test('the scope rows and the open sub-rows render in order with the sub-rows ind
   const order = ['Personal', 'All', 'Notes', 'Workspace', 'Archived'].map((label) => html.indexOf(`>${label}<`))
   assert.ok(order.every((index) => index >= 0), 'every row renders')
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'in the order Personal, its sub-rows, Workspace, Archived')
-  assert.match(html, /pl-7/)
+  // What an expansion reveals lines up with the row that opened it: no left padding on the nested rows.
+  assert.doesNotMatch(html, /\bpl-\d/)
+  assert.doesNotMatch(html, /\bml-\d/)
 })
 
 test('a scope row shows an unread badge only while it is collapsed', () => {

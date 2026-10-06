@@ -7,6 +7,10 @@ import { ExecutorIntegrationProvider } from './ExecutorIntegrationProvider'
 import type { IntegrationProvider } from './contracts'
 import { filterComposioToolSet, filterComposioToolSetForPaidOnlyFeatures } from '@/server/tools/tools/composio-filter'
 import type { ToolSet } from 'ai'
+import { logger } from '@/server/observability/logger'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { workspaceConnectorEntityId } from '@/shared/integrations/workspace-connector-entity'
+import { prefixWorkspaceTools, splitWorkspaceTools, withWorkspaceNamePrefix } from './workspace-tools'
 
 let cached: { key: string; provider: IntegrationProvider } | null = null
 
@@ -46,13 +50,43 @@ export function getIntegrationProvider(): IntegrationProvider {
   return provider
 }
 
+/** The connectors the workspace has linked an account for (not archived). Empty when there are none or it cannot be read. */
+export async function listWorkspaceConnectorKeys(args: { userId: string; workspaceId: string }): Promise<string[]> {
+  try {
+    const rows = await getOverlayServerContext().appData.repositories.workspaceConnectors.listScopedByWorkspace({
+      workspaceId: args.workspaceId,
+      userId: args.userId,
+      view: 'workspace',
+    })
+    return [...new Set(rows.map((row) => row.providerKey))]
+  } catch (error) {
+    logger.warn('[integrations] workspace connectors could not be listed', error)
+    return []
+  }
+}
+
 export async function createIntegrationToolSet(args: {
   accessToken?: string
   userId: string
+  /** In a workspace, the connectors it shares are available beside the person's own (as `workspace_`-prefixed tools). */
+  workspaceId?: string
   conversationId?: string
   turnId?: string
 }) {
-  return await getIntegrationProvider().createToolSet(args)
+  const provider = getIntegrationProvider()
+  const { workspaceId, ...own } = args
+  const personal = await provider.createToolSet(own)
+  // Workspace accounts are held under a workspace entity at the provider; only the tool-router provider supports that.
+  if (!workspaceId || provider.id !== 'composio') return personal
+  const shared = await listWorkspaceConnectorKeys({ userId: args.userId, workspaceId })
+  if (shared.length === 0) return personal
+  try {
+    const workspaceTools = await provider.createToolSet({ ...own, userId: workspaceConnectorEntityId(workspaceId) })
+    return { ...personal, ...prefixWorkspaceTools(workspaceTools) }
+  } catch (error) {
+    logger.warn('[integrations] workspace connector tools unavailable; continuing with personal ones', error)
+    return personal
+  }
 }
 
 export function filterIntegrationToolSet(
@@ -61,7 +95,11 @@ export function filterIntegrationToolSet(
   provider: 'composio' | 'executor' | 'none' = 'composio',
 ): ToolSet {
   if (provider !== 'composio') return tools
-  return filterComposioToolSetForPaidOnlyFeatures(filterComposioToolSet(tools), paid)
+  const apply = (set: ToolSet) => filterComposioToolSetForPaidOnlyFeatures(filterComposioToolSet(set), paid)
+  // The workspace's tools are filtered by their real names, then given their prefix back.
+  const { own, workspace } = splitWorkspaceTools(tools)
+  if (Object.keys(workspace).length === 0) return apply(own)
+  return { ...apply(own), ...withWorkspaceNamePrefix(apply(workspace)) }
 }
 
 export function clearIntegrationProviderCache(): void {

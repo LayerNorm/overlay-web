@@ -280,10 +280,14 @@ Commit: `WORKSPACE SCOPING 4`.
 
 Not done:
 
-- **Connector sharing** (running a member's agent through a teammate's connected account). Connectors are Composio accounts; sharing needs the integration provider to act with another user's account, which I could not verify, so connectors stay with their owner and the Workspace connectors page still says "coming soon".
-- **Note editor and file detail panes** have no Move/Archive buttons yet (rows and bulk do); card layout rows have none either.
 - Full-text/semantic file search (`search_knowledge`, `search_in_files`) still covers only the caller's own files; shared files are found by name (mentions) and listed by `list_files`.
 - Restoring an archived automation leaves it off; turn it back on by hand.
+
+Follow-up (2026-10-05): **workspace connectors** and the missing item actions landed.
+
+- **Workspace connectors**: Extensions → Workspace → Connectors shows the same connectors; connecting one links an account held by a workspace entity (`ovws_<workspaceId>`), not the person, so it is separate from personal accounts, shared by every member, and unaffected when someone leaves. One per connector; its creator or an owner/admin disconnects; who may connect follows `workspaceExtensionsEditors`. In a workspace, agents get a second connector tool set (`workspace_…`) acting through those accounts. Composio only. Not verified against a live OAuth link (unit and Convex tests use fakes); the first real connect should be watched. Archiving workspace connectors and the archived list for connectors are not done; removing a member's account also removes the workspace connectors they linked (the provider account is left behind).
+- **Move/Archive** now also in the note editor header, the file viewer header, and card-layout files and folders.
+- **Rule**: expandable rows are not indented (`interface-design.md`).
 
 Original steps, for reference:
 

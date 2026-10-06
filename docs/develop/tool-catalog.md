@@ -23,7 +23,7 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 Not tool ids but granted as capabilities:
 
 - **Web** (paid): `web_search`, `deep_search`, `web_fetch`. On the free plan they exist as stubs that answer "needs a paid plan".
-- **Connected apps** (`integrations`): the connector provider's meta-tools (Composio: search tools, execute tools, manage connections), named by the provider at run time. They act through the person's connected accounts.
+- **Connected apps** (`integrations`): the connector provider's meta-tools (Composio: search tools, execute tools, manage connections), named by the provider at run time. They act through the person's connected accounts, and, when the workspace has linked its own accounts, a `workspace_`-prefixed copy acts through those.
 - **Your MCP servers** (`mcp`): `search_mcp_tools` and `call_mcp_tool`, which stand in for every tool on every MCP server the person connected. A server's policy can require approval per tool.
 
 ## Scope on list tools
@@ -33,7 +33,7 @@ Not tool ids but granted as capabilities:
 includes what other members shared with the workspace but never their personal items. Skills the workspace shares are also
 in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
 the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the
-server's name and tools, never the secret. Connectors are not shared yet; they stay with the account that connected them.
+server's name and tools, never the secret. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
 
 ## Who gets what
 

@@ -41,13 +41,13 @@ export class IntegrationService {
     if (!decision.allowed) throw new Error(decision.reason ?? 'Connection denied')
     try {
       const result = await this.provider.beginConnection(args)
-      await this.record('integration.connection.begin', args.userId, args.providerKey, 'success', {
+      await this.record('integration.connection.begin', args.actorUserId ?? args.userId, args.providerKey, 'success', {
         provider: this.id,
         status: result.status,
       })
       return result
     } catch (error) {
-      await this.record('integration.connection.begin', args.userId, args.providerKey, 'failure', {
+      await this.record('integration.connection.begin', args.actorUserId ?? args.userId, args.providerKey, 'failure', {
         provider: this.id,
         error: error instanceof Error ? error.message : String(error),
       })
@@ -58,7 +58,7 @@ export class IntegrationService {
   async disconnect(args: Parameters<IntegrationProvider['disconnect']>[0]) {
     const decision = this.policy.evaluate({ capabilities: this.capabilities, operation: 'disconnect' })
     if (!decision.allowed) {
-      await this.record('integration.connection.delete', args.userId, args.providerKey, 'failure', {
+      await this.record('integration.connection.delete', args.actorUserId ?? args.userId, args.providerKey, 'failure', {
         provider: this.id,
         denied: true,
         reason: decision.reason,
@@ -67,11 +67,11 @@ export class IntegrationService {
     }
     try {
       await this.provider.disconnect(args)
-      await this.record('integration.connection.delete', args.userId, args.providerKey, 'success', {
+      await this.record('integration.connection.delete', args.actorUserId ?? args.userId, args.providerKey, 'success', {
         provider: this.id,
       })
     } catch (error) {
-      await this.record('integration.connection.delete', args.userId, args.providerKey, 'failure', {
+      await this.record('integration.connection.delete', args.actorUserId ?? args.userId, args.providerKey, 'failure', {
         provider: this.id,
         error: error instanceof Error ? error.message : String(error),
       })

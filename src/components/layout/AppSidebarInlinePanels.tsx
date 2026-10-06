@@ -251,7 +251,7 @@ export function InlineNavChildren({
   activeChildId,
   pendingId,
   onSelect,
-  className = 'mt-1 space-y-0.5 pl-7',
+  className = 'mt-1 space-y-0.5',
 }: {
   id?: string
   items: ReadonlyArray<InlineNavItem>
@@ -330,7 +330,8 @@ export function InlineNavChildren({
         <div key={item.id}>
           {renderRow(item, activeId === item.id, false)}
           {item.expanded && item.children?.length ? (
-            <div className="space-y-0.5 pb-1 pl-7 pt-0.5">
+            // Not indented: what an expansion reveals lines up with the row that opened it (see interface-design.md).
+            <div className="space-y-0.5 pb-1 pt-0.5">
               {item.children.map((child) => renderRow(child, activeChildId === child.id, true))}
             </div>
           ) : null}

@@ -38,7 +38,10 @@ export interface IntegrationConnectionContext {
   accessToken?: string
   callbackOrigin: string
   providerKey: string
+  /** The account holder at the provider: a person, or a workspace's entity (see `workspaceConnectorEntityId`). */
   userId: string
+  /** The person acting, when `userId` is a workspace's entity. */
+  actorUserId?: string
   workspaceId?: string
 }
 

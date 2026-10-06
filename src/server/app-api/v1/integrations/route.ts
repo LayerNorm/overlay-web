@@ -11,7 +11,15 @@ import {
   type AuthorizationService,
 } from '@/server/authorization'
 import { normalizeIntegrationProviderKey } from '@overlay/app-core'
-import { parseResourceView } from '@/shared/workspaces/resource-scope'
+import { workspaceConnectorEntityId } from '@/shared/integrations/workspace-connector-entity'
+import {
+  DEFAULT_RESOURCE_SCOPE_POLICY,
+  canCreateInScope,
+  parseResourceScope,
+  parseResourceView,
+  scopeErrorMessage,
+} from '@/shared/workspaces/resource-scope'
+import { canManageWorkspace } from '@overlay/workspace-contracts'
 
 function getAllowedAppOrigins(): string[] {
   const values = [process.env.NEXT_PUBLIC_APP_URL, process.env.DEV_NEXT_PUBLIC_APP_URL, getBaseUrl()]
@@ -48,6 +56,8 @@ interface IntegrationsRouteDependencies {
   authorization?: AuthorizationService
   service?: IntegrationService
   workspaceConnectors?: WorkspaceConnectorRepository
+  /** The workspace's sharing policy; injected so tests need no server context. */
+  getSharingPolicy?: (args: { actorUserId: string; workspaceId: string }) => Promise<{ workspaceExtensionsEditors?: 'members' | 'admins' }>
 }
 
 // Connectors an administrator withheld in the catalog (Admin > Catalog) are
@@ -98,10 +108,15 @@ export async function GET(
       })
     }
 
+    // The Workspace view shows the workspace's own accounts for the same connectors, not the person's.
+    const view = parseResourceView(searchParams.get('view'))
+    const workspaceId = context.workspace.workspace.id
+    const accountUserId = view === 'workspace' ? workspaceConnectorEntityId(workspaceId) : context.auth.userId
+
     if (action === 'search') {
       const parsedLimit = Number.parseInt(searchParams.get('limit') || '20', 10)
       const page = await integrations.listCatalog({
-        userId: context.auth.userId,
+        userId: accountUserId,
         accessToken: context.auth.accessToken,
         query: searchParams.get('q') || undefined,
         cursor: searchParams.get('cursor') || undefined,
@@ -120,7 +135,7 @@ export async function GET(
     }
 
     const connected = await integrations.listConnected({
-      userId: context.auth.userId,
+      userId: accountUserId,
       accessToken: context.auth.accessToken,
       workspaceId: context.workspace.workspace.id,
     })
@@ -130,7 +145,7 @@ export async function GET(
       workspaceId: context.workspace.workspace.id,
       userId: context.auth.userId,
     })
-    if (context.workspace.workspace.kind === 'personal') {
+    if (view !== 'workspace' && context.workspace.workspace.kind === 'personal') {
       const allMappings = await workspaceConnectors.listByUser({ userId: context.auth.userId })
       const assignedProviderKeys = new Set(allMappings.map(({ providerKey }) => providerKey))
       const legacyConnections = [...new Map(connected.connections
@@ -150,7 +165,6 @@ export async function GET(
       }
     }
     // A scope view (Personal, Workspace, Archived) narrows the mappings to that slice.
-    const view = parseResourceView(searchParams.get('view'))
     const visibleMappings = view
       ? await workspaceConnectors.listScopedByWorkspace({ workspaceId: context.workspace.workspace.id, userId: context.auth.userId, view })
       : mappings
@@ -172,6 +186,14 @@ export async function GET(
       data: filteredItems,
       items: filteredItems,
       hasMore: false,
+      // Who connected each of the workspace's accounts, and whether the caller may disconnect it.
+      ...(view === 'workspace' ? {
+        workspaceConnectors: visibleMappings.map((mapping) => ({
+          providerKey: mapping.providerKey,
+          connectedBy: mapping.userId,
+          canDisconnect: mapping.userId === context.auth.userId || canManageWorkspace(context.workspace.membership.role),
+        })),
+      } : {}),
     })
   } catch (error) {
     logger.error('[Integrations] GET failed:', error)
@@ -189,22 +211,40 @@ export async function POST(
   dependencies: IntegrationsRouteDependencies = {},
 ) {
   try {
-    const body = await request.json() as { action?: string; providerKey?: string; toolkit?: string }
+    const body = await request.json() as { action?: string; providerKey?: string; toolkit?: string; scope?: string }
     const providerKey = (body.providerKey ?? body.toolkit)?.trim().toLowerCase()
     if (!providerKey) return NextResponse.json({ error: 'providerKey required' }, { status: 400 })
     const integrations = dependencies.service ?? service()
+    const workspaceId = context.workspace.workspace.id
+    // `scope: 'workspace'` links or removes the workspace's own account for this connector, held by a workspace
+    // entity instead of the person, so it is shared by every member and independent of anyone's personal accounts.
+    const forWorkspace = parseResourceScope(body.scope) === 'workspace'
     const connectionContext = {
-      userId: context.auth.userId,
+      userId: forWorkspace ? workspaceConnectorEntityId(workspaceId) : context.auth.userId,
+      ...(forWorkspace ? { actorUserId: context.auth.userId } : {}),
       accessToken: context.auth.accessToken,
       callbackOrigin: resolveCallbackOrigin(request),
       providerKey,
-      workspaceId: context.workspace.workspace.id,
+      workspaceId,
+    }
+    const workspaceConnectors = dependencies.workspaceConnectors
+      ?? getOverlayServerContext().appData.repositories.workspaceConnectors
+
+    if (body.action === 'disconnect' && forWorkspace) {
+      // Its creator, or an owner/admin; the mapping goes first because it carries the permission check.
+      const removed = await workspaceConnectors.removeWorkspaceConnector({ workspaceId, providerKey, userId: context.auth.userId })
+      if (!removed.ok) {
+        return NextResponse.json(
+          { error: removed.reason === 'forbidden' ? scopeErrorMessage('forbidden') : scopeErrorMessage('not_found') },
+          { status: removed.reason === 'forbidden' ? 403 : 404 },
+        )
+      }
+      await integrations.disconnect(connectionContext)
+      return NextResponse.json({ success: true, provider: integrations.id, providerCapabilities: integrations.capabilities })
     }
 
     if (body.action === 'disconnect') {
       await integrations.disconnect(connectionContext)
-      const workspaceConnectors = dependencies.workspaceConnectors
-        ?? getOverlayServerContext().appData.repositories.workspaceConnectors
       await workspaceConnectors.remove({
         workspaceId: context.workspace.workspace.id,
         userId: context.auth.userId,
@@ -228,15 +268,38 @@ export async function POST(
     })
     if (denied) return denied
 
+    if (forWorkspace) {
+      const policy = await (dependencies.getSharingPolicy
+        ?? ((args) => getOverlayServerContext().workspaceService.getSharingPolicy(args)))({ actorUserId: context.auth.userId, workspaceId })
+      const allowed = canCreateInScope(
+        'extension',
+        'workspace',
+        { userId: context.auth.userId, role: context.workspace.membership.role },
+        {
+          ...DEFAULT_RESOURCE_SCOPE_POLICY,
+          workspaceExtensionsEditors: policy.workspaceExtensionsEditors === 'admins' ? 'admins' : 'members',
+        },
+      )
+      if (!allowed) return NextResponse.json({ error: scopeErrorMessage('workspace_creation_restricted'), code: 'resource_scope_forbidden' }, { status: 403 })
+      // One workspace account per connector.
+      const existing = (await workspaceConnectors.listScopedByWorkspace({ workspaceId, userId: context.auth.userId, view: 'workspace' }))
+        .find((row) => row.providerKey === providerKey)
+      if (existing && existing.userId !== context.auth.userId) {
+        return NextResponse.json(
+          { error: 'This connector is already connected for the workspace. Its owner or an admin can disconnect it first.' },
+          { status: 409 },
+        )
+      }
+    }
+
     const result = await integrations.connect(connectionContext)
     if (result.connectionId) {
-      const workspaceConnectors = dependencies.workspaceConnectors
-        ?? getOverlayServerContext().appData.repositories.workspaceConnectors
       await workspaceConnectors.insert({
-        workspaceId: context.workspace.workspace.id,
+        workspaceId,
         userId: context.auth.userId,
         providerKey,
         connectedAccountId: result.connectionId,
+        ...(forWorkspace ? { scope: 'workspace' as const } : {}),
       })
     }
     return NextResponse.json(result)

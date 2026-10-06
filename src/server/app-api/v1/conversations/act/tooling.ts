@@ -24,6 +24,7 @@ import {
 } from '@/server/ai/gateway/tool-schema-compat'
 import {
   createIntegrationToolSet,
+  listWorkspaceConnectorKeys,
   filterIntegrationToolSet,
   getIntegrationProvider,
   getSelectedIntegrationProviderId,
@@ -75,6 +76,8 @@ export function preloadActExternalToolTasks(params: {
   accessToken?: string
   serverSecret: string
   userId: string
+  /** In a workspace, the connectors it shares are loaded beside the person's own. */
+  workspaceId?: string
 }): ActToolPreloadTasks {
   try {
     if (!getActCapabilitiesSync().integrations) {
@@ -95,8 +98,13 @@ export function preloadActExternalToolTasks(params: {
       userId: params.userId,
       accessToken: params.accessToken,
     })
-    .then((connections) => [...new Set(connections
-      .map(({ providerKey }) => normalizeIntegrationProviderKey(providerKey)))])
+    .then(async (connections) => {
+      const shared = params.workspaceId
+        ? await listWorkspaceConnectorKeys({ userId: params.userId, workspaceId: params.workspaceId })
+        : []
+      return [...new Set([...connections.map(({ providerKey }) => providerKey), ...shared]
+        .map((providerKey) => normalizeIntegrationProviderKey(providerKey)))]
+    })
     .catch((error) => {
       logger.warn(
         '[conversations/act] connected connector preload failed:',
@@ -107,6 +115,7 @@ export function preloadActExternalToolTasks(params: {
   const integrationToolsTask = createIntegrationToolSet({
     userId: params.userId,
     accessToken: params.accessToken,
+    workspaceId: params.workspaceId,
   })
   void integrationToolsTask.catch((error) => {
     logger.warn('[conversations/act] integration tool preload failed:', summarizeErrorForLog(error))

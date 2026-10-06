@@ -25,6 +25,9 @@ export interface NoteRecord {
   updatedAt: number
   deletedAt?: number
   legacyNoteId?: string
+  scope?: 'personal' | 'workspace'
+  archivedAt?: number
+  archivedFromScope?: 'personal' | 'workspace'
 }
 
 export type ServerNoteDoc = NoteDoc & {
@@ -102,6 +105,9 @@ function noteRecordToDoc(note: NoteRecord): ServerNoteDoc {
     deletedAt: note.deletedAt,
     clientId: note.clientId,
     legacyNoteId: note.legacyNoteId,
+    scope: note.scope,
+    archivedAt: note.archivedAt,
+    archivedFromScope: note.archivedFromScope,
   }
 }
 

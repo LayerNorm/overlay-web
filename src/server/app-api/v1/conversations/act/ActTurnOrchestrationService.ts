@@ -351,6 +351,7 @@ export async function executeActTurn(
       userId,
       accessToken,
       serverSecret,
+      workspaceId: context.workspace.workspace.id,
     })
     const accountAllowedToolIdsTask = filterCatalogResources({
       authorization: authorizationService,

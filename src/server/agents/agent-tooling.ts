@@ -126,6 +126,7 @@ export async function buildExternalAppTooling(args: {
     preloadTasks: preloadActExternalToolTasks({
       userId: args.actorUserId,
       serverSecret: getInternalApiSecret(),
+      workspaceId: args.workspaceId,
     }),
     requestFingerprint: args.requestFingerprint,
     serverSecret: getInternalApiSecret(),
@@ -204,6 +205,7 @@ export async function buildWorkspaceAgentTooling(args: {
       userId: args.actorUserId,
       accessToken: args.accessToken,
       serverSecret: getInternalApiSecret(),
+      workspaceId: args.workspaceId,
     }),
     requestFingerprint: args.requestFingerprint,
     serverSecret: getInternalApiSecret(),

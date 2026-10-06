@@ -34,6 +34,7 @@ import { IntegrationsDialog } from '@/features/integrations/components/Integrati
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { usePanelScope } from '@/hooks/use-panel-scope'
 
 const LIST_PAGE_SIZE = 8
 
@@ -93,6 +94,9 @@ export default function IntegrationsView({
   const [connectedVisible, setConnectedVisible] = useState(LIST_PAGE_SIZE)
   const [availableVisible, setAvailableVisible] = useState(LIST_PAGE_SIZE)
   const [searchQuery, setSearchQuery] = useState('')
+  // In Workspace, the same connectors link to the workspace's own accounts (shared by every member), not the person's.
+  const workspaceScope = usePanelScope() === 'workspace'
+  const accountScope = workspaceScope ? ('workspace' as const) : undefined
 
   const rememberLogos = useCallback((items: readonly ConnectorCatalogItem[]) => {
     setLogos((prev) => {
@@ -129,7 +133,7 @@ export default function IntegrationsView({
 
   const loadConnected = useCallback(async () => {
     try {
-      const data = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>()
+      const data = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>(workspaceScope ? { view: 'workspace' } : undefined)
       setConnected(new Set(data.connected || []))
       const items = (Array.isArray(data.items) ? data.items : []).map((item) =>
         connectorFromIntegrationSummary({ ...item, isConnected: true }),
@@ -143,18 +147,18 @@ export default function IntegrationsView({
     } finally {
       setIsLoading(false)
     }
-  }, [rememberLogos])
+  }, [rememberLogos, workspaceScope])
 
   const loadCatalog = useCallback(async () => {
     try {
-      const data = await overlayAppClient.integrations.get<IntegrationSearchResponse>({ action: 'search', limit: 100 })
+      const data = await overlayAppClient.integrations.get<IntegrationSearchResponse>({ action: 'search', limit: 100, ...(workspaceScope ? { view: 'workspace' as const } : {}) })
       const items = (Array.isArray(data.items) ? data.items : []).map((item) => connectorFromIntegrationSummary(item))
       setCatalogItems((prev) => mergeConnectorCatalogEntries(prev, items))
       rememberLogos(items)
     } catch {
       // optional
     }
-  }, [rememberLogos])
+  }, [rememberLogos, workspaceScope])
 
   useEffect(() => {
     // Skip the initial mount fetch when server-rendered data is already
@@ -220,7 +224,7 @@ export default function IntegrationsView({
 
     try {
       if (connected.has(integration.providerKey)) {
-        const res = await overlayAppClient.integrations.disconnectResponse(integration.providerKey)
+        const res = await overlayAppClient.integrations.disconnectResponse(integration.providerKey, undefined, accountScope)
         if (res.ok) {
           setConnected((prev) => {
             const next = new Set(prev)
@@ -234,7 +238,7 @@ export default function IntegrationsView({
           setConnectError(data.error || 'Failed to disconnect')
         }
       } else {
-        const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey })
+        const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey, ...(accountScope ? { scope: accountScope } : {}) })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           oauthTab?.close()
@@ -260,7 +264,7 @@ export default function IntegrationsView({
   const dialogConnect = useCallback(async (slug: string) => {
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: slug })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: slug, ...(accountScope ? { scope: accountScope } : {}) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         oauthTab?.close()
@@ -284,10 +288,10 @@ export default function IntegrationsView({
       oauthTab?.close()
       throw err
     }
-  }, [])
+  }, [accountScope])
 
   const dialogDisconnect = useCallback(async (slug: string) => {
-    const res = await overlayAppClient.integrations.disconnectResponse(slug)
+    const res = await overlayAppClient.integrations.disconnectResponse(slug, undefined, accountScope)
     if (!res.ok) throw new Error('Failed to disconnect')
     setConnected((prev) => {
       const next = new Set(prev)
@@ -296,7 +300,7 @@ export default function IntegrationsView({
     })
     notifyIntegrationsChanged()
     posthog.capture('integration_disconnected', { integration: slug })
-  }, [])
+  }, [accountScope])
 
   const connectedRows = useMemo(() => getConnectedConnectorRows(connected, catalogItems), [connected, catalogItems])
   const availableList = useMemo(() => getAvailableConnectorRows(connected, catalogItems, DEFAULT_CONNECTOR_CATALOG), [connected, catalogItems])
@@ -328,7 +332,7 @@ export default function IntegrationsView({
     <AppScreenShell
       header={
         <ExtensionPageHeader
-          title="Connectors"
+          title={workspaceScope ? 'Workspace connectors' : 'Connectors'}
           searchQuery={searchQuery}
           searchPlaceholder="Search integrations…"
           searchTitle="Search integrations"

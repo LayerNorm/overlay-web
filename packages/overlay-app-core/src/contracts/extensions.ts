@@ -51,6 +51,8 @@ export interface ConnectedIntegrationsResponse {
   provider?: IntegrationProviderId
   providerCapabilities?: IntegrationProviderCapabilities
   connected: string[]
+  /** In the Workspace view: who connected each workspace account, and whether the caller may disconnect it. */
+  workspaceConnectors?: Array<{ providerKey: string; connectedBy: string; canDisconnect: boolean }>
   data?: IntegrationSummary[]
   items?: IntegrationSummary[]
   hasMore?: boolean
@@ -62,6 +64,8 @@ export interface IntegrationConnectionRequest {
   providerKey?: string
   /** Backward-compatible alias for older desktop clients. */
   toolkit?: string
+  /** `workspace` links (or removes) the workspace's own account for this connector instead of the person's. */
+  scope?: 'personal' | 'workspace'
   accessToken?: string
   userId?: string
 }

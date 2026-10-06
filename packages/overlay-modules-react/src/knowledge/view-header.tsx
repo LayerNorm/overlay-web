@@ -20,6 +20,7 @@ import type {
 } from '@overlay/app-core'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { HeaderSearch } from '@overlay/ui/primitives'
+import { KnowledgeRowActionsContext } from './file-views'
 import { FilesCreateUploadControls, OutputFilterMenu } from './toolbar-menus'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
@@ -32,16 +33,19 @@ type KnowledgeLayout = 'list' | 'cards'
 type FilesCategory = 'all' | 'notes' | 'files' | 'outputs'
 
 function SelectedFileHeader({
+  file,
   fileTitle,
   isSavingFile,
   onClose,
   onTitleChange,
 }: {
+  file: FileNode
   fileTitle: string
   isSavingFile: boolean
   onClose: () => void
   onTitleChange: (value: string) => void
 }) {
+  const renderRowActions = useContext(KnowledgeRowActionsContext)
   return (
     <>
       <button
@@ -64,6 +68,7 @@ function SelectedFileHeader({
       {isSavingFile ? (
         <span className="shrink-0 text-[11px] text-[var(--muted-light)]">Saving...</span>
       ) : null}
+      {renderRowActions ? <span className="flex shrink-0 items-center">{renderRowActions(file)}</span> : null}
     </>
   )
 }
@@ -690,6 +695,7 @@ export function KnowledgeViewHeader({
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
       {selectedFile ? (
         <SelectedFileHeader
+          file={selectedFile}
           fileTitle={fileTitle}
           isSavingFile={isSavingFile}
           onClose={onCloseFile}

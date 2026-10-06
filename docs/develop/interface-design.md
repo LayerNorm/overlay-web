@@ -97,3 +97,11 @@ New + search, then the list. New is never above the scope rows.
   (`newItemScope`); Personal is what an absent scope means.
 - **Archived rows** (`ArchivedScopeList`) show a Personal/Workspace tag and a
   restore button on hover; restoring returns the item to where it came from.
+
+## Expandable rows are not indented
+
+What an expansion reveals (a scope's sub-rows, an agent's threads, a section's pages) lines up with the row that opened
+it: same left edge, no extra left padding or margin. A chevron on the parent and a smaller type size are what mark the
+children as nested. Hierarchies that are real trees (the files folder tree) are the exception, because depth is the
+content there. `InlineNavChildren` enforces this and its test fails on any `pl-*` or `ml-*` in the nested rows; new
+expandable components follow the same rule.
