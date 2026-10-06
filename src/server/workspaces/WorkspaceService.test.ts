@@ -691,3 +691,40 @@ test('countMemberKinds separates people from agents, so one person with the defa
 
   assert.deepEqual(counts, { memberCount: 2, humanMemberCount: 1 })
 })
+
+test('a person can own three active workspaces; the fourth is refused until one is archived', async () => {
+  const owned = ['workspace_personal', 'workspace_a', 'workspace_b'].map((workspaceId) => access({ workspaceId }))
+  const archived = access({ workspaceId: 'workspace_old', workspaceStatus: 'archived' })
+  const memberOnly = access({ workspaceId: 'workspace_theirs', role: 'member' })
+  const created: string[] = []
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [...owned, archived, memberOnly] },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }))
+
+  await assert.rejects(
+    () => service.createOrganization({ actorUserId: 'user_1', name: 'Fourth' }),
+    (error) => assertServiceError(error, 'free_workspace_limit'),
+  )
+  assert.deepEqual(created, [])
+})
+
+test('archived workspaces and workspaces someone else owns do not count toward the limit', async () => {
+  const owned = ['workspace_personal', 'workspace_a'].map((workspaceId) => access({ workspaceId }))
+  const archived = access({ workspaceId: 'workspace_old', workspaceStatus: 'archived' })
+  const memberOnly = access({ workspaceId: 'workspace_theirs', role: 'member' })
+  const created: string[] = []
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [...owned, archived, memberOnly] },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }))
+
+  await service.createOrganization({ actorUserId: 'user_1', name: 'Third' })
+  assert.deepEqual(created, ['Third'])
+})

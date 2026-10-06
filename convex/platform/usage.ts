@@ -7,6 +7,7 @@ import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from '../files/lib/storageQuota'
 import { derivePlanAmountCents, derivePlanKind } from '../../src/shared/billing/billing-pricing'
+import { usageCountSubject } from '../../src/shared/billing/free-allowance'
 import {
   allocateUsageCharge,
   refundUsageAllocation,
@@ -220,6 +221,20 @@ async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: str
   return await ctx.db.get(id)
 }
 
+/**
+ * Whose weekly count the usage belongs to: the workspace the person is working in while they are on the free plan, so a
+ * free workspace has one allowance everyone in it shares; their own id on a paid plan. "Working in" is the person's
+ * active workspace, which the app sets whenever they open or switch to one. See `usageCountSubject`.
+ */
+async function usageCounterSubject(ctx: EntitlementCtx, userId: string, planKind: 'free' | 'paid'): Promise<string> {
+  if (planKind !== 'free') return userId
+  const preference = await ctx.db
+    .query('workspaceUserPreferences')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .first()
+  return usageCountSubject({ userId, free: true, activeWorkspaceId: preference?.activeWorkspaceId })
+}
+
 type EntitlementCtx = QueryCtx | MutationCtx
 
 async function getSucceededTopUpTotalCents(ctx: EntitlementCtx, userId: string, billingPeriodStart?: number): Promise<number> {
@@ -265,12 +280,14 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
     .first()
 
   const today = new Date().toISOString().split('T')[0]
+  const planKind = derivePlanKind(subscription ?? {})
+  // The free allowance is the workspace's; a paid person counts under their own id.
+  const countSubject = await usageCounterSubject(ctx, userId, planKind)
   const dailyUsage = await ctx.db
     .query('dailyUsage')
-    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
+    .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', today))
     .first()
 
-  const planKind = derivePlanKind(subscription ?? {})
   const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
   const planAmountCents = derivePlanAmountCents(subscription ?? {})
   const buckets = subscription
@@ -308,7 +325,7 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
       pastWeekDates.map(date =>
         ctx.db
           .query('dailyUsage')
-          .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
+          .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', date))
           .first()
       )
     )
@@ -371,15 +388,20 @@ export async function applyUsageEvents(
   const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
   const chargeCredits = options.chargeCredits ?? true
   const today = new Date().toISOString().split('T')[0]
+  const usageSubscription = await ctx.db
+    .query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .first()
+  const countSubject = await usageCounterSubject(ctx, userId, derivePlanKind(usageSubscription ?? {}))
 
   let dailyUsage = await ctx.db
     .query('dailyUsage')
-    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
+    .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', today))
     .first()
 
   if (!dailyUsage) {
     const id = await ctx.db.insert('dailyUsage', {
-      userId,
+      userId: countSubject,
       date: today,
       askCount: 0,
       agentCount: 0,
@@ -598,12 +620,15 @@ async function enforceFreeTierUsageLimits(
   const planKind = derivePlanKind(subscription ?? {})
   if (planKind !== 'free' && !forceFreeTierLimits) return
 
+  // The same subject applyUsageEvents counts under: the workspace for the free plan, the person otherwise (so a paid
+  // person held to free limits is held to their own count).
+  const countSubject = await usageCounterSubject(ctx, userId, planKind)
   const pastWeekDates = getPastWeekDates()
   const weeklyUsageRecords = await Promise.all(
     pastWeekDates.map((date) =>
       ctx.db
         .query('dailyUsage')
-        .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
+        .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', date))
         .first(),
     ),
   )

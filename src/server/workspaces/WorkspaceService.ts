@@ -1,4 +1,5 @@
 import { defaultWorkspaceName } from '@/shared/workspaces/default-name'
+import { MAX_FREE_WORKSPACES_PER_OWNER } from '@/shared/billing/free-allowance'
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
@@ -48,6 +49,7 @@ export class WorkspaceServiceError extends Error {
       | 'forbidden'
       | 'invitation_expired'
       | 'invitation_invalid'
+      | 'free_workspace_limit'
       | 'last_owner'
       | 'not_found'
       | 'validation',
@@ -196,6 +198,13 @@ export class WorkspaceService {
   }): Promise<WorkspaceAccess> {
     const actorUserId = required(args.actorUserId, 'actorUserId')
     const name = required(args.name, 'name')
+    // Every workspace has its own free allowance, so the number a person can own is capped; otherwise creating
+    // workspaces would multiply it. Workspaces someone archived do not count.
+    const owned = (await this.repository.listForUser(actorUserId)).filter((access) =>
+      access.membership.role === 'owner'
+      && access.membership.status === 'active'
+      && access.workspace.status === 'active')
+    if (owned.length >= MAX_FREE_WORKSPACES_PER_OWNER) throw freeWorkspaceLimit()
     return await this.repository.createOrganization({
       workspaceId: this.id(),
       ownerPrincipalId: this.id(),
@@ -1159,6 +1168,14 @@ function slugify(value: string): string {
 
 function validation(message: string): WorkspaceServiceError {
   return new WorkspaceServiceError(message, 400, 'validation')
+}
+
+function freeWorkspaceLimit(): WorkspaceServiceError {
+  return new WorkspaceServiceError(
+    `You can own up to ${MAX_FREE_WORKSPACES_PER_OWNER} workspaces. Archive one you no longer use to create another.`,
+    403,
+    'free_workspace_limit',
+  )
 }
 
 function forbidden(): WorkspaceServiceError {
