@@ -229,3 +229,37 @@ test('rewritten text falls back to one block instead of repeating', () => {
   })
   assert.deepEqual(projection.parts.filter((part) => part.type === 'text').map((part) => part.text), ['A different answer.'])
 })
+
+function actionTitles(parts: Array<Record<string, unknown>>) {
+  return parts.filter((part) => part.type === 'tool-invocation').map((part) => {
+    const invocation = part.toolInvocation as { state: string; toolInput: { title: string; detail?: string } }
+    return { title: invocation.toolInput.title, state: invocation.state, detail: invocation.toolInput.detail }
+  })
+}
+
+function project(events: AgentRemoteEvent[]) {
+  return projectRemoteAgentEvents({ content: '', parts: [], events, environmentName: 'Mac', queueExpiresAt: 1, runId: 'run-1' })
+}
+
+test('a finished action keeps the name it had while it ran when the agent ends it without a name', () => {
+  const { parts } = project([
+    event(1, 'action', { actionId: 'a1', title: 'git clone https://github.com/LayerNorm/overlay-web.git', detail: 'into /home/user/workspace', status: 'started' }),
+    event(2, 'action', { actionId: 'a1', status: 'completed' }),
+    event(3, 'action', { actionId: 'a2', title: 'Run tests', status: 'started' }),
+    event(4, 'action', { actionId: 'a2', title: 'Tool call', status: 'failed' }),
+  ])
+  assert.deepEqual(actionTitles(parts), [
+    { title: 'git clone https://github.com/LayerNorm/overlay-web.git', state: 'output-available', detail: 'into /home/user/workspace' },
+    { title: 'Run tests', state: 'output-available', detail: undefined },
+  ])
+})
+
+test('a real new name replaces an old one, and an action that never had a name stays generic', () => {
+  const { parts } = project([
+    event(1, 'action', { actionId: 'a1', title: 'Tool call', status: 'started' }),
+    event(2, 'action', { actionId: 'a1', title: 'Read notes.md', status: 'completed' }),
+    event(3, 'action', { actionId: 'a2', status: 'started' }),
+    event(4, 'action', { actionId: 'a2', status: 'completed' }),
+  ])
+  assert.deepEqual(actionTitles(parts).map((action) => action.title), ['Read notes.md', 'Remote action'])
+})

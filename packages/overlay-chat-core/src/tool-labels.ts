@@ -165,6 +165,13 @@ export function getDescriptiveToolLabel(
     if (title && /^(tool( call)?|tool_call|action)$/i.test(title)) return 'Tool call'
     if (title) return title.length > 140 ? `${title.slice(0, 140)}…` : title
   }
+  // What a connected agent's terminal, file edits, and plan show, named for what they are.
+  if (toolName === 'remote_terminal') return 'Terminal output'
+  if (toolName === 'remote_diff') {
+    const path = pickFirstStringFromInput(toolInput, ['title'])
+    return path ? `Edited ${path.length > 120 ? `${path.slice(0, 120)}…` : path}` : 'File changes'
+  }
+  if (toolName === 'remote_plan') return 'Plan'
 
   // Not a real tool: the row shown while a connected agent's computer is woken up or reconnecting.
   if (toolName === 'connect_computer') {

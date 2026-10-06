@@ -39,14 +39,31 @@ function useCloudAgentStatus(agentId: string) {
   return { workspaceId: activeWorkspaceId, status, error, refresh }
 }
 
-type PanelBusy = CloudAgentAction | 'retry' | null
+const DESKTOP_PREPARE_POLL_MS = 2_000
+const DESKTOP_PREPARE_ATTEMPTS = 15
+
+/** The desktop stream takes a few seconds to prepare on a machine that was paused; ask again until it is ready. */
+async function openDesktopWhenReady(workspaceId: string, environmentId: string) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await overlayAppClient.agentEnvironments.openDesktop(workspaceId, environmentId)
+    } catch (error) {
+      const preparing = error instanceof Error && /still preparing/i.test(error.message)
+      if (!preparing || attempt >= DESKTOP_PREPARE_ATTEMPTS) throw error
+      await new Promise((resolve) => window.setTimeout(resolve, DESKTOP_PREPARE_POLL_MS))
+    }
+  }
+}
+
+type PanelBusy = CloudAgentAction | 'retry' | 'control' | null
 
 /** Pause/Resume, Restart, and Try again, for the states where each makes sense. */
-function MachineActions({ state, busy, onRun, onRetry }: {
+function MachineActions({ state, busy, onRun, onRetry, onControl }: {
   state: CloudAgentStatusResource['state']
   busy: PanelBusy
   onRun(action: CloudAgentAction): void
   onRetry(): void
+  onControl(): void
 }) {
   const canRestart = state === 'ready' || state === 'needs_sign_in'
   return (
@@ -56,6 +73,9 @@ function MachineActions({ state, busy, onRun, onRetry }: {
       ) : null}
       {state === 'ready' ? (
         <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => onRun('pause')}>{busy === 'pause' ? 'Pausing…' : 'Pause'}</Button>
+      ) : null}
+      {state === 'ready' ? (
+        <Button variant="secondary" size="sm" disabled={busy !== null} onClick={onControl}>{busy === 'control' ? 'Opening…' : 'Control'}</Button>
       ) : null}
       {canRestart ? (
         <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => onRun('restart')}>{busy === 'restart' ? 'Restarting…' : 'Restart'}</Button>
@@ -105,6 +125,29 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
       refresh()
     } catch (retryError) {
       setActionError(retryError instanceof Error ? retryError.message : 'Could not start the machine.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** Opens the machine's desktop in a new tab. The tab is opened first, while the click still counts, and pointed at the stream once it is ready (it can take a few seconds to prepare). */
+  const control = async () => {
+    const environmentId = status?.environment?.id
+    if (!workspaceId || !environmentId || busy) return
+    setBusy('control')
+    setActionError(null)
+    const tab = window.open('', '_blank')
+    try {
+      const ticket = await openDesktopWhenReady(workspaceId, environmentId)
+      if (tab) {
+        tab.opener = null
+        tab.location.href = ticket.url
+      } else {
+        window.open(ticket.url, '_blank', 'noopener,noreferrer')
+      }
+    } catch (openError) {
+      tab?.close()
+      setActionError(openError instanceof Error ? openError.message : 'Could not open the desktop.')
     } finally {
       setBusy(null)
     }
@@ -165,7 +208,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
             </div>
           ) : null}
 
-          <MachineActions state={status.state} busy={busy} onRun={(action) => void run(action)} onRetry={() => void retry()} />
+          <MachineActions state={status.state} busy={busy} onRun={(action) => void run(action)} onRetry={() => void retry()} onControl={() => void control()} />
           {actionError ? <p role="alert" className="mt-2 text-xs text-red-500">{actionError}</p> : null}
         </div>
       </div>

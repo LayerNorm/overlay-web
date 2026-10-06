@@ -303,9 +303,29 @@ function replaceTextPart(parts: Array<Record<string, unknown>>, text: string) {
   return lastAction < 0 ? [{ type: 'text', text: rest }, ...parts] : [...parts, { type: 'text', text: rest }]
 }
 
+/**
+ * A title an agent gives an action that says nothing ("Tool call", or none at all). Agents often name an action when it
+ * starts ("git clone https://…") and send only a status, with no title, when it ends.
+ */
+export function isGenericActionTitle(title: string | undefined): boolean {
+  return !title || /^(tool( call)?|tool_call|action|remote action)$/i.test(title.trim())
+}
+
 function upsertActionPart(parts: Array<Record<string, unknown>>, payload: Record<string, unknown>) {
   const actionId = stringValue(payload.actionId) ?? 'remote-action'
-  const title = stringValue(payload.title) ?? 'Remote action'
+  const index = parts.findIndex((candidate) => {
+    const invocation = candidate.toolInvocation
+    return candidate.type === 'tool-invocation'
+      && invocation && typeof invocation === 'object'
+      && (invocation as Record<string, unknown>).toolCallId === actionId
+  })
+  const earlier = index < 0 ? undefined : objectValue((parts[index]!.toolInvocation as Record<string, unknown>).toolInput)
+  const incomingTitle = stringValue(payload.title)
+  // An update that names nothing keeps the name the action started with, so a finished action reads like it did while it ran.
+  const title = isGenericActionTitle(incomingTitle) && earlier && !isGenericActionTitle(stringValue(earlier.title))
+    ? stringValue(earlier.title)!
+    : incomingTitle ?? 'Remote action'
+  const detail = stringValue(payload.detail) ?? stringValue(earlier?.detail)
   const status = stringValue(payload.status) ?? 'updated'
   const state = status === 'completed' || status === 'failed' ? 'output-available' : 'input-available'
   const part = {
@@ -314,18 +334,12 @@ function upsertActionPart(parts: Array<Record<string, unknown>>, payload: Record
       toolCallId: actionId,
       toolName: 'remote_action',
       state,
-      toolInput: { title, ...(stringValue(payload.detail) ? { detail: stringValue(payload.detail) } : {}) },
+      toolInput: { title, ...(detail ? { detail } : {}) },
       ...(status === 'completed' || status === 'failed'
         ? { toolOutput: { success: status === 'completed', status, title } }
         : {}),
     },
   }
-  const index = parts.findIndex((candidate) => {
-    const invocation = candidate.toolInvocation
-    return candidate.type === 'tool-invocation'
-      && invocation && typeof invocation === 'object'
-      && (invocation as Record<string, unknown>).toolCallId === actionId
-  })
   if (index < 0) return [...parts, part]
   const next = [...parts]
   next[index] = part
