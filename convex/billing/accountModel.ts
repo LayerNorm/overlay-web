@@ -168,3 +168,15 @@ export function toBillingAccountRecord(
     ...(account.workspaceId === undefined ? {} : { workspaceId: account.workspaceId }),
   }
 }
+
+/**
+ * Account-level billing writes (subscription, top-ups, refunds) are for accounts whose balance lives in the
+ * account-keyed tables, which means workspace accounts. A personal account's balance lives in the owner's
+ * `subscriptions` row, and `syncPersonalBillingShadows` rewrites the account-keyed copy from that row after every
+ * billing change, so a write that stops at the copy is silently undone on the next sync (a top-up vanishes).
+ * Refusing it loudly is the fix; use the personal mutations (`billing/subscriptions:*`) or an administrative
+ * adjustment (`platform/usage:adjustAdministrativeBudgetByServer`) for a personal account.
+ */
+export function requireCanonicalBalanceAccount(account: Pick<Doc<'billingAccounts'>, 'scope'> | null): void {
+  if (account?.scope === 'personal') throw new Error('billing_account_balance_is_legacy_synced')
+}

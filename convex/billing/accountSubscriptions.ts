@@ -1,7 +1,14 @@
 import { v } from 'convex/values'
-import { internalMutation, mutation, query } from '../_generated/server'
+import { internalMutation, mutation, query, type MutationCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
-import { ensureEmptyBalance } from './accountModel'
+import { ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
+
+async function requireCanonicalAccountById(ctx: { db: MutationCtx['db'] }, billingAccountId: string) {
+  const account = await ctx.db.query('billingAccounts')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+    .unique()
+  requireCanonicalBalanceAccount(account)
+}
 
 const subscriptionStatus = v.union(
   v.literal('active'),
@@ -146,6 +153,7 @@ export const upsertByServer = mutation({
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
       .unique()
     if (!account) throw new Error('billing_account_not_found')
+    requireCanonicalBalanceAccount(account)
     if (account.status !== 'active') throw new Error('billing_account_inactive')
     const existing = await ctx.db.query('billingAccountSubscriptions')
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
@@ -240,6 +248,7 @@ export const recordTopUpByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     if (!Number.isSafeInteger(args.amountCents) || args.amountCents <= 0) throw new Error('invalid_top_up_amount')
+    await requireCanonicalAccountById(ctx, args.billingAccountId)
     const byCheckout = args.stripeCheckoutSessionId
       ? await ctx.db.query('budgetTopUps')
           .withIndex('by_checkoutSessionId', (q) => q.eq('stripeCheckoutSessionId', args.stripeCheckoutSessionId))
@@ -319,6 +328,7 @@ export const reverseTopUpByServer = mutation({
     if (!Number.isSafeInteger(args.refundAmountCents) || args.refundAmountCents <= 0) {
       throw new Error('invalid_refund_amount')
     }
+    await requireCanonicalAccountById(ctx, args.billingAccountId)
     const existing = await ctx.db
       .query('budgetTopUps')
       .withIndex('by_paymentIntentId', (q) => q.eq('stripePaymentIntentId', args.stripePaymentIntentId))
@@ -403,6 +413,7 @@ export const upsertFromStripeInternal = internalMutation({
     const account = await ctx.db.query('billingAccounts')
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
       .unique()
+    requireCanonicalBalanceAccount(account)
     if (!account || account.status !== 'active') throw new Error('billing_account_inactive')
     const existing = await ctx.db.query('billingAccountSubscriptions')
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
@@ -483,6 +494,7 @@ export const recordTopUpInternal = internalMutation({
   },
   returns: v.object({ granted: v.boolean() }),
   handler: async (ctx, args) => {
+    await requireCanonicalAccountById(ctx, args.billingAccountId)
     const byCheckout = args.stripeCheckoutSessionId
       ? await ctx.db.query('budgetTopUps')
           .withIndex('by_checkoutSessionId', (q) => q.eq('stripeCheckoutSessionId', args.stripeCheckoutSessionId))

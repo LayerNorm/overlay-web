@@ -212,6 +212,12 @@ export async function syncPersonalBillingShadows(
   userId: string,
   billingAccountId: string,
 ): Promise<void> {
+  // The copy is rewritten from the person's legacy row, so it must only ever touch a personal account: a workspace
+  // account's balance lives in the account-keyed tables and a sync would overwrite it with someone's legacy numbers.
+  const account = await ctx.db.query('billingAccounts')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+    .unique()
+  if (account && account.scope !== 'personal') throw new Error('billing_shadow_sync_on_non_personal_account')
   const subscription = await ctx.db
     .query('subscriptions')
     .withIndex('by_userId', (q) => q.eq('userId', userId))

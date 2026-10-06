@@ -32,8 +32,12 @@ Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
   test credit via `platform/usage:adjustAdministrativeBudgetByServer`, NOT
   `recordTopUpByServer` — the canonical-balance top-up is silently reverted by
   `syncPersonalBillingShadows`, which rewrites `billingAccountBalances` from
-  the legacy `subscriptions` row on every billing mutation; likely a real bug
-  worth a follow-up). Then turns failed inside the workflow with Vercel
+  the legacy `subscriptions` row on every billing mutation; **fixed
+  2026-10-06**: account-level writes (`recordTopUpByServer`, `upsertByServer`,
+  `reverseTopUpByServer`, the Stripe account mutations) now refuse a personal
+  account with `billing_account_balance_is_legacy_synced`, and the sync refuses
+  a non-personal account; use `billing/subscriptions:recordBudgetTopUpByServer`
+  or `adjustAdministrativeBudgetByServer` for personal accounts). Then turns failed inside the workflow with Vercel
   rejecting the `x-api-key` injection rule: `AI_GATEWAY_API_KEY` was set but
   EMPTY on `overlay-web-staging`, so the adapter fell back to the runtime's
   `VERCEL_OIDC_TOKEN` JWT as the injection value. Set the real `vck_…` key on
