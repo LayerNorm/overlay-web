@@ -665,9 +665,9 @@ export const controlRemoteAgentTurnByServer = mutation({
       }
       await ctx.db.patch(run._id, { status: 'cancelled', cancelledAt: args.now, updatedAt: args.now })
       await ctx.db.patch(session._id, { status: 'cancelled', endedAt: args.now, updatedAt: args.now })
-      await Promise.all(commands
-        .filter((command) => command.type !== 'cancel' && (command.status === 'pending' || command.status === 'claimed'))
-        .map((command) => ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now })))
+      // The run's other commands are left as they are. A host numbers its commands and rejects every later one when a
+      // number is missing, so a command that was never delivered must not be cancelled: once the run is over, delivery
+      // sends it as a harmless shutdown instead (see `claimCommandsByServer`).
       const pendingRequests = await ctx.db.query('agentApprovalRequests')
         .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', args.workspaceId).eq('runId', args.runId)).take(100)
       await Promise.all(pendingRequests.filter((request) => !request.resolution).map((request) =>
@@ -819,8 +819,18 @@ export const enqueueCommandByServer = mutation({
   },
 })
 
+/** What the host said when it rejected a command, made safe to show: one short line of plain text. */
+function rejectionDetail(code: string | undefined, message: string | undefined): string {
+  const text = [code, message].filter(Boolean).join(': ').replace(/\s+/g, ' ').trim().slice(0, 200)
+  return text ? ` (${text})` : ''
+}
+
 export const acknowledgeCommandByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), commandId: v.string(), accepted: v.optional(v.boolean()), now: v.number() },
+  args: {
+    serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), commandId: v.string(), accepted: v.optional(v.boolean()), now: v.number(),
+    /** Why the host rejected the command, when it said. Host-supplied, so it is trimmed before it is shown. */
+    errorCode: v.optional(v.string()), errorMessage: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const command = await ctx.db
@@ -860,7 +870,7 @@ export const acknowledgeCommandByServer = mutation({
         : null
       if (run && session && message && !['completed', 'failed', 'cancelled'].includes(run.status)) {
         const code = 'remote_command_rejected'
-        const failureMessage = 'The connected environment rejected this command. Reconnect it, then retry this message.'
+        const failureMessage = `The connected environment rejected this command${rejectionDetail(args.errorCode, args.errorMessage)}. Reconnect it, then retry this message.`
         await ctx.db.patch(run._id, { status: 'failed', failedAt: args.now,
           terminalError: { code, message: failureMessage, retryable: true }, updatedAt: args.now })
         await ctx.db.patch(session._id, { status: 'failed', endedAt: args.now, updatedAt: args.now })
@@ -2801,5 +2811,29 @@ export const repairUndeliveredCancelledCommands = internalMutation({
       }
     }
     return { repaired }
+  },
+})
+
+
+/**
+ * Repairs an environment whose host has stopped accepting commands because commands were cancelled before they were
+ * delivered (a hole in its command numbers: it rejects every later command with `command_sequence_gap`). Every command
+ * after the last one the host acknowledged goes back to pending; delivery sends the ones whose run is over as shutdowns,
+ * which the host accepts, so the host catches up in order and new commands are accepted again. Run once per wedged
+ * environment: `npx convex run agents/connectedAgents:reopenUndeliveredCommands '{"environmentId":"..."}' --prod`.
+ */
+export const reopenUndeliveredCommands = internalMutation({
+  args: { environmentId: v.string() },
+  handler: async (ctx, args) => {
+    const commands = await ctx.db.query('agentRunCommands')
+      .withIndex('by_environmentId_sequence', (q) => q.eq('environmentId', args.environmentId))
+      .collect()
+    const lastAcknowledged = commands.filter((command) => command.status === 'acknowledged').reduce((max, command) => Math.max(max, command.sequence), 0)
+    const toReopen = commands.filter((command) => command.sequence > lastAcknowledged && command.status !== 'pending')
+    const now = Date.now()
+    await Promise.all(toReopen.map((command) => ctx.db.patch(command._id, {
+      status: 'pending', claimedAt: undefined, claimExpiresAt: undefined, updatedAt: now,
+    })))
+    return { lastAcknowledged, reopened: toReopen.map((command) => command.sequence) }
   },
 })

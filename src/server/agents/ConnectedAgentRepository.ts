@@ -278,6 +278,9 @@ export interface ConnectedAgentRepository {
     environmentId: string
     commandId: string
     accepted?: boolean
+    /** Why the host rejected the command, when it said. */
+    errorCode?: string
+    errorMessage?: string
     now: number
   }): Promise<boolean>
   createApprovalRequest(input: ConnectedAgentCreateApprovalRequest): Promise<AgentApprovalRequest>
