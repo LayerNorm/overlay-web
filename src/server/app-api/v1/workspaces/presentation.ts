@@ -5,7 +5,7 @@ import type {
 
 export function toWorkspaceSummary(
   access: WorkspaceAccess,
-  options: { memberCount?: number } = {},
+  options: { memberCount?: number; humanMemberCount?: number } = {},
 ): WorkspaceSummary {
   return {
     id: access.workspace.id,
@@ -15,5 +15,6 @@ export function toWorkspaceSummary(
     status: access.workspace.status,
     role: access.membership.role,
     ...(options.memberCount === undefined ? {} : { memberCount: options.memberCount }),
+    ...(options.humanMemberCount === undefined ? {} : { humanMemberCount: options.humanMemberCount }),
   }
 }

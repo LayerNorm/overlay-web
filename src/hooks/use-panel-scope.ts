@@ -2,7 +2,9 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
+  listViewForScope,
   PANEL_SCOPE_PARAM,
   PANEL_SCOPE_STORAGE_KEY,
   parsePanelScope,
@@ -61,11 +63,18 @@ export function useSavedPanelScope(): PanelScope | null {
 export function usePanelScope(): PanelScope {
   const params = useSearchParams()
   const saved = useSavedPanelScope()
+  const solo = useIsSoloWorkspace()
   const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM))
   // A scope arriving in the URL (a shared link, a deep link) becomes the remembered one, so links inside the page that
   // carry no `scope` keep showing it.
   useEffect(() => {
     if (param && param !== saved) rememberPanelScope(param)
   }, [param, saved])
-  return resolvePanelScope({ param, saved })
+  return resolvePanelScope({ param, saved, solo })
+}
+
+/** The `view` for a list request: undefined (everything active) in a workspace of one person, the scope otherwise. */
+export function usePanelListView(): PanelScope | undefined {
+  const scope = usePanelScope()
+  return listViewForScope(scope, useIsSoloWorkspace())
 }

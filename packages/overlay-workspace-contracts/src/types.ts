@@ -153,7 +153,10 @@ export type WorkspaceSummary = {
   kind: WorkspaceKind
   status: WorkspaceStatus
   role: WorkspaceMembershipRole
+  /** Active members, agents included. */
   memberCount?: number
+  /** Active members who are people (not agents). One means the workspace is just that person. */
+  humanMemberCount?: number
 }
 
 export type WorkspaceListResponse = {

@@ -10,6 +10,7 @@ import {
 import { AutomationsInlinePanel } from '@/features/automations/components/AutomationsInlinePanel'
 import { useSearchParams } from 'next/navigation'
 import { useSavedPanelScope } from '@/hooks/use-panel-scope'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { resolvePanelScope } from '@/shared/workspaces/panel-scope'
 import { SHOWCASE_CHAT_SUMMARIES } from '@/features/showcase/showcase-data'
 import {
@@ -36,6 +37,7 @@ export function AppShellSidebar({ publicShowcase: forcedPublicShowcase = false }
   const agentsView = resolvePanelScope({
     param: searchParams?.get('scope') ?? searchParams?.get('view'),
     saved: useSavedPanelScope(),
+    solo: useIsSoloWorkspace(),
   })
 
   return (

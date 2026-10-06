@@ -22,7 +22,7 @@ import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, SkillDialog, SkillsPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
-import { usePanelScope } from '@/hooks/use-panel-scope'
+import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
@@ -40,6 +40,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const scope = usePanelScope()
+  const listView = usePanelListView()
   const { canCreate } = useWorkspaceCreateAccess()
   const canAdd = canCreate('extension', scopeForNewItem(scope))
 
@@ -50,13 +51,13 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
 
   const loadSkills = useCallback(async () => {
     try {
-      setSkills(await overlayAppClient.skills.get<SkillSummary[]>({ limit: 100, view: scope }))
+      setSkills(await overlayAppClient.skills.get<SkillSummary[]>({ limit: 100, view: listView }))
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [scope])
+  }, [listView])
 
   useEffect(() => {
     setLoading(true)

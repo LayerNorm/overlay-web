@@ -668,3 +668,26 @@ test('owners and admins rename any workspace, the first one included; members ca
   await assert.rejects(() => rename(make('owner'), 'x'.repeat(81)), (error) => assertServiceError(error, 'validation'))
   assert.deepEqual(renames, ['Maya’s workspace', 'Acme Labs'])
 })
+
+test('countMemberKinds separates people from agents, so one person with the default agent is one human', async () => {
+  const owner = access()
+  const agent: WorkspacePrincipal = {
+    id: 'principal_default_agent',
+    workspaceId: owner.workspace.id,
+    type: 'agent',
+    agentId: 'agent_default',
+    displayName: 'Overlay',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const agentMembership = { ...owner.membership, principalId: agent.id, role: 'member' as const }
+  const service = new WorkspaceService(repository({
+    async getAccess() { return owner },
+    async listPrincipals() { return [owner.principal, agent] },
+    async listMemberships() { return [owner.membership, agentMembership] },
+  }))
+
+  const counts = await service.countMemberKinds({ actorUserId: owner.principal.userId!, workspaceId: owner.workspace.id })
+
+  assert.deepEqual(counts, { memberCount: 2, humanMemberCount: 1 })
+})

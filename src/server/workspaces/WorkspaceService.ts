@@ -429,6 +429,27 @@ export class WorkspaceService {
     return memberships.length
   }
 
+  /**
+   * Active members split into everyone and people. A workspace also holds agents (every one gets the default Overlay
+   * agent), and they count as members, so "is this workspace just me?" needs the people count: a workspace with one
+   * person and one agent has a `memberCount` of 2.
+   */
+  async countMemberKinds(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<{ memberCount: number; humanMemberCount: number }> {
+    const actor = await this.requireActiveMember(args)
+    const [principals, memberships] = await Promise.all([
+      this.repository.listPrincipals({ workspaceId: actor.workspace.id, includeArchived: false }),
+      this.repository.listMemberships({ workspaceId: actor.workspace.id, status: 'active' }),
+    ])
+    const humanIds = new Set(principals.filter((principal) => principal.type === 'human').map((principal) => principal.id))
+    return {
+      memberCount: memberships.length,
+      humanMemberCount: memberships.filter((membership) => humanIds.has(membership.principalId)).length,
+    }
+  }
+
   async createTeam(args: {
     actorUserId: string
     workspaceId: string

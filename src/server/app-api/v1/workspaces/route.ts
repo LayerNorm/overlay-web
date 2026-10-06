@@ -22,11 +22,11 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       service.resolveActiveWorkspace(context.auth.userId),
     ])
     const workspaces = await Promise.all(accesses.map(async (access) => {
-      const memberCount = await service.countMembers({
+      const counts = await service.countMemberKinds({
         actorUserId: context.auth.userId,
         workspaceId: access.workspace.id,
       })
-      return toWorkspaceSummary(access, { memberCount })
+      return toWorkspaceSummary(access, counts)
     }))
     const response: WorkspaceListResponse = {
       workspaces,
@@ -51,7 +51,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     })
     await service.setActiveWorkspace(context.auth.userId, access.workspace.id)
     const response: WorkspaceCreateResponse = {
-      workspace: toWorkspaceSummary(access, { memberCount: 1 }),
+      workspace: toWorkspaceSummary(access, { memberCount: 1, humanMemberCount: 1 }),
     }
     return NextResponse.json(response, { status: 201 })
   } catch (error) {

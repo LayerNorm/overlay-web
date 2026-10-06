@@ -45,6 +45,7 @@ import {
   type SidebarNavItem,
 } from './appSidebarNav'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
   useBodyScrollLock,
   useClickOutside,
@@ -330,6 +331,7 @@ function useSidebarPanelChrome(args: {
 
   const shouldLoadCollaborationUnread = !publicShowcase && Boolean(user) && Boolean(activeWorkspaceId)
 
+  const solo = useIsSoloWorkspace()
   const panelNav = resolveSecondaryPanelNav({
     panelKind: routeState.panelKind,
     publicShowcase,
@@ -346,6 +348,7 @@ function useSidebarPanelChrome(args: {
     settingsSections,
     closeMobileDrawer,
     beginSecondaryNavigation,
+    solo,
   })
 
   const { access: createAccess, viewer: createViewer, canCreate } = useWorkspaceCreateAccess()
@@ -496,12 +499,14 @@ function useSidebarDerivedPanels(args: {
     mobileMenuOpen,
   } = args
   const savedScope = useSavedPanelScope()
+  const solo = useIsSoloWorkspace()
   const routeState = resolveSidebarRouteState({
     pathname,
     searchParams: currentSearchParams,
     resolveWorkspaceSurface,
     automationsEnabled,
     savedScope,
+    solo,
   })
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
 

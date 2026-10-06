@@ -142,3 +142,54 @@ test('New is hidden in Workspace for a member whose admin restricted it, and sho
     action,
   )
 })
+
+test('a workspace of one person lists the page rows on their own, then Archived, with no scope rows', () => {
+  const built = buildScopedPanelNav({
+    scope: 'personal',
+    sub: 'notes',
+    subItems: { personal: FILE_ROWS, workspace: FILE_ROWS },
+    pendingId: null,
+    solo: true,
+    onSelect: () => undefined,
+  })
+  assert.deepEqual(built.items.map((item) => item.id), ['personal:all', 'personal:notes', 'archived'])
+  assert.deepEqual(built.items.map((item) => item.label), ['All', 'Notes', 'Archived'])
+  assert.equal(built.activeId, 'personal:notes')
+  assert.ok(built.items.every((item) => !item.children), 'nothing is nested')
+})
+
+test('solo selections still report the Personal scope and the sub-row', () => {
+  const calls: Array<[string, string | null]> = []
+  const built = buildScopedPanelNav({
+    scope: 'personal',
+    sub: 'all',
+    subItems: { personal: FILE_ROWS },
+    pendingId: null,
+    solo: true,
+    onSelect: (scope, sub) => { calls.push([scope, sub]) },
+  })
+  built.onSelect('personal:notes')
+  built.onSelect('archived')
+  assert.deepEqual(calls, [['personal', 'notes'], ['archived', null]])
+})
+
+test('a solo page with no sub-rows gets one row named for the page, then Archived', () => {
+  const built = buildScopedPanelNav({
+    scope: 'personal',
+    sub: null,
+    subItems: {},
+    pendingId: null,
+    solo: true,
+    soloLabel: 'Agents',
+    onSelect: () => undefined,
+  })
+  assert.deepEqual(built.items.map((item) => [item.id, item.label]), [['personal', 'Agents'], ['archived', 'Archived']])
+  assert.equal(built.activeId, 'personal')
+})
+
+test('solo Archived is the active row when archived is on screen, and can be hidden', () => {
+  const shown = buildScopedPanelNav({ scope: 'archived', sub: null, subItems: { personal: FILE_ROWS }, pendingId: null, solo: true, onSelect: () => undefined })
+  assert.equal(shown.activeId, 'archived')
+  const hidden = buildScopedPanelNav({ scope: 'personal', sub: 'all', subItems: { personal: FILE_ROWS }, pendingId: null, solo: true, hiddenScopes: ['archived'], onSelect: () => undefined })
+  assert.deepEqual(hidden.items.map((item) => item.id), ['personal:all', 'personal:notes'])
+})

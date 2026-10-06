@@ -97,6 +97,21 @@ New + search, then the list. New is never above the scope rows.
   (`newItemScope`); Personal is what an absent scope means.
 - **Archived rows** (`ArchivedScopeList`) show a Personal/Workspace tag and a
   restore button on hover; restoring returns the item to where it came from.
+- **A workspace of one person has no scope rows.** The interface follows the
+  number of *people* in the workspace (`humanMemberCount`; agents do not count,
+  and every workspace holds the default Overlay agent), not a setting.
+  `isSoloWorkspace` / `useIsSoloWorkspace()` decide: the page's own rows stand
+  alone with Archived below (`buildScopedPanelNav({ solo })`), the Workspace
+  scope turns into Personal (`soloPanelScope`, `usePanelScope()`), lists ask for
+  everything active (`usePanelListView()`: no `view`, so a shared item such as
+  the default agent still shows), Chats shows Chats and Channels only (no
+  person-to-person DMs, no Activity), Move to Workspace/Personal and the
+  Personal/Workspace tag are hidden, and Agents lists every live agent. An
+  unknown count counts as not solo. New items stay `personal` (never send
+  `scope: 'workspace'` from a solo workspace): hiding the tabs must not expose
+  anything to the next person invited. The full interface returns when a second
+  person joins; the owner sees it on the next workspace refresh.
+
 
 ## Expandable rows are not indented
 

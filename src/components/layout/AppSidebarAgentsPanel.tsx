@@ -1,5 +1,6 @@
 'use client'
 
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -554,6 +555,9 @@ export function AgentsInlinePanel({
   const searchParams = useSearchParams()
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const activeConversationId = searchParams?.get('id') ?? null
+  // With one person there is no Personal/Workspace split: every live agent is listed (the default Overlay agent is
+  // created by the system, so it would otherwise sit under a Workspace tab nobody opens).
+  const solo = useIsSoloWorkspace()
 
   const { bundles, setBundles, loadBundle } = useAgentBundles(workspaceId)
   const { expanded, toggleExpanded } = useExpandedAgents({ activeAgentId, bundles, loadBundle })
@@ -585,11 +589,12 @@ export function AgentsInlinePanel({
         return Boolean(agent.archivedAt) || archivedThreadAgentIds.has(agent.id)
       }
       if (agent.archivedAt) return false
+      if (solo) return true
       return view === 'personal'
         ? agent.createdByPrincipalId === viewerPrincipalId
         : agent.createdByPrincipalId !== viewerPrincipalId
     }),
-    [previewedAgents, view, viewerPrincipalId, archivedThreadAgentIds],
+    [previewedAgents, view, viewerPrincipalId, archivedThreadAgentIds, solo],
   )
 
   // Most recently used first; agents with no recorded use stay alphabetical.
@@ -648,7 +653,7 @@ export function AgentsInlinePanel({
     if (!active) return
     const correctView: AgentsPanelView = active.archivedAt
       ? 'archived'
-      : active.createdByPrincipalId === viewerPrincipalId
+      : solo || active.createdByPrincipalId === viewerPrincipalId
         ? 'personal'
         : 'workspace'
     const wanted = correctView === 'personal' ? null : correctView
@@ -658,7 +663,7 @@ export function AgentsInlinePanel({
     if (wanted) params.set('scope', wanted)
     else params.delete('scope')
     router.replace(`${pathname}?${params.toString()}`)
-  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname])
+  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, solo])
 
   return (
     <SidebarResourceList>
@@ -697,7 +702,7 @@ export function AgentsInlinePanel({
         })
       ) : (
         <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          {view === 'archived' ? 'No archived agents' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
+          {view === 'archived' ? 'No archived agents' : solo ? 'No agents yet' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
         </p>
       )}
       {openError ? (

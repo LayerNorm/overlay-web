@@ -147,6 +147,7 @@ export function resolveSidebarRouteState({
   resolveWorkspaceSurface,
   automationsEnabled,
   savedScope = null,
+  solo = false,
 }: {
   pathname: string
   searchParams: URLSearchParams
@@ -154,6 +155,8 @@ export function resolveSidebarRouteState({
   automationsEnabled: boolean
   /** The scope remembered from the last scoped page. */
   savedScope?: PanelScope | null
+  /** The workspace is one person, so there is no Workspace scope to be in. */
+  solo?: boolean
 }): SidebarRouteState {
   const workspaceSurface = resolveWorkspaceSurface(pathname)
   const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
@@ -180,7 +183,7 @@ export function resolveSidebarRouteState({
   const chatsView = resolveChatsView({ activityOpen, archivedOpen, chatViewParam })
   // Agent links from before scopes carried the tab as `?view=`.
   const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
-  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope })
+  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo })
   const agentsView = scope
   const panelKind: SecondaryPanelKind | null = chatOpen
     ? 'chat'

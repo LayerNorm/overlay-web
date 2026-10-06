@@ -334,7 +334,7 @@ Evidence (production, 2026-10-06): 252 workspaces, 251 with one human and 1 with
 
 Build order:
 
-1. **B1, adaptive UI.** Derive human member count, apply the rules above, guard solo creation scope. No billing change.
+1. **B1, adaptive UI (done 2026-10-06).** `humanMemberCount` on the workspace summary (agents do not count; the default Overlay agent made `memberCount` read 2 for a solo workspace, which also broke the 5a naming step), `isSoloWorkspace`, flattened panel rows, Personal-only scope, lists with no `view`, Chats = Chats and Channels, Agents lists all, Move and the scope tag hidden. Channels stay visible (not hidden until first use): channel creation is only reachable from the Channels view, so hiding the row needs a create entry elsewhere (a follow-up). Creation stays `personal`. No billing change. Rules: `docs/develop/interface-design.md`.
 2. **B2, free allowance per workspace.** Counters keyed by workspace, usage charged to the active workspace, the 3-workspace cap, usage attribution fields. Dry run the counter migration first.
 3. **B3, workspace plans.** Enable wallets, "free or plan" step when creating a workspace, billing tab for every workspace (owners: plan, payment, top-up; others: usage), then remove the first-workspace special cases (archive rule, owner binding).
 4. **B4, convert an existing personal plan** into a pool (on request, per the rule above).

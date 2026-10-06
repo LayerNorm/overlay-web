@@ -27,7 +27,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
-import { usePanelScope } from '@/hooks/use-panel-scope'
+import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ScopeBulkActions } from '@/components/layout/ScopeBulkActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
@@ -182,6 +182,7 @@ export default function KnowledgeView({
 
   // The Files page shows one scope at a time (Personal, Workspace, or Archived), the same one as the secondary panel.
   const scope = usePanelScope()
+  const listView = usePanelListView()
   // Nothing is added to Archived, nor to a Workspace its admin restricted.
   const { canCreate } = useWorkspaceCreateAccess()
   const canAdd = scope !== 'archived' && canCreate('content', newItemScope(scope) ?? 'personal')
@@ -189,7 +190,8 @@ export default function KnowledgeView({
   const adapters = useMemo(() => createWebKnowledgeSurfaceAdapters({
     navigate: (url, options) => options?.replace ? router.replace(url) : router.push(url),
     getScope: () => scope,
-  }), [router, scope])
+    getListView: () => listView,
+  }), [router, scope, listView])
 
   const memories = useMemo<SharedKnowledgeMemoryPort>(() => ({
     list: () => overlayAppClient.memory.get<MemoryRow[]>({ limit: 100 }),

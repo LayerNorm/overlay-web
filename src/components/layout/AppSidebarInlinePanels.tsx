@@ -24,7 +24,7 @@ import {
 import { FilesInlineTree } from '@overlay/modules-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
-import { usePanelScope } from '@/hooks/use-panel-scope'
+import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ArchivedScopeList, type ArchivedScopeItem } from '@/components/layout/ArchivedScopeList'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
 import { SidebarResourceList } from '@overlay/ui/primitives'
@@ -75,11 +75,12 @@ export function FilesInlinePanel({
   const activeNoteId = searchParams?.get('id') ?? null
   const activeCanonicalFileId = activeFileId ?? activeNoteId
   const scope = usePanelScope()
+  const listView = usePanelListView()
 
   const fetchItems = useCallback(async (signal?: AbortSignal): Promise<FileTreeEntry[]> => {
     const [fileRows, noteRows] = await Promise.all([
-      overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true, view: scope }, { signal }),
-      overlayAppClient.notes.get<NoteDoc[]>({ limit: 100, view: scope }, { signal }),
+      overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true, view: listView }, { signal }),
+      overlayAppClient.notes.get<NoteDoc[]>({ limit: 100, view: listView }, { signal }),
     ])
     const files = arrayOrEmpty<FileTreeEntry>(fileRows)
     const fileIds = new Set(files.map((file) => file._id))
@@ -87,7 +88,7 @@ export function FilesInlinePanel({
       .map(noteDocToKnowledgeFile)
       .filter((note) => !fileIds.has(note._id))
     return [...files, ...notes]
-  }, [scope])
+  }, [listView])
 
   const loadItems = useCallback(async () => {
     try {

@@ -14,6 +14,7 @@ import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { SETTINGS_SECTION_ICONS, chatScopeForView, type SidebarRouteState } from './appSidebarNav'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { soloPanelScope } from '@/shared/workspaces/solo-workspace'
 
 interface SidebarRouter {
   push: (href: string) => void
@@ -89,6 +90,7 @@ function buildChatPanelNav({
   buildWorkspaceHref,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   publicShowcase: boolean
   chatsView: string
@@ -99,6 +101,7 @@ function buildChatPanelNav({
   buildWorkspaceHref: (workspaceId: string, href: string) => string
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
   const chatItems = (publicShowcase
     ? chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
@@ -148,6 +151,21 @@ function buildChatPanelNav({
 
   const chatScope = chatScopeForView(chatsView)
   const unreadOf = (id: string) => chatItems.find((item) => item.id === id)?.badgeCount ?? 0
+  if (solo) {
+    // One person: no direct messages or activity feed, just chats and channels (rooms with agents), then Archived.
+    const soloRows = chatItems
+      .filter((item) => item.id === 'personal' || item.id === 'channels')
+      .map((item) => (item.id === 'personal' ? { ...item, label: 'Chats' } : item))
+    return buildScopedPanelNav({
+      scope: soloPanelScope(chatScope, true),
+      sub: chatsView === 'channels' ? 'channels' : chatScope === 'personal' ? 'personal' : null,
+      subItems: { personal: soloRows },
+      pendingId: effectivePendingSecondaryNavId,
+      hiddenScopes: publicShowcase ? ['archived'] : [],
+      solo: true,
+      onSelect: (scope, sub) => flat.onSelect(sub ?? scope),
+    })
+  }
   return buildScopedPanelNav({
     scope: chatScope,
     sub: chatScope === 'workspace' ? chatsView : null,
@@ -173,6 +191,7 @@ function buildFilesPanelNav({
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   filesView: string
   scope: PanelScope
@@ -186,9 +205,11 @@ function buildFilesPanelNav({
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
+    solo,
     // Archived is one list of everything archived, so the category rows only exist under Personal and Workspace.
     sub: scope === 'archived' ? null : filesView,
     subItems: { personal: filesInlineItems, workspace: filesInlineItems },
@@ -230,6 +251,7 @@ function buildAgentsPanelNav({
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   scope: PanelScope
   effectivePendingSecondaryNavId: string | null
@@ -241,9 +263,12 @@ function buildAgentsPanelNav({
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
+    solo,
+    soloLabel: 'Agents',
     sub: null,
     subItems: {},
     pendingId: effectivePendingSecondaryNavId,
@@ -279,6 +304,7 @@ function buildToolsPanelNav({
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   toolsView: string
   scope: PanelScope
@@ -289,9 +315,11 @@ function buildToolsPanelNav({
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
+    solo,
     // Archived lists every kind of extension together, so the kind rows only exist under Personal and Workspace.
     sub: scope === 'archived' ? null : toolsView,
     subItems: { personal: toolsItems, workspace: toolsItems },
@@ -321,6 +349,7 @@ function buildAutomationsPanelNav({
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   scope: PanelScope
   effectivePendingSecondaryNavId: string | null
@@ -332,9 +361,12 @@ function buildAutomationsPanelNav({
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
+    solo,
+    soloLabel: 'Automations',
     sub: null,
     subItems: {},
     pendingId: effectivePendingSecondaryNavId,
@@ -401,6 +433,7 @@ export function resolveSecondaryPanelNav({
   settingsSections,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   panelKind: SidebarRouteState['panelKind']
   publicShowcase: boolean
@@ -417,6 +450,8 @@ export function resolveSecondaryPanelNav({
   settingsSections: readonly OverlaySettingsSection[]
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  /** The workspace is one person: no Personal/Workspace split (see `isSoloWorkspace`). */
+  solo: boolean
 }): SecondaryPanelNav | undefined {
   if (panelKind === 'chat') {
     const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
@@ -439,6 +474,7 @@ export function resolveSecondaryPanelNav({
       buildWorkspaceHref,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'files' || panelKind === 'notes') {
@@ -455,6 +491,7 @@ export function resolveSecondaryPanelNav({
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'agents') {
@@ -469,6 +506,7 @@ export function resolveSecondaryPanelNav({
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'automations') {
@@ -483,6 +521,7 @@ export function resolveSecondaryPanelNav({
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'tools') {
@@ -496,6 +535,7 @@ export function resolveSecondaryPanelNav({
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'settings') {

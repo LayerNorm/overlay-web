@@ -1,5 +1,6 @@
 'use client'
 
+import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -771,10 +772,8 @@ export function WorkspaceSettingsPanel({
 
   const workspaceLabel = useMemo(() => {
     if (!activeWorkspace) return null
-    const memberLabel = typeof activeWorkspace.memberCount === 'number'
-      ? ` · ${activeWorkspace.memberCount} ${activeWorkspace.memberCount === 1 ? 'member' : 'members'}`
-      : ''
-    return `Workspace${memberLabel}`
+    const label = workspaceMemberLabel(activeWorkspace)
+    return `Workspace${label ? ` · ${label}` : ''}`
   }, [activeWorkspace])
 
   function openPrimaryAction() {

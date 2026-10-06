@@ -23,13 +23,13 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       context.auth.userId,
       workspaceId,
     )
-    const memberCount = await service.countMembers({
+    const counts = await service.countMemberKinds({
       actorUserId: context.auth.userId,
       workspaceId: access.workspace.id,
     })
     const response: WorkspaceActivateResponse = {
       activeWorkspaceId: access.workspace.id,
-      workspace: toWorkspaceSummary(access, { memberCount }),
+      workspace: toWorkspaceSummary(access, counts),
     }
     const result = NextResponse.json(response)
     result.cookies.set(ACTIVE_WORKSPACE_COOKIE, access.workspace.id, {

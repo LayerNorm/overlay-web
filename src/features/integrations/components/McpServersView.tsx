@@ -28,7 +28,7 @@ import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
-import { usePanelScope } from '@/hooks/use-panel-scope'
+import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
@@ -45,6 +45,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const scope = usePanelScope()
+  const listView = usePanelListView()
   const { canCreate } = useWorkspaceCreateAccess()
   const canAdd = canCreate('extension', scopeForNewItem(scope))
 
@@ -55,13 +56,13 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
 
   const loadServers = useCallback(async () => {
     try {
-      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100, view: scope }))
+      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100, view: listView }))
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [scope])
+  }, [listView])
 
   useEffect(() => {
     setLoading(true)

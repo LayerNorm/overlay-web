@@ -16,7 +16,7 @@ import {
 } from '@overlay/app-core/automations'
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
-import { usePanelScope } from '@/hooks/use-panel-scope'
+import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ArchivedScopeList, type ArchivedScopeItem } from '@/components/layout/ArchivedScopeList'
 
@@ -52,12 +52,13 @@ export function AutomationsInlinePanel({
   const activeId = searchParams?.get('id') ?? null
   const activeAutomationId = searchParams?.get('automationId') ?? null
   const scope = usePanelScope()
+  const listView = usePanelListView()
 
   const loadAutomations = useCallback(async () => {
     try {
       const page = await overlayAppClient.automations.getPage<AutomationSummary>({
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
-        view: scope,
+        view: listView,
       })
       setAutomations(Array.isArray(page.data) ? page.data : [])
       nextCursorRef.current = page.nextCursor
@@ -67,7 +68,7 @@ export function AutomationsInlinePanel({
     } finally {
       setLoading(false)
     }
-  }, [scope])
+  }, [listView])
 
   async function loadMoreAutomations() {
     if (!nextCursorRef.current) return
@@ -76,7 +77,7 @@ export function AutomationsInlinePanel({
       const page = await overlayAppClient.automations.getPage<AutomationSummary>({
         cursor: nextCursorRef.current,
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
-        view: scope,
+        view: listView,
       })
       setAutomations((current) => {
         const byId = new Map(current.map((automation) => [automation._id, automation]))

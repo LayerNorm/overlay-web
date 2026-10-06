@@ -18,6 +18,7 @@ import type { TourStep } from '@/features/account/components/OnboardingTour'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { isStartingWorkspaceName } from '@/shared/workspaces/default-name'
+import { peopleInWorkspace } from '@/shared/workspaces/solo-workspace'
 
 const NameWorkspaceStep = dynamic(() =>
   import('@/features/workspaces/components/NameWorkspaceStep').then((mod) => ({ default: mod.NameWorkspaceStep })),
@@ -296,7 +297,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     && !workspaceNamed
     && !onInvitationRoute
     && activeWorkspace?.role === 'owner'
-    && (activeWorkspace.memberCount ?? 1) <= 1
+    && (peopleInWorkspace(activeWorkspace) ?? 1) <= 1
     && isStartingWorkspaceName(activeWorkspace.name)
   const showTourChrome = (active || isClosing) && !onInvitationRoute && !askWorkspaceName
 
