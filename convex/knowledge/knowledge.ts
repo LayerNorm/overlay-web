@@ -25,6 +25,7 @@ import {
 } from '../../src/shared/knowledge/chunking'
 import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 import { canRecallMessageChunk, messageChunkVisibility } from '../../src/shared/knowledge/message-visibility'
+import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
 
 export type HybridSearchChunk = {
   text: string
@@ -537,6 +538,49 @@ export const backfillMessageChunkVisibilityByServer = mutation({
       if (!dryRun) await ctx.db.patch(chunk._id, { visibility: wanted })
     }
     return { scanned: page.page.length, wasShared, nowOwner, isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor }
+  },
+})
+
+/**
+ * Makes the memories saved before the "a person's memory is theirs by default" rule private to whoever saved them: every
+ * person-owned memory with no visibility becomes `owner`, and so do its chunks. Agents' own memories stay shared (workspace
+ * knowledge by design), and so does anything saved as shared on purpose. Pure patches, no re-embedding; idempotent.
+ * `dryRun` only counts. Run until `isDone`. See docs/plans/TOOL_SCOPING_PLAN.md (T0).
+ */
+export const backfillMemoryVisibilityByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    dryRun: v.boolean(),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { serverSecret, dryRun, cursor, numItems }) => {
+    requireServerSecret(serverSecret)
+    const page = await ctx.db
+      .query('memories')
+      .order('asc')
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 100 })
+    let madePrivate = 0
+    let chunksMadePrivate = 0
+    let agentOwnedKept = 0
+    let alreadyChosen = 0
+    for (const memory of page.page) {
+      if (memory.visibility !== undefined) { alreadyChosen++; continue }
+      if (defaultMemoryVisibility(memory.userId) === undefined) { agentOwnedKept++; continue }
+      madePrivate++
+      const chunks = await ctx.db.query('knowledgeChunks')
+        .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memory._id))
+        .collect()
+      const stale = chunks.filter((chunk) => chunk.visibility !== 'owner')
+      chunksMadePrivate += stale.length
+      if (dryRun) continue
+      await ctx.db.patch(memory._id, { visibility: 'owner' })
+      await Promise.all(stale.map((chunk) => ctx.db.patch(chunk._id, { visibility: 'owner' })))
+    }
+    return {
+      scanned: page.page.length, madePrivate, chunksMadePrivate, agentOwnedKept, alreadyChosen,
+      isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor,
+    }
   },
 })
 
