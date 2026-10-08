@@ -249,7 +249,7 @@
     "convex": "^1.41.0",
     "dagre": "^0.8.5",
     "docx": "^9.6.1",
-    "dompurify": "3.4.14",
+    "dompurify": "3.4.16",
     "eventsource": "^4.1.0",
     "framer-motion": "^12.26.2",
     "groq-sdk": "^1.1.1",
