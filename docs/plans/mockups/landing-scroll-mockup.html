@@ -4,6 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Overlay — Scroll landing mockup</title>
+<script>
+  /* theme: saved choice, else the system setting (set before first paint to avoid a flash) */
+  (function () {
+    var t = null
+    try { t = localStorage.getItem('overlay-mockup-theme') } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    document.documentElement.dataset.theme = t
+  })()
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
@@ -30,25 +39,23 @@
     --c-cp: #7c3aed;
     --c-ai: #ea580c;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: #09090b;
-      --foreground: #f5f5f5;
-      --muted: #a1a1aa;
-      --muted-light: #71717a;
-      --border: #27272a;
-      --surface-elevated: #111113;
-      --surface-muted: #151518;
-      --button-primary-bg: #f5f5f5;
-      --button-primary-text: #09090b;
-    }
+  :root[data-theme="dark"] {
+    --background: #09090b;
+    --foreground: #f5f5f5;
+    --muted: #a1a1aa;
+    --muted-light: #71717a;
+    --border: #27272a;
+    --surface-elevated: #111113;
+    --surface-muted: #151518;
+    --button-primary-bg: #f5f5f5;
+    --button-primary-text: #09090b;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: auto; }
   body {
     background: var(--background); color: var(--foreground);
-    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    font-family: var(--serif); font-size: 15px; line-height: 1.5;
     -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
   button { font-family: inherit; color: inherit; }
@@ -71,16 +78,21 @@
   .nav {
     position: absolute; top: 0; left: 0; right: 0; height: 64px; z-index: 20;
     display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
-    opacity: var(--nav, 0); pointer-events: none;
+    pointer-events: none;
   }
   .nav.on { pointer-events: auto; }
-  .nav .lockup { font-size: 19px; }
+  .nav .lockup { font-size: 19px; opacity: var(--lk, 0); }   /* hidden until the hero logo has docked onto it */
+  .nav-links, .nav-right { opacity: var(--nav, 0); }
   .nav-links { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 28px; font-size: 13.5px; color: var(--muted); }
   .nav-links a:hover { color: var(--foreground); }
   .nav-right { display: flex; align-items: center; gap: 14px; }
-  .nav-right .gh { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--muted); }
-  .nav-right .gh:hover { background: var(--surface-muted); color: var(--foreground); }
-  .pill { display: inline-flex; align-items: center; padding: 7px 14px; border-radius: 999px; background: var(--button-primary-bg); color: var(--button-primary-text); font-size: 13px; font-weight: 500; }
+  .nav-right .gh, .nav-right .theme { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--muted); }
+  .nav-right .theme { appearance: none; border: 0; background: none; cursor: pointer; }
+  .theme .moon { display: none; }
+  :root[data-theme="light"] .theme .sun { display: none; }
+  :root[data-theme="light"] .theme .moon { display: block; }
+  .nav-right .gh:hover, .nav-right .theme:hover { background: var(--surface-muted); color: var(--foreground); }
+  .pill { display: inline-flex; align-items: center; padding: 7px 14px; border-radius: 999px; background: var(--button-primary-bg); color: var(--button-primary-text); font-size: 13px; font-weight: 400; }
 
   /* ---------- section 1: hero ---------- */
   .hero {
@@ -88,7 +100,7 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: clamp(18px, 3.6vh, 38px); padding: 28px 20px 40px; text-align: center;
   }
-  .hero .lockup { font-size: clamp(26px, 3.6vw, 38px); }
+  .hero .lockup { font-size: clamp(26px, 3.6vw, 38px); transform-origin: 0 0; }
   .sub {
     font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; line-height: 1.4;
     font-size: clamp(21px, 3vw, 40px); max-width: 21em;
@@ -153,17 +165,17 @@
   /* ---------- sections 2-6: title + graphic + optional right sidebar ---------- */
   .view {
     position: absolute; inset: 64px 0 0 0; z-index: 6;
-    display: grid; grid-template-columns: 240px minmax(0, 1fr) 240px; grid-template-rows: auto minmax(0, 1fr) auto;
+    display: grid; grid-template-columns: 240px minmax(0, 1fr) 240px; grid-template-rows: auto minmax(0, 1fr);
     padding: 0 24px 24px; opacity: var(--vo, 0); transform: translateY(var(--vy, 0px)); pointer-events: none;
     transition: grid-template-columns .5s var(--ease-out), padding .5s var(--ease-out);
   }
   .view.live { pointer-events: auto; }
   .title {
-    grid-column: 2; grid-row: 1; text-align: center; font: 400 clamp(24px, 3vw, 40px) / 1.25 var(--serif); letter-spacing: -0.015em;
+    grid-column: 1 / -1; grid-row: 1; text-align: center; font: 400 clamp(24px, 3vw, 40px) / 1.25 var(--serif); letter-spacing: -0.015em;
     margin: clamp(8px, 3vh, 30px) 0 clamp(14px, 3vh, 26px);
   }
   .roll { display: inline-grid; overflow: hidden; padding-bottom: .22em; margin-bottom: -.22em; transition: width .45s var(--ease-out); }
-  .roll .w { grid-area: 1 / 1; white-space: nowrap; width: max-content; }
+  .roll .w { grid-area: 1 / 1; white-space: pre; width: max-content; }
 
   .body { display: contents; }
 
@@ -184,22 +196,29 @@
   .side { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; text-align: right; overflow: hidden; transition: opacity .3s; }
   .body.no-side .side { opacity: 0; pointer-events: none; }
   .side > * { animation: rise .55s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 70ms); }
-  .side-item .lbl { position: relative; display: block; height: 1.2em; overflow: hidden; transition: width .45s var(--ease-out); }
-  .side-item .lbl > span { position: absolute; top: 0; right: 0; line-height: 1.2; white-space: nowrap; transition: opacity .3s; }
+  .side-item .lbl { position: relative; display: block; height: 1.3em; overflow: hidden; transition: width .45s var(--ease-out); }
+  .side-item .lbl > span { position: absolute; top: 0; right: 0; line-height: 1.3; white-space: nowrap; transition: opacity .3s; }
   .side-item .lbl .b, .side-item.on .lbl .a { opacity: 0; }
   .side-item.on .lbl .b { opacity: 1; }
   .side-item {
-    appearance: none; cursor: pointer; text-align: right; padding: 8px 14px; border: 1px solid transparent; border-radius: 10px; background: none;
-    font: 500 14.5px var(--sans); color: var(--muted); transition: color .25s, border-color .25s, background .25s;
+    position: relative; appearance: none; cursor: pointer; text-align: right; padding: 7px 12px; border: 1px solid transparent; border-radius: 9px; background: none;
+    font: 400 14.5px/1.3 var(--serif); letter-spacing: -0.01em; white-space: nowrap; color: var(--foreground); opacity: .55;
+    transition: opacity .25s, border-color .35s var(--ease-out);
   }
-  .side-item:hover { color: var(--foreground); }
-  .side-item.on { color: var(--foreground); border-color: var(--foreground); background: var(--surface-elevated); }
+  .side-item:hover { opacity: .85; }
+  .side-item.on { opacity: 1; border-color: var(--foreground); }
+  .side-item .t { position: relative; isolation: isolate; display: block; }
+  .side-item .t::after {                           /* same marker underline as the rail, in this section's color */
+    content: ""; position: absolute; left: -0.1em; right: -0.1em; bottom: -0.04em; height: 0.46em; z-index: -1;
+    background: linear-gradient(var(--c), var(--c)) left bottom / 100% 0.075em no-repeat, color-mix(in srgb, var(--c) 17%, transparent);
+    border-radius: 0.06em;
+  }
+  .side-item:hover .t::after { background-color: color-mix(in srgb, var(--c) 30%, transparent); }
 
-  .caption { grid-column: 2; grid-row: 3; height: 64px; display: grid; place-items: end center; font: 400 clamp(20px, 2.4vw, 30px) var(--serif); letter-spacing: -0.015em; transition: opacity .3s; }
 
   /* ---------- section 7: get started ---------- */
   .cta {
-    grid-column: 2; grid-row: 2 / span 2; align-self: center; display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(28px, 5vw, 84px);
+    grid-column: 2; grid-row: 2; align-self: center; display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(28px, 5vw, 84px);
     opacity: 0; pointer-events: none; transition: opacity .4s var(--ease-out);
   }
   .grp { display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -207,7 +226,7 @@
   .grp h3 svg { color: var(--muted); }
   .btn {
     display: inline-flex; align-items: center; justify-content: center; min-width: 138px; padding: 9px 16px; border: var(--hairline); border-radius: 10px;
-    background: var(--surface-elevated); font: 500 14px var(--sans); transition: background .2s;
+    background: var(--surface-elevated); font: 400 14px var(--serif); transition: background .2s;
   }
   .btn:hover { background: var(--surface-muted); }
   .btn.primary { background: var(--button-primary-bg); color: var(--button-primary-text); border-color: transparent; }
@@ -223,12 +242,55 @@
   [data-sec="start"] .rail { opacity: 0; pointer-events: none; }
   [data-sec="start"] .rail-item { pointer-events: none; }
   [data-sec="start"] .view { grid-template-columns: 0 minmax(0, 1fr) 0; padding-bottom: 84px; }
-  [data-sec="start"] .graphic, [data-sec="start"] .side, [data-sec="start"] .caption { opacity: 0; pointer-events: none; }
+  [data-sec="start"] .graphic, [data-sec="start"] .side { opacity: 0; pointer-events: none; }
   [data-sec="start"] .cta { opacity: 1; pointer-events: auto; }
   [data-sec="start"] .grp { animation: rise .6s var(--ease-out) both; animation-delay: calc(var(--i) * 80ms + 120ms); }
   [data-sec="start"] .foot { transform: none; }
 
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- agents (the stars): each one slides in from / back out to the screen edge nearest to it ---------- */
+  .agents { position: absolute; inset: 0; z-index: 8; pointer-events: none; --k: 1; }
+  .ag {
+    position: absolute; left: calc(var(--x) * 1%); top: calc(var(--y) * 1%);
+    width: calc(var(--s) * var(--k) * 1px); height: calc(var(--s) * var(--k) * 1px);
+    margin: calc(var(--s) * var(--k) * -0.5px) 0 0 calc(var(--s) * var(--k) * -0.5px);
+    transform: var(--off); pointer-events: none;     /* parked just past the nearest screen edge; the scroll drives the transform */
+    transition: visibility 0s;
+  }
+  .ag.parked { visibility: hidden; }                   /* fully off-screen: render nothing (no stray edge slivers) */
+  /* page load: hero agents slide in from their edges, then follow the scroll 1:1 */
+  body:not(.settled) .ag { transition: transform 1.1s cubic-bezier(.34, 1.35, .64, 1) calc(var(--d) * 150ms + 300ms), visibility 0s; }
+  /* jumping straight to a section (rail / sidebar / underline click): animate the agents instead of snapping */
+  body.jumping .ag { transition: transform .85s cubic-bezier(.34, 1.25, .64, 1) calc(var(--d) * 90ms), visibility 0s; }
+  body.jumping .ag.parked { transition: transform .6s cubic-bezier(.55, 0, .9, .45), visibility 0s linear .65s; }
+  .ag { cursor: pointer; }
+  .ag .eyes rect:last-child { transform-box: fill-box; transform-origin: center; }
+  .ag.wink .eyes rect:last-child { animation: wink .6s ease-in-out; }
+  .ag:active .ag-in { scale: .94; }
+  @keyframes wink { 0%, 100% { transform: scaleY(1); } 25%, 75% { transform: scaleY(.08); } }
+  .ag-in {
+    width: 100%; height: 100%; animation: bob 5.5s ease-in-out infinite; animation-delay: calc(var(--d) * -1.7s);
+    transform: rotate(var(--r)); filter: drop-shadow(0 8px 12px rgba(0,0,0,.14)); transition: scale .25s var(--ease-out);
+  }
+  .ag:hover .ag-in { scale: 1.08; }
+  .ag svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .ag .eyes { transform-box: fill-box; transform-origin: center; animation: blink 5.4s ease-in-out infinite; animation-delay: calc(var(--d) * -2.1s); }
+  @keyframes bob { 50% { transform: translateY(-7px) rotate(calc(var(--r) + 2.5deg)); } }
+  @keyframes blink { 0%, 91% { transform: scaleY(1); } 93.5%, 95.5% { transform: scaleY(.1); } 98%, 100% { transform: scaleY(1); } }
+  .say {
+    position: absolute; bottom: calc(100% + 6px); left: 0; width: max-content; max-width: 156px; padding: 7px 11px;
+    border: var(--hairline); border-radius: 12px; background: var(--surface-elevated); color: var(--foreground);
+    font: 400 12.5px/1.35 var(--serif); box-shadow: 0 8px 24px -10px rgba(0,0,0,.25);
+    translate: var(--sx, 0px) 0; opacity: 0; transform: translateY(6px) scale(.96); transform-origin: 20% 100%; pointer-events: none;
+    transition: opacity .25s var(--ease-out), transform .3s var(--ease-out);
+  }
+  .say::after { content: ""; position: absolute; top: 100%; left: calc(var(--tx, 18px) - 4.5px); width: 9px; height: 9px; margin-top: -5px; transform: rotate(45deg); background: inherit; border: inherit; border-top: 0; border-left: 0; }
+  .ag.right .say { left: auto; right: 0; transform-origin: 80% 100%; }
+  .ag.below .say { bottom: auto; top: calc(100% + 6px); }
+  .ag.below .say::after { top: auto; bottom: 100%; margin: 0 0 -5px; transform: rotate(225deg); }
+  .ag:hover .say { opacity: 1; transform: none; }   /* speech bubbles show on hover only */
+  @media (max-width: 700px) { .agents { display: none; } }
 
   .devlabel { position: absolute; right: 16px; bottom: 8px; z-index: 30; font: 10px var(--mono); color: var(--muted-light); opacity: .8; pointer-events: none; }
   [data-sec="start"] .devlabel { bottom: 60px; }
@@ -239,17 +301,17 @@
     .nav-links { display: none; }
     .rail { left: 0; right: 0; top: 64px; bottom: auto; width: auto; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 2px; padding: 0 8px; }
     .rail-item { font-size: 12.5px; padding: 6px 8px; }
-    .view { inset: 124px 0 0 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; padding: 0 16px 16px; }
+    .view { inset: 124px 0 0 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; padding: 0 16px 16px; }
     [data-sec="start"] .view { grid-template-columns: minmax(0, 1fr); padding-bottom: 130px; }
     .title, .graphic, .cta { grid-column: 1; }
     .side { grid-column: 1; grid-row: 3; margin-top: 14px; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; text-align: center; }
     .body.no-side .side { display: none; }
-    .caption { grid-column: 1; grid-row: 4; height: 48px; }
-    .foot { padding: 12px 16px; }
+      .foot { padding: 12px 16px; }
     .devlabel { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
+    .ag.wink .eyes rect:last-child { animation: wink .6s ease-in-out !important; }   /* a one-eye wink is tiny: keep it */
   }
 </style>
 </head>
@@ -263,6 +325,10 @@
     <a class="lockup" href="#"><span class="orb"></span>overlay</a>
     <nav class="nav-links"><a href="#">Product</a><a href="#">Docs</a><a href="#">Pricing</a><a href="#">Blog</a></nav>
     <div class="nav-right">
+      <button class="theme" id="themeBtn" type="button" aria-label="Toggle light / dark mode">
+        <svg class="i sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg class="i moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
       <a class="gh" href="#" aria-label="GitHub"><svg class="i" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></a>
       <a class="pill" href="#">Get Started</a>
     </div>
@@ -286,6 +352,8 @@
     </div>
   </section>
 
+  <div class="agents" id="agents" aria-hidden="true"></div>
+
   <!-- left rail: the five underlined phrases, in reverse order -->
   <nav class="rail" id="rail" aria-label="Sections"><span class="rail-box" id="railBox"></span></nav>
 
@@ -304,8 +372,6 @@
       </div>
       <aside class="side" id="side"></aside>
     </div>
-
-    <p class="caption" id="caption"></p>
 
     <div class="cta" id="cta">
       <div class="grp" style="--i:0"><h3><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>Web</h3><a class="btn primary" href="#">Get started</a></div>
@@ -334,7 +400,7 @@
   const stage = $('#stage'), nav = $('#nav'), rail = $('#rail'), railBox = $('#railBox')
   const view = $('#view'), titleEl = $('#title'), bodyGrid = $('#bodyGrid'), side = $('#side')
   const graphic = $('#graphic'), gInner = $('#gInner'), gName = $('#gName'), gBrief = $('#gBrief'), gP = $('#gP')
-  const caption = $('#caption'), dev = $('#dev')
+  const dev = $('#dev')
   const heroLockup = $('#heroLockup'), demo = $('#demo'), hero = $('#hero')
 
   /* The five underlined phrases. Rail order = reverse of the sentence. */
@@ -356,35 +422,132 @@
   /* One scene = one stretch of scrolling. len is in viewport heights. */
   const AI = 'AI agents with '
   const SCENES = [
-    { sec: 'ai', pre: AI, word: 'superpowers', item: -1, cap: '', len: 0.8, name: 'AI employees',
+    { sec: 'ai', pre: AI, word: 'superpowers', item: -1, tail: '', len: 0.8, name: 'AI employees',
       brief: 'Overview: the agent avatars gain superpowers as you scroll.' },
-    { sec: 'ai', pre: AI, word: 'memory', item: 0, cap: 'remember everything', len: 0.9, name: 'Memory',
+    { sec: 'ai', pre: AI, word: 'memory', item: 0, tail: 'remember everything', len: 0.9, name: 'Memory',
       brief: 'An agent that recalls every chat, file and person across all your threads.' },
-    { sec: 'ai', pre: AI, word: 'tools', item: 1, cap: 'work where you work', len: 0.9, name: 'Tools',
+    { sec: 'ai', pre: AI, word: 'tools', item: 1, tail: 'work where you work', len: 0.9, name: 'Tools',
       brief: 'An agent reaching into the apps you already use — Slack, Gmail, GitHub, Calendar.' },
-    { sec: 'ai', pre: AI, word: 'a computer', item: 2, cap: 'can do anything', len: 0.9, name: 'Computer',
+    { sec: 'ai', pre: AI, word: 'a computer', item: 2, tail: 'can do anything', len: 0.9, name: 'Computer',
       brief: 'An agent working on its own machine: browser, terminal, files.' },
-    { sec: 'ai', pre: AI, word: 'superpowers', item: 'all', cap: 'are AI employees', len: 1.0, name: 'Memory + Tools + Computer',
+    { sec: 'ai', pre: AI, word: 'superpowers', item: 'all', tail: 'are AI employees', len: 1.0, name: 'Memory + Tools + Computer',
       brief: 'All three combine into one AI employee.' },
 
-    { sec: 'cp', pre: 'One place to get things done', word: '', item: 0, cap: '', len: 0.9, name: 'Create',
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 0, tail: '', len: 0.9, name: 'Create',
       brief: 'Spin up an agent from a prompt or template.' },
-    { sec: 'cp', pre: 'One place to get things done', word: '', item: 1, cap: '', len: 0.9, name: 'Manage',
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 1, tail: '', len: 0.9, name: 'Manage',
       brief: 'Every agent, permission, budget and log in one view.' },
-    { sec: 'cp', pre: 'One place to get things done', word: '', item: 2, cap: '', len: 0.9, name: 'Deploy',
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 2, tail: '', len: 0.9, name: 'Deploy',
       brief: 'Put agents live — on schedules, triggers and in channels.' },
-    { sec: 'cp', pre: 'One place to get things done', word: '', item: 3, cap: '', len: 0.9, name: 'Bring your own agents',
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 3, tail: '', len: 0.9, name: 'Bring your own agents',
       brief: 'Claude Code, Codex and others plug into the same control plane.' },
 
-    { sec: 'cloud', pre: 'Accessible from anywhere, literally', word: '', item: -1, cap: '', len: 1.3, name: 'Cloud',
+    { sec: 'cloud', pre: 'Accessible from anywhere, literally', word: '', item: -1, tail: '', len: 1.3, name: 'Cloud',
       brief: 'The same agents on web, desktop and phone — always running, never tied to your laptop.' },
-    { sec: 'multi', pre: 'Better, together', word: '', item: -1, cap: '', len: 1.3, name: 'Multiplayer',
+    { sec: 'multi', pre: 'Better, together', word: '', item: -1, tail: '', len: 1.3, name: 'Multiplayer',
       brief: 'Teammates and agents in one workspace: shared threads, presence, handoffs.' },
-    { sec: 'oss', pre: 'Oh, and we care about your sovereignty', word: '', item: -1, cap: '', len: 1.3, name: 'Open source',
+    { sec: 'oss', pre: 'Oh, and we care about your sovereignty', word: '', item: -1, tail: '', len: 1.3, name: 'Open source',
       brief: 'Read the code, self-host it, keep your data. Sovereignty by default.' },
 
-    { sec: 'start', pre: 'Hire your first AI employee', word: '', item: -1, cap: '', len: 0.6, name: 'Get started', brief: '' },
+    { sec: 'start', pre: 'Hire your first AI employee', word: '', item: -1, tail: '', len: 0.6, name: 'Get started', brief: '' },
   ]
+
+  /* ---------- agents ----------
+     Creature geometry copied from src/components/orb/Creature.tsx (same 100x100 bodies + straight eyes), recolored here.
+     Hero: 4 agents peeking in from each screen edge, the scroll pulls each back out through its nearest edge. Every later section: 2 agents slide in from their nearest edge. */
+  const BODY = {
+    blob: '<path d="M50 12 C70 12 90 28 89 55 C88 80 70 93 50 93 C30 93 11 80 12 54 C13 29 30 12 50 12 Z"/>',
+    squircle: '<rect x="12" y="14" width="76" height="78" rx="24"/>',
+    pill: '<rect x="8" y="30" width="84" height="48" rx="24"/>',
+    triangle: '<path d="M50 16 L86 82 Q89 90 81 90 L19 90 Q11 90 14 82 Z" stroke="CC" stroke-width="7" stroke-linejoin="round"/>',
+    hexagon: '<path d="M50 12 L84 31 L84 71 L50 90 L16 71 L16 31 Z" stroke="CC" stroke-width="7" stroke-linejoin="round"/>',
+    cloud: '<circle cx="34" cy="61" r="16"/><circle cx="50" cy="49" r="20"/><circle cx="67" cy="61" r="16"/><rect x="21" y="58" width="59" height="23" rx="11.5"/>',
+    droplet: '<path d="M50 10 C50 10 79 45 79 64 A29 29 0 1 1 21 64 C21 45 50 10 50 10 Z"/>',
+    circle: '<circle cx="50" cy="53" r="40"/>',
+  }
+  function creatureSVG(shape, color) {
+    const n = parseInt(color.slice(1), 16), luma = (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255
+    const eye = luma > 0.5 ? '#1c1917' : '#fafaf9'
+    return `<svg viewBox="0 0 100 100"><g fill="${color}">${BODY[shape].replace(/CC/g, color)}</g>` +
+      `<g class="eyes" fill="${eye}"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></svg>`
+  }
+
+  // x / y are % of the viewport (the agent's center), s is the size in px at 1400px wide, r is the resting tilt.
+  const AGENT_GROUPS = {
+    hero: [
+      { shape: 'blob',    color: '#db2777', x: 3,  y: 37, s: 119, r: -9,  say: "Hi! I'm an AI employee." },     // left edge
+      { shape: 'hexagon', color: '#16a34a', x: 27, y: 3,  s: 100,  r: 12,  say: 'I use real tools.' },            // top edge
+      { shape: 'droplet', color: '#2563eb', x: 97, y: 61, s: 114, r: 8,   say: 'I live in the cloud.' },         // right edge
+      { shape: 'cloud',   color: '#7c3aed', x: 62, y: 97, s: 109,  r: -6,  say: 'Hire me?' },                     // bottom edge
+    ],
+    ai: [
+      { shape: 'squircle', color: '#ea580c', x: 7,  y: 86, s: 96, r: -8, say: 'I never forget a thing.' },
+      { shape: 'pill',     color: '#f59e0b', x: 93, y: 22, s: 105, r: 7,  say: 'Give me a computer. Watch.' },
+    ],
+    cp: [
+      { shape: 'circle',   color: '#64748b', x: 7,  y: 24, s: 91, r: 6,  say: 'Bring your own agents too.' },
+      { shape: 'triangle', color: '#dc2626', x: 93, y: 80, s: 98, r: -7, say: 'Spin me up in seconds.' },
+    ],
+    cloud: [
+      { shape: 'cloud',   color: '#0ea5e9', x: 8,  y: 86, s: 109, r: -5, say: "I'm running right now." },
+      { shape: 'droplet', color: '#16a34a', x: 92, y: 26, s: 91, r: 9,  say: 'Even while you sleep.' },
+    ],
+    multi: [
+      { shape: 'hexagon', color: '#db2777', x: 8,  y: 26, s: 93, r: -10, say: 'Teammates welcome.' },
+      { shape: 'blob',    color: '#f59e0b', x: 92, y: 78, s: 105, r: 6,   say: 'Tag me in the thread.' },
+    ],
+    oss: [
+      { shape: 'hexagon',  color: '#7c3aed', x: 6,  y: 90, s: 96, r: 8,   say: 'Read my source code.' },
+      { shape: 'squircle', color: '#2563eb', x: 93, y: 52, s: 93, r: -7,  say: 'Self-host me!' },
+    ],
+    start: [
+      { shape: 'blob',   color: '#16a34a', x: 10, y: 62, s: 109, r: -7, say: 'Pick me!' },
+      { shape: 'circle', color: '#db2777', x: 90, y: 62, s: 100, r: 8,  say: 'I start Monday.' },
+    ],
+  }
+  const agentsEl = $('#agents'), agentEls = {}
+  Object.entries(AGENT_GROUPS).forEach(([g, list]) => {
+    agentEls[g] = list.map((a, i) => {
+      const el = document.createElement('div')
+      el.className = 'ag' + (a.x > 50 ? ' right' : '') + (a.y < 30 ? ' below' : '')
+      el.style.cssText = `--x:${a.x};--y:${a.y};--s:${a.s};--r:${a.r}deg;--d:${i}`
+      el.innerHTML = `<div class="ag-in">${creatureSVG(a.shape, a.color)}</div><div class="say">${a.say}</div>`
+      el._a = a
+      agentsEl.appendChild(el)
+      return el
+    })
+  })
+  /* keep a speech bubble fully inside the screen: shift it sideways and re-aim its tail at the agent */
+  function fitSay(el) {
+    const say = $('.say', el)
+    say.style.setProperty('--sx', '0px')
+    const ar = el.getBoundingClientRect(), w = say.offsetWidth, W = innerWidth, M = 10
+    const left = el.classList.contains('right') ? ar.right - w : ar.left
+    const sx = clamp(left, M, W - M - w) - left
+    say.style.setProperty('--sx', sx + 'px')
+    say.style.setProperty('--tx', clamp(ar.left + ar.width / 2 - (left + sx), 16, w - 16) + 'px')
+  }
+  Object.values(agentEls).flat().forEach((el) => {
+    el.addEventListener('pointerenter', () => fitSay(el))
+    el.addEventListener('click', () => {            // click = wink
+      el.classList.remove('wink'); void el.offsetWidth; el.classList.add('wink')
+      clearTimeout(el._wt); el._wt = setTimeout(() => el.classList.remove('wink'), 700)
+    })
+  })
+  let heroIntro = 1                    // 1 = hero agents still below the screen (page-load entrance)
+  /* Park position = straight out through the nearest edge (left / right / top / bottom), just far enough to be off-screen. */
+  function sizeAgents() {
+    const k = clamp(innerWidth / 1300, 0.8, 1.1), W = innerWidth, H = innerHeight
+    agentsEl.style.setProperty('--k', k)
+    Object.values(agentEls).flat().forEach((el) => {
+      const a = el._a, sz = a.s * k
+      const d = { l: (a.x / 100) * W, r: ((100 - a.x) / 100) * W, t: (a.y / 100) * H, b: ((100 - a.y) / 100) * H }
+      const edge = Object.keys(d).reduce((m, e) => (d[e] < d[m] ? e : m), 'l')
+      const off = d[edge] + sz
+      el._off = edge === 'l' ? [-off, 0] : edge === 'r' ? [off, 0] : edge === 't' ? [0, -off] : [0, off]
+      el.style.setProperty('--off', `translate(${el._off[0]}px, ${el._off[1]}px)`)
+    })
+  }
 
   /* ---------- layout / measurement ---------- */
   const railItems = {}
@@ -400,7 +563,7 @@
     railItems[k] = b
   })
 
-  let V = innerHeight, INTRO = V, starts = [], M = {}, cur = -1
+  let V = innerHeight, INTRO = V, starts = [], secRange = {}, M = {}, LK = { s: 1, tx: 0, ty: 0 }, cur = -1
 
   function layout() {
     V = innerHeight
@@ -408,6 +571,11 @@
     let y = INTRO
     starts = SCENES.map((s) => { const at = y; y += s.len * V; return at })
     $('#scroller').style.height = y + V + 'px'
+    // scroll span of each section (first scene start -> next section's first scene start)
+    secRange = {}
+    SCENES.forEach((sc, i) => { if (!secRange[sc.sec]) secRange[sc.sec] = { S: starts[i], E: Infinity } })
+    const keys = Object.keys(secRange)
+    keys.forEach((k, i) => { if (keys[i + 1]) secRange[k].E = secRange[keys[i + 1]].S })
   }
 
   function measure() {
@@ -423,6 +591,10 @@
         ty: hr.top + hr.height / 2 - br.top - s * cy,
       }
     })
+    // hero logo -> nav logo (same lockup, so one uniform scale + translate lines them up)
+    heroLockup.style.transform = 'none'
+    const hl = heroLockup.getBoundingClientRect(), nl = $('.nav .lockup').getBoundingClientRect()
+    LK = { s: nl.width / hl.width, tx: nl.left - hl.left, ty: nl.top - hl.top }
     placeBox()
   }
 
@@ -438,36 +610,40 @@
 
   /* ---------- scene content ---------- */
   let tPre = null
-
   function fitRoll() {
-    const roll = $('.roll', titleEl)
-    const w = roll && roll.lastElementChild
-    if (roll && w) roll.style.width = w.offsetWidth + 'px'
+    titleEl.querySelectorAll('.roll').forEach((r) => { const w = r.lastElementChild; if (w) r.style.width = w.offsetWidth + 'px' })
   }
 
-  function setTitle(pre, word, animate) {
+  const rollWord = (text) => { const w = document.createElement('span'); w.className = 'w'; w.textContent = text; return w }
+  function rollTo(roll, text) {                    // slide the old text out upward and the new text in from below
+    const cur = roll.lastElementChild
+    if (cur && cur.textContent === text) return
+    const old = [...roll.children], w = rollWord(text)
+    roll.appendChild(w)
+    roll.style.width = w.offsetWidth + 'px'
+    old.forEach((o) => {
+      o.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-80%)', opacity: 0 }], { duration: 380, easing: EASE_OUT, fill: 'forwards' }).onfinish = () => o.remove()
+    })
+    w.animate([{ transform: 'translateY(80%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 420, easing: EASE_OUT })
+  }
+
+  /* Title = fixed start + ONE changing piece (word + tail together), all on one line,
+     e.g. "AI agents with" [memory remember everything]. */
+  function setTitle(pre, word, tail, animate) {
+    const piece = word ? word + (tail ? ' ' + tail : '') : ''
     const roll = $('.roll', titleEl)
-    if (animate && roll && word && pre === tPre) {
-      const old = [...roll.children]
-      const w = document.createElement('span')
-      w.className = 'w'; w.textContent = word
-      roll.appendChild(w)
-      roll.style.width = w.offsetWidth + 'px'
-      old.forEach((o) => {
-        o.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-80%)', opacity: 0 }], { duration: 380, easing: EASE_OUT, fill: 'forwards' }).onfinish = () => o.remove()
-      })
-      w.animate([{ transform: 'translateY(80%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 420, easing: EASE_OUT })
-    } else {
-      titleEl.innerHTML = ''
-      titleEl.append(document.createTextNode(pre))
-      if (word) {
-        const r = document.createElement('span'); r.className = 'roll'
-        const w = document.createElement('span'); w.className = 'w'; w.textContent = word
-        r.appendChild(w); titleEl.appendChild(r)
-        r.style.transition = 'none'; r.style.width = w.offsetWidth + 'px'; void r.offsetWidth; r.style.transition = ''
-      }
-      if (animate) titleEl.animate([{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 520, easing: EASE_OUT })
+    if (animate && pre === tPre) {
+      if (roll) rollTo(roll, piece)
+      return                                       // same plain title (e.g. control plane sub-scenes): nothing to change
     }
+    titleEl.innerHTML = ''
+    titleEl.append(document.createTextNode(pre))
+    if (piece) {
+      const r = document.createElement('span'); r.className = 'roll'
+      r.appendChild(rollWord(piece)); titleEl.appendChild(r)
+      r.style.transition = 'none'; r.style.width = r.firstChild.offsetWidth + 'px'; void r.offsetWidth; r.style.transition = ''
+    }
+    if (animate) titleEl.animate([{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 520, easing: EASE_OUT })
     tPre = pre
   }
 
@@ -480,8 +656,9 @@
     const add = (el) => { el.style.setProperty('--i', n++); side.appendChild(el) }
     d.items.forEach((label, j) => {
       const b = document.createElement('button'); b.className = 'side-item'
-      if (Array.isArray(label)) b.innerHTML = `<span class="lbl"><span class="a">${label[0]}</span><span class="b">${label[1]}</span></span>`
-      else b.textContent = label
+      b.style.setProperty('--c', `var(--c-${sec})`)
+      if (Array.isArray(label)) b.innerHTML = `<span class="t"><span class="lbl"><span class="a">${label[0]}</span><span class="b">${label[1]}</span></span></span>`
+      else b.innerHTML = `<span class="t">${label}</span>`
       b.addEventListener('click', () => go(SCENES.findIndex((s) => s.sec === sec && s.item === j)))
       add(b)
     })
@@ -491,7 +668,7 @@
   /* items with a short + long label animate their width between the two */
   function fitSide(animate) {
     side.querySelectorAll('.lbl').forEach((l) => {
-      const on = l.parentElement.classList.contains('on')
+      const on = l.closest('.side-item').classList.contains('on')
       if (!animate) l.style.transition = 'none'
       l.style.width = $(on ? '.b' : '.a', l).offsetWidth + 'px'
       if (!animate) { void l.offsetWidth; l.style.transition = '' }
@@ -514,12 +691,8 @@
     side.querySelectorAll('.side-item').forEach((b, j) => b.classList.toggle('on', s.item === 'all' || s.item === j))
     fitSide(!secChanged)
 
-    setTitle(s.pre, s.word, !first)
+    setTitle(s.pre, s.word, s.tail, !first)
 
-    if (caption.textContent !== s.cap) {
-      caption.textContent = s.cap
-      if (s.cap) caption.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 480, easing: EASE_OUT })
-    }
     if (gName.textContent !== s.name && s.sec !== 'start') {
       gName.textContent = s.name; gBrief.textContent = s.brief
       if (!first) gInner.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE_OUT })
@@ -528,13 +701,22 @@
 
   /* Jump straight to a scene. The stage is fixed, so an instant scroll jump just plays the scene's own
      fade-in. From the hero we first play the hand-off (phrases dock into the rail), then land on the scene. */
-  let forced = null, tween = 0
-  function stopTween() { if (tween) { cancelAnimationFrame(tween); tween = 0 } forced = null }
+  let forced = null, tween = 0, jumpT = 0
+  function jump(top) {                              // instant scroll jump; agents get a short animated cross-over instead of a snap
+    document.body.classList.add('jumping')
+    clearTimeout(jumpT); jumpT = setTimeout(() => document.body.classList.remove('jumping'), 1300)
+    scrollTo({ top, behavior: 'instant' })
+  }
+  function stopTween() {
+    if (tween) { cancelAnimationFrame(tween); tween = 0 }
+    forced = null
+    clearTimeout(jumpT); document.body.classList.remove('jumping')
+  }
   function go(i) {
     if (i < 0) return
     stopTween()
     const target = starts[i] + 2
-    if (scrollY >= INTRO - 2) { scrollTo({ top: target, behavior: 'instant' }); return }
+    if (scrollY >= INTRO - 2) { jump(target); return }
     forced = i
     applyScene(i)                                   // content is ready under the still-hidden view
     const from = scrollY, to = INTRO, dur = 350 + 650 * ((to - from) / V), t0 = performance.now()
@@ -543,7 +725,7 @@
       scrollTo(0, from + (to - from) * (1 - Math.pow(1 - t, 3)))
       if (t < 1) { tween = requestAnimationFrame(step); return }
       tween = 0; forced = null
-      scrollTo({ top: target, behavior: 'instant' })
+      jump(target)
       update()
     }
     tween = requestAnimationFrame(step)
@@ -570,8 +752,12 @@
 
     // hero fades + rises
     const f = clamp(r * 1.8)
-    heroLockup.style.opacity = demo.style.opacity = 1 - f
-    heroLockup.style.transform = `translateY(${-f * 28}px)`
+    demo.style.opacity = 1 - f
+    // logo + wordmark travel up into the nav, then hand over to the real nav lockup
+    const le = ease(clamp(r / 0.9)), docked = le >= 1
+    heroLockup.style.transform = docked ? '' : `translate(${LK.tx * le}px, ${LK.ty * le}px) scale(${1 + (LK.s - 1) * le})`
+    heroLockup.style.opacity = docked ? 0 : 1
+    nav.style.setProperty('--lk', docked ? 1 : 0)
     demo.style.transform = `translateY(${-f * 36}px) scale(${1 - f * 0.05})`
     $('#sub').querySelectorAll('.w').forEach((w) => { w.style.opacity = 1 - clamp(r * 2.2) })
     hero.style.pointerEvents = r > 0.3 ? 'none' : ''
@@ -604,6 +790,28 @@
     if (forced !== null) idx = forced
     if (idx !== cur) applyScene(idx)
     const s = SCENES[idx]
+
+    // agents: every agent is scrubbed by the scroll along the line to its nearest edge (d: 0 = in place, 1 = parked off-screen).
+    // Hero agents leave as the hand-off plays; each later section's pair enters over the last 0.6 screens before that
+    // section and leaves over the last 0.6 screens of it, so the pairs cross-over through their own edges.
+    const place = (el, d) => {
+      el.style.transform = d <= 0 ? 'none' : `translate(${el._off[0] * d}px, ${el._off[1] * d}px)`
+      el.classList.toggle('parked', d >= 0.999)
+      el.style.pointerEvents = d < 0.2 ? 'auto' : 'none'
+    }
+    agentEls.hero.forEach((el, i) => place(el, Math.max(heroIntro, ease(clamp((r - i * 0.04) / 0.8)))))
+    Object.keys(agentEls).forEach((k) => {
+      if (k === 'hero') return
+      const { S, E } = secRange[k], W = 0.6 * V
+      agentEls[k].forEach((el, i) => {
+        const lag = i * 0.08 * V
+        const enter = ease(clamp((y - (S - W) - lag) / W))
+        const exit = E === Infinity ? 0 : ease(clamp((y - (E - W) - lag) / W))
+        const d = Math.max(1 - enter, exit)
+        place(el, d)
+      })
+    })
+
     const p = clamp((y - starts[idx]) / (s.len * V))
     graphic.style.setProperty('--p', p.toFixed(3))
     gP.textContent = p.toFixed(2)
@@ -614,14 +822,23 @@
   const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update() }) }
   addEventListener('scroll', onScroll, { passive: true })
 
-  function init() { layout(); measure(); update(); fitRoll(); fitSide(false) }
-  addEventListener('resize', () => { layout(); measure(); update(); fitRoll() })
+  function init() { sizeAgents(); layout(); measure(); update(); fitRoll(); fitSide(false) }
+  addEventListener('resize', () => { sizeAgents(); layout(); measure(); update(); fitRoll() })
+
+  $('#themeBtn').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('overlay-mockup-theme', next) } catch (_) {}
+  })
 
   try { history.scrollRestoration = 'manual' } catch (_) {}
   applyScene(0)
   init()
   document.fonts.ready.then(() => { init(); document.body.classList.add('ready') })
   setTimeout(() => document.body.classList.add('ready'), 600)
+  // page-load entrance: hero agents slide in from their edges, the first one says hi, then they follow the scroll 1:1
+  setTimeout(() => { heroIntro = 0; update() }, 500)
+  setTimeout(() => document.body.classList.add('settled'), 2600)
 })()
 </script>
 </body>
