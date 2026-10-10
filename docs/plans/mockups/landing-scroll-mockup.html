@@ -99,37 +99,34 @@
     position: absolute; inset: 0; z-index: 5;
     display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     gap: clamp(16px, 2.8vh, 28px); padding: clamp(36px, 7vh, 76px) 20px 0; text-align: center;
+    --demo-w: clamp(420px, min(86vw, calc(2 * (100vh - 250px))), 1400px);   /* the demo's width; the subtitle is sized from it */
   }
   .hero .lockup { font-size: clamp(46px, 6.4vw, 88px); transform-origin: 0 0; }   /* bigger than the subtitle */
   .sub {
     font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; line-height: 1.4;
-    font-size: clamp(21px, 3vw, 40px); max-width: 21em;
+    /* one line, ~92% of the demo's width (the sentence is ~27x its font size wide) */
+    font-size: max(13px, calc(var(--demo-w) * 0.034)); white-space: nowrap; margin-top: 0.45em;
   }
   /* the underlined phrases are drawn by the rail items that sit on top of them */
   .sub .k { white-space: nowrap; color: transparent; }
   /* proofreader's insertion mark: "open source" sits above the line, caret points at the gap after "The" */
   .anchor { position: relative; display: inline-block; width: 0; height: 0; }
-  .ins { position: absolute; left: -0.03em; bottom: 0.95em; transform: translateX(-50%); }
-  .sub .ins .k { display: block; font-size: max(0.42em, 11px); line-height: 1; letter-spacing: 0; }
+  .ins { position: absolute; left: -0.03em; bottom: 1.22em; transform: translateX(-50%); }
+  .sub .ins .k { display: block; font-size: max(0.5em, 11px); line-height: 1; letter-spacing: 0; }
   .caret {
     position: absolute; left: -0.03em; top: 0.14em; width: 0.36em; height: 0.24em; transform: translateX(-50%); overflow: visible;
     fill: none; stroke: var(--foreground); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
     opacity: var(--caret, 0); transition: opacity .25s; pointer-events: none;
   }
-  .hero-cta {
-    display: inline-flex; align-items: center; padding: 12px 28px; border-radius: 999px; font: 400 15px/1 var(--serif);
-    background: var(--button-primary-bg); color: var(--button-primary-text); transition: opacity .2s, transform .2s var(--ease-out);
-  }
-  .hero-cta:hover { opacity: .88; }
   .demo {
-    position: relative; flex: none; width: clamp(420px, min(72vw, calc(2.05 * (100vh - 350px))), 1200px); aspect-ratio: 16 / 9; max-width: 94vw;   /* taller than the space left: the bottom edge crops it a little */
+    position: relative; flex: none; width: var(--demo-w); aspect-ratio: 16 / 9; max-width: 94vw;   /* taller than the space left: the bottom edge crops it a little */
     border: var(--hairline); border-radius: 14px; background: var(--background); overflow: hidden;
     box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 24px 60px -24px rgba(0,0,0,.28);
   }
   /* the app is drawn on a fixed 1000x563 canvas and scaled to whatever size the demo frame has */
   .app {
     position: absolute; left: 0; top: 0; width: 1000px; height: 563px; transform-origin: 0 0; transform: scale(var(--ds, .6));
-    display: grid; grid-template-columns: 118px 152px minmax(0, 1fr); font: 400 10px/1.4 var(--sans); text-align: left; color: var(--foreground);
+    display: grid; grid-template-columns: 118px 152px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); font: 400 10px/1.4 var(--sans); text-align: left; color: var(--foreground);
     user-select: none;
   }
   .app svg.i { width: 12px; height: 12px; stroke-width: 1.6; }
@@ -226,7 +223,16 @@
   .app .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
   .app .card { border: var(--hairline); border-radius: 9px; padding: 10px; background: var(--surface-elevated); display: flex; flex-direction: column; gap: 5px; }
   .app .card .top { display: flex; align-items: center; gap: 7px; font: 600 10.5px var(--sans); }
-  .app .logo { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; color: #fff; font: 600 9px var(--sans); flex: none; }
+  .app .tile { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: #fff; border: 1px solid rgba(0,0,0,.12); flex: none; }   /* brand logos sit on white so dark marks stay visible */
+  .app .tile img { width: 13px; height: 13px; display: block; }
+  .app .lg.dk { display: none; }
+  :root[data-theme="dark"] .app .lg.lt { display: none; }
+  :root[data-theme="dark"] .app .lg.dk { display: block; }
+  .app .mwrap { position: relative; display: inline-flex; }
+  .app .menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 5; min-width: 118px; padding: 4px; border: var(--hairline); border-radius: 9px; background: var(--surface-elevated); box-shadow: 0 10px 28px -12px rgba(0,0,0,.45); }
+  .app .menu .mi { padding: 5px 9px; border-radius: 6px; font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+  .app .menu .mi:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); color: var(--foreground); }
+  .app .menu .mi.on { color: var(--foreground); }
   .app .card p { font-size: 9px; color: var(--muted); min-height: 24px; }
   .app .btn2 { align-self: flex-start; padding: 3px 10px; border-radius: 6px; border: var(--hairline); font-size: 9px; color: var(--foreground); background: none; }
   .app .btn2:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); }
@@ -413,6 +419,7 @@
   [data-sec="start"] .devlabel { bottom: 60px; }
 
   /* ---------- small screens ---------- */
+  @media (max-width: 700px) { .sub { white-space: normal; font-size: clamp(20px, 5.6vw, 28px); max-width: 20em; } }
   @media (max-width: 860px) {
     .nav { padding: 0 16px; }
     .nav-links { display: none; }
@@ -462,7 +469,6 @@
       <span class="w">for</span>
       <span class="k" data-k="ai">AI employees</span>
     </h1>
-    <a class="hero-cta" id="heroCta" href="#">Get started</a>
     <div class="demo" id="demo"></div>   <!-- filled by buildDemo(): a miniature of the Overlay app -->
   </section>
 
@@ -515,7 +521,7 @@
   const view = $('#view'), titleEl = $('#title'), bodyGrid = $('#bodyGrid'), side = $('#side')
   const graphic = $('#graphic'), gInner = $('#gInner'), gName = $('#gName'), gBrief = $('#gBrief'), gP = $('#gP')
   const dev = $('#dev')
-  const heroLockup = $('#heroLockup'), demo = $('#demo'), hero = $('#hero'), heroCta = $('#heroCta')
+  const heroLockup = $('#heroLockup'), demo = $('#demo'), hero = $('#hero')
 
   /* The five underlined phrases. Rail order = reverse of the sentence. */
   const SECTIONS = {
@@ -589,34 +595,34 @@
   // x / y are % of the viewport (the agent's center), s is the size in px at 1400px wide, r is the resting tilt.
   const AGENT_GROUPS = {
     hero: [
-      { shape: 'blob',    color: '#db2777', x: 3,  y: 37, s: 119, r: -9,  say: "Hi! I'm an AI employee." },     // left edge
-      { shape: 'hexagon', color: '#16a34a', x: 27, y: 3,  s: 100,  r: 12,  say: 'I use real tools.' },            // top edge
-      { shape: 'droplet', color: '#2563eb', x: 97, y: 61, s: 114, r: 8,   say: 'I live in the cloud.' },         // right edge
-      { shape: 'cloud',   color: '#7c3aed', x: 62, y: 97, s: 109,  r: -6,  say: 'Hire me?' },                     // bottom edge
+      { shape: 'blob',    color: '#db2777', x: 3,  y: 37, s: 119, r: -9,  say: "I triage support tickets every morning." },     // left edge
+      { shape: 'hexagon', color: '#16a34a', x: 27, y: 3,  s: 100,  r: 12,  say: 'I review pull requests on every push.' },            // top edge
+      { shape: 'droplet', color: '#2563eb', x: 97, y: 61, s: 114, r: 8,   say: 'I run on schedules and triggers.' },         // right edge
+      { shape: 'cloud',   color: '#7c3aed', x: 62, y: 97, s: 109,  r: -6,  say: 'I send your weekly update on Fridays.' },                     // bottom edge
     ],
     ai: [
-      { shape: 'squircle', color: '#ea580c', x: 7,  y: 86, s: 96, r: -8, say: 'I never forget a thing.' },
-      { shape: 'pill',     color: '#f59e0b', x: 93, y: 22, s: 105, r: 7,  say: 'Give me a computer. Watch.' },
+      { shape: 'squircle', color: '#ea580c', x: 7,  y: 86, s: 96, r: -8, say: 'I remember every decision your team makes.' },
+      { shape: 'pill',     color: '#f59e0b', x: 93, y: 22, s: 105, r: 7,  say: 'Give me a computer and I will run the tests.' },
     ],
     cp: [
-      { shape: 'circle',   color: '#64748b', x: 7,  y: 24, s: 91, r: 6,  say: 'Bring your own agents too.' },
-      { shape: 'triangle', color: '#dc2626', x: 93, y: 80, s: 98, r: -7, say: 'Spin me up in seconds.' },
+      { shape: 'circle',   color: '#64748b', x: 7,  y: 24, s: 91, r: 6,  say: 'Bring your own agents, too.' },
+      { shape: 'triangle', color: '#dc2626', x: 93, y: 80, s: 98, r: -7, say: 'Create an agent in seconds.' },
     ],
     cloud: [
-      { shape: 'cloud',   color: '#0ea5e9', x: 8,  y: 86, s: 109, r: -5, say: "I'm running right now." },
-      { shape: 'droplet', color: '#16a34a', x: 92, y: 26, s: 91, r: 9,  say: 'Even while you sleep.' },
+      { shape: 'cloud',   color: '#0ea5e9', x: 8,  y: 86, s: 109, r: -5, say: 'I keep working while your laptop is closed.' },
+      { shape: 'droplet', color: '#16a34a', x: 92, y: 26, s: 91, r: 9,  say: 'Open me from your phone, anywhere.' },
     ],
     multi: [
-      { shape: 'hexagon', color: '#db2777', x: 8,  y: 26, s: 93, r: -10, say: 'Teammates welcome.' },
-      { shape: 'blob',    color: '#f59e0b', x: 92, y: 78, s: 105, r: 6,   say: 'Tag me in the thread.' },
+      { shape: 'hexagon', color: '#db2777', x: 8,  y: 26, s: 93, r: -10, say: 'Share me with your whole team.' },
+      { shape: 'blob',    color: '#f59e0b', x: 92, y: 78, s: 105, r: 6,   say: 'Assign me a task in any thread.' },
     ],
     oss: [
-      { shape: 'hexagon',  color: '#7c3aed', x: 6,  y: 90, s: 96, r: 8,   say: 'Read my source code.' },
-      { shape: 'squircle', color: '#2563eb', x: 93, y: 52, s: 93, r: -7,  say: 'Self-host me!' },
+      { shape: 'hexagon',  color: '#7c3aed', x: 6,  y: 90, s: 96, r: 8,   say: 'Read the source before you trust it.' },
+      { shape: 'squircle', color: '#2563eb', x: 93, y: 52, s: 93, r: -7,  say: 'Self-host me on your own servers.' },
     ],
     start: [
-      { shape: 'blob',   color: '#16a34a', x: 10, y: 62, s: 109, r: -7, say: 'Pick me!' },
-      { shape: 'circle', color: '#db2777', x: 90, y: 62, s: 100, r: 8,  say: 'I start Monday.' },
+      { shape: 'blob',   color: '#16a34a', x: 10, y: 62, s: 109, r: -7, say: 'Ready for your first task.' },
+      { shape: 'circle', color: '#db2777', x: 90, y: 62, s: 100, r: 8,  say: 'Assign me work in plain language.' },
     ],
   }
   const agentsEl = $('#agents'), agentEls = {}
@@ -868,8 +874,6 @@
     // hero fades + rises
     const f = clamp(r * 1.8)
     demo.style.opacity = 1 - f
-    heroCta.style.opacity = 1 - f
-    heroCta.style.transform = `translateY(${-f * 24}px)`
     // logo + wordmark travel up into the nav, then hand over to the real nav lockup
     const le = ease(clamp(r / 0.9)), docked = le >= 1
     heroLockup.style.transform = docked ? '' : `translate(${LK.tx * le}px, ${LK.ty * le}px) scale(${1 + (LK.s - 1) * le})`
@@ -982,98 +986,232 @@
 
   const AGENT_DATA = {
     claude: { name: 'Claude Code', shape: 'hexagon', color: '#f59e0b', main: [
-      Y('4:12 PM', 'Can you look into why the checkout tests are failing on main?'),
-      A('4:12 PM', "Looking now. I'll check the latest CI run and the recent commits."),
-      A('4:14 PM', 'Found it — a date mock in `checkout.test.ts` was off by a day after the clock change. I fixed the fixture and re-ran the suite: all 214 tests pass.'),
-      Y('4:15 PM', 'Perfect. Open a PR for it and ask Sam to review.'),
-      A('4:16 PM', "Done. PR #482 is open and Sam has been asked to review.\nWant me to watch CI and ping you when it's merged?", { tool: 'Worked for 1m 5s, called 2 tools' }),
+      Y('9:02 AM', 'Checkout tests have been failing on main since last night. Can you find out why?'),
+      A('9:03 AM', "I pulled the latest CI run and bisected the last 9 commits. The first failure is `a41c9f2`: a date fixture in `checkout.test.ts` is hard-coded and now falls on the wrong side of the DST change.\n1. `computeTaxWindow()` uses local time\n2. The fixture assumes UTC\n3. Two other suites share the same helper", { tool: 'Worked for 48s, called 6 tools' }),
+      Y('9:05 AM', 'Fix the fixture, but use a fake clock instead of hard-coded dates.'),
+      A('9:11 AM', 'Done. I added a fake clock in `test/utils/clock.ts`, updated 3 suites and ran everything: all 214 tests pass locally and in CI. PR #482 is open.', { tool: 'Worked for 3m 12s, called 11 tools' }),
+      Y('9:12 AM', 'Does this change anything in production code?'),
+      A('9:12 AM', 'No production code changed. I did notice `computeTaxWindow()` reads `Date.now()` directly, which is why the test was fragile. I can inject a clock parameter if you want that cleaned up.'),
+      Y('9:14 AM', 'Yes, in a separate PR. Keep the diff small.'),
+      A('9:21 AM', 'PR #483 is open: `computeTaxWindow(now = clock.now())` with a default, so no callers change. 6 files, +42 −18. Types check and all tests pass.', { tool: 'Worked for 5m 40s, called 14 tools' }),
+      Y('9:23 AM', 'Ask Sam to review both PRs and post a summary in #eng.'),
+      A('9:23 AM', 'Done. Sam is reviewing #482 and #483, and I posted this in #eng:\n**Checkout test fix** — a fake clock replaces hard-coded dates (#482); `computeTaxWindow` now takes an injectable clock (#483).', { tool: 'Worked for 9s, called 2 tools' }),
+      Y('9:40 AM', 'Sam approved #482. Merge it once CI is green.'),
+      A('9:41 AM', 'CI is green and #482 is merged to main. #483 is waiting on Sam, and I will merge it as soon as he approves.', { tool: 'Worked for 11s, called 3 tools' }),
     ] },
     codex: { name: 'Codex agent', shape: 'hexagon', color: '#14b8a6', main: [
-      Y('11:02 AM', 'Refactor the billing helpers into one module.'),
-      A('11:09 AM', 'Done — merged three helpers into `billing/index.ts` and updated 11 imports. Typecheck and tests pass.'),
-      Y('11:10 AM', 'Nice, thanks.'),
+      Y('11:02 AM', 'Consolidate the billing helpers. Three modules are doing almost the same thing.'),
+      A('11:03 AM', 'I found `formatInvoice`, `formatReceipt` and `formatStatement` in three folders. They share about 80% of their logic and differ only in the header block.\n1. Create `billing/format.ts` with one `formatDocument(type, data)`\n2. Keep the old names as thin wrappers for one release\n3. Migrate the 11 call sites and delete the wrappers next sprint', { tool: 'Worked for 22s, called 5 tools' }),
+      Y('11:06 AM', 'Good. Skip the wrappers, we have no external consumers.'),
+      A('11:19 AM', 'Understood. I removed the wrappers and migrated all 11 call sites. Typecheck passes and the billing suite is green (62 tests). The diff is +188 −341.', { tool: 'Worked for 6m 40s, called 18 tools' }),
+      Y('11:21 AM', 'Any behavior changes?'),
+      A('11:21 AM', 'One: `formatStatement` used to round totals half-down, while the shared function rounds half-up like the other two. I added a test that pins the new behavior. If finance needs the old rounding I can parameterize it.'),
+      Y('11:24 AM', 'Half-up is correct. Open the PR and link the ticket.'),
+      A('11:26 AM', 'PR #479 is open and linked to BILL-212. I requested review from the billing owners.', { tool: 'Worked for 14s, called 3 tools' }),
+      Y('11:30 AM', 'Also check whether any docs mention the old function names.'),
+      A('11:32 AM', 'Two pages do: `docs/billing/formatting.mdx` and the changelog draft. I updated both in the same PR.', { tool: 'Worked for 1m 3s, called 6 tools' }),
     ] },
     pr: { name: 'PR agent', shape: 'pill', color: '#2563eb', main: [
-      A('9:00 AM', 'Weekly summary: 14 PRs reviewed, 3 waiting on the author, 1 blocked on CI.'),
-      Y('9:03 AM', 'Which one is blocked?'),
-      A('9:03 AM', "#471 — the lint job is failing on a stale cache. I've re-run it and will ping the author if it fails again."),
+      A('9:00 AM', 'Weekly review summary:\n1. 14 pull requests reviewed\n2. 3 waiting on the author\n3. 1 blocked on CI\n4. Median time to first review: 2h 10m', { tool: 'Worked for 31s, called 4 tools' }),
+      Y('9:03 AM', 'Which one is blocked on CI?'),
+      A('9:03 AM', '#471 (“Retry failed webhooks”). The lint job fails on a stale cache entry, not on the code. I cleared the cache and re-ran it.'),
+      Y('9:08 AM', 'Did it pass?'),
+      A('9:09 AM', 'Yes, all checks are green now. I left a note on the PR so the author knows nothing needs to change.', { tool: 'Worked for 1m 5s, called 2 tools' }),
+      Y('9:12 AM', 'What are the three waiting on authors?'),
+      A('9:12 AM', '1. #468 — requested changes on error handling, 4 days old\n2. #473 — missing tests for the new endpoint\n3. #476 — merge conflict with main\nWant me to nudge each author with the specific blocker?'),
+      Y('9:14 AM', 'Yes, but only for #468 and #473. I will handle #476.'),
+      A('9:15 AM', 'Done. I commented on #468 and #473 with the exact items to address. #476 is untouched.', { tool: 'Worked for 12s, called 2 tools' }),
+      Y('9:20 AM', 'Which PRs are the riskiest to merge this week?'),
+      A('9:21 AM', 'Two stand out:\n1. #465 changes the session token format and touches 14 files\n2. #471 changes webhook retry timing, which affects every integration\nI recommend a 24-hour staging soak for both. I can add that as a required check.', { tool: 'Worked for 38s, called 5 tools' }),
     ] },
     product: { name: 'Product Agent', shape: 'hexagon', color: '#2563eb', main: [
-      Y('2:30 PM', 'Draft a one-pager for the notifications redesign.'),
-      A('2:34 PM', 'First pass is ready: problem, goals, non-goals and three rollout options. I linked the research notes from Files.'),
-      Y('2:36 PM', 'Add a section on metrics.'),
-      A('2:37 PM', 'Added: open rate, opt-out rate and time-to-first-action. Anything else?'),
+      Y('2:30 PM', 'Draft a one-page PRD for the notifications redesign. The audience is eng and design leads.'),
+      A('2:34 PM', 'The first draft is in Files as `Notifications PRD.md`. Structure:\n1. Problem — users mute notifications because they cannot tell what needs action\n2. Goals — raise the action rate and cut opt-outs\n3. Non-goals — a full preferences rewrite\n4. Rollout — three options with trade-offs', { tool: 'Worked for 2m 30s, called 7 tools' }),
+      Y('2:36 PM', 'Add success metrics. Be specific about baselines.'),
+      A('2:39 PM', 'Added from the last 30 days of product analytics:\n1. Notification action rate: 11.8% now, target 18%\n2. Opt-out rate: 4.2% now, target under 3%\n3. Time to first action: 9m now, target under 5m\nBaselines are linked to the dashboards.', { tool: 'Worked for 1m 48s, called 5 tools' }),
+      Y('2:41 PM', 'Which rollout option do you recommend?'),
+      A('2:41 PM', 'Option 2: ship the grouped digest to 10% of workspaces first. It tests the main hypothesis, is reversible with a flag, and avoids touching the delivery pipeline until we have data.'),
+      Y('2:44 PM', 'Agreed. Add a risks section and share it with design for comments.'),
+      A('2:47 PM', 'Added risks (digest delay, duplicate alerts, mobile parity) with mitigations, and shared the doc with the design team. I will summarize their comments tomorrow morning.', { tool: 'Worked for 41s, called 4 tools' }),
+      Y('2:50 PM', 'Create Linear tickets for the first milestone.'),
+      A('2:53 PM', 'Created 6 tickets in the Notifications project: digest model, batching job, feature flag, settings UI, analytics events and QA plan. Each has an owner suggestion and an estimate.', { tool: 'Worked for 1m 12s, called 8 tools' }),
     ] },
     overlay: { name: 'Overlay', shape: 'circle', color: '#64748b', main: [
-      A('8:00 AM', "Hi! I'm your default agent. Ask me anything or hand me a task."),
-      Y('8:01 AM', "What's on my calendar tomorrow?"),
-      A('8:01 AM', 'Three things: standup at 9:30, design review at 11:00, and a 1:1 with Priya at 3:00.'),
+      Y('8:00 AM', 'What does tomorrow look like?'),
+      A('8:00 AM', 'Tomorrow you have three meetings:\n1. 9:30 — Engineering standup\n2. 11:00 — Design review for the onboarding flow\n3. 3:00 — 1:1 with Priya\nYou have a free block from 12:00 to 2:30.', { tool: 'Worked for 6s, called 2 tools' }),
+      Y('8:02 AM', 'Move the design review to the afternoon. Priya is out in the morning.'),
+      A('8:03 AM', 'Priya is out until 1 PM, so I moved the design review to 2:00 and notified the three attendees. It conflicts with nothing.', { tool: 'Worked for 9s, called 3 tools' }),
+      Y('8:06 AM', 'Prepare a brief for that meeting.'),
+      A('8:09 AM', 'The brief is in Files:\n1. Decisions needed: onboarding steps (5 vs 3) and the empty-state design\n2. Data: completion drops 22% at step 4\n3. Open questions for design\nI attached the latest prototype link.', { tool: 'Worked for 2m 15s, called 6 tools' }),
+      Y('8:10 AM', 'Draft a reply to the vendor email about the contract renewal.'),
+      A('8:12 AM', 'The draft is in your Gmail drafts. It confirms the renewal, asks for the 10% volume discount discussed last quarter, and proposes a call on Thursday. Nothing has been sent.', { tool: 'Worked for 34s, called 4 tools' }),
+      Y('8:14 AM', 'Add the renewal date to my calendar and set a reminder two weeks before.'),
+      A('8:14 AM', 'Added “Vendor contract renewal” on the 28th with a reminder on the 14th.', { tool: 'Worked for 7s, called 2 tools' }),
     ] },
     fund: { name: 'Fundraising Agent', shape: 'triangle', color: '#16a34a', main: [
-      Y('Yesterday', "Who haven't we followed up with from last week's intros?"),
-      A('Yesterday', "Four investors. I drafted a follow-up for each — want to review them?"),
-      Y('Yesterday', 'Yes please.'),
-      A('Yesterday', 'Saved to Files as `Follow-ups.md`.'),
+      Y('4:10 PM', "Who haven't we followed up with from last week's investor intros?"),
+      A('4:11 PM', 'Four people have not received a follow-up:\n1. Lena Park, Ridgeline Capital — intro on Tuesday\n2. Marcus Webb, Alder Ventures — intro on Wednesday\n3. Two partners at Northwind — intro on Thursday\nAll four opened the deck.', { tool: 'Worked for 28s, called 5 tools' }),
+      Y('4:14 PM', 'Draft follow-ups. Reference something specific from each conversation.'),
+      A('4:22 PM', "I drafted four emails in Gmail. Each references a point from your meeting notes, such as Lena's question on net revenue retention and Marcus's interest in the self-hosting option.", { tool: 'Worked for 6m 02s, called 12 tools' }),
+      Y('4:25 PM', 'Replace the metrics PDF with the data room link for Lena and Marcus.'),
+      A('4:26 PM', 'Updated both drafts to link the data room instead of attaching the PDF.', { tool: 'Worked for 8s, called 2 tools' }),
+      Y('4:30 PM', 'Send them tomorrow at 9 AM and log everything in the CRM.'),
+      A('4:31 PM', 'Scheduled all four emails for 9:00 AM tomorrow and created the CRM activities with next steps and due dates.', { tool: 'Worked for 19s, called 6 tools' }),
+      Y('4:34 PM', 'What does the pipeline look like now?'),
+      A('4:35 PM', 'Pipeline summary:\n1. 3 partner meetings scheduled this week\n2. 5 firms in diligence\n3. 2 term sheets expected by the 30th\nSoft-circled so far: $2.1M of the $4M target.', { tool: 'Worked for 24s, called 4 tools' }),
     ] },
     support: { name: 'Support agent', shape: 'squircle', color: '#ea580c', main: [
-      A('7:45 AM', '12 new tickets overnight: 9 resolved from the help center, 3 need a human.'),
-      Y('7:50 AM', 'Show me the 3.'),
-      A('7:50 AM', 'A refund request, an SSO login loop, and a feature question from an enterprise trial.'),
+      A('7:45 AM', 'Overnight summary: 12 new tickets. 9 were resolved from the help center and 3 need a human.', { tool: 'Worked for 41s, called 6 tools' }),
+      Y('7:50 AM', 'Show me the three.'),
+      A('7:50 AM', '1. Refund request from an annual-plan customer, 6 days after renewal\n2. SSO login loop for a team on the Okta integration\n3. Feature question from an enterprise trial about audit logs'),
+      Y('7:53 AM', 'Refund is fine under policy. Process it and reply.'),
+      A('7:55 AM', 'Refund of $240 processed and the customer notified. I also tagged the account so renewals show a reminder next year.', { tool: 'Worked for 18s, called 4 tools' }),
+      Y('7:58 AM', 'What is going on with the SSO loop?'),
+      A('7:59 AM', 'The redirect URI in their Okta app still points to the old domain. I sent them the correct URL and a short setup guide, and I will check back in two hours.', { tool: 'Worked for 52s, called 7 tools' }),
+      Y('8:05 AM', 'And the enterprise trial question?'),
+      A('8:06 AM', 'They asked whether audit logs can be exported to their SIEM. Yes: logs stream to S3 or can be pulled through the API. I drafted a reply with the setup steps and a link to the audit log docs.', { tool: 'Worked for 36s, called 5 tools' }),
+      Y('8:08 AM', 'Send it, and let their account executive know.'),
+      A('8:09 AM', 'Reply sent. I messaged the account executive in Slack with a summary and noted that audit-log export is a likely deciding factor for the trial.', { tool: 'Worked for 14s, called 4 tools' }),
+      Y('8:15 AM', 'What were the most common topics in yesterday’s tickets?'),
+      A('8:16 AM', 'Top three:\n1. Billing questions after plan changes (7 tickets)\n2. Webhook retries (5 tickets)\n3. Invite emails landing in spam (4 tickets)\nThe billing topic is up 40% from last week, so a help center article would likely deflect the most volume.', { tool: 'Worked for 48s, called 6 tools' }),
     ] },
     sales: { name: 'Sales agent', shape: 'blob', color: '#db2777', main: [
-      Y('Mon', 'Research Northwind before our call tomorrow.'),
-      A('Mon', 'Brief is in Files: 400 employees, new VP of Ops, and they just announced a data-platform migration.'),
+      Y('10:15 AM', 'Research Northwind before our call tomorrow.'),
+      A('10:22 AM', 'The brief is in Files:\n1. About 400 employees, HQ in Chicago\n2. New VP of Operations since March\n3. Announced a data-platform migration in Q2\n4. Currently use three separate automation tools', { tool: 'Worked for 3m 14s, called 9 tools' }),
+      Y('10:24 AM', 'What is our best angle?'),
+      A('10:24 AM', 'Consolidation. Their migration creates a window to replace three tools with one control plane. Lead with the cost and audit-trail story, since the new VP owns both.'),
+      Y('10:27 AM', 'Draft three questions for the discovery call.'),
+      A('10:29 AM', '1. Which workflows break most often during the migration?\n2. Who approves new automation today, and how long does it take?\n3. What would a successful first 90 days look like?', { tool: 'Worked for 16s, called 2 tools' }),
+      Y('10:32 AM', 'Who else at Northwind should we involve?'),
+      A('10:33 AM', 'Three people:\n1. Dana Ruiz, Director of Platform — owns the migration timeline\n2. Chris Okafor, Security Lead — reviews every new vendor\n3. The VP of Operations as the economic buyer\nI suggest sending the security overview to Chris before the call.', { tool: 'Worked for 1m 05s, called 6 tools' }),
+      Y('10:36 AM', 'Draft the pre-call email to Chris.'),
+      A('10:38 AM', 'The draft is in Gmail. It introduces the call, attaches the security overview and SOC 2 report, and asks for any specific controls they want covered. It is short, four sentences.', { tool: 'Worked for 24s, called 4 tools' }),
+      Y('10:40 AM', 'Create the opportunity in the CRM and set the stage to discovery.'),
+      A('10:41 AM', 'Created “Northwind — Platform Consolidation” at the Discovery stage with the call date, the three contacts and the brief attached.', { tool: 'Worked for 13s, called 3 tools' }),
     ] },
     docs: { name: 'Docs agent', shape: 'cloud', color: '#7c3aed', main: [
-      A('Tue', 'I found 6 pages that still describe the old setup flow. Want me to update them?'),
+      A('9:10 AM', 'I found 6 pages that still describe the old setup flow. Three are in Getting started and three are in the API guide.', { tool: 'Worked for 1m 20s, called 8 tools' }),
+      Y('9:12 AM', 'Update the three in Getting started first.'),
+      A('9:20 AM', 'Done. I rewrote the setup steps, replaced 4 screenshots and fixed 2 broken links. The preview is ready for review.', { tool: 'Worked for 5m 08s, called 15 tools' }),
+      Y('9:22 AM', 'Add a short troubleshooting section to the last page.'),
+      A('9:25 AM', 'Added three common errors with fixes: invalid token, missing webhook secret and a blocked callback URL. Each links to the relevant reference page.', { tool: 'Worked for 1m 42s, called 6 tools' }),
+      Y('9:30 AM', 'Do the API guide pages next, in the same style.'),
+      A('9:44 AM', 'Done. I updated the three API guide pages, regenerated the request examples from the OpenAPI spec and checked every code sample against the sandbox. All of them run.', { tool: 'Worked for 11m 20s, called 27 tools' }),
+      Y('9:46 AM', 'Anything still out of date?'),
+      A('9:47 AM', 'Two things: the webhook page references a deprecated header, and the SDK quickstart still pins version 1.4. I can fix both once the 1.5 release notes are final.', { tool: 'Worked for 32s, called 5 tools' }),
+      Y('9:50 AM', 'Wait for 1.5. Open the PR for what we have and request review from the docs team.'),
+      A('9:52 AM', 'PR #214 is open with 6 pages changed and requested from the docs team. I will update the SDK page when the release notes are published.', { tool: 'Worked for 15s, called 3 tools' }),
     ] },
   }
-  Object.values(AGENT_DATA).forEach((a) => { a.threads = { main: a.main, new: [A(clock(), 'Hi! What do you want to work on in this thread?')] } })
+  Object.values(AGENT_DATA).forEach((a) => { a.threads = { main: a.main, new: [A(clock(), 'What would you like to work on in this thread?')] } })
   const PERSONAL = ['claude', 'codex', 'pr', 'product', 'overlay', 'fund'], WORKSPACE = ['support', 'sales', 'docs']
   const AUTO_REPLIES = ['Got it — I updated the draft. Reply **“confirm”** to create and enable it.', 'Done. The automation is enabled and will run on schedule.']
   const REPLIES = ["On it — I'll post an update here as soon as it's done.", "Got it. I'll start now and flag anything that needs your call.", 'Done. Want me to share the result with the team?', "Sure — give me a minute and I'll come back with a draft."]
   const OVERLAY_AI = { name: 'Overlay', shape: 'circle', color: '#64748b' }
   const CHATS = [
-    { title: 'Summarize Q3 board notes', msgs: [Y('10:05 AM', 'Summarize the Q3 board notes in five bullets.'), A('10:05 AM', 'Revenue +18% QoQ, churn down to 2.1%, two enterprise pilots converted, hiring plan approved for 6 roles, and the Series A timeline stays on track for Q1.')] },
-    { title: 'Draft launch email', msgs: [Y('Yesterday', 'Draft a short launch email for the new agents release.'), A('Yesterday', "Subject: Meet your first AI employee. Body: three sentences on what's new, one on how to try it, and a single clear button. Want a warmer or a more formal tone?"), Y('Yesterday', 'Warmer.')] },
-    { title: 'Compare vector databases', msgs: [Y('Mon', 'Pgvector or a dedicated vector DB for ~5M documents?'), A('Mon', "At 5M documents pgvector with HNSW is fine and keeps your stack simple. Move to a dedicated store when you need hybrid search at scale or sub-10ms p99 under heavy load.")] },
+    { title: 'Summarize Q3 board notes', msgs: [
+      Y('', 'Summarize the Q3 board notes in five bullets. Focus on decisions, not discussion.'),
+      A('', '1. Revenue grew 18% quarter over quarter to $4.2M ARR\n2. Churn fell to 2.1% after the onboarding changes\n3. Two enterprise pilots converted to annual contracts\n4. Approved hiring for six roles across engineering and support\n5. Series A timeline unchanged; kickoff in January', { tool: 'Worked for 9s, called 2 tools' }),
+      Y('', 'Turn bullet 3 into a short update for the sales team.'),
+      A('', 'Two enterprise pilots converted to annual contracts this quarter. The common factors were a named internal owner during the pilot and a security review completed in the first two weeks. Please prioritize both steps in active pilots.'),
+      Y('', 'What risks did the board raise?'),
+      A('', 'Three came up:\n1. Concentration — the top five customers are 34% of revenue\n2. Hiring pace relative to runway\n3. Dependence on a single model provider for the core product\nThe board asked for a mitigation plan on each by the next meeting.', { tool: 'Worked for 6s, called 1 tool' }),
+      Y('', 'Draft the mitigation plan outline.'),
+      A('', '1. Concentration — no customer above 10% of revenue by Q2; add two mid-market segments\n2. Runway — stage hires against ARR milestones and review monthly\n3. Provider dependence — route through a gateway with fallback models and quarterly cost tests\nOwners and dates are left blank for you to assign.'),
+      Y('', 'Put this in a doc called “Board follow-ups” and share it with the leadership team.'),
+      A('', 'Created “Board follow-ups” in Files and shared it with the leadership team (view access). I also added a reminder to review progress before the next board meeting.', { tool: 'Worked for 12s, called 3 tools' }),
+    ] },
+    { title: 'Draft launch email', msgs: [
+      Y('', 'Draft a launch email for the agents release. Audience: existing customers.'),
+      A('', 'Draft:\n**Subject:** Your first AI employee is ready\nThree sentences on what is new, one on how to try it in five minutes, and a single button: “Create an agent”. It is under 120 words.', { tool: 'Worked for 11s, called 2 tools' }),
+      Y('', 'The subject line is too generic. Give me five options.'),
+      A('', '1. Agents are now in Overlay\n2. Hire your first AI employee in five minutes\n3. Meet agents with memory, tools and a computer\n4. Your team now has an AI employee\n5. New: agents that work while you sleep\nI would test 2 against 4.'),
+      Y('', 'Use 2. Make the body more specific about what an agent can do.'),
+      A('', 'Updated. The body now lists three concrete examples: triage support tickets each morning, review pull requests on push, and prepare a daily briefing from your inbox and calendar.'),
+      Y('', 'Good. Create a version for people on the free plan with an upgrade note.'),
+      A('', 'Created a second version. It keeps the same opening, then adds one paragraph explaining that free workspaces can create one agent and the Pro plan unlocks ten, with a link to pricing.', { tool: 'Worked for 8s, called 1 tool' }),
+      Y('', 'Schedule both for Tuesday at 10am, split by plan.'),
+      A('', 'Scheduled for Tuesday at 10:00 AM: version 1 to 2,340 paying customers and version 2 to 8,915 free users. I will send you the open and click rates on Wednesday morning.', { tool: 'Worked for 15s, called 4 tools' }),
+    ] },
+    { title: 'Compare vector databases', msgs: [
+      Y('', 'We have about 5M documents. Pgvector or a dedicated vector database?'),
+      A('', 'At 5M documents pgvector with an HNSW index is a good fit and keeps your stack simple. A dedicated store makes sense when you need hybrid search at scale, sub-10ms p99 under heavy load, or independent scaling of search from your primary database.', { tool: 'Worked for 14s, called 3 tools' }),
+      Y('', 'What would the memory footprint look like?'),
+      A('', 'For 5M vectors at 1536 dimensions:\n1. Raw vectors: about 30 GB\n2. HNSW index overhead: roughly 1.5x, so about 45 GB\n3. Recommended RAM: 64 GB so the index stays hot\nQuantizing to 8-bit cuts this by about 4x with a small recall drop.'),
+      Y('', 'How much recall do we lose with quantization?'),
+      A('', 'Typically 1 to 3 points on recall@10 at the same latency, which a re-ranking step on the top 50 results usually recovers. I would benchmark on a 100k sample of your own queries before deciding.', { tool: 'Worked for 21s, called 4 tools' }),
+      Y('', 'Write a plan for that benchmark.'),
+      A('', '1. Sample 100k documents and 500 real queries\n2. Measure recall@10, p50 and p99 latency for full precision, 8-bit and 4-bit\n3. Add re-ranking on the top 50 and re-measure\n4. Compare cost per million queries for pgvector and one managed option\nExpected effort: two days.'),
+      Y('', 'Create a Linear ticket for it and assign it to the search team.'),
+      A('', 'Created SEARCH-341 “Vector index benchmark” with the plan above and assigned it to the search team.', { tool: 'Worked for 9s, called 2 tools' }),
+    ] },
   ]
   const FILES = [
     { name: 'Launch plan.md', kind: 'md' }, { name: 'Q3 board notes.md', kind: 'md2' }, { name: 'Pricing research.csv', kind: 'csv' }, { name: 'Brand guidelines.pdf', kind: 'pdf' },
   ]
+  const LOGO = {"slack": "data:image/svg+xml;base64,PHN2ZwogIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDI0NDcuNiAyNDUyLjUiCiAgdmlld0JveD0iMCAwIDI0NDcuNiAyNDUyLjUiCiAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgo+CiAgPGcgY2xpcC1ydWxlPSJldmVub2RkIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgPHBhdGgKICAgICAgZD0ibTg5Ny40IDBjLTEzNS4zLjEtMjQ0LjggMTA5LjktMjQ0LjcgMjQ1LjItLjEgMTM1LjMgMTA5LjUgMjQ1LjEgMjQ0LjggMjQ1LjJoMjQ0Ljh2LTI0NS4xYy4xLTEzNS4zLTEwOS41LTI0NS4xLTI0NC45LTI0NS4zLjEgMCAuMSAwIDAgMG0wIDY1NGgtNjUyLjZjLTEzNS4zLjEtMjQ0LjkgMTA5LjktMjQ0LjggMjQ1LjItLjIgMTM1LjMgMTA5LjQgMjQ1LjEgMjQ0LjcgMjQ1LjNoNjUyLjdjMTM1LjMtLjEgMjQ0LjktMTA5LjkgMjQ0LjgtMjQ1LjIuMS0xMzUuNC0xMDkuNS0yNDUuMi0yNDQuOC0yNDUuM3oiCiAgICAgIGZpbGw9IiMzNmM1ZjAiCiAgICAvPgogICAgPHBhdGgKICAgICAgZD0ibTI0NDcuNiA4OTkuMmMuMS0xMzUuMy0xMDkuNS0yNDUuMS0yNDQuOC0yNDUuMi0xMzUuMy4xLTI0NC45IDEwOS45LTI0NC44IDI0NS4ydjI0NS4zaDI0NC44YzEzNS4zLS4xIDI0NC45LTEwOS45IDI0NC44LTI0NS4zem0tNjUyLjcgMHYtNjU0Yy4xLTEzNS4yLTEwOS40LTI0NS0yNDQuNy0yNDUuMi0xMzUuMy4xLTI0NC45IDEwOS45LTI0NC44IDI0NS4ydjY1NGMtLjIgMTM1LjMgMTA5LjQgMjQ1LjEgMjQ0LjcgMjQ1LjMgMTM1LjMtLjEgMjQ0LjktMTA5LjkgMjQ0LjgtMjQ1LjN6IgogICAgICBmaWxsPSIjMmViNjdkIgogICAgLz4KICAgIDxwYXRoCiAgICAgIGQ9Im0xNTUwLjEgMjQ1Mi41YzEzNS4zLS4xIDI0NC45LTEwOS45IDI0NC44LTI0NS4yLjEtMTM1LjMtMTA5LjUtMjQ1LjEtMjQ0LjgtMjQ1LjJoLTI0NC44djI0NS4yYy0uMSAxMzUuMiAxMDkuNSAyNDUgMjQ0LjggMjQ1LjJ6bTAtNjU0LjFoNjUyLjdjMTM1LjMtLjEgMjQ0LjktMTA5LjkgMjQ0LjgtMjQ1LjIuMi0xMzUuMy0xMDkuNC0yNDUuMS0yNDQuNy0yNDUuM2gtNjUyLjdjLTEzNS4zLjEtMjQ0LjkgMTA5LjktMjQ0LjggMjQ1LjItLjEgMTM1LjQgMTA5LjQgMjQ1LjIgMjQ0LjcgMjQ1LjN6IgogICAgICBmaWxsPSIjZWNiMjJlIgogICAgLz4KICAgIDxwYXRoCiAgICAgIGQ9Im0wIDE1NTMuMmMtLjEgMTM1LjMgMTA5LjUgMjQ1LjEgMjQ0LjggMjQ1LjIgMTM1LjMtLjEgMjQ0LjktMTA5LjkgMjQ0LjgtMjQ1LjJ2LTI0NS4yaC0yNDQuOGMtMTM1LjMuMS0yNDQuOSAxMDkuOS0yNDQuOCAyNDUuMnptNjUyLjcgMHY2NTRjLS4yIDEzNS4zIDEwOS40IDI0NS4xIDI0NC43IDI0NS4zIDEzNS4zLS4xIDI0NC45LTEwOS45IDI0NC44LTI0NS4ydi02NTMuOWMuMi0xMzUuMy0xMDkuNC0yNDUuMS0yNDQuNy0yNDUuMy0xMzUuNCAwLTI0NC45IDEwOS44LTI0NC44IDI0NS4xIDAgMCAwIC4xIDAgMCIKICAgICAgZmlsbD0iI2UwMWU1YSIKICAgIC8+CiAgPC9nPgo8L3N2Zz4K", "github": "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAyNCAxMDI0IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIGZpbGw9Im5vbmUiPjxwYXRoIGZpbGw9IiMxYjFmMjMiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTUxMiAwQzIyOS4xMiAwIDAgMjI5LjEyIDAgNTEyYzAgMjI2LjU2IDE0Ni41NiA0MTcuOTIgMzUwLjA4IDQ4NS43NiAyNS42IDQuNDggMzUuMi0xMC44OCAzNS4yLTI0LjMyIDAtMTIuMTYtLjY0LTUyLjQ4LS42NC05NS4zNi0xMjguNjQgMjMuNjgtMTYxLjkyLTMxLjM2LTE3Mi4xNi02MC4xNi01Ljc2LTE0LjcyLTMwLjcyLTYwLjE2LTUyLjQ4LTcyLjMyLTE3LjkyLTkuNi00My41Mi0zMy4yOC0uNjQtMzMuOTIgNDAuMzItLjY0IDY5LjEyIDM3LjEyIDc4LjcyIDUyLjQ4IDQ2LjA4IDc3LjQ0IDExOS42OCA1NS42OCAxNDkuMTIgNDIuMjQgNC40OC0zMy4yOCAxNy45Mi01NS42OCAzMi42NC02OC40OC0xMTMuOTItMTIuOC0yMzIuOTYtNTYuOTYtMjMyLjk2LTI1Mi44IDAtNTUuNjggMTkuODQtMTAxLjc2IDUyLjQ4LTEzNy42LTUuMTItMTIuOC0yMy4wNC02NS4yOCA1LjEyLTEzNS42OCAwIDAgNDIuODgtMTMuNDQgMTQwLjggNTIuNDggNDAuOTYtMTEuNTIgODQuNDgtMTcuMjggMTI4LTE3LjI4czg3LjA0IDUuNzYgMTI4IDE3LjI4Yzk3LjkyLTY2LjU2IDE0MC44LTUyLjQ4IDE0MC44LTUyLjQ4IDI4LjE2IDcwLjQgMTAuMjQgMTIyLjg4IDUuMTIgMTM1LjY4IDMyLjY0IDM1Ljg0IDUyLjQ4IDgxLjI4IDUyLjQ4IDEzNy42IDAgMTk2LjQ4LTExOS42OCAyNDAtMjMzLjYgMjUyLjggMTguNTYgMTYgMzQuNTYgNDYuNzIgMzQuNTYgOTQuNzIgMCA2OC40OC0uNjQgMTIzLjUyLS42NCAxNDAuOCAwIDEzLjQ0IDkuNiAyOS40NCAzNS4yIDI0LjMyQzg3Ny40NCA5MjkuOTIgMTAyNCA3MzcuOTIgMTAyNCA1MTIgMTAyNCAyMjkuMTIgNzk0Ljg4IDAgNTEyIDAiIGNsaXAtcnVsZT0iZXZlbm9kZCIvPjwvc3ZnPg==", "github_dark": "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMTAyNCAxMDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTggMEMzLjU4IDAgMCAzLjU4IDAgOEMwIDExLjU0IDIuMjkgMTQuNTMgNS40NyAxNS41OUM1Ljg3IDE1LjY2IDYuMDIgMTUuNDIgNi4wMiAxNS4yMUM2LjAyIDE1LjAyIDYuMDEgMTQuMzkgNi4wMSAxMy43MkM0IDE0LjA5IDMuNDggMTMuMjMgMy4zMiAxMi43OEMzLjIzIDEyLjU1IDIuODQgMTEuODQgMi41IDExLjY1QzIuMjIgMTEuNSAxLjgyIDExLjEzIDIuNDkgMTEuMTJDMy4xMiAxMS4xMSAzLjU3IDExLjcgMy43MiAxMS45NEM0LjQ0IDEzLjE1IDUuNTkgMTIuODEgNi4wNSAxMi42QzYuMTIgMTIuMDggNi4zMyAxMS43MyA2LjU2IDExLjUzQzQuNzggMTEuMzMgMi45MiAxMC42NCAyLjkyIDcuNThDMi45MiA2LjcxIDMuMjMgNS45OSAzLjc0IDUuNDNDMy42NiA1LjIzIDMuMzggNC40MSAzLjgyIDMuMzFDMy44MiAzLjMxIDQuNDkgMy4xIDYuMDIgNC4xM0M2LjY2IDMuOTUgNy4zNCAzLjg2IDguMDIgMy44NkM4LjcgMy44NiA5LjM4IDMuOTUgMTAuMDIgNC4xM0MxMS41NSAzLjA5IDEyLjIyIDMuMzEgMTIuMjIgMy4zMUMxMi42NiA0LjQxIDEyLjM4IDUuMjMgMTIuMyA1LjQzQzEyLjgxIDUuOTkgMTMuMTIgNi43IDEzLjEyIDcuNThDMTMuMTIgMTAuNjUgMTEuMjUgMTEuMzMgOS40NyAxMS41M0M5Ljc2IDExLjc4IDEwLjAxIDEyLjI2IDEwLjAxIDEzLjAxQzEwLjAxIDE0LjA4IDEwIDE0Ljk0IDEwIDE1LjIxQzEwIDE1LjQyIDEwLjE1IDE1LjY3IDEwLjU1IDE1LjU5QzEzLjcxIDE0LjUzIDE2IDExLjUzIDE2IDhDMTYgMy41OCAxMi40MiAwIDggMFoiIHRyYW5zZm9ybT0ic2NhbGUoNjQpIiBmaWxsPSIjZmZmZiIvPgo8L3N2Zz4K", "gmail": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgNDkuNCA1MTIgMzk5LjQyIj4KICA8ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPgogICAgPGcgZmlsbC1ydWxlPSJub256ZXJvIj4KICAgICAgPHBhdGggZmlsbD0iIzQyODVmNCIgZD0iTTM0LjkxIDQ0OC44MThoODEuNDU0VjI1MUwwIDE2My43MjdWNDEzLjkxYzAgMTkuMjg3IDE1LjYyMiAzNC45MSAzNC45MSAzNC45MXoiLz4KICAgICAgPHBhdGggZmlsbD0iIzM0YTg1MyIgZD0iTTM5NS42MzYgNDQ4LjgxOGg4MS40NTVjMTkuMjg3IDAgMzQuOTA5LTE1LjYyMiAzNC45MDktMzQuOTA5VjE2My43MjdMMzk1LjYzNiAyNTF6Ii8+CiAgICAgIDxwYXRoIGZpbGw9IiNmYmJjMDQiIGQ9Ik0zOTUuNjM2IDk5LjcyN1YyNTFMNTEyIDE2My43Mjd2LTQ2LjU0NWMwLTQzLjE0Mi00OS4yNS02Ny43ODItODMuNzgyLTQxLjg5MXoiLz4KICAgIDwvZz4KICAgIDxwYXRoIGZpbGw9IiNlYTQzMzUiIGQ9Ik0xMTYuMzY0IDI1MVY5OS43MjdMMjU2IDIwNC40NTUgMzk1LjYzNiA5OS43MjdWMjUxTDI1NiAzNTUuNzI3eiIvPgogICAgPHBhdGggZmlsbD0iI2M1MjIxZiIgZmlsbC1ydWxlPSJub256ZXJvIiBkPSJNMCAxMTcuMTgydjQ2LjU0NUwxMTYuMzY0IDI1MVY5OS43MjdMODMuNzgyIDc1LjI5MUM0OS4yNSA0OS40IDAgNzQuMDQgMCAxMTcuMTh6Ii8+CiAgPC9nPgo8L3N2Zz4K", "linear": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSJub25lIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHBhdGggZmlsbD0iIzVFNkFEMiIgZD0iTTEuMjI1IDYxLjUyM2MtLjIyMi0uOTQ5LjkwOC0xLjU0NiAxLjU5Ny0uODU3bDM2LjUxMiAzNi41MTJjLjY5LjY5LjA5MiAxLjgyLS44NTcgMS41OTctMTguNDI1LTQuMzIzLTMyLjkzLTE4LjgyNy0zNy4yNTItMzcuMjUyWk0uMDAyIDQ2Ljg4OWEuOTkuOTkgMCAwIDAgLjI5Ljc2TDUyLjM1IDk5LjcxYy4yMDEuMi40NzguMzA3Ljc2LjI5IDIuMzctLjE0OSA0LjY5NS0uNDYgNi45NjMtLjkyNy43NjUtLjE1NyAxLjAzLTEuMDk2LjQ3OC0xLjY0OEwyLjU3NiAzOS40NDhjLS41NTItLjU1MS0xLjQ5MS0uMjg2LTEuNjQ4LjQ3OWE1MC4wNjcgNTAuMDY3IDAgMCAwLS45MjYgNi45NjJaTTQuMjEgMjkuNzA1YS45ODguOTg4IDAgMCAwIC4yMDggMS4xbDY0Ljc3NiA2NC43NzZjLjI4OS4yOS43MjYuMzc1IDEuMS4yMDhhNDkuOTA4IDQ5LjkwOCAwIDAgMCA1LjE4NS0yLjY4NC45ODEuOTgxIDAgMCAwIC4xODMtMS41NEw4LjQzNiAyNC4zMzZhLjk4MS45ODEgMCAwIDAtMS41NDEuMTgzIDQ5Ljg5NiA0OS44OTYgMCAwIDAtMi42ODQgNS4xODVabTguNDQ4LTExLjYzMWEuOTg2Ljk4NiAwIDAgMS0uMDQ1LTEuMzU0QzIxLjc4IDYuNDYgMzUuMTExIDAgNDkuOTUyIDAgNzcuNTkyIDAgMTAwIDIyLjQwNyAxMDAgNTAuMDQ4YzAgMTQuODQtNi40NiAyOC4xNzItMTYuNzIgMzcuMzM4YS45ODYuOTg2IDAgMCAxLTEuMzU0LS4wNDVMMTIuNjU5IDE4LjA3NFoiLz48L3N2Zz4=", "notion": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjY4IiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJ4TWlkWU1pZCIgdmlld0JveD0iMCAwIDI1NiAyNjgiPjxwYXRoIGZpbGw9IiNGRkYiIGQ9Ik0xNi4wOTIgMTEuNTM4IDE2NC4wOS42MDhjMTguMTc5LTEuNTYgMjIuODUtLjUwOCAzNC4yOCA3LjgwMWw0Ny4yNDMgMzMuMjgyQzI1My40MDYgNDcuNDE0IDI1NiA0OC45NzUgMjU2IDU1LjIwN3YxODIuNTI3YzAgMTEuNDM5LTQuMTU1IDE4LjIwNS0xOC42OTYgMTkuMjRMNjUuNDQgMjY3LjM3OGMtMTAuOTEzLjUxNy0xNi4xMS0xLjA0My0yMS44MjUtOC4zMjdMOC44MjYgMjEzLjgxNEMyLjU4NiAyMDUuNDg3IDAgMTk5LjI1NCAwIDE5MS45N1YyOS43MjZjMC05LjM1MiA0LjE1NS0xNy4xNTMgMTYuMDkyLTE4LjE4OFoiLz48cGF0aCBkPSJNMTY0LjA5LjYwOCAxNi4wOTIgMTEuNTM4QzQuMTU1IDEyLjU3MyAwIDIwLjM3NCAwIDI5LjcyNnYxNjIuMjQ1YzAgNy4yODQgMi41ODUgMTMuNTE2IDguODI2IDIxLjg0M2wzNC43ODkgNDUuMjM3YzUuNzE1IDcuMjg0IDEwLjkxMiA4Ljg0NCAyMS44MjUgOC4zMjdsMTcxLjg2NC0xMC40MDRjMTQuNTMyLTEuMDM1IDE4LjY5Ni03LjgwMSAxOC42OTYtMTkuMjRWNTUuMjA3YzAtNS45MTEtMi4zMzYtNy42MTQtOS4yMS0xMi42NmwtMS4xODUtLjg1NkwxOTguMzcgOC40MDlDMTg2Ljk0LjEgMTgyLjI3LS45NTIgMTY0LjA5LjYwOFpNNjkuMzI3IDUyLjIyYy0xNC4wMzMuOTQ1LTE3LjIxNiAxLjE1OS0yNS4xODYtNS4zMjNMMjMuODc2IDMwLjc3OGMtMi4wNi0yLjA4Ni0xLjAyNi00LjY5IDQuMTYzLTUuMjA3bDE0Mi4yNzQtMTAuMzk1YzExLjk0Ny0xLjA0MyAxOC4xNyAzLjEyIDIyLjg0MiA2Ljc1OGwyNC40MDEgMTcuNjhjMS4wNDMuNTI1IDMuNjM4IDMuNjM3LjUxNyAzLjYzN0w3MS4xNDYgNTIuMDk1bC0xLjgxOS4xMjVabS0xNi4zNiAxODMuOTU0VjgxLjIyMmMwLTYuNzY3IDIuMDc3LTkuODg3IDguMy0xMC40MTNMMjMwLjAyIDYwLjkzYzUuNzI0LS41MTcgOC4zMSAzLjEyIDguMzEgOS44Nzl2MTUzLjkxN2MwIDYuNzY3LTEuMDQ0IDEyLjQ5LTEwLjM4NyAxMy4wMDhsLTE2MS40ODcgOS4zNjFjLTkuMzQzLjUxNy0xMy40ODktMi41OTQtMTMuNDg5LTEwLjkyMVpNMjEyLjM3NyA4OS41M2MxLjAzNCA0LjY4MSAwIDkuMzYyLTQuNjgxIDkuODk3bC03Ljc4MyAxLjU0MnYxMTQuNDA0Yy02Ljc1OCAzLjYzNy0xMi45ODEgNS43MTUtMTguMTggNS43MTUtOC4zMDggMC0xMC4zODYtMi42MDQtMTYuNjA5LTEwLjM5NmwtNTAuODk4LTgwLjA3OXY3Ny40NzZsMTYuMSAzLjY0NnMwIDkuMzYyLTEyLjk4OSA5LjM2MmwtMzUuODE0IDIuMDc3Yy0xLjA0My0yLjA4NiAwLTcuMjg0IDMuNjMtOC4zMThsOS4zNTEtMi41OTVWMTA5LjgyM2wtMTIuOTgtMS4wNTJjLTEuMDQ0LTQuNjggMS41NS0xMS40MzkgOC44MjYtMTEuOTY1bDM4LjQyNi0yLjU4NSA1Mi45NTggODEuMTEzdi03MS43NmwtMTMuNDk4LTEuNTUyYy0xLjA0My01LjczMyAzLjExMS05Ljg5NiA4LjMtMTAuNDA0bDM1Ljg0LTIuMDg3WiIvPjwvc3ZnPg==", "calendar": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMF81MDcyXzM3NjYpIj4KPHBhdGggZD0iTTM5MC43MzYgMTIxLjI2NEgxMjEuMjY0VjM5MC43MzZIMzkwLjczNlYxMjEuMjY0WiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTM5MC43MzYgNTEyTDUxMiAzOTAuNzM2TDQ1MS4zNjggMzgwLjM5MkwzOTAuNzM2IDM5MC43MzZMMzc5LjY3IDQ0Ni4xOTZMMzkwLjczNiA1MTJaIiBmaWxsPSIjRUE0MzM1Ii8+CjxwYXRoIGQ9Ik0wIDM5MC43MzZWNDcxLjU3OEMwIDQ5My45MTIgMTguMDg4IDUxMiA0MC40MiA1MTJIMTIxLjI2NEwxMzMuNzE0IDQ1MS4zNjhMMTIxLjI2NCAzOTAuNzM2TDU1LjE5OCAzODAuMzkyTDAgMzkwLjczNloiIGZpbGw9IiMxODgwMzgiLz4KPHBhdGggZD0iTTUxMiAxMjEuMjY0VjQwLjQyQzUxMiAxOC4wODggNDkzLjkxMiAwIDQ3MS41OCAwSDM5MC43MzZDMzgzLjM2IDMwLjA3MiAzNzkuNjcxIDUyLjIwMjcgMzc5LjY3IDY2LjM5MkMzNzkuNjcgODAuNTggMzgzLjM1OSA5OC44NzA3IDM5MC43MzYgMTIxLjI2NEM0MTcuNTU2IDEyOC45NDQgNDM3Ljc2NyAxMzIuNzg0IDQ1MS4zNjggMTMyLjc4NEM0NjQuOTY5IDEzMi43ODQgNDg1LjE4IDEyOC45NDUgNTEyIDEyMS4yNjRaIiBmaWxsPSIjMTk2N0QyIi8+CjxwYXRoIGQ9Ik01MTIgMTIxLjI2NEgzOTAuNzM2VjM5MC43MzZINTEyVjEyMS4yNjRaIiBmaWxsPSIjRkJCQzA0Ii8+CjxwYXRoIGQ9Ik0zOTAuNzM2IDM5MC43MzZIMTIxLjI2NFY1MTJIMzkwLjczNlYzOTAuNzM2WiIgZmlsbD0iIzM0QTg1MyIvPgo8cGF0aCBkPSJNMzkwLjczNiAwSDQwLjQyMkMxOC4wODggMCAwIDE4LjA4OCAwIDQwLjQyVjM5MC43MzZIMTIxLjI2NFYxMjEuMjY0SDM5MC43MzZWMFoiIGZpbGw9IiM0Mjg1RjQiLz4KPHBhdGggZD0iTTE3Ni41NCAzMzAuMzA4QzE2Ni40NjggMzIzLjUwNCAxNTkuNDk0IDMxMy41NjggMTU1LjY4OCAzMDAuNDI4TDE3OS4wNjYgMjkwLjc5NkMxODEuMTg2IDI5OC44OCAxODQuODkxIDMwNS4xNDUgMTkwLjE4MiAzMDkuNTkyQzE5NS40MzYgMzE0LjAzOCAyMDEuODM2IDMxNi4yMjggMjA5LjMxNCAzMTYuMjI4QzIxNi45NTkgMzE2LjIyOCAyMjMuNTI3IDMxMy45MDMgMjI5LjAxOCAzMDkuMjU0QzIzNC41MSAzMDQuNjA2IDIzNy4yNzIgMjk4LjY3OCAyMzcuMjcyIDI5MS41MDRDMjM3LjI3MiAyODQuMTYgMjM0LjM3NSAyNzguMTY0IDIyOC41ODIgMjczLjUxNkMyMjIuNzg4IDI2OC44NjggMjE1LjUxMiAyNjYuNTQ0IDIwNi44MjIgMjY2LjU0NEgxOTMuMzE0VjI0My40MDRIMjA1LjQ0QzIxMi45MTcgMjQzLjQwNCAyMTkuMjE2IDI0MS4zODIgMjI0LjMzNiAyMzcuMzM4QzIyOS40NTYgMjMzLjI5OCAyMzIuMDE2IDIyNy43NzIgMjMyLjAxNiAyMjAuNzMyQzIzMi4wMTYgMjE0LjQ2OCAyMjkuNzI2IDIwOS40ODIgMjI1LjE0NiAyMDUuNzQ0QzIyMC41NjYgMjAyLjAwNCAyMTQuNzcgMjAwLjExOCAyMDcuNzMgMjAwLjExOEMyMDAuODU4IDIwMC4xMTggMTk1LjQwMiAyMDEuOTM4IDE5MS4zNiAyMDUuNjA4QzE4Ny4zMTkgMjA5LjI4OSAxODQuMjgyIDIxMy45MzcgMTgyLjUzNCAyMTkuMTE2TDE1OS4zOTQgMjA5LjQ4MkMxNjIuNDU4IDIwMC43OTIgMTY4LjA4NCAxOTMuMTEyIDE3Ni4zMzYgMTg2LjQ3NkMxODQuNTg4IDE3OS44NCAxOTUuMTMyIDE3Ni41MDYgMjA3LjkzMiAxNzYuNTA2QzIxNy4zOTggMTc2LjUwNiAyMjUuOTIgMTc4LjMyNiAyMzMuNDY2IDE4MS45OTZDMjQxLjAxIDE4NS42NjggMjQ2LjkzOCAxOTAuNzU0IDI1MS4yMTYgMTk3LjIyMkMyNTUuNDk2IDIwMy43MjIgMjU3LjYxNiAyMTAuOTk4IDI1Ny42MTYgMjE5LjA4MkMyNTcuNjE2IDIyNy4zMzQgMjU1LjYzIDIzNC4zMDggMjUxLjY1NiAyNDAuMDM0QzI0Ny42ODIgMjQ1Ljc2IDI0Mi43OTYgMjUwLjEzOCAyMzcuMDAyIDI1My4yMDRWMjU0LjU4NEMyNDQuNDgzIDI1Ny42NjkgMjUwLjk4MiAyNjIuNzM1IDI1NS43OTggMjY5LjIzOEMyNjAuNjgyIDI3NS44MDYgMjYzLjE0MiAyODMuNjU0IDI2My4xNDIgMjkyLjgxOEMyNjMuMTQyIDMwMS45NzggMjYwLjgxNiAzMTAuMTY0IDI1Ni4xNjggMzE3LjMzOEMyNTEuNTIgMzI0LjUxNCAyNDUuMDg4IDMzMC4xNzIgMjM2LjkzNCAzMzQuMjgyQzIyOC43NSAzMzguMzkyIDIxOS41NTQgMzQwLjQ4MiAyMDkuMzQ4IDM0MC40ODJDMTk3LjUyNCAzNDAuNTE0IDE4Ni42MTIgMzM3LjExMiAxNzYuNTQgMzMwLjMwOFpNMzIwLjEzMiAyMTQuMjk4TDI5NC40NjYgMjMyLjg1OEwyODEuNjMyIDIxMy4zOUwzMjcuNjc4IDE4MC4xNzZIMzQ1LjMyOFYzMzYuODQySDMyMC4xMzJWMjE0LjI5OFoiIGZpbGw9IiM0Mjg1RjQiLz4KPC9nPgo8ZGVmcz4KPGNsaXBQYXRoIGlkPSJjbGlwMF81MDcyXzM3NjYiPgo8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0id2hpdGUiLz4KPC9jbGlwUGF0aD4KPC9kZWZzPgo8L3N2Zz4K", "perplexity": "data:image/svg+xml;base64,PHN2ZyAKeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiAKd2lkdGg9IjgwIiAKaGVpZ2h0PSI4MCIgCnZpZXdCb3g9IjAgMCA0OCA0OCI+CjxwYXRoIApmaWxsPSJub25lIiAKc3Ryb2tlPSIjMjA4MDhkIiAKc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAKc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgCmQ9Ik0yNCA0LjV2MzlNMTMuNzMgMTYuNTczdi05Ljk5TDI0IDE2LjU3M20wIDE0LjVMMTMuNzMgNDEuNDE3VjI3LjAxTDI0IDE2LjU3M20wIDBsMTAuMjctOS45OXY5Ljk5Ii8+CjxwYXRoIApmaWxsPSJub25lIiAKc3Ryb2tlPSIjMjA4MDhkIiAKc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAKc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgCmQ9Ik0xMy43MyAzMS4zOTZIOS40NFYxNi41NzNoMjkuMTJ2MTQuODIzaC00LjI5Ii8+CjxwYXRoIApmaWxsPSJub25lIiAKc3Ryb2tlPSIjMjA4MDhkIiAKc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAKc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgCmQ9Ik0yNCAxNi41NzNMMzQuMjcgMjcuMDF2MTQuNDA3TDI0IDMxLjA3MyIvPgo8L3N2Zz4g", "sentry": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjI3IiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJ4TWlkWU1pZCIgdmlld0JveD0iMCAwIDI1NiAyMjciPjxwYXRoIGZpbGw9IiMzNjJENTkiIGQ9Ik0xNDguMzY4IDEyLjQwM2EyMy45MzUgMjMuOTM1IDAgMCAwLTQxLjAwMyAwTDczLjY0IDcwLjE2NWM1Mi40MjYgMjYuMTc0IDg3LjA1IDc4LjE3NyA5MC45NzUgMTM2LjY0MmgtMjMuNjc5Yy0zLjkxOC01MC4xMTMtMzQuMDYxLTk0LjQxLTc5LjIzOC0xMTYuNDQ4bC0zMS4yMTMgNTMuOTdhODEuNTk1IDgxLjU5NSAwIDAgMSA0Ny4zMDcgNjIuMzc1aC01NC4zOGEzLjg5NSAzLjg5NSAwIDAgMS0zLjE3OC01LjY5bDE1LjA2OS0yNS42MjZhNTUuMDQ2IDU1LjA0NiAwIDAgMC0xNy4yMjEtOS43MzhMMy4xNjcgMTkxLjI3N2EyMy4yNjkgMjMuMjY5IDAgMCAwIDguNjYyIDMxLjk4MiAyMy44ODQgMjMuODg0IDAgMCAwIDExLjU4MyAzLjA3NWg3NC40NzFhOTkuNDMyIDk5LjQzMiAwIDAgMC00MS4wMDMtODguNzJsMTEuODQtMjAuNWMzNS42NzkgMjQuNTA0IDU1Ljc1NCA2Ni4wMzggNTIuNzkgMTA5LjIyaDYzLjA5NGMyLjk5LTY1LjQzLTI5LjA0Ny0xMjcuNTEyLTg0LjEwNy0xNjIuOTg2bDIzLjkzNS00MS4wMDJhMy45NDcgMy45NDcgMCAwIDEgNS4zODItMS4zODRjMi43MTYgMS40ODYgMTAzLjk5MyAxNzguMjA4IDEwNS44OSAxODAuMjU4YTMuODk1IDMuODk1IDAgMCAxLTMuNDg2IDUuNzkyaC0yNC4zOTZjLjMwNyA2LjUyNi4zMDcgMTMuMDM1IDAgMTkuNTI4aDI0LjQ5OUEyMy41MjggMjMuNTI4IDAgMCAwIDI1NiAyMDIuOTFhMjMuMDE1IDIzLjAxNSAwIDAgMC0zLjE3OC0xMS42ODVMMTQ4LjM2OCAxMi40MDNaIi8+PC9zdmc+", "playwright": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNDAwIDQwMCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0xMzYuNDQ0IDIyMS41NTZDMTIzLjU1OCAyMjUuMjEzIDExNS4xMDQgMjMxLjYyNSAxMDkuNTM1IDIzOC4wMzJDMTE0Ljg2OSAyMzMuMzY0IDEyMi4wMTQgMjI5LjA4IDEzMS42NTIgMjI2LjM0OEMxNDEuNTEgMjIzLjU1NCAxNDkuOTIgMjIzLjU3NCAxNTYuODY5IDIyNC45MTVWMjE5LjQ4MUMxNTAuOTQxIDIxOC45MzkgMTQ0LjE0NSAyMTkuMzcxIDEzNi40NDQgMjIxLjU1NlpNMTA4Ljk0NiAxNzUuODc2TDYxLjA4OTUgMTg4LjQ4NEM2MS4wODk1IDE4OC40ODQgNjEuOTYxNyAxODkuNzE2IDYzLjU3NjcgMTkxLjM2TDEwNC4xNTMgMTgwLjY2OEMxMDQuMTUzIDE4MC42NjggMTAzLjU3OCAxODguMDc3IDk4LjU4NDcgMTk0LjcwNUMxMDguMDMgMTg3LjU1OSAxMDguOTQ2IDE3NS44NzYgMTA4Ljk0NiAxNzUuODc2Wk0xNDkuMDA1IDI4OC4zNDdDODEuNjU4MiAzMDYuNDg2IDQ2LjAyNzIgMjI4LjQzOCAzNS4yMzk2IDE4Ny45MjhDMzAuMjU1NiAxNjkuMjI5IDI4LjA3OTkgMTU1LjA2NyAyNy41IDE0NS45MjhDMjcuNDM3NyAxNDQuOTc5IDI3LjQ2NjUgMTQ0LjE3OSAyNy41MzM2IDE0My40NDZDMjQuMDQgMTQzLjY1NyAyMi4zNjc0IDE0NS40NzMgMjIuNzA3NyAxNTAuNzIxQzIzLjI4NzYgMTU5Ljg1NSAyNS40NjMzIDE3NC4wMTYgMzAuNDQ3MyAxOTIuNzIxQzQxLjIzMDEgMjMzLjIyNSA3Ni44NjU5IDMxMS4yNzMgMTQ0LjIxMyAyOTMuMTM0QzE1OC44NzIgMjg5LjE4NSAxNjkuODg1IDI4MS45OTIgMTc4LjE1MiAyNzIuODFDMTcwLjUzMiAyNzkuNjkyIDE2MC45OTUgMjg1LjExMiAxNDkuMDA1IDI4OC4zNDdaTTE2MS42NjEgMTI4LjExVjEzMi45MDNIMTg4LjA3N0MxODcuNTM1IDEzMS4yMDYgMTg2Ljk4OSAxMjkuNjc3IDE4Ni40NDcgMTI4LjExSDE2MS42NjFaIiBmaWxsPSIjMkQ0NTUyIi8+CjxwYXRoIGQ9Ik0xOTMuOTgxIDE2Ny41ODRDMjA1Ljg2MSAxNzAuOTU4IDIxMi4xNDQgMTc5LjI4NyAyMTUuNDY1IDE4Ni42NThMMjI4LjcxMSAxOTAuNDJDMjI4LjcxMSAxOTAuNDIgMjI2LjkwNCAxNjQuNjIzIDIwMy41NyAxNTcuOTk1QzE4MS43NDEgMTUxLjc5MyAxNjguMzA4IDE3MC4xMjQgMTY2LjY3NCAxNzIuNDk2QzE3My4wMjQgMTY3Ljk3MiAxODIuMjk3IDE2NC4yNjggMTkzLjk4MSAxNjcuNTg0Wk0yOTkuNDIyIDE4Ni43NzdDMjc3LjU3MyAxODAuNTQ3IDI2NC4xNDUgMTk4LjkxNiAyNjIuNTM1IDIwMS4yNTVDMjY4Ljg5IDE5Ni43MzYgMjc4LjE1OCAxOTMuMDMxIDI4OS44MzcgMTk2LjM2MkMzMDEuNjk4IDE5OS43NDEgMzA3Ljk3NiAyMDguMDYgMzExLjMwNyAyMTUuNDM2TDMyNC41NzIgMjE5LjIxMkMzMjQuNTcyIDIxOS4yMTIgMzIyLjczNiAxOTMuNDEgMjk5LjQyMiAxODYuNzc3Wk0yODYuMjYyIDI1NC43OTVMMTc2LjA3MiAyMjMuOTlDMTc2LjA3MiAyMjMuOTkgMTc3LjI2NSAyMzAuMDM4IDE4MS44NDIgMjM3Ljg2OUwyNzQuNjE3IDI2My44MDVDMjgyLjI1NSAyNTkuMzg2IDI4Ni4yNjIgMjU0Ljc5NSAyODYuMjYyIDI1NC43OTVaTTIwOS44NjcgMzIxLjEwMkMxMjIuNjE4IDI5Ny43MSAxMzMuMTY2IDE4Ni41NDMgMTQ3LjI4NCAxMzMuODY1QzE1My4wOTcgMTEyLjE1NiAxNTkuMDczIDk2LjAyMDMgMTY0LjAyOSA4NS4yMDRDMTYxLjA3MiA4NC41OTUzIDE1OC42MjMgODYuMTUyOSAxNTYuMjAzIDkxLjA3NDZDMTUwLjk0MSAxMDEuNzQ3IDE0NC4yMTIgMTE5LjEyNCAxMzcuNyAxNDMuNDVDMTIzLjU4NiAxOTYuMTI3IDExMy4wMzggMzA3LjI5IDIwMC4yODMgMzMwLjY4MkMyNDEuNDA2IDM0MS42OTkgMjczLjQ0MiAzMjQuOTU1IDI5Ny4zMjMgMjk4LjY1OUMyNzQuNjU1IDMxOS4xOSAyNDUuNzE0IDMzMC43MDEgMjA5Ljg2NyAzMjEuMTAyWiIgZmlsbD0iIzJENDU1MiIvPgo8cGF0aCBkPSJNMTYxLjY2MSAyNjIuMjk2VjIzOS44NjNMOTkuMzMyNCAyNTcuNTM3Qzk5LjMzMjQgMjU3LjUzNyAxMDMuOTM4IDIzMC43NzcgMTM2LjQ0NCAyMjEuNTU2QzE0Ni4zMDIgMjE4Ljc2MiAxNTQuNzEzIDIxOC43ODEgMTYxLjY2MSAyMjAuMTIzVjEyOC4xMUgxOTIuODY5QzE4OS40NzEgMTE3LjYxIDE4Ni4xODQgMTA5LjUyNiAxODMuNDIzIDEwMy45MDlDMTc4Ljg1NiA5NC42MTIgMTc0LjE3NCAxMDAuNzc1IDE2My41NDUgMTA5LjY2NUMxNTYuMDU5IDExNS45MTkgMTM3LjEzOSAxMjkuMjYxIDEwOC42NjggMTM2LjkzM0M4MC4xOTY2IDE0NC42MSA1Ny4xNzkgMTQyLjU3NCA0Ny41NzUyIDE0MC45MTFDMzMuOTYwMSAxMzguNTYyIDI2LjgzODcgMTM1LjU3MiAyNy41MDQ5IDE0NS45MjhDMjguMDg0NyAxNTUuMDYyIDMwLjI2MDUgMTY5LjIyNCAzNS4yNDQ1IDE4Ny45MjhDNDYuMDI3MiAyMjguNDMzIDgxLjY2MyAzMDYuNDgxIDE0OS4wMSAyODguMzQyQzE2Ni42MDIgMjgzLjYwMiAxNzkuMDE5IDI3NC4yMzMgMTg3LjYyNiAyNjIuMjkxSDE2MS42NjFWMjYyLjI5NlpNNjEuMDg0OCAxODguNDg0TDEwOC45NDYgMTc1Ljg3NkMxMDguOTQ2IDE3NS44NzYgMTA3LjU1MSAxOTQuMjg4IDg5LjYwODcgMTk5LjAxOEM3MS42NjE0IDIwMy43NDMgNjEuMDg0OCAxODguNDg0IDYxLjA4NDggMTg4LjQ4NFoiIGZpbGw9IiNFMjU3NEMiLz4KPHBhdGggZD0iTTM0MS43ODYgMTI5LjE3NEMzMjkuMzQ1IDEzMS4zNTUgMjk5LjQ5OCAxMzQuMDcyIDI2Mi42MTIgMTI0LjE4NUMyMjUuNzE2IDExNC4zMDQgMjAxLjIzNiA5Ny4wMjI0IDE5MS41MzcgODguODk5NEMxNzcuNzg4IDc3LjM4MzQgMTcxLjc0IDY5LjM4MDIgMTY1Ljc4OCA4MS40ODU3QzE2MC41MjYgOTIuMTYzIDE1My43OTcgMTA5LjU0IDE0Ny4yODQgMTMzLjg2NkMxMzMuMTcxIDE4Ni41NDMgMTIyLjYyMyAyOTcuNzA2IDIwOS44NjcgMzIxLjA5OEMyOTcuMDkzIDM0NC40NyAzNDMuNTMgMjQyLjkyIDM1Ny42NDQgMTkwLjIzOEMzNjQuMTU3IDE2NS45MTcgMzY3LjAxMyAxNDcuNSAzNjcuNzk5IDEzNS42MjVDMzY4LjY5NSAxMjIuMTczIDM1OS40NTUgMTI2LjA3OCAzNDEuNzg2IDEyOS4xNzRaTTE2Ni40OTcgMTcyLjc1NkMxNjYuNDk3IDE3Mi43NTYgMTgwLjI0NiAxNTEuMzcyIDIwMy41NjUgMTU4QzIyNi44OTkgMTY0LjYyOCAyMjguNzA2IDE5MC40MjUgMjI4LjcwNiAxOTAuNDI1TDE2Ni40OTcgMTcyLjc1NlpNMjIzLjQyIDI2OC43MTNDMTgyLjQwMyAyNTYuNjk4IDE3Ni4wNzcgMjIzLjk5IDE3Ni4wNzcgMjIzLjk5TDI4Ni4yNjIgMjU0Ljc5NkMyODYuMjYyIDI1NC43OTEgMjY0LjAyMSAyODAuNTc4IDIyMy40MiAyNjguNzEzWk0yNjIuMzc3IDIwMS40OTVDMjYyLjM3NyAyMDEuNDk1IDI3Ni4xMDcgMTgwLjEyNiAyOTkuNDIyIDE4Ni43NzNDMzIyLjczNiAxOTMuNDExIDMyNC41NzIgMjE5LjIwOCAzMjQuNTcyIDIxOS4yMDhMMjYyLjM3NyAyMDEuNDk1WiIgZmlsbD0iIzJFQUQzMyIvPgo8cGF0aCBkPSJNMTM5Ljg4IDI0Ni4wNEw5OS4zMzI0IDI1Ny41MzJDOTkuMzMyNCAyNTcuNTMyIDEwMy43MzcgMjMyLjQ0IDEzMy42MDcgMjIyLjQ5NkwxMTAuNjQ3IDEzNi4zM0wxMDguNjYzIDEzNi45MzNDODAuMTkxOCAxNDQuNjExIDU3LjE3NDIgMTQyLjU3NCA0Ny41NzA0IDE0MC45MTFDMzMuOTU1NCAxMzguNTYzIDI2LjgzNCAxMzUuNTcyIDI3LjUwMDEgMTQ1LjkyOUMyOC4wOCAxNTUuMDYzIDMwLjI1NTcgMTY5LjIyNCAzNS4yMzk3IDE4Ny45MjlDNDYuMDIyNSAyMjguNDMzIDgxLjY1ODMgMzA2LjQ4MSAxNDkuMDA1IDI4OC4zNDJMMTUwLjk4OSAyODcuNzE5TDEzOS44OCAyNDYuMDRaTTYxLjA4NDggMTg4LjQ4NUwxMDguOTQ2IDE3NS44NzZDMTA4Ljk0NiAxNzUuODc2IDEwNy41NTEgMTk0LjI4OCA4OS42MDg3IDE5OS4wMThDNzEuNjYxNSAyMDMuNzQzIDYxLjA4NDggMTg4LjQ4NSA2MS4wODQ4IDE4OC40ODVaIiBmaWxsPSIjRDY1MzQ4Ii8+CjxwYXRoIGQ9Ik0yMjUuMjcgMjY5LjE2M0wyMjMuNDE1IDI2OC43MTJDMTgyLjM5OCAyNTYuNjk4IDE3Ni4wNzIgMjIzLjk5IDE3Ni4wNzIgMjIzLjk5TDIzMi44OSAyMzkuODcyTDI2Mi45NzEgMTI0LjI4MUwyNjIuNjA3IDEyNC4xODVDMjI1LjcxMSAxMTQuMzA0IDIwMS4yMzIgOTcuMDIyNCAxOTEuNTMyIDg4Ljg5OTRDMTc3Ljc4MyA3Ny4zODM0IDE3MS43MzUgNjkuMzgwMiAxNjUuNzgzIDgxLjQ4NTdDMTYwLjUyNiA5Mi4xNjMgMTUzLjc5NyAxMDkuNTQgMTQ3LjI4NCAxMzMuODY2QzEzMy4xNzEgMTg2LjU0MyAxMjIuNjIzIDI5Ny43MDYgMjA5Ljg2NyAzMjEuMDk3TDIxMS42NTUgMzIxLjVMMjI1LjI3IDI2OS4xNjNaTTE2Ni40OTcgMTcyLjc1NkMxNjYuNDk3IDE3Mi43NTYgMTgwLjI0NiAxNTEuMzcyIDIwMy41NjUgMTU4QzIyNi44OTkgMTY0LjYyOCAyMjguNzA2IDE5MC40MjUgMjI4LjcwNiAxOTAuNDI1TDE2Ni40OTcgMTcyLjc1NloiIGZpbGw9IiMxRDhEMjIiLz4KPHBhdGggZD0iTTE0MS45NDYgMjQ1LjQ1MUwxMzEuMDcyIDI0OC41MzdDMTMzLjY0MSAyNjMuMDE5IDEzOC4xNjkgMjc2LjkxNyAxNDUuMjc2IDI4OS4xOTVDMTQ2LjUxMyAyODguOTIyIDE0Ny43NCAyODguNjg3IDE0OSAyODguMzQyQzE1Mi4zMDIgMjg3LjQ1MSAxNTUuMzY0IDI4Ni4zNDggMTU4LjMxMiAyODUuMTQ1QzE1MC4zNzEgMjczLjM2MSAxNDUuMTE4IDI1OS43ODkgMTQxLjk0NiAyNDUuNDUxWk0xMzcuNyAxNDMuNDUxQzEzMi4xMTIgMTY0LjMwNyAxMjcuMTEzIDE5NC4zMjYgMTI4LjQ4OSAyMjQuNDM2QzEzMC45NTIgMjIzLjM2NyAxMzMuNTU0IDIyMi4zNzEgMTM2LjQ0NCAyMjEuNTUxTDEzOC40NTcgMjIxLjEwMUMxMzYuMDAzIDE4OC45MzkgMTQxLjMwOCAxNTYuMTY1IDE0Ny4yODQgMTMzLjg2NkMxNDguNzk5IDEyOC4yMjUgMTUwLjMxOCAxMjIuOTc4IDE1MS44MzIgMTE4LjA4NUMxNDkuMzkzIDExOS42MzcgMTQ2Ljc2NyAxMjEuMjI4IDE0My43NzYgMTIyLjg2N0MxNDEuNzU5IDEyOS4wOTMgMTM5LjcyMiAxMzUuODk4IDEzNy43IDE0My40NTFaIiBmaWxsPSIjQzA0QjQxIi8+Cjwvc3ZnPg=="}
+  const logoHTML = (e) => (e.dark ? `<img class="lg lt" alt="" src="${LOGO[e.l]}"><img class="lg dk" alt="" src="${LOGO[e.dark]}">` : `<img class="lg" alt="" src="${LOGO[e.l]}">`)
   const EXTS = [
-    { n: 'Slack', t: 'app', c: '#611f69', d: 'Read channels, post updates, answer threads.', on: true }, { n: 'GitHub', t: 'app', c: '#24292f', d: 'Open PRs, review code, triage issues.', on: true },
-    { n: 'Gmail', t: 'app', c: '#dc2626', d: 'Draft and send email from your inbox.', on: false }, { n: 'Linear', t: 'app', c: '#5e6ad2', d: 'Create and update issues and projects.', on: false },
-    { n: 'Notion', t: 'app', c: '#3f3f46', d: 'Search and edit pages and databases.', on: false }, { n: 'Calendar', t: 'app', c: '#2563eb', d: 'See your schedule and book meetings.', on: true },
-    { n: 'Web search', t: 'skill', c: '#0ea5e9', d: 'Look things up and cite sources.', on: true }, { n: 'Code review', t: 'skill', c: '#16a34a', d: 'Review diffs against your standards.', on: false },
-    { n: 'Browser', t: 'mcp', c: '#ea580c', d: 'Let an agent use a real browser.', on: false },
+    { n: 'Slack', t: 'app', l: 'slack', d: 'Read channels, post updates, answer threads.', on: true },
+    { n: 'GitHub', t: 'app', l: 'github', d: 'Open PRs, review code, triage issues.', on: true },
+    { n: 'Gmail', t: 'app', l: 'gmail', d: 'Draft and send email from your inbox.', on: false },
+    { n: 'Linear', t: 'app', l: 'linear', d: 'Create and update issues and projects.', on: true },
+    { n: 'Notion', t: 'app', l: 'notion', d: 'Search and edit pages and databases.', on: true },
+    { n: 'Google Calendar', t: 'app', l: 'calendar', d: 'See your schedule and book meetings.', on: true },
+    { n: 'Perplexity', t: 'skill', l: 'perplexity', d: 'Research the web and cite sources.', on: true },
+    { n: 'Sentry', t: 'skill', l: 'sentry', d: 'Triage errors and open fixes.', on: false },
+    { n: 'Playwright', t: 'mcp', l: 'playwright', d: 'Drive a real browser to test and scrape.', on: false },
   ]
   const CONFIRM = 'Reply **“confirm”** to create and enable it, or tell me what to change.'
   const AUTOS = [
-    { n: 'Send hi message every 15 minutes', title: 'Automated Hi Messages Every 15 Minutes', scope: 'personal', msgs: [
-      Y('', 'can you send me a hi message here every 15 minutes?'),
-      A('', 'I drafted an automation to send you a brief “hi” message here every 15 minutes, using UTC unless you specify another timezone.', { tool: 'Worked for 4s, called 3 tools', code: { label: 'text', lines: ['1. Send a concise “hi” message in this chat.', '2. Repeat every 15 minutes.', '3. Avoid duplicate messages for the same scheduled run.', '4. Use UTC unless a different timezone is specified.'] }, after: 'Reply **“confirm”** to create and enable it, or tell me your preferred timezone.' }),
+    { n: 'Competitor launch monitor', title: 'Daily Competitor Launch Monitor', scope: 'personal', msgs: [
+      Y('', 'every weekday at 8am, check our five main competitors for new changelog entries, pricing changes and press releases, and post what changed to #product with a one-line take on what it means for us'),
+      A('', 'I can set that up. Here is the draft:', { tool: 'Worked for 7s, called 5 tools', code: { label: 'text', lines: ['1. Every weekday at 8:00 AM in your timezone.', '2. For each competitor, read the changelog, pricing page and newsroom.', '3. Compare with yesterday’s snapshot and keep only real changes.', '4. Post a digest to #product: what changed, a one-line take, a link.', '5. Skip the post if nothing changed.'] }, after: CONFIRM }),
+      Y('', 'add Linear and Cursor to the list, and flag any pricing change as high priority'),
+      A('', 'Updated. The watchlist now has seven competitors, and pricing changes are posted first with a “High priority” label.', { tool: 'Worked for 4s, called 2 tools', code: { label: 'text', lines: ['Watchlist: 7 competitors (added Linear, Cursor)', 'Priority: pricing changes → “High priority”, posted first', 'Quiet days: no post'] }, after: CONFIRM }),
       Y('', 'confirm'),
-      A('', 'The automation is now created and enabled. You’ll receive a brief “hi” message here every 15 minutes, using UTC.', { tool: 'Worked for 4s, called 1 tool' }),
+      A('', 'The automation is created and enabled. The first run is tomorrow at 8:00 AM. I saved today’s snapshot as the baseline, so tomorrow’s digest only shows real changes.', { tool: 'Worked for 5s, called 3 tools' }),
+      Y('', 'run it once now so I can see the format'),
+      A('', 'Test run complete. I posted a sample to #product-test:\n1. **High priority** — Cursor raised Team pricing from $32 to $40 per seat\n2. Linear shipped “Triage Intelligence” in its changelog\n3. No other changes across the remaining five competitors\nWhich channel should the live posts go to?', { tool: 'Worked for 41s, called 9 tools' }),
+      Y('', '#product-intel'),
+      A('', 'Done. Posts will go to #product-intel starting tomorrow at 8:00 AM.', { tool: 'Worked for 4s, called 1 tool' }),
     ] },
-    { n: 'Morning digest', title: 'Morning Inbox and Calendar Digest', scope: 'personal', msgs: [
-      Y('', 'every weekday at 8:30, summarize my inbox and calendar and post it to #team'),
-      A('', 'Here’s the automation I’d create. It runs on weekdays at 8:30 AM in your timezone.', { tool: 'Worked for 6s, called 4 tools', code: { label: 'text', lines: ['1. Read unread email and today’s calendar.', '2. Summarize the 5 most important items.', '3. Post the digest to #team in Slack.'] }, after: CONFIRM }),
+    { n: 'Weekly revenue digest', title: 'Weekly Revenue Digest', scope: 'personal', msgs: [
+      Y('', 'every monday at 9am, pull last week’s revenue from Stripe and send me a summary with new MRR, churn, expansion and the top five accounts by growth'),
+      A('', 'Here is the draft:', { tool: 'Worked for 6s, called 4 tools', code: { label: 'text', lines: ['1. Every Monday at 9:00 AM.', '2. Pull last week’s subscriptions and invoices from Stripe.', '3. Calculate new MRR, churned MRR and expansion MRR.', '4. List the five accounts with the largest growth.', '5. Send the summary to you by email and Slack DM.'] }, after: CONFIRM }),
+      Y('', 'compare against the previous four weeks too'),
+      A('', 'Added a four-week trend for each metric, with a flag when a metric moves more than 15% from its average.', { tool: 'Worked for 4s, called 1 tool', code: { label: 'text', lines: ['6. Compare each metric with the 4-week average.', '7. Flag any metric that moves more than 15%.'] }, after: CONFIRM }),
+      Y('', 'confirm'),
+      A('', 'Enabled. The next run is Monday at 9:00 AM. I will also keep a running sheet in Files called “Revenue digest log”.', { tool: 'Worked for 5s, called 3 tools' }),
+      Y('', 'send me last week’s now'),
+      A('', 'Last week:\n1. **New MRR** $18.4k (+9% vs average)\n2. **Churned MRR** $3.1k (within range)\n3. **Expansion MRR** $6.7k (+22% vs average, flagged)\nLargest growth: Northwind +$2.4k, Ridgeline +$1.9k, Alder +$1.1k. The full summary is in your email.', { tool: 'Worked for 52s, called 8 tools' }),
     ] },
     { n: 'PR review on push', title: 'Review Every Push to Main', scope: 'personal', msgs: [
-      Y('', 'when someone pushes to main, review the diff and comment on the PR'),
-      A('', 'Done — the PR agent will review each push to main and leave suggestions as a comment.', { tool: 'Worked for 3s, called 2 tools' }),
+      Y('', 'when someone pushes to main, review the diff and comment on the PR with anything risky'),
+      A('', 'Here is the draft:', { tool: 'Worked for 5s, called 3 tools', code: { label: 'text', lines: ['1. Trigger: push to main on the web repository.', '2. Read the diff and the linked pull request.', '3. Check for missing tests, migrations and risky changes.', '4. Comment on the PR with findings, or approve silently if clean.'] }, after: CONFIRM }),
+      Y('', 'also tag the code owner when it touches billing or auth'),
+      A('', 'Added. Changes under `billing/` or `auth/` will tag the code owner in the comment.', { tool: 'Worked for 4s, called 2 tools', code: { label: 'text', lines: ['5. If files under billing/ or auth/ changed, tag the code owner.'] }, after: CONFIRM }),
+      Y('', 'confirm'),
+      A('', 'The automation is created and enabled. I ran it against the last three pushes: one comment about a missing test and two clean reviews.', { tool: 'Worked for 18s, called 6 tools' }),
     ] },
     { n: 'Weekly team update', title: 'Weekly Team Update', scope: 'workspace', msgs: [
-      Y('', 'every friday at 4pm, write a short team update from this week’s merged PRs'),
-      A('', 'I can do that. I’ll gather merged PRs, group them by area, and post a summary every Friday at 4:00 PM.', { tool: 'Worked for 5s, called 3 tools', after: CONFIRM }),
+      Y('', 'every friday at 4pm, write a short team update from this week’s merged PRs and post it in #team'),
+      A('', 'Here is the draft:', { tool: 'Worked for 5s, called 3 tools', code: { label: 'text', lines: ['1. Every Friday at 4:00 PM.', '2. Collect the week’s merged pull requests and closed tickets.', '3. Group them by area and write three to five bullets.', '4. Post the update in #team.'] }, after: CONFIRM }),
+      Y('', 'confirm'),
+      A('', 'Enabled. The first update will post this Friday at 4:00 PM. I will keep the same format each week so it is easy to scan.', { tool: 'Worked for 4s, called 2 tools' }),
+      Y('', 'run it now for this week so I can review the format'),
+      A('', 'Here is this week’s update, posted to #team-test:\n1. **Platform** — retry logic for failed webhooks shipped (#471); session token migration is in review\n2. **Product** — grouped notification digest is behind a flag for 10% of workspaces\n3. **Docs** — setup guide rewritten with new screenshots\nWant any section reordered or a “Next week” line added?', { tool: 'Worked for 38s, called 7 tools' }),
+      Y('', 'add a next week line and tag owners'),
+      A('', 'Updated. Each item now tags its owner, and the update ends with a “Next week” line built from open milestones and tickets due.', { tool: 'Worked for 6s, called 2 tools' }),
     ] },
   ]
   const PALETTE = [['blob', '#db2777'], ['squircle', '#ea580c'], ['droplet', '#2563eb'], ['cloud', '#7c3aed'], ['pill', '#f59e0b'], ['hexagon', '#16a34a']]
+  const MODELS = ['GPT 5.6 Luna', 'Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Gemini 3 Pro']
   const NAV = [['agents', 'Agents', 'bot'], ['chats', 'Chats', 'chat'], ['files', 'Files', 'file'], ['extensions', 'Extensions', 'puzzle'], ['automations', 'Automations', 'flow']]
-  const st = { view: 'agents', scope: 'personal', agent: 'claude', thread: 'main', chat: 0, file: 0, extf: 'all', auto: 0, ascope: 'personal', typing: null }
+  const st = { view: 'agents', scope: 'personal', agent: 'claude', thread: 'main', chat: 0, file: 0, extf: 'all', auto: 0, ascope: 'personal', model: 'GPT 5.6 Luna', menu: false, typing: null }
   let demoEl, appEl, newCount = 0, replyN = 0
 
+  const modelMenu = () => `<span class="mwrap"><span class="chip" data-a="model">${esc(st.model)} ${ic('down')}</span>${st.menu ? `<div class="menu">${MODELS.map((m) => `<div class="mi ${m === st.model ? 'on' : ''}" data-a="setmodel:${m}">${m}</div>`).join('')}</div>` : ''}</span>`
   const conv = () => {
     if (st.view === 'chats') return { who: OVERLAY_AI, plain: true, msgs: CHATS[st.chat].msgs, key: 'c' + st.chat, ph: 'Ask Overlay anything…', replies: REPLIES }
     if (st.view === 'automations') return { who: OVERLAY_AI, plain: true, msgs: AUTOS[st.auto].msgs, key: 'u' + st.auto, ph: 'Describe an automation, use @ to reference available context…', replies: AUTO_REPLIES }
@@ -1147,7 +1285,7 @@
       const c = conv()
       const head = st.view === 'agents'
         ? `<span class="who">${cr(c.who)}${esc(c.who.name)}</span><span class="tools"><span>${ic('gear')}</span><span>${ic('share')}Share</span><span>${ic('users')}2</span></span>`
-        : `<span class="who">${ic('chat')}${esc(CHATS[st.chat].title)}</span><span class="tools"><span>${ic('share')}Share</span></span>`
+        : `<span class="who">${ic('chat')}${esc(CHATS[st.chat].title)}</span><span class="tools">${modelMenu()}</span>`
       return `<div class="head">${head}</div>${chatBody(c)}`
     }
     if (st.view === 'files') {
@@ -1161,11 +1299,11 @@
     }
     if (st.view === 'extensions') {
       const list = EXTS.map((e, i) => [e, i]).filter(([e]) => (st.extf === 'all' ? true : st.extf === 'connected' ? e.on : e.t === st.extf))
-      return `<div class="head"><span class="who">Extensions</span><span class="tools"><span>${ic('plus')}Add</span></span></div><div class="page"><h2>Give your agents more to work with</h2><div class="sub2">Connect apps, add skills and MCP servers. Agents pick them up right away.</div>
-        <div class="grid">${list.map(([e, i]) => `<div class="card"><div class="top"><span class="logo" style="background:${e.c}">${e.n[0]}</span>${e.n}</div><p>${e.d}</p><button class="btn2 ${e.on ? 'on' : ''}" data-a="ext:${i}">${e.on ? 'Connected' : 'Connect'}</button></div>`).join('')}</div></div>`
+      return `<div class="head"><span class="who">Extensions</span><span class="tools"><span>${ic('plus')}Add</span></span></div><div class="page">
+        <div class="grid">${list.map(([e, i]) => `<div class="card"><div class="top"><span class="tile">${logoHTML(e)}</span>${e.n}</div><p>${e.d}</p><button class="btn2 ${e.on ? 'on' : ''}" data-a="ext:${i}">${e.on ? 'Connected' : 'Connect'}</button></div>`).join('')}</div></div>`
     }
     const c = conv()
-    return `<div class="head"><span class="who">${esc(AUTOS[st.auto].title)}</span><span class="tools"><span class="chip">GPT 5.6 Luna ${ic('down')}</span><span class="chip solid">${ic('chat')} Chat</span></span></div>${chatBody(c)}`
+    return `<div class="head"><span class="who">${esc(AUTOS[st.auto].title)}</span><span class="tools">${modelMenu()}</span></div>${chatBody(c)}`
   }
 
   function renderApp() {
@@ -1189,6 +1327,9 @@
   }
 
   function act(a, v) {
+    if (a === 'model') { st.menu = !st.menu; return renderApp() }
+    if (a === 'setmodel') { st.model = v; st.menu = false; return renderApp() }
+    st.menu = false
     if (a === 'send') return send()
     if (a === 'focus') return $('.composer input', appEl)?.focus({ preventScroll: true })
     if (a === 'nav') st.view = v
@@ -1197,18 +1338,18 @@
     else if (a === 'thread') st.thread = v
     else if (a === 'newagent') {
       const [shape, color] = PALETTE[newCount % PALETTE.length], k = 'new' + newCount++
-      AGENT_DATA[k] = { name: 'New agent', shape, color, main: [A(clock(), 'Hi! What do you want to call me, and what should I work on?')] }
-      AGENT_DATA[k].threads = { main: AGENT_DATA[k].main, new: [A(clock(), 'Hi! What do you want to work on in this thread?')] }
+      AGENT_DATA[k] = { name: 'New agent', shape, color, main: [A(clock(), 'I am ready to work. Give me a name and a first task, for example: triage new support tickets every morning.')] }
+      AGENT_DATA[k].threads = { main: AGENT_DATA[k].main, new: [A(clock(), 'What would you like to work on in this thread?')] }
       PERSONAL.unshift(k); st.scope = 'personal'; st.agent = k; st.thread = 'main'
     }
     else if (a === 'chat') st.chat = +v
-    else if (a === 'newchat') { CHATS.unshift({ title: 'New chat', msgs: [A(clock(), 'Hi! What can I help you with?')] }); st.chat = 0 }
+    else if (a === 'newchat') { CHATS.unshift({ title: 'New chat', msgs: [A(clock(), 'What would you like to work on?')] }); st.chat = 0 }
     else if (a === 'file') st.file = +v
     else if (a === 'extf') st.extf = v
     else if (a === 'ext') EXTS[+v].on = !EXTS[+v].on
     else if (a === 'auto') st.auto = +v
     else if (a === 'ascope') { st.ascope = v; const f = AUTOS.findIndex((x) => x.scope === v); if (f >= 0) st.auto = f }
-    else if (a === 'newauto') { AUTOS.unshift({ n: 'New automation', title: 'New Automation', scope: st.ascope, msgs: [A('', 'Describe what you want to automate and when, and I’ll draft it for you.')] }); st.auto = 0 }
+    else if (a === 'newauto') { AUTOS.unshift({ n: 'New automation', title: 'New Automation', scope: st.ascope, msgs: [A('', 'Describe what you want to automate and when. For example: “Every Monday at 9, summarize last week’s merged PRs and post them to #eng.”')] }); st.auto = 0 }
     renderApp()
   }
 
@@ -1219,9 +1360,11 @@
     appEl.addEventListener('click', (e) => { const el = e.target.closest('[data-a]'); if (!el) return; const [a, ...rest] = el.dataset.a.split(':'); act(a, rest.join(':')) })
     appEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.composer input')) { e.preventDefault(); send() } })
     renderApp()
-    const fit = () => demoEl.style.setProperty('--ds', demoEl.clientWidth / 1000)
+    const toBottom = () => { const box = $('.msgs', appEl); if (box) box.scrollTop = box.scrollHeight }   // chats open on the latest message
+    const fit = () => { demoEl.style.setProperty('--ds', demoEl.clientWidth / 1000); toBottom() }
     fit()
     new ResizeObserver(fit).observe(demoEl)
+    document.fonts.ready.then(toBottom)
   }
   buildDemo()
 
