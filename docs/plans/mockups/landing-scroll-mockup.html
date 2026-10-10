@@ -67,7 +67,7 @@
   .stage { position: fixed; inset: 0; overflow: hidden; }
 
   /* ---------- logo lockup (orb + serif wordmark) ---------- */
-  .lockup { display: inline-flex; align-items: center; gap: 0.45em; font-family: var(--serif); letter-spacing: -0.02em; }
+  .lockup { display: inline-flex; align-items: center; gap: 0.45em; font-family: var(--serif); letter-spacing: -0.02em; line-height: 1; }
   .orb {
     width: 0.62em; height: 0.62em; border-radius: 50%; flex: none;
     background: radial-gradient(circle at 34% 28%, #ffffff 0%, #c9c9cf 38%, #6b6b73 78%, #3a3a40 100%);
@@ -97,10 +97,10 @@
   /* ---------- section 1: hero ---------- */
   .hero {
     position: absolute; inset: 0; z-index: 5;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: clamp(18px, 3.6vh, 38px); padding: 28px 20px 40px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    gap: clamp(16px, 2.8vh, 28px); padding: clamp(36px, 7vh, 76px) 20px 0; text-align: center;
   }
-  .hero .lockup { font-size: clamp(26px, 3.6vw, 38px); transform-origin: 0 0; }
+  .hero .lockup { font-size: clamp(46px, 6.4vw, 88px); transform-origin: 0 0; }   /* bigger than the subtitle */
   .sub {
     font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; line-height: 1.4;
     font-size: clamp(21px, 3vw, 40px); max-width: 21em;
@@ -116,8 +116,13 @@
     fill: none; stroke: var(--foreground); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
     opacity: var(--caret, 0); transition: opacity .25s; pointer-events: none;
   }
+  .hero-cta {
+    display: inline-flex; align-items: center; padding: 12px 28px; border-radius: 999px; font: 400 15px/1 var(--serif);
+    background: var(--button-primary-bg); color: var(--button-primary-text); transition: opacity .2s, transform .2s var(--ease-out);
+  }
+  .hero-cta:hover { opacity: .88; }
   .demo {
-    position: relative; height: clamp(200px, 47vh, 540px); aspect-ratio: 16 / 9; max-width: 92vw;
+    position: relative; flex: none; width: clamp(420px, min(72vw, calc(2.05 * (100vh - 350px))), 1200px); aspect-ratio: 16 / 9; max-width: 94vw;   /* taller than the space left: the bottom edge crops it a little */
     border: var(--hairline); border-radius: 14px; background: var(--background); overflow: hidden;
     box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 24px 60px -24px rgba(0,0,0,.28);
   }
@@ -125,7 +130,7 @@
   .app {
     position: absolute; left: 0; top: 0; width: 1000px; height: 563px; transform-origin: 0 0; transform: scale(var(--ds, .6));
     display: grid; grid-template-columns: 118px 152px minmax(0, 1fr); font: 400 10px/1.4 var(--sans); text-align: left; color: var(--foreground);
-    user-select: none; pointer-events: none;
+    user-select: none;
   }
   .app svg.i { width: 12px; height: 12px; stroke-width: 1.6; }
   .app .col1, .app .col2 { display: flex; flex-direction: column; background: var(--surface-elevated); border-right: var(--hairline); min-width: 0; }
@@ -148,9 +153,9 @@
   .app .agent .cr { width: 13px; height: 13px; flex: none; display: inline-flex; }
   .app .agent .cr svg { width: 100%; height: 100%; }
   .app .agent .end { margin-left: auto; opacity: .7; }
-  .app .agent.sub { padding-left: 8px; }
-  .app .agent.sub.on { background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); }
-  .app .agent.sub small { margin-left: auto; font-size: 7.5px; color: var(--muted-light); }
+  .app .agent.child { padding-left: 8px; }
+  .app .agent.child.on { background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); }
+  .app .agent.child small { margin-left: auto; font-size: 7.5px; color: var(--muted-light); }
   .app .agent.dim { color: var(--muted-light); }
   .app .main { display: flex; flex-direction: column; min-width: 0; background: var(--background); }
   .app .main .head .who { display: flex; align-items: center; gap: 7px; font: 500 11px var(--sans); }
@@ -158,23 +163,89 @@
   .app .main .head .who .cr svg { width: 100%; height: 100%; }
   .app .main .head .tools { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 9.5px; }
   .app .main .head .tools span { display: inline-flex; align-items: center; gap: 4px; }
-  .app .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 0 12px; }
-  .app .chat > div { width: 470px; }
+  .app [data-a] { cursor: pointer; }
+  .app .nav-i:hover, .app .row:hover, .app .agent:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+  .app .agent.sel { color: var(--foreground); }
+  .app .agent .lab, .app .row .lab { overflow: hidden; text-overflow: ellipsis; }
+  .app .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .app .msgs { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; align-items: center; }
+  .app .msgs::-webkit-scrollbar, .app .page::-webkit-scrollbar { display: none; }
+  .app .msgs .col { width: 480px; margin-top: auto; padding: 12px 0 6px; user-select: text; }
   .app .daydiv { display: flex; align-items: center; gap: 10px; color: var(--muted-light); font: 7.5px var(--mono); letter-spacing: .1em; margin-bottom: 12px; }
   .app .daydiv::before, .app .daydiv::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-  .app .msg { display: flex; gap: 8px; margin-bottom: 32px; animation: rise .7s var(--ease-out) .4s both; }
+  .app .msg { display: flex; gap: 8px; margin-bottom: 14px; animation: rise .45s var(--ease-out) both; }
+  .app .msg.you { justify-content: flex-end; margin-bottom: 16px; }
+  .app .msg .bubble { max-width: 74%; padding: 7px 12px; border-radius: 12px; background: var(--surface-muted); border: var(--hairline); font-size: 10.5px; line-height: 1.45; user-select: text; }
+  .app .msg .mb { min-width: 0; flex: 1; user-select: text; }
+  .app .msg.plain { display: block; }
+  .app .msg ol { padding-left: 16px; margin: 4px 0; }
+  .app .msg li { font-size: 10.5px; line-height: 1.6; margin: 1px 0; }
+  .app .msg strong { font-weight: 600; }
+  .app .tool { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9.5px; margin: 3px 0 7px; }
+  .app .tool .orb { width: 7px; height: 7px; }
+  .app .tool svg { width: 10px; height: 10px; }
+  .app .code { border: var(--hairline); border-radius: 9px; background: var(--surface-elevated); margin: 8px 0 9px; overflow: hidden; }
+  .app .code .ch { display: flex; justify-content: space-between; align-items: center; padding: 7px 11px; font: 8.5px var(--mono); color: var(--muted); border-bottom: var(--hairline); }
+  .app .code pre { font: 8.5px/1.9 var(--mono); padding: 8px 11px; margin: 0; white-space: pre-wrap; color: color-mix(in srgb, var(--foreground) 85%, transparent); }
+  .app .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border: var(--hairline); border-radius: 7px; color: var(--muted); font-size: 9px; }
+  .app .chip.solid { color: var(--foreground); }
+  .app .row .gi { color: #16a34a; display: inline-flex; }
   .app .msg .cr { width: 19px; height: 19px; flex: none; display: inline-flex; }
   .app .msg .cr svg { width: 100%; height: 100%; }
+  .app .msg .av { width: 19px; height: 19px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--surface-muted); border: var(--hairline); font: 600 8px var(--sans); }
   .app .msg .by { font: 600 10px var(--sans); }
   .app .msg .by small { font: 400 8px var(--sans); color: var(--muted-light); margin-left: 5px; }
-  .app .msg p { font-size: 11px; margin-top: 3px; }
-  .app .composer { border: var(--hairline); border-radius: 13px; background: var(--surface-elevated); padding: 11px 12px 9px; height: 62px; display: flex; flex-direction: column; justify-content: space-between; }
-  .app .composer .ph { color: var(--muted); font-size: 10px; display: flex; align-items: center; }
-  .app .composer .caret-b { width: 1px; height: 11px; background: var(--foreground); margin-left: 1px; animation: caretblink 1.1s steps(1) infinite; }
+  .app .msg p { font-size: 10.5px; margin-top: 2px; line-height: 1.5; }
+  .app code { font: 9.5px var(--mono); background: var(--surface-muted); padding: 0 3px; border-radius: 3px; }
+  .app .typing { display: flex; gap: 3px; padding-top: 5px; }
+  .app .typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); animation: tdot 1s ease-in-out infinite; }
+  .app .typing i:nth-child(2) { animation-delay: .15s; } .app .typing i:nth-child(3) { animation-delay: .3s; }
+  @keyframes tdot { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+  .app .cwrap { width: 480px; margin: 0 auto; padding: 0 0 9px; flex: none; }
+  .app .composer { border: var(--hairline); border-radius: 13px; background: var(--surface-elevated); padding: 11px 12px 9px; height: 62px; display: flex; flex-direction: column; justify-content: space-between; cursor: text; }
+  .app .composer:focus-within { border-color: color-mix(in srgb, var(--foreground) 35%, var(--border)); }
+  .app .composer input { all: unset; width: 100%; font-size: 10px; color: var(--foreground); user-select: text; cursor: text; }
+  .app .composer input::placeholder { color: var(--muted); }
   .app .composer .bar { display: flex; align-items: center; gap: 10px; color: var(--muted); }
   .app .composer .send { margin-left: auto; width: 22px; height: 20px; border-radius: 6px; background: var(--surface-muted); border: var(--hairline); display: grid; place-items: center; }
-  .app .note { margin-top: 8px; text-align: center; color: var(--muted-light); font-size: 8px; }
-  @keyframes caretblink { 50% { opacity: 0; } }
+  .app .composer .send:hover { background: var(--foreground); color: var(--background); }
+  .app .note { margin-top: 7px; text-align: center; color: var(--muted-light); font-size: 8px; }
+  .app .page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 18px 24px; }
+  .app .page h2 { font: 400 16px var(--serif); letter-spacing: -.01em; }
+  .app .page .sub2 { color: var(--muted); font-size: 9.5px; margin: 3px 0 14px; }
+  .app .doc { max-width: 430px; margin: 0 auto; user-select: text; }
+  .app .doc h3 { font: 400 15px var(--serif); margin: 0 0 8px; }
+  .app .doc h4 { font: 600 10px var(--sans); margin: 12px 0 4px; }
+  .app .doc p, .app .doc li { font-size: 10px; line-height: 1.6; color: color-mix(in srgb, var(--foreground) 82%, transparent); }
+  .app .doc ul { padding-left: 14px; }
+  .app table { border-collapse: collapse; width: 100%; font-size: 9.5px; }
+  .app th, .app td { text-align: left; padding: 6px 9px; border-bottom: var(--hairline); }
+  .app th { color: var(--muted); font-weight: 500; font-size: 8.5px; letter-spacing: .04em; }
+  .app .pdf { width: 250px; height: 300px; margin: 0 auto; border: var(--hairline); border-radius: 4px; background: var(--surface-elevated); padding: 22px 20px; box-shadow: 0 8px 24px -14px rgba(0,0,0,.35); }
+  .app .pdf b { display: block; height: 7px; border-radius: 3px; background: var(--border); margin-bottom: 8px; }
+  .app .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+  .app .card { border: var(--hairline); border-radius: 9px; padding: 10px; background: var(--surface-elevated); display: flex; flex-direction: column; gap: 5px; }
+  .app .card .top { display: flex; align-items: center; gap: 7px; font: 600 10.5px var(--sans); }
+  .app .logo { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; color: #fff; font: 600 9px var(--sans); flex: none; }
+  .app .card p { font-size: 9px; color: var(--muted); min-height: 24px; }
+  .app .btn2 { align-self: flex-start; padding: 3px 10px; border-radius: 6px; border: var(--hairline); font-size: 9px; color: var(--foreground); background: none; }
+  .app .btn2:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+  .app .btn2.on { background: color-mix(in srgb, #16a34a 14%, transparent); border-color: color-mix(in srgb, #16a34a 45%, transparent); color: #16a34a; }
+  .app .btn2.solid { background: var(--foreground); color: var(--background); border-color: transparent; }
+  .app .flow { display: flex; align-items: center; gap: 7px; margin: 4px 0 16px; flex-wrap: wrap; }
+  .app .step { border: var(--hairline); border-radius: 8px; padding: 7px 11px; background: var(--surface-elevated); font-size: 9.5px; display: flex; align-items: center; gap: 6px; }
+  .app .step small { color: var(--muted); font-size: 8px; display: block; }
+  .app .flow > svg { color: var(--muted-light); }
+  .app .log { border: var(--hairline); border-radius: 8px; background: var(--surface-elevated); padding: 9px 11px; font: 9px/1.7 var(--mono); color: var(--muted); min-height: 90px; }
+  .app .log div { animation: rise .35s var(--ease-out) both; }
+  .app .log .ok { color: #16a34a; }
+  .app .switch { width: 24px; height: 14px; border-radius: 8px; background: var(--border); position: relative; flex: none; transition: background .2s; }
+  .app .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease-out); box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  .app .switch.on { background: #16a34a; }
+  .app .switch.on::after { transform: translateX(10px); }
+  .app .pagehead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .app .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-light); flex: none; }
+  .app .dot.on { background: #16a34a; }
 
   /* ---------- left rail (gallery of the underlined phrases) ---------- */
   .rail {
@@ -391,6 +462,7 @@
       <span class="w">for</span>
       <span class="k" data-k="ai">AI employees</span>
     </h1>
+    <a class="hero-cta" id="heroCta" href="#">Get started</a>
     <div class="demo" id="demo"></div>   <!-- filled by buildDemo(): a miniature of the Overlay app -->
   </section>
 
@@ -443,7 +515,7 @@
   const view = $('#view'), titleEl = $('#title'), bodyGrid = $('#bodyGrid'), side = $('#side')
   const graphic = $('#graphic'), gInner = $('#gInner'), gName = $('#gName'), gBrief = $('#gBrief'), gP = $('#gP')
   const dev = $('#dev')
-  const heroLockup = $('#heroLockup'), demo = $('#demo'), hero = $('#hero')
+  const heroLockup = $('#heroLockup'), demo = $('#demo'), hero = $('#hero'), heroCta = $('#heroCta')
 
   /* The five underlined phrases. Rail order = reverse of the sentence. */
   const SECTIONS = {
@@ -605,11 +677,12 @@
     railItems[k] = b
   })
 
-  let V = innerHeight, INTRO = V, starts = [], secRange = {}, M = {}, LK = { s: 1, tx: 0, ty: 0 }, cur = -1
+  let V = innerHeight, PRE = 0, INTRO = V, starts = [], secRange = {}, M = {}, LK = { s: 1, tx: 0, ty: 0 }, cur = -1
 
   function layout() {
     V = innerHeight
-    INTRO = V
+    PRE = 0.3 * V                     // scroll lag: the "open source" insertion appears first, the hand-off starts after this
+    INTRO = V + PRE
     let y = INTRO
     starts = SCENES.map((s) => { const at = y; y += s.len * V; return at })
     $('#scroller').style.height = y + V + 'px'
@@ -789,12 +862,14 @@
   /* ---------- scroll-driven update ---------- */
   function update() {
     const y = scrollY
-    const r = clamp(y / (V * 0.9))              // hero → rail hand-off progress
+    const r = clamp((y - PRE) / (V * 0.9))      // hero → rail hand-off progress (starts after the PRE pause)
     const done = r >= 1
 
     // hero fades + rises
     const f = clamp(r * 1.8)
     demo.style.opacity = 1 - f
+    heroCta.style.opacity = 1 - f
+    heroCta.style.transform = `translateY(${-f * 24}px)`
     // logo + wordmark travel up into the nav, then hand over to the real nav lockup
     const le = ease(clamp(r / 0.9)), docked = le >= 1
     heroLockup.style.transform = docked ? '' : `translate(${LK.tx * le}px, ${LK.ty * le}px) scale(${1 + (LK.s - 1) * le})`
@@ -806,7 +881,7 @@
 
     // phrases fly from the subtitle into the rail (staggered)
     rail.style.setProperty('--e', ease(r))
-    const show = Math.max(peek ? 1 : 0, clamp(r / 0.1))                     // "open source" appears on hover / first scroll
+    const show = Math.max(peek ? 1 : 0, clamp(y / (PRE * 0.6)))                     // "open source" appears on hover / first scroll
     railItems.oss.style.setProperty('--rv', show)
     railItems.oss.classList.toggle('ghost', show < 0.5)
     $('#sub').style.setProperty('--caret', show * (1 - clamp((r - 0.12) / 0.25)))   // caret fades once it starts moving
@@ -847,9 +922,15 @@
       const { S, E } = secRange[k], W = 0.6 * V
       agentEls[k].forEach((el, i) => {
         const lag = i * 0.08 * V
-        const enter = ease(clamp((y - (S - W) - lag) / W))
-        const exit = E === Infinity ? 0 : ease(clamp((y - (E - W) - lag) / W))
-        const d = Math.max(1 - enter, exit)
+        let d
+        if (forced !== null) {                        // jump from the hero in progress: only the target's pair enters, in step with the hand-off
+          d = SCENES[forced].sec === k ? 1 - ease(clamp((r - 0.35 - i * 0.08) / 0.65)) : 1
+        } else {
+          const Wd = W - 0.08 * V                       // stagger without overrunning the boundary: both agents are done by S (enter) / E (exit)
+          const enter = ease(clamp((y - (S - W) - lag) / Wd))
+          const exit = E === Infinity ? 0 : ease(clamp((y - (E - W) - lag) / Wd))
+          d = Math.max(1 - enter, exit)
+        }
         place(el, d)
       })
     })
@@ -873,7 +954,8 @@
     try { localStorage.setItem('overlay-mockup-theme', next) } catch (_) {}
   })
 
-  /* ---------- demo: a miniature of the Overlay app (agents view with a first chat) ---------- */
+  /* ---------- demo: a small working copy of the Overlay app ----------
+     Agents (scripted chats you can reply to), Chats, Files, Extensions and Automations each render their own page. */
   const ICON = {
     bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
     chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
@@ -888,43 +970,255 @@
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
     share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>', check: '<path d="M20 6 9 17l-5-5"/>', play: '<polygon points="6 3 20 12 6 21 6 3"/>', arrow: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>', table: '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
   }
   const ic = (n) => `<svg class="i" viewBox="0 0 24 24">${ICON[n]}</svg>`
-  const cr = (shape, color) => `<span class="cr">${creatureSVG(shape, color)}</span>`
+  const cr = (a) => `<span class="cr">${creatureSVG(a.shape, a.color)}</span>`
+  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const md = (t) => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>')
+  const clock = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const Y = (t, text) => ({ who: 'you', t, text }), A = (t, text, extra) => Object.assign({ who: 'agent', t, text }, extra)
+
+  const AGENT_DATA = {
+    claude: { name: 'Claude Code', shape: 'hexagon', color: '#f59e0b', main: [
+      Y('4:12 PM', 'Can you look into why the checkout tests are failing on main?'),
+      A('4:12 PM', "Looking now. I'll check the latest CI run and the recent commits."),
+      A('4:14 PM', 'Found it — a date mock in `checkout.test.ts` was off by a day after the clock change. I fixed the fixture and re-ran the suite: all 214 tests pass.'),
+      Y('4:15 PM', 'Perfect. Open a PR for it and ask Sam to review.'),
+      A('4:16 PM', "Done. PR #482 is open and Sam has been asked to review.\nWant me to watch CI and ping you when it's merged?", { tool: 'Worked for 1m 5s, called 2 tools' }),
+    ] },
+    codex: { name: 'Codex agent', shape: 'hexagon', color: '#14b8a6', main: [
+      Y('11:02 AM', 'Refactor the billing helpers into one module.'),
+      A('11:09 AM', 'Done — merged three helpers into `billing/index.ts` and updated 11 imports. Typecheck and tests pass.'),
+      Y('11:10 AM', 'Nice, thanks.'),
+    ] },
+    pr: { name: 'PR agent', shape: 'pill', color: '#2563eb', main: [
+      A('9:00 AM', 'Weekly summary: 14 PRs reviewed, 3 waiting on the author, 1 blocked on CI.'),
+      Y('9:03 AM', 'Which one is blocked?'),
+      A('9:03 AM', "#471 — the lint job is failing on a stale cache. I've re-run it and will ping the author if it fails again."),
+    ] },
+    product: { name: 'Product Agent', shape: 'hexagon', color: '#2563eb', main: [
+      Y('2:30 PM', 'Draft a one-pager for the notifications redesign.'),
+      A('2:34 PM', 'First pass is ready: problem, goals, non-goals and three rollout options. I linked the research notes from Files.'),
+      Y('2:36 PM', 'Add a section on metrics.'),
+      A('2:37 PM', 'Added: open rate, opt-out rate and time-to-first-action. Anything else?'),
+    ] },
+    overlay: { name: 'Overlay', shape: 'circle', color: '#64748b', main: [
+      A('8:00 AM', "Hi! I'm your default agent. Ask me anything or hand me a task."),
+      Y('8:01 AM', "What's on my calendar tomorrow?"),
+      A('8:01 AM', 'Three things: standup at 9:30, design review at 11:00, and a 1:1 with Priya at 3:00.'),
+    ] },
+    fund: { name: 'Fundraising Agent', shape: 'triangle', color: '#16a34a', main: [
+      Y('Yesterday', "Who haven't we followed up with from last week's intros?"),
+      A('Yesterday', "Four investors. I drafted a follow-up for each — want to review them?"),
+      Y('Yesterday', 'Yes please.'),
+      A('Yesterday', 'Saved to Files as `Follow-ups.md`.'),
+    ] },
+    support: { name: 'Support agent', shape: 'squircle', color: '#ea580c', main: [
+      A('7:45 AM', '12 new tickets overnight: 9 resolved from the help center, 3 need a human.'),
+      Y('7:50 AM', 'Show me the 3.'),
+      A('7:50 AM', 'A refund request, an SSO login loop, and a feature question from an enterprise trial.'),
+    ] },
+    sales: { name: 'Sales agent', shape: 'blob', color: '#db2777', main: [
+      Y('Mon', 'Research Northwind before our call tomorrow.'),
+      A('Mon', 'Brief is in Files: 400 employees, new VP of Ops, and they just announced a data-platform migration.'),
+    ] },
+    docs: { name: 'Docs agent', shape: 'cloud', color: '#7c3aed', main: [
+      A('Tue', 'I found 6 pages that still describe the old setup flow. Want me to update them?'),
+    ] },
+  }
+  Object.values(AGENT_DATA).forEach((a) => { a.threads = { main: a.main, new: [A(clock(), 'Hi! What do you want to work on in this thread?')] } })
+  const PERSONAL = ['claude', 'codex', 'pr', 'product', 'overlay', 'fund'], WORKSPACE = ['support', 'sales', 'docs']
+  const AUTO_REPLIES = ['Got it — I updated the draft. Reply **“confirm”** to create and enable it.', 'Done. The automation is enabled and will run on schedule.']
+  const REPLIES = ["On it — I'll post an update here as soon as it's done.", "Got it. I'll start now and flag anything that needs your call.", 'Done. Want me to share the result with the team?', "Sure — give me a minute and I'll come back with a draft."]
+  const OVERLAY_AI = { name: 'Overlay', shape: 'circle', color: '#64748b' }
+  const CHATS = [
+    { title: 'Summarize Q3 board notes', msgs: [Y('10:05 AM', 'Summarize the Q3 board notes in five bullets.'), A('10:05 AM', 'Revenue +18% QoQ, churn down to 2.1%, two enterprise pilots converted, hiring plan approved for 6 roles, and the Series A timeline stays on track for Q1.')] },
+    { title: 'Draft launch email', msgs: [Y('Yesterday', 'Draft a short launch email for the new agents release.'), A('Yesterday', "Subject: Meet your first AI employee. Body: three sentences on what's new, one on how to try it, and a single clear button. Want a warmer or a more formal tone?"), Y('Yesterday', 'Warmer.')] },
+    { title: 'Compare vector databases', msgs: [Y('Mon', 'Pgvector or a dedicated vector DB for ~5M documents?'), A('Mon', "At 5M documents pgvector with HNSW is fine and keeps your stack simple. Move to a dedicated store when you need hybrid search at scale or sub-10ms p99 under heavy load.")] },
+  ]
+  const FILES = [
+    { name: 'Launch plan.md', kind: 'md' }, { name: 'Q3 board notes.md', kind: 'md2' }, { name: 'Pricing research.csv', kind: 'csv' }, { name: 'Brand guidelines.pdf', kind: 'pdf' },
+  ]
+  const EXTS = [
+    { n: 'Slack', t: 'app', c: '#611f69', d: 'Read channels, post updates, answer threads.', on: true }, { n: 'GitHub', t: 'app', c: '#24292f', d: 'Open PRs, review code, triage issues.', on: true },
+    { n: 'Gmail', t: 'app', c: '#dc2626', d: 'Draft and send email from your inbox.', on: false }, { n: 'Linear', t: 'app', c: '#5e6ad2', d: 'Create and update issues and projects.', on: false },
+    { n: 'Notion', t: 'app', c: '#3f3f46', d: 'Search and edit pages and databases.', on: false }, { n: 'Calendar', t: 'app', c: '#2563eb', d: 'See your schedule and book meetings.', on: true },
+    { n: 'Web search', t: 'skill', c: '#0ea5e9', d: 'Look things up and cite sources.', on: true }, { n: 'Code review', t: 'skill', c: '#16a34a', d: 'Review diffs against your standards.', on: false },
+    { n: 'Browser', t: 'mcp', c: '#ea580c', d: 'Let an agent use a real browser.', on: false },
+  ]
+  const CONFIRM = 'Reply **“confirm”** to create and enable it, or tell me what to change.'
+  const AUTOS = [
+    { n: 'Send hi message every 15 minutes', title: 'Automated Hi Messages Every 15 Minutes', scope: 'personal', msgs: [
+      Y('', 'can you send me a hi message here every 15 minutes?'),
+      A('', 'I drafted an automation to send you a brief “hi” message here every 15 minutes, using UTC unless you specify another timezone.', { tool: 'Worked for 4s, called 3 tools', code: { label: 'text', lines: ['1. Send a concise “hi” message in this chat.', '2. Repeat every 15 minutes.', '3. Avoid duplicate messages for the same scheduled run.', '4. Use UTC unless a different timezone is specified.'] }, after: 'Reply **“confirm”** to create and enable it, or tell me your preferred timezone.' }),
+      Y('', 'confirm'),
+      A('', 'The automation is now created and enabled. You’ll receive a brief “hi” message here every 15 minutes, using UTC.', { tool: 'Worked for 4s, called 1 tool' }),
+    ] },
+    { n: 'Morning digest', title: 'Morning Inbox and Calendar Digest', scope: 'personal', msgs: [
+      Y('', 'every weekday at 8:30, summarize my inbox and calendar and post it to #team'),
+      A('', 'Here’s the automation I’d create. It runs on weekdays at 8:30 AM in your timezone.', { tool: 'Worked for 6s, called 4 tools', code: { label: 'text', lines: ['1. Read unread email and today’s calendar.', '2. Summarize the 5 most important items.', '3. Post the digest to #team in Slack.'] }, after: CONFIRM }),
+    ] },
+    { n: 'PR review on push', title: 'Review Every Push to Main', scope: 'personal', msgs: [
+      Y('', 'when someone pushes to main, review the diff and comment on the PR'),
+      A('', 'Done — the PR agent will review each push to main and leave suggestions as a comment.', { tool: 'Worked for 3s, called 2 tools' }),
+    ] },
+    { n: 'Weekly team update', title: 'Weekly Team Update', scope: 'workspace', msgs: [
+      Y('', 'every friday at 4pm, write a short team update from this week’s merged PRs'),
+      A('', 'I can do that. I’ll gather merged PRs, group them by area, and post a summary every Friday at 4:00 PM.', { tool: 'Worked for 5s, called 3 tools', after: CONFIRM }),
+    ] },
+  ]
+  const PALETTE = [['blob', '#db2777'], ['squircle', '#ea580c'], ['droplet', '#2563eb'], ['cloud', '#7c3aed'], ['pill', '#f59e0b'], ['hexagon', '#16a34a']]
+  const NAV = [['agents', 'Agents', 'bot'], ['chats', 'Chats', 'chat'], ['files', 'Files', 'file'], ['extensions', 'Extensions', 'puzzle'], ['automations', 'Automations', 'flow']]
+  const st = { view: 'agents', scope: 'personal', agent: 'claude', thread: 'main', chat: 0, file: 0, extf: 'all', auto: 0, ascope: 'personal', typing: null }
+  let demoEl, appEl, newCount = 0, replyN = 0
+
+  const conv = () => {
+    if (st.view === 'chats') return { who: OVERLAY_AI, plain: true, msgs: CHATS[st.chat].msgs, key: 'c' + st.chat, ph: 'Ask Overlay anything…', replies: REPLIES }
+    if (st.view === 'automations') return { who: OVERLAY_AI, plain: true, msgs: AUTOS[st.auto].msgs, key: 'u' + st.auto, ph: 'Describe an automation, use @ to reference available context…', replies: AUTO_REPLIES }
+    const a = AGENT_DATA[st.agent]
+    return { who: a, plain: false, msgs: a.threads[st.thread], key: `a${st.agent}:${st.thread}`, ph: `Message ${a.name}, use @ to notify someone…`, replies: REPLIES }
+  }
+  /* tiny markdown: **bold**, `code`, numbered lists and paragraphs */
+  const inline = (t) => esc(t).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>')
+  const rich = (text) => {
+    const out = []; let list = null
+    text.split('\n').forEach((line) => {
+      const m = line.match(/^\d+\.\s+(.*)/)
+      if (m) { (list = list || []).push(m[1]); return }
+      if (list) { out.push('<ol>' + list.map((x) => `<li>${inline(x)}</li>`).join('') + '</ol>'); list = null }
+      if (line.trim()) out.push(`<p>${inline(line)}</p>`)
+    })
+    if (list) out.push('<ol>' + list.map((x) => `<li>${inline(x)}</li>`).join('') + '</ol>')
+    return out.join('')
+  }
+  const bodyHTML = (m) => (m.tool ? `<div class="tool"><span class="orb"></span>${m.tool}${ic('down')}</div>` : '') + rich(m.text) +
+    (m.code ? `<div class="code"><div class="ch"><span>${m.code.label}</span>${ic('copy')}</div><pre>${esc(m.code.lines.join('\n'))}</pre></div>` : '') + (m.after ? rich(m.after) : '')
+  const msgHTML = (m, who, plain) => {
+    if (m.who === 'you') return `<div class="msg you"><div class="bubble">${esc(m.text)}</div></div>`
+    if (plain) return `<div class="msg plain"><div class="mb">${bodyHTML(m)}</div></div>`
+    return `<div class="msg">${cr(who)}<div class="mb"><div class="by">${esc(who.name)}<small>${m.t}</small></div>${bodyHTML(m)}</div></div>`
+  }
+  const typingHTML = (who, plain) => plain
+    ? `<div class="msg plain"><div class="typing"><i></i><i></i><i></i></div></div>`
+    : `<div class="msg">${cr(who)}<div class="mb"><div class="by">${esc(who.name)}</div><div class="typing"><i></i><i></i><i></i></div></div></div>`
+  const msgsHTML = () => { const c = conv(); return `<div class="daydiv">TODAY</div>${c.msgs.map((m) => msgHTML(m, c.who, c.plain)).join('')}${st.typing === c.key ? typingHTML(c.who, c.plain) : ''}` }
+  function renderMsgs() {
+    const col = $('.msgs .col', appEl); if (!col) return
+    const box = $('.msgs', appEl), prev = col.children.length
+    col.innerHTML = msgsHTML()
+    box.scrollTop = box.scrollHeight
+    void prev
+  }
+  const chatBody = (c) => `<div class="chat"><div class="msgs"><div class="col">${msgsHTML()}</div></div>
+      <div class="cwrap"><div class="composer" data-a="focus"><input type="text" placeholder="${esc(c.ph)}" autocomplete="off" spellcheck="false" /><div class="bar">${ic('plus')}${ic('at')}<span class="send" data-a="send">${ic('send')}</span></div></div>
+      <div class="note">Overlay can make mistakes. Check important info.</div></div></div>`
+
+  function col2HTML() {
+    const row = (on, a, icon, label) => `<div class="row ${on ? 'on' : ''}" data-a="${a}">${ic(icon)}<span class="lab">${esc(label)}</span></div>`
+    if (st.view === 'agents') {
+      const list = st.scope === 'personal' ? PERSONAL : WORKSPACE
+      return `<div class="head"><span class="ttl">agents</span></div>
+        <div class="scope">${row(st.scope === 'personal', 'scope:personal', 'user', 'Personal')}${row(st.scope === 'workspace', 'scope:workspace', 'users', 'Workspace')}</div>
+        <div class="newagent" data-a="newagent">New agent</div>
+        ${list.map((k) => {
+          const a = AGENT_DATA[k], sel = st.agent === k
+          return `<div class="agent ${sel ? 'sel' : ''}" data-a="agent:${k}">${cr(a)}<span class="lab">${esc(a.name)}</span><span class="end">${ic(sel ? 'down' : 'right')}</span></div>` +
+            (sel ? `<div class="agent child ${st.thread === 'main' ? 'on' : ''}" data-a="thread:main">${ic('chat')}<span class="lab">${esc(a.name)}</span><small>Main</small></div>
+                    <div class="agent child ${st.thread === 'new' ? 'on' : 'dim'}" data-a="thread:new">${ic('plus')}New thread</div>` : '')
+        }).join('')}`
+    }
+    if (st.view === 'chats') return `<div class="head"><span class="ttl">chats</span></div><div class="newagent" data-a="newchat">New chat</div><div class="scope" style="border:0">${CHATS.map((c, i) => row(st.chat === i, 'chat:' + i, 'chat', c.title)).join('')}</div>`
+    if (st.view === 'files') return `<div class="head"><span class="ttl">files</span></div><div class="scope" style="border:0">${FILES.map((f, i) => row(st.file === i, 'file:' + i, f.kind === 'csv' ? 'table' : 'file', f.name)).join('')}</div>`
+    if (st.view === 'extensions') {
+      const cnt = (f) => EXTS.filter((e) => (f === 'all' ? true : f === 'connected' ? e.on : e.t === f)).length
+      return `<div class="head"><span class="ttl">extensions</span></div><div class="scope" style="border:0">${[['all', 'All'], ['connected', 'Connected'], ['app', 'Apps'], ['skill', 'Skills'], ['mcp', 'MCP servers']].map(([f, l]) => `<div class="row ${st.extf === f ? 'on' : ''}" data-a="extf:${f}"><span class="lab">${l}</span><span style="margin-left:auto;font-size:8.5px;color:var(--muted-light)">${cnt(f)}</span></div>`).join('')}</div>`
+    }
+    const au = AUTOS.map((x, i) => [x, i]).filter(([x]) => x.scope === st.ascope)
+    return `<div class="head"><span class="ttl">automations</span></div>
+      <div class="scope">${row(st.ascope === 'personal', 'ascope:personal', 'user', 'Personal')}${row(st.ascope === 'workspace', 'ascope:workspace', 'users', 'Workspace')}</div>
+      <div class="newagent" data-a="newauto">New automation</div>
+      ${au.map(([x, i]) => `<div class="row ${st.auto === i ? 'on' : ''}" data-a="auto:${i}"><span class="gi">${ic('flow')}</span><span class="lab">${esc(x.n)}</span></div>`).join('')}`
+  }
+
+  function mainHTML() {
+    if (st.view === 'agents' || st.view === 'chats') {
+      const c = conv()
+      const head = st.view === 'agents'
+        ? `<span class="who">${cr(c.who)}${esc(c.who.name)}</span><span class="tools"><span>${ic('gear')}</span><span>${ic('share')}Share</span><span>${ic('users')}2</span></span>`
+        : `<span class="who">${ic('chat')}${esc(CHATS[st.chat].title)}</span><span class="tools"><span>${ic('share')}Share</span></span>`
+      return `<div class="head">${head}</div>${chatBody(c)}`
+    }
+    if (st.view === 'files') {
+      const f = FILES[st.file]
+      let body
+      if (f.kind === 'md') body = `<div class="doc"><h3>Launch plan</h3><p>Ship agents to everyone in three steps, with a clear owner for each.</p><h4>Goals</h4><ul><li>10,000 agents created in the first month</li><li>Median first-reply time under 10 seconds</li><li>Zero data leaving the customer workspace</li></ul><h4>Timeline</h4><ul><li>Week 1 — private beta with 50 teams</li><li>Week 3 — public launch and docs</li><li>Week 6 — self-serve billing for teams</li></ul></div>`
+      else if (f.kind === 'md2') body = `<div class="doc"><h3>Q3 board notes</h3><h4>Highlights</h4><ul><li>Revenue up 18% quarter over quarter</li><li>Churn improved to 2.1%</li><li>Two enterprise pilots converted to annual</li></ul><h4>Decisions</h4><p>Approved hiring for six roles across engineering and support. Series A timeline unchanged.</p></div>`
+      else if (f.kind === 'csv') body = `<table><tr><th>PLAN</th><th>PRICE / MO</th><th>AGENTS</th><th>SEATS</th></tr><tr><td>Free</td><td>$0</td><td>1</td><td>1</td></tr><tr><td>Pro</td><td>$20</td><td>10</td><td>1</td></tr><tr><td>Team</td><td>$40</td><td>50</td><td>5+</td></tr><tr><td>Enterprise</td><td>Custom</td><td>Unlimited</td><td>Custom</td></tr></table>`
+      else body = `<div class="pdf"><b style="width:55%;height:10px;background:var(--foreground);opacity:.8"></b><b></b><b></b><b style="width:80%"></b><b style="margin-top:16px"></b><b style="width:90%"></b><b></b><b style="width:60%"></b><b style="margin-top:16px"></b><b style="width:85%"></b><b></b></div>`
+      return `<div class="head"><span class="who">${ic('file')}Documents / ${esc(f.name)}</span><span class="tools"><span>${ic('share')}Share</span></span></div><div class="page">${body}</div>`
+    }
+    if (st.view === 'extensions') {
+      const list = EXTS.map((e, i) => [e, i]).filter(([e]) => (st.extf === 'all' ? true : st.extf === 'connected' ? e.on : e.t === st.extf))
+      return `<div class="head"><span class="who">Extensions</span><span class="tools"><span>${ic('plus')}Add</span></span></div><div class="page"><h2>Give your agents more to work with</h2><div class="sub2">Connect apps, add skills and MCP servers. Agents pick them up right away.</div>
+        <div class="grid">${list.map(([e, i]) => `<div class="card"><div class="top"><span class="logo" style="background:${e.c}">${e.n[0]}</span>${e.n}</div><p>${e.d}</p><button class="btn2 ${e.on ? 'on' : ''}" data-a="ext:${i}">${e.on ? 'Connected' : 'Connect'}</button></div>`).join('')}</div></div>`
+    }
+    const c = conv()
+    return `<div class="head"><span class="who">${esc(AUTOS[st.auto].title)}</span><span class="tools"><span class="chip">GPT 5.6 Luna ${ic('down')}</span><span class="chip solid">${ic('chat')} Chat</span></span></div>${chatBody(c)}`
+  }
+
+  function renderApp() {
+    appEl.innerHTML = `<div class="col1"><div class="head"><a class="lockup"><span class="orb"></span>overlay</a>${ic('left')}</div>
+        <div class="list">${NAV.map(([k, l, i]) => `<div class="nav-i ${st.view === k ? 'on' : ''}" data-a="nav:${k}">${ic(i)}${l}</div>`).join('')}</div>
+        <div class="ws"><b>W</b><span>Your workspace<i>You</i></span></div></div>
+      <div class="col2">${col2HTML()}</div><div class="main">${mainHTML()}</div>`
+    const box = $('.msgs', appEl); if (box) box.scrollTop = box.scrollHeight
+  }
+
+  function send() {
+    const inp = $('.composer input', appEl); if (!inp) return
+    const v = inp.value.trim(); if (!v) return
+    const c = conv(); c.msgs.push(Y(clock(), v)); inp.value = ''
+    st.typing = c.key; renderMsgs()
+    setTimeout(() => {
+      c.msgs.push(A(clock(), c.replies[replyN++ % c.replies.length]))
+      if (st.typing === c.key) st.typing = null
+      if (conv().key === c.key) renderMsgs()
+    }, 1200)
+  }
+
+  function act(a, v) {
+    if (a === 'send') return send()
+    if (a === 'focus') return $('.composer input', appEl)?.focus({ preventScroll: true })
+    if (a === 'nav') st.view = v
+    else if (a === 'scope') { st.scope = v; st.agent = (v === 'personal' ? PERSONAL : WORKSPACE)[0]; st.thread = 'main' }
+    else if (a === 'agent') { st.agent = v; st.thread = 'main' }
+    else if (a === 'thread') st.thread = v
+    else if (a === 'newagent') {
+      const [shape, color] = PALETTE[newCount % PALETTE.length], k = 'new' + newCount++
+      AGENT_DATA[k] = { name: 'New agent', shape, color, main: [A(clock(), 'Hi! What do you want to call me, and what should I work on?')] }
+      AGENT_DATA[k].threads = { main: AGENT_DATA[k].main, new: [A(clock(), 'Hi! What do you want to work on in this thread?')] }
+      PERSONAL.unshift(k); st.scope = 'personal'; st.agent = k; st.thread = 'main'
+    }
+    else if (a === 'chat') st.chat = +v
+    else if (a === 'newchat') { CHATS.unshift({ title: 'New chat', msgs: [A(clock(), 'Hi! What can I help you with?')] }); st.chat = 0 }
+    else if (a === 'file') st.file = +v
+    else if (a === 'extf') st.extf = v
+    else if (a === 'ext') EXTS[+v].on = !EXTS[+v].on
+    else if (a === 'auto') st.auto = +v
+    else if (a === 'ascope') { st.ascope = v; const f = AUTOS.findIndex((x) => x.scope === v); if (f >= 0) st.auto = f }
+    else if (a === 'newauto') { AUTOS.unshift({ n: 'New automation', title: 'New Automation', scope: st.ascope, msgs: [A('', 'Describe what you want to automate and when, and I’ll draft it for you.')] }); st.auto = 0 }
+    renderApp()
+  }
+
   function buildDemo() {
-    const demoEl = $('#demo')
-    demoEl.innerHTML = `<div class="app" aria-hidden="true">
-      <div class="col1">
-        <div class="head"><a class="lockup"><span class="orb"></span>overlay</a>${ic('left')}</div>
-        <div class="list">
-          <div class="nav-i on">${ic('bot')}Agents</div><div class="nav-i">${ic('chat')}Chats</div><div class="nav-i">${ic('file')}Files</div>
-          <div class="nav-i">${ic('puzzle')}Extensions</div><div class="nav-i">${ic('flow')}Automations</div>
-        </div>
-        <div class="ws"><b>W</b><span>Your workspace<i>You</i></span></div>
-      </div>
-      <div class="col2">
-        <div class="head"><span class="ttl">agents</span></div>
-        <div class="scope"><div class="row on">${ic('user')}Personal</div><div class="row">${ic('users')}Workspace</div></div>
-        <div class="newagent">New agent</div>
-        <div class="agent" style="color:var(--foreground)">${cr('hexagon', '#f59e0b')}Claude Code<span class="end">${ic('down')}</span></div>
-        <div class="agent sub on">${ic('chat')}Claude Code<small>Main</small></div>
-        <div class="agent dim">${ic('plus')}New thread</div>
-        <div class="agent" style="margin-top:6px">${cr('hexagon', '#14b8a6')}Codex agent<span class="end">${ic('right')}</span></div>
-        <div class="agent">${cr('pill', '#2563eb')}PR agent<span class="end">${ic('right')}</span></div>
-        <div class="agent">${cr('hexagon', '#2563eb')}Product Agent<span class="end">${ic('right')}</span></div>
-        <div class="agent">${cr('circle', '#64748b')}Overlay<span class="end">${ic('right')}</span></div>
-        <div class="agent">${cr('triangle', '#16a34a')}Fundraising Agent<span class="end">${ic('right')}</span></div>
-      </div>
-      <div class="main">
-        <div class="head"><span class="who">${cr('hexagon', '#f59e0b')}Claude Code</span><span class="tools"><span>${ic('gear')}</span><span>${ic('share')}Share</span><span>${ic('users')}2</span></span></div>
-        <div class="chat"><div>
-          <div class="daydiv">TODAY</div>
-          <div class="msg">${cr('hexagon', '#f59e0b')}<div><div class="by">Claude Code<small>now</small></div><p>Hi! What do you want to call me, and what should I work on?</p></div></div>
-          <div class="composer"><div class="ph">Message Claude Code, use @ to notify someone…<i class="caret-b"></i></div><div class="bar">${ic('plus')}${ic('at')}<span class="send">${ic('send')}</span></div></div>
-          <div class="note">Overlay can make mistakes. Check important info.</div>
-        </div></div>
-      </div>
-    </div>`
+    demoEl = $('#demo')
+    demoEl.innerHTML = '<div class="app"></div>'
+    appEl = $('.app', demoEl)
+    appEl.addEventListener('click', (e) => { const el = e.target.closest('[data-a]'); if (!el) return; const [a, ...rest] = el.dataset.a.split(':'); act(a, rest.join(':')) })
+    appEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.composer input')) { e.preventDefault(); send() } })
+    renderApp()
     const fit = () => demoEl.style.setProperty('--ds', demoEl.clientWidth / 1000)
     fit()
     new ResizeObserver(fit).observe(demoEl)
