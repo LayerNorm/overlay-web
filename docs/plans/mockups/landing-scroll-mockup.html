@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overlay — Scroll landing mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --background: #fafafa;
+    --foreground: #0a0a0a;
+    --muted: #71717a;
+    --muted-light: #a1a1aa;
+    --border: #e4e4e7;
+    --surface-elevated: #ffffff;
+    --surface-muted: #f5f5f5;
+    --button-primary-bg: #0a0a0a;
+    --button-primary-text: #ffffff;
+    --serif: 'Libre Baskerville', Georgia, serif;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --hairline: 1px solid var(--border);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    /* one color per underlined phrase — taken from the agent avatar palette */
+    --c-oss: #16a34a;
+    --c-multi: #db2777;
+    --c-cloud: #2563eb;
+    --c-cp: #7c3aed;
+    --c-ai: #ea580c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #09090b;
+      --foreground: #f5f5f5;
+      --muted: #a1a1aa;
+      --muted-light: #71717a;
+      --border: #27272a;
+      --surface-elevated: #111113;
+      --surface-muted: #151518;
+      --button-primary-bg: #f5f5f5;
+      --button-primary-text: #09090b;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: auto; }
+  body {
+    background: var(--background); color: var(--foreground);
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  button { font-family: inherit; color: inherit; }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--foreground) 40%, transparent); outline-offset: 2px; }
+  svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  #scroller { width: 1px; }
+  .stage { position: fixed; inset: 0; overflow: hidden; }
+
+  /* ---------- logo lockup (orb + serif wordmark) ---------- */
+  .lockup { display: inline-flex; align-items: center; gap: 0.45em; font-family: var(--serif); letter-spacing: -0.02em; }
+  .orb {
+    width: 0.62em; height: 0.62em; border-radius: 50%; flex: none;
+    background: radial-gradient(circle at 34% 28%, #ffffff 0%, #c9c9cf 38%, #6b6b73 78%, #3a3a40 100%);
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.25);
+  }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: absolute; top: 0; left: 0; right: 0; height: 64px; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
+    opacity: var(--nav, 0); pointer-events: none;
+  }
+  .nav.on { pointer-events: auto; }
+  .nav .lockup { font-size: 19px; }
+  .nav-links { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 28px; font-size: 13.5px; color: var(--muted); }
+  .nav-links a:hover { color: var(--foreground); }
+  .nav-right { display: flex; align-items: center; gap: 14px; }
+  .nav-right .gh { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--muted); }
+  .nav-right .gh:hover { background: var(--surface-muted); color: var(--foreground); }
+  .pill { display: inline-flex; align-items: center; padding: 7px 14px; border-radius: 999px; background: var(--button-primary-bg); color: var(--button-primary-text); font-size: 13px; font-weight: 500; }
+
+  /* ---------- section 1: hero ---------- */
+  .hero {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: clamp(18px, 3.6vh, 38px); padding: 28px 20px 40px; text-align: center;
+  }
+  .hero .lockup { font-size: clamp(26px, 3.6vw, 38px); }
+  .sub {
+    font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; line-height: 1.4;
+    font-size: clamp(21px, 3vw, 40px); max-width: 21em;
+  }
+  /* the underlined phrases are drawn by the rail items that sit on top of them */
+  .sub .k { white-space: nowrap; color: transparent; }
+  /* proofreader's insertion mark: "open source" sits above the line, caret points at the gap after "The" */
+  .anchor { position: relative; display: inline-block; width: 0; height: 0; }
+  .ins { position: absolute; left: -0.03em; bottom: 0.95em; transform: translateX(-50%); }
+  .sub .ins .k { display: block; font-size: max(0.42em, 11px); line-height: 1; letter-spacing: 0; }
+  .caret {
+    position: absolute; left: -0.03em; top: 0.14em; width: 0.36em; height: 0.24em; transform: translateX(-50%); overflow: visible;
+    fill: none; stroke: var(--foreground); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    opacity: var(--caret, 0); transition: opacity .25s; pointer-events: none;
+  }
+  .demo {
+    position: relative; height: clamp(190px, 42vh, 500px); aspect-ratio: 16 / 9; max-width: 92vw;
+    border: var(--hairline); border-radius: 18px; background: var(--surface-elevated);
+    box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 24px 60px -24px rgba(0,0,0,.18);
+    display: grid; place-items: center; overflow: hidden;
+    background-image: radial-gradient(color-mix(in srgb, var(--foreground) 9%, transparent) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .demo .chrome { position: absolute; top: 0; left: 0; right: 0; height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border-bottom: var(--hairline); background: color-mix(in srgb, var(--surface-elevated) 90%, transparent); }
+  .demo .chrome i { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+  .demo .play { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: var(--button-primary-bg); color: var(--button-primary-text); margin-top: 24px; }
+  .demo .play svg { width: 20px; height: 20px; fill: currentColor; stroke: none; margin-left: 2px; }
+  .demo .tag { position: absolute; bottom: 12px; left: 14px; font: 11px var(--mono); color: var(--muted-light); letter-spacing: .04em; text-transform: uppercase; }
+
+  /* ---------- left rail (gallery of the underlined phrases) ---------- */
+  .rail {
+    position: absolute; left: 20px; top: 64px; bottom: 0; width: 200px; z-index: 10;
+    display: flex; flex-direction: column; justify-content: center; gap: 6px; pointer-events: none;
+    transition: opacity .4s var(--ease-out);
+  }
+  .rail-item {
+    position: relative; z-index: 1; align-self: flex-start; appearance: none; border: 0; background: none;
+    padding: 7px 12px; font: 400 14.5px/1.3 var(--serif); letter-spacing: -0.01em; white-space: nowrap;
+    color: var(--foreground); cursor: pointer; transform-origin: 0 0; pointer-events: auto;
+    opacity: calc((1 - 0.45 * var(--e, 0)) * var(--rv, 1));
+  }
+  .rail-item[data-k="oss"] { transition: opacity .25s; }
+  .rail-item.ghost { pointer-events: none; }
+  .rail-item:hover .t::after { background-color: color-mix(in srgb, var(--c) 30%, transparent); }
+  .rail-item.on { opacity: 1; }
+  .rail-item .t { position: relative; isolation: isolate; display: block; }
+  .rail-item.caps .t::first-letter { text-transform: uppercase; }
+  .rail-item .t::after {
+    content: ""; position: absolute; left: -0.1em; right: -0.1em; bottom: -0.04em; height: 0.46em; z-index: -1;
+    background: linear-gradient(var(--c), var(--c)) left bottom / 100% 0.075em no-repeat,
+                color-mix(in srgb, var(--c) 17%, transparent);
+    border-radius: 0.06em; transform-origin: left; transform: scaleX(var(--u, 0));
+    transition: transform .8s var(--ease-out) calc(var(--i) * 90ms + 200ms);
+  }
+  body.ready .rail-item { --u: 1; }
+  .rail-box {
+    position: absolute; border: 1px solid var(--foreground); border-radius: 9px; pointer-events: none; opacity: 0;
+    transition: left .45s var(--ease-out), top .45s var(--ease-out), width .45s var(--ease-out), height .45s var(--ease-out), opacity .3s;
+  }
+  .rail.live .rail-box { opacity: 1; }
+
+  /* ---------- sections 2-6: title + graphic + optional right sidebar ---------- */
+  .view {
+    position: absolute; inset: 64px 0 0 0; z-index: 6;
+    display: grid; grid-template-columns: 240px minmax(0, 1fr) 240px; grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: 0 24px 24px; opacity: var(--vo, 0); transform: translateY(var(--vy, 0px)); pointer-events: none;
+    transition: grid-template-columns .5s var(--ease-out), padding .5s var(--ease-out);
+  }
+  .view.live { pointer-events: auto; }
+  .title {
+    grid-column: 2; grid-row: 1; text-align: center; font: 400 clamp(24px, 3vw, 40px) / 1.25 var(--serif); letter-spacing: -0.015em;
+    margin: clamp(8px, 3vh, 30px) 0 clamp(14px, 3vh, 26px);
+  }
+  .roll { display: inline-grid; overflow: hidden; padding-bottom: .22em; margin-bottom: -.22em; transition: width .45s var(--ease-out); }
+  .roll .w { grid-area: 1 / 1; white-space: nowrap; width: max-content; }
+
+  .body { display: contents; }
+
+  .graphic {
+    grid-column: 2; grid-row: 2; position: relative; min-height: 0; transition: opacity .4s; overflow: hidden; border: var(--hairline); border-radius: 22px; background: var(--surface-elevated);
+    box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 18px 50px -22px rgba(0,0,0,.16);
+    background-image: radial-gradient(color-mix(in srgb, var(--foreground) 8%, transparent) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .g-chip { position: absolute; top: 16px; left: 18px; font: 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted-light); }
+  .g-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px 28px 48px; text-align: center; }
+  .g-name { font: 400 clamp(22px, 2.6vw, 34px) var(--serif); letter-spacing: -0.015em; }
+  .g-brief { max-width: 30em; font-size: 14px; color: var(--muted); }
+  .g-meter { position: absolute; left: 18px; right: 18px; bottom: 16px; display: flex; align-items: center; gap: 12px; font: 10.5px var(--mono); color: var(--muted-light); }
+  .g-meter .bar { flex: 1; height: 2px; border-radius: 2px; background: var(--border); overflow: hidden; }
+  .g-meter .bar i { display: block; height: 100%; width: calc(var(--p, 0) * 100%); background: var(--foreground); }
+
+  .side { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; text-align: right; overflow: hidden; transition: opacity .3s; }
+  .body.no-side .side { opacity: 0; pointer-events: none; }
+  .side > * { animation: rise .55s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 70ms); }
+  .side-item .lbl { position: relative; display: block; height: 1.2em; overflow: hidden; transition: width .45s var(--ease-out); }
+  .side-item .lbl > span { position: absolute; top: 0; right: 0; line-height: 1.2; white-space: nowrap; transition: opacity .3s; }
+  .side-item .lbl .b, .side-item.on .lbl .a { opacity: 0; }
+  .side-item.on .lbl .b { opacity: 1; }
+  .side-item {
+    appearance: none; cursor: pointer; text-align: right; padding: 8px 14px; border: 1px solid transparent; border-radius: 10px; background: none;
+    font: 500 14.5px var(--sans); color: var(--muted); transition: color .25s, border-color .25s, background .25s;
+  }
+  .side-item:hover { color: var(--foreground); }
+  .side-item.on { color: var(--foreground); border-color: var(--foreground); background: var(--surface-elevated); }
+
+  .caption { grid-column: 2; grid-row: 3; height: 64px; display: grid; place-items: end center; font: 400 clamp(20px, 2.4vw, 30px) var(--serif); letter-spacing: -0.015em; transition: opacity .3s; }
+
+  /* ---------- section 7: get started ---------- */
+  .cta {
+    grid-column: 2; grid-row: 2 / span 2; align-self: center; display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(28px, 5vw, 84px);
+    opacity: 0; pointer-events: none; transition: opacity .4s var(--ease-out);
+  }
+  .grp { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .grp h3 { display: flex; align-items: center; gap: 8px; font: 400 17px var(--serif); }
+  .grp h3 svg { color: var(--muted); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 138px; padding: 9px 16px; border: var(--hairline); border-radius: 10px;
+    background: var(--surface-elevated); font: 500 14px var(--sans); transition: background .2s;
+  }
+  .btn:hover { background: var(--surface-muted); }
+  .btn.primary { background: var(--button-primary-bg); color: var(--button-primary-text); border-color: transparent; }
+  .btn.primary:hover { opacity: .88; }
+  .foot {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 15; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 24px;
+    padding: 16px 32px; border-top: var(--hairline); background: var(--background); font-size: 13px; color: var(--muted);
+    transform: translateY(101%); transition: transform .6s var(--ease-out);
+  }
+  .foot .lockup { font-size: 16px; color: var(--foreground); }
+  .foot nav { display: flex; gap: 22px; }
+
+  [data-sec="start"] .rail { opacity: 0; pointer-events: none; }
+  [data-sec="start"] .rail-item { pointer-events: none; }
+  [data-sec="start"] .view { grid-template-columns: 0 minmax(0, 1fr) 0; padding-bottom: 84px; }
+  [data-sec="start"] .graphic, [data-sec="start"] .side, [data-sec="start"] .caption { opacity: 0; pointer-events: none; }
+  [data-sec="start"] .cta { opacity: 1; pointer-events: auto; }
+  [data-sec="start"] .grp { animation: rise .6s var(--ease-out) both; animation-delay: calc(var(--i) * 80ms + 120ms); }
+  [data-sec="start"] .foot { transform: none; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .devlabel { position: absolute; right: 16px; bottom: 8px; z-index: 30; font: 10px var(--mono); color: var(--muted-light); opacity: .8; pointer-events: none; }
+  [data-sec="start"] .devlabel { bottom: 60px; }
+
+  /* ---------- small screens ---------- */
+  @media (max-width: 860px) {
+    .nav { padding: 0 16px; }
+    .nav-links { display: none; }
+    .rail { left: 0; right: 0; top: 64px; bottom: auto; width: auto; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 2px; padding: 0 8px; }
+    .rail-item { font-size: 12.5px; padding: 6px 8px; }
+    .view { inset: 124px 0 0 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; padding: 0 16px 16px; }
+    [data-sec="start"] .view { grid-template-columns: minmax(0, 1fr); padding-bottom: 130px; }
+    .title, .graphic, .cta { grid-column: 1; }
+    .side { grid-column: 1; grid-row: 3; margin-top: 14px; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; text-align: center; }
+    .body.no-side .side { display: none; }
+    .caption { grid-column: 1; grid-row: 4; height: 48px; }
+    .foot { padding: 12px 16px; }
+    .devlabel { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="scroller"></div>
+
+<div class="stage" id="stage" data-sec="ai">
+
+  <!-- top nav (fades in once the hero hands off to the rail) -->
+  <header class="nav" id="nav">
+    <a class="lockup" href="#"><span class="orb"></span>overlay</a>
+    <nav class="nav-links"><a href="#">Product</a><a href="#">Docs</a><a href="#">Pricing</a><a href="#">Blog</a></nav>
+    <div class="nav-right">
+      <a class="gh" href="#" aria-label="GitHub"><svg class="i" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg></a>
+      <a class="pill" href="#">Get Started</a>
+    </div>
+  </header>
+
+  <!-- SECTION 1 — title, subtitle, demo -->
+  <section class="hero" id="hero">
+    <a class="lockup" id="heroLockup" href="#"><span class="orb"></span>overlay</a>
+    <h1 class="sub" id="sub">
+      <span class="w">The</span><span class="anchor"><span class="ins"><span class="k" data-k="oss">open source</span></span><svg class="caret" viewBox="0 0 20 12" aria-hidden="true"><path d="M2 11 10 2l8 9"/></svg></span>
+      <span class="k" data-k="multi">multiplayer</span>
+      <span class="k" data-k="cloud">cloud</span>
+      <span class="k" data-k="cp">control plane</span>
+      <span class="w">for</span>
+      <span class="k" data-k="ai">AI employees</span>
+    </h1>
+    <div class="demo" id="demo">
+      <div class="chrome"><i></i><i></i><i></i></div>
+      <div class="play"><svg viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z"/></svg></div>
+      <span class="tag">Demo</span>
+    </div>
+  </section>
+
+  <!-- left rail: the five underlined phrases, in reverse order -->
+  <nav class="rail" id="rail" aria-label="Sections"><span class="rail-box" id="railBox"></span></nav>
+
+  <!-- SECTIONS 2–7 -->
+  <main class="view" id="view">
+    <h2 class="title" id="title"></h2>
+
+    <div class="body" id="bodyGrid">
+      <div class="graphic" id="graphic">
+        <span class="g-chip">Graphic placeholder</span>
+        <div class="g-inner" id="gInner">
+          <div class="g-name" id="gName"></div>
+          <div class="g-brief" id="gBrief"></div>
+        </div>
+        <div class="g-meter"><span>scroll</span><span class="bar"><i></i></span><span id="gP">0.00</span></div>
+      </div>
+      <aside class="side" id="side"></aside>
+    </div>
+
+    <p class="caption" id="caption"></p>
+
+    <div class="cta" id="cta">
+      <div class="grp" style="--i:0"><h3><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>Web</h3><a class="btn primary" href="#">Get started</a></div>
+      <div class="grp" style="--i:1"><h3><svg class="i" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>Desktop</h3><a class="btn" href="#">macOS</a><a class="btn" href="#">Windows</a></div>
+      <div class="grp" style="--i:2"><h3><svg class="i" viewBox="0 0 24 24"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>Mobile</h3><a class="btn" href="#">iOS</a><a class="btn" href="#">Android</a></div>
+      <div class="grp" style="--i:3"><h3><svg class="i" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>Developer</h3><a class="btn" href="#">MCP</a><a class="btn" href="#">API</a></div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <a class="lockup" href="#"><span class="orb"></span>overlay</a>
+    <nav><a href="#">Product</a><a href="#">Docs</a><a href="#">Pricing</a><a href="#">Blog</a><a href="#">GitHub</a></nav>
+    <span>© 2026 Overlay</span>
+  </footer>
+
+  <div class="devlabel" id="dev"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s)
+  const clamp = (n, a = 0, b = 1) => Math.min(b, Math.max(a, n))
+  const ease = (r) => (r < 0.5 ? 2 * r * r : 1 - Math.pow(-2 * r + 2, 2) / 2)
+  const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)'
+
+  const stage = $('#stage'), nav = $('#nav'), rail = $('#rail'), railBox = $('#railBox')
+  const view = $('#view'), titleEl = $('#title'), bodyGrid = $('#bodyGrid'), side = $('#side')
+  const graphic = $('#graphic'), gInner = $('#gInner'), gName = $('#gName'), gBrief = $('#gBrief'), gP = $('#gP')
+  const caption = $('#caption'), dev = $('#dev')
+  const heroLockup = $('#heroLockup'), demo = $('#demo'), hero = $('#hero')
+
+  /* The five underlined phrases. Rail order = reverse of the sentence. */
+  const SECTIONS = {
+    ai:    { label: 'AI employees' },
+    cp:    { label: 'control plane' },
+    cloud: { label: 'cloud' },
+    multi: { label: 'multiplayer' },
+    oss:   { label: 'open source' },
+  }
+  const RAIL_ORDER = ['ai', 'cp', 'cloud', 'multi', 'oss']
+
+  /* Optional right sidebar per section. */
+  const SIDE = {
+    ai: { items: ['Memory', 'Tools', 'Computer'] },
+    cp: { items: ['Create', 'Manage', 'Deploy', ['BYOA', 'Bring your own agents']] },   // [short, expanded-when-active]
+  }
+
+  /* One scene = one stretch of scrolling. len is in viewport heights. */
+  const AI = 'AI agents with '
+  const SCENES = [
+    { sec: 'ai', pre: AI, word: 'superpowers', item: -1, cap: '', len: 0.8, name: 'AI employees',
+      brief: 'Overview: the agent avatars gain superpowers as you scroll.' },
+    { sec: 'ai', pre: AI, word: 'memory', item: 0, cap: 'remember everything', len: 0.9, name: 'Memory',
+      brief: 'An agent that recalls every chat, file and person across all your threads.' },
+    { sec: 'ai', pre: AI, word: 'tools', item: 1, cap: 'work where you work', len: 0.9, name: 'Tools',
+      brief: 'An agent reaching into the apps you already use — Slack, Gmail, GitHub, Calendar.' },
+    { sec: 'ai', pre: AI, word: 'a computer', item: 2, cap: 'can do anything', len: 0.9, name: 'Computer',
+      brief: 'An agent working on its own machine: browser, terminal, files.' },
+    { sec: 'ai', pre: AI, word: 'superpowers', item: 'all', cap: 'are AI employees', len: 1.0, name: 'Memory + Tools + Computer',
+      brief: 'All three combine into one AI employee.' },
+
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 0, cap: '', len: 0.9, name: 'Create',
+      brief: 'Spin up an agent from a prompt or template.' },
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 1, cap: '', len: 0.9, name: 'Manage',
+      brief: 'Every agent, permission, budget and log in one view.' },
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 2, cap: '', len: 0.9, name: 'Deploy',
+      brief: 'Put agents live — on schedules, triggers and in channels.' },
+    { sec: 'cp', pre: 'One place to get things done', word: '', item: 3, cap: '', len: 0.9, name: 'Bring your own agents',
+      brief: 'Claude Code, Codex and others plug into the same control plane.' },
+
+    { sec: 'cloud', pre: 'Accessible from anywhere, literally', word: '', item: -1, cap: '', len: 1.3, name: 'Cloud',
+      brief: 'The same agents on web, desktop and phone — always running, never tied to your laptop.' },
+    { sec: 'multi', pre: 'Better, together', word: '', item: -1, cap: '', len: 1.3, name: 'Multiplayer',
+      brief: 'Teammates and agents in one workspace: shared threads, presence, handoffs.' },
+    { sec: 'oss', pre: 'Oh, and we care about your sovereignty', word: '', item: -1, cap: '', len: 1.3, name: 'Open source',
+      brief: 'Read the code, self-host it, keep your data. Sovereignty by default.' },
+
+    { sec: 'start', pre: 'Hire your first AI employee', word: '', item: -1, cap: '', len: 0.6, name: 'Get started', brief: '' },
+  ]
+
+  /* ---------- layout / measurement ---------- */
+  const railItems = {}
+  RAIL_ORDER.forEach((k, i) => {
+    const b = document.createElement('button')
+    b.className = 'rail-item'
+    b.dataset.k = k
+    b.style.setProperty('--c', `var(--c-${k})`)
+    b.style.setProperty('--i', i)
+    b.innerHTML = `<span class="t">${SECTIONS[k].label}</span>`
+    b.addEventListener('click', () => go(SCENES.findIndex((s) => s.sec === k)))
+    rail.appendChild(b)
+    railItems[k] = b
+  })
+
+  let V = innerHeight, INTRO = V, starts = [], M = {}, cur = -1
+
+  function layout() {
+    V = innerHeight
+    INTRO = V
+    let y = INTRO
+    starts = SCENES.map((s) => { const at = y; y += s.len * V; return at })
+    $('#scroller').style.height = y + V + 'px'
+  }
+
+  function measure() {
+    Object.values(railItems).forEach((b) => { b.style.transform = 'none'; b.classList.remove('caps') })
+    RAIL_ORDER.forEach((k) => {
+      const b = railItems[k], t = $('.t', b), h = $(`.sub .k[data-k="${k}"]`)
+      const br = b.getBoundingClientRect(), tr = t.getBoundingClientRect(), hr = h.getBoundingClientRect()
+      const s = hr.width / tr.width
+      const cx = tr.left + tr.width / 2 - br.left, cy = tr.top + tr.height / 2 - br.top
+      M[k] = {
+        s,
+        tx: hr.left + hr.width / 2 - br.left - s * cx,
+        ty: hr.top + hr.height / 2 - br.top - s * cy,
+      }
+    })
+    placeBox()
+  }
+
+  function placeBox() {
+    const sec = SCENES[cur < 0 ? 0 : cur].sec
+    const b = railItems[sec]
+    if (!b) return
+    railBox.style.left = b.offsetLeft + 'px'
+    railBox.style.top = b.offsetTop + 'px'
+    railBox.style.width = b.offsetWidth + 'px'
+    railBox.style.height = b.offsetHeight + 'px'
+  }
+
+  /* ---------- scene content ---------- */
+  let tPre = null
+
+  function fitRoll() {
+    const roll = $('.roll', titleEl)
+    const w = roll && roll.lastElementChild
+    if (roll && w) roll.style.width = w.offsetWidth + 'px'
+  }
+
+  function setTitle(pre, word, animate) {
+    const roll = $('.roll', titleEl)
+    if (animate && roll && word && pre === tPre) {
+      const old = [...roll.children]
+      const w = document.createElement('span')
+      w.className = 'w'; w.textContent = word
+      roll.appendChild(w)
+      roll.style.width = w.offsetWidth + 'px'
+      old.forEach((o) => {
+        o.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-80%)', opacity: 0 }], { duration: 380, easing: EASE_OUT, fill: 'forwards' }).onfinish = () => o.remove()
+      })
+      w.animate([{ transform: 'translateY(80%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 420, easing: EASE_OUT })
+    } else {
+      titleEl.innerHTML = ''
+      titleEl.append(document.createTextNode(pre))
+      if (word) {
+        const r = document.createElement('span'); r.className = 'roll'
+        const w = document.createElement('span'); w.className = 'w'; w.textContent = word
+        r.appendChild(w); titleEl.appendChild(r)
+        r.style.transition = 'none'; r.style.width = w.offsetWidth + 'px'; void r.offsetWidth; r.style.transition = ''
+      }
+      if (animate) titleEl.animate([{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 520, easing: EASE_OUT })
+    }
+    tPre = pre
+  }
+
+  function buildSide(sec) {
+    const d = SIDE[sec]
+    bodyGrid.classList.toggle('no-side', !d)
+    if (!d) return
+    side.innerHTML = ''
+    let n = 0
+    const add = (el) => { el.style.setProperty('--i', n++); side.appendChild(el) }
+    d.items.forEach((label, j) => {
+      const b = document.createElement('button'); b.className = 'side-item'
+      if (Array.isArray(label)) b.innerHTML = `<span class="lbl"><span class="a">${label[0]}</span><span class="b">${label[1]}</span></span>`
+      else b.textContent = label
+      b.addEventListener('click', () => go(SCENES.findIndex((s) => s.sec === sec && s.item === j)))
+      add(b)
+    })
+    fitSide(false)
+  }
+
+  /* items with a short + long label animate their width between the two */
+  function fitSide(animate) {
+    side.querySelectorAll('.lbl').forEach((l) => {
+      const on = l.parentElement.classList.contains('on')
+      if (!animate) l.style.transition = 'none'
+      l.style.width = $(on ? '.b' : '.a', l).offsetWidth + 'px'
+      if (!animate) { void l.offsetWidth; l.style.transition = '' }
+    })
+  }
+
+  function applyScene(i) {
+    const s = SCENES[i], prev = cur < 0 ? null : SCENES[cur], first = !prev
+    const secChanged = first || prev.sec !== s.sec
+    stage.dataset.sec = s.sec
+
+    Object.entries(railItems).forEach(([k, b]) => b.classList.toggle('on', k === s.sec))
+    cur = i
+    placeBox()
+
+    if (secChanged) {
+      buildSide(s.sec)
+      if (!first && s.sec !== 'start') graphic.animate([{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 520, easing: EASE_OUT })
+    }
+    side.querySelectorAll('.side-item').forEach((b, j) => b.classList.toggle('on', s.item === 'all' || s.item === j))
+    fitSide(!secChanged)
+
+    setTitle(s.pre, s.word, !first)
+
+    if (caption.textContent !== s.cap) {
+      caption.textContent = s.cap
+      if (s.cap) caption.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 480, easing: EASE_OUT })
+    }
+    if (gName.textContent !== s.name && s.sec !== 'start') {
+      gName.textContent = s.name; gBrief.textContent = s.brief
+      if (!first) gInner.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE_OUT })
+    }
+  }
+
+  /* Jump straight to a scene. The stage is fixed, so an instant scroll jump just plays the scene's own
+     fade-in. From the hero we first play the hand-off (phrases dock into the rail), then land on the scene. */
+  let forced = null, tween = 0
+  function stopTween() { if (tween) { cancelAnimationFrame(tween); tween = 0 } forced = null }
+  function go(i) {
+    if (i < 0) return
+    stopTween()
+    const target = starts[i] + 2
+    if (scrollY >= INTRO - 2) { scrollTo({ top: target, behavior: 'instant' }); return }
+    forced = i
+    applyScene(i)                                   // content is ready under the still-hidden view
+    const from = scrollY, to = INTRO, dur = 350 + 650 * ((to - from) / V), t0 = performance.now()
+    const step = (now) => {
+      const t = clamp((now - t0) / dur)
+      scrollTo(0, from + (to - from) * (1 - Math.pow(1 - t, 3)))
+      if (t < 1) { tween = requestAnimationFrame(step); return }
+      tween = 0; forced = null
+      scrollTo({ top: target, behavior: 'instant' })
+      update()
+    }
+    tween = requestAnimationFrame(step)
+  }
+  ;['wheel', 'touchstart', 'keydown'].forEach((ev) => addEventListener(ev, stopTween, { passive: true }))
+
+  /* hovering the subtitle (or any phrase on it) peeks the "open source" insertion */
+  let peek = false, peekT = 0
+  function setPeek(v) {
+    clearTimeout(peekT)
+    if (v) { if (!peek) { peek = true; update() } }
+    else peekT = setTimeout(() => { peek = false; update() }, 140)
+  }
+  ;[$('#sub'), ...Object.values(railItems)].forEach((el) => {
+    el.addEventListener('pointerenter', () => setPeek(true))
+    el.addEventListener('pointerleave', () => setPeek(false))
+  })
+
+  /* ---------- scroll-driven update ---------- */
+  function update() {
+    const y = scrollY
+    const r = clamp(y / (V * 0.9))              // hero → rail hand-off progress
+    const done = r >= 1
+
+    // hero fades + rises
+    const f = clamp(r * 1.8)
+    heroLockup.style.opacity = demo.style.opacity = 1 - f
+    heroLockup.style.transform = `translateY(${-f * 28}px)`
+    demo.style.transform = `translateY(${-f * 36}px) scale(${1 - f * 0.05})`
+    $('#sub').querySelectorAll('.w').forEach((w) => { w.style.opacity = 1 - clamp(r * 2.2) })
+    hero.style.pointerEvents = r > 0.3 ? 'none' : ''
+
+    // phrases fly from the subtitle into the rail (staggered)
+    rail.style.setProperty('--e', ease(r))
+    const show = Math.max(peek ? 1 : 0, clamp(r / 0.1))                     // "open source" appears on hover / first scroll
+    railItems.oss.style.setProperty('--rv', show)
+    railItems.oss.classList.toggle('ghost', show < 0.5)
+    $('#sub').style.setProperty('--caret', show * (1 - clamp((r - 0.12) / 0.25)))   // caret fades once it starts moving
+    RAIL_ORDER.forEach((k, i) => {
+      const e = ease(clamp((r - i * 0.05) / 0.8)), m = M[k], b = railItems[k]
+      if (!m) return
+      b.classList.toggle('caps', ease(r) > 0.5)
+      b.style.transform = e >= 1 ? '' : `translate(${m.tx * (1 - e)}px, ${m.ty * (1 - e)}px) scale(${m.s + (1 - m.s) * e})`
+    })
+    rail.classList.toggle('live', done)
+
+    // chrome + first view fade in at the end of the hand-off
+    nav.style.setProperty('--nav', clamp((r - 0.6) / 0.4))
+    nav.classList.toggle('on', r > 0.6)
+    const vo = clamp((r - 0.7) / 0.3)
+    view.style.setProperty('--vo', vo)
+    view.style.setProperty('--vy', `${(1 - vo) * 24}px`)
+    view.classList.toggle('live', done)
+
+    // which scene are we in?
+    let idx = 0
+    for (let i = 0; i < SCENES.length; i++) if (y >= starts[i]) idx = i
+    if (forced !== null) idx = forced
+    if (idx !== cur) applyScene(idx)
+    const s = SCENES[idx]
+    const p = clamp((y - starts[idx]) / (s.len * V))
+    graphic.style.setProperty('--p', p.toFixed(3))
+    gP.textContent = p.toFixed(2)
+    dev.textContent = `mockup · scene ${idx + 1}/${SCENES.length} · ${s.sec === 'start' ? 'Get started' : s.sec}${s.name && SECTIONS[s.sec] ? ' / ' + s.name : ''}`
+  }
+
+  let raf = 0
+  const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update() }) }
+  addEventListener('scroll', onScroll, { passive: true })
+
+  function init() { layout(); measure(); update(); fitRoll(); fitSide(false) }
+  addEventListener('resize', () => { layout(); measure(); update(); fitRoll() })
+
+  try { history.scrollRestoration = 'manual' } catch (_) {}
+  applyScene(0)
+  init()
+  document.fonts.ready.then(() => { init(); document.body.classList.add('ready') })
+  setTimeout(() => document.body.classList.add('ready'), 600)
+})()
+</script>
+</body>
+</html>
