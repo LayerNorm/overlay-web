@@ -26,6 +26,19 @@ export type {
 export type { FileQuery } from './files/types'
 export type { NoteFileQuery, NoteQuery } from './notes/types'
 export type { AutomationQuery } from './automations/types'
+export type {
+  CreateWorkItemRequest,
+  CreateWorkItemResponse,
+  UpdateWorkItemRequest,
+  UpdateWorkItemResponse,
+  WorkItemDetailDoc,
+  WorkItemDoc,
+  WorkItemPriority,
+  WorkItemQuery,
+  WorkItemScope,
+  WorkItemStatus,
+  WorkItemView,
+} from './work-items/types'
 export type { IntegrationQuery } from './integrations/types'
 export type { SkillQuery } from './skills/types'
 export type { McpServerQuery } from './mcp-servers/types'
@@ -64,6 +77,7 @@ export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
 export { NotesClient } from './notes/client'
 export { AutomationsClient } from './automations/client'
+export { WorkItemsClient } from './work-items/client'
 export { AccountClient } from './auth/account-client'
 export { BillingClient } from './auth/billing-client'
 export { SubscriptionClient } from './auth/subscription-client'

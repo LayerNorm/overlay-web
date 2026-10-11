@@ -483,6 +483,15 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    path: '/api/v1/work-items',
+    methods: {
+      GET: resource('workItem', 'view', { optional: true }, 'workItems.read'),
+      POST: capability('workItems.create'),
+      PATCH: resource('workItem', 'edit', {}, 'workItems.edit'),
+      DELETE: resource('workItem', 'delete', {}, 'workItems.delete'),
+    },
+  },
+  {
     path: '/api/v1/outputs',
     methods: {
       GET: resource('output', 'view', { optional: true }, 'outputs.read'),
