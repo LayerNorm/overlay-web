@@ -130,8 +130,13 @@ export const migrateMessagesBatchByServer = mutation({
         ? { principalId: conversation.createdByPrincipalId }
         : await ensureLegacyPersonalScope(ctx, conversation.userId)
       await ctx.db.patch(message._id, {
-        authorKind: message.role === 'user' ? 'human' : 'model',
-        authorPrincipalId: message.role === 'user' ? scope.principalId : undefined,
+        authorKind: message.authorKind ?? (
+          message.role === 'user' ? 'human'
+            : message.role === 'system' ? 'system'
+              : message.authorPrincipalId ? 'agent' : 'model'
+        ),
+        authorPrincipalId: message.authorPrincipalId
+          ?? (message.role === 'user' ? scope.principalId : undefined),
       })
       migrated++
     }
