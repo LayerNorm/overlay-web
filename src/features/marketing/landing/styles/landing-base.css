@@ -132,11 +132,7 @@
 [data-landing-theme="dark"] .lp img.lt { display: none; }
 [data-landing-theme="dark"] .lp img.dk { display: block; }
 .lp .title.anim { animation: lp-titlein .52s var(--ease-out); }
-.lp .roll .w.in { animation: lp-rollin .3s var(--ease-out) .14s both; }
-.lp .roll .w.out { animation: lp-rollout .16s ease-in forwards; }
 @keyframes lp-titlein { from { opacity: 0; transform: translateY(10px); filter: blur(4px); } to { opacity: 1; transform: none; filter: blur(0); } }
-@keyframes lp-rollin { from { opacity: 0; transform: translateY(40%); } to { opacity: 1; transform: none; } }
-@keyframes lp-rollout { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-40%); } }
 @keyframes lp-caretblink { 50% { opacity: 0; } }
 /* before the scroll engine has measured anything, keep the moving pieces out of sight */
 .lp:not(.started) .agents, .lp:not(.started) .rail-item { visibility: hidden; }
