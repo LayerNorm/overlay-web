@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation } from '../_generated/server'
+import { mutation, type MutationCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from './auth'
 import {
   planArchive,
@@ -30,6 +30,17 @@ async function authorize(params: { accessToken?: string; serverSecret?: string; 
 export type ScopeMutationResult = { ok: true } | { ok: false; reason: string }
 
 /**
+ * Extra rules for a move. Called for the row being moved (`descendant: false`) and then for each descendant that goes
+ * with it (`descendant: true`); returns more fields to write, or a reason to refuse the whole move.
+ */
+export type MoveHook = (
+  ctx: MutationCtx,
+  row: ScopedDoc,
+  to: 'personal' | 'workspace',
+  descendant: boolean,
+) => Promise<{ ok: true; patch?: Record<string, unknown> } | { ok: false; reason: string }>
+
+/**
  * `setScope`, `archive`, and `restore` for one scoped table. They return `{ ok: false, reason }` instead of throwing, so
  * the caller can answer with the right status. `onArchive` is extra fields written when archiving (an automation stops
  * running, for example).
@@ -41,6 +52,7 @@ export function scopeMutations(
     onArchive?: Record<string, unknown>
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
+    onMove?: MoveHook
   },
 ) {
   const common = {
@@ -67,12 +79,16 @@ export function scopeMutations(
       await authorize(args)
       const { db, id, row } = await readableRow(ctx, args)
       const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
-      if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
-      await db.patch(id, plan.patch)
+      if (!plan.ok || !id || !row) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
+      const rootExtra = (await options?.onMove?.(ctx, row, args.to, false)) ?? { ok: true as const }
+      if (!rootExtra.ok) return { ok: false, reason: rootExtra.reason }
+      await db.patch(id, { ...plan.patch, ...rootExtra.patch })
       // A folder's contents go with it: only the creator's own, not-archived rows.
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
-        if (child && !child.archivedAt && child.userId === row?.userId) await db.patch(childId, plan.patch)
+        if (!child || child.archivedAt || child.userId !== row.userId) continue
+        const extra = (await options?.onMove?.(ctx, child, args.to, true)) ?? { ok: true as const }
+        await db.patch(childId, { ...plan.patch, ...(extra.ok ? extra.patch : {}) })
       }
       return { ok: true }
     },

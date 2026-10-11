@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
-import { parseResourceScope, parseResourceView } from '@/shared/workspaces/resource-scope'
+import { parseResourceView } from '@/shared/workspaces/resource-scope'
 import { repositoryProxy } from '@/server/app-data/errors'
 import {
   WorkItemRevisionConflictError,
@@ -13,7 +13,9 @@ import {
   type WorkItemScopeActionResult,
   type WorkItemStatus,
 } from '@/server/work'
-import { WORK_ITEM_STATUSES, WORK_ITEM_PRIORITIES, type WorkItemPriority } from '@/shared/work/work-items'
+import { WORK_ITEM_STATUSES } from '@/shared/work/work-items'
+import { CreateWorkItemRequest, UpdateWorkItemRequest } from '@/shared/schemas/work-items'
+import type { ZodType } from 'zod'
 
 const workItemService = new WorkItemService(
   repositoryProxy<WorkItemRepository>(
@@ -28,16 +30,16 @@ function readBooleanParam(value: string | null): boolean | undefined {
   return undefined
 }
 
-function parseStatus(value: unknown): WorkItemStatus | undefined {
-  return typeof value === 'string' && (WORK_ITEM_STATUSES as readonly string[]).includes(value)
-    ? value as WorkItemStatus
-    : undefined
-}
-
-function parsePriority(value: unknown): WorkItemPriority | undefined {
-  return typeof value === 'string' && (WORK_ITEM_PRIORITIES as readonly string[]).includes(value)
-    ? value as WorkItemPriority
-    : undefined
+/** A 400 naming the first field that failed, so a bad value is rejected instead of silently dropped. */
+function parseBody<T>(schema: ZodType<T>, body: unknown): { ok: true; data: T } | { ok: false; response: NextResponse } {
+  const parsed = schema.safeParse(body)
+  if (parsed.success) return { ok: true, data: parsed.data }
+  const issue = parsed.error.issues[0]
+  const field = issue?.path.join('.') || undefined
+  return {
+    ok: false,
+    response: NextResponse.json({ error: issue?.message ?? 'Invalid request', ...(field ? { field } : {}) }, { status: 400 }),
+  }
 }
 
 async function readJsonBody<T>(request: NextRequest, fallback: T): Promise<T> {
@@ -52,7 +54,7 @@ async function readJsonBody<T>(request: NextRequest, fallback: T): Promise<T> {
 
 function scopeActionResponse(result: WorkItemScopeActionResult): NextResponse {
   if (result.ok) return NextResponse.json({ success: true })
-  const status = result.reason === 'not_found' ? 404 : 403
+  const status = result.reason === 'not_found' ? 404 : result.reason === 'subtask_follows_parent' ? 400 : 403
   return NextResponse.json({ error: result.reason }, { status })
 }
 
@@ -75,26 +77,6 @@ function toErrorResponse(error: unknown, fallbackMessage: string) {
   return NextResponse.json({ error: fallbackMessage }, { status: 500 })
 }
 
-interface UpdateWorkItemBody {
-  itemId?: string
-  title?: string
-  description?: string
-  status?: string
-  priority?: string
-  assigneeUserId?: string
-  clearAssignee?: boolean
-  startDate?: number
-  dueDate?: number
-  clearDates?: boolean
-  labels?: string[]
-  parentItemId?: string
-  orderKey?: string
-  expectedUpdatedAt?: number
-  /** Scope actions: archive/restore, or move between Personal and Workspace. */
-  action?: 'archive' | 'restore' | 'move'
-  scope?: string
-}
-
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
@@ -114,11 +96,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       return NextResponse.json(results)
     }
 
+    const statusParam = params.get('status')
+    if (statusParam && !(WORK_ITEM_STATUSES as readonly string[]).includes(statusParam)) {
+      return NextResponse.json({ error: 'Invalid status', field: 'status' }, { status: 400 })
+    }
     const items = await workItemService.listWorkItems({
       userId: auth.userId,
       workspaceId,
       view: parseResourceView(params.get('view')),
-      status: parseStatus(params.get('status')),
+      status: (statusParam || undefined) as WorkItemStatus | undefined,
       assigneeUserId: params.get('assigneeUserId') ?? undefined,
       parentItemId: params.get('parentItemId') ?? undefined,
       includeDeleted: readBooleanParam(params.get('includeDeleted')),
@@ -131,13 +117,15 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await readJsonBody<UpdateWorkItemBody>(request, {})
+    const parsed = parseBody(CreateWorkItemRequest, await readJsonBody<unknown>(request, {}))
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
     const { auth } = context
     const result = await workItemService.createWorkItem({
-      title: body.title ?? '',
+      title: body.title,
       description: body.description,
-      status: parseStatus(body.status),
-      priority: parsePriority(body.priority),
+      status: body.status,
+      priority: body.priority,
       assigneeUserId: body.assigneeUserId,
       startDate: body.startDate,
       dueDate: body.dueDate,
@@ -145,7 +133,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       parentItemId: body.parentItemId,
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
-      scope: parseResourceScope(body.scope),
+      scope: body.scope,
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -155,10 +143,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const body = await readJsonBody<UpdateWorkItemBody>(request, {})
+    const parsed = parseBody(UpdateWorkItemRequest, await readJsonBody<unknown>(request, {}))
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
     const { auth } = context
     const workspaceId = context.workspace.workspace.id
-    if (!body.itemId) return NextResponse.json({ error: 'itemId is required' }, { status: 400 })
 
     if (body.action === 'archive') {
       return scopeActionResponse(await workItemService.archiveWorkItem({ itemId: body.itemId, userId: auth.userId, workspaceId }))
@@ -167,9 +156,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       return scopeActionResponse(await workItemService.restoreWorkItem({ itemId: body.itemId, userId: auth.userId, workspaceId }))
     }
     if (body.action === 'move') {
-      const to = parseResourceScope(body.scope)
-      if (!to) return NextResponse.json({ error: 'scope is required for move' }, { status: 400 })
-      return scopeActionResponse(await workItemService.setWorkItemScope({ itemId: body.itemId, userId: auth.userId, workspaceId, to }))
+      if (!body.scope) return NextResponse.json({ error: 'scope is required for move', field: 'scope' }, { status: 400 })
+      return scopeActionResponse(await workItemService.setWorkItemScope({ itemId: body.itemId, userId: auth.userId, workspaceId, to: body.scope }))
     }
 
     const result = await workItemService.updateWorkItem({
@@ -178,15 +166,18 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       workspaceId,
       title: body.title,
       description: body.description,
-      status: parseStatus(body.status),
-      priority: parsePriority(body.priority),
+      status: body.status,
+      priority: body.priority,
       assigneeUserId: body.assigneeUserId,
       clearAssignee: body.clearAssignee,
       startDate: body.startDate,
       dueDate: body.dueDate,
       clearDates: body.clearDates,
+      clearStartDate: body.clearStartDate,
+      clearDueDate: body.clearDueDate,
       labels: body.labels,
       parentItemId: body.parentItemId,
+      clearParent: body.clearParent,
       orderKey: body.orderKey,
       expectedUpdatedAt: body.expectedUpdatedAt,
     })
@@ -206,6 +197,6 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
     })
     return NextResponse.json(result)
   } catch (error) {
-    return toErrorResponse(error, 'Failed to delete work item')
+    return scopeForbiddenResponse(error) ?? toErrorResponse(error, 'Failed to delete work item')
   }
 }

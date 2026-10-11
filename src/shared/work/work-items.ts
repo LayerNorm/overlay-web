@@ -29,6 +29,14 @@ export const WORK_ITEM_VIEWS = ['list', 'board', 'gantt'] as const
 export type WorkItemView = (typeof WORK_ITEM_VIEWS)[number]
 export const DEFAULT_WORK_ITEM_VIEW: WorkItemView = 'list'
 
+/** Size limits enforced by both the API route and the Convex mutations. */
+export const WORK_ITEM_LIMITS = {
+  title: 200,
+  description: 20_000,
+  labelCount: 20,
+  labelLength: 50,
+} as const
+
 export const WORK_ITEM_KEY_PREFIX = 'OVR'
 export function workItemKey(itemNumber: number): string {
   return `${WORK_ITEM_KEY_PREFIX}-${itemNumber}`
@@ -41,6 +49,11 @@ export function workItemKey(itemNumber: number): string {
  */
 export const WORK_ITEM_ORDER_STEP = 1024
 export const WORK_ITEM_ORDER_WIDTH = 20
+
+/** True for a key made by `toWorkItemOrderKey`: exactly `WORK_ITEM_ORDER_WIDTH` digits. */
+export function isWorkItemOrderKey(value: string): boolean {
+  return value.length === WORK_ITEM_ORDER_WIDTH && /^\d+$/.test(value)
+}
 
 export function toWorkItemOrderKey(value: number | bigint): string {
   return value.toString().padStart(WORK_ITEM_ORDER_WIDTH, '0')

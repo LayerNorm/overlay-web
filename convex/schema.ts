@@ -2494,13 +2494,21 @@ export default defineSchema({
     description: v.optional(v.string()),
     status: v.union(v.literal('todo'), v.literal('in_progress'), v.literal('in_review'), v.literal('done')),
     priority: v.union(v.literal('none'), v.literal('low'), v.literal('medium'), v.literal('high'), v.literal('urgent')),
+    /**
+     * The assignee's workspace principal id (a person now, an agent later), not a user id. Despite the name this matches
+     * the API field; it is checked against the item's workspace on every write.
+     */
     assigneeUserId: v.optional(v.string()),
     startDate: v.optional(v.number()),
     dueDate: v.optional(v.number()),
     /** Lexicographic position inside the status column (see src/shared/work/work-items.ts). */
     orderKey: v.string(),
     parentItemId: v.optional(v.id('workItems')),
-    /** Per-scope sequential number rendering as `OVR-<n>` (from workItemCounters). */
+    /**
+     * Sequential number rendering as `OVR-<n>`, counted separately for each scope (workspace items share one counter
+     * per workspace; each person's personal items have their own), so numbers never reveal how many private items
+     * exist. Moving an item between scopes gives it a new number from the target scope's counter.
+     */
     itemNumber: v.number(),
     labels: v.optional(v.array(v.string())),
     createdAt: v.number(),
@@ -2511,14 +2519,18 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_workspaceId_status', ['workspaceId', 'status'])
+    // The newest key in a status column, without reading the column: `.order('desc').first()`.
+    .index('by_workspaceId_status_orderKey', ['workspaceId', 'status', 'orderKey'])
+    .index('by_userId_status_orderKey', ['userId', 'status', 'orderKey'])
     .index('by_userId', ['userId'])
     .index('by_parentItemId', ['parentItemId'])
     .searchIndex('search_title', {
       searchField: 'title',
-      filterFields: ['userId', 'workspaceId', 'deletedAt'],
+      filterFields: ['userId', 'workspaceId', 'scope', 'archivedAt', 'deletedAt'],
     }),
 
-  // Per-scope sequential work-item numbers (`personal:<userId>` or `workspace:<workspaceId>`).
+  // Sequential work-item numbers: `workspace:<workspaceId>` for shared items, `personal:<userId>:<workspaceId>` for a
+  // person's private items in a workspace, `personal:<userId>` for items from before workspaces.
   workItemCounters: defineTable({
     scopeKey: v.string(),
     nextNumber: v.number(),

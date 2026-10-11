@@ -16,16 +16,20 @@ import {
   type WorkItemStatus,
 } from './WorkItemService'
 
-function translateWorkItemError(error: unknown): never {
+/** Convex wraps what a mutation throws ("Uncaught Error: ..."), so match the code anywhere in the message. */
+export function translateWorkItemError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error)
-  if (message.startsWith('WORK_ITEM_REVISION_CONFLICT:')) {
-    const current = Number.parseInt(message.slice('WORK_ITEM_REVISION_CONFLICT:'.length), 10)
-    throw new WorkItemRevisionConflictError(Number.isFinite(current) ? current : 0)
-  }
-  if (message.startsWith('WORK_ITEM_PARENT_INVALID')) {
+  const conflict = /WORK_ITEM_REVISION_CONFLICT:(\d+)/.exec(message)
+  if (conflict) throw new WorkItemRevisionConflictError(Number.parseInt(conflict[1] ?? '0', 10))
+  if (message.includes('WORK_ITEM_PARENT_INVALID')) {
     throw new WorkItemServiceError('Invalid parent work item', 400)
   }
-  if (message === 'Unauthorized') {
+  if (message.includes('WORK_ITEM_ASSIGNEE_INVALID')) {
+    throw new WorkItemServiceError('The assignee must be an active member of this workspace', 400)
+  }
+  const invalid = /WORK_ITEM_INVALID:(\w+)/.exec(message)
+  if (invalid) throw new WorkItemServiceError(`Invalid ${invalid[1]}`, 400)
+  if (/(^|\s)Unauthorized\b/.test(message)) {
     throw new WorkItemServiceError('Forbidden', 403)
   }
   throw error
@@ -107,8 +111,11 @@ export class ConvexWorkItemRepository implements WorkItemRepository {
       ...(params.startDate !== undefined ? { startDate: params.startDate } : {}),
       ...(params.dueDate !== undefined ? { dueDate: params.dueDate } : {}),
       ...(params.clearDates ? { clearDates: params.clearDates } : {}),
+      ...(params.clearStartDate ? { clearStartDate: params.clearStartDate } : {}),
+      ...(params.clearDueDate ? { clearDueDate: params.clearDueDate } : {}),
       ...(params.labels ? { labels: params.labels } : {}),
       ...(params.parentItemId ? { parentItemId: params.parentItemId } : {}),
+      ...(params.clearParent ? { clearParent: params.clearParent } : {}),
       ...(params.orderKey !== undefined ? { orderKey: params.orderKey } : {}),
       ...(params.expectedUpdatedAt !== undefined ? { expectedUpdatedAt: params.expectedUpdatedAt } : {}),
     }))

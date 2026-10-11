@@ -77,8 +77,11 @@ export interface UpdateWorkItemParams {
   startDate?: number
   dueDate?: number
   clearDates?: boolean
+  clearStartDate?: boolean
+  clearDueDate?: boolean
   labels?: string[]
   parentItemId?: string
+  clearParent?: boolean
   orderKey?: string
   expectedUpdatedAt?: number
 }

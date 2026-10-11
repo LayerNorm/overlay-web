@@ -66,9 +66,14 @@ export interface UpdateWorkItemRequest {
   clearAssignee?: boolean
   startDate?: number
   dueDate?: number
+  /** Clears both dates; `clearStartDate` / `clearDueDate` clear one. */
   clearDates?: boolean
+  clearStartDate?: boolean
+  clearDueDate?: boolean
   labels?: string[]
   parentItemId?: string
+  /** Turns a subtask back into a top-level item. */
+  clearParent?: boolean
   orderKey?: string
   expectedUpdatedAt?: number
   action?: 'archive' | 'restore' | 'move'

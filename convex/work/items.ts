@@ -4,7 +4,16 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 import type { Doc, Id } from '../_generated/dataModel'
-import { nextWorkItemOrderKey } from '../../src/shared/work/work-items'
+import {
+  allocateItemNumber,
+  appendOrderKey,
+  assertValidAssignee,
+  assertValidParent,
+  cleanLabels,
+  isValidAssignee,
+  validateFields,
+  workItemCounterKey,
+} from './itemRules'
 
 const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
 const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
@@ -17,8 +26,21 @@ const priorityArg = v.optional(v.union(
 
 const workItemDoc = v.any()
 
+/** The most rows one list reads from a single source; newest first, so a busy workspace sees its recent work. */
+const WORK_ITEM_SCAN_LIMIT = 2000
+
 // Archiving/restoring and Personal <-> Workspace moves share the scoped-resource rules.
 export const { setScope, archive, restore } = scopeMutations('workItems', 'content', {
+  // A subtask's scope is its parent's: it moves with the parent, never on its own.
+  // An item gets a number from the target scope's counter, and keeps an assignee only if they still fit.
+  onMove: async (ctx, row, to, descendant) => {
+    const item = row as unknown as Doc<'workItems'>
+    if (!descendant && item.parentItemId !== undefined) return { ok: false, reason: 'subtask_follows_parent' }
+    const itemNumber = await allocateItemNumber(ctx, workItemCounterKey(to, item.userId, item.workspaceId))
+    const keepAssignee = item.assigneeUserId !== undefined &&
+      await isValidAssignee(ctx, { assignee: item.assigneeUserId, workspaceId: item.workspaceId, scope: to, userId: item.userId })
+    return { ok: true, patch: { itemNumber, ...(item.assigneeUserId !== undefined && !keepAssignee ? { assigneeUserId: undefined } : {}) } }
+  },
   // Subtasks move, archive, and restore with their parent.
   descendants: async (db, id) => {
     const realDb = db as MutationCtx['db']
@@ -37,55 +59,6 @@ async function authorizeUserAccess(params: {
 }) {
   if (validateServerSecret(params.serverSecret)) return
   await requireAccessToken(params.accessToken ?? '', params.userId)
-}
-
-function workItemScopeKey(userId: string, workspaceId: string | undefined): string {
-  return workspaceId ? `workspace:${workspaceId}` : `personal:${userId}`
-}
-
-/** Allocates the next `OVR-<n>` number for the item's scope, incrementing its counter. */
-async function allocateItemNumber(ctx: MutationCtx, scopeKey: string): Promise<number> {
-  const counter = await ctx.db
-    .query('workItemCounters')
-    .withIndex('by_scopeKey', (q) => q.eq('scopeKey', scopeKey))
-    .unique()
-  if (!counter) {
-    await ctx.db.insert('workItemCounters', { scopeKey, nextNumber: 2 })
-    return 1
-  }
-  await ctx.db.patch(counter._id, { nextNumber: counter.nextNumber + 1 })
-  return counter.nextNumber
-}
-
-/** The orderKey to append after the last item the caller can read in `status` (and parent, when given). */
-async function appendOrderKey(
-  ctx: MutationCtx,
-  args: {
-    userId: string
-    workspaceId: string | undefined
-    scope: 'personal' | 'workspace'
-    status: Doc<'workItems'>['status']
-    parentItemId?: Id<'workItems'>
-  },
-): Promise<string> {
-  const rows = args.workspaceId !== undefined
-    ? await ctx.db
-        .query('workItems')
-        .withIndex('by_workspaceId_status', (q) => q.eq('workspaceId', args.workspaceId!).eq('status', args.status))
-        .collect()
-    : await ctx.db
-        .query('workItems')
-        .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-        .collect()
-  const column = rows.filter((row) =>
-    row.status === args.status &&
-    row.deletedAt === undefined &&
-    row.archivedAt === undefined &&
-    (row.scope ?? 'personal') === args.scope &&
-    row.parentItemId === args.parentItemId &&
-    (args.workspaceId !== undefined ? row.workspaceId === args.workspaceId : row.workspaceId === undefined),
-  )
-  return nextWorkItemOrderKey(column.map((row) => row.orderKey))
 }
 
 function sortWorkItems(rows: Doc<'workItems'>[]): Doc<'workItems'>[] {
@@ -125,13 +98,15 @@ export const list = query({
       const scoped = await listScopedRows(ctx, {
         userId, workspaceId, view,
         fetchMine: async () => await ctx.db.query('workItems')
-          .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId)).collect(),
+          .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId))
+          .order('desc').take(WORK_ITEM_SCAN_LIMIT),
         fetchShared: async (ws) => await ctx.db.query('workItems')
-          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace'))
+          .order('desc').take(WORK_ITEM_SCAN_LIMIT),
       })
       return filter(scoped)
     }
-    const mine = await ctx.db.query('workItems').withIndex('by_userId', (q) => q.eq('userId', userId)).collect()
+    const mine = await ctx.db.query('workItems').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').take(WORK_ITEM_SCAN_LIMIT)
     // Rows from before workspaces: everything active that is theirs (archived view shows their archived ones).
     return filter(mine.filter((row) => (view === 'archived' ? row.archivedAt !== undefined : row.archivedAt === undefined)))
   },
@@ -157,7 +132,7 @@ export const get = query({
     const children = await ctx.db
       .query('workItems')
       .withIndex('by_parentItemId', (q) => q.eq('parentItemId', itemId))
-      .collect()
+      .take(WORK_ITEM_SCAN_LIMIT)
     const loader = scopeContextLoader(ctx, userId)
     const readableChildren: Doc<'workItems'>[] = []
     for (const child of children) {
@@ -188,26 +163,24 @@ export const create = mutation({
   returns: v.id('workItems'),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    validateFields(args)
     const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     const status = args.status ?? 'todo'
-    let parentItemId = args.parentItemId
-    if (parentItemId !== undefined) {
-      const parent = await getReadableRow(ctx, { row: await ctx.db.get(parentItemId), userId: args.userId, workspaceId: args.workspaceId })
-      // One level of nesting only: a subtask may not get its own subtasks.
-      if (!parent || parent.deletedAt || parent.parentItemId !== undefined) throw new Error('WORK_ITEM_PARENT_INVALID')
-      if (parent.workspaceId !== args.workspaceId) throw new Error('WORK_ITEM_PARENT_INVALID')
-    } else {
-      parentItemId = undefined
+    if (args.parentItemId !== undefined) {
+      await assertValidParent(ctx, { parentId: args.parentItemId, userId: args.userId, workspaceId: args.workspaceId, scope })
+    }
+    if (args.assigneeUserId !== undefined) {
+      await assertValidAssignee(ctx, { assignee: args.assigneeUserId, workspaceId: args.workspaceId, scope, userId: args.userId })
     }
     const orderKey = args.orderKey ?? await appendOrderKey(ctx, {
       userId: args.userId,
       workspaceId: args.workspaceId,
       scope,
       status,
-      parentItemId,
+      parentItemId: args.parentItemId,
     })
     const now = Date.now()
-    const itemNumber = await allocateItemNumber(ctx, workItemScopeKey(args.userId, args.workspaceId))
+    const itemNumber = await allocateItemNumber(ctx, workItemCounterKey(scope, args.userId, args.workspaceId))
     return await ctx.db.insert('workItems', {
       userId: args.userId,
       reporterUserId: args.userId,
@@ -221,9 +194,9 @@ export const create = mutation({
       startDate: args.startDate,
       dueDate: args.dueDate,
       orderKey,
-      parentItemId,
+      parentItemId: args.parentItemId,
       itemNumber,
-      labels: args.labels,
+      labels: cleanLabels(args.labels),
       createdAt: now,
       updatedAt: now,
     })
@@ -245,15 +218,21 @@ export const update = mutation({
     clearAssignee: v.optional(v.boolean()),
     startDate: v.optional(v.number()),
     dueDate: v.optional(v.number()),
+    /** Clears both dates; `clearStartDate` / `clearDueDate` clear one. */
     clearDates: v.optional(v.boolean()),
+    clearStartDate: v.optional(v.boolean()),
+    clearDueDate: v.optional(v.boolean()),
     labels: v.optional(v.array(v.string())),
     parentItemId: v.optional(v.id('workItems')),
+    /** Turns a subtask back into a top-level item. */
+    clearParent: v.optional(v.boolean()),
     orderKey: v.optional(v.string()),
     expectedUpdatedAt: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, { itemId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    validateFields(updates)
     const item = await ctx.db.get(itemId)
     if (!item || item.deletedAt || (workspaceId !== undefined && item.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(item))) {
       throw new Error('Unauthorized')
@@ -261,36 +240,43 @@ export const update = mutation({
     if (updates.expectedUpdatedAt !== undefined && item.updatedAt !== updates.expectedUpdatedAt) {
       throw new Error(`WORK_ITEM_REVISION_CONFLICT:${item.updatedAt}`)
     }
+    if (updates.clearParent && updates.parentItemId !== undefined) throw new Error('WORK_ITEM_PARENT_INVALID')
+    const itemScope = item.scope ?? 'personal'
     const patch: Partial<Doc<'workItems'>> = { updatedAt: Date.now() }
     if (updates.title !== undefined) patch.title = updates.title.trim() || item.title
     if (updates.description !== undefined) patch.description = updates.description.trim() || undefined
     if (updates.priority !== undefined) patch.priority = updates.priority
     if (updates.clearAssignee) patch.assigneeUserId = undefined
-    else if (updates.assigneeUserId !== undefined) patch.assigneeUserId = updates.assigneeUserId
-    if (updates.clearDates) {
-      patch.startDate = undefined
-      patch.dueDate = undefined
-    } else {
-      if (updates.startDate !== undefined) patch.startDate = updates.startDate
-      if (updates.dueDate !== undefined) patch.dueDate = updates.dueDate
+    else if (updates.assigneeUserId !== undefined) {
+      await assertValidAssignee(ctx, { assignee: updates.assigneeUserId, workspaceId: item.workspaceId, scope: itemScope, userId })
+      patch.assigneeUserId = updates.assigneeUserId
     }
-    if (updates.labels !== undefined) patch.labels = updates.labels
-    if (updates.parentItemId !== undefined) {
-      const parent = await getReadableRow(ctx, { row: await ctx.db.get(updates.parentItemId), userId, workspaceId })
-      if (!parent || parent.deletedAt || parent.parentItemId !== undefined || updates.parentItemId === itemId) {
-        throw new Error('WORK_ITEM_PARENT_INVALID')
-      }
-      patch.parentItemId = updates.parentItemId
+    if (updates.clearDates || updates.clearStartDate) patch.startDate = undefined
+    else if (updates.startDate !== undefined) patch.startDate = updates.startDate
+    if (updates.clearDates || updates.clearDueDate) patch.dueDate = undefined
+    else if (updates.dueDate !== undefined) patch.dueDate = updates.dueDate
+    if (updates.labels !== undefined) patch.labels = cleanLabels(updates.labels)
+
+    let parentItemId = item.parentItemId
+    if (updates.clearParent) parentItemId = undefined
+    else if (updates.parentItemId !== undefined && updates.parentItemId !== item.parentItemId) {
+      await assertValidParent(ctx, {
+        parentId: updates.parentItemId, userId, workspaceId: item.workspaceId, scope: itemScope, childId: itemId,
+      })
+      parentItemId = updates.parentItemId
     }
-    if (updates.status !== undefined && updates.status !== item.status) {
-      patch.status = updates.status
-      // A column move re-seats the item: explicit key wins, otherwise append to the target column.
+    patch.parentItemId = parentItemId
+
+    const status = updates.status ?? item.status
+    // Changing column (status or parent) re-seats the item: an explicit key wins, otherwise it goes to the end.
+    if (status !== item.status || parentItemId !== item.parentItemId) {
+      patch.status = status
       patch.orderKey = updates.orderKey ?? await appendOrderKey(ctx, {
         userId,
         workspaceId: item.workspaceId,
-        scope: item.scope ?? 'personal',
-        status: updates.status,
-        parentItemId: item.parentItemId,
+        scope: itemScope,
+        status,
+        parentItemId,
       })
     } else if (updates.orderKey !== undefined) {
       patch.orderKey = updates.orderKey
@@ -314,6 +300,7 @@ export const reorder = mutation({
   returns: v.null(),
   handler: async (ctx, { itemId, userId, workspaceId, accessToken, serverSecret, status, orderKey }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
+    validateFields({ orderKey })
     const item = await ctx.db.get(itemId)
     if (!item || item.deletedAt || (workspaceId !== undefined && item.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(item))) {
       throw new Error('Unauthorized')
@@ -348,7 +335,7 @@ export const remove = mutation({
     const children = await ctx.db
       .query('workItems')
       .withIndex('by_parentItemId', (q) => q.eq('parentItemId', itemId))
-      .collect()
+      .take(WORK_ITEM_SCAN_LIMIT)
     for (const child of children) {
       if (!child.deletedAt) await ctx.db.patch(child._id, { deletedAt: now, updatedAt: now })
     }
@@ -356,6 +343,10 @@ export const remove = mutation({
   },
 })
 
+/**
+ * Title search over what the caller can read: their own items plus the workspace's shared ones. Each source is its own
+ * filtered search (live rows only), so other people's private matches never take up room in the results.
+ */
 export const search = query({
   args: {
     userId: v.string(),
@@ -375,21 +366,25 @@ export const search = query({
     const needle = text.trim()
     if (!needle) return []
     const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 25)))
-    const rows = await ctx.db
+    const mine = await ctx.db
       .query('workItems')
-      .withSearchIndex('search_title', (q) => {
-        const scoped = q.search('title', needle)
-        return workspaceId !== undefined ? scoped.eq('workspaceId', workspaceId) : scoped.eq('userId', userId)
-      })
-      .take(pageLimit * 3)
+      .withSearchIndex('search_title', (q) => q.search('title', needle)
+        .eq('userId', userId).eq('workspaceId', workspaceId).eq('archivedAt', undefined).eq('deletedAt', undefined))
+      .take(pageLimit)
+    const shared = workspaceId === undefined ? [] : await ctx.db
+      .query('workItems')
+      .withSearchIndex('search_title', (q) => q.search('title', needle)
+        .eq('workspaceId', workspaceId).eq('scope', 'workspace').eq('archivedAt', undefined).eq('deletedAt', undefined))
+      .take(pageLimit)
     const loader = scopeContextLoader(ctx, userId)
-    const out: Doc<'workItems'>[] = []
-    for (const row of rows) {
-      if (row.deletedAt || row.archivedAt !== undefined) continue
-      if (!(await loader.canRead(row))) continue
-      out.push(row)
-      if (out.length >= pageLimit) break
+    const out = new Map<string, Doc<'workItems'>>()
+    // Alternate between the two result lists (each is already best match first) so neither crowds out the other.
+    for (let i = 0; i < pageLimit && out.size < pageLimit; i++) {
+      for (const row of [mine[i], shared[i]]) {
+        if (!row || out.has(row._id) || out.size >= pageLimit) continue
+        if (await loader.canRead(row)) out.set(row._id, row)
+      }
     }
-    return sortWorkItems(out)
+    return sortWorkItems([...out.values()])
   },
 })
