@@ -1921,7 +1921,7 @@ export const deleteMessage = mutation({
     ) return false
     const now = Date.now()
     await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
-    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.purgeKnowledgeSource, {
       sourceKind: 'message',
       sourceId: args.messageId,
     })
