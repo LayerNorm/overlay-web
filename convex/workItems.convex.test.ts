@@ -70,13 +70,13 @@ test('personal items belong to their creator; item numbers count per scope', asy
   const workspace = await listItems(convex, { userId: 'u2', workspaceId: 'w1', view: 'workspace' })
   expect(workspace.map((i) => i.title)).toEqual(['Shared task'])
 
-  // OVR numbers come from one counter per workspace: personal and shared items
-  // in w1 share the sequence so keys are unique within the workspace.
+  // Numbers are counted per scope: u1's personal items are 1 and 2; the shared item is the workspace's first, so the
+  // workspace sequence never shows how many private items exist.
   const items = await convex.run(async (ctx) => await ctx.db.query('workItems').collect() as Item[])
   const byId = new Map(items.map((i) => [i._id, i]))
   expect(byId.get(id1)!.itemNumber).toBe(1)
   expect(byId.get(id2)!.itemNumber).toBe(2)
-  expect(byId.get((await listItems(convex, { userId: 'u1', workspaceId: 'w1', view: 'workspace' }))[0]!._id)!.itemNumber).toBe(4)
+  expect(byId.get((await listItems(convex, { userId: 'u1', workspaceId: 'w1', view: 'workspace' }))[0]!._id)!.itemNumber).toBe(1)
 })
 
 test('workspace-scoped items are readable by members only; edits enforced', async () => {
