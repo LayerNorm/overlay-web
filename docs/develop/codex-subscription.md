@@ -1,6 +1,6 @@
 # Codex subscription, experimental agents, and E2B
 
-Phase 6 of `docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`. Three independent parts.
+From the "other agents" section of `docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`. Three independent parts.
 
 ## A. Codex on a ChatGPT subscription (credential broker)
 
