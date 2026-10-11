@@ -28,6 +28,7 @@ export type OverlayIconName =
   | 'shield-check'
   | 'smartphone'
   | 'sparkles'
+  | 'square-kanban'
   | 'user'
   | 'workflow'
 

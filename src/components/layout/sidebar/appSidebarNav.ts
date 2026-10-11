@@ -37,12 +37,13 @@ import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
 import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 
-export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'settings'
+export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'work' | 'agents' | 'automations' | 'tools' | 'settings'
 
 export const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   chat: 'chats',
   files: 'files',
   notes: 'notes',
+  work: 'work',
   agents: 'agents',
   automations: 'automations',
   tools: 'extensions',
@@ -77,6 +78,7 @@ export const RESOURCE_PANEL_KINDS: ReadonlySet<SecondaryPanelKind> = new Set([
   'chat',
   'files',
   'notes',
+  'work',
   'agents',
   'automations',
 ])
@@ -89,6 +91,7 @@ export interface SidebarRouteState {
   notesOpen: boolean
   filesOpen: boolean
   filesSectionOpen: boolean
+  workOpen: boolean
   agentsOpen: boolean
   activityOpen: boolean
   archivedOpen: boolean
@@ -161,6 +164,7 @@ export function resolveSidebarRouteState({
   const notesOpen = pathname.startsWith('/app/notes') || (canonicalWorkspaceRoute && workspaceSurface === 'notes')
   const filesOpen = pathname.startsWith('/app/files') || (canonicalWorkspaceRoute && workspaceSurface === 'files')
   const filesSectionOpen = filesOpen || notesOpen
+  const workOpen = pathname.startsWith('/app/work') || (canonicalWorkspaceRoute && workspaceSurface === 'work')
   const agentsOpen = pathname.startsWith('/app/agents') || (canonicalWorkspaceRoute && workspaceSurface === 'agents')
   // Activity is its own page but stays under the Chats secondary panel, so the
   // subnavigation it was selected from remains visible beside it.
@@ -189,10 +193,12 @@ export function resolveSidebarRouteState({
       ? 'files'
       : notesOpen
         ? 'notes'
-        : agentsOpen
-          ? 'agents'
-          : automationsSectionOpen
-            ? 'automations'
+        : workOpen
+          ? 'work'
+          : agentsOpen
+            ? 'agents'
+            : automationsSectionOpen
+              ? 'automations'
             : toolsOpen
               ? 'tools'
               : settingsPathActive
@@ -212,6 +218,7 @@ export function resolveSidebarRouteState({
     automationsOpen,
     automationsSectionOpen,
     toolsOpen,
+    workOpen,
     settingsPathActive,
     settingsSection,
     toolsView,
@@ -287,6 +294,8 @@ export function panelKindForNavItem(
       return 'chat'
     case '/app/files':
       return 'files'
+    case '/app/work':
+      return 'work'
     case '/app/agents':
       return 'agents'
     case '/app/automations':

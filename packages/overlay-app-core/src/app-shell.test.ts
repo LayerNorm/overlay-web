@@ -39,12 +39,12 @@ test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
   assert.equal(shell.sidebarActions.find((item) => item.id === 'admin.invite')?.routePatterns[0], '/app/admin')
 })
 
-test('agents are the default home and lead the primary navigation', () => {
+test('work leads the primary navigation; agents remain the default home', () => {
   const shell = resolveOverlayAppShellConfig()
 
   assert.equal(shell.brand.homeHref, '/app/agents')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'agents')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'chat')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'work')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'agents')
 })
 
 test('resolveOverlayAppShellConfig filters disabled feature registries', () => {

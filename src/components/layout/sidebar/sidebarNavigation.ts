@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Smartphone,
   Sparkles,
+  SquareKanban,
   User,
   Workflow,
 } from 'lucide-react'
@@ -47,6 +48,7 @@ export const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
   'shield-check': ShieldCheck,
   smartphone: Smartphone,
   sparkles: Sparkles,
+  'square-kanban': SquareKanban,
   user: User,
   workflow: Workflow,
 }

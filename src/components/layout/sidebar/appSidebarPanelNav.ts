@@ -13,6 +13,7 @@ import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { SETTINGS_SECTION_ICONS, chatScopeForView, type SidebarRouteState } from './appSidebarNav'
 import { buildScopedPanelNav } from './scopedPanelNav'
+import { buildWorkPanelNav } from './appSidebarWorkPanelNav'
 import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { soloPanelScope } from '@/shared/workspaces/solo-workspace'
 
@@ -443,6 +444,21 @@ export function resolveSecondaryPanelNav({
       scope: routeState.scope,
       effectivePendingSecondaryNavId,
       notesOpen: routeState.notesOpen,
+      currentSearchParams,
+      publicShowcase,
+      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
+      activeWorkspaceId,
+      buildWorkspaceHref,
+      router,
+      closeMobileDrawer,
+      beginSecondaryNavigation,
+      solo,
+    })
+  }
+  if (panelKind === 'work') {
+    return buildWorkPanelNav({
+      scope: routeState.scope,
+      effectivePendingSecondaryNavId,
       currentSearchParams,
       publicShowcase,
       canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,

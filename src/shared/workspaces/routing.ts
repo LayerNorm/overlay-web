@@ -14,6 +14,7 @@ const APP_SURFACES = new Set([
   'outputs',
   'settings',
   'tools',
+  'work',
 ])
 
 export function readWorkspaceIdFromPath(pathname: string): string | null {
