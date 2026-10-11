@@ -18,6 +18,13 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Agent profile import tests intentionally contain fake tokens to verify secret detection and redaction"
+paths = [
+  '''packages/overlay-agent-bridge-protocol/src/agent-profile\.test\.ts$''',
+  '''src/server/agents/profiles/AgentProfileService\.test\.ts$''',
+]
+
+[[allowlists]]
 description = "Build output directories are not source files"
 paths = [
   '''\.next/.*''',

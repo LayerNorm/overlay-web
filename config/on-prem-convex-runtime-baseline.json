@@ -75,6 +75,7 @@
     "src/app/api/v1/agents/[agentId]/automations/route.ts",
     "src/app/api/v1/agents/[agentId]/bundle/route.ts",
     "src/app/api/v1/agents/[agentId]/machine/route.ts",
+    "src/app/api/v1/agents/[agentId]/permanent/route.ts",
     "src/app/api/v1/agents/[agentId]/profile/route.ts",
     "src/app/api/v1/agents/[agentId]/restore/route.ts",
     "src/app/api/v1/agents/[agentId]/route.ts",
@@ -190,6 +191,7 @@
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
     "src/app/api/v1/webhooks/slack/route.ts",
+    "src/app/api/v1/work-items/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/checkout/route.ts",
@@ -325,6 +327,7 @@
     }
   ],
   "convexRuntimeImportFiles": [
+    "src/app/.well-known/workflow/v1/step/route.js",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
@@ -429,6 +432,8 @@
     "src/server/users/index.ts",
     "src/server/webhooks/ConvexWebhookRepository.ts",
     "src/server/webhooks/index.ts",
+    "src/server/work/ConvexWorkItemRepository.ts",
+    "src/server/work/index.ts",
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [

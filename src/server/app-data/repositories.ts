@@ -16,6 +16,7 @@ import type { FileRepository } from '@/server/files/FileRepository'
 import { ConvexFileIngestionJobRepository } from '@/server/files/ConvexFileIngestionJobRepository'
 import type { FileIngestionJobRepository } from '@/server/files/FileIngestionJobRepository'
 import { ConvexNoteRepository, type NoteRepository } from '@/server/notes'
+import { ConvexWorkItemRepository, type WorkItemRepository } from '@/server/work'
 import { type MemoryRepository } from '@/server/memory'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
 import { type OnboardingRepository } from '@/server/onboarding'
@@ -116,6 +117,7 @@ export interface AppDataRepositories {
   memories: MemoryRepository
   mcpServers: McpServerRepository
   notes: NoteRepository
+  workItems: WorkItemRepository
   onboarding: OnboardingRepository
   outbox: OutboxRepository
   providerConnections: ProviderConnectionRepository
@@ -165,6 +167,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       memories: new ConvexMemoryRepository(),
       mcpServers: new ConvexMcpServerRepository(),
       notes: new ConvexNoteRepository(),
+      workItems: new ConvexWorkItemRepository(),
       onboarding: unsupportedRepository<OnboardingRepository>('OnboardingRepository'),
       outbox: new ConvexOutboxRepository(),
       providerConnections: new ConvexProviderConnectionRepository(),

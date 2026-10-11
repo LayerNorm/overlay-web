@@ -7,6 +7,7 @@ import { AgentsClient } from './agents/client'
 import { AgentEnvironmentsClient } from './agent-environments/client'
 import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
+import { WorkItemsClient } from './work-items/client'
 import { BootstrapClient } from './bootstrap/client'
 import { ChatAuxClient } from './chat/chat-aux-client'
 import { ComputersClient } from './computers/client'
@@ -51,6 +52,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     scope: new ScopeClient(http),
     mcpServers: new McpServersClient(http),
     automations: new AutomationsClient(http),
+    workItems: new WorkItemsClient(http),
     settings: new SettingsClient(http),
     subscription: new SubscriptionClient(http),
     account: new AccountClient(http),
