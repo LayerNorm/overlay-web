@@ -155,11 +155,12 @@ export function WorkItemDrawer({
         <div className="flex-1 overflow-y-auto">
           <div className="px-5 py-4">
             <input
-              value={item.title}
-              onChange={(event) => setItem({ ...item, title: event.target.value })}
+              key={`title-${item.title}`}
+              defaultValue={item.title}
               onBlur={(event) => {
                 const title = event.target.value.trim()
                 if (title && title !== item.title) void patch({ itemId, title })
+                else event.target.value = item.title
               }}
               disabled={archived || busy}
               className="w-full bg-transparent text-[15px] font-medium leading-snug outline-none disabled:opacity-70"
@@ -251,8 +252,8 @@ export function WorkItemDrawer({
               <AlignLeft size={12} /> Description
             </div>
             <textarea
-              value={item.description ?? ''}
-              onChange={(event) => setItem({ ...item, description: event.target.value })}
+              key={`desc-${item.description ?? 'none'}`}
+              defaultValue={item.description ?? ''}
               onBlur={(event) => {
                 const description = event.target.value
                 if (description !== (item.description ?? '')) void patch({ itemId, description })

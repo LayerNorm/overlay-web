@@ -66,6 +66,7 @@ function WorkViewInner() {
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
   const newInputRef = useRef<HTMLInputElement>(null)
+  const loadSeq = useRef(0)
 
   const headers = useMemo(
     () => (activeWorkspaceId ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } } : undefined),
@@ -73,11 +74,14 @@ function WorkViewInner() {
   )
 
   const load = useCallback(() => {
+    // Scope flips personal->workspace once the remembered scope hydrates; only the
+    // newest in-flight response may write state.
+    const seq = ++loadSeq.current
     const viewParam = listViewForScope(scope, solo)
     return overlayAppClient.workItems
       .list<WorkItemDoc[]>(viewParam ? { view: viewParam } : undefined, headers)
-      .then((data) => setItems(Array.isArray(data) ? data : []))
-      .catch(() => setItems([]))
+      .then((data) => { if (seq === loadSeq.current) setItems(Array.isArray(data) ? data : []) })
+      .catch(() => { if (seq === loadSeq.current) setItems([]) })
   }, [scope, solo, headers])
 
   useEffect(() => {
@@ -215,6 +219,18 @@ function WorkViewInner() {
             </nav>
           </header>
 
+          <div className="mb-3 flex items-center gap-2">
+            <div className="relative w-56">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Filter tasks"
+                className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface-muted)] pl-7 pr-2 text-xs outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted-light)]"
+              />
+            </div>
+          </div>
+
           {view === 'board' ? (
             items === null ? (
               <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
@@ -237,17 +253,6 @@ function WorkViewInner() {
             </div>
           ) : (
             <>
-              <div className="mb-3 flex items-center gap-2">
-                <div className="relative w-56">
-                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Filter tasks"
-                    className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface-muted)] pl-7 pr-2 text-xs outline-none placeholder:text-[var(--muted-light)] focus:border-[var(--muted-light)]"
-                  />
-                </div>
-              </div>
 
               <div className="flex-1 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
                 <table className="w-full border-collapse text-left text-sm">
