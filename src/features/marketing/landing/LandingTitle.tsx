@@ -6,7 +6,7 @@ import { useRemeasure } from './use-remeasure'
 type RollWord = { id: number; text: string; leaving: boolean }
 type RollState = { text: string; seq: number; words: RollWord[] }
 
-const LEAVE_MS = 450
+const LEAVE_MS = 200
 
 /**
  * The part of the title that changes between scenes. The old text slides up and
@@ -21,7 +21,8 @@ function Roll({ text }: { text: string }) {
     setState({
       text,
       seq: state.seq + 1,
-      words: [...state.words.map((w) => ({ ...w, leaving: true })), { id: state.seq, text, leaving: false }],
+      // only the word that was showing fades out; older ones go at once so they never stack up
+      words: [...state.words.filter((w) => !w.leaving).map((w) => ({ ...w, leaving: true })), { id: state.seq, text, leaving: false }],
     })
   }
 
