@@ -1,29 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlignLeft, Archive, ArchiveRestore, Loader2, Plus, Trash2, X } from 'lucide-react'
-import type { WorkItemDoc, WorkItemPriority, WorkItemStatus } from '@overlay/api-client'
-import { ListboxSelect } from '@overlay/ui/primitives'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import {
-  WORK_ITEM_PRIORITIES,
-  WORK_ITEM_STATUSES,
-  workItemKey,
-  workItemStatusDotClass,
-} from '@/shared/work/work-item-ui'
+import { useState } from 'react'
+import { AlignLeft, Archive, ArchiveRestore, Loader2, Trash2, X } from 'lucide-react'
+import type { WorkItemDoc } from '@overlay/api-client'
+import { ConfirmDialog } from '@overlay/ui/overlays'
+import { workItemKey } from '@/shared/work/work-item-ui'
+import { WorkItemFields } from './WorkItemFields'
+import { WorkItemSubtasks } from './WorkItemSubtasks'
+import { useWorkItemDrawer } from './useWorkItemDrawer'
 
-const fieldLabelClass = 'w-24 shrink-0 text-xs text-[var(--muted-light)]'
-const fieldRowClass = 'flex items-center gap-3 px-5 py-2'
+const iconButtonClass = 'rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-50'
 
-function toDateInputValue(ts: number | undefined): string {
-  if (!ts) return ''
-  return new Date(ts).toISOString().slice(0, 10)
-}
-
-function fromDateInputValue(value: string): number | undefined {
-  if (!value) return undefined
-  const parsed = Date.parse(`${value}T00:00:00Z`)
-  return Number.isNaN(parsed) ? undefined : parsed
+function deleteDescription(item: WorkItemDoc | null, subtasks: number): string {
+  const what = item ? `“${item.title}”` : 'This task'
+  const gone = subtasks === 0 ? '' : ` and its ${subtasks === 1 ? 'subtask' : `${subtasks} subtasks`}`
+  return `${what}${gone} will be deleted and cannot be brought back. To keep it out of the way and restore it later, archive it instead.`
 }
 
 /**
@@ -42,110 +33,39 @@ export function WorkItemDrawer({
   headers?: RequestInit
   members: Record<string, string>
   onClose: () => void
-  onChanged: (patch: Partial<WorkItemDoc>) => void
+  /** Something about the item changed (the list refetches: archive and restore also change which list it is in). */
+  onChanged: () => void
   onDeleted: () => void
 }) {
-  const [item, setItem] = useState<WorkItemDoc | null>(null)
-  const [children, setChildren] = useState<WorkItemDoc[]>([])
-  const [missing, setMissing] = useState(false)
-  const [newSubtask, setNewSubtask] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    setItem(null)
-    setChildren([])
-    setMissing(false)
-    overlayAppClient.workItems
-      .get(itemId, headers)
-      .then((data) => {
-        if (cancelled) return
-        setItem(data.item)
-        setChildren(data.children ?? [])
-      })
-      .catch(() => { if (!cancelled) setMissing(true) })
-    return () => { cancelled = true }
-  }, [itemId, headers])
-
-  const memberOptions = useMemo(
-    () => [
-      { value: '', label: 'Unassigned' },
-      ...Object.entries(members).map(([id, name]) => ({ value: id, label: name })),
-    ],
-    [members],
-  )
-
-  const patch = useCallback(async (body: Parameters<typeof overlayAppClient.workItems.update>[0]) => {
-    setBusy(true)
-    try {
-      await overlayAppClient.workItems.update(body, headers)
-      const { action, ...rest } = body
-      setItem((prev) => (prev ? { ...prev, ...(rest as Partial<WorkItemDoc>) } : prev))
-      onChanged(rest as Partial<WorkItemDoc>)
-      if (action === 'archive' || action === 'restore') {
-        overlayAppClient.workItems.get(itemId, headers).then((data) => setItem(data.item)).catch(() => {})
-      }
-    } finally {
-      setBusy(false)
-    }
-  }, [headers, itemId, onChanged])
-
-  const addSubtask = useCallback(async () => {
-    const title = newSubtask.trim()
-    if (!title || busy || !item) return
-    setBusy(true)
-    try {
-      await overlayAppClient.workItems.create({ title, parentItemId: itemId }, headers)
-      setNewSubtask('')
-      const data = await overlayAppClient.workItems.get(itemId, headers)
-      setChildren(data.children ?? [])
-    } finally {
-      setBusy(false)
-    }
-  }, [busy, headers, item, itemId, newSubtask])
-
-  const remove = useCallback(async () => {
-    setBusy(true)
-    try {
-      await overlayAppClient.workItems.deleteResponse({ itemId }, headers)
-      onDeleted()
-    } finally {
-      setBusy(false)
-    }
-  }, [headers, itemId, onDeleted])
-
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const { item, children, missing, busy, error, patch, archiveOrRestore, addSubtask, remove } = useWorkItemDrawer({
+    itemId, headers, onChanged, onDeleted,
+  })
   const archived = Boolean(item?.archivedAt)
+  const subtasks = children.filter((child) => !child.deletedAt)
 
   return (
     <div className="flex h-full w-full flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)]">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
         <span className="font-mono text-[11px] text-[var(--muted)]">{item ? workItemKey(item) : ''}</span>
         <div className="flex items-center gap-1">
-          {item && !archived ? (
-            <button type="button" aria-label="Archive" title="Archive" disabled={busy}
-              onClick={() => void patch({ itemId, action: 'archive' })}
-              className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
-              <Archive size={14} />
+          {item ? (
+            <button type="button" aria-label={archived ? 'Restore' : 'Archive'} title={archived ? 'Restore' : 'Archive'} disabled={busy}
+              onClick={() => void archiveOrRestore(archived ? 'restore' : 'archive')} className={iconButtonClass}>
+              {archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
             </button>
           ) : null}
-          {item && archived ? (
-            <button type="button" aria-label="Restore" title="Restore" disabled={busy}
-              onClick={() => void patch({ itemId, action: 'restore' })}
-              className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
-              <ArchiveRestore size={14} />
-            </button>
-          ) : null}
-          <button type="button" aria-label="Delete" title="Delete" disabled={busy}
-            onClick={() => void remove()}
-            className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--danger)]">
+          <button type="button" aria-label="Delete" title="Delete" disabled={busy || !item}
+            onClick={() => setConfirmingDelete(true)} className={`${iconButtonClass} hover:text-[var(--danger)]`}>
             <Trash2 size={14} />
           </button>
-          <button type="button" aria-label="Close" title="Close" onClick={onClose}
-            className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+          <button type="button" aria-label="Close" title="Close" onClick={onClose} className={iconButtonClass}>
             <X size={14} />
           </button>
         </div>
       </div>
+
+      {error ? <p role="alert" className="border-b border-[var(--border)] px-5 py-2 text-xs text-[var(--danger)]">{error}</p> : null}
 
       {item === null ? (
         <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
@@ -157,9 +77,10 @@ export function WorkItemDrawer({
             <input
               key={`title-${item.title}`}
               defaultValue={item.title}
+              maxLength={200}
               onBlur={(event) => {
                 const title = event.target.value.trim()
-                if (title && title !== item.title) void patch({ itemId, title })
+                if (title && title !== item.title) void patch({ title })
                 else event.target.value = item.title
               }}
               disabled={archived || busy}
@@ -167,85 +88,7 @@ export function WorkItemDrawer({
             />
           </div>
 
-          <div className="border-y border-[var(--border)] py-1">
-            <div className={fieldRowClass}>
-              <span className={fieldLabelClass}>Status</span>
-              <ListboxSelect
-                aria-label="Status"
-                value={item.status}
-                options={WORK_ITEM_STATUSES.map((s) => ({ value: s.id, label: s.label }))}
-                onChange={(status: WorkItemStatus) => void patch({ itemId, status })}
-                disabled={busy}
-                className="flex-1"
-                buttonClassName="h-7 w-full justify-start border-0 px-1.5 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-                menuClassName="min-w-36"
-              />
-            </div>
-            <div className={fieldRowClass}>
-              <span className={fieldLabelClass}>Priority</span>
-              <ListboxSelect
-                aria-label="Priority"
-                value={item.priority}
-                options={WORK_ITEM_PRIORITIES.map((p) => ({ value: p.id, label: p.label }))}
-                onChange={(priority: WorkItemPriority) => void patch({ itemId, priority })}
-                disabled={busy}
-                className="flex-1"
-                buttonClassName="h-7 w-full justify-start border-0 px-1.5 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-                menuClassName="min-w-36"
-              />
-            </div>
-            <div className={fieldRowClass}>
-              <span className={fieldLabelClass}>Assignee</span>
-              <ListboxSelect
-                aria-label="Assignee"
-                value={item.assigneeUserId ?? ''}
-                options={memberOptions}
-                onChange={(assigneeUserId: string) =>
-                  void patch(assigneeUserId ? { itemId, assigneeUserId } : { itemId, clearAssignee: true })}
-                disabled={busy || memberOptions.length <= 1}
-                className="flex-1"
-                buttonClassName="h-7 w-full justify-start border-0 px-1.5 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-                menuClassName="min-w-36"
-              />
-            </div>
-            <div className={fieldRowClass}>
-              <span className={fieldLabelClass}>Start</span>
-              <input
-                key={`start-${item.startDate ?? 'none'}`}
-                type="date"
-                defaultValue={toDateInputValue(item.startDate)}
-                // Commit on blur: patching on each `change` re-renders mid-typing
-                // and resets the browser's pending year segment.
-                onBlur={async (event) => {
-                  const startDate = fromDateInputValue(event.target.value)
-                  if (startDate === item.startDate) return
-                  if (startDate !== undefined) return patch({ itemId, startDate })
-                  // The API only clears both dates at once, so re-set the other afterwards.
-                  await patch({ itemId, clearDates: true })
-                  if (item.dueDate !== undefined) await patch({ itemId, dueDate: item.dueDate })
-                }}
-                disabled={busy}
-                className="h-7 flex-1 bg-transparent text-xs text-[var(--foreground)] outline-none [color-scheme:dark]"
-              />
-            </div>
-            <div className={fieldRowClass}>
-              <span className={fieldLabelClass}>Due</span>
-              <input
-                key={`due-${item.dueDate ?? 'none'}`}
-                type="date"
-                defaultValue={toDateInputValue(item.dueDate)}
-                onBlur={async (event) => {
-                  const dueDate = fromDateInputValue(event.target.value)
-                  if (dueDate === item.dueDate) return
-                  if (dueDate !== undefined) return patch({ itemId, dueDate })
-                  await patch({ itemId, clearDates: true })
-                  if (item.startDate !== undefined) await patch({ itemId, startDate: item.startDate })
-                }}
-                disabled={busy}
-                className="h-7 flex-1 bg-transparent text-xs text-[var(--foreground)] outline-none [color-scheme:dark]"
-              />
-            </div>
-          </div>
+          <WorkItemFields item={item} members={members} disabled={busy || archived} onPatch={(body) => void patch(body)} />
 
           <div className="px-5 py-4">
             <div className="mb-2 flex items-center gap-1.5 text-xs text-[var(--muted-light)]">
@@ -254,9 +97,9 @@ export function WorkItemDrawer({
             <textarea
               key={`desc-${item.description ?? 'none'}`}
               defaultValue={item.description ?? ''}
+              maxLength={20000}
               onBlur={(event) => {
-                const description = event.target.value
-                if (description !== (item.description ?? '')) void patch({ itemId, description })
+                if (event.target.value !== (item.description ?? '')) void patch({ description: event.target.value })
               }}
               placeholder="Add a description"
               rows={5}
@@ -265,36 +108,19 @@ export function WorkItemDrawer({
             />
           </div>
 
-          <div className="border-t border-[var(--border)] px-5 py-4">
-            <div className="mb-2 text-xs text-[var(--muted-light)]">Subtasks</div>
-            <div className="flex flex-col gap-0.5">
-              {children.filter((child) => !child.deletedAt).map((child) => (
-                <div key={child._id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[13px] text-[var(--muted)]">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${workItemStatusDotClass(child.status)}`} />
-                  <span className="font-mono text-[10px] text-[var(--muted-light)]">{workItemKey(child)}</span>
-                  <span className="truncate">{child.title}</span>
-                </div>
-              ))}
-              {children.filter((child) => !child.deletedAt).length === 0 ? (
-                <div className="px-1.5 py-1 text-xs text-[var(--muted-light)]">No subtasks</div>
-              ) : null}
-            </div>
-            {!archived ? (
-              <div className="mt-2 flex items-center gap-2">
-                <Plus size={12} className="text-[var(--muted-light)]" />
-                <input
-                  value={newSubtask}
-                  onChange={(event) => setNewSubtask(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === 'Enter') void addSubtask() }}
-                  placeholder="Add a subtask"
-                  disabled={busy}
-                  className="h-7 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted-light)] disabled:opacity-60"
-                />
-              </div>
-            ) : null}
-          </div>
+          <WorkItemSubtasks subtasks={subtasks} canAdd={!archived && item.parentItemId === undefined} busy={busy} onAdd={addSubtask} />
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmingDelete}
+        title={item ? `Delete ${workItemKey(item)}?` : 'Delete this task?'}
+        description={deleteDescription(item, subtasks.length)}
+        confirmLabel="Delete"
+        busy={busy}
+        onConfirm={() => void remove().then(() => setConfirmingDelete(false))}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </div>
   )
 }
