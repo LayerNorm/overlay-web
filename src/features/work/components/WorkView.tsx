@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ChartGantt,
-  GanttChart,
   KanbanSquare,
   List,
   Loader2,
@@ -32,6 +31,7 @@ import {
 } from '@/shared/work/work-item-ui'
 import { WorkItemDrawer } from '@/features/work/components/WorkItemDrawer'
 import { WorkBoardView } from '@/features/work/components/WorkBoardView'
+import { WorkGanttView } from '@/features/work/components/WorkGanttView'
 
 type WorkViewKind = 'list' | 'board' | 'gantt'
 
@@ -231,10 +231,13 @@ function WorkViewInner() {
               />
             )
           ) : view === 'gantt' ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--border)] text-center">
-              <GanttChart size={22} strokeWidth={1.5} className="text-[var(--muted-light)]" />
-              <p className="text-sm text-[var(--muted)]">The Gantt chart is on the way.</p>
-            </div>
+            items === null ? (
+              <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
+                <Loader2 size={14} className="mr-2 animate-spin" /> Loading work…
+              </div>
+            ) : (
+              <WorkGanttView items={visibleItems} onOpen={openItem} />
+            )
           ) : (
             <>
               <div className="mb-3 flex items-center gap-2">
