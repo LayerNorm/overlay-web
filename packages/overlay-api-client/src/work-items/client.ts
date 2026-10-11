@@ -45,6 +45,11 @@ export class WorkItemsClient {
     return this.http.request('/api/v1/work-items', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
+  /** Soft-deletes an item and its subtasks. Throws `ApiRequestError` on failure. */
+  delete(query: { itemId: string }, init?: RequestInit) {
+    return this.http.json<{ success: boolean }>(this.path(query), { ...init, method: 'DELETE' })
+  }
+
   deleteResponse(query: { itemId: string }, init?: RequestInit) {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
   }
