@@ -100,6 +100,12 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
   {
+    id: 'work',
+    href: '/app/work',
+    label: 'Work',
+    icon: 'square-kanban',
+  },
+  {
     id: 'agents',
     href: '/app/agents',
     label: 'Agents',
@@ -222,6 +228,15 @@ export const DEFAULT_OVERLAY_SIDEBAR_ACTIONS: readonly OverlaySidebarAction[] = 
     featureFlagId: 'knowledge',
     requiredCapabilities: ['knowledge'],
     order: 20,
+  },
+  {
+    id: 'work.create',
+    label: 'New task',
+    actionKey: 'work.create',
+    navigationItemId: 'work',
+    routePatterns: ['/app/work'],
+    requiresAuth: true,
+    order: 15,
   },
   {
     id: 'automations.create',

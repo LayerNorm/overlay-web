@@ -28,6 +28,7 @@ import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { OverlayMark } from '@/components/orb/Orb'
 import { FilesInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
 import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
+import { WorkInlinePanel } from '@/components/layout/sidebar/WorkInlinePanel'
 import { SecondaryPanelContent } from './AppSidebarSecondaryPanel'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import type {
@@ -188,6 +189,14 @@ export function SecondaryPanelResourceList({
         renderFilesPanel
           ? renderFilesPanel({ onNavigate })
           : <FilesInlinePanel searchQuery="" onNavigate={onNavigate} />
+      ) : null}
+      {panelKind === 'work' ? (
+        <WorkInlinePanel
+          workspaceId={activeWorkspaceId}
+          baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/work') : undefined}
+          scope={agentsView}
+          onNavigate={onNavigate}
+        />
       ) : null}
       {panelKind === 'agents' ? (
         renderAgentsPanel
