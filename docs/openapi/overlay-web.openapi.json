@@ -14308,10 +14308,12 @@
                     "minLength": 1
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 200
                   },
                   "description": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 20000
                   },
                   "status": {
                     "type": "string",
@@ -14333,28 +14335,44 @@
                     ]
                   },
                   "assigneeUserId": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1
                   },
                   "clearAssignee": {
                     "type": "boolean"
                   },
                   "startDate": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0
                   },
                   "dueDate": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0
                   },
                   "clearDates": {
+                    "type": "boolean"
+                  },
+                  "clearStartDate": {
+                    "type": "boolean"
+                  },
+                  "clearDueDate": {
                     "type": "boolean"
                   },
                   "labels": {
                     "type": "array",
                     "items": {
-                      "type": "string"
-                    }
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "maxItems": 20
                   },
                   "parentItemId": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "clearParent": {
+                    "type": "boolean"
                   },
                   "orderKey": {
                     "type": "string"
@@ -14459,10 +14477,12 @@
                     "minLength": 1
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 200
                   },
                   "description": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 20000
                   },
                   "status": {
                     "type": "string",
@@ -14484,22 +14504,29 @@
                     ]
                   },
                   "assigneeUserId": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1
                   },
                   "startDate": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0
                   },
                   "dueDate": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0
                   },
                   "labels": {
                     "type": "array",
                     "items": {
-                      "type": "string"
-                    }
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "maxItems": 20
                   },
                   "parentItemId": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 1
                   },
                   "scope": {
                     "type": "string",
