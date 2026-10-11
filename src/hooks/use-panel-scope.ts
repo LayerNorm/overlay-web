@@ -1,7 +1,7 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
   listViewForScope,
@@ -66,9 +66,15 @@ export function usePanelScope(): PanelScope {
   const solo = useIsSoloWorkspace()
   const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM))
   // A scope arriving in the URL (a shared link, a deep link) becomes the remembered one, so links inside the page that
-  // carry no `scope` keep showing it.
+  // carry no `scope` keep showing it. Only the first param the hook sees counts: scope rows already call
+  // `rememberPanelScope` themselves, and re-remembering on every change lets a stale pre-navigation param overwrite
+  // the scope the user just clicked.
+  const rememberedParam = useRef(false)
   useEffect(() => {
-    if (param && param !== saved) rememberPanelScope(param)
+    if (rememberedParam.current) return
+    if (!param) return
+    rememberedParam.current = true
+    if (param !== saved) rememberPanelScope(param)
   }, [param, saved])
   return resolvePanelScope({ param, saved, solo })
 }
