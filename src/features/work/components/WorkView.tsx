@@ -31,6 +31,7 @@ import {
   workItemStatusPillClass,
 } from '@/shared/work/work-item-ui'
 import { WorkItemDrawer } from '@/features/work/components/WorkItemDrawer'
+import { WorkBoardView } from '@/features/work/components/WorkBoardView'
 
 type WorkViewKind = 'list' | 'board' | 'gantt'
 
@@ -126,7 +127,7 @@ function WorkViewInner() {
     setItems((prev) => prev?.map((item) => (item._id === itemId ? { ...item, ...patch } : item)) ?? prev)
   }, [])
 
-  const updateItem = useCallback(async (itemId: string, patch: { status?: WorkItemStatus; priority?: WorkItemPriority }) => {
+  const updateItem = useCallback(async (itemId: string, patch: { status?: WorkItemStatus; priority?: WorkItemPriority; orderKey?: string }) => {
     patchItem(itemId, patch as Partial<WorkItemDoc>)
     try {
       await overlayAppClient.workItems.update({ itemId, ...patch }, headers)
@@ -135,13 +136,14 @@ function WorkViewInner() {
     }
   }, [headers, load, patchItem])
 
-  const createItem = useCallback(async () => {
-    const title = newTitle.trim()
+  const createItem = useCallback(async (extra?: { status?: WorkItemStatus; title?: string }) => {
+    const title = (extra?.title ?? newTitle).trim()
     if (!title || creating) return
     setCreating(true)
     try {
       await overlayAppClient.workItems.create({
         title,
+        ...(extra?.status ? { status: extra.status } : {}),
         ...(scopeForNewItem(scope) === 'workspace' ? { scope: 'workspace' as const } : {}),
       }, headers)
       setNewTitle('')
@@ -150,6 +152,10 @@ function WorkViewInner() {
       setCreating(false)
     }
   }, [creating, headers, load, newTitle, scope])
+
+  const createInStatus = useCallback((status: WorkItemStatus, title: string) => {
+    void createItem({ status, title })
+  }, [createItem])
 
   const visibleItems = useMemo(() => {
     const list = (items ?? []).filter((item) => !item.deletedAt && !item.archivedAt)
@@ -209,14 +215,25 @@ function WorkViewInner() {
             </nav>
           </header>
 
-          {view !== 'list' ? (
+          {view === 'board' ? (
+            items === null ? (
+              <div className="flex flex-1 items-center justify-center text-sm text-[var(--muted)]">
+                <Loader2 size={14} className="mr-2 animate-spin" /> Loading work…
+              </div>
+            ) : (
+              <WorkBoardView
+                items={visibleItems}
+                members={members}
+                creating={creating}
+                onUpdate={updateItem}
+                onCreate={createInStatus}
+                onOpen={openItem}
+              />
+            )
+          ) : view === 'gantt' ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--border)] text-center">
-              {view === 'board'
-                ? <KanbanSquare size={22} strokeWidth={1.5} className="text-[var(--muted-light)]" />
-                : <GanttChart size={22} strokeWidth={1.5} className="text-[var(--muted-light)]" />}
-              <p className="text-sm text-[var(--muted)]">
-                {view === 'board' ? 'The board view is on the way.' : 'The Gantt chart is on the way.'}
-              </p>
+              <GanttChart size={22} strokeWidth={1.5} className="text-[var(--muted-light)]" />
+              <p className="text-sm text-[var(--muted)]">The Gantt chart is on the way.</p>
             </div>
           ) : (
             <>
