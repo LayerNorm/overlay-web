@@ -168,7 +168,10 @@ function WorkViewInner() {
             headers={headers}
             members={members}
             onClose={closeItem}
-            onChanged={(patch) => { patchItem(activeItemId, patch) }}
+            onChanged={(patch) => {
+              patchItem(activeItemId, patch)
+              void load() // archive/restore also changes list membership, so refetch
+            }}
             onDeleted={() => {
               setItems((prev) => prev?.filter((item) => item._id !== activeItemId) ?? prev)
               closeItem()

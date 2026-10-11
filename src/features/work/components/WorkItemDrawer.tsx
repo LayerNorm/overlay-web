@@ -210,10 +210,14 @@ export function WorkItemDrawer({
             <div className={fieldRowClass}>
               <span className={fieldLabelClass}>Start</span>
               <input
+                key={`start-${item.startDate ?? 'none'}`}
                 type="date"
-                value={toDateInputValue(item.startDate)}
-                onChange={async (event) => {
+                defaultValue={toDateInputValue(item.startDate)}
+                // Commit on blur: patching on each `change` re-renders mid-typing
+                // and resets the browser's pending year segment.
+                onBlur={async (event) => {
                   const startDate = fromDateInputValue(event.target.value)
+                  if (startDate === item.startDate) return
                   if (startDate !== undefined) return patch({ itemId, startDate })
                   // The API only clears both dates at once, so re-set the other afterwards.
                   await patch({ itemId, clearDates: true })
@@ -226,10 +230,12 @@ export function WorkItemDrawer({
             <div className={fieldRowClass}>
               <span className={fieldLabelClass}>Due</span>
               <input
+                key={`due-${item.dueDate ?? 'none'}`}
                 type="date"
-                value={toDateInputValue(item.dueDate)}
-                onChange={async (event) => {
+                defaultValue={toDateInputValue(item.dueDate)}
+                onBlur={async (event) => {
                   const dueDate = fromDateInputValue(event.target.value)
+                  if (dueDate === item.dueDate) return
                   if (dueDate !== undefined) return patch({ itemId, dueDate })
                   await patch({ itemId, clearDates: true })
                   if (item.startDate !== undefined) await patch({ itemId, startDate: item.startDate })
