@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { ModelMessage, StepResult, ToolSet } from 'ai'
+import type { StepResult, ToolSet } from 'ai'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { AgentRunApproval } from '@/shared/agents/agent-run'
 import {
@@ -186,4 +186,3 @@ export async function failPersonalChatWork(input: {
   })
 }
 
-export type PersonalChatWorkMessages = ModelMessage[]
