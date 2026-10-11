@@ -22,8 +22,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { Flag, Plus } from 'lucide-react'
 import type { WorkItemDoc, WorkItemPriority, WorkItemStatus } from '@overlay/api-client'
 import {
-  WORK_ITEM_STATUSES,
-  formatWorkItemDate,
+  WORK_ITEM_STATUS_OPTIONS,
+  formatWorkItemDay,
   workItemInitials,
   workItemKey,
   workItemPriorityClass,
@@ -79,7 +79,7 @@ function BoardCard({
             </span>
           ) : <span />}
           {item.dueDate ? (
-            <span className="text-[10px] text-[var(--muted-light)]">{formatWorkItemDate(item.dueDate)}</span>
+            <span className="text-[10px] text-[var(--muted-light)]">{formatWorkItemDay(item.dueDate)}</span>
           ) : null}
         </div>
       ) : null}
@@ -104,7 +104,7 @@ function BoardColumn({
 }) {
   const [draft, setDraft] = useState('')
   const { setNodeRef, isOver } = useDroppable({ id: status, data: { status } })
-  const label = WORK_ITEM_STATUSES.find((s) => s.id === status)?.label ?? status
+  const label = WORK_ITEM_STATUS_OPTIONS.find((s) => s.id === status)?.label ?? status
 
   const submit = () => {
     const title = draft.trim()
@@ -168,7 +168,7 @@ export function WorkBoardView({
 
   const columns = useMemo(() => {
     const byStatus = new Map<WorkItemStatus, WorkItemDoc[]>()
-    for (const status of WORK_ITEM_STATUSES) byStatus.set(status.id, [])
+    for (const status of WORK_ITEM_STATUS_OPTIONS) byStatus.set(status.id, [])
     for (const item of items) {
       const list = byStatus.get(item.status) ?? byStatus.get('todo')!
       list.push(item)
@@ -187,7 +187,7 @@ export function WorkBoardView({
     const item = items.find((entry) => entry._id === itemId)
     if (!item) return
 
-    const overIsColumn = WORK_ITEM_STATUSES.some((s) => s.id === overId)
+    const overIsColumn = WORK_ITEM_STATUS_OPTIONS.some((s) => s.id === overId)
     const targetStatus: WorkItemStatus = overIsColumn
       ? (overId as WorkItemStatus)
       : (items.find((entry) => entry._id === overId)?.status ?? item.status)
@@ -231,7 +231,7 @@ export function WorkBoardView({
       onDragCancel={() => setDraggingId(null)}
     >
       <div className="flex flex-1 items-start gap-3 overflow-x-auto pb-2">
-        {WORK_ITEM_STATUSES.map(({ id }) => (
+        {WORK_ITEM_STATUS_OPTIONS.map(({ id }) => (
           <BoardColumn
             key={id}
             status={id}
