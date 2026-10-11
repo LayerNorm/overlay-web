@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react'
 import type { WorkItemDoc, WorkItemStatus } from '@overlay/api-client'
 import {
-  WORK_ITEM_STATUSES,
-  formatWorkItemDate,
+  WORK_ITEM_STATUS_OPTIONS,
+  formatWorkItemDay,
   workItemKey,
   workItemStatusDotClass,
 } from '@/shared/work/work-item-ui'
@@ -173,13 +173,13 @@ export function WorkGanttView({
             {scheduled.map(({ item, start, end }) => {
               const left = Math.round((start - days[0]) / DAY_MS) * DAY_WIDTH
               const width = (Math.round((end - start) / DAY_MS) + 1) * DAY_WIDTH - 6
-              const status = WORK_ITEM_STATUSES.find((entry) => entry.id === item.status)
+              const status = WORK_ITEM_STATUS_OPTIONS.find((entry) => entry.id === item.status)
               return (
                 <div key={item._id} className="relative z-[1] border-b border-[var(--border)]" style={{ height: ROW_HEIGHT }}>
                   <button
                     type="button"
                     onClick={() => onOpen(item._id)}
-                    title={`${item.title} · ${formatWorkItemDate(start)} – ${formatWorkItemDate(end)}${status ? ` · ${status.label}` : ''}`}
+                    title={`${item.title} · ${formatWorkItemDay(start)} – ${formatWorkItemDay(end)}${status ? ` · ${status.label}` : ''}`}
                     className={`absolute top-[9px] flex h-[18px] items-center overflow-hidden whitespace-nowrap rounded-[5px] border px-2 text-[9px] transition-transform hover:z-10 ${barStatusClass(item.status)}`}
                     style={{ left: left + 3, width: Math.max(width, DAY_WIDTH - 6) }}
                   >
