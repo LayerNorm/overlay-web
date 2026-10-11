@@ -307,7 +307,7 @@ Split in two because the second half moves live money. **5a is done (2026-10-05)
 
 #### 5a: the workspace stops looking special (done)
 
-- **Names.** The generated name is now "<First name>’s workspace" (fallback "My workspace"), never "Personal" (`defaultWorkspaceName`, `src/shared/workspaces/default-name.ts`). A migration (`convex/migrations/renameGenericWorkspaces.ts`, dry run first) renamed the 249 existing first workspaces that were still called "Personal" (174) or "Personal’s workspace" (75, a bug from a missing display name); names an owner chose are untouched.
+- **Names.** The generated name is now `<First name>’s workspace` (fallback "My workspace"), never "Personal" (`defaultWorkspaceName`, `src/shared/workspaces/default-name.ts`). A migration (`convex/migrations/renameGenericWorkspaces.ts`, dry run first) renamed the 249 existing first workspaces that were still called "Personal" (174) or "Personal’s workspace" (75, a bug from a missing display name); names an owner chose are untouched.
 - **Rename.** Owners and admins can rename any workspace (new `PATCH /api/v1/workspaces/{id}/lifecycle`, inline in Workspace settings). Before this nobody could.
 - **Onboarding.** A new person is asked to name their workspace (keep the default, or type one) before the tour.
 - **Look.** One avatar, one label ("N members") for every workspace; the corner icon and "Personal workspace / Organization workspace" wording are gone.
