@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getOverlaySession } from '@/server/auth/session'
 import { requireOverlayCapability } from '@/server/capabilities'
-import { accountPlansRetiredResponse, billingCustomerService, billingErrorResponse } from '@/server/billing/http'
+import { accountPlansRetiredResponse, billingCustomerService } from '@/server/billing/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { getClientIp } from '@/server/security/rate-limit'
 
 export async function GET(request: NextRequest) {
   const disabledCapabilityResponse = await requireOverlayCapability('billing')
@@ -15,7 +14,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  const response = await billingCustomerService.getBillingSettings({ userId: auth.userId })
+  const response = billingCustomerService.getBillingSettings()
   // Plans belong to workspaces: report the plan of the workspace the person is working in when it has one.
   const payer = await getOverlayServerContext().billingPayerResolver.resolve({ userId: auth.userId }).catch((_error) => null)
   if (payer?.scope === 'workspace') return NextResponse.json({ ...response, planKind: 'paid' })
@@ -40,28 +39,8 @@ export async function POST(request: NextRequest) {
   if (!('confirmation' in body) || body.confirmation !== 'UPDATE_BILLING_SETTINGS') {
     return NextResponse.json({ error: 'Billing settings confirmation required' }, { status: 403 })
   }
-  // Automatic top-ups are a workspace setting now; an account can only turn its old one off.
-  if ('autoTopUpEnabled' in body && body.autoTopUpEnabled === true) return accountPlansRetiredResponse()
-
-  try {
-    const server = getOverlayServerContext()
-    await server.auditService.record({
-      action: 'billing.settings.update.requested',
-      actorType: 'user',
-      actorUserId: session.user.id,
-      ipAddress: getClientIp(request),
-      outcome: 'success',
-      resourceId: session.user.id,
-      resourceType: 'billing_settings',
-    })
-    const result = await billingCustomerService.updateBillingSettings({
-      userId: session.user.id,
-      body,
-    })
-    return NextResponse.json(result)
-  } catch (error) {
-    return billingErrorResponse(error, 'Failed to update billing settings')
-  }
+  // Automatic top-ups are a workspace setting; an account has no billing settings to change.
+  return accountPlansRetiredResponse()
 }
 
 function isSameOriginMutation(request: NextRequest): boolean {

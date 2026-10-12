@@ -12,7 +12,6 @@ import {
   TOP_UP_MIN_AMOUNT_CENTS,
   TOP_UP_STEP_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
-import { maybeAutoTopUpBudget } from '@/server/billing/stripe-billing'
 import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
@@ -435,60 +434,20 @@ function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
   }
 }
 
+/**
+ * The personal payer's budget check. A person's own account has no credit and no automatic top-ups (plans belong to
+ * workspaces; a paid workspace goes through `ensureWorkspaceBudgetAvailable`), so this only reports what is left.
+ */
 export async function ensureBudgetAvailable(params: {
   userId: string
   entitlements: Entitlements
   minimumRequiredCents?: number
 }) {
-  const minimumRequiredCents = Math.max(1, Math.round(params.minimumRequiredCents ?? 1))
-  const current = getBudgetTotals(params.entitlements)
-
-  if (!isPaidPlan(params.entitlements) || current.remainingCents >= minimumRequiredCents) {
-    return {
-      entitlements: params.entitlements,
-      remainingCents: current.remainingCents,
-      autoTopUpApplied: false,
-      autoTopUpReason: 'not_needed',
-    } as const
-  }
-
-  // Auto top-up reaches Stripe directly rather than through the configured
-  // billing provider, so the NoOpBillingProvider substituted when the billing
-  // capability is off does not cover it. Without this gate a billing-disabled
-  // deployment throws on the missing Stripe secret and fails the whole request.
-  if (!(await billingCapabilityEnabled())) {
-    return {
-      entitlements: params.entitlements,
-      remainingCents: current.remainingCents,
-      autoTopUpApplied: false,
-      autoTopUpReason: 'billing_disabled',
-    } as const
-  }
-
-  const autoTopUp = await maybeAutoTopUpBudget({
-    userId: params.userId,
-    minimumRequiredCents,
-  }, await billingRepository())
-
-  if (!autoTopUp.applied) {
-    return {
-      entitlements: params.entitlements,
-      remainingCents: current.remainingCents,
-      autoTopUpApplied: false,
-      autoTopUpReason: autoTopUp.reason,
-    } as const
-  }
-
-  const refreshed = await refreshEntitlementsForUser(params.userId)
-  const nextEntitlements = refreshed ?? params.entitlements
-  const nextBudget = getBudgetTotals(nextEntitlements)
-
   return {
-    entitlements: nextEntitlements,
-    remainingCents: nextBudget.remainingCents,
-    autoTopUpApplied: true,
-    autoTopUpAmountCents: autoTopUp.amountCents,
-    autoTopUpReason: autoTopUp.reason,
+    entitlements: params.entitlements,
+    remainingCents: getBudgetTotals(params.entitlements).remainingCents,
+    autoTopUpApplied: false,
+    autoTopUpReason: 'not_needed',
   } as const
 }
 

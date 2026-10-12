@@ -59,25 +59,13 @@ DELETE /api/v1/admin/principals
 
 Valid roles are `admin`, `auditor`, `billing_admin`, and `support`.
 
-## Usage
+## People
 
-List and adjust administrative usage and budgets. Only `admin` and `billing_admin` can manage usage.
+List the people in this deployment (user id and email), for the admin console's directory. Only `admin` and `billing_admin` can list them. Personal budgets no longer exist: plans and credit belong to workspaces.
 
 ```bash
 GET /api/v1/admin/usage?userId=...&limit=20
 ```
-
-Adjust a user's budget:
-
-```bash
-POST /api/v1/admin/usage
-{
-  "userId": "user_123",
-  "amountCents": 5000
-}
-```
-
-Budget adjustments create `administration.budget.adjust` audit events.
 
 ## Errors
 

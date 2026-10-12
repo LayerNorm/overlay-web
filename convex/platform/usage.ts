@@ -7,15 +7,8 @@ import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForUser } from '../files/lib/storageQuota'
 import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
-import { derivePlanAmountCents, derivePlanKind } from '../../src/shared/billing/billing-pricing'
 import { usageCountSubject } from '../../src/shared/billing/free-allowance'
-import {
-  allocateUsageCharge,
-  refundUsageAllocation,
-  type UsageBuckets,
-} from '../../src/shared/billing/usage-buckets'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
-import { syncPersonalBillingShadows } from '../billing/accountMigration'
 import { ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
 
 const usageReconciliationQueueItemValidator = v.object({
@@ -114,97 +107,6 @@ function roundCreditAmount(value: number): number {
   return Math.round(value * 10_000) / 10_000
 }
 
-function allowancePercentUsed(buckets: UsageBuckets): number {
-  if (buckets.allowanceTotal <= 0) return 0
-  return Math.min(100, Math.max(0, buckets.allowanceUsed / buckets.allowanceTotal * 100))
-}
-
-function refundAllocationFor(buckets: UsageBuckets, amount: number): { allowance: number; topUp: number } {
-  const topUpSpent = Math.max(0, buckets.topUpPurchased - buckets.topUpBalance)
-  const topUp = Math.min(amount, topUpSpent)
-  return { topUp, allowance: Math.min(buckets.allowanceUsed, amount - topUp) }
-}
-
-async function getUsageBuckets(
-  ctx: EntitlementCtx,
-  subscription: {
-    userId: string
-    currentPeriodStart?: number
-    planKind?: 'free' | 'paid'
-    planAmountCents?: number
-    institutionalGrantCents?: number
-    creditsUsed?: number
-    allowanceUsedCents?: number
-    topUpPurchasedCents?: number
-    topUpBalanceCents?: number
-    tier: 'free' | 'pro' | 'max'
-  },
-): Promise<UsageBuckets> {
-  const planKind = derivePlanKind(subscription)
-  const allowanceTotal = planKind === 'free'
-    ? 0
-    : derivePlanAmountCents(subscription) + (subscription.institutionalGrantCents ?? 0)
-  const historicalTopUps = await getSucceededTopUpTotalCents(
-    ctx,
-    subscription.userId,
-    subscription.currentPeriodStart,
-  )
-  const legacyUsed = Math.max(0, subscription.creditsUsed ?? 0)
-  const topUpPurchased = subscription.topUpPurchasedCents ?? historicalTopUps
-  const storedAllowanceUsed = subscription.allowanceUsedCents
-  const storedTopUpBalance = subscription.topUpBalanceCents
-  const storedProjection = storedAllowanceUsed !== undefined && storedTopUpBalance !== undefined
-    ? storedAllowanceUsed + topUpPurchased - storedTopUpBalance
-    : undefined
-  const storedBucketsAreCurrent = storedProjection !== undefined &&
-    Math.abs(storedProjection - legacyUsed) < 0.000001
-  const allowanceUsed = storedBucketsAreCurrent
-    ? storedAllowanceUsed
-    : Math.min(legacyUsed, allowanceTotal)
-  const resolvedAllowanceUsed = allowanceUsed ?? 0
-  const topUpBalance = storedBucketsAreCurrent
-    ? storedTopUpBalance ?? 0
-    : Math.max(0, topUpPurchased - Math.max(0, legacyUsed - resolvedAllowanceUsed))
-  return {
-    allowanceTotal: roundCreditAmount(allowanceTotal),
-    allowanceUsed: roundCreditAmount(resolvedAllowanceUsed),
-    topUpPurchased: roundCreditAmount(topUpPurchased),
-    topUpBalance: roundCreditAmount(topUpBalance),
-  }
-}
-
-async function persistUsageBuckets(
-  ctx: MutationCtx,
-  subscriptionId: Parameters<MutationCtx['db']['patch']>[0],
-  buckets: UsageBuckets,
-): Promise<void> {
-  const creditsUsed = roundCreditAmount(
-    buckets.allowanceUsed + (buckets.topUpPurchased - buckets.topUpBalance),
-  )
-  await ctx.db.patch(subscriptionId, {
-    allowanceUsedCents: roundCreditAmount(buckets.allowanceUsed),
-    topUpPurchasedCents: roundCreditAmount(buckets.topUpPurchased),
-    topUpBalanceCents: roundCreditAmount(buckets.topUpBalance),
-    creditsUsed,
-  })
-}
-
-export async function getSubscriptionBudgetState(ctx: MutationCtx, userId: string) {
-  const subscription = await getOrCreateSubscription(ctx, userId)
-  const planKind = derivePlanKind(subscription ?? {})
-  const buckets = await getUsageBuckets(ctx, subscription)
-  const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
-  const budgetUsedCents = subscription.creditsUsed ?? 0
-  return {
-    subscription,
-    planKind,
-    budgetTotalCents,
-    budgetUsedCents,
-    budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
-    buckets,
-  }
-}
-
 async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: string) {
   const existing = await ctx.db
     .query('dailyUsage')
@@ -223,12 +125,11 @@ async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: str
 }
 
 /**
- * Whose weekly count the usage belongs to: the workspace the person is working in while they are on the free plan, so a
- * free workspace has one allowance everyone in it shares; their own id on a paid plan. "Working in" is the person's
- * active workspace, which the app sets whenever they open or switch to one. See `usageCountSubject`.
+ * Whose weekly count the usage belongs to: the workspace the person is working in, so a free workspace has one
+ * allowance everyone in it shares. "Working in" is the person's active workspace, which the app sets whenever they open
+ * or switch to one. See `usageCountSubject`. (A paid workspace pays for usage instead and never counts it here.)
  */
-async function usageCounterSubject(ctx: EntitlementCtx, userId: string, planKind: 'free' | 'paid'): Promise<string> {
-  if (planKind !== 'free') return userId
+async function usageCounterSubject(ctx: EntitlementCtx, userId: string): Promise<string> {
   const preference = await ctx.db
     .query('workspaceUserPreferences')
     .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -238,162 +139,79 @@ async function usageCounterSubject(ctx: EntitlementCtx, userId: string, planKind
 
 type EntitlementCtx = QueryCtx | MutationCtx
 
-async function getSucceededTopUpTotalCents(ctx: EntitlementCtx, userId: string, billingPeriodStart?: number): Promise<number> {
-  if (!billingPeriodStart) return 0
-  const rows = await ctx.db
-    .query('budgetTopUps')
-    .withIndex('by_userId_billingPeriodStart', (q) =>
-      q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart),
-    )
-    .collect()
-  return rows.reduce((sum, row) => (
-    row.status === 'succeeded' ? sum + Math.max(0, row.amountCents) : sum
-  ), 0)
+const FREE_WEEKLY_LIMITS = { ask: 15, write: 15, agent: 15 } as const
+const FREE_WEEKLY_TRANSCRIPTION_SECONDS = 600
+
+async function weeklyFreeUsage(ctx: EntitlementCtx, countSubject: string) {
+  const records = await Promise.all(getPastWeekDates().map((date) =>
+    ctx.db
+      .query('dailyUsage')
+      .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', date))
+      .first()))
+  return records.reduce(
+    (acc, record) => ({
+      ask: acc.ask + (record?.askCount ?? 0),
+      write: acc.write + (record?.writeCount ?? 0),
+      agent: acc.agent + (record?.agentCount ?? 0),
+      transcriptionSeconds: acc.transcriptionSeconds + (record?.transcriptionSeconds ?? 0),
+    }),
+    { ask: 0, write: 0, agent: 0, transcriptionSeconds: 0 },
+  )
 }
 
-async function activePersonalReservationHoldCents(
-  ctx: EntitlementCtx,
-  userId: string,
-): Promise<{ allowance: number; topUp: number; total: number }> {
-  const rows = await ctx.db
-    .query('budgetReservations')
-    .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
-    .collect()
-  let allowance = 0
-  let topUp = 0
-  for (const row of rows) {
-    if (row.status !== 'reserved' && row.status !== 'reconcile_required') continue
-    if (row.spendSubjectKind || row.spendSubjectId) continue
-    if (row.reservedAllowanceCents === undefined) {
-      allowance += row.reservedCents
-      continue
-    }
-    allowance += row.reservedAllowanceCents
-    topUp += row.reservedTopUpCents ?? 0
-  }
-  return { allowance, topUp, total: allowance + topUp }
-}
-
+/**
+ * A person's own entitlements. An account is never free or paid (plans belong to workspaces), so this is always the
+ * free allowance of the workspace they are working in, plus their storage. A paid workspace's entitlements come from
+ * its billing account instead.
+ */
 async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   const subscription = await ctx.db
     .query('subscriptions')
     .withIndex('by_userId', (q) => q.eq('userId', userId))
     .first()
-
-  const today = new Date().toISOString().split('T')[0]
-  const planKind = derivePlanKind(subscription ?? {})
-  // The free allowance is the workspace's; a paid person counts under their own id.
-  const countSubject = await usageCounterSubject(ctx, userId, planKind)
-  const dailyUsage = await ctx.db
-    .query('dailyUsage')
-    .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', today))
-    .first()
-
-  const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
-  const planAmountCents = derivePlanAmountCents(subscription ?? {})
-  const buckets = subscription
-    ? await getUsageBuckets(ctx, subscription)
-    : { allowanceTotal: 0, allowanceUsed: 0, topUpPurchased: 0, topUpBalance: 0 }
-  const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
-
-  const tierDefaults = {
-    free: {
-      dailyLimits: { ask: 15, write: 15, agent: 15 },
-      transcriptionSecondsLimit: 600,
-      localTranscriptionEnabled: false,
-    },
-    paid: {
-      dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
-      transcriptionSecondsLimit: Infinity,
-      localTranscriptionEnabled: true,
-    },
-  } as const
-
-  const defaults = tierDefaults[planKind]
-  const committedCents = subscription?.creditsUsed ?? 0
-  const holds = subscription
-    ? await activePersonalReservationHoldCents(ctx, subscription.userId)
-    : { allowance: 0, topUp: 0, total: 0 }
-  const budgetUsedCents = roundCreditAmount(Math.max(0, committedCents - holds.total))
-  const allowanceUsedCents = roundCreditAmount(Math.max(0, buckets.allowanceUsed - holds.allowance))
-
-  let weeklyTranscriptionSeconds = 0
-  let weeklyUsage = { ask: 0, write: 0, agent: 0 }
-
-  if (planKind === 'free') {
-    const pastWeekDates = getPastWeekDates()
-    const weeklyUsageRecords = await Promise.all(
-      pastWeekDates.map(date =>
-        ctx.db
-          .query('dailyUsage')
-          .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', date))
-          .first()
-      )
-    )
-    weeklyTranscriptionSeconds = weeklyUsageRecords.reduce(
-      (sum, record) => sum + (record?.transcriptionSeconds ?? 0),
-      0
-    )
-    weeklyUsage = weeklyUsageRecords.reduce(
-      (acc, record) => ({
-        ask: acc.ask + (record?.askCount ?? 0),
-        write: acc.write + (record?.writeCount ?? 0),
-        agent: acc.agent + (record?.agentCount ?? 0)
-      }),
-      { ask: 0, write: 0, agent: 0 }
-    )
-  }
-
+  const weekly = await weeklyFreeUsage(ctx, await usageCounterSubject(ctx, userId))
   return {
     billingAccountId: subscription?.billingAccountId,
-    tier,
-    planKind,
-    planAmountCents,
-    budgetUsedCents,
-    budgetTotalCents,
-    budgetRemainingCents: Math.max(0, budgetTotalCents - committedCents),
-    allowanceTotalCents: buckets.allowanceTotal,
-    allowanceUsedCents,
-    allowancePercentUsed: allowancePercentUsed({ ...buckets, allowanceUsed: allowanceUsedCents }),
-    topUpBalanceCents: buckets.topUpBalance,
-    autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
-    autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
-    autoTopUpConsentGranted: Boolean(subscription?.offSessionConsentAt),
-    creditsUsed: budgetUsedCents,
-    creditsTotal: budgetTotalCents / 100,
+    ...FREE_BUDGET,
+    autoTopUpConsentGranted: false,
     overlayStorageBytesUsed: getStorageBytesUsed(subscription),
-    overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId, subscription),
-    dailyUsage: planKind === 'free' ? weeklyUsage : {
-      ask: dailyUsage?.askCount || 0,
-      write: dailyUsage?.writeCount || 0,
-      agent: dailyUsage?.agentCount || 0
-    },
-    dailyLimits: defaults.dailyLimits,
-    transcriptionSecondsUsed: planKind === 'free' ? weeklyTranscriptionSeconds : 0,
-    transcriptionSecondsLimit: defaults.transcriptionSecondsLimit,
-    localTranscriptionEnabled: defaults.localTranscriptionEnabled,
+    overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId),
+    dailyUsage: { ask: weekly.ask, write: weekly.write, agent: weekly.agent },
+    dailyLimits: FREE_WEEKLY_LIMITS,
+    transcriptionSecondsUsed: weekly.transcriptionSeconds,
+    transcriptionSecondsLimit: FREE_WEEKLY_TRANSCRIPTION_SECONDS,
+    localTranscriptionEnabled: false,
     resetAt: getNextWeeklyReset(),
-    billingPeriodEnd: subscription?.currentPeriodEnd
-      ? new Date(subscription.currentPeriodEnd).toISOString()
-      : '',
+    billingPeriodEnd: '',
     lastSyncedAt: Date.now()
   }
+}
+
+const FREE_BUDGET = {
+  tier: 'free' as const,
+  planKind: 'free' as const,
+  planAmountCents: 0,
+  budgetUsedCents: 0,
+  budgetTotalCents: 0,
+  budgetRemainingCents: 0,
+  allowanceTotalCents: 0,
+  allowanceUsedCents: 0,
+  allowancePercentUsed: 0,
+  topUpBalanceCents: 0,
+  autoTopUpEnabled: false,
+  autoTopUpAmountCents: 0,
+  creditsUsed: 0,
+  creditsTotal: 0,
 }
 
 export async function applyUsageEvents(
   ctx: MutationCtx,
   userId: string,
   events: UsageEvent[],
-  options: { chargeCredits?: boolean } = {},
 ): Promise<{ success: true; eventsProcessed: number }> {
   const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
-  const chargeCredits = options.chargeCredits ?? true
   const today = new Date().toISOString().split('T')[0]
-  const usageSubscription = await ctx.db
-    .query('subscriptions')
-    .withIndex('by_userId', (q) => q.eq('userId', userId))
-    .first()
-  const countSubject = await usageCounterSubject(ctx, userId, derivePlanKind(usageSubscription ?? {}))
+  const countSubject = await usageCounterSubject(ctx, userId)
 
   let dailyUsage = await ctx.db
     .query('dailyUsage')
@@ -456,15 +274,8 @@ export async function applyUsageEvents(
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
 
-    if (subscription && chargeCredits) {
-      const buckets = await getUsageBuckets(ctx, subscription)
-      const allocation = allocateUsageCharge(buckets, totalCost)
-      await persistUsageBuckets(ctx, subscription._id, allocation.buckets)
-    }
-
-    const billingPeriodStart = subscription?.currentPeriodStart
-      ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
-      : today
+    // An audit tally of what free usage cost us, by calendar month; nothing is charged to the person.
+    const billingPeriodStart = `${today.slice(0, 7)}-01`
 
     let tokenUsage = await ctx.db
       .query('tokenUsage')
@@ -509,8 +320,6 @@ export async function applyUsageEvents(
       })
     }
   }
-
-  await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
 
   return { success: true, eventsProcessed: events.length }
 }
@@ -557,31 +366,11 @@ export const getEntitlementsInternal = internalQuery({
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
-    const planKind = derivePlanKind(subscription ?? {})
-    const tier = planKind === 'free' ? 'free' : ((subscription?.tier === 'max' ? 'max' : 'pro') as 'free' | 'pro' | 'max')
-    const planAmountCents = derivePlanAmountCents(subscription ?? {})
-    const buckets = subscription
-      ? await getUsageBuckets(ctx, subscription)
-      : { allowanceTotal: 0, allowanceUsed: 0, topUpPurchased: 0, topUpBalance: 0 }
-    const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
     return {
       billingAccountId: subscription?.billingAccountId,
-      tier,
-      planKind,
-      planAmountCents,
-      budgetUsedCents: subscription?.creditsUsed ?? 0,
-      budgetTotalCents,
-      budgetRemainingCents: Math.max(0, budgetTotalCents - (subscription?.creditsUsed ?? 0)),
-      allowanceTotalCents: buckets.allowanceTotal,
-      allowanceUsedCents: buckets.allowanceUsed,
-      allowancePercentUsed: allowancePercentUsed(buckets),
-      topUpBalanceCents: buckets.topUpBalance,
-      autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
-      autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
-      creditsUsed: subscription?.creditsUsed ?? 0,
-      creditsTotal: budgetTotalCents / 100,
+      ...FREE_BUDGET,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
-      overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId, subscription),
+      overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId),
     }
   }
 })
@@ -593,55 +382,23 @@ export const initializeSubscriptionUsageByServer = mutation({
   },
   handler: async (ctx, { serverSecret, userId }) => {
     requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
+    await ensurePersonalBillingAccount(ctx, userId)
     const subscription = await getOrCreateSubscription(ctx, userId)
-    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     return {
       success: true,
-      tier: subscription.tier,
+      tier: 'free' as const,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
     }
   },
 })
 
-// Free-tier weekly limits (same values as tierDefaults in buildEntitlements).
-const FREE_TIER_WEEKLY_LIMITS = { ask: 15, write: 15, agent: 15 } as const
-
+/** Holds usage outside a paid workspace to the workspace's free weekly allowance. */
 async function enforceFreeTierUsageLimits(
   ctx: MutationCtx,
   userId: string,
   events: UsageEvent[],
-  forceFreeTierLimits = false,
 ): Promise<void> {
-  const subscription = await ctx.db
-    .query('subscriptions')
-    .withIndex('by_userId', (q) => q.eq('userId', userId))
-    .first()
-
-  const planKind = derivePlanKind(subscription ?? {})
-  if (planKind !== 'free' && !forceFreeTierLimits) return
-
-  // The same subject applyUsageEvents counts under: the workspace for the free plan, the person otherwise (so a paid
-  // person held to free limits is held to their own count).
-  const countSubject = await usageCounterSubject(ctx, userId, planKind)
-  const pastWeekDates = getPastWeekDates()
-  const weeklyUsageRecords = await Promise.all(
-    pastWeekDates.map((date) =>
-      ctx.db
-        .query('dailyUsage')
-        .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', date))
-        .first(),
-    ),
-  )
-  const weeklyUsage = weeklyUsageRecords.reduce(
-    (acc, record) => ({
-      ask: acc.ask + (record?.askCount ?? 0),
-      write: acc.write + (record?.writeCount ?? 0),
-      agent: acc.agent + (record?.agentCount ?? 0),
-      transcriptionSeconds: acc.transcriptionSeconds + (record?.transcriptionSeconds ?? 0),
-    }),
-    { ask: 0, write: 0, agent: 0, transcriptionSeconds: 0 },
-  )
+  const weeklyUsage = await weeklyFreeUsage(ctx, await usageCounterSubject(ctx, userId))
 
   let batchAsk = 0, batchWrite = 0, batchAgent = 0
   let batchTranscriptionSeconds = 0
@@ -655,16 +412,16 @@ async function enforceFreeTierUsageLimits(
     }
   }
 
-  if (weeklyUsage.ask + batchAsk > FREE_TIER_WEEKLY_LIMITS.ask) {
+  if (weeklyUsage.ask + batchAsk > FREE_WEEKLY_LIMITS.ask) {
     throw new Error('free_tier_limit_exceeded: weekly ask limit reached')
   }
-  if (weeklyUsage.write + batchWrite > FREE_TIER_WEEKLY_LIMITS.write) {
+  if (weeklyUsage.write + batchWrite > FREE_WEEKLY_LIMITS.write) {
     throw new Error('free_tier_limit_exceeded: weekly write limit reached')
   }
-  if (weeklyUsage.agent + batchAgent > FREE_TIER_WEEKLY_LIMITS.agent) {
+  if (weeklyUsage.agent + batchAgent > FREE_WEEKLY_LIMITS.agent) {
     throw new Error('free_tier_limit_exceeded: weekly agent limit reached')
   }
-  if (weeklyUsage.transcriptionSeconds + batchTranscriptionSeconds > 600) {
+  if (weeklyUsage.transcriptionSeconds + batchTranscriptionSeconds > FREE_WEEKLY_TRANSCRIPTION_SECONDS) {
     throw new Error('free_tier_limit_exceeded: weekly transcription limit reached')
   }
 }
@@ -680,6 +437,7 @@ export const recordBatch = mutation({
     /** The workspace the usage happened in; defaults to the person's active workspace. */
     workspaceId: v.optional(v.string()),
     operationId: v.optional(v.string()),
+    /** Accepted for older callers; usage outside a paid workspace is always held to the free allowance. */
     forceFreeTierLimits: v.optional(v.boolean()),
     events: v.array(
       v.object({
@@ -703,7 +461,7 @@ export const recordBatch = mutation({
       })
     )
   },
-  handler: async (ctx, { serverSecret, userId, workspaceId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
+  handler: async (ctx, { serverSecret, userId, workspaceId, operationId: rawOperationId, events }) => {
     requireServerSecret(serverSecret)
     const operationId = rawOperationId?.trim()
     if (operationId) {
@@ -723,7 +481,7 @@ export const recordBatch = mutation({
       return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false }
     }
     const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
-    await enforceFreeTierUsageLimits(ctx, userId, events, forceFreeTierLimits === true)
+    await enforceFreeTierUsageLimits(ctx, userId, events)
     const result = await applyUsageEvents(ctx, userId, events)
     if (operationId) {
       const cents = events.reduce((sum, event) => sum + Math.max(0, event.cost), 0)
@@ -773,114 +531,6 @@ async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
     createdAt: Date.now(),
   })
 }
-
-export const adjustBudgetByServer = mutation({
-  args: {
-    serverSecret: v.string(),
-    userId: v.string(),
-    amountCents: v.number(),
-  },
-  handler: async (ctx, { serverSecret, userId, amountCents }) => {
-    requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-    if (!subscription) throw new Error('subscription_not_found')
-    const buckets = await getUsageBuckets(ctx, subscription)
-    const safeAmount = roundCreditAmount(amountCents)
-    const next = safeAmount >= 0
-      ? allocateUsageCharge(buckets, safeAmount).buckets
-      : refundUsageAllocation(
-          buckets,
-          refundAllocationFor(buckets, Math.min(-safeAmount, subscription.creditsUsed ?? 0)),
-          Math.min(-safeAmount, subscription.creditsUsed ?? 0),
-        ).buckets
-    await persistUsageBuckets(ctx, subscription._id, next)
-    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
-    const creditsUsed = roundCreditAmount(next.allowanceUsed + next.topUpPurchased - next.topUpBalance)
-    return { success: true, creditsUsed }
-  },
-})
-
-export const listAdministrativeUsageByServer = query({
-  args: {
-    serverSecret: v.string(),
-    limit: v.optional(v.number()),
-    userId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const limit = Math.min(Math.max(args.limit ?? 100, 1), 200)
-    const rows = args.userId
-      ? (await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', args.userId!)).collect())
-      : await ctx.db.query('subscriptions').take(limit)
-    return await Promise.all(rows.slice(0, limit).map(async (subscription) => {
-      const planKind = derivePlanKind(subscription)
-      const buckets = await getUsageBuckets(ctx, subscription)
-      const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
-      const budgetUsedCents = subscription.creditsUsed ?? 0
-      return {
-        userId: subscription.userId,
-        email: subscription.email,
-        planKind,
-        status: subscription.status,
-        budgetUsedCents,
-        budgetTotalCents,
-        budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
-        allowanceTotalCents: buckets.allowanceTotal,
-        allowanceUsedCents: buckets.allowanceUsed,
-        allowancePercentUsed: allowancePercentUsed(buckets),
-        topUpBalanceCents: buckets.topUpBalance,
-      }
-    }))
-  },
-})
-
-export const adjustAdministrativeBudgetByServer = mutation({
-  args: {
-    serverSecret: v.string(),
-    amountCents: v.number(),
-    userId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
-    const subscription = await getOrCreateSubscription(ctx, args.userId)
-    const institutionalGrantCents = Math.max(
-      0,
-      roundCreditAmount((subscription.institutionalGrantCents ?? 0) + args.amountCents),
-    )
-    const currentBuckets = await getUsageBuckets(ctx, subscription)
-    const nextAllowanceTotal = derivePlanAmountCents(subscription) + institutionalGrantCents
-    if (nextAllowanceTotal + 0.000001 < currentBuckets.allowanceUsed) {
-      throw new Error('administrative_grant_below_consumed_allowance')
-    }
-    await ctx.db.patch(subscription._id, {
-      billingAccountId: billingAccount.billingAccountId,
-      institutionalGrantCents,
-    })
-    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
-    const planKind = derivePlanKind(subscription)
-    const buckets = { ...currentBuckets, allowanceTotal: nextAllowanceTotal }
-    const budgetTotalCents = buckets.allowanceTotal + buckets.topUpPurchased
-    const budgetUsedCents = subscription.creditsUsed ?? 0
-    return {
-      userId: args.userId,
-      email: subscription.email,
-      planKind,
-      status: subscription.status,
-      budgetUsedCents,
-      budgetTotalCents,
-      budgetRemainingCents: Math.max(0, budgetTotalCents - budgetUsedCents),
-      allowanceTotalCents: buckets.allowanceTotal,
-      allowanceUsedCents: buckets.allowanceUsed,
-      allowancePercentUsed: allowancePercentUsed(buckets),
-      topUpBalanceCents: buckets.topUpBalance,
-    }
-  },
-})
 
 export const recordFileBandwidthByServer = mutation({
   args: {
@@ -962,7 +612,6 @@ export const reserveBudgetByServer = mutation({
       if (!existing.billingAccountId) {
         await ctx.db.patch(existing._id, { billingAccountId: billingAccount.billingAccountId })
       }
-      await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return {
         success: true,
         reservationId: existing.reservationId,
@@ -972,18 +621,9 @@ export const reserveBudgetByServer = mutation({
       }
     }
 
+    // A person's own account has no credit (plans belong to workspaces), so only free work can be held here.
     const safeReservedCents = roundCreditAmount(Math.max(0, reservedCents))
-    const budget = await getSubscriptionBudgetState(ctx, userId)
-    let reservedAllocation = { allowance: 0, topUp: 0 }
-    if (safeReservedCents > 0) {
-      if (budget.planKind !== 'paid') throw new Error('insufficient_budget: paid plan required')
-      if (budget.budgetRemainingCents + 0.000001 < safeReservedCents) {
-        throw new Error('insufficient_budget')
-      }
-      const allocation = allocateUsageCharge(budget.buckets, safeReservedCents)
-      await persistUsageBuckets(ctx, budget.subscription._id, allocation.buckets)
-      reservedAllocation = allocation.allocation
-    }
+    if (safeReservedCents > 0) throw new Error('insufficient_budget: paid plan required')
 
     const now = Date.now()
     await ctx.db.insert('budgetReservations', {
@@ -996,16 +636,14 @@ export const reserveBudgetByServer = mutation({
       operationId,
       requestFingerprint,
       reservedCents: safeReservedCents,
-      reservedAllowanceCents: reservedAllocation.allowance,
-      reservedTopUpCents: reservedAllocation.topUp,
+      reservedAllowanceCents: 0,
+      reservedTopUpCents: 0,
       providerWorkStarted: false,
       providerWorkCompleted: false,
       expiresAt: expiresAt ?? now + 30 * 60_000,
       createdAt: now,
       updatedAt: now,
     })
-
-    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
 
     return {
       success: true,
@@ -1391,43 +1029,8 @@ async function applyReservationReconciliation(ctx: MutationCtx, args: Reservatio
       }
     }
 
+    // A personal hold: the account has no balance to refund or charge, so settling it only records the outcome.
     const billingAccount = await ensurePersonalBillingAccount(ctx, args.userId)
-
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-      .first()
-    if (!subscription) throw new Error('subscription_not_found')
-
-    const refundCents = normalized.resolution === 'release'
-      ? reservation.reservedCents
-      : roundCreditAmount(reservation.reservedCents - (normalized.actualCostCents ?? 0))
-    if (refundCents > 0) {
-      const buckets = await getUsageBuckets(ctx, subscription)
-      let refundAllocation
-      if (reservation.reservedAllowanceCents !== undefined) {
-        if (normalized.resolution === 'release') {
-          refundAllocation = {
-            allowance: reservation.reservedAllowanceCents,
-            topUp: reservation.reservedTopUpCents ?? 0,
-          }
-        } else {
-          const actualAllowance = Math.min(normalized.actualCostCents ?? 0, reservation.reservedAllowanceCents)
-          const actualTopUp = Math.max(0, (normalized.actualCostCents ?? 0) - actualAllowance)
-          refundAllocation = {
-            allowance: reservation.reservedAllowanceCents - actualAllowance,
-            topUp: (reservation.reservedTopUpCents ?? 0) - actualTopUp,
-          }
-        }
-      } else {
-        refundAllocation = refundAllocationFor(buckets, refundCents)
-      }
-      await persistUsageBuckets(
-        ctx,
-        subscription._id,
-        refundUsageAllocation(buckets, refundAllocation, refundCents).buckets,
-      )
-    }
 
     const now = Date.now()
     const finalizedCents = normalized.resolution === 'finalize'
@@ -1447,7 +1050,6 @@ async function applyReservationReconciliation(ctx: MutationCtx, args: Reservatio
       reconciliationReason: normalized.evidence.reason,
       updatedAt: now,
     })
-    await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
     return {
       ...(finalizedCents === undefined ? {} : { finalizedCents }),
       idempotent: false,
@@ -1605,34 +1207,17 @@ async function reconcileExpiredBudgetReservations(
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
-      if (billingAccount) {
-        await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
-      }
       reconcileRequired += 1
       continue
     }
     const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
     const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, reservation.userId)
-    const subscription = workspaceLedger ? null : await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', reservation.userId))
-      .first()
     if (workspaceLedger && reservation.reservedCents > 0) {
       await releaseWorkspaceLedger(ctx, {
         balance: workspaceLedger.balance,
         limit: workspaceLedger.limit,
         reservedMicros: Math.round(reservation.reservedCents * 10_000),
       })
-    } else if (subscription && reservation.reservedCents > 0) {
-      const buckets = await getUsageBuckets(ctx, subscription)
-      const allocation = reservation.reservedAllowanceCents !== undefined
-        ? { allowance: reservation.reservedAllowanceCents, topUp: reservation.reservedTopUpCents ?? 0 }
-        : refundAllocationFor(buckets, reservation.reservedCents)
-      await persistUsageBuckets(
-        ctx,
-        subscription._id,
-        refundUsageAllocation(buckets, allocation, reservation.reservedCents).buckets,
-      )
     }
     await ctx.db.patch(reservation._id, {
       billingAccountId: workspaceLedger ? reservation.billingAccountId! : billingAccount!.billingAccountId,
@@ -1640,9 +1225,6 @@ async function reconcileExpiredBudgetReservations(
       errorMessage: 'reservation_expired_before_provider_work',
       updatedAt: now,
     })
-    if (billingAccount) {
-      await syncPersonalBillingShadows(ctx, reservation.userId, billingAccount.billingAccountId)
-    }
     released += 1
   }
   const queueSample = await ctx.db
@@ -1744,7 +1326,6 @@ export const finalizeBudgetReservationByServer = mutation({
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
-      if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return {
         success: false,
         status: 'reconcile_required' as const,
@@ -1772,36 +1353,10 @@ export const finalizeBudgetReservationByServer = mutation({
       return { success: true, status: 'finalized' as const, finalizedCents: safeActualCents }
     }
     if (!billingAccount) throw new Error('personal_billing_account_missing')
-    const subscription = await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
-    if (!subscription) throw new Error('subscription_not_found')
-
+    // A personal hold is always free work (see reserveBudgetByServer); record the usage against the free allowance.
     if (events?.length) {
       await enforceFreeTierUsageLimits(ctx, userId, events)
-      await applyUsageEvents(ctx, userId, events, { chargeCredits: false })
-    }
-
-    const refundCents = roundCreditAmount(reservation.reservedCents - safeActualCents)
-    if (refundCents > 0) {
-      const buckets = await getUsageBuckets(ctx, subscription)
-      let refundAllocation
-      if (reservation.reservedAllowanceCents !== undefined) {
-        const actualAllowance = Math.min(safeActualCents, reservation.reservedAllowanceCents)
-        const actualTopUp = Math.max(0, safeActualCents - actualAllowance)
-        refundAllocation = {
-          allowance: reservation.reservedAllowanceCents - actualAllowance,
-          topUp: (reservation.reservedTopUpCents ?? 0) - actualTopUp,
-        }
-      } else {
-        refundAllocation = refundAllocationFor(buckets, refundCents)
-      }
-      await persistUsageBuckets(
-        ctx,
-        subscription._id,
-        refundUsageAllocation(buckets, refundAllocation, refundCents).buckets,
-      )
+      await applyUsageEvents(ctx, userId, events)
     }
 
     await ctx.db.patch(reservation._id, {
@@ -1814,8 +1369,6 @@ export const finalizeBudgetReservationByServer = mutation({
       providerWorkCompleted: true,
       updatedAt: Date.now(),
     })
-
-    await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
 
     return { success: true, status: 'finalized', finalizedCents: safeActualCents }
   },
@@ -1894,7 +1447,6 @@ export const markBudgetReservationStartedByServer = mutation({
         providerWorkStarted: true,
         updatedAt: Date.now(),
       })
-      if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     }
     return { success: true, status: 'reserved' as const }
   },
@@ -1934,30 +1486,15 @@ export const releaseBudgetReservationByServer = mutation({
         reconciliationLastAttemptAt: now,
         updatedAt: now,
       })
-      if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
       return { success: true, status: 'reconcile_required' }
     }
 
-    const subscription = workspaceLedger ? null : await ctx.db
-      .query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .first()
     if (workspaceLedger && reservation.reservedCents > 0) {
       await releaseWorkspaceLedger(ctx, {
         balance: workspaceLedger.balance,
         limit: workspaceLedger.limit,
         reservedMicros: Math.round(reservation.reservedCents * 10_000),
       })
-    } else if (subscription && reservation.reservedCents > 0) {
-      const buckets = await getUsageBuckets(ctx, subscription)
-      const allocation = reservation.reservedAllowanceCents !== undefined
-        ? { allowance: reservation.reservedAllowanceCents, topUp: reservation.reservedTopUpCents ?? 0 }
-        : refundAllocationFor(buckets, reservation.reservedCents)
-      await persistUsageBuckets(
-        ctx,
-        subscription._id,
-        refundUsageAllocation(buckets, allocation, reservation.reservedCents).buckets,
-      )
     }
     await ctx.db.patch(reservation._id, {
       billingAccountId,
@@ -1965,7 +1502,6 @@ export const releaseBudgetReservationByServer = mutation({
       errorMessage: reason?.slice(0, 2000),
       updatedAt: Date.now(),
     })
-    if (billingAccount) await syncPersonalBillingShadows(ctx, userId, billingAccount.billingAccountId)
     return { success: true, status: 'released' }
   },
 })
@@ -2010,7 +1546,6 @@ export async function markBudgetReservationReconcile(
     reconciliationLastAttemptAt: now,
     updatedAt: now,
   })
-  if (billingAccount) await syncPersonalBillingShadows(ctx, args.userId, billingAccount.billingAccountId)
   return { success: true, status: 'reconcile_required' as const }
 }
 

@@ -265,45 +265,13 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_workspaceId_agentId', ['workspaceId', 'agentId']),
 
-  // Single source of truth for a user's subscription, tier, and current-period credit spend.
-  // creditsUsed is the live accumulator (in cents, may include fractional cents)
-  // mutated on every usage event.
-  // currentPeriodStart/End are always set — on Stripe-backed subscriptions they come from
-  // the webhook; on free tier they are set to now/+30d at account creation.
+  // A person's own row: profile, onboarding, chat starters, storage and bandwidth used, and the link to their personal
+  // billing account. An account has no plan (plans belong to workspaces).
   subscriptions: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripePriceId: v.optional(v.string()),
-    stripeQuantity: v.optional(v.number()),
-    tier: v.union(v.literal('free'), v.literal('pro'), v.literal('max')),
-    planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
-    planVersion: v.optional(v.union(v.literal('fixed_v1'), v.literal('variable_v2'))),
-    planAmountCents: v.optional(v.number()),
-    institutionalGrantCents: v.optional(v.number()),
-    markupBasisPoints: v.optional(v.number()),
-    status: v.union(
-      v.literal('active'),
-      v.literal('canceled'),
-      v.literal('past_due'),
-      v.literal('trialing')
-    ),
-    currentPeriodStart: v.optional(v.number()),
-    currentPeriodEnd: v.optional(v.number()),
-    // Live credit accumulator for the current billing period (in cents, may
-    // include fractional cents for Daytona runtime accrual).
-    // Reset to 0 whenever currentPeriodStart rolls over.
-    creditsUsed: v.optional(v.number()),
-    // Additive bucketed accounting. creditsUsed remains the compatibility total.
-    allowanceUsedCents: v.optional(v.number()),
-    topUpPurchasedCents: v.optional(v.number()),
-    topUpBalanceCents: v.optional(v.number()),
-    autoTopUpEnabled: v.optional(v.boolean()),
-    autoTopUpAmountCents: v.optional(v.number()),
-    offSessionConsentAt: v.optional(v.number()),
     // User profile fields synced from the selected auth provider.
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -314,16 +282,13 @@ export default defineSchema({
     chatStarterDay: v.optional(v.string()),
     // Onboarding tour state
     hasSeenOnboarding: v.optional(v.boolean()),
-    // Legacy fields kept only so older rows continue to validate during deploys.
-    autoRefillEnabled: v.optional(v.boolean()),
     overlayStorageBytesUsed: v.optional(v.number()),
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId', ['billingAccountId'])
-    .index('by_email', ['email'])
-    .index('by_stripeCustomerId', ['stripeCustomerId']),
+    .index('by_email', ['email']),
 
   budgetTopUps: defineTable({
     userId: v.string(),

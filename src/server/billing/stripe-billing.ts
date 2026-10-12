@@ -13,6 +13,7 @@ import {
   topUpAmountCentsToQuantity,
 } from '@/shared/billing/billing-pricing'
 
+/** The Stripe references an automatic workspace top-up charges against. */
 type SubscriptionBillingState = {
   userId: string
   stripeCustomerId?: string
@@ -70,14 +71,6 @@ export function getPlanQuantityForCheckout(planAmountCents: number): number {
   return planAmountCentsToQuantity(planAmountCents)
 }
 
-async function getBillingState(
-  repository: BillingRepository,
-  userId: string,
-): Promise<SubscriptionBillingState | null> {
-  const state = await repository.getSubscriptionByUserIdByServer({ userId })
-  return state ? { ...state, userId } : null
-}
-
 function normalizeStripePaymentMethodId(value: unknown): string | null {
   if (typeof value === 'string' && value.trim()) return value
   if (value && typeof value === 'object' && 'id' in value && typeof value.id === 'string') {
@@ -114,109 +107,6 @@ async function resolveDefaultPaymentMethodId(state: SubscriptionBillingState): P
   } catch (error) {
     if (isStripeMissingResourceError(error)) return null
     throw error
-  }
-}
-
-export async function maybeAutoTopUpBudget(params: {
-  userId: string
-  minimumRequiredCents?: number
-}, repository: BillingRepository) {
-  const state = await getBillingState(repository, params.userId)
-  if (!state) return { applied: false as const, reason: 'missing_subscription' }
-  if (!state.autoTopUpEnabled) return { applied: false as const, reason: 'disabled' }
-  if (!state.offSessionConsentAt) return { applied: false as const, reason: 'missing_consent' }
-  if (!state.stripeCustomerId) return { applied: false as const, reason: 'missing_customer' }
-
-  const amountCents = Math.max(0, Math.round(state.autoTopUpAmountCents ?? 0))
-  const minimumRequiredCents = Math.max(1, Math.round(params.minimumRequiredCents ?? 1))
-  if (amountCents < minimumRequiredCents) {
-    return { applied: false as const, reason: 'amount_too_small' }
-  }
-
-  try {
-    const paymentMethodId = await resolveDefaultPaymentMethodId(state)
-    if (!paymentMethodId) {
-      return { applied: false as const, reason: 'missing_payment_method' }
-    }
-
-    const now = Date.now()
-    const triggerWindowStart = now - AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS
-    const recentTopUps = await repository.listBudgetTopUpsByServer({ userId: params.userId })
-    const matchingRecentTopUp = (recentTopUps ?? []).find((topUp) =>
-      topUp.source === 'auto' &&
-      topUp.amountCents === amountCents &&
-      (topUp.status === 'pending' || topUp.status === 'succeeded') &&
-      topUp.updatedAt >= triggerWindowStart
-    )
-    if (matchingRecentTopUp) {
-      return {
-        applied: matchingRecentTopUp.status === 'succeeded',
-        amountCents,
-        paymentIntentId: matchingRecentTopUp.stripePaymentIntentId,
-        reason: matchingRecentTopUp.status === 'succeeded' ? 'already_succeeded' : 'already_pending',
-      } as const
-    }
-    const idempotencyKey = [
-      'auto-topup',
-      params.userId,
-      state.currentPeriodStart ?? 'no-period',
-      amountCents,
-      Math.floor(now / AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS),
-    ].join(':')
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountCents,
-      currency: 'usd',
-      customer: state.stripeCustomerId,
-      payment_method: paymentMethodId,
-      off_session: true,
-      confirm: true,
-      metadata: {
-        kind: 'budget_topup',
-        source: 'auto',
-        userId: params.userId,
-        billingPeriodStart: String(state.currentPeriodStart ?? ''),
-      },
-    }, {
-      idempotencyKey,
-    })
-
-    await repository.recordBudgetTopUp({
-      userId: params.userId,
-      amountCents,
-      source: 'auto',
-      stripeCustomerId: state.stripeCustomerId,
-      stripePaymentIntentId: paymentIntent.id,
-      status: paymentIntent.status === 'succeeded' ? 'succeeded' : 'pending',
-    })
-
-    return {
-      applied: paymentIntent.status === 'succeeded',
-      amountCents,
-      paymentIntentId: paymentIntent.id,
-      reason: paymentIntent.status === 'succeeded' ? 'succeeded' : paymentIntent.status,
-    } as const
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error ?? 'Auto top-up failed')
-    if (/idempotent key|in-progress request/i.test(errorMessage)) {
-      return {
-        applied: false as const,
-        reason: 'already_pending',
-        errorMessage,
-      }
-    }
-    await repository.recordBudgetTopUp({
-      userId: params.userId,
-      amountCents,
-      source: 'auto',
-      stripeCustomerId: state.stripeCustomerId,
-      status: 'failed',
-      errorMessage,
-    })
-    return {
-      applied: false as const,
-      reason: 'payment_failed',
-      errorMessage,
-    }
   }
 }
 

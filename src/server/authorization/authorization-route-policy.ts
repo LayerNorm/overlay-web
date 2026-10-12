@@ -223,6 +223,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/workspaces/:workspaceId/billing/checkout', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/portal', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/auto-top-up', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
   {
     path: '/api/v1/subscription/settings',
@@ -230,10 +231,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
 
   { path: '/api/v1/admin/audit', methods: { GET: capability('audit.read') } },
-  {
-    path: '/api/v1/admin/usage',
-    methods: { GET: capability('usage.read'), POST: capability('usage.manage') },
-  },
+  { path: '/api/v1/admin/usage', methods: { GET: capability('usage.read') } },
   {
     path: '/api/v1/admin/principals',
     methods: {

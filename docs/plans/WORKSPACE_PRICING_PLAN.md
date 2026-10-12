@@ -103,11 +103,14 @@ Follow-ups (done 2026-10-11): a top-up Stripe leaves `pending` (3-D Secure) is s
 - **Credit expiry (D2):** at renewal both the month's credit and any top-up balance start again (`upsertByServer` and `upsertFromStripeInternal`); before, leftover top-up balance carried over. The top-up card and the pricing FAQ say so.
 - Test: renewal case in `convex/workspaceAutoTopUp.convex.test.ts`.
 
-## Phase 6 (in progress, 2026-10-12)
+## Phase 6 (done 2026-10-12)
 
 - **Done — rollout code:** the `workspaceWallets` flag, `OVERLAY_FEATURE_WORKSPACE_WALLETS`, `OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE` and the internal/selected allowlists are gone (`workspace-billing-rollout.ts` deleted). The payer resolver, knowledge and memory payers, storage limits and the Billing tab no longer ask whether billing is on; a paid workspace pays. The billing summary has no `rollout` field.
 - **Done — plan conversion:** `convex/billing/planConversion.ts`, its test and runbook are deleted. Stripe events for the six converted subscriptions still route to the workspace by subscription/customer id (`workspaceAccountByProviderReferenceInternal`). The `billingPlanConversions` table was emptied in production (6 rows) and dropped from the schema.
-- **Next — personal plan fields:** personal entitlements always free; remove the personal plan writers (including the personal branches of the subscription webhook) and `syncPersonalBillingShadows`; strip the billing fields from `subscriptions` rows (keep storage used and profile fields), then from the schema.
+- **Done — personal plans:** a person's own entitlements are always the workspace's free allowance (no plan, credit or top-ups); personal holds can only be free work; recorded usage outside a paid workspace is never charged to the person. Deleted: the personal subscription writers and readers (`convex/billing/subscriptions.ts` keeps only webhook bookkeeping), the personal branches of the Stripe webhook, `syncPersonalBillingShadows` and `accountMigration`, the Stripe sync and personal portal/cancel actions, `BillingCheckoutService`, personal auto top-ups, the admin personal budget grant, and the old backfill/verification scripts. `/api/checkout/verify`, `/api/topups/verify`, `/api/portal` and `POST /api/subscription/settings` answer `410 account_plans_retired`. Account deletion no longer cancels a Stripe subscription from the person's row (for the six converted plans that subscription belongs to the workspace).
+- **Fixed on the way:** the Convex automation policy still read the person's own plan, so in a paid workspace enabling an automation (or running a scheduled one) was refused once accounts became free. It now checks the workspace the automation belongs to.
+- **Rows (done):** the personal plan fields were stripped from all 348 `subscriptions` rows and removed from the schema, with the `by_stripeCustomerId` index.
+- **Caught after the strip:** two memory-extraction triggers decided "paid" from `tier !== 'free'`, which an empty `tier` turned true for everyone (the paid extraction model, then a refused personal hold). Memory extraction is now paid only when a paid workspace pays for it.
 
 ## Order of work
 

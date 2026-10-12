@@ -297,7 +297,7 @@ export const createUploadIntentByServer = mutation({
       getPendingUploadIntentBytes(ctx, args.userId),
     ])
     const nextReservedBytes = getStorageBytesUsed(subscription) + pendingBytes + declaredSizeBytes
-    const storageLimitBytes = await getStorageLimitForUser(ctx, args.userId, subscription)
+    const storageLimitBytes = await getStorageLimitForUser(ctx, args.userId)
     if (nextReservedBytes > storageLimitBytes) {
       throw new Error(`storage_limit_exceeded:${nextReservedBytes}:${storageLimitBytes}`)
     }

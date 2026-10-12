@@ -5,7 +5,6 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { repositoryProxy } from '@/server/app-data/errors'
 import { publicEnv } from '@/shared/env/public-env'
 import { DEFAULT_APP_URL, normalizeAppBaseUrl } from '@/shared/web/normalize-app-url'
-import { BillingCheckoutService } from './BillingCheckoutService'
 import { BillingCustomerService, BillingServiceError } from './BillingCustomerService'
 import { WorkspaceBillingService } from './WorkspaceBillingService'
 import type { BillingRepository } from './BillingRepository'
@@ -21,13 +20,6 @@ const usageRepository = repositoryProxy<UsageRepository>(
 
 export const billingCustomerService = new BillingCustomerService({
   repository: billingRepository,
-})
-
-export const billingCheckoutService = new BillingCheckoutService({
-  repository: billingRepository,
-  baseUrl: getBillingBaseUrl,
-  billingProvider: () => getOverlayServerContext().billing,
-  lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
 })
 
 export const workspaceBillingService = new WorkspaceBillingService({

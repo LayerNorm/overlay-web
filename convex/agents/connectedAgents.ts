@@ -6,11 +6,7 @@ import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
 import { projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
-import { markBudgetReservationReconcile } from '../platform/usage'
-import {
-  applyUsageEvents, finalizeWorkspaceLedger, getSubscriptionBudgetState,
-} from '../platform/usage'
-import { ensurePersonalBillingAccount } from '../billing/accountModel'
+import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../platform/usage'
 
 const anyObject = v.any()
 const MAX_COMMAND_BYTES = 128 * 1024
@@ -1893,32 +1889,11 @@ export const meterSandboxLeaseDebitByServer = mutation({
         remainingCents =
           Math.round(((availableMicros - chargeMicros) / 10_000) * 100) / 100
       } else {
-        const budget = await getSubscriptionBudgetState(ctx, payer.userId)
-        const available = budget.budgetRemainingCents
-        const costCents = charge?.costCents ?? 0
-        if (costCents + Math.max(0, args.minRemainingCents) > available + 0.000001) {
-          return { applied: false, reason: 'insufficient_budget', remainingCents: Math.max(0, available) }
+        // Not a paid workspace: a person's own account has no credit, so metered machine time cannot be paid for.
+        if ((charge?.costCents ?? 0) + Math.max(0, args.minRemainingCents) > 0) {
+          return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
         }
-        if (charge) {
-          const billingAccount = await ensurePersonalBillingAccount(ctx, payer.userId)
-          await applyUsageEvents(ctx, payer.userId, [{
-            type: 'sandbox',
-            modelId: charge.modelId,
-            cost: charge.costCents,
-            providerCostUsd: charge.providerCostUsd,
-            durationSeconds: charge.durationSeconds,
-            timestamp: args.meteredAt,
-          }], { chargeCredits: true })
-          await ctx.db.insert('usageOperations', {
-            userId: payer.userId,
-            billingAccountId: billingAccount.billingAccountId,
-            operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
-            recorded: 1,
-            ...meterUsageFields(charge),
-            createdAt: args.now,
-          })
-        }
-        remainingCents = Math.max(0, available - costCents)
+        remainingCents = 0
       }
     }
     await ctx.db.patch(lease._id, { usage: nextUsage, updatedAt: args.now })

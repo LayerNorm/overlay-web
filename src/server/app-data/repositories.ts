@@ -6,7 +6,7 @@ import type { AutomationRepository } from '@/server/automations/AutomationReposi
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import { ConvexBillingProviderEventRepository } from '@/server/billing/ConvexBillingProviderEventRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
-import type { BillingProviderEventRepository, BillingWebhookRepository } from '@/server/billing/BillingProviderEventRepository'
+import type { BillingProviderEventRepository } from '@/server/billing/BillingProviderEventRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
@@ -103,7 +103,6 @@ export interface AppDataRepositories {
   automations: AutomationRepository
   billing: BillingRepository
   billingEvents: BillingProviderEventRepository
-  billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
   computers: ComputerRepository
   conversationCollaboration: ConversationCollaborationRepository
@@ -152,7 +151,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       billingEvents: new ConvexBillingProviderEventRepository(),
-      billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
       computers: new ConvexComputerRepository(),
       conversationCollaboration: new ConvexConversationCollaborationRepository(),

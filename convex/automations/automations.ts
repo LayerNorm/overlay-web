@@ -5,7 +5,7 @@ import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoa
 import { scopeMutations } from '../lib/scopeMutations'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
-import { derivePlanKind } from '../../src/shared/billing/billing-pricing'
+import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
 import {
   computeNextRunAt as sharedComputeNextRunAt,
   normalizeSchedule as sharedNormalizeSchedule,
@@ -87,12 +87,9 @@ function assertSchedulePolicy(schedule: AutomationSchedule): void {
   }
 }
 
-async function getUserPlanKind(ctx: AutomationPolicyCtx, userId: string) {
-  const subscription = await ctx.db
-    .query('subscriptions')
-    .withIndex('by_userId', (q) => q.eq('userId', userId))
-    .first()
-  return derivePlanKind(subscription ?? {})
+/** Plans belong to workspaces: automations need the workspace they run in to have a paid plan. */
+async function workspaceIsPaid(ctx: AutomationPolicyCtx, userId: string, workspaceId: string | undefined) {
+  return Boolean(await paidWorkspaceAccountFor(ctx, userId, workspaceId))
 }
 
 async function countEnabledAutomations(
@@ -112,6 +109,7 @@ async function enforceAutomationPolicy(
   ctx: AutomationPolicyCtx,
   params: {
     userId: string
+    workspaceId: string | undefined
     enabled: boolean
     schedule: AutomationSchedule
     automationId?: Id<'automations'>
@@ -120,7 +118,7 @@ async function enforceAutomationPolicy(
   assertSchedulePolicy(params.schedule)
   if (!params.enabled) return
 
-  if ((await getUserPlanKind(ctx, params.userId)) !== 'paid') {
+  if (!(await workspaceIsPaid(ctx, params.userId, params.workspaceId))) {
     throw new Error(AUTOMATION_POLICY_ERRORS.paidPlanRequired)
   }
 
@@ -138,7 +136,7 @@ async function getAutomationRunPolicyViolation(
   if (schedule.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES) {
     return `Automation paused because interval automations must run at least ${MIN_INTERVAL_MINUTES} minutes apart.`
   }
-  if ((await getUserPlanKind(ctx, automation.userId)) !== 'paid') {
+  if (!(await workspaceIsPaid(ctx, automation.userId, automation.workspaceId))) {
     return 'Automation paused because enabled automations require a paid plan.'
   }
   if (
@@ -274,6 +272,7 @@ export const create = mutation({
     const enabled = args.enabled ?? true
     await enforceAutomationPolicy(ctx, {
       userId: args.userId,
+      workspaceId: args.workspaceId,
       enabled,
       schedule: args.schedule,
     })
@@ -341,6 +340,7 @@ export const update = mutation({
     if (updates.schedule !== undefined || nextEnabled) {
       await enforceAutomationPolicy(ctx, {
         userId,
+        workspaceId: automation.workspaceId,
         enabled: nextEnabled,
         schedule: nextSchedule,
         automationId,
@@ -415,6 +415,7 @@ export const resume = mutation({
     const now = Date.now()
     await enforceAutomationPolicy(ctx, {
       userId: args.userId,
+      workspaceId: automation.workspaceId,
       enabled: true,
       schedule: automation.schedule ?? DEFAULT_SCHEDULE,
       automationId: args.automationId,

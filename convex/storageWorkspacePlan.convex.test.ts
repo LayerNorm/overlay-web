@@ -13,7 +13,7 @@ async function setup(convex: Convex, plan: { kind: 'paid' | 'free'; cents: numbe
   await convex.run(async (ctx) => {
     await ctx.db.insert('workspaces', { workspaceId: 'ws-1', kind: 'personal', name: 'W', slug: 'ws-1', status: 'active', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('workspaceUserPreferences', { userId: 'user-1', activeWorkspaceId: 'ws-1', updatedAt: 1 })
-    await ctx.db.insert('subscriptions', { userId: 'user-1', tier: 'free', status: 'active', creditsUsed: 0, overlayStorageBytesUsed: 0 })
+    await ctx.db.insert('subscriptions', { userId: 'user-1', overlayStorageBytesUsed: 0 })
     if (!plan) return
     await ctx.db.insert('billingAccounts', {
       billingAccountId: 'ba-1', scope: 'workspace', workspaceId: 'ws-1', status: 'active', pricingVersion: 'markup_25_v1',

@@ -15,8 +15,6 @@ export type AccountDeletionResult = {
   email?: string
   r2Keys: string[]
   storageIds: string[]
-  stripeSubscriptionId?: string
-  stripeCustomerId?: string
   verification?: AccountDataDeletionVerification
 }
 
@@ -43,15 +41,6 @@ export class AccountDeletionService {
     )
     if (!convexResult) {
       throw new Error('Account deletion did not return a result')
-    }
-
-    if (convexResult.stripeSubscriptionId) {
-      await this.ctx.billing.cancelSubscription?.(convexResult.stripeSubscriptionId).catch((error) => {
-        logger.error(
-          `[account/delete] Billing subscription cancel failed for ${convexResult.stripeSubscriptionId}:`,
-          error,
-        )
-      })
     }
 
     await this.deleteObjectsBestEffort(convexResult.r2Keys)

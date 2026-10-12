@@ -166,83 +166,6 @@ function useZdrModelSelection({
   ])
 }
 
-function useTopUpCheckoutResult({
-  billingEnabled,
-  loadSubscription,
-  pathname,
-  searchParams,
-  setComposerNotice,
-}: {
-  billingEnabled: boolean
-  loadSubscription: () => Promise<Entitlements | null>
-  pathname: string
-  searchParams: ChatSearchParams
-  setComposerNotice: ComposerNoticeSetter
-}) {
-  useEffect(() => {
-    if (!billingEnabled) return
-    const topUpSuccess = searchParams?.get('topup_success') === 'true'
-    const topUpSessionId = searchParams?.get('topup_session_id')
-    const topUpCanceled = searchParams?.get('topup_canceled') === 'true'
-
-    if (!topUpSuccess && !topUpCanceled) return
-
-    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
-    nextParams.delete('topup_success')
-    nextParams.delete('topup_session_id')
-    nextParams.delete('topup_canceled')
-    const nextUrl = `${pathname}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`
-
-    if (topUpCanceled) {
-      setComposerNotice('Top-up checkout canceled.')
-      window.history.replaceState(null, '', nextUrl)
-      return
-    }
-
-    if (!topUpSessionId) return
-
-    let cancelled = false
-    void verifyTopUp(topUpSessionId, () => cancelled, { loadSubscription, setComposerNotice })
-      .finally(() => {
-        if (!cancelled) window.history.replaceState(null, '', nextUrl)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [billingEnabled, loadSubscription, pathname, searchParams, setComposerNotice])
-}
-
-async function verifyTopUp(
-  topUpSessionId: string,
-  isCancelled: () => boolean,
-  {
-    loadSubscription,
-    setComposerNotice,
-  }: {
-    loadSubscription: () => Promise<Entitlements | null>
-    setComposerNotice: ComposerNoticeSetter
-  },
-): Promise<void> {
-  try {
-    const response = await fetch('/api/topups/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: topUpSessionId }),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (isCancelled()) return
-    if (response.ok) {
-      setComposerNotice(`Top-up applied: $${(Number(data.amountCents ?? 0) / 100).toFixed(2)}.`)
-      await loadSubscription()
-    } else {
-      setComposerNotice(data.error || 'We could not verify your top-up.')
-    }
-  } catch {
-    if (!isCancelled()) setComposerNotice('We could not verify your top-up.')
-  }
-}
-
 function applyFetchedEntitlements(
   data: Entitlements,
   {
@@ -327,8 +250,6 @@ export function useChatBillingControls({
   onlyAllowZdrModels,
   enabledModelIds,
   modelOrder,
-  pathname,
-  searchParams,
   selectedActModel,
   selectedModels,
   setAskModelSelectionMode,
@@ -450,14 +371,6 @@ export function useChatBillingControls({
   }, [activeWorkspaceId, billingEnabled, setComposerNotice])
 
   const { handleStartTopUp, handleSaveTopUpPreference } = useTopUpActions()
-
-  useTopUpCheckoutResult({
-    billingEnabled,
-    loadSubscription,
-    pathname,
-    searchParams,
-    setComposerNotice,
-  })
 
   return {
     autoTopUpEnabledDraft,
