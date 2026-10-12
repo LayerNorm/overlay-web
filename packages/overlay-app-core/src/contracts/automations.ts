@@ -1,3 +1,5 @@
+import type { ScopedResourceFields } from './resource-scope'
+
 export type AutomationSchedule =
   | { kind: 'interval'; intervalMinutes?: number }
   | { kind: 'daily'; hourUTC?: number; minuteUTC?: number }
@@ -71,8 +73,10 @@ export interface AutomationGraph {
   manuallyEdited?: boolean
 }
 
-export interface AutomationSummary {
+export interface AutomationSummary extends ScopedResourceFields {
   _id: string
+  /** The creator; only they can move it between scopes. */
+  userId?: string
   name?: string
   title?: string
   description?: string

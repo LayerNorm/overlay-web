@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import type { ResourceView } from '@/shared/workspaces/resource-scope'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { MAX_FILE_CONTENT_UTF8_BYTES, splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
 import { hashTextContent } from '@/server/storage/text-content-hash'
@@ -154,6 +155,7 @@ export class FileService {
     limit?: number
     paginated?: boolean
     summary?: boolean
+    view?: ResourceView
     /** For a single file: return the full text of text kept in object storage, not its prefix. */
     fullText?: boolean
     userId: string
@@ -164,11 +166,12 @@ export class FileService {
         fileId: args.fileId,
         userId: args.userId,
       })
-      if (!file || file.userId !== args.userId) {
+      // Convex only returns files this user may read: their own, or workspace-shared by a member.
+      if (!file) {
         serviceError({ error: 'Not found' }, 404)
       }
       if (args.fullText) {
-        const text = await this.readObjectStoreText(file, args.userId)
+        const text = await this.readObjectStoreText(file, file.userId)
         if (text !== null) return { ...file, content: text, textContent: text }
       }
       return file
@@ -611,6 +614,7 @@ export class FileService {
   async ingestDocument(args: {
     file: File | null
     parentId?: string
+    scope?: 'personal' | 'workspace'
     userId: string
     workspaceId?: string
   }): Promise<{ id: string | undefined; ids: string[]; name: string; parts: number }> {
@@ -694,6 +698,7 @@ export class FileService {
           sourceSizeBytes: Math.max(0, Math.round(buf.byteLength)),
           userId: args.userId,
           ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+          ...(args.scope ? { scope: args.scope } : {}),
         })
         uploadedR2RetainedByFileRecord = ids.length > 0
         if (ids.length !== partWrites.length) {

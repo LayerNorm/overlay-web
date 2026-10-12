@@ -3,15 +3,9 @@ import { mutation, query } from '../_generated/server'
 import type { Id, TableNames } from '../_generated/dataModel'
 import { requireAccessToken, requireServerSecret } from '../lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
-import {
-  DEFAULT_MARKUP_BASIS_POINTS,
-  derivePlanAmountCents,
-  derivePlanKind,
-} from '../../src/shared/billing/billing-pricing'
 
-// Sync user profile from auth system (called after login).
-// For new users, always sets currentPeriodStart/End so the billingPeriodStart
-// key in tokenUsage never falls back to "today" and drifts between sessions.
+// Sync user profile from auth system (called after login). The row holds the person's profile, onboarding state and
+// storage used; an account has no plan (plans belong to workspaces).
 export const syncUserProfile = mutation({
   args: {
     accessToken: v.string(),
@@ -44,31 +38,6 @@ export const syncUserProfile = mutation({
         lastLoginAt: Date.now(),
       }
 
-      // Backfill period timestamps for legacy rows that were created without them
-      if (!existing.currentPeriodStart || existing.currentPeriodStart === 0) {
-        const now = Date.now()
-        patch.currentPeriodStart = now
-        patch.currentPeriodEnd = now + 30 * 24 * 60 * 60 * 1000
-      }
-      if (existing.creditsUsed === undefined || existing.creditsUsed === null) {
-        patch.creditsUsed = 0
-      }
-      if (!existing.planKind) {
-        patch.planKind = derivePlanKind(existing)
-      }
-      if (!existing.planVersion) {
-        patch.planVersion = existing.tier === 'free' ? 'fixed_v1' : 'variable_v2'
-      }
-      if (existing.planAmountCents === undefined || existing.planAmountCents === null) {
-        patch.planAmountCents = derivePlanAmountCents(existing)
-      }
-      if (existing.markupBasisPoints === undefined || existing.markupBasisPoints === null) {
-        patch.markupBasisPoints = DEFAULT_MARKUP_BASIS_POINTS
-      }
-      if (existing.autoTopUpEnabled === undefined) {
-        patch.autoTopUpEnabled = false
-      }
-
       await ctx.db.patch(existing._id, patch)
       logAuthDebug('auth/users:syncUserProfile updated existing subscription', { userId })
       return { success: true, isNewUser: false }
@@ -81,19 +50,6 @@ export const syncUserProfile = mutation({
         firstName,
         lastName,
         profilePictureUrl,
-        tier: 'free',
-        planKind: 'free',
-        planVersion: 'variable_v2',
-        planAmountCents: 0,
-        markupBasisPoints: DEFAULT_MARKUP_BASIS_POINTS,
-        status: 'active',
-        currentPeriodStart: now,
-        currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
-        creditsUsed: 0,
-        allowanceUsedCents: 0,
-        topUpPurchasedCents: 0,
-        topUpBalanceCents: 0,
-        autoTopUpEnabled: false,
         lastLoginAt: now,
       })
       logAuthDebug('auth/users:syncUserProfile created subscription', { userId })
@@ -132,30 +88,6 @@ export const syncUserProfileByServer = mutation({
         lastLoginAt: Date.now(),
       }
 
-      if (!existing.currentPeriodStart || existing.currentPeriodStart === 0) {
-        const now = Date.now()
-        patch.currentPeriodStart = now
-        patch.currentPeriodEnd = now + 30 * 24 * 60 * 60 * 1000
-      }
-      if (existing.creditsUsed === undefined || existing.creditsUsed === null) {
-        patch.creditsUsed = 0
-      }
-      if (!existing.planKind) {
-        patch.planKind = derivePlanKind(existing)
-      }
-      if (!existing.planVersion) {
-        patch.planVersion = existing.tier === 'free' ? 'fixed_v1' : 'variable_v2'
-      }
-      if (existing.planAmountCents === undefined || existing.planAmountCents === null) {
-        patch.planAmountCents = derivePlanAmountCents(existing)
-      }
-      if (existing.markupBasisPoints === undefined || existing.markupBasisPoints === null) {
-        patch.markupBasisPoints = DEFAULT_MARKUP_BASIS_POINTS
-      }
-      if (existing.autoTopUpEnabled === undefined) {
-        patch.autoTopUpEnabled = false
-      }
-
       await ctx.db.patch(existing._id, patch)
       logAuthDebug('auth/users:syncUserProfileByServer updated existing subscription', { userId })
       return { success: true, isNewUser: false }
@@ -169,19 +101,6 @@ export const syncUserProfileByServer = mutation({
       firstName,
       lastName,
       profilePictureUrl,
-      tier: 'free',
-      planKind: 'free',
-      planVersion: 'variable_v2',
-      planAmountCents: 0,
-      markupBasisPoints: DEFAULT_MARKUP_BASIS_POINTS,
-      status: 'active',
-      currentPeriodStart: now,
-      currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
-      creditsUsed: 0,
-      allowanceUsedCents: 0,
-      topUpPurchasedCents: 0,
-      topUpBalanceCents: 0,
-      autoTopUpEnabled: false,
       lastLoginAt: now,
     })
     logAuthDebug('auth/users:syncUserProfileByServer created subscription', { userId })
@@ -189,8 +108,7 @@ export const syncUserProfileByServer = mutation({
   },
 })
 
-// Get user profile with subscription and usage data (for account page).
-// creditsUsed is read from the subscription row directly — no tokenUsage join needed.
+// Get the person's profile (for the app bootstrap and the account page).
 export const getUserProfile = query({
   args: { accessToken: v.string(), userId: v.string() },
   handler: async (ctx, { accessToken, userId }) => {
@@ -199,35 +117,11 @@ export const getUserProfile = query({
     } catch {
       return null
     }
-
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
-
-    if (!subscription) {
-      return null
-    }
-
-    const today = new Date().toISOString().split('T')[0]
-
-    const dailyUsage = await ctx.db
-      .query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
-      .first()
-
-    // Fetch the audit-log tokenUsage row for raw token counts (display only)
-    const billingPeriodStart = subscription.currentPeriodStart
-      ? new Date(subscription.currentPeriodStart).toISOString().split('T')[0]
-      : today
-
-    const tokenUsage = await ctx.db
-      .query('tokenUsage')
-      .withIndex('by_userId_period', (q) =>
-        q.eq('userId', userId).eq('billingPeriodStart', billingPeriodStart)
-      )
-      .first()
-
+    if (!subscription) return null
     return {
       profile: {
         userId: subscription.userId,
@@ -237,34 +131,6 @@ export const getUserProfile = query({
         lastName: subscription.lastName,
         profilePictureUrl: subscription.profilePictureUrl,
         lastLoginAt: subscription.lastLoginAt,
-      },
-      subscription: {
-        tier: subscription.tier,
-        planKind: derivePlanKind(subscription),
-        planAmountCents: derivePlanAmountCents(subscription),
-        status: subscription.status,
-        stripeCustomerId: subscription.stripeCustomerId,
-        stripeSubscriptionId: subscription.stripeSubscriptionId,
-        currentPeriodStart: subscription.currentPeriodStart,
-        currentPeriodEnd: subscription.currentPeriodEnd,
-      },
-      usage: {
-        // creditsUsed comes from subscription — single source of truth
-        creditsUsed: subscription.creditsUsed ?? 0,
-        creditsTotal: derivePlanAmountCents(subscription) / 100,
-        // Raw token counts from audit log (may lag slightly behind creditsUsed)
-        inputTokens: tokenUsage?.inputTokens ?? 0,
-        outputTokens: tokenUsage?.outputTokens ?? 0,
-        cachedInputTokens: tokenUsage?.cachedInputTokens ?? 0,
-      },
-      dailyUsage: {
-        askCount: dailyUsage?.askCount ?? 0,
-        writeCount: dailyUsage?.writeCount ?? 0,
-        agentCount: dailyUsage?.agentCount ?? 0,
-        transcriptionSeconds: dailyUsage?.transcriptionSeconds ?? 0,
-        voiceChatCount: dailyUsage?.voiceChatCount ?? 0,
-        noteBrowserCount: dailyUsage?.noteBrowserCount ?? 0,
-        browserSearchCount: dailyUsage?.browserSearchCount ?? 0,
       },
     }
   },
@@ -310,19 +176,6 @@ export const markOnboardingComplete = mutation({
       userId,
       email: safeEmail,
       name: safeEmail.split('@')[0] || 'User',
-      tier: 'free',
-      planKind: 'free',
-      planVersion: 'variable_v2',
-      planAmountCents: 0,
-      markupBasisPoints: DEFAULT_MARKUP_BASIS_POINTS,
-      status: 'active',
-      currentPeriodStart: now,
-      currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
-      creditsUsed: 0,
-      allowanceUsedCents: 0,
-      topUpPurchasedCents: 0,
-      topUpBalanceCents: 0,
-      autoTopUpEnabled: false,
       lastLoginAt: now,
       hasSeenOnboarding: true,
     })
@@ -405,8 +258,6 @@ export const deleteUserAccountByServer = mutation({
   returns: v.object({
     r2Keys: v.array(v.string()),
     storageIds: v.array(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripeCustomerId: v.optional(v.string()),
     deletedRowCount: v.number(),
     email: v.optional(v.string()),
   }),
@@ -419,14 +270,12 @@ export const deleteUserAccountByServer = mutation({
     const r2Keys: string[] = []
     const storageIds: string[] = []
 
-    // Capture Stripe linkage from the subscription row before we delete it so
-    // the API route can cancel the live subscription on Stripe.
+    // Plans belong to workspaces, so a person has no subscription of their own to cancel; workspace plans are
+    // handled with the workspace.
     const subscription = await ctx.db
       .query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
-    const stripeSubscriptionId = subscription?.stripeSubscriptionId
-    const stripeCustomerId = subscription?.stripeCustomerId
     const email = subscription?.email
 
     // Helper: delete every row returned by a query.
@@ -455,6 +304,12 @@ export const deleteUserAccountByServer = mutation({
       ctx.db
         .query('tokenUsage')
         .withIndex('by_userId_period', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
+        .query('agentProviderAccounts')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
     await deleteIndexed(() =>
@@ -498,12 +353,6 @@ export const deleteUserAccountByServer = mutation({
       .withIndex('by_actorUserId_createdAt', (q) => q.eq('actorUserId', userId))
       .collect()
     await Promise.all(actorAuditRows.map((row) => ctx.db.patch(row._id, { actorUserId: undefined })))
-    await deleteIndexed(() =>
-      ctx.db
-        .query('projects')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
     await deleteIndexed(() =>
       ctx.db
         .query('skills')
@@ -554,12 +403,6 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
-        .query('notes')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
         .query('memories')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
@@ -567,12 +410,6 @@ export const deleteUserAccountByServer = mutation({
     await deleteIndexed(() =>
       ctx.db
         .query('knowledgeChunks')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('outputs')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
@@ -598,8 +435,7 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
-    // 4. Subscription row last so Stripe linkage stays available above. After
-    //    this, the user has no rows left in Convex.
+    // 4. The person's own row last. After this, the user has no rows left in Convex.
     if (subscription) {
       await ctx.db.delete(subscription._id)
       deletedRowCount += 1
@@ -608,10 +444,21 @@ export const deleteUserAccountByServer = mutation({
     return {
       r2Keys,
       storageIds,
-      stripeSubscriptionId,
-      stripeCustomerId,
       deletedRowCount,
       email,
     }
+  },
+})
+
+/** Server-only: people for the admin console's directory (id and email), optionally one person. */
+export const listUserDirectoryByServer = query({
+  args: { serverSecret: v.string(), limit: v.optional(v.number()), userId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 200)
+    const rows = args.userId
+      ? await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', args.userId!)).take(1)
+      : await ctx.db.query('subscriptions').take(limit)
+    return rows.map((row) => ({ userId: row.userId, email: row.email }))
   },
 })

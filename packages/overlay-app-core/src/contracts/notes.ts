@@ -1,9 +1,19 @@
+import type { ScopedResourceFields } from './resource-scope'
 import type { MutationSuccessResponse, PaginationQueryContract } from './common'
 
-export interface NoteDoc {
+export type NoteDocFormat = 'markdown' | 'blocknote'
+
+export interface NoteDoc extends ScopedResourceFields {
   _id: string
+  /** The creator; only they can move it between scopes. */
+  userId?: string
   title: string
+  /** Markdown projection of the note — canonical when `docFormat` is markdown. */
   content: string
+  /** Versioned BlockNote document envelope when `docFormat === 'blocknote'`. */
+  docJson?: string
+  /** Absent means the row predates block storage and holds plain markdown. */
+  docFormat?: NoteDocFormat
   tags: string[]
   createdAt: number
   updatedAt: number
@@ -14,6 +24,8 @@ export interface NoteDoc {
 export interface NoteQueryContract extends PaginationQueryContract {
   noteId?: string
   includeDeleted?: boolean
+  /** Personal, workspace, or archived. Omitted means everything active the caller can see. */
+  view?: 'personal' | 'workspace' | 'archived'
 }
 
 export interface CreateNoteRequest {
@@ -24,6 +36,8 @@ export interface CreateNoteRequest {
   accessToken?: string
   userId?: string
   workspaceId?: string
+  /** Defaults to personal. */
+  scope?: 'personal' | 'workspace'
 }
 
 export interface CreateNoteResponse {
@@ -36,6 +50,9 @@ export interface UpdateNoteRequest {
   noteId: string
   title?: string
   content?: string
+  /** BlockNote envelope + markdown `content` projection for block-edited notes. */
+  docJson?: string
+  docFormat?: NoteDocFormat
   tags?: string[]
   expectedUpdatedAt?: number
   accessToken?: string

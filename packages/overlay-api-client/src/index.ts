@@ -42,7 +42,23 @@ export {
   AgentEnvironmentsClient,
   type AgentEnvironmentResource,
 } from './agent-environments/client'
+export {
+  CloudAgentsClient,
+  type CloudAgentStatusResource,
+  type CloudAgentPhaseResource,
+  type CloudAgentStateResource,
+} from './cloud-agents/client'
+export {
+  AgentProfilesClient,
+  type AgentProfileResource,
+  type AgentProfileStateResource,
+  type AgentProfileImportCodeResource,
+  type AgentProfileSummaryResource,
+  type AgentProfileHarnessResource,
+} from './agent-profiles/client'
 export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
+export { McpAccessClient, type McpConnectionResource, type McpAccessLevelResource } from './mcp-access/client'
+export { ProviderAccountsClient, type ProviderAccountResource } from './provider-accounts/client'
 export { SurfacesClient } from './surfaces/client'
 export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
@@ -58,6 +74,7 @@ export { MemoryClient } from './memory/client'
 export { OutputsClient } from './outputs/client'
 export { IntegrationsClient } from './integrations/client'
 export { SkillsClient } from './skills/client'
+export { ScopeClient } from './scope/client'
 export { McpServersClient } from './mcp-servers/client'
 export { SettingsClient } from './settings/client'
 export { OnboardingClient } from './onboarding/client'

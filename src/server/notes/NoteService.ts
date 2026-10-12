@@ -11,6 +11,7 @@ import type {
 } from '@overlay/app-core'
 import { BillingQuotaError, QuotaEnforcer } from '@overlay/billing'
 import { toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
+import { markdownToNoteDocServer } from '@overlay/note-doc/server'
 
 export interface NoteRecord {
   _id: string
@@ -20,11 +21,16 @@ export interface NoteRecord {
   kind?: string
   content?: string
   textContent?: string
+  docJson?: string
+  docFormat?: 'markdown' | 'blocknote'
   tags?: string[]
   createdAt: number
   updatedAt: number
   deletedAt?: number
   legacyNoteId?: string
+  scope?: 'personal' | 'workspace'
+  archivedAt?: number
+  archivedFromScope?: 'personal' | 'workspace'
 }
 
 export type ServerNoteDoc = NoteDoc & {
@@ -38,6 +44,7 @@ export interface NoteRepository {
     userId: string
     includeDeleted?: boolean
     workspaceId?: string
+    view?: 'personal' | 'workspace' | 'archived'
   }): Promise<NoteRecord[]>
   createNote(args: {
     userId: string
@@ -46,6 +53,7 @@ export interface NoteRepository {
     tags?: string[]
     clientId?: string
     workspaceId?: string
+    scope?: 'personal' | 'workspace'
   }): Promise<{ id: string; note: NoteRecord | null }>
   updateNote(args: {
     noteId: string
@@ -54,6 +62,8 @@ export interface NoteRepository {
     content?: string
     tags?: string[]
     expectedUpdatedAt?: number
+    docJson?: string
+    docFormat?: 'markdown' | 'blocknote'
     workspaceId?: string
   }): Promise<NoteRecord | null>
   deleteNote(args: {
@@ -94,12 +104,17 @@ function noteRecordToDoc(note: NoteRecord): ServerNoteDoc {
     title: note.name || 'Untitled',
     // Notes are Markdown; rows written before the switch still hold TipTap HTML.
     content: toCanonicalNoteMarkdown(note.textContent ?? note.content ?? ''),
+    docJson: note.docJson,
+    docFormat: note.docFormat,
     tags: note.tags ?? [],
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
     deletedAt: note.deletedAt,
     clientId: note.clientId,
     legacyNoteId: note.legacyNoteId,
+    scope: note.scope,
+    archivedAt: note.archivedAt,
+    archivedFromScope: note.archivedFromScope,
   }
 }
 
@@ -122,6 +137,7 @@ export class NoteService {
     userId: string
     includeDeleted?: boolean
     workspaceId?: string
+    view?: 'personal' | 'workspace' | 'archived'
   }): Promise<ServerNoteDoc[]> {
     const notes = await this.context.noteRepository.listNotes(args)
     return notes.map(noteRecordToDoc)
@@ -140,6 +156,7 @@ export class NoteService {
       tags: args.tags,
       clientId: args.clientId,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      ...(args.scope ? { scope: args.scope } : {}),
     })
     return {
       id: result.id,
@@ -154,6 +171,28 @@ export class NoteService {
       throw new NoteServiceError('noteId required', 400)
     }
 
+    // Format negotiation: writers that send `docJson` own the block document
+    // (content stays the markdown projection). Markdown-only writers hitting a
+    // blocknote note get their content converted so blocks stay canonical.
+    let docJson = args.docJson
+    let docFormat = args.docFormat
+    if (docJson !== undefined) {
+      docFormat = 'blocknote'
+    } else if (args.content !== undefined && args.docFormat === undefined) {
+      const existing = await this.context.noteRepository.getNote({
+        noteId: args.noteId,
+        userId: args.userId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      })
+      if (existing?.docFormat === 'blocknote') {
+        const converted = await markdownToNoteDocServer(
+          toCanonicalNoteMarkdown(args.content),
+        )
+        docJson = converted.docJson
+        docFormat = 'blocknote'
+      }
+    }
+
     const note = await this.context.noteRepository.updateNote({
       noteId: args.noteId,
       userId: args.userId,
@@ -161,6 +200,8 @@ export class NoteService {
       content: args.content === undefined ? undefined : toCanonicalNoteMarkdown(args.content),
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
+      docJson,
+      ...(docFormat !== undefined ? { docFormat } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!note) {

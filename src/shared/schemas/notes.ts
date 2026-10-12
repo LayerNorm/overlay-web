@@ -1,20 +1,27 @@
 import { z } from 'zod'
+import { ResourceViewQuery } from './misc'
 import { AuthFields, BooleanQueryValue, IdQuery, PaginationQuery, UnknownResponse } from './common'
 
 export const NoteListQuery = PaginationQuery.extend({
   noteId: IdQuery,
   includeDeleted: BooleanQueryValue,
+  view: ResourceViewQuery,
 })
 
 export const CreateNoteRequest = z.object({
   ...AuthFields,
   title: z.string().max(200).optional(),
   content: z.string().optional(),
+  scope: z.enum(['personal', 'workspace']).optional(),
 })
 
 export const UpdateNoteRequest = CreateNoteRequest.partial().extend({
   ...AuthFields,
   noteId: z.string().min(1),
+  expectedUpdatedAt: z.number().optional(),
+  /** BlockNote document envelope (`{"v":1,"blocks":[...]}`) when the writer edits blocks. */
+  docJson: z.string().optional(),
+  docFormat: z.enum(['markdown', 'blocknote']).optional(),
 })
 
 export const DeleteNoteRequest = z.object({

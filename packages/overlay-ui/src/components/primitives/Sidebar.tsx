@@ -71,6 +71,17 @@ export function SidebarResourceSection({
         >
           <span className="min-w-0 flex-1 text-left">{action.label}</span>
         </button>
+      ) : search ? (
+        // No New (for instance in Archived): search stands alone, full width.
+        <button
+          type="button"
+          title={search.title}
+          onClick={search.onClick}
+          className="mb-3 flex w-full items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        >
+          <Search size={13} strokeWidth={1.75} />
+          <span className="min-w-0 flex-1 truncate text-left">{search.title}</span>
+        </button>
       ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>

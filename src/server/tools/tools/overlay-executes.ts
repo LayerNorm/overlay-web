@@ -1,4 +1,5 @@
 import 'server-only'
+import { roomListScope } from './room-scope'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
 import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
@@ -23,6 +24,11 @@ function memoryOwnerBody(options: OverlayToolsOptions): { memoryOwnerId?: string
     ? { memoryOwnerId: options.memoryOwnerId }
     : {}
 }
+
+/** In a room others can read, searches return only what the workspace shares. */
+function roomSearchBody(options: OverlayToolsOptions): { workspaceOnly?: true } {
+  return options.sharedRoom ? { workspaceOnly: true } : {}
+}
 import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/features/automations/lib/automation-drafts'
 import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -46,6 +52,7 @@ export async function executeSearchKnowledge(
       {
         query,
         sourceKind: options.memoryEnabled === false ? 'file' : sourceKind,
+        ...roomSearchBody(options),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -199,6 +206,7 @@ export async function executeSearchMemory(
       {
         query,
         sourceKind: 'memory',
+        ...roomSearchBody(options),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -250,6 +258,7 @@ export async function executeSearchMessages(
       {
         query,
         sourceKind: 'message',
+        ...roomSearchBody(options),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -389,16 +398,17 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
 
 export async function executeListSkills(
   options: OverlayToolsOptions,
-  input: { query?: string },
+  input: { query?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/skills?limit=100',
+      `/api/v1/skills?limit=100${roomListScope(options, input.scope) ? `&view=${roomListScope(options, input.scope)}` : ''}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
       options.serverSecret,
       options.userId,
+      options.workspaceId,
     )
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch skills' }
@@ -432,16 +442,17 @@ export async function executeListSkills(
 
 export async function executeListAutomations(
   options: OverlayToolsOptions,
-  input: { query?: string },
+  input: { query?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/automations?limit=100',
+      `/api/v1/automations?limit=100${roomListScope(options, input.scope) ? `&view=${roomListScope(options, input.scope)}` : ''}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
       options.serverSecret,
       options.userId,
+      options.workspaceId,
     )
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch automations' }
@@ -585,7 +596,9 @@ export async function executeUpdateAutomation(
     const schedule = input.schedule ? normalizeScheduleInput(input.schedule) : input.schedule
     const res = await callInternalApi(
       '/api/v1/automations',
-      { ...input, schedule, ...toolAuthBody(options) },
+      // Auth fields first: `toolAuthBody` carries the *running* automation's id (undefined in chat), which would
+      // otherwise overwrite the automation being changed.
+      { ...toolAuthBody(options), ...input, schedule },
       options.accessToken,
       options.baseUrl,
       { method: 'PATCH', forwardCookie: options.forwardCookie },
@@ -607,7 +620,7 @@ export async function executePauseAutomation(options: OverlayToolsOptions, input
   try {
     const res = await callInternalApi(
       '/api/v1/automations',
-      { automationId: input.automationId, action: 'pause', ...toolAuthBody(options) },
+      { ...toolAuthBody(options), automationId: input.automationId, action: 'pause' },
       options.accessToken,
       options.baseUrl,
       { method: 'PATCH', forwardCookie: options.forwardCookie },
@@ -692,7 +705,7 @@ export async function executeDeleteAutomation(options: OverlayToolsOptions, inpu
   try {
     const res = await callInternalApi(
       '/api/v1/automations',
-      { automationId: input.automationId, ...toolAuthBody(options) },
+      { ...toolAuthBody(options), automationId: input.automationId },
       options.accessToken,
       options.baseUrl,
       { method: 'DELETE', forwardCookie: options.forwardCookie },
@@ -1111,4 +1124,47 @@ export async function executeComputerOpenUrl(
   } catch (err) {
     return computerErrorResult(err, 'Failed to open the URL on the computer')
   }
+}
+
+/**
+ * Agents asking agents. Every call goes through one internal route that works out, from the database, which turn
+ * is asking and under what lineage; nothing about the chain is taken from the model.
+ */
+async function callAgentAsks(options: OverlayToolsOptions, body: Record<string, unknown>) {
+  try {
+    const res = await callInternalApi(
+      '/api/v1/agent-asks',
+      {
+        ...body,
+        ...toolAuthBody(options),
+        callerAgentId: options.agentId,
+        callerConversationId: options.conversationId,
+        callerTurnId: options.turnId,
+      },
+      options.accessToken,
+      options.baseUrl,
+      { forwardCookie: options.forwardCookie },
+    )
+    const data = await res.json().catch((_error) => ({ error: 'The request failed.' })) as Record<string, unknown>
+    if (!res.ok) return { success: false, error: typeof data.error === 'string' ? data.error : 'The request failed.' }
+    return { success: true, ...data }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'The request failed.' }
+  }
+}
+
+export function executeListAgents(options: OverlayToolsOptions) {
+  return callAgentAsks(options, { action: 'list' })
+}
+
+export function executeAskAgent(options: OverlayToolsOptions, input: { agent: string; message: string; wait?: boolean }) {
+  return callAgentAsks(options, { action: 'ask', agent: input.agent, message: input.message, wait: input.wait !== false })
+}
+
+export function executeReadAgentReply(options: OverlayToolsOptions, input: { conversationId: string; turnId: string }) {
+  return callAgentAsks(options, { action: 'read', conversationId: input.conversationId, turnId: input.turnId })
+}
+
+export function executePostMessage(options: OverlayToolsOptions, input: { conversationId: string; text: string; mentions?: string[] }) {
+  return callAgentAsks(options, { action: 'post', conversationId: input.conversationId, text: input.text, mentions: input.mentions ?? [] })
 }

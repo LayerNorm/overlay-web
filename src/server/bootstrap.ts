@@ -52,11 +52,6 @@ import {
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import {
-  resolveWorkspaceBillingRollout,
-  workspaceBillingRolloutConfigFromEnv,
-  workspaceBillingRolloutEnabled,
-} from '@/shared/billing/workspace-billing-rollout'
-import {
   connectedAgentRolloutConfigFromEnv,
   connectedAgentRolloutEnabled,
   resolveConnectedAgentRollout,
@@ -65,6 +60,12 @@ import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
+import { lazyConvex } from '@/server/database/lazy-convex'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
+import { AgentProfileService } from '@/server/agents/profiles/AgentProfileService'
+import { McpAccessService } from '@/server/mcp/McpAccessService'
+import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
 import { SurfaceService } from '@/server/surfaces/SurfaceService'
 import { listSlackChannels } from '@/server/surfaces/slack-directory'
@@ -126,6 +127,10 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
+  agentProviderAccounts: AgentProviderAccountService
+  mcpAccess: McpAccessService
+  agentProfiles: AgentProfileService
+  agentAsks: AgentAskService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
   surfaceService: SurfaceService
@@ -204,13 +209,17 @@ export function createOverlayServerContext(
 
   // ── Workspace, authorization, and collaboration services ────────────────
   const workspaceRepository = new ConvexWorkspaceRepository()
-  const workspaceService = new WorkspaceService(workspaceRepository, { lifecycleEvents })
-  const workspaceBillingRollout = workspaceBillingRolloutConfigFromEnv(process.env)
+  const workspaceService = new WorkspaceService(workspaceRepository, {
+    lifecycleEvents,
+    hasWorkspacePlan: async (workspaceId) => {
+      const billing = appData.repositories.billing
+      const account = await billing.getWorkspaceBillingAccountByWorkspaceIdByServer({ workspaceId })
+      if (!account) return false
+      return (await billing.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }))?.planKind === 'paid'
+    },
+  })
   const billingPayerResolver = new BillingPayerResolver({
     billing: appData.repositories.billing,
-    workspaceWalletsEnabled: (workspaceId) => workspaceId
-      ? resolveWorkspaceBillingRollout(workspaceBillingRollout, workspaceId).eligible
-      : workspaceBillingRolloutEnabled(workspaceBillingRollout),
     workspaces: workspaceService,
   })
 
@@ -272,8 +281,61 @@ export function createOverlayServerContext(
     policy: generationUsagePolicy,
     repository: appData.repositories.connectedAgents,
   })
+  const agentProviderAccounts = new AgentProviderAccountService({
+    repository: appData.repositories.agentProviderAccounts,
+    store: byokCredentialStore,
+    audit: auditService,
+  })
+  const mcpAccess = new McpAccessService({
+    grants: appData.repositories.mcpGrants,
+    workspaces: workspaceService,
+    audit: auditService,
+  })
+  const agentProfiles = new AgentProfileService({
+    repository: appData.repositories.agentProfiles,
+    agents: { requireEditable: (args) => workspaceAgentService.requireEditable(args) },
+    store: byokCredentialStore,
+    audit: auditService,
+    // Imported lazily: the machine service reads this context, so importing it here would be circular.
+    apply: async (args) => {
+      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
+      await createCloudAgentMachineService().applyProfile(args)
+    },
+  })
+  const agentAsks = new AgentAskService({
+    collaboration: appData.repositories.conversationCollaboration,
+    directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
+    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }>(
+      'agents/agentAsks:claimAgentAskByServer',
+      { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
+      { throwOnError: true },
+    )) ?? { ok: false, reason: 'budget' },
+    recordReply: async (args) => {
+      await lazyConvex.mutation('agents/agentAsks:recordAgentAskReplyByServer', { serverSecret: getInternalApiSecret(), now: Date.now(), ...args }, { throwOnError: true })
+    },
+    listReplies: async (args) => (await lazyConvex.query<Array<{ conversationId: string; turnId: string }>>(
+      'agents/agentAsks:listAgentAskRepliesByServer', { serverSecret: getInternalApiSecret(), ...args }, { throwOnError: true },
+    )) ?? [],
+    releaseBudget: async (args) => {
+      await lazyConvex.mutation('agents/agentAsks:releaseAgentAskByServer', { serverSecret: getInternalApiSecret(), now: Date.now(), ...args }, { throwOnError: true })
+    },
+    // Imported lazily: starting a turn reads this context, so importing it here would be circular.
+    startTurns: async (args) => {
+      const { startWorkspaceAgentTurns } = await import('@/server/agents/start-agent-turns')
+      // No recalled memory for a delegated question: the answer should come from the question, not from whatever the person said elsewhere.
+      const invocations = await startWorkspaceAgentTurns({ ...args, memoryEnabled: false, extractHumanMemory: false })
+      return invocations.map((invocation) => ({ agentId: invocation.agentId, turnId: invocation.turnId }))
+    },
+  })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
+    agentSecretEnv: (agentId) => agentProfiles.envForAgent({ agentId }),
+    // Imported lazily: the machine service reads this context, so importing it here would be circular.
+    deliverMachineFiles: async (args) => {
+      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
+      await createCloudAgentMachineService().writeFiles(args)
+    },
+    agentProviderAccounts,
     objectStore,
     providerConnections: appData.repositories.providerConnections,
     repository: appData.repositories.connectedAgents,
@@ -304,7 +366,7 @@ export function createOverlayServerContext(
       })
     },
     meterSandboxLease: async (lease) => {
-      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0 })
+      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0, idleStop: 'none' })
     },
     settleUsage: async (usage) => {
       if (!usage.userId) return
@@ -395,6 +457,10 @@ export function createOverlayServerContext(
     workspaceGovernanceService,
     workspaceAgentService,
     connectedAgentControlPlane,
+    agentProviderAccounts,
+    mcpAccess,
+    agentProfiles,
+    agentAsks,
     managedAgentSandboxBilling,
     computerService,
     surfaceService,

@@ -64,6 +64,9 @@ export function CreateWorkspaceDialog({
         <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted-light)]">
           You will be the workspace owner. You can invite people and add agents next.
         </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted-light)]">
+          It starts on the free plan: everyone working in it shares one weekly allowance. Add a plan from its Billing tab for a pool of credits shared by every member.
+        </p>
         {error ? (
           <p role="alert" className="mt-3 text-xs text-red-500">
             {error}

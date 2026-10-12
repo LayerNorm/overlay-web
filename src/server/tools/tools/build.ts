@@ -15,6 +15,7 @@ import {
   executeUpdateNote,
 } from './notes-executes'
 import { executeBrowserRunTask } from './browser-executes'
+import { executeListChats, executeReadChat } from './chats-executes'
 import {
   executeComputerExec,
   executeComputerListFiles,
@@ -25,8 +26,12 @@ import {
   executeDeleteAutomation,
   executeDraftAutomationFromChat,
   executeDraftSkillFromChat,
+  executeAskAgent,
   executeCreateAgent,
   executeDeleteMemory,
+  executeListAgents,
+  executePostMessage,
+  executeReadAgentReply,
   executeGenerateImage,
   executeGenerateVideo,
   executePresentGeneratedUi,
@@ -57,6 +62,12 @@ import type { OverlayToolsOptions } from './types'
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
  */
+/** Optional on every list tool: narrows the list to one scope (archived items are not offered to agents). Omitted means everything active the caller can see. */
+const toolScopeSchema = z
+  .enum(['personal', 'workspace'])
+  .optional()
+  .describe('Which items to list: personal (only yours) or workspace (shared with the workspace). Omit for everything active that you can see. Archived items are never listed.')
+
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
   const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
@@ -194,6 +205,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       'Use the optional query parameter to filter skills by keyword.',
     inputSchema: z.object({
       query: z.string().optional().describe('Optional keyword to filter skills by name, description, or instructions'),
+      scope: toolScopeSchema,
     }),
     execute: async (input) => {
       assertToolAllowed('list_skills')
@@ -208,6 +220,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         'List the user\'s saved automations, including enabled state, schedule metadata, next run, last run, and last error. Use this in Automate mode or when the user asks about automations.',
       inputSchema: z.object({
         query: z.string().optional().describe('Optional keyword to filter automations by name, description, or instructions'),
+        scope: toolScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('list_automations')
@@ -345,6 +358,65 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
   }
 
+  if (shouldExposeTool('list_agents')) {
+    tools.list_agents = tool({
+      description:
+        'List the other agents in this workspace that you may ask for help, with what each is for. Use this before ask_agent when you do not already know which agent fits.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        assertToolAllowed('list_agents')
+        return executeListAgents(options)
+      },
+    })
+  }
+
+  if (shouldExposeTool('ask_agent')) {
+    tools.ask_agent = tool({
+      description:
+        'Ask another agent in this workspace to do something and return its answer. It works for the same person you do, with that person\'s access, and its answer comes back to you. Pass a self-contained message, since the agent does not see your conversation. With wait (the default) this returns the reply, or a handle if the agent is still working after about a minute; use read_agent_reply with that handle later. Asking is limited: an agent cannot ask itself, a question cannot loop back to an agent already in the chain, and a chain can pass a question on only a few times.',
+      inputSchema: z.object({
+        agent: z.string().min(1).describe('The agent id or its exact name, from list_agents.'),
+        message: z.string().min(1).max(8000).describe('What you need, with all the context the agent needs.'),
+        wait: z.boolean().optional().describe('Wait for the reply (default true).'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('ask_agent')
+        return executeAskAgent(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('post_message')) {
+    tools.post_message = tool({
+      description:
+        'Post a message into a conversation (a channel or group chat) that you are part of, optionally mentioning other agents in it by name so they answer there. Use it to share a result or hand work to an agent in that room. It does not wait for replies; they appear in the conversation. Mentioned agents count as questions: the same limits apply as for ask_agent.',
+      inputSchema: z.object({
+        conversationId: z.string().min(1).describe('The conversation to post in.'),
+        text: z.string().min(1).max(8000),
+        mentions: z.array(z.string().min(1)).max(3).optional().describe('Agents in that conversation to ask, by id or exact name.'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('post_message')
+        return executePostMessage(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('read_agent_reply')) {
+    tools.read_agent_reply = tool({
+      description:
+        'Read the reply to an earlier ask_agent that was still working. Pass the conversationId and turnId ask_agent returned.',
+      inputSchema: z.object({
+        conversationId: z.string().min(1),
+        turnId: z.string().min(1),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('read_agent_reply')
+        return executeReadAgentReply(options, input)
+      },
+    })
+  }
+
   if (shouldExposeTool('search_knowledge')) {
     tools.search_knowledge = tool({
     description:
@@ -395,6 +467,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree.',
       inputSchema: z.object({
         folderId: z.string().optional().describe('Folder id from a previous list_files result'),
+        scope: toolScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('list_files')
@@ -470,7 +543,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('list_notes')) {
     tools.list_notes = tool({
     description: 'List the user\'s notes in Overlay (id, title, tags), most recently edited first.',
-    inputSchema: z.object({}),
+    inputSchema: z.object({ scope: toolScopeSchema }),
     execute: async (input) => {
       assertToolAllowed('list_notes')
       return executeListNotes(options, input)
@@ -523,6 +596,40 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('search_messages')
         return executeSearchMessages(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('list_chats')) {
+    tools.list_chats = tool({
+      description:
+        'List the user\'s chats in Overlay (id, title, type), most recently active first. Pass a query to filter by title. ' +
+        'Use this to find a chat the user mentions by name before reading it with read_chat.',
+      inputSchema: z.object({
+        query: z.string().optional().describe('Part of the chat title to look for.'),
+        limit: z.number().int().min(1).max(50).optional().describe('How many chats to return (default 20).'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('list_chats')
+        return executeListChats(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('read_chat')) {
+    tools.read_chat = tool({
+      description:
+        'Read the messages of one of the user\'s chats, oldest to newest, labeled by speaker. ' +
+        'Use it when the user refers to a chat (for example by @mentioning its title) and you need what was said. ' +
+        'Give the chatId from list_chats, or the chat\'s exact title.',
+      inputSchema: z.object({
+        chatId: z.string().optional().describe('The chat id from list_chats.'),
+        title: z.string().optional().describe('The chat\'s title, when you do not have its id.'),
+        limit: z.number().int().min(1).max(100).optional().describe('How many of the latest messages to read (default 40).'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('read_chat')
+        return executeReadChat(options, input)
       },
     })
   }

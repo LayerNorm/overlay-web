@@ -1,5 +1,6 @@
 'use client'
 
+import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -45,6 +46,7 @@ import type {
   WorkspaceSettingsTab,
 } from '@/shared/workspaces/types'
 import { WorkspaceAvatar } from './WorkspaceAvatar'
+import { WorkspaceNameEditor } from './WorkspaceNameEditor'
 import {
   ConfirmWorkspaceActionDialog,
   CreateTeamDialog,
@@ -53,6 +55,7 @@ import {
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
 import { ImportPanel } from './ImportPanel'
+import { invalidateWorkspaceScopePolicy } from '@/hooks/use-workspace-create-access'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -235,6 +238,13 @@ export type WorkspaceSharingPolicyState =
     memberCanCreateChannels: boolean
     memberCanCreateAgents: boolean
     memberCanInvite: boolean
+    /** True when anyone in the workspace (not only admins) may create or edit workspace-scoped skills, MCP servers, and connectors. */
+    membersCanEditExtensions: boolean
+    /** True when anyone in the workspace may create or edit workspace-scoped notes, files, outputs, and automations. */
+    membersCanEditContent: boolean
+    memberCanMoveScope: boolean
+    /** True when anyone in the workspace (not only admins) may add usage. */
+    membersCanTopUp: boolean
     legalHold: boolean
     rolloutStage: WorkspaceRolloutStage
     guestExpirationDays?: number
@@ -247,7 +257,20 @@ type PolicyToggleKey =
   | 'memberCanCreateChannels'
   | 'memberCanCreateAgents'
   | 'memberCanInvite'
+  | 'membersCanEditExtensions'
+  | 'membersCanEditContent'
+  | 'memberCanMoveScope'
+  | 'membersCanTopUp'
   | 'legalHold'
+
+/** The policy patch for a toggle: most are plain booleans, the "who may" ones are `members` or `admins`. */
+function policyPatchFor(key: PolicyToggleKey, value: boolean): Record<string, unknown> {
+  const editors = value ? 'members' : 'admins'
+  if (key === 'membersCanEditExtensions') return { workspaceExtensionsEditors: editors }
+  if (key === 'membersCanEditContent') return { workspaceContentEditors: editors }
+  if (key === 'membersCanTopUp') return { usageTopUpBy: editors }
+  return { [key]: value }
+}
 
 const POLICY_TOGGLES: ReadonlyArray<{
   key: PolicyToggleKey
@@ -282,6 +305,34 @@ const POLICY_TOGGLES: ReadonlyArray<{
     label: 'Members can invite people',
     description: 'When on, members may send workspace invitations. Owners and admins always may.',
     onLabel: 'Members may invite',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanEditExtensions',
+    label: 'Anyone can share skills, MCP servers, and connectors',
+    description: 'When off, only owners and admins create or edit workspace-scoped skills, MCP servers, and connectors (they hold credentials or run code). Personal ones stay with their creator.',
+    onLabel: 'Anyone in the workspace',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanEditContent',
+    label: 'Anyone can share notes, files, outputs, and automations',
+    description: 'When off, only owners and admins create or edit workspace-scoped notes, files, outputs, and automations.',
+    onLabel: 'Anyone in the workspace',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'memberCanMoveScope',
+    label: 'Members can move their own items between Personal and Workspace',
+    description: 'When off, members cannot move items between scopes; owners and admins still can for items they created. Nobody moves someone else’s item.',
+    onLabel: 'Members may move their own items',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanTopUp',
+    label: 'Anyone can add usage to the workspace',
+    description: 'When off, only owners and admins add usage (top-ups) to this workspace.',
+    onLabel: 'Anyone in the workspace',
     offLabel: 'Owners and admins only',
   },
   {
@@ -639,6 +690,10 @@ export function WorkspaceSettingsPanel({
           memberCanCreateChannels: result.policy.memberCanCreateChannels,
           memberCanCreateAgents: result.policy.memberCanCreateAgents,
           memberCanInvite: result.policy.memberCanInvite,
+          membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
+          membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
+          memberCanMoveScope: result.policy.memberCanMoveScope !== false,
+          membersCanTopUp: result.policy.usageTopUpBy === 'members',
           legalHold: result.policy.legalHold,
           rolloutStage: result.policy.rolloutStage,
           guestExpirationDays: result.policy.guestExpirationDays,
@@ -717,10 +772,8 @@ export function WorkspaceSettingsPanel({
 
   const workspaceLabel = useMemo(() => {
     if (!activeWorkspace) return null
-    const memberLabel = typeof activeWorkspace.memberCount === 'number'
-      ? ` · ${activeWorkspace.memberCount} ${activeWorkspace.memberCount === 1 ? 'member' : 'members'}`
-      : ''
-    return `${activeWorkspace.kind === 'personal' ? 'Personal workspace' : 'Organization workspace'}${memberLabel}`
+    const label = workspaceMemberLabel(activeWorkspace)
+    return `Workspace${label ? ` · ${label}` : ''}`
   }, [activeWorkspace])
 
   function openPrimaryAction() {
@@ -917,7 +970,12 @@ function WorkspaceSharingTab({
   function handleToggle(key: PolicyToggleKey, value: boolean) {
     setPolicyBusy(true)
     setActionError(null)
-    void client.setSharingPolicy(workspaceId, { [key]: value })
+    void client.setSharingPolicy(workspaceId, policyPatchFor(key, value))
+      .then((result) => {
+        // The sidebar's New buttons follow these settings.
+        invalidateWorkspaceScopePolicy(workspaceId)
+        return result
+      })
       .then((result) => setPolicyState((current) => ({
         ...(current.status === 'ready' ? current : {}),
         status: 'ready',
@@ -927,6 +985,10 @@ function WorkspaceSharingTab({
         memberCanCreateChannels: result.policy.memberCanCreateChannels,
         memberCanCreateAgents: result.policy.memberCanCreateAgents,
         memberCanInvite: result.policy.memberCanInvite,
+        membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
+        membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
+        memberCanMoveScope: result.policy.memberCanMoveScope !== false,
+        membersCanTopUp: result.policy.usageTopUpBy === 'members',
         legalHold: result.policy.legalHold,
         rolloutStage: result.policy.rolloutStage,
         guestExpirationDays: result.policy.guestExpirationDays,
@@ -1005,7 +1067,7 @@ function WorkspacePanelBody({
       <header className="flex items-center gap-3 px-5 py-4">
         <WorkspaceAvatar workspace={activeWorkspace} size="lg" />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{activeWorkspace.name}</h2>
+          <WorkspaceNameEditor workspace={activeWorkspace} client={client} />
           <p className="mt-0.5 truncate text-xs text-[var(--muted)]">{workspaceLabel}</p>
         </div>
         {showPrimaryAction ? (

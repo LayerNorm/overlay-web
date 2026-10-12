@@ -17,3 +17,21 @@ test('MCP search labels settle after their result is available', () => {
     'Searched MCP integrations for “read an exact tweet”',
   )
 })
+
+test('a connected agent action shows the title the agent gave it', () => {
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Read notes/how-to-find-bugs.md' }), 'Read notes/how-to-find-bugs.md')
+  assert.equal(getDescriptiveToolLabel('remote_action', {}), 'Remote Action')
+})
+
+test('an action with no real name is shown as Tool call', () => {
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'tool call' }), 'Tool call')
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Tool' }), 'Tool call')
+  assert.equal(getDescriptiveToolLabel('remote_action', { title: 'Read notes.md' }), 'Read notes.md')
+})
+
+test('a connected agent’s terminal, file edits, and plan are named for what they are', () => {
+  assert.equal(getDescriptiveToolLabel('remote_terminal', { title: 'git clone x' }), 'Terminal output')
+  assert.equal(getDescriptiveToolLabel('remote_diff', { title: 'src/app.ts' }), 'Edited src/app.ts')
+  assert.equal(getDescriptiveToolLabel('remote_diff', {}), 'File changes')
+  assert.equal(getDescriptiveToolLabel('remote_plan', {}), 'Plan')
+})

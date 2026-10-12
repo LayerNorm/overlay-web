@@ -1,5 +1,8 @@
 import type { AgentRemoteEvent, AgentRemoteSessionStatus } from '@overlay/workspace-contracts'
 import type { AgentRunStatus, AgentRunTerminalError } from './agent-run'
+import { AGENT_AUTH_FAILURE_CODE } from './provider-accounts'
+
+const AGENT_ACCOUNTS_SETTINGS_HREF = '/app/settings?section=agent-accounts'
 
 export const REMOTE_AGENT_STATUS_PART_TYPE = 'data-remote-agent-status'
 export const REMOTE_AGENT_REQUEST_PART_TYPE = 'data-remote-agent-request'
@@ -169,7 +172,10 @@ export function projectRemoteAgentEvents(input: {
         message,
         retryable: event.payload.retryable === true,
       }
-      if (!content.trim()) content = message
+      if (terminalError.code === AGENT_AUTH_FAILURE_CODE) {
+        // The agent's own text is a raw sign-in error; say what to do and link to it.
+        content = `${message}\n\n[Open Agent accounts](${AGENT_ACCOUNTS_SETTINGS_HREF})`
+      } else if (!content.trim()) content = message
       parts = replaceTextPart(parts, content)
       runStatus = 'failed'
       sessionStatus = 'failed'
@@ -269,15 +275,57 @@ function isTerminalToolState(value: unknown) {
     || value === 'completed'
 }
 
+/**
+ * The agent's text arrives as one growing string. Actions it took in between split it: text written before an action
+ * stays where it was, and later text goes after that action, so the transcript reads in the order things happened.
+ */
 function replaceTextPart(parts: Array<Record<string, unknown>>, text: string) {
-  const next = parts.filter((part) => part.type !== 'text' && part.type !== 'output-text')
-  if (text) next.unshift({ type: 'text', text })
-  return next
+  const isText = (part: Record<string, unknown>) => part.type === 'text' || part.type === 'output-text'
+  const lastAction = parts.reduce((found, part, index) => (part.type === 'tool-invocation' ? index : found), -1)
+  // A text part followed by an action is finished; the unfinished one, if any, is the last text part after the last action.
+  const finished = parts.filter((part, index) => isText(part) && index < lastAction)
+  const consumedText = finished.map((part) => (typeof part.text === 'string' ? part.text : '')).join('')
+  // The agent rewrote text it had already placed: fall back to one block at the start rather than repeat or lose any.
+  if (!text.startsWith(consumedText)) {
+    const without = parts.filter((part) => !isText(part))
+    return text ? [{ type: 'text', text }, ...without] : without
+  }
+  const rest = text.slice(consumedText.length)
+  const openIndex = parts.findIndex((part, index) => isText(part) && index > lastAction)
+  if (openIndex >= 0) {
+    const next = [...parts]
+    if (rest) next[openIndex] = { ...parts[openIndex]!, type: 'text', text: rest }
+    else next.splice(openIndex, 1)
+    return next
+  }
+  if (!rest) return parts
+  // No text yet after the last action: it starts a new part there, or leads the message when there is no action yet.
+  return lastAction < 0 ? [{ type: 'text', text: rest }, ...parts] : [...parts, { type: 'text', text: rest }]
+}
+
+/**
+ * A title an agent gives an action that says nothing ("Tool call", or none at all). Agents often name an action when it
+ * starts ("git clone https://…") and send only a status, with no title, when it ends.
+ */
+export function isGenericActionTitle(title: string | undefined): boolean {
+  return !title || /^(tool( call)?|tool_call|action|remote action)$/i.test(title.trim())
 }
 
 function upsertActionPart(parts: Array<Record<string, unknown>>, payload: Record<string, unknown>) {
   const actionId = stringValue(payload.actionId) ?? 'remote-action'
-  const title = stringValue(payload.title) ?? 'Remote action'
+  const index = parts.findIndex((candidate) => {
+    const invocation = candidate.toolInvocation
+    return candidate.type === 'tool-invocation'
+      && invocation && typeof invocation === 'object'
+      && (invocation as Record<string, unknown>).toolCallId === actionId
+  })
+  const earlier = index < 0 ? undefined : objectValue((parts[index]!.toolInvocation as Record<string, unknown>).toolInput)
+  const incomingTitle = stringValue(payload.title)
+  // An update that names nothing keeps the name the action started with, so a finished action reads like it did while it ran.
+  const title = isGenericActionTitle(incomingTitle) && earlier && !isGenericActionTitle(stringValue(earlier.title))
+    ? stringValue(earlier.title)!
+    : incomingTitle ?? 'Remote action'
+  const detail = stringValue(payload.detail) ?? stringValue(earlier?.detail)
   const status = stringValue(payload.status) ?? 'updated'
   const state = status === 'completed' || status === 'failed' ? 'output-available' : 'input-available'
   const part = {
@@ -286,18 +334,12 @@ function upsertActionPart(parts: Array<Record<string, unknown>>, payload: Record
       toolCallId: actionId,
       toolName: 'remote_action',
       state,
-      toolInput: { title, ...(stringValue(payload.detail) ? { detail: stringValue(payload.detail) } : {}) },
+      toolInput: { title, ...(detail ? { detail } : {}) },
       ...(status === 'completed' || status === 'failed'
         ? { toolOutput: { success: status === 'completed', status, title } }
         : {}),
     },
   }
-  const index = parts.findIndex((candidate) => {
-    const invocation = candidate.toolInvocation
-    return candidate.type === 'tool-invocation'
-      && invocation && typeof invocation === 'object'
-      && (invocation as Record<string, unknown>).toolCallId === actionId
-  })
   if (index < 0) return [...parts, part]
   const next = [...parts]
   next[index] = part

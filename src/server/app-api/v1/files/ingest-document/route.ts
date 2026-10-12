@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileIngestErrorResponse, fileService } from '@/server/files/http'
+import { parseResourceScope } from '@/shared/workspaces/resource-scope'
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       workspaceId: context.workspace.workspace.id,
       file: raw instanceof File ? raw : null,
       parentId: typeof form.get('parentId') === 'string' ? form.get('parentId') as string : undefined,
+      scope: parseResourceScope(form.get('scope')),
     })
     return NextResponse.json(result)
   } catch (error) {

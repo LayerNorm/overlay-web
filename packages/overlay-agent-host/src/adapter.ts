@@ -13,6 +13,12 @@ export type StartAdapterSessionInput = {
   metadata: Record<string, unknown>
   adapterState?: Record<string, unknown>
   persistAdapterState?: (state: Record<string, unknown>) => void
+  /**
+   * Environment variables for this run's agent process only (a person's
+   * provider credentials on Overlay Cloud). Held in memory; never written to
+   * the host's state or logs.
+   */
+  credentials?: Record<string, string>
 }
 
 export interface AgentAdapterSession {

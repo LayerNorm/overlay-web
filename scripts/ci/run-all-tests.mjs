@@ -39,6 +39,7 @@ const VITEST = /from ['"]vitest['"]/
 const PRELOADS = [
   '--require=./scripts/ci/register-server-only.cjs',
   '--require=./scripts/ci/register-style-noop.cjs',
+  '--require=./scripts/ci/register-blocknote-esm.cjs',
 ]
 // Deterministic placeholders for modules that read config at import time.
 // Tests never reach these endpoints.
@@ -133,7 +134,7 @@ function commandFor(group) {
   env.NODE_OPTIONS = [process.env.NODE_OPTIONS, ...PRELOADS].filter(Boolean).join(' ')
   return {
     cmd: 'node',
-    argv: ['--import', 'tsx', '--test', '--test-reporter=dot', ...group.files],
+    argv: ['--import', 'tsx', '--import', './scripts/ci/register-style-noop-esm.mjs', '--test', '--test-reporter=dot', ...group.files],
     env,
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import type React from 'react'
+import React, { createContext, useContext, type ReactNode } from 'react'
 import {
   ArrowLeft,
   ChevronRight,
@@ -20,6 +20,7 @@ import type {
 } from '@overlay/app-core'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { HeaderSearch } from '@overlay/ui/primitives'
+import { KnowledgeRowActionsContext } from './file-views'
 import { FilesCreateUploadControls, OutputFilterMenu } from './toolbar-menus'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
@@ -32,16 +33,19 @@ type KnowledgeLayout = 'list' | 'cards'
 type FilesCategory = 'all' | 'notes' | 'files' | 'outputs'
 
 function SelectedFileHeader({
+  file,
   fileTitle,
   isSavingFile,
   onClose,
   onTitleChange,
 }: {
+  file: FileNode
   fileTitle: string
   isSavingFile: boolean
   onClose: () => void
   onTitleChange: (value: string) => void
 }) {
+  const renderRowActions = useContext(KnowledgeRowActionsContext)
   return (
     <>
       <button
@@ -64,6 +68,7 @@ function SelectedFileHeader({
       {isSavingFile ? (
         <span className="shrink-0 text-[11px] text-[var(--muted-light)]">Saving...</span>
       ) : null}
+      {renderRowActions ? <span className="flex shrink-0 items-center">{renderRowActions(file)}</span> : null}
     </>
   )
 }
@@ -199,6 +204,8 @@ function BulkSelectControls({
   selectedMemoryCount: number
   selectedOutputCount: number
 }) {
+  const renderBulkActions = useContext(KnowledgeBulkActionsContext)
+  const bulkSelection = useContext(KnowledgeBulkSelectionContext)
   if (activeTab !== 'memories' && activeTab !== 'files' && activeTab !== 'outputs') return null
   const selectedCount =
     activeTab === 'memories'
@@ -226,6 +233,7 @@ function BulkSelectControls({
       <button type="button" onClick={onExitSelectMode} className={TOOLBAR_FILLED_BUTTON_CLASS}>
         Cancel
       </button>
+      {activeTab === 'files' && bulkSelection && selectedCount > 0 ? renderBulkActions?.(bulkSelection) : null}
       <button
         type="button"
         disabled={bulkDeleting || selectedCount === 0}
@@ -332,6 +340,26 @@ function HeaderSearchForTab({
   return null
 }
 
+/**
+ * Whether the person may add files here. A host that shows a place where nothing can be added (an archive, or a
+ * workspace whose admin restricted creating) provides `false` and the create and upload controls are left out.
+ */
+export const KnowledgeCreateAccessContext = createContext(true)
+
+/** The files selected in select mode, and what to call once they have left this list. */
+export interface KnowledgeBulkSelection {
+  nodes: readonly FileNode[]
+  afterChange: () => void
+}
+
+export const KnowledgeBulkSelectionContext = createContext<KnowledgeBulkSelection | null>(null)
+
+/**
+ * Extra bulk controls shown beside Delete in select mode (the web app adds Move and Archive, which depend on who is
+ * viewing). Absent means none.
+ */
+export const KnowledgeBulkActionsContext = createContext<((selection: KnowledgeBulkSelection) => ReactNode) | null>(null)
+
 function TabActionControls({
   activeTab,
   activeFolder,
@@ -371,6 +399,7 @@ function TabActionControls({
   uploadMenuOpen: boolean
   uploadMenuRef: React.RefObject<HTMLDivElement | null>
 }) {
+  const canCreate = useContext(KnowledgeCreateAccessContext)
   if (activeTab === 'memories') {
     return (
       <>
@@ -386,6 +415,7 @@ function TabActionControls({
     )
   }
   if (activeTab === 'files') {
+    if (!canCreate) return null
     return (
       <FilesCreateUploadControls
         activeFolder={activeFolder}
@@ -665,6 +695,7 @@ export function KnowledgeViewHeader({
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
       {selectedFile ? (
         <SelectedFileHeader
+          file={selectedFile}
           fileTitle={fileTitle}
           isSavingFile={isSavingFile}
           onClose={onCloseFile}

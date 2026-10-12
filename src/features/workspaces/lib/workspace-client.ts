@@ -130,6 +130,15 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
     )
   },
 
+  async updateBillingAutoTopUp(workspaceId, input) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/auto-top-up`,
+      'POST',
+      input,
+    )
+  },
+
   async createBillingPortal(workspaceId) {
     return await workspaceMutation(
       workspaceId,
@@ -259,6 +268,15 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/teams/${encodeURIComponent(teamId)}/members`,
       'DELETE',
       { principalId },
+    )
+  },
+
+  async renameWorkspace(workspaceId, name) {
+    await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/lifecycle`,
+      'PATCH',
+      { name },
     )
   },
 

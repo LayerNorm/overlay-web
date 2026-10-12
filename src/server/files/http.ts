@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
 import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { R2GlobalBudgetError } from '@/server/storage/r2-budget'
@@ -15,6 +16,8 @@ export const fileService = new FileService({
 })
 
 export function fileErrorResponse(error: unknown, fallback = 'Failed to save file') {
+  const scopeResponse = scopeForbiddenResponse(error)
+  if (scopeResponse) return scopeResponse
   if (error instanceof FileServiceError) {
     return NextResponse.json(error.payload, { status: error.statusCode })
   }

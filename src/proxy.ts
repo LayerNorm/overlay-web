@@ -150,6 +150,22 @@ function createCspNonce(): string {
   return btoa(binary)
 }
 
+/**
+ * Inline scripts that ship in the statically prerendered shell, where a per-request nonce cannot be stamped, so they
+ * are allowed by hash instead (only while a nonce is in force; otherwise 'unsafe-inline' covers them):
+ *
+ * - React's shell-time script, `requestAnimationFrame(function(){$RT=performance.now()});`. Blocked, `$RT` is never
+ *   defined, so React's batched Suspense reveal (`$RC`) skips its timing logic and falls back to requestAnimationFrame.
+ *   Its text belongs to React: the CSP test recomputes this hash from the installed react-dom and fails when an upgrade
+ *   changes it.
+ * - The theme initializer in the root layout (`THEME_INIT_SCRIPT`), so the saved theme applies before first paint
+ *   instead of after hydration.
+ */
+export const INLINE_SCRIPT_HASHES = [
+  "'sha256-7mu4H06fwDCjmnxxr/xNHyuQC6pLTHr4M2E4jXw5WZs='",
+  "'sha256-8VDeVWpS/RIs4mDh7kcOp3E1YoVc88NbwYV/XbJs5mI='",
+] as const
+
 export function buildCspPolicy(nonce?: string): string {
   const scriptSrc = uniqueSources([
     "'self'",
@@ -159,6 +175,7 @@ export function buildCspPolicy(nonce?: string): string {
     // Statically prerendered pages cannot carry a per-request nonce, so they
     // stay on 'unsafe-inline' — see isNonceEligiblePath.
     nonce ? `'nonce-${nonce}'` : "'unsafe-inline'",
+    ...(nonce ? INLINE_SCRIPT_HASHES : []),
     IS_DEVELOPMENT ? "'unsafe-eval'" : null,
     'https://va.vercel-scripts.com',
     'https://us-assets.i.posthog.com',

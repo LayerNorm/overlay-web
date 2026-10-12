@@ -146,7 +146,7 @@ export const getByServer = query({
       .query('workspaceAgentDefinitions')
       .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
       .unique()
-    return row && row.workspaceId === args.workspaceId
+    return row && row.workspaceId === args.workspaceId && !row.deletedAt
       ? await directoryValue(ctx, row)
       : null
   },
@@ -162,7 +162,7 @@ export const listByServer = query({
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect()
     const visible = rows
-      .filter((row) => args.includeArchived || !row.archivedAt)
+      .filter((row) => !row.deletedAt && (args.includeArchived || !row.archivedAt))
       .sort(
         (a, b) =>
           a.name.localeCompare(b.name) || a.agentId.localeCompare(b.agentId),
@@ -391,6 +391,34 @@ export const unarchiveByServer = mutation({
     await Promise.all(threadParticipants
       .filter((participant) => participant && participant.status !== 'active')
       .map((participant) => ctx.db.patch(participant!._id, { status: 'active', removedAt: undefined, updatedAt: args.now })))
+    return true
+  },
+})
+
+/**
+ * Deletes an archived agent for good. Only an archived agent qualifies, and never the default one. The definition row
+ * stays (marked deleted, hidden from every list) so messages the agent wrote in shared rooms still render; its direct
+ * threads are deleted for everyone who talked to it.
+ */
+export const deleteArchivedByServer = mutation({
+  args: { serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(), now: v.number() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const row = await ctx.db
+      .query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
+      .unique()
+    if (!row || row.workspaceId !== args.workspaceId || !row.archivedAt || row.deletedAt) return false
+    if (row.isDefault || row.name.toLowerCase() === 'overlay') return false
+    await ctx.db.patch(row._id, { deletedAt: args.now, updatedAt: args.now })
+    const threads = await ctx.db
+      .query('conversations')
+      .withIndex('by_workspaceId_agentId', (q) =>
+        q.eq('workspaceId', args.workspaceId).eq('agentId', row.agentId)).collect()
+    await Promise.all(threads
+      .filter((thread) => !thread.deletedAt)
+      .map((thread) => ctx.db.patch(thread._id, { deletedAt: args.now, updatedAt: args.now })))
     return true
   },
 })

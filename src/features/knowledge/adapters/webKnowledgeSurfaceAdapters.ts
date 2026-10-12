@@ -2,6 +2,7 @@
 
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import posthog from 'posthog-js'
+import { newItemScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import {
   KNOWLEDGE_ENTITY_MUTATION_EVENT,
   KNOWLEDGE_RECONCILE_EVENT,
@@ -33,7 +34,7 @@ import {
 } from '@overlay/app-core'
 
 interface FilesClientLike {
-  get<T>(query?: { limit?: number }, options?: { signal?: AbortSignal }): Promise<T>
+  get<T>(query?: { limit?: number; view?: PanelScope }, options?: { signal?: AbortSignal }): Promise<T>
   getResponse(query: { fileId: string }, options?: { signal?: AbortSignal }): Promise<Response>
   createResponse(input: CreateFileRequest): Promise<Response>
   updateResponse(input: UpdateFileRequest): Promise<Response>
@@ -41,7 +42,7 @@ interface FilesClientLike {
 }
 
 interface NotesClientLike {
-  get<T>(query?: { limit?: number; noteId?: string }, options?: { signal?: AbortSignal }): Promise<T>
+  get<T>(query?: { limit?: number; noteId?: string; view?: PanelScope }, options?: { signal?: AbortSignal }): Promise<T>
   deleteResponse(input: { noteId: string }): Promise<Response>
 }
 
@@ -87,6 +88,10 @@ export function createWebKnowledgeRepository(
   eventTarget: KnowledgeEventTarget | null | undefined =
     typeof window === 'undefined' ? undefined : window,
   origin = `web:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+  /** The scope being viewed: lists show it, and new files are created in it. */
+  getScope: () => PanelScope = () => 'personal',
+  /** What lists ask for; defaults to the scope. A workspace of one person asks for everything (undefined). */
+  getListView: () => PanelScope | undefined = getScope,
 ): KnowledgeRepository {
   const listeners = new Set<(event: KnowledgeMutationEvent) => void>()
   const byId = new Map<string, KnowledgeSurfaceNode>()
@@ -106,8 +111,8 @@ export function createWebKnowledgeRepository(
 
   async function list(signal?: AbortSignal): Promise<{ nodes: KnowledgeSurfaceNode[]; revision: string }> {
     const [fileRows, noteRows] = await Promise.all([
-      client.files.get<KnowledgeFile[]>({ limit: 100 }, { signal }),
-      client.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),
+      client.files.get<KnowledgeFile[]>({ limit: 100, view: getListView() }, { signal }),
+      client.notes.get<NoteDoc[]>({ limit: 100, view: getListView() }, { signal }),
     ])
     const files = Array.isArray(fileRows) ? fileRows : []
     const notes = Array.isArray(noteRows) ? noteRows.map(noteDocToKnowledgeFile) : []
@@ -141,6 +146,7 @@ export function createWebKnowledgeRepository(
         mimeType: input.mimeType,
         extension: input.extension,
         clientId: input.clientId,
+        scope: newItemScope(getScope()),
       }), input)
       byId.set(node.id, node)
       emit({ type: 'created', node })
@@ -325,6 +331,8 @@ export function createWebKnowledgeSurfaceAdapters(options: {
   capture?: (event: string, properties?: Record<string, unknown>) => void
   eventTarget?: KnowledgeEventTarget | null
   origin?: string
+  getScope?: () => PanelScope
+  getListView?: () => PanelScope | undefined
 } = {}): KnowledgeSurfaceAdapters {
   const navigate = options.navigate ?? ((url) => window.location.assign(url))
   const navigation: FileNavigationAdapter = {
@@ -345,7 +353,7 @@ export function createWebKnowledgeSurfaceAdapters(options: {
     },
   }
   return {
-    repository: createWebKnowledgeRepository(options.client, options.eventTarget, options.origin),
+    repository: createWebKnowledgeRepository(options.client, options.eventTarget, options.origin, options.getScope, options.getListView),
     route: options.route ?? createWebKnowledgeRouteAdapter({ eventTarget: options.eventTarget ?? undefined }),
     filePicker: options.filePicker ?? createWebFilePickerAdapter(),
     navigation,

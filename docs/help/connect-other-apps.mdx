@@ -1,0 +1,42 @@
+---
+title: "Connect ChatGPT, Claude, and other apps"
+description: "Let other AI apps use your Overlay workspace: notes, files, memory, knowledge, and your agents."
+---
+
+Overlay is an MCP server for your own workspace. Any app that supports MCP (ChatGPT, Claude on the web or desktop, Cursor, Claude Code, Codex, and others) can use your Overlay notes, files, memory, and knowledge, within the limits you set.
+
+## Connect an app
+
+1. Open **Settings → Connected apps** and copy the address. On production it is `https://www.getoverlay.io/api/mcp`. Use the `www` address.
+2. In the app, add a custom MCP server or connector with that address.
+3. The app sends you to Overlay to sign in. Choose the **workspace** (personal or a team) and the **access level**, then approve.
+
+Each connection appears in Settings → Connected apps and can be disconnected at once; the app stops working immediately.
+
+## Access levels
+
+| Level | What the app can do |
+| --- | --- |
+| **Read only** | Search and read your memory, knowledge, files, notes, skills, and automations. Nothing is changed or spent. |
+| **Read and write** | Read, plus create and edit notes, files, memory, and skills, and search the web. |
+| **Everything** | Write, plus automations, your connected apps and MCP servers, image and video generation, the browser, and asking your agents. |
+
+A level can only narrow what your workspace allows. Never offered to any app: computer tools, editing your agents, and tools that need an Overlay conversation. An app acts as you, so everything it does is attributed to you and billed as yours.
+
+## Skills
+
+Your enabled skills appear in the app as prompts (Claude shows them as `/mcp__overlay__<skill>`).
+
+## Ask your agents from another app
+
+At **Everything**, an app can list your agents and ask one a question. The question is posted as your own message in that agent's chat ("Asked from an outside app: …"), so you can see it and its answer there. Limited to 30 questions an hour and 100 a day.
+
+## Tokens for local agents
+
+For tools that cannot sign in through a browser, create a **personal token** in Settings → Connected apps. Pick the workspace and level; it is shown once, lasts up to 365 days, and can be revoked at any time. Send it as `Authorization: Bearer <token>`.
+
+## Approvals
+
+If a tool needs approval in Overlay (for example, a tool on one of your own MCP servers), an outside app cannot show you Overlay's approval card, so the call is refused with an explanation. Run it from an Overlay chat instead.
+
+For developers: how the MCP server works is described in `docs/develop/mcp-access.md` in the repository.

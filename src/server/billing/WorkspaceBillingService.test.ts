@@ -48,6 +48,38 @@ test('workspace billing rejects members before any Stripe operation', async () =
   assert.equal(providerCalls, 0)
 })
 
+test('members may add usage only when the workspace lets them, and never change the plan', async () => {
+  const checkouts: Array<Record<string, unknown>> = []
+  const recording = provider({
+    async createCheckoutSession(input) {
+      checkouts.push(input as unknown as Record<string, unknown>)
+      return { url: 'https://checkout.test' }
+    },
+  })
+  const allowed = fixture({ role: 'member', usageTopUpBy: 'members', provider: recording })
+  assert.deepEqual(
+    await allowed.createTopUp({ actorUserId: 'member_1', workspaceId: 'workspace_1', amountCents: 800 }),
+    { url: 'https://checkout.test' },
+  )
+  assert.equal(checkouts[0]?.kind, 'budget_topup')
+  assert.equal((await allowed.summary({ actorUserId: 'member_1', workspaceId: 'workspace_1' })).canTopUp, true)
+  assert.equal((await allowed.summary({ actorUserId: 'member_1', workspaceId: 'workspace_1' })).canManage, false)
+  await assert.rejects(
+    allowed.createSubscriptionCheckout({
+      actorUserId: 'member_1', workspaceId: 'workspace_1', planAmountCents: 800, topUpAmountCents: 800,
+    }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
+  )
+  const restricted = fixture({ role: 'member', usageTopUpBy: 'admins', provider: recording })
+  assert.equal((await restricted.summary({ actorUserId: 'member_1', workspaceId: 'workspace_1' })).canTopUp, false)
+  const guest = fixture({ role: 'guest', usageTopUpBy: 'members', provider: recording })
+  await assert.rejects(
+    guest.createTopUp({ actorUserId: 'guest_1', workspaceId: 'workspace_1', amountCents: 800 }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
+  )
+  assert.equal(checkouts.length, 1)
+})
+
 test('workspace verification writes only the account-keyed subscription', async () => {
   const accountUpserts: Array<Record<string, unknown>> = []
   const service = fixture({
@@ -73,10 +105,32 @@ test('workspace verification writes only the account-keyed subscription', async 
   assert.equal(accountUpserts[0]?.stripeSubscriptionId, 'sub_workspace')
 })
 
+test('any workspace, including a first one, can be set up for a plan; until then it reads as free', async () => {
+  const noWallet = fixture({
+    role: 'owner',
+    kind: 'personal',
+    repository: repository({ async getWorkspaceBillingAccountByWorkspaceIdByServer() { return null } }),
+  })
+  const free = await noWallet.summary({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
+  assert.equal(free.initialized, false)
+  assert.equal(free.canManage, true)
+  assert.equal(free.subscription.planKind, 'free')
+
+  const initialized = await fixture({ role: 'owner', kind: 'personal' }).initialize({ actorUserId: 'owner_1', workspaceId: 'workspace_1' })
+  assert.equal(initialized.initialized, true)
+
+  await assert.rejects(
+    fixture({ role: 'member', kind: 'personal' }).initialize({ actorUserId: 'member_1', workspaceId: 'workspace_1' }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
+  )
+})
+
 function fixture(args: {
   provider?: BillingProvider
   repository?: BillingRepository
-  role: 'owner' | 'admin' | 'member'
+  role: 'owner' | 'admin' | 'member' | 'guest'
+  usageTopUpBy?: 'members' | 'admins'
+  kind?: 'organization' | 'personal'
 }) {
   return new WorkspaceBillingService({
     baseUrl: () => 'https://overlay.test',
@@ -100,7 +154,10 @@ function fixture(args: {
         }
       },
     } as UsageRepository,
-    workspaces: { resolveActiveWorkspace: async () => access(args.role) },
+    workspaces: {
+      resolveActiveWorkspace: async () => access(args.role as 'member', args.kind),
+      getSharingPolicy: async () => ({ usageTopUpBy: args.usageTopUpBy ?? 'admins' }) as never,
+    },
   })
 }
 
@@ -153,9 +210,9 @@ function account() {
   }
 }
 
-function access(role: 'owner' | 'admin' | 'member'): WorkspaceAccess {
+function access(role: 'owner' | 'admin' | 'member', kind: 'organization' | 'personal' = 'organization'): WorkspaceAccess {
   return {
-    workspace: { id: 'workspace_1', kind: 'organization', status: 'active' },
+    workspace: { id: 'workspace_1', kind, status: 'active' },
     membership: { role, status: 'active' },
     principal: { id: 'principal_1', type: 'human' },
   } as WorkspaceAccess

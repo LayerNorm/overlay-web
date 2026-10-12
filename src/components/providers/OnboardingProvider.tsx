@@ -16,6 +16,13 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 import type { TourStep } from '@/features/account/components/OnboardingTour'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { isStartingWorkspaceName } from '@/shared/workspaces/default-name'
+import { peopleInWorkspace } from '@/shared/workspaces/solo-workspace'
+
+const NameWorkspaceStep = dynamic(() =>
+  import('@/features/workspaces/components/NameWorkspaceStep').then((mod) => ({ default: mod.NameWorkspaceStep })),
+)
 
 const OnboardingTour = dynamic(() =>
   import('@/features/account/components/OnboardingTour').then((mod) => ({ default: mod.OnboardingTour })),
@@ -138,7 +145,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       : TOUR_STEPS.filter((step) => step.target !== 'nav-knowledge'),
     [capabilities.files],
   )
+  const { activeWorkspace } = useWorkspace()
   const [active, setActive] = useState(false)
+  const [workspaceNamed, setWorkspaceNamed] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
@@ -283,11 +292,19 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const onInvitationRoute = Boolean(pathname?.startsWith('/app/invitations'))
   // Never mount the tour over invitation accept — missing tour targets used to
   // paint a full-screen click shield that made Accept invitation unclickable.
-  const showTourChrome = (active || isClosing) && !onInvitationRoute
+  // A new person names their workspace first, when it is theirs alone and still has its starting name.
+  const askWorkspaceName = active
+    && !workspaceNamed
+    && !onInvitationRoute
+    && activeWorkspace?.role === 'owner'
+    && (peopleInWorkspace(activeWorkspace) ?? 1) <= 1
+    && isStartingWorkspaceName(activeWorkspace.name)
+  const showTourChrome = (active || isClosing) && !onInvitationRoute && !askWorkspaceName
 
   return (
     <OnboardingContext.Provider value={onboardingValue}>
       {children}
+      {askWorkspaceName ? <NameWorkspaceStep onDone={() => setWorkspaceNamed(true)} /> : null}
       {showTourChrome && isMobile && (
         <MobileWelcomeCard onDismiss={closeTour} />
       )}

@@ -47,6 +47,7 @@ import {
   EntityDeleteRequest,
   EntityListQuery,
   EntityMutationRequest,
+  ScopeActionRequest,
   FileContentQuery,
   FileListQuery,
   GenerateImageRequest,
@@ -153,6 +154,19 @@ export const webApiBoundaryDefinitions = [
   {
     method: 'POST', path: '/api/v1/agent-environments/enrollment-sessions', schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/cloud',
+    schema: {
+      json: z.object({
+        agentId: z.string().min(1).max(256),
+        adapterId: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
+        providerAccountId: z.string().min(1).max(64),
+        size: z.enum(['small', 'default', 'large']).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Provision an Overlay Cloud machine for an agent (Claude Code or Codex)', tag: 'Agent environments',
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/enroll', schema: { json: enrollmentRequestSchema, response: UnknownResponse },
@@ -588,6 +602,103 @@ export const webApiBoundaryDefinitions = [
   { method: 'POST', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Create a model provider connection', tag: 'Model Providers' },
   { method: 'PATCH', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Update a model provider connection', tag: 'Model Providers' },
   { method: 'DELETE', path: '/api/v1/providers/connections', schema: { query: ProviderConnectionDeleteQuery }, summary: 'Delete a model provider connection', tag: 'Model Providers' },
+  { method: 'GET', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/, schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'An Overlay Cloud agent\'s imported config: versions, what each needs, and the values it lacks', tag: 'Agents' },
+  {
+    method: 'POST', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/,
+    schema: {
+      json: z.object({
+        action: z.enum(['import_code', 'apply', 'discard', 'hooks', 'set_secret', 'delete_secret']),
+        harness: z.string().max(32).optional(), profileId: z.string().max(64).optional(), hooksEnabled: z.boolean().optional(),
+        enabled: z.boolean().optional(), name: z.string().max(64).optional(), value: z.string().max(4096).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Create an import code, apply or discard a config version, turn imported hooks on or off, or set a needed value', tag: 'Agents',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-asks',
+    schema: { json: z.object({ action: z.enum(['list', 'ask', 'post', 'read']) }).passthrough(), response: UnknownResponse },
+    summary: 'Agents asking agents: list who can be asked, ask one, or read a reply that was still being written', tag: 'Agents',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-profiles/upload',
+    schema: { json: z.object({}).passthrough(), response: UnknownResponse },
+    summary: 'Upload a cleaned agent config (gzip) with a one-time import code', tag: 'Agents',
+  },
+  {
+    method: 'POST', path: '/api/v1/mcp/authorize',
+    schema: {
+      json: z.object({
+        clientId: z.string().min(1).max(4096), redirectUri: z.string().min(1).max(1024), state: z.string().max(2048).optional(),
+        decision: z.enum(['approve', 'deny']), workspaceId: z.string().max(256).optional(), access: z.string().max(16).optional(),
+        codeChallenge: z.string().max(256).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Approve or deny another AI app\'s request to connect to Overlay over MCP', tag: 'MCP access',
+  },
+  { method: 'GET', path: '/api/v1/mcp/client', schema: { query: z.object({ clientId: z.string().min(1), redirectUri: z.string().min(1) }), response: UnknownResponse }, summary: 'Describe the AI app asking to connect', tag: 'MCP access' },
+  { method: 'GET', path: '/api/v1/mcp/connections', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the AI apps and tokens connected to Overlay over MCP', tag: 'MCP access' },
+  {
+    method: 'POST', path: '/api/v1/mcp/connections',
+    schema: {
+      json: z.object({ name: z.string().max(80).optional(), workspaceId: z.string().min(1).max(256), access: z.enum(['read', 'write', 'full']), ttlDays: z.number().int().min(1).max(365).optional() }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Create a personal MCP token for a local agent (returned once)', tag: 'MCP access',
+  },
+  { method: 'DELETE', path: '/api/v1/mcp/connections', schema: { query: z.object({ id: z.string().min(1) }), response: UnknownResponse }, summary: 'Disconnect an AI app or revoke a token', tag: 'MCP access' },
+  { method: 'GET', path: '/api/v1/provider-accounts', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List the Claude Code and Codex accounts agents run on', tag: 'Provider accounts' },
+  {
+    method: 'POST', path: '/api/v1/provider-accounts',
+    schema: {
+      json: z.object({
+        provider: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
+        method: z.enum(['subscription', 'api_key']),
+        secret: z.string().min(1).max(4096),
+        label: z.string().max(80).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Connect a Claude Code or Codex account (setup token or API key) into the credential vault', tag: 'Provider accounts',
+  },
+  {
+    method: 'POST', path: '/api/v1/provider-accounts/codex-sign-in',
+    schema: {
+      json: z.discriminatedUnion('action', [
+        z.object({ action: z.literal('start') }).strict(),
+        z.object({
+          action: z.literal('poll'), deviceAuthId: z.string().min(1).max(300), userCode: z.string().min(1).max(64),
+          label: z.string().max(80).optional(), accountId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+        }).strict(),
+      ]),
+      response: UnknownResponse,
+    },
+    summary: 'Sign in to Codex with ChatGPT (device code): start, then poll until approved', tag: 'Provider accounts',
+  },
+  {
+    method: 'PATCH', path: '/api/v1/provider-accounts',
+    schema: {
+      json: z.object({
+        accountId: z.string().min(1).max(64),
+        secret: z.string().min(1).max(4096).optional(),
+        label: z.string().max(80).optional(),
+      }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Reconnect an account with a new credential, or rename it', tag: 'Provider accounts',
+  },
+  {
+    method: 'DELETE', path: '/api/v1/provider-accounts',
+    schema: { query: z.object({ accountId: z.string().min(1) }), response: UnknownResponse },
+    summary: 'Remove an account and delete its credential from the vault', tag: 'Provider accounts',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/run-credentials', routePath: '/api/v1/agent-environments/[environmentId]/run-credentials',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/run-credentials$/,
+    schema: { json: z.object({ protocolVersion: z.literal(1), runId: z.string().min(1) }).strict(), response: UnknownResponse },
+    summary: 'Release the provider credentials for one active run to an Overlay Cloud host', tag: 'Agent environments',
+  },
   { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },
   { method: 'POST', path: '/api/v1/memory', schema: { json: CreateMemoryRequest }, summary: 'Create a memory', tag: 'Memory' },
@@ -656,6 +767,13 @@ export const webApiBoundaryDefinitions = [
   },
   { method: 'GET', path: '/api/v1/settings', schema: { query: SettingsQuery }, summary: 'Read settings', tag: 'Settings' },
   { method: 'PATCH', path: '/api/v1/settings', schema: { json: UpdateSettingsRequest }, summary: 'Update settings', tag: 'Settings' },
+  {
+    method: 'POST',
+    path: '/api/v1/scope',
+    schema: { json: ScopeActionRequest },
+    summary: 'Move a resource between Personal and Workspace, archive it, or restore it',
+    tag: 'Workspaces',
+  },
   { method: 'GET', path: '/api/v1/skills', schema: { query: EntityListQuery }, summary: 'List skills', tag: 'Skills' },
   { method: 'POST', path: '/api/v1/skills', schema: { json: EntityMutationRequest }, summary: 'Create a skill', tag: 'Skills' },
   { method: 'PATCH', path: '/api/v1/skills', schema: { json: EntityMutationRequest }, summary: 'Update a skill', tag: 'Skills' },
@@ -834,10 +952,12 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agents/[agentId]', reason: 'Agent detail management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/bundle', reason: 'Agent sidebar bundle (threads and agent-owned automations); boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/automations', reason: 'Agent-owned automation listing; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/agents/[agentId]/machine', reason: 'Overlay Cloud machine status/pause/resume/restart/delete; the action body is validated in the handler. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/restore', reason: 'Agent restore from archive; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/threads', reason: 'Agent thread management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/threads/resolve', reason: 'Agent main-thread resolution; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/threads/[threadId]', reason: 'Agent thread archive and deletion; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/agents/[agentId]/permanent', reason: 'Permanent deletion of an archived agent and its threads; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agent-environments/[environmentId]/artifacts', reason: 'Connected-agent artifact upload; boundary definition pending. Protected by device-key authentication.' },
   { routePath: '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete', reason: 'Connected-agent artifact completion; boundary definition pending. Protected by device-key authentication.' },
   { routePath: '/api/v1/agent-environments/artifacts/cleanup', reason: 'Internal artifact cleanup cron trigger; not part of the public web API reference.' },
@@ -898,6 +1018,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/portal', reason: 'Workspace billing portal; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/top-ups', reason: 'Workspace billing top-ups; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/verify', reason: 'Workspace billing verification; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/workspaces/[workspaceId]/billing/auto-top-up', reason: 'Workspace automatic top-up configuration; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/governance', reason: 'Workspace governance management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/invitations', reason: 'Workspace invitation management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/invitations/[invitationId]', reason: 'Workspace invitation detail; boundary definition pending. Protected by workspace authorization.' },

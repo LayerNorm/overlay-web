@@ -10,6 +10,8 @@ export default defineSchema({
     useSecondarySidebar: v.boolean(),
     chatStreamingMode: v.optional(v.union(v.literal('token'), v.literal('chunk'))),
     autoContinue: v.optional(v.boolean()),
+    /** Agent responses fold their working details (tool calls, intermediate text) behind "Worked for…"; default on. */
+    collapseAgentWork: v.optional(v.boolean()),
     linkOpenPreference: v.optional(
       v.union(v.literal('ask'), v.literal('overlay'), v.literal('new-tab')),
     ),
@@ -78,6 +80,8 @@ export default defineSchema({
     ),
     autoTopUpEnabled: v.boolean(),
     autoTopUpAmountCents: v.number(),
+    // Most that automatic top-ups may add in one billing period; automatic top-ups stop at it.
+    autoTopUpMonthlyLimitCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
@@ -148,45 +152,126 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_userId_providerId', ['userId', 'providerId']),
 
-  // Single source of truth for a user's subscription, tier, and current-period credit spend.
-  // creditsUsed is the live accumulator (in cents, may include fractional cents)
-  // mutated on every usage event.
-  // currentPeriodStart/End are always set — on Stripe-backed subscriptions they come from
-  // the webhook; on free tier they are set to now/+30d at account creation.
+  // Metadata for the credentials an Overlay Cloud agent runs on (a Claude Code
+  // setup-token or API key, an OpenAI API key). The secret itself lives in the
+  // credential vault; only its opaque reference is stored here, and it is
+  // delivered to a machine one run at a time.
+  agentProviderAccounts: defineTable({
+    userId: v.string(),
+    provider: v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor')),
+    method: v.union(v.literal('subscription'), v.literal('api_key')),
+    label: v.string(),
+    credentialRef: v.string(),
+    status: v.union(v.literal('active'), v.literal('needs_reauth')),
+    lastError: v.optional(v.string()),
+    lastUsedAt: v.optional(v.number()),
+    /** Held while one server refreshes a rotating sign-in (a Codex subscription), so two never use the same refresh token. */
+    refreshLockOwner: v.optional(v.string()),
+    refreshLockUntil: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_userId_provider', ['userId', 'provider']),
+
+  // A version of an Overlay Cloud agent's imported harness config (CLAUDE.md, skills, commands, subagents, MCP
+  // servers). The cleaned bundle lives in `agentProfileChunks`; secret values are never in either.
+  /** How many questions one person's message (rootKey) and one agent turn (turnKey) have asked other agents. */
+  agentAskCounters: defineTable({
+    workspaceId: v.string(), key: v.string(), count: v.number(), updatedAt: v.number(),
+    /** For a request's counter: the replies its questions started, so what they used can be added up. */
+    replies: v.optional(v.array(v.object({ conversationId: v.string(), turnId: v.string() }))),
+  }).index('by_workspaceId_key', ['workspaceId', 'key']),
+
+  agentProfiles: defineTable({
+    workspaceId: v.string(),
+    agentId: v.string(),
+    userId: v.string(),
+    harness: v.union(v.literal('claude-code'), v.literal('codex')),
+    version: v.number(),
+    status: v.union(
+      v.literal('awaiting_upload'), v.literal('staged'), v.literal('active'), v.literal('superseded'), v.literal('discarded'),
+    ),
+    // A one-time code (hashed) a person's computer uploads with; cleared when used.
+    codeHash: v.optional(v.string()),
+    codeExpiresAt: v.optional(v.number()),
+    summary: v.optional(v.any()),
+    meta: v.optional(v.any()),
+    digest: v.optional(v.string()),
+    chunkCount: v.optional(v.number()),
+    hooksEnabled: v.boolean(),
+    createdAt: v.number(),
+    uploadedAt: v.optional(v.number()),
+    appliedAt: v.optional(v.number()),
+  })
+    .index('by_agentId', ['agentId'])
+    .index('by_codeHash', ['codeHash']),
+
+  agentProfileChunks: defineTable({
+    profileId: v.id('agentProfiles'),
+    index: v.number(),
+    data: v.string(),
+  }).index('by_profileId', ['profileId']),
+
+  // Values an agent's imported config asked for (an MCP server's token). The value is in the credential vault.
+  agentSecrets: defineTable({
+    workspaceId: v.string(),
+    agentId: v.string(),
+    userId: v.string(),
+    name: v.string(),
+    credentialRef: v.string(),
+    updatedAt: v.number(),
+  }).index('by_agentId', ['agentId']),
+
+  // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
+  // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
+  // them. No secret is stored here.
+  mcpGrants: defineTable({
+    userId: v.string(),
+    workspaceId: v.string(),
+    access: v.union(v.literal('read'), v.literal('write'), v.literal('full')),
+    kind: v.union(v.literal('oauth'), v.literal('token')),
+    clientName: v.string(),
+    clientId: v.optional(v.string()),
+    // The authorization code that created an OAuth grant; a code can be redeemed once.
+    codeId: v.optional(v.string()),
+    // Bumped each time a refresh token is used; a refresh token from an older version is a replay.
+    refreshVersion: v.number(),
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index('by_userId', ['userId'])
+    .index('by_codeId', ['codeId']),
+
+  // Where an Overlay Cloud agent is in starting its machine, so the dialog and the agent
+  // page can show progress after the request that started it has returned.
+  cloudAgentProvisions: defineTable({
+    workspaceId: v.string(),
+    agentId: v.string(),
+    userId: v.string(),
+    phase: v.union(
+      v.literal('queued'),
+      v.literal('allocating'),
+      v.literal('booting'),
+      v.literal('connecting'),
+      v.literal('ready'),
+      v.literal('failed'),
+    ),
+    error: v.optional(v.string()),
+    environmentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_workspaceId_agentId', ['workspaceId', 'agentId']),
+
+  // A person's own row: profile, onboarding, chat starters, storage and bandwidth used, and the link to their personal
+  // billing account. An account has no plan (plans belong to workspaces).
   subscriptions: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
-    stripePriceId: v.optional(v.string()),
-    stripeQuantity: v.optional(v.number()),
-    tier: v.union(v.literal('free'), v.literal('pro'), v.literal('max')),
-    planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
-    planVersion: v.optional(v.union(v.literal('fixed_v1'), v.literal('variable_v2'))),
-    planAmountCents: v.optional(v.number()),
-    institutionalGrantCents: v.optional(v.number()),
-    markupBasisPoints: v.optional(v.number()),
-    status: v.union(
-      v.literal('active'),
-      v.literal('canceled'),
-      v.literal('past_due'),
-      v.literal('trialing')
-    ),
-    currentPeriodStart: v.optional(v.number()),
-    currentPeriodEnd: v.optional(v.number()),
-    // Live credit accumulator for the current billing period (in cents, may
-    // include fractional cents for Daytona runtime accrual).
-    // Reset to 0 whenever currentPeriodStart rolls over.
-    creditsUsed: v.optional(v.number()),
-    // Additive bucketed accounting. creditsUsed remains the compatibility total.
-    allowanceUsedCents: v.optional(v.number()),
-    topUpPurchasedCents: v.optional(v.number()),
-    topUpBalanceCents: v.optional(v.number()),
-    autoTopUpEnabled: v.optional(v.boolean()),
-    autoTopUpAmountCents: v.optional(v.number()),
-    offSessionConsentAt: v.optional(v.number()),
     // User profile fields synced from the selected auth provider.
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -197,16 +282,13 @@ export default defineSchema({
     chatStarterDay: v.optional(v.string()),
     // Onboarding tour state
     hasSeenOnboarding: v.optional(v.boolean()),
-    // Legacy fields kept only so older rows continue to validate during deploys.
-    autoRefillEnabled: v.optional(v.boolean()),
     overlayStorageBytesUsed: v.optional(v.number()),
     fileBandwidthBytesUsed: v.optional(v.number()),
     fileBandwidthPeriodStart: v.optional(v.number()),
   }).index('by_userId', ['userId'])
     .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
     .index('by_billingAccountId', ['billingAccountId'])
-    .index('by_email', ['email'])
-    .index('by_stripeCustomerId', ['stripeCustomerId']),
+    .index('by_email', ['email']),
 
   budgetTopUps: defineTable({
     userId: v.string(),
@@ -373,6 +455,9 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Quantities for the itemized usage list, summed from the usage events at finalize.
+    usageTokens: v.optional(v.number()),
+    usageSeconds: v.optional(v.number()),
     providerWorkStarted: v.optional(v.boolean()),
     providerWorkCompleted: v.optional(v.boolean()),
     errorMessage: v.optional(v.string()),
@@ -404,6 +489,16 @@ export default defineSchema({
     billingAccountId: v.optional(v.string()),
     operationId: v.string(),
     recorded: v.number(),
+    // What the operation charged, for the itemized usage list (charges that do not go through a reservation, such
+    // as the machine-time meter). Unset on rows written before 2026-10-12.
+    cents: v.optional(v.number()),
+    kind: v.optional(v.union(
+      v.literal('ask'), v.literal('write'), v.literal('agent'), v.literal('embedding'),
+      v.literal('transcription'), v.literal('generation'), v.literal('sandbox'),
+    )),
+    modelId: v.optional(v.string()),
+    usageTokens: v.optional(v.number()),
+    usageSeconds: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index('by_operationId', ['operationId'])
@@ -655,45 +750,35 @@ export default defineSchema({
     .index('by_namespace_key', ['namespace', 'key'])
     .index('by_expiresAt', ['expiresAt']),
 
-  projects: defineTable({
-    workspaceId: v.optional(v.string()),
-    userId: v.string(),
-    clientId: v.optional(v.string()),
-    name: v.string(),
-    instructions: v.optional(v.string()),
-    parentId: v.optional(v.string()),
-    knowledgeBaseId: v.optional(v.string()),
-    settings: v.optional(v.any()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    deletedAt: v.optional(v.number()),
-    archivedAt: v.optional(v.number()),
-  })
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_userId', ['workspaceId', 'userId'])
-    .index('by_userId', ['userId'])
-    .index('by_userId_clientId', ['userId', 'clientId'])
-    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   skills: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
     name: v.string(),
     description: v.string(),
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
-    projectId: v.optional(v.string()),
     version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId']).index('by_projectId', ['projectId'])
+  }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
+    .index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
     }),
 
   automations: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
     name: v.optional(v.string()),
@@ -717,7 +802,6 @@ export default defineSchema({
     nextRunAt: v.optional(v.number()),
     lastRunAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     modelId: v.optional(v.string()),
     graphSource: v.optional(v.string()),
     graph: v.optional(v.any()),
@@ -758,6 +842,7 @@ export default defineSchema({
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   })
+    .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
@@ -765,7 +850,6 @@ export default defineSchema({
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_agentId', ['agentId'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
-    .index('by_projectId', ['projectId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
@@ -844,9 +928,13 @@ export default defineSchema({
     .index('by_automationRunId_createdAt', ['automationRunId', 'createdAt']),
 
   mcpServers: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
-    projectId: v.optional(v.string()),
     name: v.string(),
     description: v.optional(v.string()),
     transport: v.union(v.literal('sse'), v.literal('streamable-http')),
@@ -902,11 +990,11 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
     .index('by_userId', ['userId'])
     .index('by_userId_enabled', ['userId', 'enabled'])
-    .index('by_projectId', ['projectId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
@@ -937,7 +1025,6 @@ export default defineSchema({
 
   mcpToolExecutions: defineTable({
     userId: v.string(),
-    projectId: v.optional(v.string()),
     mcpServerId: v.id('mcpServers'),
     toolName: v.string(),
     argumentsHash: v.string(),
@@ -955,8 +1042,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_mcpServerId_createdAt', ['mcpServerId', 'createdAt'])
-    .index('by_projectId', ['projectId']),
+    .index('by_mcpServerId_createdAt', ['mcpServerId', 'createdAt']),
 
   conversations: defineTable({
     userId: v.string(),
@@ -972,7 +1058,6 @@ export default defineSchema({
     createdByPrincipalId: v.optional(v.string()),
     clientId: v.optional(v.string()),
     title: v.string(),
-    projectId: v.optional(v.string()),
     lastModified: v.number(),
     updatedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -1004,7 +1089,6 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_projectId', ['projectId'])
     .index('by_shareToken', ['shareToken'])
     .index('by_createdAt', ['createdAt'])
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
@@ -1185,7 +1269,7 @@ export default defineSchema({
             }),
           }),
           v.object({
-            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands')),
+            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-agent-lineage')),
             data: v.any(),
           }),
           v.object({
@@ -1260,26 +1344,6 @@ export default defineSchema({
   }).index('by_conversationId_scope', ['conversationId', 'scope'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt']),
 
-  notes: defineTable({
-    workspaceId: v.optional(v.string()),
-    userId: v.string(),
-    clientId: v.optional(v.string()),
-    title: v.string(),
-    icon: v.optional(v.string()),
-    content: v.string(),
-    tags: v.array(v.string()),
-    projectId: v.optional(v.string()),
-    createdAt: v.optional(v.number()),
-    updatedAt: v.number(),
-    deletedAt: v.optional(v.number()),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
-    .index('by_userId_clientId', ['userId', 'clientId'])
-    .index('by_userId_updatedAt', ['userId', 'updatedAt'])
-    .index('by_projectId', ['projectId'])
-    .searchIndex('search_title', {
-      searchField: 'title',
-      filterFields: ['userId', 'workspaceId', 'deletedAt'],
-    }),
 
   memories: defineTable({
     workspaceId: v.optional(v.string()),
@@ -1297,7 +1361,6 @@ export default defineSchema({
       ),
     ),
     importance: v.optional(v.number()),
-    projectId: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     noteId: v.optional(v.string()),
     messageId: v.optional(v.string()),
@@ -1343,7 +1406,6 @@ export default defineSchema({
   knowledgeChunks: defineTable({
     userId: v.string(),
     workspaceId: v.optional(v.string()),
-    projectId: v.optional(v.string()),
     sourceKind: v.union(v.literal('file'), v.literal('memory'), v.literal('message')),
     sourceId: v.string(),
     knowledgeSourceId: v.optional(v.string()),
@@ -1400,47 +1462,6 @@ export default defineSchema({
       filterFields: ['userId', 'sourceKind'],
     }),
 
-  // Generated images and videos from Chat and Agent sessions.
-  outputs: defineTable({
-    workspaceId: v.optional(v.string()),
-    userId: v.string(),
-    type: v.union(
-      v.literal('image'),
-      v.literal('video'),
-      v.literal('audio'),
-      v.literal('document'),
-      v.literal('archive'),
-      v.literal('code'),
-      v.literal('text'),
-      v.literal('other'),
-    ),
-    source: v.optional(
-      v.union(
-        v.literal('image_generation'),
-        v.literal('video_generation'),
-        v.literal('sandbox'),
-      ),
-    ),
-    status: v.union(v.literal('pending'), v.literal('completed'), v.literal('failed')),
-    prompt: v.string(),
-    modelId: v.string(),
-    storageId: v.optional(v.id('_storage')),
-    r2Key: v.optional(v.string()),
-    url: v.optional(v.string()),
-    fileName: v.optional(v.string()),
-    mimeType: v.optional(v.string()),
-    sizeBytes: v.optional(v.number()),
-    metadata: v.optional(v.any()),
-    fileId: v.optional(v.id('files')),
-    conversationId: v.optional(v.string()),
-    turnId: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
-    createdAt: v.number(),
-    completedAt: v.optional(v.number()),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
-    .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_conversationId', ['conversationId'])
-    .index('by_turnId', ['turnId']),
 
   // Knowledge base and project files. Text content is stored in `content`.
   // Binary originals (images, PDFs, etc.) use Cloudflare R2 via `r2Key`; served via /api/v1/files/[id]/content.
@@ -1475,7 +1496,6 @@ export default defineSchema({
     fileName: v.string(),
     mimeType: v.string(),
     sizeBytes: v.number(),
-    projectId: v.optional(v.string()),
     parentId: v.optional(v.string()),
     status: v.union(
       v.literal('queued'),
@@ -1497,6 +1517,11 @@ export default defineSchema({
     .index('by_status_createdAt', ['status', 'createdAt']),
 
   files: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.optional(v.string()),
     userId: v.string(),
     clientId: v.optional(v.string()),
@@ -1548,11 +1573,15 @@ export default defineSchema({
     outputErrorMessage: v.optional(v.string()),
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
-    legacyNoteId: v.optional(v.id('notes')),
-    legacyOutputId: v.optional(v.id('outputs')),
-    projectId: v.optional(v.string()),
+    // Ids the note/output had before they moved into `files` (the old tables are gone); kept so old links resolve.
+    legacyNoteId: v.optional(v.string()),
+    legacyOutputId: v.optional(v.string()),
     // Note tags (kind 'note' only).
     tags: v.optional(v.array(v.string())),
+    // Canonical BlockNote document for notes (kind 'note' only); `content`
+    // keeps the markdown projection for search, agents, and export.
+    docJson: v.optional(v.string()),
+    docFormat: v.optional(v.union(v.literal('markdown'), v.literal('blocknote'))),
     // Text too large for a Convex document: the full text is the object at
     // `r2Key`, and `content` holds a searchable prefix.
     textInObjectStore: v.optional(v.boolean()),
@@ -1562,16 +1591,15 @@ export default defineSchema({
     shareToken: v.optional(v.string()),
     shareVisibility: v.optional(v.union(v.literal('private'), v.literal('public'))),
     sharedAt: v.optional(v.number()),
-  }).index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
+  }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
+    .index('by_workspaceId', ['workspaceId']).index('by_workspaceId_userId', ['workspaceId', 'userId']).index('by_userId', ['userId'])
     .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
-    .index('by_workspaceId_userId_projectId_updatedAt', ['workspaceId', 'userId', 'projectId', 'updatedAt'])
     .index('by_workspaceId_userId_parentId_updatedAt', ['workspaceId', 'userId', 'parentId', 'updatedAt'])
     .index('by_workspaceId_userId_conversationId_updatedAt', ['workspaceId', 'userId', 'conversationId', 'updatedAt'])
     .index('by_workspaceId_userId_outputType_updatedAt', ['workspaceId', 'userId', 'outputType', 'updatedAt'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
-    .index('by_projectId', ['projectId'])
     .index('by_parentId', ['parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
@@ -1704,19 +1732,6 @@ export default defineSchema({
   // Knowledge base tables
   // ────────────────────────────────────────────────────────────────────────────
 
-  knowledgeBases: defineTable({
-    knowledgeBaseId: v.string(),
-    ownerUserId: v.string(),
-    title: v.string(),
-    description: v.optional(v.string()),
-    kind: v.union(v.literal('personal'), v.literal('organization')),
-    status: v.union(v.literal('active'), v.literal('archived')),
-    createdBy: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    archivedAt: v.optional(v.number()),
-  })
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   knowledgeSources: defineTable({
     sourceId: v.string(),
@@ -1773,46 +1788,9 @@ export default defineSchema({
     .index('by_sourceId_version', ['sourceId'])
     .index('by_sourceVersionId', ['sourceVersionId']),
 
-  knowledgeBaseSources: defineTable({
-    knowledgeBaseId: v.string(),
-    sourceId: v.string(),
-    addedBy: v.optional(v.string()),
-    enabled: v.boolean(),
-    createdAt: v.number(),
-  })
-    .index('by_base_source', ['knowledgeBaseId', 'sourceId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId'])
-    .index('by_sourceId', ['sourceId']),
 
-  knowledgeBaseConversations: defineTable({
-    knowledgeBaseId: v.string(),
-    conversationId: v.string(),
-    createdBy: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index('by_conversation_base', ['conversationId', 'knowledgeBaseId'])
-    .index('by_conversationId', ['conversationId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
-  projectKnowledgeBases: defineTable({
-    knowledgeBaseId: v.string(),
-    projectId: v.string(),
-    attachedBy: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index('by_project_base', ['projectId', 'knowledgeBaseId'])
-    .index('by_projectId', ['projectId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
-  knowledgeBaseGroupDefaults: defineTable({
-    groupId: v.string(),
-    knowledgeBaseId: v.string(),
-    createdBy: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index('by_group_base', ['groupId', 'knowledgeBaseId'])
-    .index('by_groupId', ['groupId'])
-    .index('by_knowledgeBaseId', ['knowledgeBaseId']),
 
   // ────────────────────────────────────────────────────────────────────────────
   // Workspace tables
@@ -1976,6 +1954,11 @@ export default defineSchema({
     memberCanCreateChannels: v.optional(v.boolean()),
     memberCanCreateAgents: v.optional(v.boolean()),
     memberCanInvite: v.optional(v.boolean()),
+    // Who may create or edit workspace-scoped items; defaults are `members`, `members`, true, `admins`.
+    workspaceExtensionsEditors: v.optional(v.union(v.literal('members'), v.literal('admins'))),
+    workspaceContentEditors: v.optional(v.union(v.literal('members'), v.literal('admins'))),
+    memberCanMoveScope: v.optional(v.boolean()),
+    usageTopUpBy: v.optional(v.union(v.literal('members'), v.literal('admins'))),
     guestExpirationDays: v.optional(v.number()),
     allowedAgentHarnesses: v.optional(v.array(v.string())),
     agentRunBudgetCents: v.optional(v.number()),
@@ -2014,6 +1997,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     archivedAt: v.optional(v.number()),
+    /** Deleted forever from the Archived page: hidden from every list; the row stays so history in shared rooms still renders. */
+    deletedAt: v.optional(v.number()),
     teamIds: v.optional(v.array(v.string())),
     roomCount: v.optional(v.number()),
     isDefault: v.optional(v.boolean()),
@@ -2222,6 +2207,11 @@ export default defineSchema({
     .index('by_resource_createdAt', ['resourceType', 'resourceId', 'createdAt']),
 
   workspaceConnectors: defineTable({
+    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     workspaceId: v.string(),
     userId: v.string(),
     providerKey: v.string(),
@@ -2229,6 +2219,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_providerKey', ['workspaceId', 'providerKey'])
     .index('by_workspaceId_userId_providerKey', ['workspaceId', 'userId', 'providerKey'])

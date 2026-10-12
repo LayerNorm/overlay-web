@@ -14,9 +14,10 @@ flow, memory, and package boundaries.
 The first release supports agent conversations and supervised work through one outbound-only
 Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
 may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
-`external`. Overlay Cloud is Box (E2B is planned for self-hosting); Vercel Sandbox and
-Daytona were removed. Creating agents that run on Overlay Cloud is currently disabled while
-those runtimes are rebuilt (see `docs/plans/SANDBOX_PROVIDER_CONSOLIDATION_PLAN.md`); the
+`external`. Overlay Cloud is Boat, formerly Box (E2B is planned for self-hosting); Vercel
+Sandbox and Daytona were removed. Overlay Cloud agents are being rebuilt on the same Agent Host
+(`docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`); the machine layer (Phase 0) exists behind
+`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, and the product UI does not offer it yet. The
 connected (on-your-machine) path described here is unaffected.
 
 The release includes `@mention` invocation, durable runs and commands, streamed transcript
@@ -220,7 +221,7 @@ Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-brid
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
 the lockstep `0.2.0` package line under the shorter legacy names. The product-qualified public
 package names begin with lockstep `0.3.0`; the current PATH-safe release line is lockstep `0.3.5`. The application copies an exact
-`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.6 overlay-agent-host ...`
+`npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.3.10 overlay-agent-host ...`
 command rather than following npm `latest` or inheriting an unsupported system Node runtime. The host and
 protocol packages release together, the host depends on the exact protocol version, and the npm
 release workflow publishes compiled ESM plus declarations for both packages with provenance after
@@ -347,8 +348,17 @@ automations, connected apps, and MCP servers — built by the same pipeline (`bu
 the agent's grant intersected with workspace policy, entitlements, and the summoning message's
 mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
 duplicate the agent's own machine (`computer_*`) and generated UI are
-withheld, and MCP calls whose server policy requires approval are refused with an explanation,
-because no room approval exists for them yet.
+withheld. An MCP call whose server policy requires approval asks in the run's conversation
+(`createMcpApprovalGate`, `requestMcpApprovalByServer`): the same approval card an agent's own
+permission request shows, but the answer goes to the waiting call and never to the host as a command
+(`resolveRemoteRequestByServer` skips the host command for requests marked `source: overlay_mcp`). The
+call waits about 25 seconds, since agent hosts time MCP calls out in about a minute; if the person has
+not answered it returns "waiting for approval, call again with the same arguments", and the answer
+(remembered for the run, per tool and arguments) makes the retry run at once. A denial or the run ending
+refuses. Overlay skills are also offered as MCP prompts (Claude shows them as slash commands), so no
+writes into the harness's own skill folders are needed. `MCP_GROUP_COVERAGE` (`src/shared/mcp/access.ts`)
+records, per tool group, whether it reaches MCP clients or why not, and a contract test fails when a
+group is added without being placed.
 
 - **Connected agents** receive an MCP server. The remote-turn start command carries
   `metadata.overlayMcp = { url: <app origin>/api/agent-mcp, token }`; the Agent Host passes it to ACP
@@ -477,10 +487,58 @@ scanned in full by a production malware engine, validated by content magic, and 
 attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
 cleanup controls remain implemented but are not a substitute for that release gate.
 
-Overlay Cloud machines run on Box (`BOX_API_KEY`). Hosted other-agents are not offered at the
-moment; when they return they will build on the connected-agent protocol, so the one-time
-enrollment, Ed25519 proof, browser approval, short-lived credentials, polling, and ACP bridge
-described above stay the only host authentication path.
+Overlay Cloud machines run on Boat, formerly Box (`BOAT_API_KEY`, or the legacy `BOX_API_KEY`).
+An Overlay Cloud agent uses the same connected-agent protocol and host:
+
+- **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,
+  `@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`) on top of Boat's
+  system layer and writes `/etc/overlay/image.json`. `publish-boat.mts` freezes it as the named
+  snapshot `overlay-agent-v<N>` (`OVERLAY_CLOUD_AGENT_IMAGE`). The image holds no credentials and
+  no enrolled identity; `overlay-agent-host image-check` enforces both and runs before a managed
+  host enrolls.
+- **Engine.** Managed hosts run ACP agents through acpx's runtime (`--engine acpx`,
+  `AcpxAgentAdapter`). Each run's Overlay MCP server and provider credentials reach the agent
+  process only; the acpx connection is closed after every turn and the session resumes on the
+  next. On-your-machine hosts keep the direct ACP adapter.
+- **Enrollment.** `POST /api/v1/agent-environments/cloud` mints the same single-use enrollment
+  code, boots the machine, and the host redeems it with its Ed25519 key. Overlay created the
+  machine, so the server approves the environment itself instead of a person confirming a phrase,
+  with the filesystem grant fixed to `/home/user/workspace`. The short-lived credential, signed
+  polling, and ACP bridge are unchanged.
+- **Lifecycle.** A machine stops 10 minutes after its last run ends
+  (event-based; see `docs/develop/agent-machine-idle.md`). A turn queued for an offline machine
+  resumes it and restarts the host from saved state after the response is sent. Revoking the
+  environment stops and deletes the machine through the lease reaper.
+- **Startup and control.** Creating a machine returns 202 and provisions after the response;
+  `cloudAgentProvisions` (Convex) records the phase (queued, allocating, booting, connecting,
+  ready, or failed with a safe message) so any server instance can answer
+  `GET /api/v1/agents/{agentId}/machine`. That route also pauses, resumes, restarts, and deletes
+  the machine (`CloudAgentMachineService.status/control/teardown`). The new-agent dialog and the
+  agent page's Machine section are its only clients; a cloud agent's binding is never rewritten
+  by the agent editor's save (it would drop the account). Paid plans only.
+- **Provider accounts.** An Overlay Cloud agent runs on one of its creator's own accounts
+  (Settings → Agent accounts): a `claude setup-token` token or Anthropic API key for Claude Code,
+  an OpenAI API key for Codex. The secret goes to the credential vault (`ByokCredentialStore`:
+  WorkOS Vault, or AWS Secrets Manager when configured); Convex keeps `agentProviderAccounts`
+  metadata and the opaque vault reference, which no API response includes. A binding records the
+  account and the user who chose it (`adapterConfig.providerAccountId`/`providerAccountOwnerUserId`).
+  On each run the host calls `POST /api/v1/agent-environments/{id}/run-credentials` (credential
+  method `agent:run-credentials`, issued only to `overlay_cloud` environments so published hosts keep
+  parsing their credentials) and passes the result to the agent process as environment variables
+  (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). The command carries only a
+  `runCredentials` flag, never a secret; the host holds the credentials in memory, creates one acpx
+  runtime per run so nothing carries over, and the control plane audits the release without the
+  value. API keys are checked against the vendor when connected; a subscription token has no public
+  check, so a bad one surfaces on first use.
+- **Auth failures.** An agent that rejects its credentials ends the run with the failure code
+  `auth_required`; the control plane marks that account `needs_reauth`, releases nothing for it until
+  it is reconnected (PATCH with a new secret clears the flag), and Settings shows "Needs reconnecting".
+- **Image v2.** The bridge protocol gained the run-credentials method, which v1 image hosts cannot
+  parse, so images are versioned: the host accepts only the image versions it was built for
+  (`SUPPORTED_OVERLAY_IMAGE_VERSIONS`) and `OVERLAY_CLOUD_AGENT_IMAGE` defaults to `overlay-agent-v5`.
+- **Boat quirk.** `~/.claude` and `~/.codex` on Boat are provider-managed mounts that fail with
+  I/O errors when no Boat credentials are linked; agent config therefore lives under `~/.overlay`
+  (Phase 4 imports go there).
 
 ## Public resources and protocol policy
 

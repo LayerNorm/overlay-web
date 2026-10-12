@@ -1,11 +1,10 @@
 import type { Metadata } from 'next'
-import HomeMarketingPage from '@/features/marketing/pages/MarketingOverviewPage'
-import '@/features/marketing/landing.css'
+import { ScrollLanding } from '@/features/marketing/landing/ScrollLanding'
 
 export const metadata: Metadata = {
-  title: 'Overlay — The control plane for your workspace',
+  title: 'Overlay — The open source multiplayer cloud control plane for AI employees',
   description:
-    'Create, deploy, and manage agents in one workspace. Bring your own agents — Codex, Claude Code, Hermes — and put them to work on any platform.',
+    'Create, deploy and manage AI employees with memory, tools and their own computer. Open source, multiplayer, and accessible from anywhere. Bring your own agents — Codex, Claude Code, Cursor.',
   alternates: {
     canonical: '/home',
   },
@@ -16,5 +15,5 @@ export const metadata: Metadata = {
 }
 
 export default function HomePage() {
-  return <HomeMarketingPage />
+  return <ScrollLanding />
 }

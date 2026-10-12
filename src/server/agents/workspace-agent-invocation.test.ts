@@ -57,7 +57,11 @@ test('a room agent turn is owned by a durable run, not by an HTTP request', asyn
   const [workflow, lifecycle, messageRoute, policy, service] = await Promise.all([
     readFile(`${root}/src/server/workflows/workspace-agent-turn.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-turn-lifecycle.ts`, 'utf8'),
-    readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
+    Promise.all([
+      readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
+      // The route hands the turn to this module, which opens the durable run.
+      readFile(`${root}/src/server/agents/start-agent-turns.ts`, 'utf8'),
+    ]).then((sources) => sources.join('\n')),
     readFile(`${root}/src/server/authorization/authorization-route-policy.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
   ])
@@ -223,7 +227,11 @@ test('connected agents receive bounded memory and room context without confusing
 
 test('room memory ingestion is owner-scoped and gated by the message toggle', async () => {
   const [route, service, contract, convexRoom, convexExtractor, convexMemoryQuery] = await Promise.all([
-    readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
+    Promise.all([
+      readFile(`${root}/src/server/app-api/v1/conversations/message/route.ts`, 'utf8'),
+      // The route hands the turn to this module, which opens the durable run.
+      readFile(`${root}/src/server/agents/start-agent-turns.ts`, 'utf8'),
+    ]).then((sources) => sources.join('\n')),
     readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8'),
     readFile(`${root}/src/server/conversations/ConversationCollaborationRepository.ts`, 'utf8'),
     readFile(`${root}/convex/collaboration/directMessages.ts`, 'utf8'),
@@ -231,7 +239,7 @@ test('room memory ingestion is owner-scoped and gated by the message toggle', as
     readFile(`${root}/convex/knowledge/memoryExtractor.ts`, 'utf8'),
   ])
 
-  assert.match(route, /args\.memoryEnabled && invocations\.length > 0/)
+  assert.match(route, /args\.memoryEnabled && args\.extractHumanMemory !== false && invocations\.length > 0/)
   assert.match(route, /targetActor: 'human'/)
   assert.match(service, /targetActor: 'agent'/)
   assert.match(service, /memoryEnabled: args\.memoryEnabled/)

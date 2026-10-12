@@ -1,40 +1,16 @@
-import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import { unstable_rethrow } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { requireOverlayCapability } from '@/server/capabilities'
-import { billingCheckoutService, billingErrorResponse } from '@/server/billing/http'
+import { accountPlansRetiredResponse } from '@/server/billing/http'
 
+// An account cannot be paid, so there is no account checkout to verify; workspace plans are verified by the
+// workspace billing routes.
 export async function POST(request: NextRequest) {
-  try {
-    const disabledCapabilityResponse = await requireOverlayCapability('billing')
-    if (disabledCapabilityResponse) return disabledCapabilityResponse
-
-    const authSession = await getOverlaySession(request)
-
-    if (!authSession || !authSession.user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const { sessionId } = await request.json()
-    const result = await billingCheckoutService.verifySubscriptionCheckout({
-      userId: authSession.user.id,
-      sessionId,
-    })
-    return NextResponse.json(result)
-  } catch (error) {
-    unstable_rethrow(error)
-    if (error instanceof Error && error.name === 'BillingServiceError') {
-      return billingErrorResponse(error, 'Failed to verify checkout')
-    }
-    logger.error('[Checkout Verify] Error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { error: `Failed to verify checkout: ${errorMessage}` },
-      { status: 500 }
-    )
+  const disabledCapabilityResponse = await requireOverlayCapability('billing')
+  if (disabledCapabilityResponse) return disabledCapabilityResponse
+  const session = await getOverlaySession(request)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
+  return accountPlansRetiredResponse()
 }

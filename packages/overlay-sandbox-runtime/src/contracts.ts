@@ -1,6 +1,6 @@
 /** Provider-neutral sandbox primitives owned by Overlay. Provider SDK types must not cross this boundary. */
 
-export type SandboxProviderId = 'box'
+export type SandboxProviderId = 'box' | 'e2b'
 export type SandboxLifecycleState =
   | 'provisioning'
   | 'running'
@@ -161,7 +161,7 @@ export interface SandboxInstance {
   updateEnvironment(environment: Record<string, string>, unset?: string[]): Promise<void>
   updateNetworkPolicy(policy: SandboxNetworkPolicy): Promise<void>
   port(port: number): Promise<SandboxPort>
-  snapshot(options?: { expiresInMs?: number }): Promise<SandboxSnapshot>
+  snapshot(options?: { expiresInMs?: number; /** Stable snapshot name, where the provider supports naming. */ name?: string }): Promise<SandboxSnapshot>
   usage(): Promise<SandboxUsage>
   /** Operator-only. Never serialize this value or expose it through Overlay's public API. */
   rawProviderDiagnosticHandle(): unknown

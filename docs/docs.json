@@ -31,8 +31,14 @@
   },
   "navbar": {
     "links": [
-      { "label": "Blog", "href": "https://getoverlay.io/blog" },
-      { "label": "Pricing", "href": "https://getoverlay.io/pricing" }
+      {
+        "label": "Blog",
+        "href": "https://getoverlay.io/blog"
+      },
+      {
+        "label": "Pricing",
+        "href": "https://getoverlay.io/pricing"
+      }
     ],
     "primary": {
       "type": "button",
@@ -44,7 +50,12 @@
     "library": "lucide"
   },
   "contextual": {
-    "options": ["copy", "download-spec", "chatgpt", "claude"]
+    "options": [
+      "copy",
+      "download-spec",
+      "chatgpt",
+      "claude"
+    ]
   },
   "api": {
     "playground": {
@@ -52,7 +63,11 @@
       "proxy": false
     },
     "examples": {
-      "languages": ["typescript", "javascript", "curl"],
+      "languages": [
+        "typescript",
+        "javascript",
+        "curl"
+      ],
       "defaults": "required"
     }
   },
@@ -60,7 +75,11 @@
     "groups": [
       {
         "group": "Start",
-        "pages": ["introduction", "start/quickstart", "start/repository-map"]
+        "pages": [
+          "introduction",
+          "start/quickstart",
+          "start/repository-map"
+        ]
       },
       {
         "group": "Desktop",
@@ -113,11 +132,15 @@
               "configure/authentication/index",
               {
                 "group": "Backends",
-                "pages": ["configure/authentication/backends"]
+                "pages": [
+                  "configure/authentication/backends"
+                ]
               },
               {
                 "group": "Protocol",
-                "pages": ["configure/authentication/oidc"]
+                "pages": [
+                  "configure/authentication/oidc"
+                ]
               },
               {
                 "group": "Provider recipes",
@@ -185,7 +208,10 @@
           },
           {
             "group": "Operations",
-            "pages": ["deploy-operate/release-gates", "deploy-operate/docs-hosting"]
+            "pages": [
+              "deploy-operate/release-gates",
+              "deploy-operate/docs-hosting"
+            ]
           }
         ]
       },
@@ -216,15 +242,34 @@
       },
       {
         "group": "Help",
-        "pages": ["help/index", "help/chat", "help/memory", "help/files", "help/projects", "help/automations", "help/settings", "help/faq"]
+        "pages": [
+          "help/index",
+          "help/chat",
+          "help/memory",
+          "help/files",
+          "help/projects",
+          "help/automations",
+          "help/tools",
+          "help/connect-other-apps",
+          "help/other-agents",
+          "help/agents",
+          "help/settings",
+          "help/faq"
+        ]
       },
       {
         "group": "Legal",
-        "pages": ["legal/licensing", "legal/self-hosting-obligations", "legal/security-reporting"]
+        "pages": [
+          "legal/licensing",
+          "legal/self-hosting-obligations",
+          "legal/security-reporting"
+        ]
       },
       {
         "group": "Changelog",
-        "pages": ["changelog"]
+        "pages": [
+          "changelog"
+        ]
       }
     ]
   }

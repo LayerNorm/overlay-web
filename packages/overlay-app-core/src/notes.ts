@@ -15,6 +15,9 @@ export interface NotebookNote {
   _id: string
   title: string
   content: string
+  /** BlockNote document envelope when the note was migrated to block storage. */
+  docJson?: string
+  docFormat?: 'markdown' | 'blocknote'
   tags: string[]
   createdAt: number
   updatedAt: number
@@ -28,6 +31,8 @@ export interface CanonicalNoteFile extends Pick<
 > {
   shareVisibility?: 'private' | 'public'
   shareToken?: string | null
+  docJson?: string
+  docFormat?: 'markdown' | 'blocknote'
 }
 
 export type NotebookAgentUiItem =
@@ -62,6 +67,8 @@ export function canonicalFileToNotebookNote(file: CanonicalNoteFile, now = Date.
     _id: file._id,
     title: file.name || 'Untitled',
     content: file.textContent ?? file.content ?? '',
+    ...(file.docJson !== undefined ? { docJson: file.docJson } : {}),
+    ...(file.docFormat !== undefined ? { docFormat: file.docFormat } : {}),
     tags: [],
     createdAt: file.createdAt ?? now,
     updatedAt: file.updatedAt ?? now,
