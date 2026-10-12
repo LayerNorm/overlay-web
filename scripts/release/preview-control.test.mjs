@@ -99,6 +99,8 @@ test('new deployment requests pin repository, branch and exact SHA', async () =>
   assert.deepEqual(build.body.gitSource, { type: 'github', repoId: CONFIG.repositoryId, ref: 'codex/fixture', sha })
   assert.equal(build.body.project, CONFIG.projectId)
   assert.equal(build.body.target, undefined)
+  assert.equal(build.body.autoAssignCustomDomains, false)
+  assert.equal(build.body.projectSettings.buildCommand, 'bash scripts/vercel-build.sh')
 })
 test('new PR head prevents old deployment assignment and success status', async () => {
   const f = fixture({ changeHead: true })

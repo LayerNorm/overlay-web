@@ -6,6 +6,13 @@ The web app owns backend route contracts for every surface. Desktop, mobile, Chr
 
 ## Route catalogs
 
+The API documentation generator also checks each v1 filesystem route against
+`src/shared/schemas/api-boundary.ts`. A route must have a public boundary
+definition or an explicit exclusion with its authorization and contract status.
+Agent permanent deletion and workspace automatic top-up policy are accounted
+for in that narrower registry; their behavior remains documented in the full
+route catalog and enforced by their existing services.
+
 The filesystem under `src/app/api/**/route.ts` is authoritative for route existence and exported HTTP methods. Use the [full web API route catalog](./api-route-catalog.mdx) for behavior, authentication boundaries, and implementation files, or the [compact API route catalog](./compact-api-route-catalog.mdx) for a one-line inventory. `npm run docs:health` verifies that both catalogs match every route entry point. The generated OpenAPI document intentionally covers a narrower public contract set.
 
 ## Rules

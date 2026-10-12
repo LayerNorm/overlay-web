@@ -178,6 +178,10 @@ export class PreviewController {
     }
     return this.vercel('/v13/deployments', { method: 'POST', body: {
       name: CONFIG.projectName, project: CONFIG.projectId,
+      // The controller owns canonical assignment; native branch aliases must
+      // not assign an older deployment before provenance checks run.
+      autoAssignCustomDomains: false,
+      projectSettings: { buildCommand: 'bash scripts/vercel-build.sh' },
       gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: pr.head.ref, sha: pr.head.sha },
       meta: { overlayPreviewPr: String(pr.number), overlayPreviewSha: pr.head.sha },
     } })

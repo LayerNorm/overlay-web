@@ -2,7 +2,7 @@
 
 Moves Overlay from direct pushes to `main` plus an optional branch-based staging
 lane, using one shared dev Convex, to the target workflow in
-[`RELEASE_WORKFLOW_TARGET.md`](RELEASE_WORKFLOW_TARGET.md): per-PR previews,
+[`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
 merge queue on `main`, staging deployed from `main`, manual production promotion.
 
 ## Approved preview-domain approach — 2026-10-12
@@ -54,9 +54,14 @@ implemented locally, with contract tests. Four blocking dependency advisories
 were fixed and the production audit gate passes. Live alias/HTTPS/auth checks,
 merge queue enablement, staging cutover, and production promotion remain open.
 The Vercel CLI's app credential cannot create a CI token (API 403). The supported
-token UI can scope a 90-day token to `overlay-web-staging`; creation and storage
-as GitHub's `VERCEL_STAGING_TOKEN` are awaiting the browser-required action-time
-confirmation.
+token UI can scope a 90-day token to `overlay-web-staging`; the owner approved creation and storage as `VERCEL_STAGING_TOKEN` in GitHub's
+`release-control` environment. That environment allows only `main` workflows;
+the token is restricted to the staging Vercel project and expires 2027-01-10.
+API scope checks succeeded for staging and denied production access. Preview
+configuration now contains 46 isolated sandbox variables; all 71 existing
+Production variables were preserved. External storage, model, and billing
+providers are temporarily disabled until dedicated test resources are wired.
+Preview deployment sources remain disabled until the first reviewed build.
 
 Plan adjustments before implementation:
 
@@ -125,8 +130,8 @@ Answer these before writing code; several later choices depend on them.
 
 ## Phase 1 — Preview builds in the staging project
 
-Goal: every open PR gets a Vercel preview that builds and loads. It still talks
-to the shared dev Convex backend; that changes in Phase 2.
+Goal: every internal PR targeting main gets one Vercel preview that builds and
+loads. Enable this together with Phase 2 so no hosted PR uses shared dev Convex.
 
 Code:
 - [ ] `scripts/vercel-ignore-build.sh`: when `VERCEL_ENV=preview` in the project
@@ -137,16 +142,21 @@ Code:
       add a small shell test if none exist).
 
 Dashboard (owner):
-- [ ] `overlay-web-staging` → Environment Variables: tick **Preview** on every
-      variable that holds a dev/test-mode value. Add `PREVIEW_BUILDS=pr` (Preview only).
-- [ ] `overlay-web-staging` → Git: enable preview deployments for pull requests.
+- [x] `overlay-web-staging` → Environment Variables: replace inherited Preview
+      configuration with isolated sandbox values and `PREVIEW_BUILDS=pr`.
+      Preserve Production scopes. Provision dedicated test providers before
+      claiming model, upload, or billing acceptance.
+- [ ] `overlay-web-staging` → deployment policy: enable Preview **REST API**
+      sources for the trusted PR controller. Keep native Preview Git sources
+      disabled so duplicate builds and automatic branch aliases cannot race
+      current-head validation. Keep the existing staging Production Git lane.
 - [ ] Keep `overlay-landing` previews disabled.
 
 Done when: opening a PR produces one preview in the staging project, none in the
 production project, and pushes to branches without a PR build nothing.
 
-Note: a push made before its PR is opened has no PR id; the first build happens
-on the next push or via a redeploy. Document this for agents.
+The trusted controller provisions the app URL and explicitly requests the exact
+head revision on PR open/reopen. An unassociated branch push creates no build.
 
 ## Phase 2 — One Convex backend per preview
 
@@ -179,7 +189,10 @@ Dashboard (owner):
       `INTERNAL_SERVICE_AUTH_SECRET` (matching the Vercel Preview values, and
       different from each other), `OVERLAY_DEPLOYMENT_ENV=preview`, and any
       test-mode provider keys Convex actions need.
-- [ ] Vercel → `overlay-web-staging` → Build Command: `bash scripts/vercel-build.sh`.
+- [ ] The trusted controller supplies `bash scripts/vercel-build.sh` as the
+      Preview deployment's build-command override. Keep the legacy staging
+      Production project setting unchanged until Phase 5; its branch does not
+      yet contain the wrapper.
 
 Done when: two PRs that change the schema in incompatible ways both build and
 work on their previews at the same time, and the shared dev deployment is untouched.

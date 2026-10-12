@@ -19,8 +19,14 @@ Deployment Suffix remains disabled. The branch-based lane below stays in place
 until preview QA proves the cutover is ready.
 
 Preview provisioning uses trusted `main` code in `pr-preview.yml` with the
-project-scoped GitHub secret `VERCEL_STAGING_TOKEN`. It checks repository,
+project-scoped GitHub environment secret `VERCEL_STAGING_TOKEN` in
+`release-control` (only `main` workflows can access it). It checks repository,
 branch, current head SHA, Preview target, and project before alias assignment.
+Enable only REST API Preview deployment sources: native Preview Git builds stay
+disabled. The controller supplies the Preview build-command override and disables
+automatic custom-domain assignment; the legacy staging Production lane retains
+its existing settings until cutover. Preview providers must use dedicated test
+resources. Disabled bootstrap providers do not count as upload, model, or billing QA.
 The `PR Preview` commit status links the canonical address and identifies its
 revision; verify that status against the current PR head before QA. Closing or
 retargeting a PR removes its alias/domain and managed branch app URL, and a

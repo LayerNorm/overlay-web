@@ -125,8 +125,9 @@ build to its head SHA, and assigns only a READY deployment from the staging
 project. `PR Preview` reports the canonical URL and deployed SHA; it is build
 readiness evidence, and the Builder must still provide browser QA.
 
-Configure `VERCEL_STAGING_TOKEN` as a GitHub Actions secret scoped to
-`overlay-web-staging`; rotate it before its expiration. Management credentials
+Configure `VERCEL_STAGING_TOKEN` in the GitHub `release-control` environment,
+whose deployment branch policy permits only `main`, and scope the token to
+`overlay-web-staging`. Rotate it before expiration (current token: 2027-01-10). Management credentials
 must never be included in a Vercel Preview build. Per-PR concurrency serializes
 open/update/close and reconciliation jobs. Scheduled reconciliation repairs
 missed events and removes closed or retargeted PR resources. Unassigned wildcard

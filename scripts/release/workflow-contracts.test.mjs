@@ -21,6 +21,7 @@ test('every required workflow reports on merge groups; required PR checks have n
 test('preview management never checks out PR code, installs packages, or interpolates input into shell', () => {
   const config = workflow('pr-preview')
   for (const job of Object.values(config.jobs)) {
+    assert.equal(job.environment, 'release-control')
     for (const step of job.steps) {
       if (step.uses?.startsWith('actions/checkout@')) {
         assert.equal(step.with.ref, 'main')

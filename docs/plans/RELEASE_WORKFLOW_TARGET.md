@@ -1,7 +1,7 @@
 # Target release workflow: previews, trunk, staging, production
 
 > **Status: target state, not the current process.** Until the migration in
-> [`RELEASE_WORKFLOW_MIGRATION_PLAN.md`](RELEASE_WORKFLOW_MIGRATION_PLAN.md) lands,
+> [`RELEASE_WORKFLOW_MIGRATION_PLAN.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md) lands,
 > follow `docs/develop/agentic-development.mdx` and `docs/develop/worktree-staging-qa.mdx`.
 
 ## Preview-domain decision — 2026-10-12
