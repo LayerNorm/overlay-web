@@ -6,6 +6,7 @@
 import {
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
   type Ref,
 } from 'react'
@@ -16,6 +17,11 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { SlashMenu } from './slash-menu'
+import { BlockNoteSurface } from './blocknote-surface'
+import {
+  createTiptapHandle,
+  type NotebookEditorHandle,
+} from './editor-handle'
 import {
   type NotebookEditorConflict,
   type NotebookNote,
@@ -62,6 +68,7 @@ export interface NotebookEditorRepository {
     noteId: string
     title: string
     content: string
+    docJson?: string
     expectedUpdatedAt?: number
   }): Promise<{ note?: NoteDoc | null; conflict?: NotebookEditorConflict }>
   delete?(noteId: string): Promise<void>
@@ -92,6 +99,7 @@ export interface NotebookEditorHeaderRenderProps {
   loading: boolean
   title: string
   isDirty: boolean
+  saveStatus?: 'saved' | 'saving' | 'unsaved' | 'error'
   agentPanelOpen: boolean
   onCreateNote(): void
   onDeleteNote?(): void
@@ -144,6 +152,11 @@ export interface CanonicalNotebookEditorProps {
   renderNotesSidebar?(props: NotebookNotesSidebarProps): ReactNode
   renderAgentComposer?(props: NotebookAgentComposerRenderProps): ReactNode
   renderHeader?(props: NotebookEditorHeaderRenderProps): ReactNode
+  /**
+   * 'auto' picks BlockNote for migrated notes and TipTap for markdown notes;
+   * 'blocknote' forces the block editor (lazy-migrates on first save).
+   */
+  editorMode?: 'auto' | 'tiptap' | 'blocknote'
 }
 
 type EditorLifecycle = ReturnType<typeof useEditorLifecycle>
@@ -225,7 +238,7 @@ function NotebookModelPicker({
 }
 
 function NotebookAssistantHeader({
-  editor,
+  editor,  // TipTap instance; diff proposals only exist on the TipTap surface
   modelPicker,
   agentPanelMode,
   onAgentPanelModeChange,
@@ -346,6 +359,9 @@ function NotebookEditorBody({
   slashState,
   slashMenu,
   editor,
+  editorMode,
+  onSurfaceReady,
+  onHydrated,
   showNotesSidebar,
   renderNotesSidebar,
   onNavigateNote,
@@ -359,6 +375,9 @@ function NotebookEditorBody({
   slashState: SlashState
   slashMenu: SlashMenuApi
   editor: TiptapEditor
+  editorMode: 'tiptap' | 'blocknote'
+  onSurfaceReady: (handle: NotebookEditorHandle | null) => void
+  onHydrated?: (note: NotebookNote) => void
   showNotesSidebar?: boolean
   renderNotesSidebar?: (props: NotebookNotesSidebarProps) => ReactNode
   onNavigateNote: (noteId: string) => void
@@ -398,16 +417,30 @@ function NotebookEditorBody({
           <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div ref={contentContainerRef} className="h-full overflow-y-auto px-6 py-4">
-                <EditorContent editor={editor} />
+                {editorMode === 'blocknote' ? (
+                  <BlockNoteSurface
+                    note={activeNote}
+                    lifecycleController={lifecycle.lifecycleController}
+                    titleRef={lifecycle.titleRef}
+                    mediaRef={lifecycle.mediaRef}
+                    onReady={onSurfaceReady}
+                    onHydrated={onHydrated}
+                  />
+                ) : (
+                  <EditorContent editor={editor} />
+                )}
               </div>
 
-              <NotebookFloatingFormatToolbar
-                editor={editor}
-                open={showFloatingFormatToolbar}
-                onOpenChange={setShowFloatingFormatToolbar}
-              />
+              {editorMode === 'tiptap' ? (
+                <NotebookFloatingFormatToolbar
+                  editor={editor}
+                  open={showFloatingFormatToolbar}
+                  onOpenChange={setShowFloatingFormatToolbar}
+                />
+              ) : null}
             </div>
           </div>
+          {editorMode === 'tiptap' ? (
           <SlashMenu
             showSlashMenu={slashState.showSlashMenu}
             slashMenuPosition={slashState.slashMenuPosition}
@@ -421,6 +454,7 @@ function NotebookEditorBody({
               slashState.setSlashMenuFilter('')
             }}
           />
+          ) : null}
           </>
         ) : resolvingRequestedNote ? (
           <div className="h-full w-full" aria-busy="true">
@@ -497,13 +531,14 @@ function NotebookHeaderBlock({
   title,
   projectName,
   isDirty,
+  saveStatus,
   agentPanelOpen,
   headerLeading,
   hideBackButton,
   repository,
   mutations,
   renderExportMenu,
-  editor,
+  handle,
   handleBackToFiles,
   agent,
 }: {
@@ -514,13 +549,14 @@ function NotebookHeaderBlock({
   title: string
   projectName: CanonicalNotebookEditorProps['projectName']
   isDirty: boolean
+  saveStatus?: 'saved' | 'saving' | 'unsaved' | 'error'
   agentPanelOpen: boolean
   headerLeading: CanonicalNotebookEditorProps['headerLeading']
   hideBackButton: CanonicalNotebookEditorProps['hideBackButton']
   repository: CanonicalNotebookEditorProps['repository']
   mutations: ReturnType<typeof useNoteMutations>
   renderExportMenu: CanonicalNotebookEditorProps['renderExportMenu']
-  editor: ReturnType<typeof useNotebookEditor>['editor']
+  handle: NotebookEditorHandle | null
   handleBackToFiles: () => Promise<void>
   agent: ReturnType<typeof useNotebookAgent>
 }) {
@@ -529,6 +565,7 @@ function NotebookHeaderBlock({
     loading: resolvingRequestedNote,
     title,
     isDirty,
+    saveStatus,
     agentPanelOpen,
     onCreateNote: () => void mutations.createNote(),
     onDeleteNote: repository.delete && activeNote ? () => void mutations.deleteNote(activeNote._id) : undefined,
@@ -548,6 +585,7 @@ function NotebookHeaderBlock({
       title={title}
       projectName={projectName}
       isDirty={isDirty}
+      saveStatus={saveStatus}
       agentPanelOpen={agentPanelOpen}
       leading={headerLeading}
       hideBackButton={hideBackButton}
@@ -555,7 +593,7 @@ function NotebookHeaderBlock({
       exportMenu={activeNote ? renderExportMenu?.({
         note: activeNote,
         title: title || 'Untitled',
-        content: editor?.getHTML() || activeNote.content || '',
+        content: handle?.getContent() || activeNote.content || '',
       }) : null}
       onBackToFiles={() => void handleBackToFiles()}
       onCreateNote={() => void mutations.createNote()}
@@ -602,6 +640,7 @@ export function CanonicalNotebookEditor({
   renderNotesSidebar,
   renderAgentComposer,
   renderHeader,
+  editorMode = 'auto',
 }: CanonicalNotebookEditorProps) {
   const lifecycle = useEditorLifecycle({ repository, hideSidebar, onNoteChanged, media })
   const {
@@ -612,6 +651,8 @@ export function CanonicalNotebookEditor({
     title,
     setTitle,
     isDirty,
+    isSaving,
+    saveError,
     lifecycleController,
     activeNoteRef,
     titleRef,
@@ -619,6 +660,12 @@ export function CanonicalNotebookEditor({
     flushSaveRef,
     mediaRef,
   } = lifecycle
+
+  const mode: 'tiptap' | 'blocknote' =
+    editorMode === 'blocknote' ||
+    (editorMode === 'auto' && activeNote?.docFormat === 'blocknote')
+      ? 'blocknote'
+      : 'tiptap'
 
   const slashState = useSlashMenuState()
   const { editor } = useNotebookEditor({
@@ -628,7 +675,15 @@ export function CanonicalNotebookEditor({
     hydratingEditorRef,
     mediaRef,
     slashState,
+    enabled: mode === 'tiptap',
   })
+
+  const [blocknoteHandle, setBlocknoteHandle] = useState<NotebookEditorHandle | null>(null)
+  const tiptapHandle = useMemo(
+    () => (editor ? createTiptapHandle(editor) : null),
+    [editor],
+  )
+  const editorHandle = mode === 'tiptap' ? tiptapHandle : blocknoteHandle
 
   const notesApi = useNotebookNotes({
     noteId,
@@ -642,11 +697,11 @@ export function CanonicalNotebookEditor({
     setActiveNote,
     setTitle,
     hydratingEditorRef,
-    editor,
+    editor: mode === 'tiptap' ? editor : null,
   })
 
-  useEditorRequests({ editor, focusRequest, externalInsertion })
-  const slashMenu = useSlashMenu({ editor, slashState })
+  useEditorRequests({ handle: editorHandle, focusRequest, externalInsertion })
+  const slashMenu = useSlashMenu({ editor: mode === 'tiptap' ? editor : null, slashState })
 
   const mutations = useNoteMutations({
     repository,
@@ -654,7 +709,7 @@ export function CanonicalNotebookEditor({
     setNotes,
     setActiveNote,
     setTitle,
-    editor,
+    handle: editorHandle,
     lifecycleController,
     activeNoteRef,
     titleRef,
@@ -668,7 +723,7 @@ export function CanonicalNotebookEditor({
 
   const agent = useNotebookAgent({
     runAgent,
-    editor,
+    handle: editorHandle,
     activeNote,
     title,
     initialModelId,
@@ -686,7 +741,7 @@ export function CanonicalNotebookEditor({
 
   const { assistantHeader, agentComposer } = notebookChromeElements({
     agent,
-    editor,
+    editor: mode === 'tiptap' ? editor : null,
     agentPanelMode,
     onAgentPanelModeChange,
     models,
@@ -712,13 +767,19 @@ export function CanonicalNotebookEditor({
           title={title}
           projectName={projectName}
           isDirty={isDirty}
+          saveStatus={
+            saveError ? 'error'
+            : isSaving ? 'saving'
+            : isDirty ? 'unsaved'
+            : 'saved'
+          }
           agentPanelOpen={agent.agentPanelOpen}
           headerLeading={headerLeading}
           hideBackButton={hideBackButton}
           repository={repository}
           mutations={mutations}
           renderExportMenu={renderExportMenu}
-          editor={editor}
+          handle={editorHandle}
           handleBackToFiles={handleBackToFiles}
           agent={agent}
         />
@@ -749,7 +810,10 @@ export function CanonicalNotebookEditor({
         mutations={mutations}
         slashState={slashState}
         slashMenu={slashMenu}
-        editor={editor}
+        editor={mode === 'tiptap' ? editor : null}
+        editorMode={mode}
+        onSurfaceReady={setBlocknoteHandle}
+        onHydrated={onHydrated}
         showNotesSidebar={showNotesSidebar}
         renderNotesSidebar={renderNotesSidebar}
         onNavigateNote={onNavigateNote}

@@ -106,6 +106,8 @@ export class ConvexNoteRepository implements NoteRepository {
     content?: string
     tags?: string[]
     expectedUpdatedAt?: number
+    docJson?: string
+    docFormat?: 'markdown' | 'blocknote'
     workspaceId?: string
   }): Promise<NoteRecord | null> {
     const existing = await this.getNote({
@@ -128,6 +130,8 @@ export class ConvexNoteRepository implements NoteRepository {
         ...(args.expectedUpdatedAt !== undefined
           ? { expectedUpdatedAt: args.expectedUpdatedAt }
           : {}),
+        ...(args.docJson !== undefined ? { docJson: args.docJson } : {}),
+        ...(args.docFormat !== undefined ? { docFormat: args.docFormat } : {}),
         ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       })
     } catch (error) {

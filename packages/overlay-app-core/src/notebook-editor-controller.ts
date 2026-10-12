@@ -2,6 +2,8 @@ export interface NotebookEditorDocument {
   id: string
   title: string
   content: string
+  /** BlockNote document envelope; present when the editor edits blocks. */
+  docJson?: string
   revision?: string
   updatedAt?: number
 }
@@ -25,6 +27,7 @@ export interface NotebookEditorLifecycleSnapshot {
   selectedId: string | null
   title: string
   content: string
+  docJson?: string
   revision?: string
   dirty: boolean
   saving: boolean
@@ -100,6 +103,7 @@ export class NotebookEditorController {
       selectedId: document.id,
       title: document.title,
       content: document.content,
+      docJson: document.docJson,
       revision: document.revision,
       dirty: false,
       saving: false,
@@ -130,15 +134,23 @@ export class NotebookEditorController {
     this.emit()
   }
 
-  edit(update: { title?: string; content?: string }): void {
+  edit(update: { title?: string; content?: string; docJson?: string }): void {
     if (!this.state.selectedId || this.state.hydrating) return
     const title = update.title ?? this.state.title
     const content = update.content ?? this.state.content
-    if (title === this.state.title && content === this.state.content) return
+    const docJson = update.docJson ?? this.state.docJson
+    if (
+      title === this.state.title &&
+      content === this.state.content &&
+      docJson === this.state.docJson
+    ) {
+      return
+    }
     this.state = {
       ...this.state,
       title,
       content,
+      docJson,
       dirty: true,
       conflict: undefined,
       error: undefined,
@@ -161,6 +173,7 @@ export class NotebookEditorController {
       id: this.state.selectedId,
       title: this.state.title,
       content: this.state.content,
+      docJson: this.state.docJson,
       revision: this.state.revision,
       baseRevision: this.state.revision,
     }
@@ -174,11 +187,15 @@ export class NotebookEditorController {
         this.emit()
         return
       }
-      const unchanged = this.state.title === request.title && this.state.content === request.content
+      const unchanged =
+        this.state.title === request.title &&
+        this.state.content === request.content &&
+        this.state.docJson === request.docJson
       this.state = {
         ...this.state,
         title: unchanged ? result.document?.title ?? request.title : this.state.title,
         content: unchanged ? result.document?.content ?? request.content : this.state.content,
+        docJson: unchanged ? result.document?.docJson ?? request.docJson : this.state.docJson,
         revision: result.document?.revision ?? this.state.revision,
         saving: false,
         dirty: !unchanged,

@@ -12,6 +12,7 @@ export interface NotebookHeaderProps {
   title: string
   projectName?: string
   isDirty?: boolean
+  saveStatus?: 'saved' | 'saving' | 'unsaved' | 'error'
   agentPanelOpen?: boolean
   exportMenu?: ReactNode
   assistantHeader?: ReactNode
@@ -34,6 +35,7 @@ export function NotebookHeader({
   title,
   projectName,
   isDirty,
+  saveStatus,
   agentPanelOpen,
   exportMenu,
   assistantHeader,
@@ -107,6 +109,7 @@ export function NotebookHeader({
             compact={compact}
             projectName={projectName}
             isDirty={isDirty}
+            saveStatus={saveStatus}
             agentPanelOpen={agentPanelOpen}
             exportMenu={exportMenu}
             onDeleteNote={onDeleteNote}
@@ -148,6 +151,7 @@ interface NotebookHeaderActionsProps {
   compact?: boolean
   projectName?: string
   isDirty?: boolean
+  saveStatus?: 'saved' | 'saving' | 'unsaved' | 'error'
   agentPanelOpen?: boolean
   exportMenu?: ReactNode
   onDeleteNote?: () => void
@@ -158,6 +162,7 @@ function NotebookHeaderActions({
   compact,
   projectName,
   isDirty,
+  saveStatus,
   agentPanelOpen,
   exportMenu,
   onDeleteNote,
@@ -171,7 +176,18 @@ function NotebookHeaderActions({
           {projectName}
         </span>
       )}
-      {isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>}
+      {saveStatus !== undefined ? (
+        <span
+          className={`text-[11px] ${saveStatus === 'error' ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--muted-light)]'}`}
+        >
+          {saveStatus === 'error' ? 'Offline — will retry'
+            : saveStatus === 'saving' ? 'Saving…'
+            : saveStatus === 'unsaved' ? 'Unsaved'
+            : 'Saved'}
+        </span>
+      ) : (
+        isDirty && <span className="text-[11px] text-[var(--muted-light)]">Unsaved</span>
+      )}
       {onDeleteNote ? (
         <NotebookHeaderIconButton label="Delete note" title="Delete note" compact={compact} onClick={onDeleteNote}>
           <Trash2 size={compact ? 13 : 15} />

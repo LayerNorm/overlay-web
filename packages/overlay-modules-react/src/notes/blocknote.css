@@ -1,0 +1,49 @@
+/* Overlay theme pass for the BlockNote surface: map BlockNote's CSS variables
+   onto app tokens so the editor inherits the shell's surfaces, text and accent
+   in both light and dark mode. */
+
+.bn-surface {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: var(--foreground);
+  --bn-colors-side-menu: var(--muted);
+  --bn-colors-side-menu-text: var(--foreground);
+  --bn-colors-menu-background: var(--surface);
+  --bn-colors-menu-text: var(--foreground);
+  --bn-colors-tooltip-background: var(--surface);
+  --bn-colors-tooltip-text: var(--foreground);
+  --bn-colors-hovered-background: var(--surface-subtle);
+  --bn-colors-hovered-text: var(--foreground);
+  --bn-colors-selected-background: var(--surface-subtle);
+  --bn-colors-selected-text: var(--foreground);
+  --bn-colors-disabled-background: transparent;
+  --bn-colors-disabled-text: var(--muted-light);
+  --bn-colors-shadow: var(--border);
+  --bn-colors-border: var(--border);
+  --bn-colors-highlights-gray-background: rgba(120, 120, 120, 0.2);
+  --bn-colors-highlights-gray-text: var(--foreground);
+  --bn-font-family: var(--font-sans, inherit);
+
+  height: 100%;
+}
+
+.bn-surface .bn-editor {
+  height: 100%;
+  padding-inline: 0.25rem;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--foreground);
+}
+
+.bn-surface .bn-block-content[data-content-type='paragraph'][data-is-empty-and-focused='true']::before {
+  color: var(--muted);
+}
+
+.bn-surface .bn-block-content[data-content-type='codeBlock'] {
+  background: var(--surface-subtle);
+  border-radius: 6px;
+}
+
+.bn-surface .bn-block-content[data-content-type='checkListItem'] input[type='checkbox'] {
+  accent-color: var(--foreground);
+}

@@ -48,7 +48,8 @@ import {
   InlineDiffExtension,
   INLINE_DIFF_CSS,
 } from './inline-diff-extension'
-import { noteContentFromEditor } from './editor-content'
+import { clearNoteOutbox, writeNoteOutbox } from './notes-outbox'
+import type { NotebookEditorHandle } from './editor-handle'
 import type {
   NotebookEditorMediaAdapter,
   NotebookEditorMention,
@@ -66,6 +67,8 @@ function noteDocToNotebookNote(note: NoteDoc, now = Date.now()): NotebookNote {
     _id: note._id,
     title: note.title || 'Untitled',
     content: note.content ?? '',
+    docJson: note.docJson,
+    docFormat: note.docFormat,
     tags: note.tags ?? [],
     createdAt: note.createdAt ?? now,
     updatedAt: note.updatedAt ?? now,
@@ -87,6 +90,8 @@ export function useEditorLifecycle({
   const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
   const [title, setTitle] = useState('')
   const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | undefined>()
   const [editorConflict, setEditorConflict] = useState<NotebookEditorConflict | undefined>()
   const activeNoteRef = useRef<NotebookNote | null>(null)
   const titleRef = useRef('')
@@ -105,14 +110,16 @@ export function useEditorLifecycle({
   const lifecycleControllerRef = useRef<NotebookEditorController | null>(null)
   useEffect(() => {
     lifecycleControllerRef.current ??= new NotebookEditorController({
-      debounceMs: 800,
+      debounceMs: 600,
       async save(request) {
-        // The editor tracks TipTap HTML; notes are stored as Markdown.
+        // BlockNote surfaces pass markdown directly; TipTap surfaces pass HTML
+        // that still needs canonicalization.
         const content = toCanonicalNoteMarkdown(request.content)
         const result = await repositoryRef.current.save({
           noteId: request.id,
           title: request.title,
           content,
+          docJson: request.docJson,
           expectedUpdatedAt: request.baseRevision ? Number(request.baseRevision) : undefined,
         })
         if (result.conflict) return { conflict: result.conflict }
@@ -131,6 +138,7 @@ export function useEditorLifecycle({
             id: persisted._id,
             title: persisted.title,
             content: persisted.content,
+            docJson: persisted.docJson,
             revision: String(persisted.updatedAt),
             updatedAt: persisted.updatedAt,
           },
@@ -141,7 +149,24 @@ export function useEditorLifecycle({
 
   useEffect(() => lifecycleControllerRef.current?.subscribe((snapshot) => {
     setIsDirty(snapshot.dirty)
+    setIsSaving(snapshot.saving)
+    setSaveError(snapshot.error)
     setEditorConflict(snapshot.conflict)
+
+    // Outbox: keep the latest unsaved state on disk; clear only on clean save.
+    if (!snapshot.selectedId) return
+    if (snapshot.dirty) {
+      writeNoteOutbox({
+        noteId: snapshot.selectedId,
+        baseRevision: snapshot.revision,
+        title: snapshot.title,
+        content: snapshot.content,
+        docJson: snapshot.docJson,
+        at: Date.now(),
+      })
+    } else if (!snapshot.saving) {
+      clearNoteOutbox(snapshot.selectedId)
+    }
   }), [])
 
   useEffect(() => {
@@ -210,6 +235,8 @@ export function useEditorLifecycle({
     title,
     setTitle,
     isDirty,
+    isSaving,
+    saveError,
     editorConflict,
     lifecycleController: lifecycleControllerRef,
     loadNotes,
@@ -245,6 +272,7 @@ export function useNotebookEditor({
   hydratingEditorRef,
   mediaRef,
   slashState,
+  enabled = true,
 }: {
   lifecycleController: MutableRefObject<NotebookEditorController | null>
   activeNoteRef: MutableRefObject<NotebookNote | null>
@@ -252,6 +280,8 @@ export function useNotebookEditor({
   hydratingEditorRef: MutableRefObject<boolean>
   mediaRef: MutableRefObject<NotebookEditorMediaAdapter | undefined>
   slashState: ReturnType<typeof useSlashMenuState>
+  /** False when another surface (BlockNote) owns editing — blocks all writes. */
+  enabled?: boolean
 }) {
   const { setSlashMenuPosition, setSlashMenuFilter, setShowSlashMenu } = slashState
 
@@ -324,7 +354,7 @@ export function useNotebookEditor({
     onUpdate: ({ editor: currentEditor }) => {
       migrateMathStrings(currentEditor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
 
-      if (hydratingEditorRef.current) return
+      if (!enabled || hydratingEditorRef.current) return
 
       if (activeNoteRef.current) {
         lifecycleController.current?.edit({
@@ -387,29 +417,26 @@ export function useNotebookEditor({
 }
 
 export function useEditorRequests({
-  editor,
+  handle,
   focusRequest,
   externalInsertion,
 }: {
-  editor: TiptapEditor | null
+  handle: NotebookEditorHandle | null
   focusRequest?: number
   externalInsertion?: { id: string; text: string }
 }) {
   const lastInsertionRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!editor || focusRequest === undefined) return
-    editor.commands.focus('end')
-  }, [editor, focusRequest])
+    if (!handle || focusRequest === undefined) return
+    handle.focusEnd()
+  }, [handle, focusRequest])
 
   useEffect(() => {
-    if (!editor || !externalInsertion || lastInsertionRef.current === externalInsertion.id) return
+    if (!handle || !externalInsertion || lastInsertionRef.current === externalInsertion.id) return
     lastInsertionRef.current = externalInsertion.id
-    editor.chain().focus().insertContentAt(editor.state.doc.content.size, {
-      type: 'paragraph',
-      content: [{ type: 'text', text: externalInsertion.text }],
-    }).run()
-  }, [editor, externalInsertion])
+    handle.insertParagraphAtEnd(externalInsertion.text)
+  }, [handle, externalInsertion])
 }
 
 export function useSlashMenu({
@@ -534,6 +561,7 @@ export function useNotebookNotes({
       id: note._id,
       title: note.title,
       content: note.content,
+      docJson: note.docJson,
       revision: String(note.updatedAt),
       updatedAt: note.updatedAt,
     })
@@ -598,7 +626,7 @@ export function useNoteMutations({
   setNotes,
   setActiveNote,
   setTitle,
-  editor,
+  handle,
   lifecycleController,
   activeNoteRef,
   titleRef,
@@ -614,7 +642,7 @@ export function useNoteMutations({
   setNotes: React.Dispatch<React.SetStateAction<NotebookNote[]>>
   setActiveNote: (note: NotebookNote | null) => void
   setTitle: (title: string) => void
-  editor: TiptapEditor | null
+  handle: NotebookEditorHandle | null
   lifecycleController: MutableRefObject<NotebookEditorController | null>
   activeNoteRef: MutableRefObject<NotebookNote | null>
   titleRef: MutableRefObject<string>
@@ -672,7 +700,7 @@ export function useNoteMutations({
     if (activeNoteRef.current) {
       lifecycleController.current?.edit({
         title: newTitle,
-        content: editor?.getHTML() || activeNoteRef.current.content || '',
+        content: handle?.getContent() || activeNoteRef.current.content || '',
       })
     }
   }
@@ -684,7 +712,7 @@ export function useNoteMutations({
   async function commitTitleChange() {
     const current = activeNoteRef.current
     if (!current) return
-    const content = editor?.getHTML() || current.content || ''
+    const content = handle?.getContent() || current.content || ''
     const draftState = createNotebookDraftState({
       note: current,
       draftTitle: titleRef.current,
@@ -711,7 +739,7 @@ export function useNoteMutations({
     if (event.key !== 'Enter' && event.key !== 'Tab') return
     event.preventDefault()
     void commitTitleChange().finally(() => {
-      editor?.chain().focus('start').run()
+      handle?.focusStart()
     })
   }
 
@@ -728,7 +756,7 @@ export function useNoteMutations({
 
 async function readAgentStream(
   res: Response,
-  editor: TiptapEditor | null,
+  handle: NotebookEditorHandle | null,
   setAgentItems: React.Dispatch<React.SetStateAction<NotebookAgentUiItem[]>>,
 ) {
   const reader = res.body?.getReader()
@@ -753,7 +781,7 @@ async function readAgentStream(
 
       if (evt.type === 'edit_proposal') {
         const edit = evt.edit
-        if (edit) editor?.chain().focus().addDiffProposal(edit).run()
+        if (edit) handle?.proposeAgentEdit(edit)
         continue
       }
 
@@ -765,7 +793,7 @@ async function readAgentStream(
 
 export function useNotebookAgent({
   runAgent,
-  editor,
+  handle,
   activeNote,
   title,
   initialModelId,
@@ -774,7 +802,7 @@ export function useNotebookAgent({
   onAgentPanelOpenChange,
 }: {
   runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
-  editor: TiptapEditor | null
+  handle: NotebookEditorHandle | null
   activeNote: NotebookNote | null
   title: string
   initialModelId: string
@@ -842,10 +870,10 @@ export function useNotebookAgent({
   }, [])
 
   const runNotebookAgent = useCallback(async () => {
-    if (!editor || !activeNote || agentRunning) return
+    if (!handle || !activeNote || agentRunning) return
     const message = agentInput.trim()
     if (!message) return
-    const noteContent = noteContentFromEditor(editor)
+    const noteContent = handle.getPlainTextLines()
     const modelId = selectedModelId
 
     setAgentItems((prev) => [...prev, { type: 'user', text: message }])
@@ -882,7 +910,7 @@ export function useNotebookAgent({
         return
       }
 
-      await readAgentStream(res, editor, setAgentItems)
+      await readAgentStream(res, handle, setAgentItems)
     } catch (e) {
       if (ac.signal.aborted) return
       const msg = e instanceof Error ? e.message : String(e)
@@ -891,7 +919,7 @@ export function useNotebookAgent({
       notebookAgentAbortRef.current = null
       setAgentRunning(false)
     }
-  }, [activeNote, agentInput, agentRunning, editor, runAgent, selectedModelId, setAgentMentions, title])
+  }, [activeNote, agentInput, agentRunning, handle, runAgent, selectedModelId, setAgentMentions, title])
 
   return {
     agentPanelOpen,

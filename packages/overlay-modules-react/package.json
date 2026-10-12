@@ -20,13 +20,19 @@
     "./notebook-editor.css": "./src/styles/notebook-editor.css",
     "./settings": "./src/settings.tsx",
     "./automations": "./src/automations.tsx",
-    "./shell": "./src/shell.tsx"
+    "./shell": "./src/shell.tsx",
+    "./blocknote.css": "./src/notes/blocknote.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@overlay/app-core": "file:../overlay-app-core",
+    "@overlay/note-doc": "file:../overlay-note-doc",
+    "@blocknote/core": "^0.55.0",
+    "@blocknote/react": "^0.55.0",
+    "@blocknote/shadcn": "^0.55.0",
+    "@blocknote/math-block": "^0.55.0",
     "@overlay/ui": "file:../overlay-ui"
   },
   "peerDependencies": {

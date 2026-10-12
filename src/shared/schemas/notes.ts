@@ -18,6 +18,10 @@ export const CreateNoteRequest = z.object({
 export const UpdateNoteRequest = CreateNoteRequest.partial().extend({
   ...AuthFields,
   noteId: z.string().min(1),
+  expectedUpdatedAt: z.number().optional(),
+  /** BlockNote document envelope (`{"v":1,"blocks":[...]}`) when the writer edits blocks. */
+  docJson: z.string().optional(),
+  docFormat: z.enum(['markdown', 'blocknote']).optional(),
 })
 
 export const DeleteNoteRequest = z.object({

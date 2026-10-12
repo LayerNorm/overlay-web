@@ -1613,6 +1613,10 @@ export default defineSchema({
     legacyOutputId: v.optional(v.string()),
     // Note tags (kind 'note' only).
     tags: v.optional(v.array(v.string())),
+    // Canonical BlockNote document for notes (kind 'note' only); `content`
+    // keeps the markdown projection for search, agents, and export.
+    docJson: v.optional(v.string()),
+    docFormat: v.optional(v.union(v.literal('markdown'), v.literal('blocknote'))),
     // Text too large for a Convex document: the full text is the object at
     // `r2Key`, and `content` holds a searchable prefix.
     textInObjectStore: v.optional(v.boolean()),

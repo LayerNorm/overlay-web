@@ -111,6 +111,8 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       content: body.content,
       tags: body.tags,
       expectedUpdatedAt: body.expectedUpdatedAt,
+      docJson: body.docJson,
+      docFormat: body.docFormat,
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
     })
