@@ -15,9 +15,9 @@ const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
     const config = getOverlayRuntimeConfigSync()
     return config.billing.provider === 'none'
   },
+  // The plan of the workspace the person is working in (falls back to their own when it has none).
   getPlanKind: async (userId) => {
-    const entitlements = await getOverlayServerContext().appData.repositories.billing
-      .getEntitlementsByServer({ userId })
+    const entitlements = await getOverlayServerContext().chatUsagePolicy.getEntitlements({ userId })
     return entitlements?.planKind === 'paid' ? 'paid' : 'free'
   },
 })

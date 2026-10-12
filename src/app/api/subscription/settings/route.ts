@@ -16,6 +16,9 @@ export async function GET(request: NextRequest) {
   }
 
   const response = await billingCustomerService.getBillingSettings({ userId: auth.userId })
+  // Plans belong to workspaces: report the plan of the workspace the person is working in when it has one.
+  const payer = await getOverlayServerContext().billingPayerResolver.resolve({ userId: auth.userId }).catch((_error) => null)
+  if (payer?.scope === 'workspace') return NextResponse.json({ ...response, planKind: 'paid' })
   return NextResponse.json(response)
 }
 

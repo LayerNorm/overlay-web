@@ -5,7 +5,7 @@ import { mutation, query, internalMutation, internalQuery, type MutationCtx, typ
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
-import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForSubscription } from '../files/lib/storageQuota'
+import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForUser } from '../files/lib/storageQuota'
 import { derivePlanAmountCents, derivePlanKind } from '../../src/shared/billing/billing-pricing'
 import { usageCountSubject } from '../../src/shared/billing/free-allowance'
 import {
@@ -361,7 +361,7 @@ async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
     creditsUsed: budgetUsedCents,
     creditsTotal: budgetTotalCents / 100,
     overlayStorageBytesUsed: getStorageBytesUsed(subscription),
-    overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
+    overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId, subscription),
     dailyUsage: planKind === 'free' ? weeklyUsage : {
       ask: dailyUsage?.askCount || 0,
       write: dailyUsage?.writeCount || 0,
@@ -580,7 +580,7 @@ export const getEntitlementsInternal = internalQuery({
       creditsUsed: subscription?.creditsUsed ?? 0,
       creditsTotal: budgetTotalCents / 100,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
-      overlayStorageBytesLimit: getStorageLimitForSubscription(subscription),
+      overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId, subscription),
     }
   }
 })

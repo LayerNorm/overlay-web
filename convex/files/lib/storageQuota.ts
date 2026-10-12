@@ -1,5 +1,6 @@
 import type { Doc } from '../../_generated/dataModel'
-import type { MutationCtx } from '../../_generated/server'
+import type { MutationCtx, QueryCtx } from '../../_generated/server'
+import { resolveWorkspaceBillingRollout, workspaceBillingRolloutConfigFromEnv } from '../../../src/shared/billing/workspace-billing-rollout'
 import {
   derivePlanAmountCents,
   derivePlanKind,
@@ -74,6 +75,45 @@ export function getStorageLimitForSubscription(subscription: Doc<'subscriptions'
   })
 }
 
+/**
+ * The paid plan of the workspace a person is working in (their active workspace, the same rule the free allowance
+ * uses), or null when that workspace has no active paid plan or workspace billing is off.
+ */
+async function activeWorkspacePlanAmountCents(ctx: QueryCtx | MutationCtx, userId: string): Promise<number | null> {
+  const preference = await ctx.db
+    .query('workspaceUserPreferences')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .first()
+  const workspaceId = preference?.activeWorkspaceId
+  if (!workspaceId) return null
+  if (!resolveWorkspaceBillingRollout(workspaceBillingRolloutConfigFromEnv(process.env), workspaceId).eligible) return null
+  const account = await ctx.db
+    .query('billingAccounts')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId))
+    .unique()
+  if (!account || account.status !== 'active') return null
+  const plan = await ctx.db
+    .query('billingAccountSubscriptions')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId))
+    .first()
+  return plan?.planKind === 'paid' ? plan.planAmountCents : null
+}
+
+/**
+ * A person's storage limit: their own plan's, raised to the workspace's when they are working in a workspace with a
+ * paid plan. Bytes are still counted per person.
+ */
+export async function getStorageLimitForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: string,
+  subscription: Doc<'subscriptions'> | null | undefined,
+): Promise<number> {
+  const personal = getStorageLimitForSubscription(subscription)
+  const workspacePlanCents = await activeWorkspacePlanAmountCents(ctx, userId)
+  if (workspacePlanCents === null) return personal
+  return Math.max(personal, getStorageLimitBytes({ planKind: 'paid', planAmountCents: workspacePlanCents }))
+}
+
 export async function applyStorageUsageDelta(ctx: SubscriptionCtx, userId: string, deltaBytes: number): Promise<Doc<'subscriptions'>> {
   const subscription = await getOrCreateSubscription(ctx, userId)
   const nextValue = Math.max(0, getStorageBytesUsed(subscription) + deltaBytes)
@@ -92,7 +132,7 @@ export async function ensureStorageAvailable(
   const subscription = await getOrCreateSubscription(ctx, userId)
   if (requiredAdditionalBytes <= 0) return subscription
   const nextValue = getStorageBytesUsed(subscription) + requiredAdditionalBytes
-  const limit = getStorageLimitForSubscription(subscription)
+  const limit = await getStorageLimitForUser(ctx, userId, subscription)
   if (nextValue > limit) {
     throw new StorageQuotaExceededError(
       `storage_limit_exceeded:${nextValue}:${limit}`

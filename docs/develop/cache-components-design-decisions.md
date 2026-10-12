@@ -25,6 +25,9 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 4. `/about` — `src/app/about/page.tsx` — Pure redirect to `/home`. Removed opt-out.
 5. `/pricing` — `src/app/(marketing)/pricing/page.tsx` — `getOverlayCapabilitiesSync()`
    reads `process.env` only. Removed opt-out.
+   Also reads the workspace-billing rollout env (`OVERLAY_FEATURE_WORKSPACE_WALLETS`, stage `general`)
+   to choose between the account-plan page (checkout) and the workspace pricing page; still
+   `process.env` only. `/pricing/preview` always renders the workspace page (noindex).
 
 ### Batch 2 — Root layout + home page (2 routes)
 

@@ -11,7 +11,7 @@ import {
   ensureStorageAvailable,
   getOrCreateSubscription,
   getStorageBytesUsed,
-  getStorageLimitForSubscription,
+  getStorageLimitForUser,
 } from './lib/storageQuota'
 import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../../src/shared/storage/storage-keys'
 
@@ -297,7 +297,7 @@ export const createUploadIntentByServer = mutation({
       getPendingUploadIntentBytes(ctx, args.userId),
     ])
     const nextReservedBytes = getStorageBytesUsed(subscription) + pendingBytes + declaredSizeBytes
-    const storageLimitBytes = getStorageLimitForSubscription(subscription)
+    const storageLimitBytes = await getStorageLimitForUser(ctx, args.userId, subscription)
     if (nextReservedBytes > storageLimitBytes) {
       throw new Error(`storage_limit_exceeded:${nextReservedBytes}:${storageLimitBytes}`)
     }

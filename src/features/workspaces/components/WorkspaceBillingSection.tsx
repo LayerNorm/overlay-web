@@ -8,7 +8,7 @@ import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
 
-const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000] as const
+const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000, 50_000] as const
 
 type BillingState =
   | { status: 'loading' }
