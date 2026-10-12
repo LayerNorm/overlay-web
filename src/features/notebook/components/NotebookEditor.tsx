@@ -142,7 +142,13 @@ export default function NotebookEditor({
       onModelChange={(modelId) => {
         try { localStorage.setItem(ACT_MODEL_KEY, modelId) } catch { /* storage may be unavailable */ }
       }}
-      onNavigateNote={(noteId) => router.replace(`/app/notes?id=${encodeURIComponent(noteId)}`)}
+      onNavigateNote={(noteId) => {
+        // Preserve non-id params (e.g. ?editor=blocks) across note opens;
+        // openNote calls this on every open, including the initial load.
+        const params = new URLSearchParams(searchParams?.toString() ?? '')
+        params.set('id', noteId)
+        router.replace(`/app/notes?${params.toString()}`)
+      }}
       onBackToFiles={() => router.push('/app/files')}
       renderExportMenu={({ note, title, content }) => (
         <>
