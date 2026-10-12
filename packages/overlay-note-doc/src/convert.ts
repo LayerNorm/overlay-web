@@ -1,8 +1,8 @@
 import { BlockNoteEditor, type PartialBlock } from '@blocknote/core'
 import { noteMarkdownToEditorHtml } from '@overlay/app-core/note-markdown'
-import { overlayNoteSchema } from './schema.js'
-import { legacyHtmlToBlocksHtml } from './legacy.js'
-import { stringifyNoteDoc } from './envelope.js'
+import { overlayNoteSchema } from './schema'
+import { legacyHtmlToBlocksHtml } from './legacy'
+import { stringifyNoteDoc } from './envelope'
 
 export interface NoteDocConverter {
   tryParseHTMLToBlocks(

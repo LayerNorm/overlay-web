@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import test, { after } from 'node:test'
 
-import { legacyHtmlToBlocksHtml } from './legacy.js'
-import { parseNoteDocJson, stringifyNoteDoc } from './envelope.js'
+import { legacyHtmlToBlocksHtml } from './legacy'
+import { parseNoteDocJson, stringifyNoteDoc } from './envelope'
 import {
   disposeServerConverter,
   markdownToNoteDocServer,
   noteDocToMarkdownServer,
-} from './server.js'
+} from './server'
 
 after(async () => {
   await disposeServerConverter()
