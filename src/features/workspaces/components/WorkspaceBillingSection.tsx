@@ -318,7 +318,7 @@ function CheckoutActions({
           <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspaceId, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
         </BillingActionCard> : null}
         <BillingActionCard title="One-time top-up" description="Add credits to this workspace now. Like the monthly credit, it does not carry over to next month.">
-          <DollarAmountInput label="Workspace top-up" valueCents={topUpAmountCents} minCents={TOP_UP_MIN_AMOUNT_CENTS} maxCents={TOP_UP_MAX_AMOUNT_CENTS} suffix="in credits" onChange={setTopUpAmountCents} />
+          <DollarAmountInput label="Workspace top-up" valueCents={topUpAmountCents} minCents={TOP_UP_MIN_AMOUNT_CENTS} maxCents={TOP_UP_MAX_AMOUNT_CENTS} suffix="credit" onChange={setTopUpAmountCents} />
           <Button size="sm" variant="ghost" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('topup', () => client.createBillingTopUp(workspaceId, { amountCents: topUpAmountCents, ...currentLegalAcceptancePayload() }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
         </BillingActionCard>
       </div>
