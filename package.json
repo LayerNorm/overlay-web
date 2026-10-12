@@ -257,7 +257,7 @@
     "html2canvas": "^1.4.1",
     "jose": "^6.2.12",
     "jspdf": "^4.2.1",
-    "katex": "^0.16.38",
+    "katex": "^0.18.2",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",

@@ -35,7 +35,7 @@
     "@overlay/chat-core": "file:../overlay-chat-core",
     "@overlay/modules-react": "file:../overlay-modules-react",
     "@overlay/ui": "file:../overlay-ui",
-    "katex": "^0.16.11",
+    "katex": "^0.18.2",
     "lucide-react": "^0.575.0",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
