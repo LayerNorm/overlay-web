@@ -14,6 +14,7 @@ import {
 } from '../../shared/config'
 import { overlayRuntimeConfigDefaults } from '../../overlay.config'
 import { configOverridesFromEnv } from './env-overrides'
+import { deploymentEnv } from '@/server/env/deployment-env'
 
 export { configOverridesFromEnv } from './env-overrides'
 
@@ -44,7 +45,7 @@ let cachedRuntimeConfig: OverlayRuntimeConfig | null = null
 export async function loadOverlayConfig(
   options: LoadOverlayConfigOptions = {},
 ): Promise<OverlayRuntimeConfig> {
-  const env = options.env ?? process.env
+  const env = options.env ?? deploymentEnv()
   const defaultConfig = options.defaultConfig ?? overlayRuntimeConfigDefaults
   const [fileConfig, remoteConfig] = await Promise.all([
     readJsonConfigFile(resolveConfigFilePath(options, env), options.cwd),
@@ -60,7 +61,7 @@ export async function loadOverlayConfig(
 export function loadOverlayConfigSync(
   options: Omit<LoadOverlayConfigOptions, 'fetcher' | 'remoteConfigUrl'> = {},
 ): OverlayRuntimeConfig {
-  const env = options.env ?? process.env
+  const env = options.env ?? deploymentEnv()
   const defaultConfig = options.defaultConfig ?? overlayRuntimeConfigDefaults
   const remoteUrl = readEnv(env, 'OVERLAY_CONFIG_URL')
   if (remoteUrl) {

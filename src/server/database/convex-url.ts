@@ -30,6 +30,10 @@ export const CONVEX_URL_ENV_KEYS = {
 export function prefersDevConvexUrl(
   env: Record<string, string | undefined>,
 ): boolean {
+  // Hosted previews and the new dedicated staging backend receive their URL
+  // from the deploy step; they must never fall back to the shared dev backend.
+  if (env.OVERLAY_DEPLOYMENT_ENV === 'preview' || env.CONVEX_PREVIEW === '1') return false
+  if (env.OVERLAY_DEPLOYMENT_ENV === 'staging' && env.OVERLAY_RELEASE_LANE === 'staging') return false
   if (env.NODE_ENV === 'development') return true
 
   const explicit = env.OVERLAY_DEPLOYMENT_ENV?.trim().toLowerCase()
@@ -52,7 +56,9 @@ export function resolveConvexUrl(
   env: Record<string, string | undefined>,
   options: { isDev?: boolean } = {},
 ): ConvexUrlResolution {
-  const preferDev = options.isDev ?? prefersDevConvexUrl(env)
+  const isolated = env.OVERLAY_DEPLOYMENT_ENV === 'preview' || env.CONVEX_PREVIEW === '1'
+    || (env.OVERLAY_DEPLOYMENT_ENV === 'staging' && env.OVERLAY_RELEASE_LANE === 'staging')
+  const preferDev = isolated ? false : options.isDev ?? prefersDevConvexUrl(env)
   const candidates: Array<[string, string | undefined]> = preferDev
     ? [
       [CONVEX_URL_ENV_KEYS.dev, env[CONVEX_URL_ENV_KEYS.dev]],

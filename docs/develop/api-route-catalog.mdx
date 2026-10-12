@@ -1,10 +1,10 @@
 # Web API route catalog
 
-This is the complete route-entry-point inventory for the web app as of 2026-08-30. It is intended as a working catalog for monitoring, security review, contract testing, and incident response.
+This is the complete route-entry-point inventory for the web app as of 2026-10-12. It is intended as a working catalog for monitoring, security review, contract testing, and incident response.
 
 ## Scope and reading guide
 
-- Source of truth for route existence: every `src/app/api/**/route.ts` file. The inventory contains 196 route entry points: 34 non-versioned routes and 162 `/api/v1` routes. Test files are not endpoints.
+- Source of truth for route existence: every `src/app/api/**/route.ts` file. The inventory contains 210 route entry points: 39 non-versioned routes and 171 `/api/v1` routes. Test files are not endpoints.
 - Next.js dynamic segments are shown in the same notation as the source: `[id]` and `[...path]`.
 - Most user-facing `/api/v1` requests pass through `src/app/api/v1/_utils/bff.ts`, which authenticates the caller, parses the request, resolves workspace context, applies route policy/idempotency/rate-limit behavior, and delegates to the server implementation. Direct routes and internal callbacks are marked below; the per-route file list names the transport entry point and the implementation or direct service files.
 - `src/server/app-api/v1/**/route.ts` is server-only domain logic, not a second public URL. Where the app route delegates directly to another app route, that is called out explicitly.
@@ -13,6 +13,7 @@ This is the complete route-entry-point inventory for the web app as of 2026-08-3
 
 ## 1. Authentication, sessions, account, and cross-surface handoff
 
+- `POST /api/auth/preview-login` — Preview-only QA authentication. Requires both preview deployment markers, a canonical PR origin, Overlay's sandbox WorkOS client, a configured identity, and a timing-safe header secret check before provider access. Authenticates the server-configured sandbox QA account, verifies its user ID before creating the ordinary encrypted session, rate-limits authenticated attempts, and returns no tokens. Returns 404 on staging/production or invalid configuration. Files: `src/app/api/auth/preview-login/route.ts`; `src/server/auth/preview-login.ts`; `src/server/auth/preview-login-policy.ts`; `src/shared/web/preview-origin.ts`.
 - `POST /api/account/delete` — Authenticates the current web user, verifies same-origin confirmation, rate-limits the operation, deletes account data through the configured provider, and clears the session. Files: `src/app/api/account/delete/route.ts`; `src/server/account/AccountDeletionService.ts`; `src/server/auth/app-api-auth.ts`; `src/server/auth/session.ts`; `src/server/security/rate-limit.ts`.
 - `GET /api/auth/callback` — Completes the configured browser SSO callback after consuming one-time authorization state, upserts the user, and redirects to the requested web or native handoff destination. Files: `src/app/api/auth/callback/route.ts`; `src/server/auth/actions.ts`; `src/server/auth/session.ts`; `src/server/auth/session-transfer-crypto.ts`; `src/server/database/convex.ts`.
 - `GET /api/auth/convex-token` — Exchanges the authenticated web session’s access token for a browser-scoped Convex access token. Files: `src/app/api/auth/convex-token/route.ts`; `src/server/auth/browser-convex-token.ts`; `src/server/auth/session.ts`.

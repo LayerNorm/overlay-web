@@ -1,25 +1,16 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import { deploymentEnv } from '@/server/env/deployment-env'
+import { resolveConvexUrl } from './convex-url'
 // Simple server-side Convex HTTP client for the landing page.
 // Browser code must use ConvexReactClient or typed Next API routes.
 
 // Use dev Convex URL in development, production URL in production
 const IS_DEV = process.env.NODE_ENV === 'development'
 
-function resolveConvexUrl(): { url: string | undefined; source: string } {
-  if (IS_DEV && process.env.DEV_NEXT_PUBLIC_CONVEX_URL) {
-    return { url: process.env.DEV_NEXT_PUBLIC_CONVEX_URL, source: 'DEV_NEXT_PUBLIC_CONVEX_URL' }
-  }
-
-  if (process.env.NEXT_PUBLIC_CONVEX_URL) {
-    return { url: process.env.NEXT_PUBLIC_CONVEX_URL, source: 'NEXT_PUBLIC_CONVEX_URL' }
-  }
-
-  return { url: undefined, source: 'unset' }
-}
-
-const { url: CONVEX_URL, source: CONVEX_URL_SOURCE } = resolveConvexUrl()
+const { url: CONVEX_URL, source: CONVEX_URL_SOURCE, invalid } = resolveConvexUrl(deploymentEnv())
+if (invalid) throw new Error(invalid)
 const IS_BROWSER = typeof window !== 'undefined'
 
 if (!CONVEX_URL && !IS_BROWSER) {

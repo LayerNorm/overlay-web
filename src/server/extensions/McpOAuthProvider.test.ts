@@ -70,7 +70,7 @@ test('state() returns the stored session id so the callback can correlate the fl
 })
 
 test('losing the token compare-and-set adopts the winner rather than clobbering it', async () => {
-  const winner: McpOAuthTokens = { accessToken: 'winner-access', refreshToken: 'winner-refresh' }
+  const winner: McpOAuthTokens = { accessToken: 'winner-access', refreshToken: 'winner-refresh', issuer: 'https://auth.monid.ai/' }
   const repository = fakeRepository({
     get: async () => ({ oauthTokenVersion: 9, oauthTokens: winner }) as never,
     updateOAuthState: async () => false,
@@ -90,8 +90,8 @@ test('winning the compare-and-set advances the version for the next write', asyn
   const repository = fakeRepository()
   const subject = provider(repository, { initialTokenVersion: 4 })
 
-  await subject.saveTokens({ access_token: 'a1' })
-  await subject.saveTokens({ access_token: 'a2' })
+  await subject.saveTokens({ access_token: 'a1', issuer: 'https://auth.monid.ai/' })
+  await subject.saveTokens({ access_token: 'a2', issuer: 'https://auth.monid.ai/' })
 
   const versions = (repository as unknown as { calls: OAuthStateArgs[] }).calls
     .map((call) => call.expectedTokenVersion)
@@ -103,10 +103,10 @@ test('DCR results are stored with the client secret sealed alongside the id', as
   const repository = fakeRepository()
   const subject = provider(repository)
 
-  await subject.saveClientInformation({ client_id: 'cid', client_secret: 'csecret' })
+  await subject.saveClientInformation({ client_id: 'cid', client_secret: 'csecret', issuer: 'https://auth.monid.ai/' })
 
   const saved = (repository as unknown as { calls: OAuthStateArgs[] }).calls.at(-1)
-  assert.deepEqual(saved?.client, { clientId: 'cid', clientSecret: 'csecret', registered: true })
+  assert.deepEqual(saved?.client, { clientId: 'cid', clientSecret: 'csecret', registered: true, issuer: 'https://auth.monid.ai/' })
   assert.equal(subject.clientInformation()?.client_id, 'cid')
 })
 
@@ -120,6 +120,35 @@ test('token shape converts between relative expires_in and absolute expiry', () 
 
   // Non-expiring tokens must not gain a bogus expires_in.
   assert.equal(toSdkTokens({ accessToken: 'a' }).expires_in, undefined)
+})
+
+test('issuer bindings survive encrypted repository and SDK conversions', async () => {
+  const issuer = 'https://auth.monid.ai/'
+  const repository = fakeRepository()
+  const subject = provider(repository)
+  await subject.saveClientInformation({ client_id: 'cid', client_secret: 'fixture', issuer })
+  await subject.saveTokens({ access_token: 'access', refresh_token: 'refresh', issuer })
+  assert.equal(subject.clientInformation()?.issuer, issuer)
+  assert.equal(subject.tokens()?.issuer, issuer)
+  const saved = (repository as unknown as { calls: OAuthStateArgs[] }).calls
+  assert.equal(saved[0].client?.issuer, issuer)
+  assert.equal(saved[1].tokens?.issuer, issuer)
+  assert.equal(toSdkTokens(fromSdkTokens({ access_token: 'a', issuer })).issuer, issuer)
+})
+
+test('legacy credentials without issuer are withheld until the user reconnects', () => {
+  const subject = provider(fakeRepository(), {
+    initialClient: { clientId: 'old', clientSecret: 'old-secret' },
+    initialTokens: { accessToken: 'old-access', refreshToken: 'old-refresh' },
+  })
+  assert.equal(subject.clientInformation(), undefined)
+  assert.equal(subject.tokens(), undefined)
+  const bound = provider(fakeRepository(), {
+    initialClient: { clientId: 'cid', clientSecret: 'fixture', issuer: 'https://auth.monid.ai/' },
+    initialTokens: { accessToken: 'access', issuer: 'https://auth.monid.ai/' },
+  })
+  assert.equal(bound.clientInformation()?.client_id, 'cid')
+  assert.equal(bound.tokens()?.access_token, 'access')
 })
 
 test('the redirect URI is fixed so DCR registrations stay valid across surfaces', () => {

@@ -10,6 +10,19 @@ import {
 
 const DEPLOYMENT = 'https://different-caiman-77.convex.cloud'
 
+test('isolated previews and dedicated staging never select the shared dev backend', () => {
+  for (const lane of [
+    { OVERLAY_DEPLOYMENT_ENV: 'preview' }, { CONVEX_PREVIEW: '1' },
+    { OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_RELEASE_LANE: 'staging' },
+  ]) {
+    const env = { ...lane, VERCEL_ENV: 'preview',
+      DEV_NEXT_PUBLIC_CONVEX_URL: DEPLOYMENT,
+      NEXT_PUBLIC_CONVEX_URL: 'https://isolated.convex.cloud' }
+    assert.equal(resolveConvexUrl(env, { isDev: true }).url, 'https://isolated.convex.cloud')
+    assert.deepEqual(resolveConvexUrl({ ...env, NEXT_PUBLIC_CONVEX_URL: undefined }), { source: 'unset' })
+  }
+})
+
 test('a URL pasted with whitespace, quotes, or a trailing slash still resolves', () => {
   for (const raw of [
     `  ${DEPLOYMENT}  `,

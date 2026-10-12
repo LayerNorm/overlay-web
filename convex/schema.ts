@@ -845,6 +845,7 @@ export default defineSchema({
     .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_userId', ['workspaceId', 'userId'])
+    .index('by_workspaceId_userId_name', ['workspaceId', 'userId', 'name'])
     .index('by_userId', ['userId'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_enabled', ['userId', 'enabled'])

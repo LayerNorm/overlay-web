@@ -1,6 +1,7 @@
 # Codex subscription, experimental agents, and E2B
 
-Phase 6 of `docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`. Three independent parts.
+Credential brokerage, experimental agent adapters, and the E2B self-hosting
+adapter are three independent parts of the connected-agent system.
 
 ## A. Codex on a ChatGPT subscription (credential broker)
 

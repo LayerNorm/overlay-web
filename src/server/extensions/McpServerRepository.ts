@@ -16,6 +16,8 @@ export type McpAuthConfig = {
 /** Sealed at rest with McpCredentialCipher; never returned by list APIs. */
 export type McpOAuthTokens = {
   accessToken: string
+  /** Authorization server binding supplied by the MCP SDK; sealed with the tokens. */
+  issuer?: string
   refreshToken?: string
   /** Epoch ms. Absent when the server issues non-expiring tokens. */
   expiresAt?: number
@@ -26,6 +28,8 @@ export type McpOAuthTokens = {
 /** Sealed at rest. `clientId` is stored separately in the clear because it is not a secret. */
 export type McpOAuthClient = {
   clientId: string
+  /** Authorization server binding supplied by the MCP SDK; sealed with the client. */
+  issuer?: string
   clientSecret?: string
   /** Set for DCR registrations so we can tell them apart from user-supplied credentials. */
   registered?: boolean

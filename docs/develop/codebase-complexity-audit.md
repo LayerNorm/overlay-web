@@ -18,6 +18,20 @@ sprawl, an unguarded `features/workspaces` kernel, one 1520-line route, ~500
 lines of provably dead code, and a handful of forked duplicates from the
 package-extraction migration.
 
+- **Release workflow prerequisite (2026-10-12):** moved web file upload transport
+  and response error parsing from `KnowledgeView` into `webKnowledgeFilePort`.
+  The host again fits the existing knowledge-surface boundary; behavior is unchanged.
+
+- **Release workflow baseline audit (2026-10-12):** the complexity gate failed
+  on pristine `origin/main` at `c4900589eda3cf1225c6fee4e0d18ad013c24e5a`.
+  Regenerated its legacy size/function inventory from an archive of that exact
+  commit, before applying the migration diff; all thresholds remain unchanged.
+  The discovery compatibility route now delegates to the canonical handler,
+  removing the duplicated implementation rather than allowing the duplicate.
+  Workflow SDK bundles under `.well-known/workflow/` are excluded from source
+  metrics; their authored `src/server` modules remain measured. This prevents
+  a build's ignored compiler output from changing the source ratchet result.
+
 ## 1. Root folder: what stays, what moves, what dies
 
 99 entries at root. The rule going forward: **only toolchain contracts and

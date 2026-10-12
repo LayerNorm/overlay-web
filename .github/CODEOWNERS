@@ -1,2 +1,16 @@
 # Default review owner for product, infrastructure, billing, and security changes.
 * @DevelopedByDev
+
+# Protected areas. The sole owner cannot approve their own PR; enable mandatory
+# code-owner approval only after another eligible maintainer joins.
+/convex/schema.ts @DevelopedByDev
+/convex/migrations/ @DevelopedByDev
+/src/server/auth/ @DevelopedByDev
+/src/app/api/auth/ @DevelopedByDev
+/src/server/billing/ @DevelopedByDev
+/src/app/api/webhooks/ @DevelopedByDev
+/src/server/authorization/ @DevelopedByDev
+/vercel.json @DevelopedByDev
+/scripts/vercel-*.sh @DevelopedByDev
+/scripts/release/ @DevelopedByDev
+/.github/ @DevelopedByDev

@@ -367,6 +367,9 @@ function collectMetrics() {
   const allFiles = INCLUDE_ROOTS
     .flatMap((entry) => walk(path.join(ROOT, entry)))
     .filter((filePath) => CODE_EXTENSIONS.has(path.extname(filePath)))
+    // Workflow SDK emits these bundles during builds (including ignored files).
+    // Measure their authored modules under src/server instead of compiler output.
+    .filter((filePath) => !relativePath(filePath).startsWith('src/app/.well-known/workflow/'))
 
   const files = []
   const functions = []

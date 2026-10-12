@@ -2,18 +2,8 @@ name: Docs
 
 on:
   pull_request:
-    paths:
-      - '.github/workflows/docs.yml'
-      - 'docs/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'scripts/ci/check-docs-health.ts'
-      - 'scripts/ci/generate-web-api-openapi.ts'
-      - 'scripts/ci/run-mint.mjs'
-      - 'src/app/api/v1/**'
-      - 'src/shared/schemas/**'
-      - 'SECURITY.md'
-      - 'README.md'
+  merge_group:
+    types: [checks_requested]
   push:
     branches:
       - main

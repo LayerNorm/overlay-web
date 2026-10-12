@@ -1,16 +1,17 @@
 # Compact web API route catalog
 
-A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 196 routes as the full `api-route-catalog.mdx` but omits the per-route descriptions and implementation file lists.
+A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 210 routes as the full `api-route-catalog.mdx` but omits the per-route descriptions and implementation file lists.
 
-- **Total routes:** 196
-- **Non-versioned routes:** 34
-- **`/api/v1` routes:** 162
+- **Total routes:** 210
+- **Non-versioned routes:** 39
+- **`/api/v1` routes:** 171
 - **Verification status:** 0 missing, 0 stale, 0 HTTP-method mismatches against the route filesystem.
 
 For a description of what each route does and its associated implementation files, see the [full web API route catalog](./api-route-catalog.mdx).
 
 ## Authentication, sessions, account
 
+- `POST /api/auth/preview-login`
 - `POST /api/account/delete`
 - `DELETE, GET, POST /api/agent-mcp`
 - `GET, POST /api/agent-gateway/[provider]/[...path]`

@@ -3,6 +3,8 @@ name: CLA Signatures
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
   issue_comment:
     types: [created]
 
@@ -16,7 +18,7 @@ permissions:
 jobs:
   cla:
     name: CLA Signatures
-    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     runs-on: ubuntu-latest
     steps:
       - name: Record and verify CLA signatures
@@ -37,6 +39,63 @@ jobs:
             ]);
 
             const { owner, repo } = context.repo;
+            // Merge-group checks verify existing signatures; this path never
+            // records a legal signature or posts a signature comment.
+            if (context.eventName === 'merge_group') {
+              const group = context.payload.merge_group;
+              if (!group || !/^[a-f0-9]{40}$/.test(group.base_sha || '') ||
+                  !/^[a-f0-9]{40}$/.test(group.head_sha || '') ||
+                  group.base_ref !== 'refs/heads/main') {
+                core.setFailed('Invalid merge-group provenance.');
+                return;
+              }
+              const { registry } = await loadRegistry();
+              const signed = signedLoginsForCurrentVersion(registry.signatures);
+              const missing = new Set();
+              let inspected = 0;
+              for (let page = 1; ; page++) {
+                const { data } = await github.rest.repos.compareCommitsWithBasehead({
+                  owner, repo, basehead: `${group.base_sha}...${group.head_sha}`,
+                  per_page: 100, page,
+                });
+                if (!['ahead', 'identical'].includes(data.status)) {
+                  core.setFailed('Merge-group head is not descended from its base.');
+                  return;
+                }
+                for (const commit of data.commits) {
+                  inspected++;
+                  const login = commit.author?.login || commit.committer?.login;
+                  if (login && login !== 'web-flow') {
+                    if (!isAllowlisted(login) && !signed.has(login.toLowerCase())) missing.add(login);
+                    continue;
+                  }
+                  // The event-authenticated head is GitHub's synthetic merge.
+                  if (commit.sha === group.head_sha && commit.parents?.length >= 2) continue;
+                  const associated = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+                    owner, repo, commit_sha: commit.sha, per_page: 100,
+                  });
+                  let exempt = false;
+                  for (const pr of associated) {
+                    if (pr.base?.repo?.full_name !== `${owner}/${repo}` || !isAllowlisted(pr.user?.login)) continue;
+                    const commits = await github.paginate(github.rest.pulls.listCommits, {
+                      owner, repo, pull_number: pr.number, per_page: 100,
+                    });
+                    if (commits.some(candidate => candidate.sha === commit.sha)) { exempt = true; break; }
+                  }
+                  if (!exempt) missing.add(`unidentified commit ${commit.sha.slice(0, 12)}`);
+                }
+                if (data.commits.length < 100) break;
+              }
+              if (inspected === 0 || missing.size) {
+                core.setFailed(missing.size
+                  ? `Merge-group CLA signatures missing: ${[...missing].join(', ')}`
+                  : 'Merge-group contained no verifiable commits.');
+                return;
+              }
+              core.info(`Verified existing CLA signatures for ${inspected} merge-group commits.`);
+              return;
+            }
+
             const pullNumber =
               context.payload.pull_request?.number ?? context.payload.issue?.number;
             if (!pullNumber) {

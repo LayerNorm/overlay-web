@@ -9,6 +9,10 @@ Overlay is an MCP server for the person's own workspace, so ChatGPT, Claude (web
 - **Personal tokens** for local agents that skip OAuth: Settings → Connected apps → Create a token (`ovmcu_p_…`, up to 365 days, shown once), sent as `Authorization: Bearer`.
 - An unauthenticated or invalid call is 401 with `WWW-Authenticate: Bearer resource_metadata="…"`, which is how an OAuth-capable client finds where to sign in.
 
+`/.well-known/openid-configuration` re-exports the canonical
+`oauth-authorization-server` route's GET/OPTIONS handlers. Both discovery
+addresses use the same request-time configuration and preflight behavior.
+
 ## What a connection is
 
 Consent binds one person, one workspace (personal or team), and one **access level**:
