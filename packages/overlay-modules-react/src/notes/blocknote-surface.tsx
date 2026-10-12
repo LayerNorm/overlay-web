@@ -11,11 +11,13 @@ import {
   type MutableRefObject,
 } from 'react'
 import { BlockNoteView } from '@blocknote/shadcn'
-import { useCreateBlockNote } from '@blocknote/react'
+import {
+  useCreateBlockNote,
+  SuggestionMenuController,
+} from '@blocknote/react'
 import type { PartialBlock } from '@blocknote/core'
 import {
   getClientConverter,
-  overlayNoteSchema,
   parseNoteDocJson,
   stringifyNoteDoc,
 } from '@overlay/note-doc'
@@ -31,6 +33,12 @@ import {
 } from './editor-handle'
 import type { NotebookEditorMediaAdapter } from './editor'
 import { readNoteOutbox } from './notes-outbox'
+import { noteSchema } from './bn-blocks'
+import {
+  getMentionMenuItems,
+  getOverlaySlashMenuItems,
+  type NoteMentionProvider,
+} from './bn-menus'
 
 function useIsDarkMode(): boolean {
   const [dark, setDark] = useState(
@@ -70,6 +78,7 @@ export function BlockNoteSurface({
   lifecycleController,
   titleRef,
   mediaRef,
+  mentionProvider,
   onReady,
   onHydrated,
 }: {
@@ -77,6 +86,7 @@ export function BlockNoteSurface({
   lifecycleController: MutableRefObject<NotebookEditorController | null>
   titleRef: MutableRefObject<string>
   mediaRef: MutableRefObject<NotebookEditorMediaAdapter | undefined>
+  mentionProvider?: NoteMentionProvider
   onReady: (handle: NotebookEditorHandle | null) => void
   onHydrated?: (note: NotebookNote) => void
 }) {
@@ -97,7 +107,7 @@ export function BlockNoteSurface({
 
   const editor = useCreateBlockNote(
     {
-      schema: overlayNoteSchema(),
+      schema: noteSchema(),
       initialContent,
       uploadFile: async (file: File) => {
         const persisted = await mediaRef.current?.persistImage(file)
@@ -126,11 +136,45 @@ export function BlockNoteSurface({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor])
 
+  const slashItems = useMemo(
+    () => (query: string) =>
+      Promise.resolve(
+        getOverlaySlashMenuItems(editor as never).filter((item) => {
+          const hay = [item.title, ...(item.aliases ?? [])]
+            .join(' ')
+            .toLowerCase()
+          return query.trim() ? hay.includes(query.trim().toLowerCase()) : true
+        }),
+      ),
+    [editor],
+  )
+
+  const mentionItems = useMemo(
+    () => async (query: string) => {
+      if (!mentionProvider) return []
+      return getMentionMenuItems(mentionProvider, query, (item) => {
+        editor.insertInlineContent([
+          {
+            type: 'mention',
+            props: {
+              mentionType: item.type,
+              mentionId: item.id,
+              label: item.name,
+            },
+          } as never,
+          ' ',
+        ])
+      })
+    },
+    [mentionProvider, editor],
+  )
+
   return (
     <div className="bn-surface app-note-editor h-full">
       <BlockNoteView
         editor={editor}
         theme={dark ? 'dark' : 'light'}
+        slashMenu={false}
         onChange={() => {
           if (!lifecycleController.current) return
           const docJson = stringifyNoteDoc(
@@ -145,7 +189,20 @@ export function BlockNoteSurface({
             docJson,
           })
         }}
-      />
+      >
+        <SuggestionMenuController
+          triggerCharacter="/"
+          getItems={slashItems}
+          onItemClick={(item) => item.onItemClick?.()}
+        />
+        {mentionProvider ? (
+          <SuggestionMenuController
+            triggerCharacter="@"
+            getItems={mentionItems}
+            onItemClick={(item) => item.onItemClick?.()}
+          />
+        ) : null}
+      </BlockNoteView>
     </div>
   )
 }

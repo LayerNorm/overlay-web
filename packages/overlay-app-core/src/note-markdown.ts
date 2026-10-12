@@ -320,7 +320,14 @@ const noteSanitizeSchema: Schema = {
   ...defaultSchema,
   clobberPrefix: '',
   tagNames: [...(defaultSchema.tagNames ?? []), 'u', 'mark', 'iframe', 'span', 'div'],
-  protocols: { ...defaultSchema.protocols, src: ['http', 'https', 'data'] },
+  protocols: {
+    ...defaultSchema.protocols,
+    src: ['http', 'https', 'data'],
+    // Mentions serialize as overlay://<type>/<id> links inside the markdown
+    // projection; keep them through the sanitize pass.
+    href: [...(defaultSchema.protocols?.href ?? []), 'overlay'],
+  },
+  allowDataAttributes: true,
   attributes: {
     ...defaultSchema.attributes,
     span: ['dataType', 'dataLatex'],

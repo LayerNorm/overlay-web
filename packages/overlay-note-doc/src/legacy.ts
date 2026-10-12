@@ -5,6 +5,8 @@
  * only: everything here is idempotent and only touches known legacy patterns.
  */
 
+import { iconForAlertTag } from './blocks'
+
 const MARK_OPEN_REGEX = /<mark[^>]*>/gi
 const ATTR_COLOR_REGEX = /data-color="([^"]+)"/i
 const ATTR_STYLE_REGEX = /style="([^"]*)"/i
@@ -62,16 +64,26 @@ export function legacyHtmlToBlocksHtml(html: string): string {
   )
 
   // Legacy YouTube embeds stored as <div data-youtube-video><iframe> become
-  // video blocks (BlockNote parses <video src>).
+  // embed blocks (parsed via <figure data-embed-url>).
   out = out.replace(
     YOUTUBE_WRAPPER_REGEX,
-    (_m, _pre: string, src: string) => `<p><video src="${src}"></video></p>`,
+    (_m, _pre: string, src: string) =>
+      `<figure data-embed-url="${src}"></figure>`,
   )
 
-  // Standalone youtube embed iframes (allowed by the sanitizer) -> video.
+  // Standalone youtube embed iframes (allowed by the sanitizer) -> embed.
   out = out.replace(
     /<iframe([^>]*)src="(https:\/\/www\.youtube(?:-nocookie)?\.com\/embed\/[^"]+)"([^>]*)>\s*<\/iframe>/gi,
-    (_m, _a: string, src: string) => `<video src="${src}"></video>`,
+    (_m, _a: string, src: string) =>
+      `<figure data-embed-url="${src}"></figure>`,
+  )
+
+  // GFM alert blockquotes (`> [!NOTE] text`) -> callout blocks. Only
+  // single-paragraph alerts map cleanly onto inline callout content.
+  out = out.replace(
+    /<blockquote[^>]*>\s*<p[^>]*>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO)\]\s*([\s\S]*?)<\/p>\s*<\/blockquote>/gi,
+    (_m, tag: string, inner: string) =>
+      `<div data-callout data-callout-icon="${iconForAlertTag(tag)}">${inner.trim()}</div>`,
   )
 
   // Sanitized task items carry data-type/data-checked but no <input>; inject a

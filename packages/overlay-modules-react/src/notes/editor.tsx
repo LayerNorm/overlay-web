@@ -78,6 +78,9 @@ export interface NotebookEditorMediaAdapter {
   persistImage(file: File): Promise<{ src: string; alt?: string }>
 }
 
+export type { NoteMentionProvider } from './bn-menus'
+import type { NoteMentionProvider } from './bn-menus'
+
 export interface NotebookAgentComposerRenderProps {
   value: string
   disabled: boolean
@@ -138,6 +141,8 @@ export interface CanonicalNotebookEditorProps {
   renderMarkdown?(text: string, streaming: boolean): ReactNode
   logo?: ReactNode
   media?: NotebookEditorMediaAdapter
+  /** Powers @-mention suggestions inside the BlockNote surface. */
+  mentionProvider?: NoteMentionProvider
   focusRequest?: number
   contentContainerRef?: Ref<HTMLDivElement>
   externalInsertion?: { id: string; text: string }
@@ -360,6 +365,7 @@ function NotebookEditorBody({
   slashMenu,
   editor,
   editorMode,
+  mentionProvider,
   onSurfaceReady,
   onHydrated,
   showNotesSidebar,
@@ -376,6 +382,7 @@ function NotebookEditorBody({
   slashMenu: SlashMenuApi
   editor: TiptapEditor
   editorMode: 'tiptap' | 'blocknote'
+  mentionProvider?: NoteMentionProvider
   onSurfaceReady: (handle: NotebookEditorHandle | null) => void
   onHydrated?: (note: NotebookNote) => void
   showNotesSidebar?: boolean
@@ -423,6 +430,7 @@ function NotebookEditorBody({
                     lifecycleController={lifecycle.lifecycleController}
                     titleRef={lifecycle.titleRef}
                     mediaRef={lifecycle.mediaRef}
+                    mentionProvider={mentionProvider}
                     onReady={onSurfaceReady}
                     onHydrated={onHydrated}
                   />
@@ -627,6 +635,7 @@ export function CanonicalNotebookEditor({
   renderMarkdown,
   logo,
   media,
+  mentionProvider,
   focusRequest,
   contentContainerRef,
   externalInsertion,
@@ -812,6 +821,7 @@ export function CanonicalNotebookEditor({
         slashMenu={slashMenu}
         editor={mode === 'tiptap' ? editor : null}
         editorMode={mode}
+        mentionProvider={mentionProvider}
         onSurfaceReady={setBlocknoteHandle}
         onHydrated={onHydrated}
         showNotesSidebar={showNotesSidebar}

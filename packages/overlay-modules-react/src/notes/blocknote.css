@@ -47,3 +47,134 @@
 .bn-surface .bn-block-content[data-content-type='checkListItem'] input[type='checkbox'] {
   accent-color: var(--foreground);
 }
+
+/* --- Callout -------------------------------------------------------- */
+
+.bn-surface .bn-callout {
+  display: flex;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.bn-surface .bn-callout-icon {
+  display: inline-flex;
+  align-items: flex-start;
+  padding-top: 0.2rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.bn-surface .bn-callout-info .bn-callout-icon { color: #4a7fb5; }
+.bn-surface .bn-callout-tip .bn-callout-icon { color: #5a9367; }
+.bn-surface .bn-callout-warning .bn-callout-icon { color: #b5883c; }
+.bn-surface .bn-callout-content { flex: 1; min-width: 0; }
+
+/* --- Embed ---------------------------------------------------------- */
+
+.bn-surface .bn-embed {
+  margin: 0;
+}
+
+.bn-surface .bn-embed-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.bn-surface .bn-embed-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--foreground);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.bn-surface .bn-embed-empty {
+  display: block;
+  width: 100%;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.bn-surface .bn-embed-empty:hover {
+  background: var(--surface-subtle);
+  color: var(--foreground);
+}
+
+/* --- Mention -------------------------------------------------------- */
+
+.bn-surface .bn-mention {
+  display: inline;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  color: var(--foreground);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* --- Tables ---------------------------------------------------------- */
+
+.bn-surface .bn-table {
+  border-collapse: collapse;
+}
+
+.bn-surface .bn-table td,
+.bn-surface .bn-table th {
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.625rem;
+}
+
+.bn-surface .bn-table th {
+  background: var(--surface-subtle);
+  font-weight: 600;
+}
+
+/* --- Code block ------------------------------------------------------ */
+
+.bn-surface .bn-block-content[data-content-type='codeBlock'] pre {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+/* --- Math ------------------------------------------------------------ */
+
+.bn-surface .bn-math-block {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+
+/* --- Typography polish ------------------------------------------------ */
+
+.bn-surface .bn-block-content[data-content-type='heading'] h1 {
+  letter-spacing: -0.01em;
+}
+
+.bn-surface .bn-block-content[data-content-type='quote'] {
+  border-left: 2px solid var(--border-strong, var(--border));
+  padding-left: 0.875rem;
+  color: var(--muted);
+}
+
+.bn-surface .bn-side-menu > button,
+.bn-surface .bn-formatting-toolbar button {
+  color: var(--muted);
+}
