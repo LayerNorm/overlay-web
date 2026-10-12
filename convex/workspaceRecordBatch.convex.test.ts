@@ -6,19 +6,13 @@ import schema from './schema'
 const modules = import.meta.glob('./**/*.ts')
 const previous = {
   secret: process.env.INTERNAL_API_SECRET,
-  enabled: process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS,
-  stage: process.env.OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE,
 }
 beforeAll(() => {
   process.env.INTERNAL_API_SECRET = 'test-secret'
-  process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS = 'true'
-  process.env.OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE = 'general'
 })
 afterAll(() => {
   for (const [key, value] of [
     ['INTERNAL_API_SECRET', previous.secret],
-    ['OVERLAY_FEATURE_WORKSPACE_WALLETS', previous.enabled],
-    ['OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE', previous.stage],
   ] as const) {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value

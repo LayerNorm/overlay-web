@@ -152,7 +152,6 @@ export async function runWorkspaceBillingProviderContract(
       })
       const resolver = new BillingPayerResolver({
         billing: backend.billing,
-        workspaceWalletsEnabled: () => true,
         workspaces: backend.workspaces,
       })
       assert.equal((await resolver.resolve({ userId: memberUserId, workspaceId: workspace.workspace.id })).billingAccountId, account.billingAccountId)

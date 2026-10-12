@@ -166,9 +166,7 @@ function WorkspaceBillingLoaded({
         </div>
       ) : null}
 
-      {!summary.rollout.eligible ? (
-        <RolloutNotice />
-      ) : !summary.initialized ? (
+      {!summary.initialized ? (
         <WalletSetupCard
           canManage={summary.canManage}
           busy={busy}
@@ -177,15 +175,6 @@ function WorkspaceBillingLoaded({
       ) : (
         <WalletOverview client={client} workspaceId={workspaceId} summary={summary} billing={billing} />
       )}
-    </div>
-  )
-}
-
-function RolloutNotice() {
-  return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
-      <p className="text-sm font-medium text-[var(--foreground)]">Free</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Everyone working in this workspace shares one free weekly allowance of chat turns. Workspace plans are not open for this workspace yet.</p>
     </div>
   )
 }
@@ -224,7 +213,7 @@ function WalletOverview({
   billing: WorkspaceBilling
 }) {
   const { busy, run } = billing
-  const checkoutAvailable = summary.canTopUp && summary.rollout.checkoutEnabled
+  const checkoutAvailable = summary.canTopUp
 
   return (
     <>
@@ -235,7 +224,7 @@ function WalletOverview({
 
       {summary.usage ? <WorkspaceUsagePanel usage={summary.usage} /> : null}
 
-      {summary.autoTopUp && summary.rollout.checkoutEnabled ? (
+      {summary.autoTopUp ? (
         <WorkspaceAutoTopUpCard
           key={`${summary.autoTopUp.enabled}:${summary.autoTopUp.amountCents}:${summary.autoTopUp.monthlyLimitCents}`}
           autoTopUp={summary.autoTopUp}

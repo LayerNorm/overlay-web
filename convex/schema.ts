@@ -61,7 +61,7 @@ export default defineSchema({
     .index('by_workspaceId', ['workspaceId'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
 
-  // One row per personal plan moved onto a workspace (docs/develop/billing-plan-conversion.md). The snapshot of the
+  // One row per personal plan moved onto a workspace (phase 1 conversion; table is being dropped). The snapshot of the
   // person's legacy subscription row lets the move be undone; `revertedAt` marks one that was.
   billingPlanConversions: defineTable({
     billingAccountId: v.string(),

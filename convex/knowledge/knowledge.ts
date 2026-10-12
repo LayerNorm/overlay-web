@@ -15,10 +15,6 @@ import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogP
 import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import {
-  resolveWorkspaceBillingRollout,
-  workspaceBillingRolloutConfigFromEnv,
-} from '../../src/shared/billing/workspace-billing-rollout'
-import {
   KNOWLEDGE_CHUNK_CHARS,
   KNOWLEDGE_CHUNK_OVERLAP,
   chunkKnowledgeText,
@@ -68,12 +64,7 @@ export const resolveKnowledgeBillingPayer = internalQuery({
     workspaceId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<KnowledgeBillingPayer> => {
-    if (!args.workspaceId || !resolveWorkspaceBillingRollout(
-      workspaceBillingRolloutConfigFromEnv(process.env),
-      args.workspaceId,
-    ).eligible) {
-      return { scope: 'personal' }
-    }
+    if (!args.workspaceId) return { scope: 'personal' }
     const workspace = await ctx.db.query('workspaces')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId!))
       .unique()

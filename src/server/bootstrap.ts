@@ -52,11 +52,6 @@ import {
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import {
-  resolveWorkspaceBillingRollout,
-  workspaceBillingRolloutConfigFromEnv,
-  workspaceBillingRolloutEnabled,
-} from '@/shared/billing/workspace-billing-rollout'
-import {
   connectedAgentRolloutConfigFromEnv,
   connectedAgentRolloutEnabled,
   resolveConnectedAgentRollout,
@@ -223,12 +218,8 @@ export function createOverlayServerContext(
       return (await billing.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }))?.planKind === 'paid'
     },
   })
-  const workspaceBillingRollout = workspaceBillingRolloutConfigFromEnv(process.env)
   const billingPayerResolver = new BillingPayerResolver({
     billing: appData.repositories.billing,
-    workspaceWalletsEnabled: (workspaceId) => workspaceId
-      ? resolveWorkspaceBillingRollout(workspaceBillingRollout, workspaceId).eligible
-      : workspaceBillingRolloutEnabled(workspaceBillingRollout),
     workspaces: workspaceService,
   })
 

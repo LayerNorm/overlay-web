@@ -858,6 +858,7 @@ test('conversations act preserves premium gating response shape for free users',
     throw new Error(`Unexpected Convex mutation: ${path}`)
   })
 
+  await stubPersonalPayer(t)
   const route = await import('./conversations/act/route')
   const response = await route.POST(
     request('/api/v1/conversations/act', {
@@ -913,6 +914,7 @@ test('conversations act swallows user-message persistence failure before later f
     throw new Error(`Unexpected Convex mutation: ${path}`)
   })
 
+  await stubPersonalPayer(t)
   const route = await import('./conversations/act/route')
   const response = await route.POST(
     request('/api/v1/conversations/act', {
@@ -934,3 +936,15 @@ test('conversations act swallows user-message persistence failure before later f
   assert.equal(body.error, 'history unavailable')
   assert.equal(typeof body.requestId, 'string')
 })
+
+/** These routes run without a workspace fixture: the person is in a free workspace, so they pay nothing themselves. */
+async function stubPersonalPayer(t: { mock: { method: (...args: never[]) => unknown } }) {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const resolver = getOverlayServerContext().billingPayerResolver
+  ;(t.mock.method as unknown as (object: object, name: string, impl: () => Promise<unknown>) => void)(resolver, 'resolve', async () => ({
+    billingAccountId: 'ba_personal',
+    scope: 'personal',
+    subject: { id: 'user_1', kind: 'member' },
+    userId: 'user_1',
+  }))
+}

@@ -10,10 +10,6 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { isGatewayCreditLow } from '../lib/gatewayCredits'
 import { applyMarkupToDollars } from "../../src/shared/billing/billing-pricing";
-import {
-  resolveWorkspaceBillingRollout,
-  workspaceBillingRolloutConfigFromEnv,
-} from "../../src/shared/billing/workspace-billing-rollout";
 import { normalizeOpenAiCompatibleBaseUrl } from "../../src/shared/ai/gateway/openai-compatible-base-url";
 import {
   AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT,
@@ -138,10 +134,7 @@ export const extractFromTurn = internalAction({
 
       const billingUserId = billingActorUserId?.trim() || userId;
       let resolvedBillingAccountId = billingAccountId?.trim() || undefined;
-      if (!resolvedBillingAccountId && workspaceId && resolveWorkspaceBillingRollout(
-        workspaceBillingRolloutConfigFromEnv(process.env),
-        workspaceId,
-      ).eligible) {
+      if (!resolvedBillingAccountId && workspaceId) {
         const payer = await ctx.runQuery(internal.knowledge.knowledge.resolveKnowledgeBillingPayer, {
           userId: billingUserId,
           workspaceId,

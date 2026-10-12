@@ -1,23 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { internal } from './_generated/api'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
-const previous = {
-  enabled: process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS,
-  stage: process.env.OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE,
-}
-beforeAll(() => {
-  process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS = 'true'
-  process.env.OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE = 'general'
-})
-afterAll(() => {
-  if (previous.enabled === undefined) delete process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS
-  else process.env.OVERLAY_FEATURE_WORKSPACE_WALLETS = previous.enabled
-  if (previous.stage === undefined) delete process.env.OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE
-  else process.env.OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE = previous.stage
-})
 
 type Convex = ReturnType<typeof convexTest>
 

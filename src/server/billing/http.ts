@@ -10,10 +10,6 @@ import { BillingCustomerService, BillingServiceError } from './BillingCustomerSe
 import { WorkspaceBillingService } from './WorkspaceBillingService'
 import type { BillingRepository } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
-import {
-  resolveWorkspaceBillingRollout,
-  workspaceBillingRolloutConfigFromEnv,
-} from '@/shared/billing/workspace-billing-rollout'
 import { LegalAcceptanceError } from '@/server/legal/legal-acceptance'
 
 const billingRepository = repositoryProxy<BillingRepository>(
@@ -38,10 +34,6 @@ export const workspaceBillingService = new WorkspaceBillingService({
   repository: billingRepository,
   baseUrl: getBillingBaseUrl,
   billingProvider: () => getOverlayServerContext().billing,
-  rollout: (workspaceId) => resolveWorkspaceBillingRollout(
-    workspaceBillingRolloutConfigFromEnv(process.env),
-    workspaceId,
-  ),
   usage: usageRepository,
   workspaces: repositoryProxy(() => getOverlayServerContext().workspaceService),
 })

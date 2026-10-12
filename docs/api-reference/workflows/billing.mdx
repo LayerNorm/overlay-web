@@ -45,20 +45,11 @@ The compatibility reads still use the personal legacy records. A parity report i
 
 ## Workspace reservation foundation
 
-`workspaceWallets` is off by default. Activation requires the master flag plus a controlled rollout stage:
-
-```dotenv
-OVERLAY_FEATURE_WORKSPACE_WALLETS=1
-OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE=internal # off | internal | selected | general
-OVERLAY_WORKSPACE_BILLING_INTERNAL_WORKSPACE_IDS=workspace_internal
-OVERLAY_WORKSPACE_BILLING_SELECTED_WORKSPACE_IDS=workspace_design_partner
-```
-
-Internal workspaces stay eligible during later stages. `selected` adds the selected allowlist, and `general` enables every workspace, of any kind. Non-selected workspaces retain personal compatibility. An enabled workspace with an active wallet on a paid plan is the payer; with no wallet, or a wallet not on a paid plan, it is on the free allowance (counted per workspace). An enabled workspace whose paid wallet is suspended or mismatched fails closed and never spends a member's personal balance. Every enabled hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.
+Plans belong to workspaces, and workspace billing is always on (there is no rollout flag). A workspace with an active wallet on a paid plan is the payer; with no wallet, or a wallet not on a paid plan, it is on the free allowance (counted per workspace). A workspace whose paid wallet is suspended or mismatched fails closed and never spends anything of a member's. Every hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.
 
 Workspace owners and admins use the authenticated `/api/v1/workspaces/:workspaceId/billing` API family to initialize a wallet, read credit usage, and open Stripe subscription, top-up, portal, or checkout-verification flows. Overlay creates one Stripe customer per workspace billing account. Stripe metadata binds payments to the account and workspace; the initiating admin is an audit actor, not the payment owner. Duplicate webhook deliveries are idempotent and older subscription events cannot overwrite newer account state.
 
-The Billing settings tab keeps recurring allowance and purchased top-up credits separate, shows usage as credits and percentages, and states that an empty wallet has no personal fallback. Owners/admins see actual provider cost, retail credits, realized margin, metering coverage, and reconciliation health. Members have a read-only view. Member contributions are a later phase; when added they may only create direct one-time workspace top-ups. Personal-wallet transfers are forbidden.
+The Billing settings tab shows the month's credit and top-up balance, the itemized usage for the period (one line per resource), and what happens at $0: a hard stop by default, or automatic top-ups up to a monthly limit an owner or admin sets. Unused credit, including top-ups, does not carry over at renewal. Members have a read-only view.
 
 Workspace reservations use the account-keyed balance and optionally a fixed-period subject limit. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Reservation creation locks the workspace balance and subject limit in one transaction. Finalize, release, expiry, and evidence-based reconciliation update the workspace balance and subject counters together. Wallet creation grants no credits; funding remains an explicit later operation.
 

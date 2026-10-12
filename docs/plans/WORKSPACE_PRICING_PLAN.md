@@ -103,6 +103,12 @@ Follow-ups (done 2026-10-11): a top-up Stripe leaves `pending` (3-D Secure) is s
 - **Credit expiry (D2):** at renewal both the month's credit and any top-up balance start again (`upsertByServer` and `upsertFromStripeInternal`); before, leftover top-up balance carried over. The top-up card and the pricing FAQ say so.
 - Test: renewal case in `convex/workspaceAutoTopUp.convex.test.ts`.
 
+## Phase 6 (in progress, 2026-10-12)
+
+- **Done — rollout code:** the `workspaceWallets` flag, `OVERLAY_FEATURE_WORKSPACE_WALLETS`, `OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE` and the internal/selected allowlists are gone (`workspace-billing-rollout.ts` deleted). The payer resolver, knowledge and memory payers, storage limits and the Billing tab no longer ask whether billing is on; a paid workspace pays. The billing summary has no `rollout` field.
+- **Done — plan conversion:** `convex/billing/planConversion.ts`, its test and runbook are deleted. Stripe events for the six converted subscriptions still route to the workspace by subscription/customer id (`workspaceAccountByProviderReferenceInternal`). The `billingPlanConversions` table is emptied in production, then dropped from the schema.
+- **Next — personal plan fields:** personal entitlements always free; remove the personal plan writers (including the personal branches of the subscription webhook) and `syncPersonalBillingShadows`; strip the billing fields from `subscriptions` rows (keep storage used and profile fields), then from the schema.
+
 ## Order of work
 
 | # | Phase | What |

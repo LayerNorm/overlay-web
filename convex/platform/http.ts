@@ -24,8 +24,8 @@ function readNumberMetadata(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
 }
 
-// A plan moved onto a workspace (convex/billing/planConversion.ts) keeps its Stripe subscription, whose metadata still
-// names the person. Events for it route to the workspace's billing account; everything else keeps its route.
+// Subscriptions started before plans moved to workspaces carry the person in their metadata, not a billing account.
+// Their events route to the workspace billing account that holds the subscription.
 async function convertedAccountId(
   ctx: Pick<GenericActionCtx<DataModel>, 'runQuery'>,
   reference: { customer?: unknown; subscription?: unknown },
@@ -35,7 +35,7 @@ async function convertedAccountId(
   const stripeCustomerId = idOf(reference.customer)
   const stripeSubscriptionId = idOf(reference.subscription)
   if (!stripeCustomerId && !stripeSubscriptionId) return undefined
-  return (await ctx.runQuery(internal.billing.planConversion.resolveWorkspaceAccountByProviderReference, { stripeCustomerId, stripeSubscriptionId })) ?? undefined
+  return (await ctx.runQuery(internal.billing.accountSubscriptions.workspaceAccountByProviderReferenceInternal, { stripeCustomerId, stripeSubscriptionId })) ?? undefined
 }
 
 // Returns true if this is a new event and handlers should run, false if the

@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
+import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
 
@@ -573,5 +573,40 @@ export const recordTopUpInternal = internalMutation({
       })
     }
     return { granted }
+  },
+})
+
+/**
+ * The workspace billing account that owns a Stripe subscription or customer. Webhooks use it when the Stripe object's
+ * metadata does not name a billing account (subscriptions started before plans moved to workspaces name the person).
+ */
+export const workspaceAccountByProviderReferenceInternal = internalQuery({
+  args: { stripeCustomerId: v.optional(v.string()), stripeSubscriptionId: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<string | null> => {
+    const rows = [
+      args.stripeSubscriptionId
+        ? await ctx.db.query('billingAccountSubscriptions').withIndex('by_providerSubscriptionId', (q) => q.eq('providerSubscriptionId', args.stripeSubscriptionId)).first()
+        : null,
+      args.stripeCustomerId
+        ? await ctx.db.query('billingAccountSubscriptions').withIndex('by_providerCustomerId', (q) => q.eq('providerCustomerId', args.stripeCustomerId)).first()
+        : null,
+    ]
+    for (const row of rows) {
+      if (!row) continue
+      const account = await ctx.db.query('billingAccounts').withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', row.billingAccountId)).unique()
+      if (account?.scope === 'workspace') return account.billingAccountId
+    }
+    return null
+  },
+})
+
+/** One-time cleanup before the `billingPlanConversions` table is dropped (phase 6). */
+export const deletePlanConversionRowsInternal = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const rows = await ctx.db.query('billingPlanConversions').collect()
+    for (const row of rows) await ctx.db.delete(row._id)
+    return rows.length
   },
 })

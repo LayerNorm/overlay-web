@@ -171,9 +171,6 @@ export function createShowcaseWorkspaceManagementClient(
         canTopUp: workspace.role === 'owner' || workspace.role === 'admin',
         initialized,
         pricingVersion: 'markup_25_v1' as const,
-        rollout: initialized
-          ? { checkoutEnabled: true, eligible: true, stage: 'internal' as const }
-          : { checkoutEnabled: false, eligible: false, stage: 'off' as const },
         credits: initialized
           ? { total: 28_000, used: 8_400, remaining: 19_600, allowancePercentUsed: 32, topUpBalance: 8_000 }
           : { total: 0, used: 0, remaining: 0, allowancePercentUsed: 0, topUpBalance: 0 },

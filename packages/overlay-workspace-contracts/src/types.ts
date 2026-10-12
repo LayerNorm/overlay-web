@@ -178,11 +178,6 @@ export type WorkspaceBillingSummaryResponse = {
   canTopUp: boolean
   initialized: boolean
   pricingVersion: 'markup_25_v1'
-  rollout: {
-    stage: 'off' | 'internal' | 'selected' | 'general'
-    eligible: boolean
-    checkoutEnabled: boolean
-  }
   credits: {
     total: number
     used: number

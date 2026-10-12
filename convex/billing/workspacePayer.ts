@@ -1,5 +1,4 @@
 import type { MutationCtx, QueryCtx } from '../_generated/server'
-import { resolveWorkspaceBillingRollout, workspaceBillingRolloutConfigFromEnv } from '../../src/shared/billing/workspace-billing-rollout'
 
 export type PaidWorkspaceAccount = { billingAccountId: string; workspaceId: string; planAmountCents: number }
 
@@ -17,7 +16,6 @@ export async function paidWorkspaceAccountFor(
     .withIndex('by_userId', (q) => q.eq('userId', userId))
     .first())?.activeWorkspaceId
   if (!target) return null
-  if (!resolveWorkspaceBillingRollout(workspaceBillingRolloutConfigFromEnv(process.env), target).eligible) return null
   const account = await ctx.db
     .query('billingAccounts')
     .withIndex('by_workspaceId', (q) => q.eq('workspaceId', target))
