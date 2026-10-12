@@ -79,7 +79,11 @@ updated in #188 was absent from #189, where reading its ID returned `404` and
 existing notes stayed unchanged. The temporary note was removed. Live head-race QA
 pushed revision B while revision A built, confirmed A became `CANCELED`, and
 verified its deployment never replaced the existing alias. The current-head
-rebuild and close/cleanup acceptance remain open.
+rebuild advanced only #188's alias and preserved its backend and fixture. Both
+QA PRs are closed without merging; domain/alias/branch-URL readback confirmed
+removal, and each former hostname returned HTTPS `404` without a redirect.
+Repeated cleanup was idempotent. The Builder prompt now
+requires draft PR preview evidence before integration handoff.
 
 Wildcard inspection found an old staging fallback alias. The wildcard now uses
 reserved branch `codex/preview-unassigned`, registered only for DNS/certificates,
@@ -146,11 +150,10 @@ Answer these before writing code; several later choices depend on them.
 - [x] **Convex:** Starter supports previews with five-day retention and a
       40-deployment team limit. Keep open PRs alive by bounded expiry renewal
       through the project preview key, not by assuming a push resets expiration.
-- [ ] **Convex:** decide where staging lives. Options:
-      (a) a separate Convex project `overlay-staging` whose production deployment
-      is staging (recommended: clean isolation, its own deploy key);
-      (b) keep the current shared dev deployment as staging and give each
-      engineer their own dev deployment for local work.
+- [x] **Convex:** use a separate `overlay-staging` project with its own staging
+      deployment/key. Project `3199896` is created and read back with no
+      deployments yet; existing projects were preserved. Provision its backend
+      and configure the web project only at the Phase 5 cutover.
 - [x] **WorkOS:** confirm the staging environment accepts a wildcard redirect URI
       such as `https://*.preview.getoverlay.io/api/auth/callback`. Accepted,
       registered, and verified; no relay is needed for this pattern.
@@ -161,17 +164,21 @@ Answer these before writing code; several later choices depend on them.
       support the wildcard certificate. Phase 3 configures the preview domain.
 - [x] **GitHub:** confirm merge queue is available for `LayerNorm/overlay-web`.
 
+Checkboxes below track code implementation and platform configuration. Phase
+acceptance still requires each "Done when" result; code in draft PR #187 is
+not yet active trusted `main` automation.
+
 ## Phase 1 — Preview builds in the staging project
 
 Goal: every internal PR targeting main gets one Vercel preview that builds and
 loads. Enable this together with Phase 2 so no hosted PR uses shared dev Convex.
 
 Code:
-- [ ] `scripts/vercel-ignore-build.sh`: when `VERCEL_ENV=preview` in the project
+- [x] `scripts/vercel-ignore-build.sh`: when `VERCEL_ENV=preview` in the project
       with `PREVIEW_BUILDS=pr`, run the build only if `VERCEL_GIT_PULL_REQUEST_ID`
       is set (open PR); otherwise keep current fail-closed behaviour. Leave the
       production project's behaviour unchanged. Update the header comment.
-- [ ] Add tests for the new guard branches next to the existing guard tests (or
+- [x] Add tests for the new guard branches next to the existing guard tests (or
       add a small shell test if none exist).
 
 Dashboard (owner):
@@ -179,7 +186,7 @@ Dashboard (owner):
       configuration with isolated sandbox values and `PREVIEW_BUILDS=pr`.
       Preserve Production scopes. Provision dedicated test providers before
       claiming model, upload, or billing acceptance.
-- [ ] `overlay-web-staging` → deployment policy: enable Preview **REST API**
+- [x] `overlay-web-staging` → deployment policy: enable Preview **REST API**
       sources for the trusted PR controller. Keep native Preview Git sources
       disabled so duplicate builds and automatic branch aliases cannot race
       current-head validation. Keep the existing staging Production Git lane.
@@ -196,33 +203,33 @@ head revision on PR open/reopen. An unassociated branch push creates no build.
 Goal: each preview runs against its own Convex preview deployment with seed data.
 
 Code:
-- [ ] `scripts/vercel-build.sh`: choose the build by `VERCEL_ENV`:
+- [x] `scripts/vercel-build.sh`: choose the build by `VERCEL_ENV`:
       - preview → `npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --preview-run dev/seed:init`
       - otherwise → current behaviour (`npm run build`), so prod and staging are untouched.
-- [ ] `src/server/database/convex-url.ts`: when a preview build has a
+- [x] `src/server/database/convex-url.ts`: when a preview build has a
       Convex-injected URL, use it instead of `DEV_NEXT_PUBLIC_CONVEX_URL`
       (e.g. a `CONVEX_PREVIEW=1` marker set by the build script). Extend
       `convex-url.test.ts` for preview, staging and production.
-- [ ] `convex/dev/seed.ts`: an internal mutation `init` that creates test users
+- [x] `convex/dev/seed.ts`: an internal mutation `init` that creates test users
       matching the preview test login (Phase 4), a workspace, a conversation,
       notes, files and an automation. It must refuse to run unless the
       deployment is a preview (check a `OVERLAY_DEPLOYMENT_ENV=preview` Convex
       env var) so it can never touch staging or production.
-- [ ] Crons and outbound side effects (`convex/crons.ts`, email, provider calls):
+- [x] Crons and outbound side effects (`convex/crons.ts`, email, provider calls):
       skip when `OVERLAY_DEPLOYMENT_ENV=preview`, or route to no-op adapters.
-- [ ] Automation callbacks: set the preview's app URL on its Convex backend
+- [x] Automation callbacks: set the preview's app URL on its Convex backend
       during the build (`npx convex env set` against the preview), or disable
       callback-driven flows on previews and mark them staging-only.
 
 Dashboard (owner):
-- [ ] Convex → project settings → generate a **Preview Deploy Key**; add it in
+- [x] Convex → project settings → generate a **Preview Deploy Key**; add it in
       Vercel as `CONVEX_DEPLOY_KEY`, **Preview scope only**.
-- [ ] Convex → default environment variables for preview deployments: WorkOS
+- [x] Convex → default environment variables for preview deployments: WorkOS
       issuer/JWKS values for the staging environment, `INTERNAL_API_SECRET`,
       `INTERNAL_SERVICE_AUTH_SECRET` (matching the Vercel Preview values, and
       different from each other), `OVERLAY_DEPLOYMENT_ENV=preview`, and any
       test-mode provider keys Convex actions need.
-- [ ] The trusted controller supplies `bash scripts/vercel-build.sh` as the
+- [x] The trusted controller supplies `bash scripts/vercel-build.sh` as the
       Preview deployment's build-command override. Keep the legacy staging
       Production project setting unchanged until Phase 5; its branch does not
       yet contain the wrapper.
@@ -236,46 +243,49 @@ Goal: real sign-in works at each PR's stable custom address, with no native
 Preview Deployment Suffix purchase.
 
 Code:
-- [ ] Add trusted PR lifecycle automation. On open/reopen, derive
+- [x] Add trusted PR lifecycle automation. On open/reopen, derive
       `https://pr-<number>.preview.getoverlay.io` from the verified PR number,
       register the domain in the staging project, and set the source branch's
       Preview-scoped `NEXT_PUBLIC_APP_URL` override before requesting a build.
       Shared Preview secrets remain inherited; no manual per-PR configuration.
-- [ ] On Preview deployment readiness, validate the staging project ID,
+- [x] On Preview deployment readiness, validate the staging project ID,
       environment, repository, branch, open PR, and current head SHA before
       assigning the custom address with `vercel alias set` or the equivalent
       Vercel API. Serialize alias updates per PR and reject stale deployments.
       Publish the canonical URL and deployed SHA for QA.
-- [ ] On PR close/merge, remove its alias/domain and branch-scoped app URL
+- [x] On PR close/merge, remove its alias/domain and branch-scoped app URL
       override, handling missing resources idempotently. Keep the shared
       wildcard domain and WorkOS wildcard callback. Convex preview cleanup
       follows its configured retention policy. Reject unassigned and closed PR
       hostnames; removing an alias must not allow the shared wildcard to serve
       staging under that hostname. Add reconciliation for missed lifecycle events.
-- [ ] Reconcile Convex preview expiry for open PRs using the project preview
+- [x] Reconcile Convex preview expiry for open PRs using the project preview
       key. Validate project, preview type, reference and identifier before
       renewal; never renew closed PRs. If a backend expired, force a fresh web
       build and seed at the same SHA rather than reusing a READY frontend.
-- [ ] Keep credential-bearing automation on trusted workflow code; do not
+- [x] Keep credential-bearing automation on trusted workflow code; do not
       execute PR code with domain-management credentials or automatically
       provision secret-bearing previews for outside contributors' forks.
-- [ ] `src/server/web/app-url.ts`: use the configured canonical PR alias for
+- [x] `src/server/web/app-url.ts`: use the configured canonical PR alias for
       `VERCEL_ENV=preview`, validating that it is an HTTPS
       `pr-<number>.preview.getoverlay.io` origin. Prevent fallback to staging or
       raw `VERCEL_BRANCH_URL`/`VERCEL_URL` for preview OAuth redirects. Add tests
       covering the alias, missing configuration, staging, and production.
-- [ ] Ensure the build's `NEXT_PUBLIC_APP_URL`, server redirects
+- [x] Ensure the build's `NEXT_PUBLIC_APP_URL`, server redirects
       (`workos-auth.ts` and `normalizeAuthRedirect`), browser links, and enabled
       Convex callbacks agree on the custom alias. Generated Vercel URLs are
       deployment identifiers, not the preview's canonical sign-in origin.
-- [ ] Check CSP, CORS and allowed-origin lists (`npm run check:config`) accept
+- [x] Check CSP, CORS and allowed-origin lists (`npm run check:config`) accept
       `*.preview.getoverlay.io` on previews only.
 
 Dashboard (owner):
-- [ ] Add the ordinary wildcard domain `*.preview.getoverlay.io` to
+- [x] Add the ordinary wildcard domain `*.preview.getoverlay.io` to
       `overlay-web-staging`, configure its DNS in the existing Vercel zone, and
-      verify HTTPS issuance. Leave the native Preview Deployment Suffix disabled.
-- [ ] Provision scoped Vercel credentials to the trusted alias automation and
+      verify HTTPS issuance. Registered on reserved branch
+      `codex/preview-unassigned` for certificate coverage only, without a
+      deployment alias. Unknown/closed hosts must return HTTPS `404`. Leave the
+      native Preview Deployment Suffix disabled.
+- [x] Provision scoped Vercel credentials to the trusted alias automation and
       retain existing deployment protection. QA uses an authorized login or
       scoped automation bypass where required.
 - [x] WorkOS staging environment: add
@@ -295,17 +305,17 @@ Preview Deployment Suffix remains disabled.
 Goal: agents verify their own PRs end to end without real OAuth.
 
 Code:
-- [ ] `src/app/api/auth/preview-login/route.ts`: mints an `overlay_session` for
+- [x] `src/app/api/auth/preview-login/route.ts`: mints an `overlay_session` for
       a seeded test user. Returns 404 unless **all** of: `VERCEL_ENV=preview`,
       `OVERLAY_DEPLOYMENT_ENV=preview`, and a `PREVIEW_LOGIN_SECRET` header match.
       Add a release-safety test that fails if the route can respond in a
       production or staging configuration.
-- [ ] Update `docs/develop/browser-testing-with-agent-browser.md` with the
+- [x] Update `docs/develop/browser-testing-with-agent-browser.md` with the
       preview sign-in recipe.
-- [ ] Update the Builder prompt: verify on the PR's preview and attach evidence.
+- [x] Update the Builder prompt: verify on the PR's preview and attach evidence.
 
 Dashboard (owner):
-- [ ] Vercel Preview scope: `PREVIEW_LOGIN_SECRET` (random, preview only). Give
+- [x] Vercel Preview scope: `PREVIEW_LOGIN_SECRET` (random, preview only). Give
       it to cloud agents through their secret store, not the repo.
 
 Done when: an agent, given only the PR number, finds the preview URL, signs in,

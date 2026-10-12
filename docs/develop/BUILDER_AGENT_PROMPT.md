@@ -55,10 +55,28 @@ Push your branch and open a focused pull request with `main` as its base (`stagi
 
 Mention related pull requests explicitly. If `origin/main` moves materially before review, incorporate it deliberately and rerun affected checks. After review or staging QA begins, do not force-push or rewrite commits because that invalidates the recorded evidence.
 
+## Isolated preview evidence during the migration
+
+For an internal PR targeting `main`, open a draft first so trusted preview
+control can build it. Wait for `PR Preview`, verify its reported SHA against the
+current head, and use `https://pr-<number>.preview.getoverlay.io` for QA. Sign in
+with the sandbox QA account or the preview-only login recipe in
+`docs/develop/browser-testing-with-agent-browser.md`; secrets and session cookies
+must stay outside tracked files and PR text. Check the rendered workspace and
+affected flow, then record the URL, exact deployed SHA, screenshots and results
+in the PR description before marking it ready. A push invalidates earlier
+revision evidence; repeat the affected checks on the new preview.
+
+A preview readiness status proves a build, not feature acceptance. Bootstrap
+previews currently disable storage, model and billing providers; do not claim
+those flows work until dedicated test resources are configured and exercised.
+The Builder does not receive domain-management credentials or directly deploy
+shared staging/production backends. Stop when the PR is ready for integration.
+
 ## Handoff
 
-End your report with the pull-request URL, base branch (`staging`), head SHA, files changed, checks run, known limitations, and any follow-up needed from the Integration agent. Then stop and wait for integration.
+End your report with the pull-request URL, actual base branch (`main` by default), head SHA, files changed, checks run, known limitations, and any follow-up needed from the Integration agent. Then stop and wait for integration.
 
 The Integration agent uses its own dedicated `staging` worktree and will not adopt or retain the Builder's feature worktree. Keep the feature worktree available until the Integration agent confirms that the pull request has been merged and verified, then remove it using the documented ancestry check.
 
-The Integration agent owns substantive review, conflict resolution, merge into `staging`, staging deployment and QA, the `staging` to `main` release pull request, production verification, and post-release staging alignment. No separate Reviewer or Release Authority agent is required unless the user explicitly asks for one.
+The Integration agent owns substantive review, conflict resolution, integration into the selected base, staging deployment and QA when that lane was chosen, any staging-to-main promotion, and authorized production verification. Branch parity is restored only at the owner's explicit request. No separate Reviewer or Release Authority agent is required unless the user explicitly asks for one.

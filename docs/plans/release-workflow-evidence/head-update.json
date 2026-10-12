@@ -1,0 +1,24 @@
+{
+  "updated": {
+    "number": "188",
+    "sha": "06880c0cf899d0e6129b11c588d7f805e5d34566",
+    "url": "https://pr-188.preview.getoverlay.io",
+    "deploymentId": "dpl_6dZJJBXHfbLMXQsXNqvDCbFApbFE",
+    "backend": "laudable-lynx-602",
+    "backendExpiresAt": 1792270425242,
+    "state": "ready"
+  },
+  "aliases": [
+    {
+      "pr": 188,
+      "deploymentId": "dpl_6dZJJBXHfbLMXQsXNqvDCbFApbFE"
+    },
+    {
+      "pr": 189,
+      "deploymentId": "dpl_CaByg6stDfsY9EcLP8pFpUecg1RD"
+    }
+  ],
+  "sameBackend": true,
+  "incompatibleFixturePreserved": true,
+  "onlyUpdatedPrAliasAdvanced": true
+}
