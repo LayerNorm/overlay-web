@@ -5,3 +5,7 @@
 
 # Historical vendored Hetzner API documentation placeholder, not an account token.
 cc4c0ccb6d98e37e45ac0cc9957a6c478bff682c:hetzner-cloud.md:curl-auth-header:240
+# Fake token fixtures in tests that verify secret detection itself
+packages/overlay-agent-bridge-protocol/src/agent-profile.test.ts:aws-access-token:140
+packages/overlay-agent-bridge-protocol/src/agent-profile.test.ts:jwt:140
+src/server/agents/profiles/AgentProfileService.test.ts:generic-api-key:88
