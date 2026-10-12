@@ -32,7 +32,7 @@ test('totals add up per resource, largest first, with models split per model', (
 
 test('automation steps are their own resource, and unknown model ids read as names', () => {
   assert.equal(usageResourceFor({ kind: 'agent', operationId: 'automation.workflow-run', modelId: 'workflow-steps' }), 'automations')
-  assert.equal(usageResourceFor({ kind: 'agent', modelId: 'workflow-steps' }), 'automations')
+  assert.equal(usageResourceFor({ kind: 'agent', operationId: 'automation.workflow-run', modelId: 'anthropic/claude-sonnet-4.6' }), 'models')
   assert.equal(humanizeModelId('gpt-5.6-luna'), 'GPT 5.6 Luna')
   assert.equal(humanizeModelId('meta/muse-spark-1.3-contributor'), 'Muse Spark 1.3 Contributor')
 })

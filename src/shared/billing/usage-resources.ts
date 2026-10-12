@@ -38,8 +38,9 @@ export function usageResourceFor(charge: UsageCharge): UsageResourceKey {
   if (charge.kind === 'sandbox') return 'computers'
   if (charge.kind === 'transcription' || op.startsWith('audio.')) return 'transcription'
   if (op.startsWith('websearch.')) return 'web_search'
-  // Automation runs are metered per workflow step under the pseudo-model `workflow-steps`.
-  if (op.startsWith('automation.') || charge.modelId === 'workflow-steps') return 'automations'
+  // Automation runs are metered per workflow step under the pseudo-model `workflow-steps`; model calls an automation
+  // makes stay under Models, with their model.
+  if (charge.modelId === 'workflow-steps') return 'automations'
   if (op.startsWith('agent.browser-task')) return 'browser_tasks'
   if (op.startsWith('media.generate-image')) return 'images'
   if (op.startsWith('media.generate-video')) return 'video'
