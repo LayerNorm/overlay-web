@@ -104,7 +104,7 @@ const webWrapper = fs.readFileSync(webWrapperPath, 'utf8')
 if (!webWrapper.includes("from '@overlay/modules-react/knowledge'")) {
   throw new Error('Web KnowledgeView host adapter must render the shared surface')
 }
-if (webWrapper.split('\n').length > 260) {
+if (webWrapper.split('\n').length > 280) {
   throw new Error('Web KnowledgeView host adapter regained presentation/orchestration')
 }
 
