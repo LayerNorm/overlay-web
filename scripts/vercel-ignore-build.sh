@@ -64,6 +64,24 @@ if [ "$environment" = "preview" ] && [ "${PREVIEW_BUILDS:-}" = "pr" ]; then
   run_build "provisioned PR ${VERCEL_GIT_PULL_REQUEST_ID} preview"
 fi
 
+# The new staging lane permits only the controller's per-request main build.
+# Keep this separate from the legacy staging branch during the preview soak.
+if [ "${OVERLAY_RELEASE_LANE:-}" = "staging" ] && [ "$target" = "main" ]; then
+  if [ "$environment" != "production" ] || [ "$branch" != "main" ] \
+    || [ "${OVERLAY_STAGING_BUILD:-}" != "trusted-main" ] \
+    || [ "${VERCEL_GIT_REPO_OWNER:-}" != "LayerNorm" ] \
+    || [ "${VERCEL_GIT_REPO_SLUG:-}" != "overlay-web" ] \
+    || [ "${NEXT_PUBLIC_APP_URL:-}" != "https://staging.getoverlay.io" ]; then
+    skip_build "not an authorized dedicated staging build"
+  fi
+  sha="${OVERLAY_STAGING_BUILD_SHA:-}"
+  case "$sha" in ''|*[!a-f0-9]*) skip_build "invalid requested staging SHA" ;; esac
+  if [ "${#sha}" -ne 40 ] || [ "$sha" != "${VERCEL_GIT_COMMIT_SHA:-}" ]; then
+    skip_build "staging source SHA differs from controller request"
+  fi
+  run_build "trusted main staging revision $sha"
+fi
+
 if [ -z "$branch" ]; then
   # A deploy with no branch reference is a manual or hook-triggered deploy.
   # The staging project is intentionally branch-only, so do not allow a manual

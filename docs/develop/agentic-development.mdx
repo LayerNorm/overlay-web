@@ -152,6 +152,53 @@ prepare the queue; the queue rule is enabled only after live check verification.
 
 ## Checks should match risk
 
+### Dark release flags
+
+`createReleaseFlags` in `src/server/releases/feature-flags.ts` evaluates an
+explicit set of boolean PostHog keys once per incoming request. Construct it
+after authentication and workspace resolution; pass those server-derived IDs,
+not request-provided identities. Missing flags, variants, disabled analytics,
+provider errors and a 300ms deadline default off. Flags do not replace access
+control. Keep the previous behavior when a flag is off:
+
+```ts
+const flags = createReleaseFlags({ userId: subject.userId, workspaceId }, ['new-editor'])
+return await flags.isEnabled('new-editor') ? renderNewEditor() : renderCurrentEditor()
+```
+
+The helper does not enable a product feature by itself. Create the corresponding
+boolean flag in the correct PostHog project and verify both branches before
+rolling it out. Keep the fallback until the previous production revision no
+longer needs it.
+
+### PR turnaround evidence
+
+PR publication starts required code/security checks and the separate hosted
+preview controller. CI success establishes automated coverage; review still
+checks the diff, relevant behavior and rollback. Make the merge decision when
+the current revision has proportionate QA and required checks; do not wait for
+a second human approval in the sole-owner setup. Close a PR when it is rejected,
+superseded or abandoned, not merely because a service build is queued.
+
+PR #190's measured baseline: main quality gate 9m7s, full test suite 2m39s across
+423 tracked test files, hosted preview queue 20m56s and hosted build 4m. These
+ran concurrently. Queue capacity dominated that preview; deleting unit tests
+would not solve the wait. Inspect job/step timing before changing coverage.
+
+Required workflows cancel obsolete PR check runs when a new revision arrives;
+main push and merge-group checks remain independent. Deployment controllers
+retain their locks until remote builds are settled. Diffs confined to `docs/`,
+root Markdown and `.github/` do not automatically build the unchanged app.
+They still run required CI and docs previews. A `needs-preview` label or manual
+PR Preview dispatch requests a hosted app preview. Unknown/truncated inventories,
+runtime changes, dependency locks, build scripts and runtime-to-docs renames
+always require one. Cleanup and ownership checks also apply to no-preview PRs.
+
+Dependency Review always runs the actual base/head comparison; missing
+repository metadata must not turn a required security check into a no-op.
+Paid gateway canaries live in a separate workflow so unrelated deployment events
+cannot publish skipped results under the required contract-check name.
+
 The `test:all` tsx group preloads server-only/style shims and React before
 importing test modules. Package TSX sources that preserve JSX may evaluate
 static elements during import; setting React inside a test body is too late.

@@ -24,11 +24,11 @@ Use placeholders for local secrets. Feature worktrees must not deploy Convex. Th
 ## Pull Requests
 
 1. Create a focused branch from the latest `main`.
-2. Open the Builder pull request against `staging`.
+2. Open the Builder pull request against `main` by default. Choose `staging` only when the task specifically needs the existing shared hosted QA lane.
 3. Update the relevant living documentation in the same pull request.
 4. Run the smallest checks that cover the change, plus `npm run typecheck` for cross-contract changes.
 5. Explain user-visible behavior, security or billing impact, and rollback considerations.
-6. Hand the pull request to the Integration agent. The Integration agent merges it into `staging`, tests the exact staging revision, then promotes `staging` to `main` through a release pull request.
+6. Hand the pull request to the Integration agent for the selected base. A `staging` candidate is tested there and promoted through a release PR; a `main` PR is reviewed and integrated on main. Production deployment remains a separate, explicitly authorized action. The prepared main-based staging controller stays inactive until the migration cutover.
 
 Meaningful, independently valid commits are merged with a merge commit so their identities and the pull-request boundary remain available for targeted reverts. Squash merging is reserved for trivial changes or noisy fixup history. Rebase merging is not used. User-visible and operational pull requests must also update `CHANGELOG.md` under `Unreleased`.
 

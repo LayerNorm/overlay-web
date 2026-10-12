@@ -30,6 +30,13 @@ resources. Disabled bootstrap providers do not count as upload, model, or billin
 Preview backend expiry is renewed by the main-only controller using the Convex
 project preview key. Reconciliation preserves existing data; if an expired
 backend must be recreated, it requests a fresh build and seed at the same SHA.
+
+Hosted app previews are unnecessary for diffs confined to docs, root Markdown
+and GitHub metadata/workflows. Those changes keep their required CI and docs
+preview. Apply `needs-preview` or manually dispatch PR Preview to request one
+explicitly. Runtime/build/dependency changes still provision a full isolated
+preview; incomplete file inventories also build. Existing managed resources are
+cleaned up only after owned remote builds settle, with the normal HTTPS 404 check.
 The `PR Preview` commit status links the canonical address and identifies its
 revision; verify that status against the current PR head before QA. Closing or
 retargeting a PR removes its alias/domain and managed branch app URL, and a
@@ -46,6 +53,33 @@ Overlay has two backend lanes that must stay paired with their matching web depl
 | --- | --- | --- | --- |
 | Production | `main` | `www.getoverlay.io` | production |
 | Shared staging | `staging` | `staging.getoverlay.io` | development |
+
+### Prepared main-based staging controller
+
+`staging-release.yml` is gated by the repository variable
+`RELEASE_STAGING_FROM_MAIN=enabled`, which remains unset during migration
+preparation. The prepared lane targets only Divyansh's Vercel team
+`team_VT3uNspuyAOwicxedhtG4SMe`, project `overlay-web-staging`, and dedicated
+Convex `doting-cuttlefish-819` in project `overlay-staging` (`3199896`). Its
+deployment-scoped key expires 2027-01-10 and is stored privately; the empty
+backend is not serving the current staging site.
+
+Before activation, complete the preview soak, isolate staging providers,
+configure the dedicated backend/app environment, switch the staging project's
+production branch and domain to `main`, add authenticated staging smoke, freeze
+the legacy staging branch and rewrite the process docs in the cutover PR.
+Keep root `git.deploymentEnabled.main=false` and production manual.
+
+Trusted control executes protected main with the project-scoped staging token,
+without installing packages or checking out feature code. Per-request build
+overrides carry a validated SHA. The ignore/build guards reject missing or
+mismatched SHA, other refs, wrong origins, and any other backend key. All main
+staging builds share one concurrency group; obsolete builds are confirmed
+terminal before a new persistent-backend build can start. Alias assignment
+requires READY plus project/repository/main/SHA/backend metadata and readback.
+Deployment evidence records `smoke: pending`: it is not promotion evidence until
+the exact revision passes authenticated smoke. The existing lane above stays
+active until these cutover requirements are met.
 
 A feature worktree must never change production Convex. The `main` app and production Convex are a single release unit: deploy them only from an up-to-date, clean `main` worktree.
 

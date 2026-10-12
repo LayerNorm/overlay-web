@@ -6,10 +6,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Edits to legacy notes stay visible.** Canonical text updates remove an older text field that could mask the saved content on subsequent reads.
+
+- **PR checks and previews spend less time on obsolete work.** New revisions cancel superseded code checks; maintenance-only diffs keep CI and docs checks without rebuilding the unchanged app. Hosted previews remain available through an explicit request. Dependency Review now performs its comparison, and paid canary deployment events no longer publish skipped required contract checks.
+
 - **Removed preview wildcard fallback.** Exact PR aliases serve previews; unknown or closed preview hostnames return 404. Trusted control checks the certificate-only wildcard, verifies cleanup, settles superseded builds before deploying newer backend code, and retries transient reads without blindly repeating mutations.
 - **Stale note saves report conflicts.** Convex rejection now reaches the existing HTTP `409` response instead of reporting a successful save with unchanged content. Found during isolated-preview CRUD QA.
 
 ### Added
+
+- **Boolean release flags default off.** A request-scoped PostHog helper lets unfinished server behavior stay dark, evaluates each requested set once, and falls back to the existing behavior when configuration or the flag service is unavailable.
+
+- **Prepared dedicated staging deployments from main.** An inactive, serialized workflow pins Divyansh's staging project, exact accepted revision and separate Convex backend. It rejects manual or mismatched builds and records web/backend provenance. Activation awaits the preview soak, isolated providers and authenticated staging smoke; current staging and manual production releases remain in place.
 
 - **PR preview lifecycle automation and merge-queue checks.** Trusted main workflows provision per-PR custom origins, pin builds to the current head, verify alias assignment, and clean up on close or retarget; scheduled reconciliation covers missed events. Wildcard fallback hosts return 404. All required checks support merge groups, including explicit dependency comparisons and existing CLA-signature verification.
   Management credentials are confined to a main-only GitHub environment, and the controller disables automatic domain assignment before provenance checks.

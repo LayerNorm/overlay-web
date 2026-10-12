@@ -43,6 +43,15 @@ export function deploymentMatches(deployment, pr, { ready = false } = {}) {
     && (!ready || (deployment.readyState ?? deployment.state) === 'READY')
 }
 
+/** Docs and GitHub metadata have their own checks; they do not change the app. */
+export function needsHostedPreview(files) {
+  if (!files.length) return true // Unknown/incomplete diffs fail closed into a build.
+  const maintenance = path => typeof path === 'string' && path.length > 0
+    && (path.startsWith('docs/') || path.startsWith('.github/') || /^[^/]+\.mdx?$/.test(path))
+  return files.some(file => !maintenance(file.filename)
+    || (file.previous_filename && !maintenance(file.previous_filename)))
+}
+
 export class ApiError extends Error {
   constructor(service, status, code) {
     // Never include API response bodies or auth headers in logs.
@@ -289,13 +298,50 @@ export class PreviewController {
       meta: { overlayPreviewPr: String(pr.number), overlayPreviewSha: pr.head.sha },
     } })
   }
-  async run(number) {
+  async files(pr) {
+    if (pr.changed_files > 3000) return null // GitHub caps this endpoint at 3000.
+    const files = []
+    for (let page = 1; ; page++) {
+      const batch = await this.github(`${this.repoPath}/pulls/${pr.number}/files`, { query: { per_page: 100, page } })
+      files.push(...batch)
+      if (batch.length < 100) break
+    }
+    if (pr.changed_files !== undefined && files.length !== pr.changed_files) return null
+    return files
+  }
+  async settleBranch(pr) {
+    const builds = await pages(this.vercel, '/v7/deployments', 'deployments', {
+      projectId: CONFIG.projectId, branch: pr.head.ref,
+    })
+    for (const candidate of builds) {
+      if (!['QUEUED', 'INITIALIZING', 'BUILDING'].includes(candidate.readyState ?? candidate.state)) continue
+      const d = await this.vercel(`/v13/deployments/${segment(candidate.uid ?? candidate.id)}`)
+      const old = { ...pr, head: { ...pr.head, sha: d.gitSource?.sha } }
+      if (!/^[a-f0-9]{40}$/.test(old.head.sha ?? '') || !deploymentMatches(d, old)) {
+        throw new Error('Refusing to settle an unrelated maintenance preview')
+      }
+      await this.settleBuild(old, d.id)
+    }
+  }
+  async run(number, { forcePreview = false } = {}) {
     previewAddress(number)
     await this.verifyProject()
     const pr = trustedPull(await this.pull(number), { requireMain: false })
     if (pr.state !== 'open' || pr.base.ref !== 'main') return this.cleanup(pr)
     const siblings = await this.github(`${this.repoPath}/pulls`, { query: { state: 'open', head: `LayerNorm:${pr.head.ref}`, base: 'main', per_page: 100 } })
     if (siblings.some(other => other.number !== pr.number)) throw new Error('One PR per source branch is required')
+    if (!forcePreview && !pr.labels?.some(label => label.name === 'needs-preview')) {
+      const files = await this.files(pr)
+      if (files && !needsHostedPreview(files)) {
+        await this.settleBranch(pr)
+        await this.cleanup(pr)
+        const current = trustedPull(await this.pull(number), { requireMain: false })
+        if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
+        if (current.head.sha !== pr.head.sha) return { state: 'superseded', number }
+        await this.status(pr, 'success', 'Docs/GitHub metadata only; hosted app preview not required')
+        return { state: 'not-required', number, sha: pr.head.sha }
+      }
+    }
     const address = await this.provision(pr)
     await this.status(pr, 'pending', `Building ${pr.head.sha.slice(0, 12)} at canonical PR URL`)
     let deployment
@@ -387,7 +433,7 @@ export async function main(env = process.env, args = process.argv.slice(2)) {
   }
   const event = env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')) : {}
   const number = args[0] || event.pull_request?.number || event.inputs?.pr_number
-  await controller.run(number)
+  await controller.run(number, { forcePreview: env.GITHUB_EVENT_NAME === 'workflow_dispatch' })
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch(error => { console.error(error.message); process.exitCode = 1 })

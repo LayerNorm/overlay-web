@@ -5,6 +5,7 @@ import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
 const seed = makeFunctionReference<'mutation'>('dev/seed:init')
+const stagingSeed = makeFunctionReference<'mutation'>('dev/seed:initStaging')
 afterEach(() => vi.unstubAllEnvs())
 
 test('preview deployments register no crons and outbound delivery ticks are inert', async () => {
@@ -52,4 +53,28 @@ test('preview seed requires sandbox identity and creates fixtures idempotently',
   expect(counts).toMatchObject({ users: 1, workspaces: 1, members: 1, conversations: 1, files: 2 })
   expect(counts.automations).toHaveLength(1)
   expect(counts.automations[0]).toMatchObject({ enabled: false, status: 'paused' })
+})
+
+test('synthetic staging fixtures refuse customer production and preserve edits when repeated', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'staging')
+  vi.stubEnv('WORKOS_CLIENT_ID', 'client_01KJ9A19X317J7VWRWQ6XBME9Z')
+  vi.stubEnv('STAGING_SMOKE_USER_ID', 'user_01M4R1EKTMDZ4E6BQ5DMZXD0F2')
+  vi.stubEnv('STAGING_SMOKE_EMAIL', 'overlay-preview-qa@getoverlay.io')
+  vi.stubEnv('CONVEX_CLOUD_URL', 'https://colorful-chickadee-419.convex.cloud')
+  const t = convexTest(schema, modules)
+  await expect(t.mutation(stagingSeed, {})).rejects.toThrow('Synthetic staging seed is unavailable')
+  expect(await t.run(ctx => ctx.db.query('files').take(1))).toHaveLength(0)
+  vi.stubEnv('CONVEX_CLOUD_URL', 'https://doting-cuttlefish-819.convex.cloud')
+  const first = await t.mutation(stagingSeed, {})
+  expect(first.workspaceId).toBe('staging-personal-' + first.userId)
+  const note = await t.run(async ctx => {
+    const row = await ctx.db.query('files').withIndex('by_userId_clientId', q =>
+      q.eq('userId', first.userId).eq('clientId', 'staging-seed-note-v1')).unique()
+    if (!row) throw new Error('Missing staging note')
+    await ctx.db.patch(row._id, { content: 'Preserved QA edit' })
+    return row._id
+  })
+  expect(await t.mutation(stagingSeed, {})).toEqual(first)
+  expect(await t.run(async ctx => (await ctx.db.get(note))?.content)).toBe('Preserved QA edit')
+  expect(await t.run(ctx => ctx.db.query('files').take(5))).toHaveLength(2)
 })

@@ -1,0 +1,40 @@
+name: Staging Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # Activated only after live provider isolation and authenticated smoke pass.
+    # Changing the production branch alone cannot enable this migration.
+    if: github.ref == 'refs/heads/main' && vars.RELEASE_STAGING_FROM_MAIN == 'enabled'
+    runs-on: ubuntu-latest
+    environment: release-control
+    timeout-minutes: 40
+    concurrency:
+      group: overlay-staging-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: deploy
+        run: node scripts/release/staging-control.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-deployment-${{ github.sha }}
+          path: staging-deployment.json
+          if-no-files-found: error
+          retention-days: 30

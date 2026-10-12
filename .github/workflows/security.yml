@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secret-scan:
     name: Secret Scan
@@ -92,29 +96,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Detect dependency graph availability
-        id: dependency-graph
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # actions/github-script v9.0.0
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const response = await github.rest.repos.get({
-              owner,
-              repo,
-            });
-            const status = response.data.security_and_analysis?.dependency_graph?.status || 'disabled';
-            core.setOutput('enabled', String(status === 'enabled'));
-
       - name: Check dependency changes
-        if: steps.dependency-graph.outputs.enabled == 'true'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # actions/dependency-review-action v5.0.0
         with:
           base-ref: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           head-ref: ${{ github.event.merge_group.head_sha || github.event.pull_request.head.sha }}
-
-      - name: Skip dependency review when dependency graph is disabled
-        if: steps.dependency-graph.outputs.enabled != 'true'
-        run: echo "Skipping dependency review because GitHub dependency graph is disabled for this repository."
 
   dependency-audit:
     name: Required Quality and Security Gates

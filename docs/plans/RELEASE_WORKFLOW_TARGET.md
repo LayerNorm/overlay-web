@@ -4,6 +4,12 @@
 > [`RELEASE_WORKFLOW_MIGRATION_PLAN.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md) lands,
 > follow `docs/develop/agentic-development.mdx` and `docs/develop/worktree-staging-qa.mdx`.
 
+Preparation status: preview foundations are merged. Dedicated staging backend
+`doting-cuttlefish-819` in project `overlay-staging` is provisioned but empty.
+The staging controller is being prepared behind an unset
+`RELEASE_STAGING_FROM_MAIN` repository variable. The current branch-based
+staging lane remains authoritative until the migration checkpoint and cutover.
+
 ## Preview-domain decision — 2026-10-12
 
 Implement stable `pr-<number>.preview.getoverlay.io` URLs with ordinary Vercel
@@ -48,7 +54,7 @@ manual promotion of that exact SHA → getoverlay.io (web first, then Convex pro
 | Environment | Web | Convex backend | WorkOS | Third parties | Built from |
 |---|---|---|---|---|---|
 | Local | `localhost` | Each engineer's own Convex dev deployment | Staging environment | Test mode, CLI forwarding | Working tree |
-| Preview | `pr-<number>.preview.getoverlay.io` (ordinary custom alias in the staging Vercel project, Preview scope) | One Convex preview deployment per branch, auto-created and auto-deleted | Staging environment, wildcard redirect URI | Test mode; webhooks not delivered | Each PR head |
+| Preview | `pr-<number>.preview.getoverlay.io` (ordinary custom alias in the staging Vercel project, Preview scope) | One Convex preview deployment per PR, renewed while open and expired after close | Staging environment, wildcard redirect URI | Test mode; webhooks not delivered | Each PR head |
 | Staging | `staging.getoverlay.io` (staging Vercel project, Production scope) | Dedicated staging deployment | Staging environment | Test mode with real webhooks | Every push to `main` |
 | Production | `getoverlay.io` (production Vercel project) | Production deployment | Production environment | Live mode | A `main` SHA, promoted manually |
 
@@ -106,6 +112,13 @@ References: [Vercel custom aliases for previews](https://vercel.com/kb/guide/how
 [WorkOS wildcard callback rules](https://workos.com/docs/reference/authkit/authentication/get-authorization-url).
 
 ## The life of a change
+
+Runtime, dependency and build changes receive hosted app previews. A PR confined
+to docs, root Markdown or GitHub metadata/workflows keeps required CI and its
+docs preview without rebuilding the unchanged app. `needs-preview` or a manual
+PR Preview dispatch requests an app preview explicitly. Unknown or incomplete
+file inventories still build. This avoids maintenance-only builds consuming the
+capacity needed for feature QA.
 
 1. **Start.** Create a `codex/<slug>` branch in its own worktree from the latest
    `origin/main`. One task per branch, one agent per worktree.
@@ -175,6 +188,10 @@ References: [Vercel custom aliases for previews](https://vercel.com/kb/guide/how
 - Agents may open and update PRs, verify previews, and enqueue merges for
   low-risk changes. Production promotion is always a human decision.
 
+During the sole-owner period, retain CODEOWNERS and substantive agent review
+without requiring an approving human review that the sole author cannot supply.
+Enable the human approval gate when a second eligible reviewer joins.
+
 ## Roles
 
 - **Builder** (human or agent): implements one change, verifies it on its
@@ -196,3 +213,13 @@ longer needed: the merge queue integrates, and staging deploys itself.
 - Custom preview addresses depend on alias automation. Failed builds leave the
   last successful alias in place; QA must check the deployed SHA before treating
   a preview as evidence for the current PR head.
+
+Prepared staging backend: `doting-cuttlefish-819` has separately generated
+internal secrets, its sandbox smoke identity and staging app URL configured, with
+readback verified. Application functions and synthetic fixtures are not deployed
+yet. The gated build sequence deploys backend functions, seeds guarded fixtures,
+then builds web; Convex `deploy --cmd` alone runs the command before its push.
+Activation still requires provider isolation, authenticated smoke and the cutover.
+
+Owner decision (2026-10-12): cut over when live isolation and staging smoke
+checks pass; the planned one-to-two-week waiting period is waived.
