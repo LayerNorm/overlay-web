@@ -8,6 +8,8 @@ import {
   resolveSidebarActionForPath,
 } from '@overlay/app-core'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSavedPanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import { toolsInlineItems } from '@/components/layout/sidebar-nav'
@@ -35,6 +37,7 @@ import {
   resolveNavItemDestination,
   resolveResourceAction,
   resolveShowcasePrimaryLinks,
+  scopePanelAction,
   resolveSidebarRouteState,
   selectMobileAdmin,
   selectMobileNavItem,
@@ -42,6 +45,7 @@ import {
   type SidebarNavItem,
 } from './appSidebarNav'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
   useBodyScrollLock,
   useClickOutside,
@@ -296,8 +300,8 @@ function useSidebarPanelChrome(args: {
   } = args
 
   const contextualAction = resolveSidebarActionForPath(
-    // Activity and Archived live under the Chats secondary panel, so keep New chat + search.
-    routeState.activityOpen || routeState.archivedOpen || routeState.chatsView === 'activity' || routeState.chatsView === 'archived'
+    // Activity and the archived-chat viewer live under the Chats secondary panel, so keep New chat + search.
+    routeState.activityOpen || routeState.archivedOpen || routeState.chatsView === 'activity'
       ? '/app/chat'
       : routeState.canonicalWorkspaceRoute
         ? `/app/${routeState.workspaceSurface}`
@@ -327,6 +331,7 @@ function useSidebarPanelChrome(args: {
 
   const shouldLoadCollaborationUnread = !publicShowcase && Boolean(user) && Boolean(activeWorkspaceId)
 
+  const solo = useIsSoloWorkspace()
   const panelNav = resolveSecondaryPanelNav({
     panelKind: routeState.panelKind,
     publicShowcase,
@@ -343,9 +348,24 @@ function useSidebarPanelChrome(args: {
     settingsSections,
     closeMobileDrawer,
     beginSecondaryNavigation,
+    solo,
   })
 
-  const panelAction = routeState.hasResourcePanel ? resourceAction : null
+  const { access: createAccess, viewer: createViewer, canCreate } = useWorkspaceCreateAccess()
+  const panelAction = routeState.hasResourcePanel
+    ? scopePanelAction({
+      action: resourceAction,
+      panelKind: routeState.panelKind,
+      scope: routeState.scope,
+      chatsView: routeState.chatsView,
+      rules: {
+        canCreate,
+        isManager: createViewer?.role === 'owner' || createViewer?.role === 'admin',
+        memberCanCreateChannels: createAccess.memberCanCreateChannels,
+        memberCanCreateAgents: createAccess.memberCanCreateAgents,
+      },
+    })
+    : null
   const panelSearch = routeState.hasResourcePanel && contextualSearchCategory
     ? {
       title: contextualSearchCategory === 'chat' ? 'Search chats (⌘K)' : 'Search files (⌘K)',
@@ -478,11 +498,15 @@ function useSidebarDerivedPanels(args: {
     mobileAccountRef,
     mobileMenuOpen,
   } = args
+  const savedScope = useSavedPanelScope()
+  const solo = useIsSoloWorkspace()
   const routeState = resolveSidebarRouteState({
     pathname,
     searchParams: currentSearchParams,
     resolveWorkspaceSurface,
     automationsEnabled,
+    savedScope,
+    solo,
   })
   const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
 

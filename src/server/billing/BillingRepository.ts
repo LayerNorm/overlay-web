@@ -1,28 +1,11 @@
 import 'server-only'
 
 import type { BillingAccountRecord } from '@/shared/billing/billing-account'
+import type { UsageTotal } from '@/shared/billing/usage-resources'
 import type {
   BillingAccountSpendLimitRecord,
   BillingSpendSubject,
 } from '@/shared/billing/billing-payer'
-import type {
-  BillingBalanceParityReport,
-  BillingSubscriptionVerificationRow,
-} from '@/shared/billing/billing-account-migration'
-
-export type PersonalBillingBackfillResult = {
-  attached: {
-    budgetReservations: number
-    budgetTopUps: number
-    subscriptions: number
-    tokenUsage: number
-    toolInvocations: number
-    usageOperations: number
-  }
-  billingAccountId: string
-  complete: boolean
-  userId: string
-}
 
 export type BillingEntitlementsRecord = {
   billingAccountId?: string
@@ -66,6 +49,12 @@ export type BillingSubscriptionRecord = {
   status?: 'active' | 'canceled' | 'past_due' | 'trialing'
   autoTopUpEnabled?: boolean
   autoTopUpAmountCents?: number
+  /** Workspace plans: most automatic top-ups may add per billing period. */
+  autoTopUpMonthlyLimitCents?: number
+  /** Workspace plans: automatic top-ups charged (pending or succeeded) this period. */
+  autoTopUpSpentThisPeriodCents?: number
+  /** Workspace plans: an automatic top-up is still waiting on Stripe. */
+  autoTopUpPending?: boolean
   offSessionConsentAt?: number
   currentPeriodStart?: number
   currentPeriodEnd?: number
@@ -75,36 +64,7 @@ export type BillingAccountEntitlementsRecord = BillingEntitlementsRecord & {
   billingAccountId: string
 }
 
-export type BudgetTopUpRecord = {
-  _id: string
-  billingAccountId?: string
-  amountCents: number
-  source: 'manual' | 'auto'
-  status: 'pending' | 'succeeded' | 'failed' | 'canceled'
-  stripePaymentIntentId?: string
-  createdAt: number
-  updatedAt: number
-  errorMessage?: string
-}
-
-export type AdministrativeUsageRecord = {
-  userId: string
-  email?: string
-  planKind: 'free' | 'paid'
-  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
-  budgetUsedCents: number
-  budgetTotalCents: number
-  budgetRemainingCents: number
-  allowanceTotalCents?: number
-  allowanceUsedCents?: number
-  allowancePercentUsed?: number
-  topUpBalanceCents?: number
-}
-
 export interface BillingRepository {
-  backfillPersonalBillingAccountByServer(args: {
-    userId: string
-  }): Promise<PersonalBillingBackfillResult>
   ensurePersonalBillingAccount(args: {
     userId: string
   }): Promise<BillingAccountRecord>
@@ -121,18 +81,16 @@ export interface BillingRepository {
   getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
     workspaceId: string
   }): Promise<BillingAccountRecord | null>
+  getBillingAccountUsageTotalsByServer(args: {
+    billingAccountId: string
+    periodStart: number
+  }): Promise<{ totals: UsageTotal[]; truncated: boolean }>
   getBillingAccountEntitlementsByServer(args: {
     billingAccountId: string
   }): Promise<BillingAccountEntitlementsRecord | null>
   getBillingAccountSubscriptionByServer(args: {
     billingAccountId: string
   }): Promise<BillingSubscriptionRecord | null>
-  getPersonalBillingBalanceParityByServer(args: {
-    userId: string
-  }): Promise<BillingBalanceParityReport | null>
-  listSubscriptionVerificationRowsByServer(args?: {
-    limit?: number
-  }): Promise<BillingSubscriptionVerificationRow[]>
   getBillingAccountSpendLimitByServer(args: {
     billingAccountId: string
     subject: BillingSpendSubject
@@ -144,48 +102,11 @@ export interface BillingRepository {
     periodStart: number
     subject: BillingSpendSubject
   }): Promise<BillingAccountSpendLimitRecord>
-  listAdministrativeUsage(args?: {
-    limit?: number
-    userId?: string
-  }): Promise<AdministrativeUsageRecord[]>
-  adjustAdministrativeBudget(args: {
-    amountCents: number
-    userId: string
-  }): Promise<AdministrativeUsageRecord>
   getEntitlementsByServer(args: {
     userId: string
   }): Promise<BillingEntitlementsRecord | null>
-  getSubscriptionByUserIdByServer(args: {
-    userId: string
-  }): Promise<BillingSubscriptionRecord | null>
-  getSubscriptionByUserId(args: {
-    accessToken: string
-    userId: string
-  }): Promise<BillingSubscriptionRecord | null>
-  updateBillingPreferences(args: {
-    autoTopUpEnabled: boolean
-    grantOffSessionConsent: boolean
-    topUpAmountCents: number
-    userId: string
-  }): Promise<{ success: boolean; error?: string } | null>
-  upsertSubscription(args: Record<string, unknown> & {
-    userId: string
-  }): Promise<unknown>
   upsertBillingAccountSubscription(args: Record<string, unknown> & {
     billingAccountId: string
-  }): Promise<unknown>
-  listBudgetTopUpsByServer(args: {
-    userId: string
-  }): Promise<BudgetTopUpRecord[]>
-  recordBudgetTopUp(args: {
-    amountCents: number
-    source: 'manual' | 'auto'
-    status: 'pending' | 'succeeded' | 'failed' | 'canceled'
-    stripeCheckoutSessionId?: string
-    stripeCustomerId?: string
-    stripePaymentIntentId?: string
-    errorMessage?: string
-    userId: string
   }): Promise<unknown>
   recordBillingAccountTopUp(args: {
     actorUserId: string
@@ -198,16 +119,4 @@ export interface BillingRepository {
     stripePaymentIntentId?: string
     errorMessage?: string
   }): Promise<unknown>
-  reverseTopUp(args: {
-    userId: string
-    billingAccountId?: string
-    stripePaymentIntentId: string
-    refundAmountCents: number
-    reason: string
-  }): Promise<{ reversed: boolean }>
-  resolveBillingAccountIdByProviderReference(args: {
-    provider: string
-    providerCustomerId?: string
-    providerSubscriptionId?: string
-  }): Promise<string | null>
 }

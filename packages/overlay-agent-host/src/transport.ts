@@ -5,6 +5,7 @@ import {
   eventAcknowledgementSchema,
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
+  runCredentialsResponseSchema,
   type AgentHostCommand,
   type CommandAcknowledgement,
   type EventAcknowledgement,
@@ -16,6 +17,14 @@ import {
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { createHash, randomBytes, sign } from 'node:crypto'
 
+/** A control-plane request that failed; `code` is the server's stable error code when it sent one. */
+export class ControlPlaneRequestError extends Error {
+  constructor(readonly status: number, readonly code?: string) {
+    super(`control plane request failed with ${status}`)
+    this.name = 'ControlPlaneRequestError'
+  }
+}
+
 export interface AgentControlPlaneClient {
   pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number }>
   acknowledgeCommand(acknowledgement: CommandAcknowledgement): Promise<void>
@@ -25,6 +34,8 @@ export interface AgentControlPlaneClient {
   createArtifactUpload?(input: ArtifactUploadRequest): Promise<ArtifactUploadResponse>
   uploadArtifactBytes?(upload: ArtifactUploadResponse, bytes: Uint8Array): Promise<void>
   completeArtifactUpload?(artifactId: string): Promise<void>
+  /** Overlay Cloud only: the provider credentials for one of this host's runs. */
+  fetchRunCredentials?(runId: string): Promise<Record<string, string>>
 }
 
 export type HttpControlPlaneClientOptions = {
@@ -110,6 +121,15 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     })
   }
 
+  async fetchRunCredentials(runId: string): Promise<Record<string, string>> {
+    const response = await this.request(new URL('run-credentials', withSlash(this.options.baseUrl)), {
+      method: 'POST',
+      body: JSON.stringify({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, runId }),
+      headers: { 'content-type': 'application/json' },
+    })
+    return runCredentialsResponseSchema.parse(await response.json()).env
+  }
+
   private async request(url: URL, init: RequestInit): Promise<Response> {
     if (this.options.privateKey && this.credentialExpiresAt &&
       this.credentialExpiresAt - Date.now() < 60_000 && !url.pathname.endsWith('/credentials/refresh')) {
@@ -141,7 +161,10 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
       signal,
       headers,
     })
-    if (!response.ok) throw new Error(`control plane request failed with ${response.status}`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { code?: unknown } | null
+      throw new ControlPlaneRequestError(response.status, typeof body?.code === 'string' ? body.code : undefined)
+    }
     return response
   }
 

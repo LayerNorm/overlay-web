@@ -25,6 +25,7 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 4. `/about` — `src/app/about/page.tsx` — Pure redirect to `/home`. Removed opt-out.
 5. `/pricing` — `src/app/(marketing)/pricing/page.tsx` — `getOverlayCapabilitiesSync()`
    reads `process.env` only. Removed opt-out.
+   Always the workspace pricing page (the account-plan page is deleted).
 
 ### Batch 2 — Root layout + home page (2 routes)
 
@@ -201,3 +202,12 @@ cannot or should not be validated for instant navigation. It does not disable
 prerendering — the route still prerenders if it can. It only skips the
 validation error. See [the Next.js docs](https://nextjs.org/docs/messages/instant-unrendered-segment)
 for details.
+
+## Inline scripts in the prerendered shell and the nonce CSP
+
+With `SECURITY_CSP_NONCE=true`, only dynamically rendered paths get a per-request nonce; the static shell (PPR) ships
+inline scripts with none. Two exist and are allowed by hash in `buildCspPolicy` (`INLINE_SCRIPT_HASHES`, `src/proxy.ts`):
+React's shell-time script (`$RT`) and the theme initializer (`THEME_INIT_SCRIPT`). Blocked, the saved theme applies only after hydration and React's batched Suspense reveal falls back to `requestAnimationFrame`.
+`csp-nonce.test.ts` recomputes both hashes (React's from the installed
+`next/dist/compiled/react-dom`) and fails when an upgrade or edit changes them. Any new inline script in a prerendered
+shell needs the same treatment.

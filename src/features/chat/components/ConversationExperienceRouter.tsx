@@ -1,11 +1,12 @@
 'use client'
 
 import { Hash, Mail } from 'lucide-react'
-import { useEffect, useState, type ComponentProps } from 'react'
+import { useEffect, useRef, useState, type ComponentProps } from 'react'
 import { useSearchParams } from 'next/navigation'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import { DirectMessageExperience } from './DirectMessageExperience'
+import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { resolveSoftChatRoute, type SoftChatRoute } from '@/shared/chat/chat-view-navigation'
 
 /**
@@ -55,6 +56,32 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       window.removeEventListener('popstate', bumpBrowserRoute)
     }
   }, [])
+
+  // A link to a direct message or channel with no view (an agent's question, a shared URL) would open it as a personal
+  // chat. Ask what the conversation is and move the route to the view that renders it. A personal chat has no
+  // participants to find, so it is left alone.
+  const probedId = useRef<string | null>(null)
+  useEffect(() => {
+    const route = readBrowserChatRoute()
+    const id = route?.conversationId
+    if (!id || (route?.view && route.view !== 'personal') || probedId.current === id || props.publicShowcaseSnapshots) return
+    probedId.current = id
+    void (async () => {
+      try {
+        const { participants } = await overlayAppClient.conversations.participants(id)
+        if (participants.filter((participant) => participant.status === 'active').length < 2) return
+        const isChannel = (await overlayAppClient.conversations.channels().catch((_error) => ({ channels: [] })))
+          .channels.some((channel) => channel.conversationId === id)
+        const params = new URLSearchParams(window.location.search)
+        if (params.get('id') !== id) return
+        params.set('view', isChannel ? 'channels' : 'dms')
+        window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`)
+        window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail: { chatId: id, view: isChannel ? 'channels' : 'dms' } }))
+      } catch (_error) {
+        // Not a conversation with other participants: it stays a personal chat.
+      }
+    })()
+  }, [browserRouteVersion, searchConversationId, searchView, props.publicShowcaseSnapshots])
 
   void browserRouteVersion
   const browserRoute = readBrowserChatRoute()

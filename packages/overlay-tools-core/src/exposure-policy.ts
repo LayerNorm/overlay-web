@@ -5,6 +5,8 @@ const DEFAULT_BASE_TOOL_IDS = [
   'read_file',
   'search_memory',
   'search_messages',
+  'list_chats',
+  'read_chat',
   'save_memory',
   'save_memory_batch',
   'list_notes',

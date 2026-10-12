@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { AuthProvider, useAuth, type AuthUser } from '@/contexts/AuthContext'
+import { ArchiveToastHost } from '@/components/feedback/ArchiveToastHost'
 import ObservabilityClient from '@/components/providers/ObservabilityClient'
 import { AppSettingsProvider } from '@/components/providers/AppSettingsProvider'
 import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
@@ -49,6 +50,7 @@ export function AppClientProviders({
             <ObservabilityClient />
           </Suspense>
           {children}
+          <ArchiveToastHost />
           <Analytics />
           <SpeedInsights />
         </ConvexAuthProvider>

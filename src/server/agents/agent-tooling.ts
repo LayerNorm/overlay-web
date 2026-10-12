@@ -7,6 +7,7 @@ import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
+import { resolveSharedRoom } from '@/server/agents/shared-room'
 import {
   agentToolCapabilities,
   allAgentToolGrantIds,
@@ -94,6 +95,61 @@ export function applyAgentCapabilityFilter(args: {
 }
 
 /**
+ * The tool set for an outside AI app connected over MCP (ChatGPT, Claude, Cursor…).
+ * Same pipeline, policy, and capability filter as an agent turn, with no agent behind
+ * it: nothing is attributed to an agent, memory is the person's own (so every app
+ * they connect shares one memory), and there is no conversation to attach to.
+ */
+export async function buildExternalAppTooling(args: {
+  actorUserId: string
+  effectiveModelId: string
+  entitlements: Entitlements
+  grantToolIds: readonly string[]
+  idempotencyKey: string
+  paid: boolean
+  requestFingerprint: string
+  turnId: string
+  workspaceId: string
+}): Promise<WorkspaceAgentToolingResult> {
+  const { capabilities, overlayToolIds } = resolveAgentGrant({ agentId: '', allowedToolIds: args.grantToolIds, isDefaultMaster: false })
+  const tooling = await prepareActTooling({
+    accountAllowedToolIds: overlayToolIds,
+    baseUrl: getInternalApiBaseUrl(),
+    effectiveModelId: args.effectiveModelId,
+    entitlements: args.entitlements,
+    grantedToolSurface: true,
+    idempotencyKey: args.idempotencyKey,
+    isMultiModelFollowUpSlot: false,
+    mediaToolIntent: null,
+    memoryEnabled: true,
+    mode: 'chat',
+    paid: args.paid,
+    preloadTasks: preloadActExternalToolTasks({
+      userId: args.actorUserId,
+      serverSecret: getInternalApiSecret(),
+      workspaceId: args.workspaceId,
+    }),
+    requestFingerprint: args.requestFingerprint,
+    serverSecret: getInternalApiSecret(),
+    turnId: args.turnId,
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+  })
+  const tools = applyAgentCapabilityFilter({
+    capabilities,
+    integrationToolIds: tooling.integrationToolIds,
+    overlayToolIds: tooling.allowedOverlayToolIds,
+    tools: tooling.tools,
+  })
+  return {
+    tools,
+    exposedToolIds: Object.keys(tools),
+    ...(tooling.toolApproval ? { toolApproval: tooling.toolApproval } : {}),
+    ...(tooling.toolsContext ? { toolsContext: tooling.toolsContext } : {}),
+  }
+}
+
+/**
  * Builds the tool set for a workspace agent turn.
  *
  * Agents run the same pipeline as personal chat rather than a reduced one, so
@@ -124,6 +180,12 @@ export async function buildWorkspaceAgentTooling(args: {
   workspaceId: string
 }): Promise<WorkspaceAgentToolingResult> {
   const { capabilities, overlayToolIds } = resolveAgentGrant(args.grant)
+  // The room rule: in a room others can read, the summoner's private reach is withheld (see `prepareActTooling`).
+  const sharedRoom = await resolveSharedRoom({
+    actorUserId: args.actorUserId,
+    conversationId: args.conversationId,
+    workspaceId: args.workspaceId,
+  })
   const tooling = await prepareActTooling({
     accessToken: args.accessToken,
     // The agent's overlay grant enters as account policy, which the pipeline
@@ -150,9 +212,11 @@ export async function buildWorkspaceAgentTooling(args: {
       userId: args.actorUserId,
       accessToken: args.accessToken,
       serverSecret: getInternalApiSecret(),
+      workspaceId: args.workspaceId,
     }),
     requestFingerprint: args.requestFingerprint,
     serverSecret: getInternalApiSecret(),
+    sharedRoom,
     turnId: args.turnId,
     userId: args.actorUserId,
     workspaceId: args.workspaceId,
@@ -170,6 +234,7 @@ export async function buildWorkspaceAgentTooling(args: {
     capabilities: [...capabilities].join(',') || '(none)',
     conversationId: args.conversationId,
     exposedToolCount: Object.keys(tools).length,
+    sharedRoom,
     overlayToolIds: tooling.allowedOverlayToolIds.join(',') || '(none)',
   })
 

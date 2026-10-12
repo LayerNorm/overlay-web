@@ -24,6 +24,7 @@ import {
 } from '@overlay/modules-react/notes'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
+import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { MentionInput } from '@/features/chat/components/chat-interface/MentionInput'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-prefs'
@@ -93,11 +94,12 @@ export default function NotebookEditor({
         content: '',
       }
     },
-    async save({ noteId, title, content, expectedUpdatedAt }) {
+    async save({ noteId, title, content, docJson, expectedUpdatedAt }) {
       const response = await overlayAppClient.notes.updateResponse({
         noteId,
         title,
         content,
+        docJson,
         expectedUpdatedAt,
       })
       const body = await response.json().catch(() => null) as (UpdateNoteResponse & {
@@ -125,6 +127,7 @@ export default function NotebookEditor({
   return (
     <CanonicalNotebookEditor
       noteId={searchParams?.get('id') ?? null}
+      editorMode={searchParams?.get('editor') === 'blocks' ? 'blocknote' : 'auto'}
       hideSidebar={hideSidebar}
       projectName={projectName}
       repository={repository}
@@ -142,6 +145,17 @@ export default function NotebookEditor({
       onNavigateNote={(noteId) => router.replace(`/app/notes?id=${encodeURIComponent(noteId)}`)}
       onBackToFiles={() => router.push('/app/files')}
       renderExportMenu={({ note, title, content }) => (
+        <>
+        <ScopeItemActions
+          kind="content"
+          resource="files"
+          item={note}
+          onChanged={() => {
+            // The note left this scope (or was archived): back to the list it belongs to.
+            publishNotebookMutation(note._id, 'deleted')
+            router.push('/app/files')
+          }}
+        />
         <ExportMenu
           type="note"
           title={title}
@@ -149,6 +163,7 @@ export default function NotebookEditor({
           metadata={{ createdAt: note.createdAt, updatedAt: note.updatedAt }}
           renderShareDialog={(props) => <ShareDialog {...props} />}
         />
+        </>
       )}
       renderAgentInput={(input) => (
         <MentionInput

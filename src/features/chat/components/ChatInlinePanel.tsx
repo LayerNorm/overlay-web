@@ -12,6 +12,7 @@ import {
   CHAT_MODIFIED_EVENT,
   CHAT_TITLE_UPDATED_EVENT,
   dispatchChatArchived,
+  dispatchChatModified,
   dispatchChatTitleUpdated,
   sanitizeChatTitle,
   type ChatArchivedDetail,
@@ -33,6 +34,7 @@ import {
 } from '@/shared/chat/chat-list-cache'
 import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { announceArchived } from '@/shared/app/archive-toast'
 import { SidebarResourceList, SidebarResourceRow } from '@overlay/ui/primitives'
 import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
@@ -565,6 +567,13 @@ function useChatArchive({
       })
       dispatchChatArchived({
         chat: { ...chat, archivedAt: Date.now() },
+      })
+      announceArchived({
+        name: chat.title?.trim() || 'Untitled conversation',
+        undo: async () => {
+          await overlayAppClient.conversations.updateParticipantState(chat._id, { archived: false, archiveScope: scope })
+        },
+        onUndone: () => dispatchChatModified({ chat: { ...chat, lastModified: Date.now() } }),
       })
       setPendingArchiveChat(null)
     } catch (error) {

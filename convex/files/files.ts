@@ -1,4 +1,6 @@
 import { v } from 'convex/values'
+import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
+import { scopeMutations } from '../lib/scopeMutations'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
@@ -9,7 +11,7 @@ import {
   ensureStorageAvailable,
   getOrCreateSubscription,
   getStorageBytesUsed,
-  getStorageLimitForSubscription,
+  getStorageLimitForUser,
 } from './lib/storageQuota'
 import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../../src/shared/storage/storage-keys'
 
@@ -121,6 +123,10 @@ function normalizeFile(file: Doc<'files'>) {
     legacyOutputId: file.legacyOutputId,
     tags: file.tags,
     textInObjectStore: file.textInObjectStore,
+    // Personal when absent; archived rows keep the scope they were archived from.
+    scope: file.scope ?? ('personal' as const),
+    archivedAt: file.archivedAt,
+    archivedFromScope: file.archivedFromScope,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     deletedAt: file.deletedAt,
@@ -291,7 +297,7 @@ export const createUploadIntentByServer = mutation({
       getPendingUploadIntentBytes(ctx, args.userId),
     ])
     const nextReservedBytes = getStorageBytesUsed(subscription) + pendingBytes + declaredSizeBytes
-    const storageLimitBytes = getStorageLimitForSubscription(subscription)
+    const storageLimitBytes = await getStorageLimitForUser(ctx, args.userId)
     if (nextReservedBytes > storageLimitBytes) {
       throw new Error(`storage_limit_exceeded:${nextReservedBytes}:${storageLimitBytes}`)
     }
@@ -424,6 +430,29 @@ export const expireUploadIntentsByServer = mutation({
   },
 })
 
+// ─── Scope: Personal / Workspace / Archived ──────────────────────────────────
+
+const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
+const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+
+// A folder's contents move, archive, and restore with it.
+export const { setScope, archive, restore } = scopeMutations('files', 'content', {
+  descendants: async (db, id) => {
+    const reader = db as { query(table: 'files'): { withIndex(name: 'by_parentId', range: (q: { eq(field: 'parentId', value: string): unknown }) => unknown): { collect(): Promise<Array<{ _id: string; type: string }>> } } }
+    const out: string[] = []
+    const queue = [id]
+    while (queue.length > 0 && out.length < 5_000) {
+      const parent = queue.shift()!
+      const children = await reader.query('files').withIndex('by_parentId', (q) => q.eq('parentId', parent)).collect()
+      for (const child of children) {
+        out.push(child._id)
+        if (child.type === 'folder') queue.push(child._id)
+      }
+    }
+    return out
+  },
+})
+
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 type FileListArgs = {
@@ -488,6 +517,8 @@ const fileListArgs = {
   )),
   summary: v.optional(v.boolean()),
   includeDeleted: v.optional(v.boolean()),
+  /** personal, workspace, or archived. Omitted: everything active that the caller can see (listPage: the caller's own). */
+  view: viewArg,
 }
 
 export const list = query({
@@ -507,6 +538,7 @@ export const list = query({
     limit,
     summary,
     includeDeleted,
+    view,
   }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -514,12 +546,18 @@ export const list = query({
       return []
     }
     const requestedLimit = Math.max(1, Math.min(100, Math.floor(limit ?? 100)))
-    const candidates = await fileListQuery(ctx, {
-      userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted,
-    }).take(Math.min(300, requestedLimit * 3))
-    const filteredFiles = filterFileList(candidates, {
-      userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted,
-    }).slice(0, requestedLimit)
+    const listArgs = { userId, workspaceId, parentId, conversationId, outputType, kind, includeDeleted }
+    const scanLimit = Math.min(300, requestedLimit * 3)
+    // The caller's own files plus other members' workspace-scoped ones, for the requested view.
+    const visible = await listScopedRows(ctx, {
+      userId, workspaceId, view,
+      fetchMine: async () => await fileListQuery(ctx, listArgs).take(scanLimit),
+      fetchShared: async (ws) => await ctx.db.query('files')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).take(scanLimit),
+    })
+    const filteredFiles = filterFileList(visible, listArgs)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, requestedLimit)
 
     return summary
       ? filteredFiles.map(normalizeFileSummary)
@@ -541,11 +579,31 @@ export const listPage = query({
       return { data: [], nextCursor: null, hasMore: false }
     }
     const limit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)))
-    const page = await fileListQuery(ctx, args).paginate({
-      cursor: args.cursor ?? null,
-      numItems: limit,
-    })
-    const filtered = filterFileList(page.page, args)
+    // The archived view spans personal and workspace rows from two indexes, so it is returned as one (capped) page.
+    if (args.view === 'archived' && args.workspaceId) {
+      const rows = await listScopedRows(ctx, {
+        userId: args.userId, workspaceId: args.workspaceId, view: 'archived',
+        fetchMine: async () => await ctx.db.query('files')
+          .withIndex('by_workspaceId_userId_archivedAt', (q) => q.eq('workspaceId', args.workspaceId!).eq('userId', args.userId).gt('archivedAt', 0)).take(500),
+        fetchShared: async (ws) => await ctx.db.query('files')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').gt('archivedAt', 0)).take(500),
+      })
+      const archived = filterFileList(rows, args).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit)
+      return { data: args.summary ? archived.map(normalizeFileSummary) : archived.map(normalizeFile), nextCursor: null, hasMore: false }
+    }
+    // The workspace view pages over everyone's workspace-scoped files; every other view pages over the caller's own.
+    const shared = args.view === 'workspace' && args.workspaceId !== undefined
+    const page = shared
+      ? await ctx.db.query('files')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', args.workspaceId!).eq('scope', 'workspace').eq('archivedAt', undefined))
+        .paginate({ cursor: args.cursor ?? null, numItems: limit })
+      : await fileListQuery(ctx, args).paginate({ cursor: args.cursor ?? null, numItems: limit })
+    const scopeFilter = scopeContextLoader(ctx, args.userId)
+    const visible = []
+    for (const row of page.page) {
+      if (shared ? await scopeFilter.canRead(row) : (row.archivedAt === undefined && (args.view !== 'personal' || (row.scope ?? 'personal') === 'personal'))) visible.push(row)
+    }
+    const filtered = filterFileList(visible, args)
     return {
       data: args.summary
         ? filtered.map(normalizeFileSummary)
@@ -571,8 +629,8 @@ export const get = query({
     } catch {
       return null
     }
-    const file = await ctx.db.get(fileId)
-    if (!file || file.userId !== userId || (workspaceId !== undefined && file.workspaceId !== workspaceId)) return null
+    const file = await getReadableRow(ctx, { row: await ctx.db.get(fileId), userId, workspaceId })
+    if (!file) return null
     if (file.deletedAt && !includeDeleted) return null
     return normalizeFile(file)
   },
@@ -580,7 +638,8 @@ export const get = query({
 
 export const getByLegacyNoteId = query({
   args: {
-    noteId: v.id('notes'),
+    // The id the note had before notes moved into `files`; kept as text so old links still resolve.
+    noteId: v.string(),
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
@@ -601,7 +660,8 @@ export const getByLegacyNoteId = query({
 
 export const getByLegacyOutputId = query({
   args: {
-    outputId: v.id('outputs'),
+    // The id the output had before outputs moved into `files`; kept as text so old links still resolve.
+    outputId: v.string(),
     userId: v.string(),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
@@ -748,13 +808,16 @@ export const create = mutation({
     outputErrorMessage: v.optional(v.string()),
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
-    legacyNoteId: v.optional(v.id('notes')),
-    legacyOutputId: v.optional(v.id('outputs')),
+    legacyNoteId: v.optional(v.string()),
+    legacyOutputId: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
+    /** Scope of a new row (default personal); an existing note keeps its scope. */
+    scope: scopeArg,
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     const kind = args.kind ?? (args.type === 'folder' ? 'folder' : 'upload')
     const type = kind === 'folder' ? 'folder' : 'file'
     if (args.r2Key) {
@@ -855,6 +918,7 @@ export const create = mutation({
     const id = await ctx.db.insert('files', {
       userId: args.userId,
       workspaceId: args.workspaceId,
+      scope,
       clientId,
       name,
       tags,
@@ -912,6 +976,7 @@ export const createWithStorage = mutation({
     sizeBytes: v.number(),
     mimeType: v.optional(v.string()),
     extension: v.optional(v.string()),
+    scope: scopeArg,
   },
   handler: async (ctx, args) => {
     if (args.storageId) {
@@ -921,11 +986,13 @@ export const createWithStorage = mutation({
     await authorizeUserAccess(args)
     assertOwnedFileR2Key(args.userId, args.r2Key)
     await assertParentAndProject(ctx, args)
+    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     await ensureStorageAvailable(ctx as never, args.userId, args.sizeBytes)
     const now = Date.now()
     const id = await ctx.db.insert('files', {
       userId: args.userId,
       workspaceId: args.workspaceId,
+      scope,
       name: args.name,
       type: 'file',
       kind: 'upload',
@@ -954,6 +1021,7 @@ export const createExtractedDocument = mutation({
     mimeType: v.string(),
     sourceSizeBytes: v.number(),
     parentId: v.optional(v.string()),
+    scope: scopeArg,
     parts: v.array(v.object({
       name: v.string(),
       content: v.string(),
@@ -965,6 +1033,7 @@ export const createExtractedDocument = mutation({
     assertOwnedFileR2Key(args.userId, args.r2Key)
     await assertParentAndProject(ctx, args)
     if (args.parts.length === 0) throw new Error('Extracted document requires at least one part')
+    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
 
     const totalBytes = args.parts.reduce((total, part, index) => (
       total + (index === 0
@@ -985,6 +1054,7 @@ export const createExtractedDocument = mutation({
       const id = await ctx.db.insert('files', {
         userId: args.userId,
         workspaceId: args.workspaceId,
+        scope,
         name: part.name,
         type: 'file',
         kind: 'upload',
@@ -1056,11 +1126,15 @@ export const update = mutation({
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
+    docJson: v.optional(v.string()),
+    docFormat: v.optional(v.union(v.literal('markdown'), v.literal('blocknote'))),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
+    await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
-    if (!existing || existing.userId !== userId || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId)) throw new Error('Unauthorized')
+    if (!existing || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(existing))) throw new Error('Unauthorized')
+    // Storage, keys, and indexing belong to the file's owner, even when an admin edits a workspace-scoped file.
+    const userId = existing.userId
     if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
       throw new Error('NOTE_REVISION_CONFLICT')
     }
@@ -1085,6 +1159,10 @@ export const update = mutation({
       patch.extension = extensionOf(updates.name)
     }
     if (updates.tags !== undefined && kind === 'note') patch.tags = noteTags(updates.tags)
+    if (kind === 'note') {
+      if (updates.docJson !== undefined) patch.docJson = updates.docJson
+      if (updates.docFormat !== undefined) patch.docFormat = updates.docFormat
+    }
     if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError
@@ -1169,10 +1247,12 @@ export const remove = mutation({
     serverSecret: v.optional(v.string()),
     r2CleanupConfirmed: v.optional(v.boolean()),
   },
-  handler: async (ctx, { fileId, userId, workspaceId, accessToken, serverSecret, r2CleanupConfirmed }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+  handler: async (ctx, { fileId, userId: callerId, workspaceId, accessToken, serverSecret, r2CleanupConfirmed }) => {
+    await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const root = await ctx.db.get(fileId)
-    if (!root || root.userId !== userId || root.deletedAt || (workspaceId !== undefined && root.workspaceId !== workspaceId)) throw new Error('Unauthorized')
+    if (!root || root.deletedAt || (workspaceId !== undefined && root.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(root))) throw new Error('Unauthorized')
+    // Storage and indexing belong to the file's owner, even when an admin removes a workspace-scoped file.
+    const userId = root.userId
     const now = Date.now()
     async function deleteSubtree(id: Id<'files'>) {
       const children = await ctx.db
@@ -1208,140 +1288,6 @@ export const remove = mutation({
       }
     }
     await deleteSubtree(fileId)
-  },
-})
-
-// ─── Migration / backfill ─────────────────────────────────────────────────────
-
-export const backfillCanonicalFilesystem = mutation({
-  args: {
-    serverSecret: v.string(),
-    dryRun: v.optional(v.boolean()),
-    userId: v.optional(v.string()),
-    limit: v.optional(v.number()),
-  },
-  handler: async (ctx, { serverSecret, dryRun, userId, limit }) => {
-    if (!validateServerSecret(serverSecret)) throw new Error('Unauthorized')
-    const max = Math.min(5000, Math.max(1, limit ?? 1000))
-    const [notes, outputs, existingFiles] = await Promise.all([
-      ctx.db.query('notes').collect(),
-      ctx.db.query('outputs').collect(),
-      ctx.db.query('files').collect(),
-    ])
-    const targetNotes = notes.filter((note) => !userId || note.userId === userId).slice(0, max)
-    const targetOutputs = outputs.filter((output) => !userId || output.userId === userId).slice(0, max)
-    const targetFiles = existingFiles.filter((file) => !userId || file.userId === userId).slice(0, max)
-
-    const existingNoteIds = new Set(
-      existingFiles.flatMap((file) => file.legacyNoteId ? [String(file.legacyNoteId)] : []),
-    )
-    const existingOutputIds = new Set(
-      existingFiles.flatMap((file) => file.legacyOutputId ? [String(file.legacyOutputId)] : []),
-    )
-
-    let notesMigrated = 0
-    let outputsMigrated = 0
-    let filesPatched = 0
-    let notesSkipped = 0
-    let outputsSkipped = 0
-    const now = Date.now()
-
-    const filesToPatch = targetFiles.filter((file) => !file.kind)
-    filesPatched += filesToPatch.length
-    if (!dryRun) {
-      await Promise.all(filesToPatch.flatMap((file) => {
-        const text = textOf(file)
-        const kind = file.type === 'folder' ? 'folder' : 'upload'
-        const writes: Promise<unknown>[] = [ctx.db.patch(file._id, {
-          kind,
-          extension: file.extension ?? extensionOf(file.name),
-          indexable: isTextIndexable(kind, text),
-          indexStatus: isTextIndexable(kind, text) ? 'pending' : 'skipped',
-        })]
-        if (isTextIndexable(kind, text)) {
-          writes.push(ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: file._id }))
-        }
-        return writes
-      }))
-    }
-
-    const notesToMigrate = targetNotes.filter((note) => !(note.deletedAt || existingNoteIds.has(String(note._id))))
-    notesSkipped += targetNotes.length - notesToMigrate.length
-    notesMigrated += notesToMigrate.length
-    if (!dryRun) {
-      await Promise.all(notesToMigrate.map(async (note) => {
-        const fileId = await ctx.db.insert('files', {
-          userId: note.userId,
-          name: note.title || 'Untitled',
-          type: 'file',
-          kind: 'note',
-          content: note.content,
-          sizeBytes: utf8ByteLength(note.content),
-          contentHash: undefined,
-          extension: 'md',
-          indexable: note.content.trim().length > 0,
-          indexStatus: note.content.trim().length > 0 ? 'pending' : 'skipped',
-          legacyNoteId: note._id,
-          createdAt: note.createdAt ?? note.updatedAt,
-          updatedAt: note.updatedAt,
-        })
-        if (note.content.trim()) {
-          await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
-        }
-      }))
-    }
-
-    const outputsToMigrate = targetOutputs.filter((output) => !existingOutputIds.has(String(output._id)))
-    outputsSkipped += targetOutputs.length - outputsToMigrate.length
-    outputsMigrated += outputsToMigrate.length
-    if (!dryRun) {
-      await Promise.all(outputsToMigrate.map(async (output) => {
-        const name = output.fileName || `${output.type}-${output._id}`
-        const textContent =
-          output.type === 'text' || output.type === 'code' || output.type === 'document'
-            ? String(output.metadata?.text ?? output.metadata?.content ?? '')
-            : ''
-        const fileId = await ctx.db.insert('files', {
-          userId: output.userId,
-          name,
-          type: 'file',
-          kind: 'output',
-          content: textContent,
-          storageId: output.storageId,
-          r2Key: output.r2Key,
-          mimeType: output.mimeType,
-          extension: extensionOf(name),
-          sizeBytes: output.sizeBytes ?? (textContent ? utf8ByteLength(textContent) : 0),
-          indexable: textContent.trim().length > 0,
-          indexStatus: textContent.trim().length > 0 ? 'pending' : 'skipped',
-          conversationId: output.conversationId,
-          turnId: output.turnId,
-          modelId: output.modelId,
-          prompt: output.prompt,
-          outputType: output.type,
-          legacyOutputId: output._id,
-          createdAt: output.createdAt,
-          updatedAt: output.completedAt ?? output.createdAt,
-        })
-        await ctx.db.patch(output._id, { fileId })
-        if (textContent.trim()) {
-          await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
-        }
-      }))
-    }
-
-    return {
-      dryRun: Boolean(dryRun),
-      filesInspected: targetFiles.length,
-      filesPatched,
-      notesInspected: targetNotes.length,
-      notesMigrated,
-      notesSkipped,
-      outputsInspected: targetOutputs.length,
-      outputsMigrated,
-      outputsSkipped,
-      completedAt: now,
-    }
   },
 })
 

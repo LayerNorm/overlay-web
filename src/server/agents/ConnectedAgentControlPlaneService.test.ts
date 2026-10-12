@@ -3,7 +3,8 @@ import 'server-only'
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canonicalHostRequestProof, MAX_HOST_REQUEST_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
+import { canonicalEnrollmentProof, canonicalHostRequestProof, MAX_HOST_REQUEST_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
+import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
 import type { AgentArtifact, AgentEnvironment, AgentEnvironmentCredential, AgentRemoteSession } from '@overlay/workspace-contracts'
 import type { AuditService } from '@/server/admin'
@@ -21,7 +22,7 @@ const TOKEN = 'test-environment-credential-with-enough-entropy'
 const { privateKey, publicKey } = generateKeyPairSync('ed25519')
 const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
 
-function fixture(overrides: Partial<AgentEnvironment> = {}) {
+function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides: Partial<AgentEnvironmentCredential> = {}) {
   const environment: AgentEnvironment = {
     id: 'environment-1', workspaceId: 'workspace-1', kind: 'local', name: 'Test host',
     status: 'online', publicKey: publicKeyPem, capabilities: {},
@@ -33,7 +34,7 @@ function fixture(overrides: Partial<AgentEnvironment> = {}) {
     id: 'credential-1', workspaceId: environment.workspaceId, environmentId: environment.id,
     tokenHash: sha256(TOKEN), audience: 'overlay-agent-control-plane',
     methods: ['agent:commands:poll', 'agent:events:write'], tokenNonce: 'token-nonce',
-    expiresAt: NOW + 60_000, createdAt: NOW - 1_000,
+    expiresAt: NOW + 60_000, createdAt: NOW - 1_000, ...credentialOverrides,
   }
   const consumed = new Set<string>()
   const repository = {
@@ -45,7 +46,8 @@ function fixture(overrides: Partial<AgentEnvironment> = {}) {
         ? environment
         : null
     },
-    async consumeEnvironmentProofNonce(args: { credentialId: string; nonceHash: string }) {
+    async consumeEnvironmentProofNonce(args: { credentialId: string; nonceHash: string; expiredGraceMs?: number }) {
+      if (credential.expiresAt <= NOW && NOW - credential.expiresAt >= (args.expiredGraceMs ?? 0)) return false
       if (environment.status === 'revoked' || args.credentialId !== credential.id || consumed.has(args.nonceHash)) return false
       consumed.add(args.nonceHash)
       return true
@@ -128,6 +130,28 @@ test('host authentication rejects cross-environment use, revoked hosts, and over
   const oversized = signedRequest({ target: '/api/v1/agent-environments/environment-1/events' })
   oversized.rawBody = new Uint8Array(MAX_HOST_REQUEST_BYTES + 1)
   await assertControlPlaneError(() => active.service.authenticateHostRequest(oversized), 'request_too_large')
+})
+
+test('an expired credential may only refresh itself, and only on an Overlay Cloud machine', async () => {
+  const methods: AgentEnvironmentCredential['methods'] = ['agent:commands:poll', 'agent:credentials:refresh']
+  const expired = { expiresAt: NOW - 3 * 60 * 60_000, methods }
+  const refresh = () => ({ ...signedRequest({ target: '/api/v1/agent-environments/environment-1/credentials/refresh' }), requiredMethod: 'agent:credentials:refresh' as const })
+
+  const cloud = fixture({ kind: 'overlay_cloud' }, expired)
+  assert.equal((await cloud.service.authenticateHostRequest(refresh())).environment.id, 'environment-1')
+
+  await assertControlPlaneError(() => cloud.service.authenticateHostRequest({
+    ...signedRequest({ target: '/api/v1/agent-environments/environment-1/events', nonce: 'nonce_nonce_nonce_nonce_02' }),
+  }), 'credential_invalid')
+
+  const laptop = fixture({ kind: 'local' }, expired)
+  await assertControlPlaneError(() => laptop.service.authenticateHostRequest(refresh()), 'credential_invalid')
+
+  const longGone = fixture({ kind: 'overlay_cloud' }, { ...expired, expiresAt: NOW - 8 * 24 * 60 * 60_000 })
+  await assertControlPlaneError(() => longGone.service.authenticateHostRequest(refresh()), 'credential_invalid')
+
+  const revoked = fixture({ kind: 'overlay_cloud' }, { ...expired, revokedAt: NOW - 1 })
+  await assertControlPlaneError(() => revoked.service.authenticateHostRequest(refresh()), 'credential_invalid')
 })
 
 test('working directories must stay within an explicitly approved project root', () => {
@@ -272,6 +296,126 @@ test('hosted harness adapters can no longer be bound', async () => {
   assert.deepEqual(upserts, [])
 })
 
+function providerAccountHarness(options: {
+  bindingConfig?: Record<string, unknown>
+  sessionStatus?: string
+  environmentKind?: AgentEnvironment['kind']
+  resolve?: () => Promise<{ env: Record<string, string>; files: Array<{ path: string; contents: string; mode?: number }>; provider: 'claude-code' | 'codex'; method: 'subscription' }>
+  deliver?: 'fail' | 'none'
+} = {}) {
+  const delivered: unknown[] = []
+  const environment: AgentEnvironment = {
+    id: 'environment-cloud', workspaceId: 'workspace-1', kind: options.environmentKind ?? 'overlay_cloud',
+    name: 'Cloud machine', status: 'online', publicKey: 'public-key',
+    capabilities: { adapters: [{ id: 'claude-code', protocol: 'acp' }, { id: 'hermes', protocol: 'acp' }, { id: 'eve', protocol: 'acp' }] },
+    filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] },
+    approvedAt: NOW - 1_000, approvedByUserId: 'user-1', createdAt: NOW - 2_000, updatedAt: NOW - 1_000,
+  }
+  const upserts: Array<{ adapterConfig: Record<string, unknown> }> = []
+  const reauth: string[] = []
+  const issued: Array<{ accountId: string; ownerUserId: string; expectedProvider: string }> = []
+  const binding = {
+    id: 'binding-1', workspaceId: 'workspace-1', agentId: 'agent-1', environmentId: environment.id,
+    protocolAdapter: 'acp', enabled: true, createdAt: 1, updatedAt: 1,
+    adapterConfig: options.bindingConfig ?? { adapterId: 'claude-code', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' },
+  }
+  const session = {
+    id: 'session-1', workspaceId: 'workspace-1', environmentId: environment.id, bindingId: 'binding-1', runId: 'run-1',
+    status: options.sessionStatus ?? 'running', capabilitySnapshot: { billing: { agentId: 'agent-1' } },
+  }
+  const service = new ConnectedAgentControlPlaneService({
+    repository: {
+      async getEnvironment() { return environment },
+      async upsertBinding(input: { adapterConfig: Record<string, unknown> }) { upserts.push(input); return { ...binding, adapterConfig: input.adapterConfig } },
+      async getRemoteSessionForRun(args: { runId: string }) { return args.runId === 'run-1' ? session : null },
+      async listBindings() { return [binding] },
+    } as unknown as ConnectedAgentRepository,
+    audit: { record: async () => {} } as unknown as AuditService,
+    workspaces: { async resolveActiveWorkspace() { return { membership: { role: 'admin' } } } } as unknown as WorkspaceService,
+    agentProviderAccounts: {
+      async requireUsable(args: { userId: string; accountId: string; provider: string }) {
+        if (args.accountId !== 'account-1' || args.userId !== 'user-1') throw Object.assign(new Error('Account not found'), { statusCode: 404 })
+        return {} as never
+      },
+      async resolveRunEnvironment(args: { accountId: string; ownerUserId: string; expectedProvider: string }) {
+        issued.push(args)
+        return await (options.resolve ?? (async () => ({ env: { CLAUDE_CODE_OAUTH_TOKEN: 'secret-token' }, files: [], provider: 'claude-code' as const, method: 'subscription' as const })))()
+      },
+      async markNeedsReauth(accountId: string) { reauth.push(accountId) },
+    },
+    ...(options.deliver === 'none' ? {} : { deliverMachineFiles: async (args: unknown) => { if (options.deliver === 'fail') throw new Error('machine down'); delivered.push(args) } }),
+    now: () => NOW,
+    isEnabled: () => true,
+  })
+  const auth = {
+    environment,
+    credential: { id: 'credential-1', workspaceId: 'workspace-1', environmentId: environment.id, methods: ['agent:run-credentials'] },
+  } as unknown as HostAuthentication
+  return { service, auth, upserts, reauth, issued, delivered }
+}
+
+test('a binding records the account and who chose it, and refuses accounts that are not the actor\'s', async () => {
+  const { service, upserts } = providerAccountHarness()
+  const base = { actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1', environmentId: 'environment-cloud', adapterId: 'claude-code', workingDirectory: '/home/user/workspace' }
+  await service.upsertBinding({ ...base, providerAccountId: 'account-1' })
+  assert.equal(upserts[0]?.adapterConfig.providerAccountId, 'account-1')
+  assert.equal(upserts[0]?.adapterConfig.providerAccountOwnerUserId, 'user-1')
+  await assertControlPlaneError(() => service.upsertBinding({ ...base, providerAccountId: 'someone-elses' }), 'provider_account_invalid')
+  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'eve', providerAccountId: 'account-1' }), 'provider_account_unsupported')
+})
+
+test('run credentials go only to the Overlay Cloud host running that active run, for the account the binding chose', async () => {
+  const { service, auth, issued } = providerAccountHarness()
+  assert.deepEqual(await service.issueRunCredentials(auth, 'run-1'), { env: { CLAUDE_CODE_OAUTH_TOKEN: 'secret-token' } })
+  assert.deepEqual(issued, [{ accountId: 'account-1', ownerUserId: 'user-1', expectedProvider: 'claude-code' }])
+  await assertControlPlaneError(() => service.issueRunCredentials(auth, 'other-run'), 'run_not_active')
+})
+
+test('run credentials are refused for finished runs, other environment kinds, and bindings without an account', async () => {
+  await assertControlPlaneError(
+    () => providerAccountHarness({ sessionStatus: 'completed' }).service.issueRunCredentials(providerAccountHarness().auth, 'run-1'),
+    'run_not_active',
+  )
+  const local = providerAccountHarness({ environmentKind: 'local' })
+  await assertControlPlaneError(() => local.service.issueRunCredentials(local.auth, 'run-1'), 'run_credentials_forbidden')
+  const none = providerAccountHarness({ bindingConfig: { adapterId: 'claude-code', workingDirectory: '/home/user/workspace' } })
+  await assertControlPlaneError(() => none.service.issueRunCredentials(none.auth, 'run-1'), 'provider_account_missing')
+})
+
+test('an account that needs reconnecting surfaces its own code to the host', async () => {
+  const { service, auth } = providerAccountHarness({
+    resolve: async () => { throw Object.assign(new Error('Reconnect'), { statusCode: 409, code: 'account_needs_reauth' }) },
+  })
+  await assertControlPlaneError(() => service.issueRunCredentials(auth, 'run-1'), 'account_needs_reauth')
+})
+
+test('only Overlay Cloud credentials carry the run-credentials method, so older hosts keep parsing theirs', async () => {
+  assert.ok(AGENT_ENVIRONMENT_CREDENTIAL_METHODS.includes('agent:run-credentials'))
+  const issue = async (kind: AgentEnvironment['kind']) => {
+    const issued: string[][] = []
+    const environment = fixture({ kind }).environment
+    const service = new ConnectedAgentControlPlaneService({
+      repository: {
+        async getEnvironmentProofChallenge() {
+          return { environment, proofChallenge: { id: 'p', challengeHash: sha256('challenge') } }
+        },
+        async issueEnvironmentCredential(input: { credential: AgentEnvironmentCredential }) {
+          issued.push([...input.credential.methods])
+          return input.credential
+        },
+      } as unknown as ConnectedAgentRepository,
+      audit: { record: async () => {} } as unknown as AuditService,
+      workspaces: {} as WorkspaceService, now: () => NOW, isEnabled: () => true,
+    })
+    const signature = sign(null, Buffer.from(canonicalEnrollmentProof(environment.id, 'challenge')), privateKey).toString('base64url')
+    await service.issueInitialCredential({ environmentId: environment.id, proofChallenge: 'challenge', signature })
+    return issued[0] ?? []
+  }
+  assert.ok((await issue('overlay_cloud')).includes('agent:run-credentials'))
+  assert.equal((await issue('local')).includes('agent:run-credentials'), false)
+  assert.equal((await issue('vps')).includes('agent:run-credentials'), false)
+})
+
 async function assertControlPlaneError(operation: () => Promise<unknown>, code: string) {
   await assert.rejects(operation, (error: unknown) =>
     error instanceof ConnectedAgentControlPlaneError && error.code === code)
@@ -353,3 +497,16 @@ function artifactRecord(
     sha256: sha256('expired'), objectKey: `artifacts/${id}`, status: 'clean', expiresAt: NOW + 60_000,
     createdAt: NOW - 1_000, updatedAt: NOW - 1_000, ...overrides }
 }
+
+test('an account that needs a file on the machine (a Codex subscription) has it written first, and the run gets no secret in its environment', async () => {
+  const files = [{ path: '/home/user/.codex/auth.json', contents: '{"tokens":{}}', mode: 0o600 }]
+  const resolve = async () => ({ env: {}, files, provider: 'codex' as const, method: 'subscription' as const })
+  const ok = providerAccountHarness({ resolve, bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
+  assert.deepEqual(await ok.service.issueRunCredentials(ok.auth, 'run-1'), { env: {} })
+  assert.deepEqual(ok.delivered, [{ workspaceId: 'workspace-1', environmentId: 'environment-cloud', files }])
+
+  const down = providerAccountHarness({ resolve, deliver: 'fail', bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
+  await assertControlPlaneError(() => down.service.issueRunCredentials(down.auth, 'run-1'), 'machine_files_failed')
+  const none = providerAccountHarness({ resolve, deliver: 'none', bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
+  await assertControlPlaneError(() => none.service.issueRunCredentials(none.auth, 'run-1'), 'machine_files_unavailable')
+})

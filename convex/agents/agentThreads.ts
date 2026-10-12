@@ -207,12 +207,17 @@ export const resolveMainThreadByServer = mutation({
     ])
 
     // Archived agents still resolve their existing main thread so history
-    // stays viewable from the Archived tab; they just cannot adopt or create.
+    // stays viewable from Settings → Archived; they just cannot adopt or create.
+    // A thread the caller archived is never the one an agent opens into: archiving
+    // a thread must not leave the agent opening onto it, nor make the agent look archived.
     // requireLiveAgent is skipped when a main thread resolves — ordering required.
     // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
     const threads = await listThreadDocs(ctx, { ...args })
+    const archivedFlags = await Promise.all(
+      threads.map(async (thread) => Boolean(await callerArchivedAt(ctx, thread._id, actor.principalId))),
+    )
     const main = threads
-      .slice()
+      .filter((_, i) => !archivedFlags[i])
       .sort((a, b) => a.createdAt - b.createdAt || String(a._id).localeCompare(String(b._id)))[0]
     if (main) return { conversationId: main._id, title: main.title }
     const { agentPrincipal } = await requireLiveAgent(ctx, {
@@ -231,8 +236,12 @@ export const resolveMainThreadByServer = mutation({
           .eq('dmIdentityKey', dmIdentityKey),
       )
       .first()
+    const legacyArchived = legacyDm && !legacyDm.deletedAt
+      ? Boolean(await callerArchivedAt(ctx, legacyDm._id, actor.principalId))
+      : false
     if (legacyDm
       && !legacyDm.deletedAt
+      && !legacyArchived
       && !legacyDm.isAutomation
       && (!legacyDm.agentId || legacyDm.agentId === agent.agentId)) {
       if (!legacyDm.agentId) {
@@ -241,9 +250,12 @@ export const resolveMainThreadByServer = mutation({
       return { conversationId: legacyDm._id, title: legacyDm.title }
     }
 
+    // The agent's other threads are all archived (or none exist): start a fresh one. It does not reuse the
+    // identity key while an archived thread still holds it, so DM lookups keep resolving that archived thread.
+    const keyTaken = Boolean(legacyDm && !legacyDm.deletedAt)
     const conversationId = await insertThread(
       ctx,
-      { workspaceId: args.workspaceId, userId: args.userId, title: agent.name, dmIdentityKey },
+      { workspaceId: args.workspaceId, userId: args.userId, title: agent.name, ...(keyTaken ? {} : { dmIdentityKey }) },
       actor,
       agent,
       agentPrincipal,
@@ -264,33 +276,48 @@ export const listThreadsByServer = query({
     requireServerSecret(args.serverSecret)
     const actor = await requireActorMembership(ctx, args)
     const threads = await listThreadDocs(ctx, args)
-    const liveThreads = threads.filter((thread) => !thread.deletedAt)
-    const mainThreadId = liveThreads
-      .slice()
+    const withArchive = await Promise.all(threads.map(async (thread) => ({
+      thread,
+      archivedAt: await callerArchivedAt(ctx, thread._id, actor.principalId),
+    })))
+    // The main thread is the oldest one the caller has not archived (the one the agent opens into).
+    const mainThreadId = withArchive
+      .filter((item) => !item.archivedAt)
+      .map((item) => item.thread)
       .sort((a, b) => a.createdAt - b.createdAt || String(a._id).localeCompare(String(b._id)))[0]?._id
-    const views = await Promise.all(threads.map(async (thread) => ({
+    const views = withArchive.map(({ thread, archivedAt }) => ({
       conversationId: thread._id,
       title: thread.title,
       lastModified: thread.lastModified,
       createdAt: thread.createdAt,
-      archivedAt: await callerArchivedAt(ctx, thread._id, actor.principalId),
+      archivedAt,
       isMain: thread._id === mainThreadId,
-    })))
+    }))
     return views.sort((a, b) => b.lastModified - a.lastModified)
   },
 })
 
+const archivedThreadView = v.object({
+  conversationId: v.id('conversations'),
+  agentId: v.string(),
+  agentName: v.string(),
+  agentArchived: v.boolean(),
+  title: v.string(),
+  archivedAt: v.number(),
+  lastModified: v.number(),
+})
+
 /**
- * Agents (live or archived) that own at least one thread the caller archived.
- * The Archived tab is their union with fully-archived agents.
+ * Every thread the caller archived, across all agents, for Settings → Archived. Each row names its agent; whether the
+ * agent itself is archived is reported separately, because archiving a thread never archives its agent.
  */
-export const listArchivedAgentsByServer = query({
+export const listArchivedThreadsByServer = query({
   args: {
     serverSecret: v.string(),
     workspaceId: v.string(),
     userId: v.string(),
   },
-  returns: v.array(v.string()),
+  returns: v.array(archivedThreadView),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const actor = await requireActorMembership(ctx, args)
@@ -303,16 +330,35 @@ export const listArchivedAgentsByServer = query({
           .eq('status', 'active'),
       )
       .collect()
-    const agentIds = new Set<string>()
-    const archivedConversations = await Promise.all(
-      participantRows.filter((row) => row.archivedAt).map((row) => ctx.db.get(row.conversationId)),
-    )
-    for (const conversation of archivedConversations) {
-      if (conversation?.agentId && !conversation.deletedAt && !conversation.isAutomation) {
-        agentIds.add(conversation.agentId)
+    const archivedRows = participantRows.filter((row) => row.archivedAt)
+    const conversations = await Promise.all(archivedRows.map((row) => ctx.db.get(row.conversationId)))
+    const agentCache = new Map<string, Doc<'workspaceAgentDefinitions'> | null>()
+    const out: Array<typeof archivedThreadView.type> = []
+    for (let i = 0; i < archivedRows.length; i += 1) {
+      const conversation = conversations[i]
+      if (!conversation?.agentId || conversation.deletedAt || conversation.isAutomation) continue
+      // Only the caller's own threads with the agent (listThreadDocs' rule).
+      if (conversation.userId !== args.userId) continue
+      let agent = agentCache.get(conversation.agentId)
+      if (agent === undefined) {
+        agent = await ctx.db
+          .query('workspaceAgentDefinitions')
+          .withIndex('by_agentId', (q) => q.eq('agentId', conversation.agentId!))
+          .unique()
+        agentCache.set(conversation.agentId, agent)
       }
+      if (!agent || agent.deletedAt) continue
+      out.push({
+        conversationId: conversation._id,
+        agentId: agent.agentId,
+        agentName: agent.name,
+        agentArchived: Boolean(agent.archivedAt),
+        title: conversation.title,
+        archivedAt: archivedRows[i]!.archivedAt!,
+        lastModified: conversation.lastModified,
+      })
     }
-    return [...agentIds]
+    return out.sort((a, b) => b.archivedAt - a.archivedAt)
   },
 })
 
@@ -396,8 +442,8 @@ export const setThreadArchivedByServer = mutation({
 })
 
 /**
- * Deletes a thread's conversation. The agent must always keep one thread:
- * deleting the last surviving thread is refused. When the deleted thread was
+ * Deletes a thread's conversation. An active thread cannot be the agent's last one
+ * (deleting it is refused); an archived thread can always be deleted. When the deleted thread was
  * the main (oldest) one, the next-oldest surviving thread becomes main by
  * derivation — no pointer needs to move.
  */
@@ -432,14 +478,19 @@ export const deleteThreadByServer = mutation({
       .unique()
     if (!participant && conversation.userId !== args.userId) throw new Error('THREAD_ACCESS_DENIED')
 
-    const siblings = await listThreadDocs(ctx, {
-      workspaceId,
-      agentId: conversation.agentId,
-      userId: args.userId,
-    })
-    const survivors = siblings.filter((thread) => thread._id !== args.conversationId)
-    if (survivors.length === 0) {
-      throw new Error('AGENT_LAST_THREAD')
+    // A thread already in the Archived page can always be deleted, even if it is the agent's only one: the agent
+    // stays as it is, and opening it starts a fresh thread. Only an active thread is protected as the last one.
+    const alreadyArchived = Boolean(participant?.archivedAt)
+    if (!alreadyArchived) {
+      const siblings = await listThreadDocs(ctx, {
+        workspaceId,
+        agentId: conversation.agentId,
+        userId: args.userId,
+      })
+      const survivors = siblings.filter((thread) => thread._id !== args.conversationId)
+      if (survivors.length === 0) {
+        throw new Error('AGENT_LAST_THREAD')
+      }
     }
     const now = Date.now()
     await ctx.db.patch(args.conversationId, { deletedAt: now, updatedAt: now })

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import { streamText, type ModelMessage } from 'ai'
 import { start } from 'workflow/api'
 import { isStepCount, type ToolApprovalConfiguration } from '@/server/ai/sdk'
@@ -37,7 +38,8 @@ import {
 import type { AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import type { AgentMcpToolGrant } from '@/server/agents/agent-mcp-tools'
 import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/agent-mcp-token'
-import { getBaseUrl } from '@/server/web/app-url'
+import { getAgentFacingBaseUrl } from '@/server/web/app-url'
+import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
 
 /**
  * Step budgets.
@@ -217,6 +219,8 @@ export type WorkspaceAgentInvocation = {
     environmentId: string
     environmentName: string
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
+    /** The binding runs on a provider account; the host fetches its credentials for each run. */
+    usesProviderAccount: boolean
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
     protocolAdapter: AgentProtocolAdapter
@@ -438,6 +442,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
+          usesProviderAccount: typeof target.binding.adapterConfig.providerAccountId === 'string'
+            && target.binding.adapterConfig.providerAccountId.length > 0,
           protocolAdapter: target.binding.protocolAdapter,
           workingDirectory,
         },
@@ -457,6 +463,13 @@ const REMOTE_CONTEXT_TOTAL_CHARS = 80_000
  * clearly delimited, bounded envelope. Retrieved content is explicitly data;
  * only the final user-message section is the current request.
  */
+/**
+ * Overlay shows an agent's reply with its working details (tool calls and the text written between them) folded
+ * away, so what remains visible is what the agent writes last. Asking for a closing summary makes that the answer.
+ */
+export const AGENT_CLOSING_SUMMARY_INSTRUCTION =
+  'When you used tools or worked in several steps, finish your reply with a short summary of what you did and the result (for example: "Created the note X with Y"). Keep any text you write between steps brief; the closing summary is what the person reads first.'
+
 export function buildRemoteAgentPrompt(args: {
   contextBlock: string
   messages: readonly ModelMessage[]
@@ -477,7 +490,7 @@ export function buildRemoteAgentPrompt(args: {
   const boundedContext = envelope.length > REMOTE_CONTEXT_TOTAL_CHARS
     ? `${envelope.slice(0, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
     : envelope
-  return `${boundedContext}\n\nCURRENT_USER_MESSAGE_BEGIN\n${args.prompt}\nCURRENT_USER_MESSAGE_END`
+  return `${boundedContext}\n\nRESPONSE_STYLE: ${AGENT_CLOSING_SUMMARY_INSTRUCTION}\n\nCURRENT_USER_MESSAGE_BEGIN\n${args.prompt}\nCURRENT_USER_MESSAGE_END`
 }
 
 /**
@@ -485,6 +498,11 @@ export function buildRemoteAgentPrompt(args: {
  * so the agent gets the same workspace tools as a managed harness. The token
  * is scoped to this run; older hosts ignore the metadata key.
  */
+function connectedAgentModelMetadata(modelId: string): { model?: string } {
+  const model = parseByoModelId(modelId)?.model
+  return model ? { model } : {}
+}
+
 function overlayMcpMetadata(args: {
   actorUserId: string
   conversationId: string
@@ -512,7 +530,7 @@ function overlayMcpMetadata(args: {
     ...(args.latestUserText ? { latestUserText: args.latestUserText } : {}),
     ttlMs: args.ttlMs,
   })
-  return token ? { overlayMcp: { url: `${getBaseUrl()}/api/agent-mcp`, token } } : {}
+  return token ? { overlayMcp: { url: `${getAgentFacingBaseUrl()}/api/agent-mcp`, token } } : {}
 }
 
 export async function startRemoteWorkspaceAgentTurn(args: {
@@ -546,6 +564,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
     agentName: args.invocation.agentName,
     agentPrincipalId: args.invocation.agentPrincipalId,
     billingProgrammaticSubjectId: `agent:${args.invocation.agentId}`,
+    channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     conversationTitle: room.conversation.title,
     conversationType: room.conversationType,
     history: room.history,
@@ -608,6 +627,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         requestFingerprint,
         userId: args.actorUserId,
         workspaceId: args.workspaceId,
+        activeForMs: policy.maxRunTimeMs + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
       })
     }
     const started = await server.appData.repositories.connectedAgents.startRemoteAgentTurn({
@@ -642,6 +662,10 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           conversationId: args.conversationId,
           messageId: args.messageId,
           initiatorPrincipalId: args.initiatorPrincipalId,
+          // A flag only: the host asks the control plane for the credentials, so no secret is stored in the command.
+          ...(args.invocation.remoteTarget.usesProviderAccount ? { runCredentials: true } : {}),
+          // The agent's own model id, when its owner chose one; otherwise the agent uses its default.
+          ...connectedAgentModelMetadata(args.invocation.modelId),
           ...overlayMcpMetadata({
             actorUserId: args.actorUserId,
             conversationId: args.conversationId,
@@ -680,6 +704,12 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         eventCursor: 0,
       },
     })
+    // Every Overlay Cloud turn checks its machine: an idle-stopped machine can
+    // still read online for a heartbeat window. wake() is a no-op when the
+    // machine is running with a live host.
+    if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
+      wakeCloudAgentAfterResponse({ workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId })
+    }
     return started
   } catch (error) {
     await server.chatUsagePolicy.releaseReservation({
@@ -855,6 +885,7 @@ export async function runWorkspaceAgentTurn(args: {
           agentName: agent.name,
           agentPrincipalId: agent.principalId,
           billingProgrammaticSubjectId: programmaticSubjectId,
+          channelVisibility: (conversation as { channelVisibility?: string | null }).channelVisibility,
           conversationTitle: conversation.title,
           conversationType,
           history,
@@ -1184,6 +1215,7 @@ export function buildAgentSystemPrompt(args: {
         ].filter(Boolean).join(' ')
       : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource, created or saved a note, sent a message, edited a document, or completed any other external action. Say the capability is unavailable and provide a draft when useful.',
     'Be concise, useful, and explicit when context is insufficient.',
+    args.hasTools ? AGENT_CLOSING_SUMMARY_INSTRUCTION : '',
     args.contextBlock,
   ].filter((section) => section && section.trim()).join('\n')
 }

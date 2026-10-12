@@ -232,13 +232,14 @@ export const findEnvironmentCredentialByServer = query({
   },
 })
 export const consumeEnvironmentProofNonceByServer = mutation({
-  args: { serverSecret: v.string(), credentialId: v.string(), nonceHash: v.string(), expiresAt: v.number(), now: v.number() },
+  args: { serverSecret: v.string(), credentialId: v.string(), nonceHash: v.string(), expiresAt: v.number(), now: v.number(), expiredGraceMs: v.optional(v.number()) },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     assertHash(args.nonceHash, 'AGENT_PROOF_NONCE_HASH_INVALID')
     assertExpiry(args.expiresAt, args.now, MAX_PROOF_NONCE_LIFETIME_MS, 'AGENT_PROOF_NONCE_EXPIRY_INVALID')
     const credential = await ctx.db.query('agentEnvironmentCredentials').withIndex('by_credentialId', q => q.eq('credentialId', args.credentialId)).unique()
-    if (!credential || credential.revokedAt || credential.expiresAt <= args.now) return false
+    if (!credential || credential.revokedAt) return false
+    if (credential.expiresAt <= args.now && args.now - credential.expiresAt >= (args.expiredGraceMs ?? 0)) return false
     await requireActiveEnvironment(ctx, credential.workspaceId, credential.environmentId)
     const replay = await ctx.db.query('agentEnvironmentCredentialNonces').withIndex('by_credentialId_nonceHash', q => q.eq('credentialId', args.credentialId).eq('nonceHash', args.nonceHash)).unique()
     if (replay) return false

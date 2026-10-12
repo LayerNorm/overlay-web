@@ -153,7 +153,10 @@ export type WorkspaceSummary = {
   kind: WorkspaceKind
   status: WorkspaceStatus
   role: WorkspaceMembershipRole
+  /** Active members, agents included. */
   memberCount?: number
+  /** Active members who are people (not agents). One means the workspace is just that person. */
+  humanMemberCount?: number
 }
 
 export type WorkspaceListResponse = {
@@ -171,13 +174,10 @@ export type WorkspaceBillingSubscription = {
 export type WorkspaceBillingSummaryResponse = {
   workspaceId: string
   canManage: boolean
+  /** May add credits: owners and admins always, members when the workspace lets them (`usageTopUpBy`). */
+  canTopUp: boolean
   initialized: boolean
   pricingVersion: 'markup_25_v1'
-  rollout: {
-    stage: 'off' | 'internal' | 'selected' | 'general'
-    eligible: boolean
-    checkoutEnabled: boolean
-  }
   credits: {
     total: number
     used: number
@@ -186,18 +186,41 @@ export type WorkspaceBillingSummaryResponse = {
     topUpBalance: number
   }
   subscription: WorkspaceBillingSubscription
-  observability?: {
-    actualProviderCostCents: number
-    costCoveragePercent: number
-    meteredReservations: number
-    oldestReconciliationAgeMs: number
-    periodEnd: number
-    periodStart: number
-    realizedMarginPercent: number | null
-    reconciliationReservations: number
-    retailCredits: number
-    staleReconciliationReservations: number
+  /**
+   * What happens when the workspace's credit runs out: a hard stop (`enabled: false`, the default) or an automatic
+   * top-up of `amountCents`, at most `monthlyLimitCents` per billing period.
+   */
+  autoTopUp?: {
+    enabled: boolean
+    amountCents: number
+    monthlyLimitCents: number | null
+    spentThisPeriodCents: number
+    /** Another automatic top-up would pass the monthly limit, so paid resources stop at $0 until next period. */
+    limitReached: boolean
   }
+  /** Itemized usage for the current billing period: what was spent on each resource, largest first. */
+  usage?: WorkspaceBillingUsage
+}
+
+export type WorkspaceBillingUsageLine = {
+  key: string
+  label: string
+  /** "4.2M tokens", "1h 12m", "214 searches". */
+  quantity: string
+  cents: number
+  /** Models: one line per model. */
+  details?: Array<{ label: string; quantity: string; cents: number }>
+}
+
+export type WorkspaceBillingUsage = {
+  periodStart: number
+  periodEnd?: number
+  totalCents: number
+  /** Automatic top-ups charged this period (pending or succeeded). */
+  onDemandCents: number
+  lines: WorkspaceBillingUsageLine[]
+  /** More charges than one summary reads; totals are a lower bound. */
+  truncated: boolean
 }
 
 export type WorkspaceBillingCheckoutInput = {
@@ -207,6 +230,12 @@ export type WorkspaceBillingCheckoutInput = {
   planAmountCents: number
   topUpAmountCents: number
   autoTopUpEnabled?: boolean
+}
+
+export type WorkspaceBillingAutoTopUpInput = {
+  enabled: boolean
+  amountCents: number
+  monthlyLimitCents: number
 }
 
 export type WorkspaceBillingTopUpInput = {
@@ -261,6 +290,9 @@ export type WorkspaceManagementItem = {
   badge?: string
   principalId?: string
   principalType?: WorkspacePrincipalType
+  /** An agent's own avatar, so pickers can show it instead of a generic icon. */
+  avatarColor?: string
+  avatarShape?: string
   role?: WorkspaceMembershipRole
   status?: WorkspaceMembershipStatus | WorkspaceInvitationStatus
   invitationId?: string
@@ -576,11 +608,22 @@ export type WorkspaceAgentListResponse = {
   /** The caller's principal, so clients can bucket personal vs workspace agents. */
   viewerPrincipalId?: string
   /**
-   * Agents (including live ones) owning at least one thread the caller
-   * archived; the Archived tab is their union with fully-archived agents.
-   * Populated only when the list request asks for archived agents.
+   * Threads the caller archived, across all agents (live or archived), for Settings → Archived.
+   * Archiving a thread never archives its agent. Populated only when the list request asks for archived items.
    */
-  archivedThreadAgentIds?: string[]
+  archivedThreads?: WorkspaceArchivedAgentThread[]
+}
+
+/** A thread the caller archived, with the agent it belongs to. */
+export type WorkspaceArchivedAgentThread = {
+  conversationId: string
+  agentId: string
+  agentName: string
+  /** Whether the agent itself is archived. A thread can be archived while its agent stays live. */
+  agentArchived: boolean
+  title: string
+  archivedAt: number
+  lastModified: number
 }
 
 /** A chat thread nested under a workspace agent. */
@@ -590,7 +633,7 @@ export type WorkspaceAgentThread = {
   lastModified: number
   createdAt: number
   archivedAt?: number
-  /** The main thread is the oldest surviving thread and can never be deleted last. */
+  /** The main thread is the oldest thread the caller has not archived; the agent opens into it. */
   isMain: boolean
 }
 
@@ -665,6 +708,9 @@ export type WorkspaceResourceShareResponse = {
 export const WORKSPACE_ROLLOUT_STAGES = ['dogfood', 'invited', 'general'] as const
 export type WorkspaceRolloutStage = (typeof WORKSPACE_ROLLOUT_STAGES)[number]
 
+/** `members`: anyone in the workspace. `admins`: owners and admins only. */
+export type WorkspaceScopeEditors = 'members' | 'admins'
+
 export type WorkspaceSharingPolicy = {
   workspaceId: string
   publicLinksEnabled: boolean
@@ -674,6 +720,14 @@ export type WorkspaceSharingPolicy = {
   memberCanCreateAgents: boolean
   /** Members may invite people; owners and admins always may. */
   memberCanInvite: boolean
+  /** Who may create or edit workspace-scoped skills, MCP servers, and connectors. */
+  workspaceExtensionsEditors: WorkspaceScopeEditors
+  /** Who may create or edit workspace-scoped notes, files, outputs, and automations. */
+  workspaceContentEditors: WorkspaceScopeEditors
+  /** Members may move their own items between Personal and Workspace; owners and admins always may. */
+  memberCanMoveScope: boolean
+  /** Who may add usage (top up) to the workspace. */
+  usageTopUpBy: WorkspaceScopeEditors
   /** Resource guests expire after this many days when set. */
   guestExpirationDays?: number
   /** When set, only these agent harnesses may run in this workspace. */
@@ -706,6 +760,10 @@ export const DEFAULT_WORKSPACE_POLICY: Omit<
   memberCanCreateChannels: true,
   memberCanCreateAgents: true,
   memberCanInvite: false,
+  workspaceExtensionsEditors: 'members',
+  workspaceContentEditors: 'members',
+  memberCanMoveScope: true,
+  usageTopUpBy: 'admins',
   legalHold: false,
   rolloutStage: 'general',
 }

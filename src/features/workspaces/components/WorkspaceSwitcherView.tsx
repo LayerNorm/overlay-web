@@ -1,5 +1,6 @@
 'use client'
 
+import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -78,9 +79,8 @@ function WorkspaceList({
       {status === 'ready' ? workspaces.map((workspace) => {
         const selected = workspace.id === activeWorkspaceId
         const switching = workspace.id === switchingWorkspaceId
-        const memberLabel = workspace.kind === 'personal'
-          ? 'Personal'
-          : `${workspace.memberCount ?? 1} ${workspace.memberCount === 1 ? 'member' : 'members'}`
+        // Every workspace reads the same: a name and how many people are in it.
+        const memberLabel = workspaceMemberLabel(workspace) ?? '1 member'
         return (
           <MenuItem
             key={workspace.id}

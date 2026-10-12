@@ -2,10 +2,9 @@ import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
-import type { Doc, Id } from '../_generated/dataModel'
+import type { Doc } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import { applyStorageUsageDelta } from '../files/lib/storageQuota'
 import { recordConversationEvent } from '../collaboration/events'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 
@@ -732,11 +731,6 @@ export const addMessage = mutation({
 
 	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
-	        const subscription = await ctx.db
-	          .query('subscriptions')
-	          .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-	          .first()
-	        const isPaid = subscription ? subscription.tier !== 'free' : false
 	        const today = new Date().toISOString().split('T')[0]
 	        let dailyUsage = await ctx.db
 	          .query('dailyUsage')
@@ -772,7 +766,6 @@ export const addMessage = mutation({
           workspaceId: conversation.workspaceId,
           turnId: args.turnId,
           userId: args.userId,
-          isPaid,
         })
       } catch {
         // best-effort: extraction failure should not block message save
@@ -1129,10 +1122,14 @@ export const cancelAgentRuns = mutation({
       .query('conversationAgentRuns')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
-    const activeRuns = runs.filter((run) =>
+    const matching = runs.filter((run) =>
       ACTIVE_AGENT_RUN_STATUSES.has(run.status) &&
       (!args.messageId || run.assistantMessageId === args.messageId),
     )
+    // A connected agent's run is cancelled through the control plane (it tells the agent's machine to stop and settles
+    // billing); the caller does that for the ids returned here, so it is left untouched.
+    const remoteRunIds = matching.flatMap((run) => (run.runner === 'remote' && run.externalRunId ? [run.externalRunId] : []))
+    const activeRuns = matching.filter((run) => run.runner !== 'remote')
     const now = Date.now()
     const sentinel = '\n\n[Interrupted by user. Continue?]'
     for (const run of activeRuns) {
@@ -1182,7 +1179,8 @@ export const cancelAgentRuns = mutation({
       cancelledWorkflows: activeRuns.flatMap((run) => run.workflowRunId
         ? [{ agentRunId: run._id, workflowRunId: run.workflowRunId }]
         : []),
-      stoppedCount: activeRuns.length,
+      remoteRunIds,
+      stoppedCount: activeRuns.length + remoteRunIds.length,
     }
   },
 })
@@ -1511,27 +1509,8 @@ export const deleteTurn = mutation({
     ]))
     const deletedMessages = turnMessages.length
 
-    const cid = conversationId as string
-    const outputs = await ctx.db
-      .query('outputs')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', cid))
-      .collect()
-
-    const turnOutputs = outputs.filter((o) => o.turnId === tid && o.userId === userId)
-    await Promise.all(turnOutputs.map(async (o) => {
-      if (o.storageId) {
-        try {
-          await ctx.storage.delete(o.storageId)
-        } catch {
-          // best-effort
-        }
-      }
-      if (o.sizeBytes) {
-        await applyStorageUsageDelta(ctx as never, userId, -o.sizeBytes)
-      }
-      await ctx.db.delete(o._id)
-    }))
-    const deletedOutputs = turnOutputs.length
+    // Outputs now live in `files` and are managed there; nothing in this turn's own rows remains to delete.
+    const deletedOutputs = 0
 
     const now = Date.now()
     await ctx.db.patch(conversationId, { lastModified: now, updatedAt: now })

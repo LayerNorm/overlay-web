@@ -30,6 +30,18 @@ export function getBaseUrl(): string {
 }
 
 /**
+ * The address agent machines and MCP clients call back on. Defaults to the app URL, but a deployment
+ * whose app URL redirects to another host (apex to `www`) must name the host that answers directly:
+ * a cross-origin redirect drops the `Authorization` header, so a machine calling the redirecting
+ * host enrolls (no header) and then fails every signed request with 401.
+ */
+export function getAgentFacingBaseUrl(): string {
+  const override = process.env.OVERLAY_AGENT_PUBLIC_URL?.trim()
+  if (override) return normalizeAppBaseUrl(override, getBaseUrl())
+  return getBaseUrl()
+}
+
+/**
  * Base URL for server-side `fetch` to this app's own Route Handlers.
  * Trusts the request origin when it matches the configured app origin,
  * or when local development is explicitly using localhost.

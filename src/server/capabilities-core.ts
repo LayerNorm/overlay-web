@@ -23,6 +23,7 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   multiTenant: 'Multi-tenant support',
   connectedAgents: 'Connected agents',
   computers: 'Computers',
+  cloudAgents: 'Agents on Overlay Cloud',
 }
 
 export type CapabilityDisabledError = {
@@ -54,6 +55,7 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/computers')) return 'computers'
   if (startsWithRoute(normalizedPath, '/api/v1/agent-environments')) return 'connectedAgents'
   if (startsWithRoute(normalizedPath, '/api/v1/agent-bindings')) return 'connectedAgents'
+  if (startsWithRoute(normalizedPath, '/api/v1/provider-accounts')) return 'connectedAgents'
   if (startsWithRoute(normalizedPath, '/api/v1/integrations')) return 'integrations'
   if (startsWithRoute(normalizedPath, '/api/v1/skills')) return 'skills'
   if (startsWithRoute(normalizedPath, '/api/v1/mcps')) return 'mcpServers'

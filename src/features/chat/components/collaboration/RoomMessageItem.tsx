@@ -32,6 +32,8 @@ import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
+import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
+import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { roomMessageDomId } from './room-message-view'
 
 export type RoomMessageReaction = {
@@ -79,6 +81,8 @@ export type RoomMessageView = {
   /** Room members named in the body, so `@name` renders as a chip. */
   mentions: ChatMessageMention[]
   streaming?: boolean
+  /** Set when this message is one agent's question to another, on a person's behalf: who asked, and how far down the chain it is. */
+  askedBy?: { name: string; hop: number; parentConversationId?: string }
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
@@ -298,6 +302,14 @@ export function RoomMessageItem({
     ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
     : ''
 
+  // A connected agent's run is stopped by cancelling it; a native agent's response by stopping the response.
+  const activeRemoteRun = message.remoteRun && !['completed', 'cancelled', 'failed', 'recoverable'].includes(message.remoteRun.state)
+    ? message.remoteRun
+    : null
+  const stopHandler = activeRemoteRun && onControlRemoteQueue
+    ? () => onControlRemoteQueue(activeRemoteRun.runId, 'cancel')
+    : message.streaming ? onStopResponse : undefined
+
   const toolbar = (
     <RoomMessageToolbar
       alignEnd={mine}
@@ -308,7 +320,7 @@ export function RoomMessageItem({
       pinned={pinned}
       saved={saved}
       disabled={Boolean(message.delivery)}
-      onStop={message.streaming ? onStopResponse : undefined}
+      onStop={stopHandler}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
       onReport={onReport}
@@ -685,13 +697,31 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
   onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
+  const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
   return (
     <>
+      {message.askedBy ? (
+        <p className="mb-1 text-[11px] text-[var(--muted)]">
+          Agent question · step {message.askedBy.hop} of {MAX_AGENT_HOPS}
+          {message.askedBy.parentConversationId ? (
+            <>
+              {' · '}
+              <a
+                href={`/app/chat?id=${encodeURIComponent(message.askedBy.parentConversationId)}`}
+                className="underline underline-offset-2 hover:text-[var(--foreground)]"
+              >
+                see where it came from
+              </a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
       <AssistantVisualBlocks
         blocks={message.blocks}
         blockKeyPrefix={message.id}
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}
+        foldWorkIntoSummary={collapseAgentWork}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
         onOpenDraft={NOOP_DRAFT}
@@ -991,15 +1021,8 @@ function RemoteRunControls({ run, onControl }: {
         </button>
     </div>
   )
-  return (
-    <button
-      type='button'
-      onClick={() => onControl(run.runId, 'cancel')}
-      className='mt-2 rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-    >
-      Cancel run
-    </button>
-  )
+  // Cancelling an active run is the Stop button in the message toolbar.
+  return null
 }
 
 function RemoteQueueControls({

@@ -55,3 +55,28 @@ test('the computer row is hidden when the deployment has no computers', () => {
   )
   assert.doesNotMatch(markup, />Computer</)
 })
+
+test('an agent on Overlay Cloud needs a name and an account, not instructions', () => {
+  const draft = { ...initialNewAgentDraft(), kind: 'other' as const }
+  assert.equal(isNewAgentDraftValid(draft), false)
+  assert.equal(isNewAgentDraftValid({ ...draft, name: 'Coder' }), false)
+  const withAccount = { ...draft, name: 'Coder', other: { ...draft.other, providerAccountId: 'acct-1' } }
+  assert.equal(isNewAgentDraftValid(withAccount), true)
+  // "Your machine" is set up in the full editor, so the dialog cannot create it.
+  assert.equal(isNewAgentDraftValid({ ...withAccount, other: { ...withAccount.other, runsOn: 'machine' } }), false)
+})
+
+test('other agents are selectable where cloud agents are available, and show their own fields', () => {
+  const draft = { ...initialNewAgentDraft(), kind: 'other' as const, modelId: 'test-model' }
+  const markup = renderToStaticMarkup(
+    <NewAgentFields draft={draft} onChange={() => undefined} modelOptions={models} computersAvailable otherAgentsAvailable />,
+  )
+  assert.doesNotMatch(markup, /Other agent: Coming soon/)
+  const order = ['>Type<', '>Agent<', '>Runs on<', '>Account<', '>Machine<', '>Access<']
+  const positions = order.map((needle) => markup.indexOf(needle))
+  assert.ok(positions.every((position) => position >= 0), `missing field: ${order[positions.indexOf(-1)]}`)
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions)
+  // The agent brings its own model and tools; the machine is its computer.
+  assert.doesNotMatch(markup, />Advanced</)
+  assert.doesNotMatch(markup, />Computer</)
+})

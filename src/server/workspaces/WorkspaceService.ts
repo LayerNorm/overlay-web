@@ -1,3 +1,5 @@
+import { defaultWorkspaceName } from '@/shared/workspaces/default-name'
+import { MAX_FREE_WORKSPACES_PER_OWNER } from '@/shared/billing/free-allowance'
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
@@ -36,6 +38,8 @@ type WorkspaceServiceOptions = {
   /** Overrides OVERLAY_COLLABORATION_ROLLOUT, mostly for tests. */
   deploymentRolloutStage?: WorkspaceRolloutStage
   lifecycleEvents?: LifecycleEventPublisher
+  /** Whether a workspace is on a paid plan. Workspaces with a plan do not count toward a person's free-workspace limit. */
+  hasWorkspacePlan?: (workspaceId: string) => Promise<boolean>
 }
 
 export class WorkspaceServiceError extends Error {
@@ -47,6 +51,7 @@ export class WorkspaceServiceError extends Error {
       | 'forbidden'
       | 'invitation_expired'
       | 'invitation_invalid'
+      | 'free_workspace_limit'
       | 'last_owner'
       | 'not_found'
       | 'validation',
@@ -79,6 +84,7 @@ export class WorkspaceService {
       userId,
       displayName: optional(args.displayName) ?? optional(args.email) ?? 'Personal',
       email: normalizeOptionalEmail(args.email),
+      workspaceName: defaultWorkspaceName({ displayName: args.displayName, email: args.email }),
       now: this.now(),
     })
   }
@@ -194,6 +200,14 @@ export class WorkspaceService {
   }): Promise<WorkspaceAccess> {
     const actorUserId = required(args.actorUserId, 'actorUserId')
     const name = required(args.name, 'name')
+    // Every workspace has its own free allowance, so the number a person can own is capped; otherwise creating
+    // workspaces would multiply it. Workspaces someone archived do not count.
+    const owned = (await this.repository.listForUser(actorUserId)).filter((access) =>
+      access.membership.role === 'owner'
+      && access.membership.status === 'active'
+      && access.workspace.status === 'active')
+    const planned = await Promise.all(owned.map((access) => this.options.hasWorkspacePlan?.(access.workspace.id) ?? false))
+    if (planned.filter((hasPlan) => !hasPlan).length >= MAX_FREE_WORKSPACES_PER_OWNER) throw freeWorkspaceLimit()
     return await this.repository.createOrganization({
       workspaceId: this.id(),
       ownerPrincipalId: this.id(),
@@ -204,6 +218,20 @@ export class WorkspaceService {
       slug: normalizeOptionalSlug(args.slug) ?? slugify(name),
       now: this.now(),
     })
+  }
+
+  /** Owners and admins may rename their workspace (names are 1–80 characters). */
+  async renameWorkspace(args: {
+    actorUserId: string
+    workspaceId: string
+    name: string
+  }): Promise<WorkspaceAccess['workspace']> {
+    const actor = await this.requireManager(args)
+    const name = required(args.name, 'name')
+    if (name.length > 80) throw validation('Workspace names are at most 80 characters')
+    const renamed = await this.repository.renameWorkspace({ workspaceId: actor.workspace.id, name, now: this.now() })
+    if (!renamed) throw notFound()
+    return renamed
   }
 
   async archiveWorkspace(args: {
@@ -411,6 +439,27 @@ export class WorkspaceService {
       status: 'active',
     })
     return memberships.length
+  }
+
+  /**
+   * Active members split into everyone and people. A workspace also holds agents (every one gets the default Overlay
+   * agent), and they count as members, so "is this workspace just me?" needs the people count: a workspace with one
+   * person and one agent has a `memberCount` of 2.
+   */
+  async countMemberKinds(args: {
+    actorUserId: string
+    workspaceId: string
+  }): Promise<{ memberCount: number; humanMemberCount: number }> {
+    const actor = await this.requireActiveMember(args)
+    const [principals, memberships] = await Promise.all([
+      this.repository.listPrincipals({ workspaceId: actor.workspace.id, includeArchived: false }),
+      this.repository.listMemberships({ workspaceId: actor.workspace.id, status: 'active' }),
+    ])
+    const humanIds = new Set(principals.filter((principal) => principal.type === 'human').map((principal) => principal.id))
+    return {
+      memberCount: memberships.length,
+      humanMemberCount: memberships.filter((membership) => humanIds.has(membership.principalId)).length,
+    }
   }
 
   async createTeam(args: {
@@ -1054,10 +1103,16 @@ function validatePolicyPatch(patch: WorkspaceSharingPolicyPatch): WorkspaceShari
     'memberCanCreateChannels',
     'memberCanCreateAgents',
     'memberCanInvite',
+    'memberCanMoveScope',
     'legalHold',
   ] as const) {
     if (validated[key] !== undefined && typeof validated[key] !== 'boolean') {
       throw new WorkspaceServiceError(`${key} must be a boolean`, 400, 'validation')
+    }
+  }
+  for (const key of ['workspaceExtensionsEditors', 'workspaceContentEditors', 'usageTopUpBy'] as const) {
+    if (validated[key] !== undefined && validated[key] !== 'members' && validated[key] !== 'admins') {
+      throw new WorkspaceServiceError(`${key} must be members or admins`, 400, 'validation')
     }
   }
   assertRange(validated.guestExpirationDays, 'guestExpirationDays', 1, 365)
@@ -1116,6 +1171,14 @@ function slugify(value: string): string {
 
 function validation(message: string): WorkspaceServiceError {
   return new WorkspaceServiceError(message, 400, 'validation')
+}
+
+function freeWorkspaceLimit(): WorkspaceServiceError {
+  return new WorkspaceServiceError(
+    `You can own up to ${MAX_FREE_WORKSPACES_PER_OWNER} free workspaces. Add a plan to one of them, or archive one you no longer use, to create another.`,
+    403,
+    'free_workspace_limit',
+  )
 }
 
 function forbidden(): WorkspaceServiceError {

@@ -3,6 +3,7 @@ import type {
   WorkspaceAgentCreatureShape,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
+import { byoModelId } from '@/shared/agents/agent-model'
 import { toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { generatedByoInstructions, workspaceHarnessForByo } from './byo-agent-setup'
 
@@ -19,6 +20,10 @@ export function buildWorkspaceAgentInput(args: {
   avatarShape: WorkspaceAgentCreatureShape
   enabledToolGroups: ReadonlySet<string>
   visibility: WorkspaceAgentVisibility
+  /** The Overlay tools a connected agent may use over MCP (Overlay Cloud agents); other connected agents hold none. */
+  mcpToolIds?: readonly string[]
+  /** A connected agent's chosen model (its own model id); empty means the agent's default. */
+  byoModel?: string
 }): WorkspaceAgentCreateInput {
   const byo = args.agentType === 'byo'
   return {
@@ -26,12 +31,12 @@ export function buildWorkspaceAgentInput(args: {
     description: args.description.trim() || undefined,
     instructions: byo ? generatedByoInstructions(args.harnessLabel) : args.instructions.trim(),
     harness: byo ? workspaceHarnessForByo(args.adapterId) : 'overlay',
-    modelId: byo ? `byo/${args.adapterId}` : args.modelId.trim(),
+    modelId: byo ? byoModelId(args.adapterId, args.byoModel) : args.modelId.trim(),
     avatarColor: args.avatarColor,
     avatarShape: args.avatarShape,
     // Connected agents own their tool surface on their own machine — Overlay's
     // tool-group grants apply to the native agent only.
-    allowedToolIds: byo ? [] : toolIdsForEnabledGroups(args.enabledToolGroups),
+    allowedToolIds: byo ? [...(args.mcpToolIds ?? [])] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
   }
 }

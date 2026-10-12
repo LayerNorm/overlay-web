@@ -9,3 +9,7 @@ import * as domainService from '@/server/app-api/v1/workspaces/[workspaceId]/lif
 export async function DELETE(request: NextRequest, context: BffRouteContext) {
   return handleBffRoute(request, context, domainService.DELETE as BffDomainService)
 }
+
+export async function PATCH(request: NextRequest, context: BffRouteContext) {
+  return handleBffRoute(request, context, domainService.PATCH as BffDomainService)
+}

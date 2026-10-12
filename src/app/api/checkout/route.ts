@@ -4,11 +4,7 @@ import { unstable_rethrow } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { requireOverlayCapability } from '@/server/capabilities'
-import { billingCheckoutService, billingErrorResponse } from '@/server/billing/http'
-import {
-  recordLegalAcceptance,
-  requireCurrentLegalAcceptance,
-} from '@/server/legal/legal-acceptance'
+import { accountPlansRetiredResponse, billingErrorResponse } from '@/server/billing/http'
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,20 +26,8 @@ export async function POST(request: NextRequest) {
       { bucket: 'billing:checkout:user', key: user.id, limit: 5, windowMs: 10 * 60_000 },
     ])
     if (rateLimitResponse) return rateLimitResponse
-
-    const body = await request.json()
-    const legalAcceptance = requireCurrentLegalAcceptance(body)
-    await recordLegalAcceptance({
-      acceptance: legalAcceptance,
-      context: 'subscription_checkout',
-      request,
-      userId: user.id,
-    })
-    const result = await billingCheckoutService.createSubscriptionCheckout({
-      user,
-      body,
-    })
-    return NextResponse.json(result)
+    // An account cannot be paid; workspace plans start from Workspace → Billing.
+    return accountPlansRetiredResponse()
   } catch (error) {
     unstable_rethrow(error)
     logger.error('Checkout error:', error)

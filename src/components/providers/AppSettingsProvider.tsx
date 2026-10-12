@@ -313,3 +313,8 @@ export function useAppSettings() {
   }
   return ctx
 }
+
+/** Like `useAppSettings`, but null outside the provider (for components that also render in isolation). */
+export function useOptionalAppSettings() {
+  return useContext(AppSettingsContext)
+}

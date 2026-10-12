@@ -613,7 +613,7 @@ export async function prepareAutomationAgentTurn(
     userId,
   })
 
-  const toolPreloadTasks = preloadActExternalToolTasks({ userId, serverSecret })
+  const toolPreloadTasks = preloadActExternalToolTasks({ userId, serverSecret, workspaceId: billingWorkspaceId })
   const accountAllowedToolIdsTask = filterCatalogResources({
     authorization: overlayContext.authorizationService,
     capability: 'tools.use',

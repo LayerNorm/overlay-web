@@ -103,3 +103,24 @@ test('the MCP endpoint initializes, lists tools with JSON Schemas, and calls the
   assert.equal(invalid.result.isError, true)
   assert.equal(unknown.error.code, -32601)
 })
+
+test('skills are offered as prompts only when a prompt source exists, and an unknown prompt is an error', async () => {
+  const withoutPrompts = await (await handleAgentMcpRequest(post({ jsonrpc: '2.0', id: 1, method: 'initialize' }), deps())).json()
+  assert.equal('prompts' in withoutPrompts.result.capabilities, false)
+  const refused = await (await handleAgentMcpRequest(post({ jsonrpc: '2.0', id: 2, method: 'prompts/list' }), deps())).json()
+  assert.equal(refused.error.code, -32601)
+
+  const prompts = {
+    list: async () => [{ name: 'review', description: 'Review a PR' }],
+    get: async (name: string) => (name === 'review' ? { description: 'Review a PR', text: 'Read the diff.' } : null),
+  }
+  const withPrompts = deps({ buildPrompts: () => prompts })
+  const init = await (await handleAgentMcpRequest(post({ jsonrpc: '2.0', id: 3, method: 'initialize' }), withPrompts)).json()
+  assert.deepEqual(init.result.capabilities.prompts, { listChanged: false })
+  const listed = await (await handleAgentMcpRequest(post({ jsonrpc: '2.0', id: 4, method: 'prompts/list' }), withPrompts)).json()
+  assert.deepEqual(listed.result.prompts, [{ name: 'review', description: 'Review a PR', arguments: [] }])
+  const got = await (await handleAgentMcpRequest(post({ jsonrpc: '2.0', id: 5, method: 'prompts/get', params: { name: 'review' } }), withPrompts)).json()
+  assert.deepEqual(got.result.messages, [{ role: 'user', content: { type: 'text', text: 'Read the diff.' } }])
+  const missing = await (await handleAgentMcpRequest(post({ jsonrpc: '2.0', id: 6, method: 'prompts/get', params: { name: 'nope' } }), withPrompts)).json()
+  assert.equal(missing.error.code, -32602)
+})

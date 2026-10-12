@@ -1115,6 +1115,25 @@ export const transferOwnershipByServer = mutation({
   },
 })
 
+/** Renames a workspace. Who may is decided by the service; the name is trimmed and must be 1–80 characters. */
+export const renameByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    name: v.string(),
+    now: v.number(),
+  },
+  returns: workspaceValidator,
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const workspace = await requireWorkspace(ctx, args.workspaceId)
+    const name = requiredName(args.name, 'Workspace name')
+    if (name.length > 80) throw new Error('WORKSPACE_NAME_TOO_LONG')
+    await ctx.db.patch(workspace._id, { name, updatedAt: args.now })
+    return workspaceValue({ ...workspace, name, updatedAt: args.now })
+  },
+})
+
 export const archiveByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -1723,12 +1742,17 @@ export const listResourceIdsByWorkspaceByServer = query({
 })
 
 const rolloutStage = v.union(v.literal('dogfood'), v.literal('invited'), v.literal('general'))
+const scopeEditors = v.union(v.literal('members'), v.literal('admins'))
 const sharingPolicyValidator = v.object({
   workspaceId: v.string(),
   publicLinksEnabled: v.boolean(),
   memberCanCreateChannels: v.boolean(),
   memberCanCreateAgents: v.boolean(),
   memberCanInvite: v.boolean(),
+  workspaceExtensionsEditors: scopeEditors,
+  workspaceContentEditors: scopeEditors,
+  memberCanMoveScope: v.boolean(),
+  usageTopUpBy: scopeEditors,
   guestExpirationDays: v.optional(v.number()),
   allowedAgentHarnesses: v.optional(v.array(v.string())),
   agentRunBudgetCents: v.optional(v.number()),
@@ -1768,6 +1792,10 @@ function sharingPolicyValue(row: {
   memberCanCreateChannels?: boolean
   memberCanCreateAgents?: boolean
   memberCanInvite?: boolean
+  workspaceExtensionsEditors?: 'members' | 'admins'
+  workspaceContentEditors?: 'members' | 'admins'
+  memberCanMoveScope?: boolean
+  usageTopUpBy?: 'members' | 'admins'
   guestExpirationDays?: number
   allowedAgentHarnesses?: string[]
   agentRunBudgetCents?: number
@@ -1784,6 +1812,10 @@ function sharingPolicyValue(row: {
     memberCanCreateChannels: row.memberCanCreateChannels ?? true,
     memberCanCreateAgents: row.memberCanCreateAgents ?? true,
     memberCanInvite: row.memberCanInvite ?? false,
+    workspaceExtensionsEditors: row.workspaceExtensionsEditors ?? 'members',
+    workspaceContentEditors: row.workspaceContentEditors ?? 'members',
+    memberCanMoveScope: row.memberCanMoveScope ?? true,
+    usageTopUpBy: row.usageTopUpBy ?? 'admins',
     guestExpirationDays: row.guestExpirationDays,
     allowedAgentHarnesses: row.allowedAgentHarnesses?.length ? row.allowedAgentHarnesses : undefined,
     agentRunBudgetCents: row.agentRunBudgetCents,
@@ -1819,6 +1851,10 @@ export const setSharingPolicyByServer = mutation({
       memberCanCreateChannels: v.optional(v.boolean()),
       memberCanCreateAgents: v.optional(v.boolean()),
       memberCanInvite: v.optional(v.boolean()),
+      workspaceExtensionsEditors: v.optional(scopeEditors),
+      workspaceContentEditors: v.optional(scopeEditors),
+      memberCanMoveScope: v.optional(v.boolean()),
+      usageTopUpBy: v.optional(scopeEditors),
       guestExpirationDays: v.optional(v.union(v.number(), v.null())),
       allowedAgentHarnesses: v.optional(v.union(v.array(v.string()), v.null())),
       agentRunBudgetCents: v.optional(v.union(v.number(), v.null())),
@@ -1864,6 +1900,10 @@ export const setSharingPolicyByServer = mutation({
       memberCanCreateChannels: args.patch.memberCanCreateChannels ?? true,
       memberCanCreateAgents: args.patch.memberCanCreateAgents ?? true,
       memberCanInvite: args.patch.memberCanInvite ?? false,
+      workspaceExtensionsEditors: args.patch.workspaceExtensionsEditors ?? ('members' as const),
+      workspaceContentEditors: args.patch.workspaceContentEditors ?? ('members' as const),
+      memberCanMoveScope: args.patch.memberCanMoveScope ?? true,
+      usageTopUpBy: args.patch.usageTopUpBy ?? ('admins' as const),
       guestExpirationDays: args.patch.guestExpirationDays ?? undefined,
       allowedAgentHarnesses: args.patch.allowedAgentHarnesses ?? undefined,
       agentRunBudgetCents: args.patch.agentRunBudgetCents ?? undefined,

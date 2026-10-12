@@ -23,9 +23,7 @@ export interface AccountDataDeletionCounts {
   memories: number
   mcpServers: number
   mcpToolExecutions: number
-  notes: number
   onboardingState: number
-  projects: number
   providerConnections: number
   r2UploadIntents: number
   skills: number

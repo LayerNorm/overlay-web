@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BillingCustomerService, BillingServiceError } from './BillingCustomerService'
+import { BillingCustomerService } from './BillingCustomerService'
 import type { BillingEntitlementsRecord, BillingRepository } from './BillingRepository'
 
 const paidEntitlements: BillingEntitlementsRecord = {
@@ -115,46 +115,11 @@ test('BillingCustomerService.getAppSubscription reads a workspace billing accoun
   assert.equal(response.budgetRemainingCents, 300)
 })
 
-test('BillingCustomerService.updateBillingSettings validates current response shapes', async () => {
+test('BillingCustomerService.getBillingSettings: an account has no plan or automatic top-ups', () => {
   const service = new BillingCustomerService({ repository: createRepository() })
-
-  await assert.rejects(
-    () => service.updateBillingSettings({ userId: 'user_1', body: null }),
-    (error) =>
-      error instanceof BillingServiceError &&
-      error.statusCode === 400 &&
-      error.payload.error === 'Invalid request body',
-  )
-
-  await assert.rejects(
-    () => service.updateBillingSettings({ userId: 'user_1', body: { autoTopUpEnabled: 'yes' } }),
-    (error) =>
-      error instanceof BillingServiceError &&
-      error.statusCode === 400 &&
-      error.payload.error === 'Invalid autoTopUpEnabled',
-  )
-})
-
-test('BillingCustomerService.updateBillingSettings writes validated preference DTO', async () => {
-  const repository = createRepository()
-  const service = new BillingCustomerService({ repository })
-
-  const response = await service.updateBillingSettings({
-    userId: 'user_1',
-    body: {
-      autoTopUpEnabled: true,
-      topUpAmountCents: 1000,
-      grantOffSessionConsent: true,
-    },
-  })
-
-  assert.deepEqual(response, { success: true })
-  assert.deepEqual(repository.updatedPreferences[0], {
-    userId: 'user_1',
-    autoTopUpEnabled: true,
-    topUpAmountCents: 1000,
-    grantOffSessionConsent: true,
-  })
+  const settings = service.getBillingSettings()
+  assert.equal(settings.planKind, 'free')
+  assert.equal(settings.autoTopUpEnabled, false)
 })
 
 test('BillingCustomerService.getEntitlements preserves nested entitlement shape', async () => {
