@@ -40,7 +40,7 @@ export function usageResourceFor(charge: UsageCharge): UsageResourceKey {
   if (op.startsWith('websearch.')) return 'web_search'
   // Automation runs are metered per workflow step under the pseudo-model `workflow-steps`; model calls an automation
   // makes stay under Models, with their model.
-  if (charge.modelId === 'workflow-steps') return 'automations'
+  if (/(^|\/)workflow-steps$/.test(charge.modelId ?? '')) return 'automations'
   if (op.startsWith('agent.browser-task')) return 'browser_tasks'
   if (op.startsWith('media.generate-image')) return 'images'
   if (op.startsWith('media.generate-video')) return 'video'
