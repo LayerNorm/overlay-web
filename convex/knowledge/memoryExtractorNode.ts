@@ -144,8 +144,10 @@ export const extractFromTurn = internalAction({
       if (resolvedBillingAccountId && !workspaceId) {
         throw new Error("workspace_billing_payer_incomplete");
       }
-      // Plans belong to workspaces: a workspace on a paid plan counts as paid even when the person's own plan is free.
-      const paid = (isPaid ?? false) || Boolean(resolvedBillingAccountId);
+      // Plans belong to workspaces: only a workspace on a paid plan is paid (an account is never paid). `isPaid` is
+      // accepted from jobs scheduled before this change and ignored.
+      void isPaid;
+      const paid = Boolean(resolvedBillingAccountId);
       const configuredModelId = process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim();
       const lowCredit =
         !configuredModelId &&

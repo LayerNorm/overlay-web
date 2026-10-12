@@ -57,7 +57,7 @@ type BackfillFileRow = Pick<
 
 type BackfillSubscriptionRow = Pick<
   Doc<'subscriptions'>,
-  '_id' | '_creationTime' | 'userId' | 'currentPeriodStart'
+  '_id' | '_creationTime' | 'userId'
 >
 
 export const auditByServer = query({
@@ -229,7 +229,6 @@ export const getBackfillSnapshotInternal = internalQuery({
         _id: subscription._id,
         _creationTime: subscription._creationTime,
         userId: subscription.userId,
-        currentPeriodStart: subscription.currentPeriodStart,
       })),
     }
   },

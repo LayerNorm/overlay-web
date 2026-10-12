@@ -637,10 +637,6 @@ export const enqueueMemoryExtraction = mutation({
       ) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
     }
 
-    const subscription = await ctx.db.query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', args.actorUserId))
-      .first()
-    const isPaid = subscription ? subscription.tier !== 'free' : false
     const today = new Date().toISOString().split('T')[0]
     let dailyUsage = await ctx.db.query('dailyUsage')
       .withIndex('by_userId_date', (q) => q.eq('userId', args.actorUserId).eq('date', today))
@@ -667,7 +663,6 @@ export const enqueueMemoryExtraction = mutation({
     await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
       billingActorUserId: args.actorUserId,
       conversationId: args.conversationId,
-      isPaid,
       memoryOwnerId: args.memoryOwnerId,
       messageId: args.messageId,
       targetActor: args.targetActor,

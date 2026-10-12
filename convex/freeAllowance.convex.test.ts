@@ -82,16 +82,4 @@ describe('the free allowance belongs to the workspace', () => {
     await setActiveWorkspace(convex, 'erin', 'ws-team')
     expect(await used(convex, 'erin')).toBe(0)
   })
-
-  test('an old paid row on the person no longer lifts the free limit', async () => {
-    const convex = convexTest(schema, modules)
-    await setActiveWorkspace(convex, 'dana', 'ws-free')
-    await convex.run(async (ctx) => {
-      await ctx.db.insert('subscriptions', { userId: 'dana', tier: 'pro', planKind: 'paid', status: 'active', creditsUsed: 0 })
-    })
-    await turn(convex, 'dana', 15)
-    await expect(turn(convex, 'dana')).rejects.toThrow(/free_tier_limit_exceeded/)
-    const entitlements = await convex.query(getEntitlements, { serverSecret: secret, userId: 'dana' })
-    expect({ planKind: entitlements.planKind, tier: entitlements.tier }).toEqual({ planKind: 'free', tier: 'free' })
-  })
 })

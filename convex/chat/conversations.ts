@@ -731,11 +731,6 @@ export const addMessage = mutation({
 
 	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
-	        const subscription = await ctx.db
-	          .query('subscriptions')
-	          .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-	          .first()
-	        const isPaid = subscription ? subscription.tier !== 'free' : false
 	        const today = new Date().toISOString().split('T')[0]
 	        let dailyUsage = await ctx.db
 	          .query('dailyUsage')
@@ -771,7 +766,6 @@ export const addMessage = mutation({
           workspaceId: conversation.workspaceId,
           turnId: args.turnId,
           userId: args.userId,
-          isPaid,
         })
       } catch {
         // best-effort: extraction failure should not block message save

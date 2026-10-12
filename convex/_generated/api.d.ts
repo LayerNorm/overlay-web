@@ -34,7 +34,6 @@ import type * as billing_accounts from "../billing/accounts.js";
 import type * as billing_autoTopUpReconcile from "../billing/autoTopUpReconcile.js";
 import type * as billing_autoTopUpSettlement from "../billing/autoTopUpSettlement.js";
 import type * as billing_lib_stripeOverlaySubscription from "../billing/lib/stripeOverlaySubscription.js";
-import type * as billing_personalPlanCleanup from "../billing/personalPlanCleanup.js";
 import type * as billing_spendLimits from "../billing/spendLimits.js";
 import type * as billing_subscriptions from "../billing/subscriptions.js";
 import type * as billing_usageTotals from "../billing/usageTotals.js";
@@ -139,7 +138,6 @@ declare const fullApi: ApiFromModules<{
   "billing/autoTopUpReconcile": typeof billing_autoTopUpReconcile;
   "billing/autoTopUpSettlement": typeof billing_autoTopUpSettlement;
   "billing/lib/stripeOverlaySubscription": typeof billing_lib_stripeOverlaySubscription;
-  "billing/personalPlanCleanup": typeof billing_personalPlanCleanup;
   "billing/spendLimits": typeof billing_spendLimits;
   "billing/subscriptions": typeof billing_subscriptions;
   "billing/usageTotals": typeof billing_usageTotals;
