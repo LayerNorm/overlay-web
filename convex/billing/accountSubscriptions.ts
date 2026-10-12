@@ -599,14 +599,3 @@ export const workspaceAccountByProviderReferenceInternal = internalQuery({
     return null
   },
 })
-
-/** One-time cleanup before the `billingPlanConversions` table is dropped (phase 6). */
-export const deletePlanConversionRowsInternal = internalMutation({
-  args: {},
-  returns: v.number(),
-  handler: async (ctx) => {
-    const rows = await ctx.db.query('billingPlanConversions').collect()
-    for (const row of rows) await ctx.db.delete(row._id)
-    return rows.length
-  },
-})
