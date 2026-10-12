@@ -16,3 +16,5 @@ check data preservation/current-head assignment; close it and verify alias,
 domain and branch-origin cleanup plus rejection of wildcard fallback.
 
 Lifecycle QA revision A: request a build, then supersede it with revision B.
+
+Lifecycle QA revision B: older revision A must never be aliased.
