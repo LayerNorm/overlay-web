@@ -1,7 +1,11 @@
 import { cronJobs } from 'convex/server'
 import { internal } from './_generated/api'
+import { isPreviewDeployment } from './lib/preview'
 
 const crons = cronJobs()
+
+// Preview fixtures must never start scheduled work or call shared third parties.
+if (!isPreviewDeployment()) {
 
 // Claims due automation runs every minute and dispatches each to the BFF,
 // which executes it as a durable one-shot automation workflow. Sleep()-based
@@ -181,5 +185,7 @@ crons.interval(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).surfaces.chatState.pruneExpired,
 )
+
+}
 
 export default crons

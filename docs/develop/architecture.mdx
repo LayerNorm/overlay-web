@@ -14,7 +14,7 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `src/features/**` holds web feature containers and feature-local helpers. Cross-feature imports are banned; shared primitives belong in `@/shared`, `@/contexts`, or `@/hooks` (e.g. the workspace provider, routing helpers, and types that used to sit inside `features/workspaces`).
 - `src/server/workflows/**` holds Vercel Workflow SDK durable orchestration (`automation-run`, `automation-schedule`, `personal-chat-work`, `workspace-agent-turn`). Workflow bodies bundle for the workflow runtime — keep their imports to `"use step"` functions and `@/` alias modules only.
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
-- `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` and `scripts/vercel-ignore-build.sh` stay at root — the latter is pinned by the Vercel project ignore-build command.
+- `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/release/` (hosted build wrappers and trusted PR preview lifecycle control), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` and `scripts/vercel-ignore-build.sh` stay at root — the latter is pinned by the Vercel project ignore-build command.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 - `packages/overlay-ui/**` holds the shared presentation primitives (buttons, inputs, dialogs,
@@ -75,6 +75,11 @@ parameters. Protocol callbacks, integration popups, public share links, and
 visual fixtures remain standalone by contract.
 
 ## Domain Decomposition
+
+Web file upload transport and error parsing live in
+`src/features/knowledge/adapters/webKnowledgeFilePort.ts`; `KnowledgeView`
+composes those ports into the shared surface. Keeping the upload implementation
+out of the host preserves the knowledge surface boundary check.
 
 Workspace behavior stays behind the existing service/repository contracts while
 large seams are split by responsibility. The `WorkspaceSwitcher` controller owns
@@ -233,7 +238,10 @@ Important code:
 - `src/shared/billing/usage-reconciliation.ts`
 - `src/server/usage/UsageRepository.ts`
 - `scripts/qa/usage-reconciliation-audit.ts`
-- `scripts/qa/stripe-personal-account-verification.ts`
+
+Personal account plans and their verification script are retired. Billing QA
+targets workspace plans, balances, and holds through
+`src/server/app-data/contracts/convex-workspace-billing-provider-contract.test.ts`.
 
 ## Storage
 

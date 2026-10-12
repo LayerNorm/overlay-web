@@ -19,6 +19,36 @@ npm run dev
 
 `npm run dev:with-convex` pushes development Convex before starting Next.js. Use it only from the dedicated `staging` worktree, where the current revision is the shared staging release candidate.
 
+## Isolated PR preview backends
+
+The migration adds `scripts/vercel-build.sh` for the staging Vercel project.
+Preview builds require `OVERLAY_RELEASE_LANE=staging`,
+`OVERLAY_DEPLOYMENT_ENV=preview`, a canonical PR app origin, and a project-scoped
+`preview:<team>:<project>|…` deploy key. The script clears conflicting backend
+selectors and dev URL overrides, then runs `convex deploy --preview-name
+pr-<number>` with internal `dev/seed:init` fixtures. The seed refuses non-preview
+deployments and requires the configured sandbox user identity. Do not use
+`--preview-create` on ordinary pushes: it destroys an existing preview's data.
+The temporary `--env-file` contains only the approved deploy key (mode `0600`)
+and is deleted after the build. An empty file also removes Convex authentication
+inputs, even when the key exists in the parent process; do not use an empty file.
+
+The trusted PR controller also holds the project preview key as
+`CONVEX_PREVIEW_CONTROL_KEY` in the main-only `release-control` environment.
+Six-hour reconciliation validates the project, preview type, PR identifier and
+reference before extending an open PR backend to four days from now when fewer
+than two days remain. This is within Starter's five-day retention entitlement
+and preserves data. Closed PRs stop renewing and expire naturally. A missing or
+expired backend forces a fresh web build at the same SHA, with fresh seed data;
+an old READY frontend cannot be reused just because its SHA matches.
+
+Convex injects the preview URL into the web build. `deploymentEnv()` keeps
+server configuration on the same captured URL as the browser; generic runtime
+`process.env` lookups must not recover an old shared dashboard URL. Preview
+crons are not registered, and email/webhook delivery actions return without
+sending. Project preview defaults contain matching internal API/service secrets,
+the sandbox client ID and seed identity; passwords stay on the web app only.
+
 ## Production backend
 
 Use the production script only from the clean canonical `main` worktree after the matching main web deployment is live:
@@ -28,6 +58,15 @@ npm run convex:push:prod
 ```
 
 For the full worktree, staging QA, and promotion process, see [Worktree Staging QA](/develop/worktree-staging-qa).
+
+## Runtime inventory during release changes
+
+`check:on-prem-convex-boundaries` compares routes, runtime imports, cron jobs,
+and scheduler sites with `config/on-prem-convex-runtime-baseline.json`. Review
+the reported delta before updating it. The release-preview foundation records
+the new preview-login route alongside previously landed permanent-agent deletion,
+workspace auto-top-up, usage/database imports, and pending top-up reconciliation.
+The preview guards still disable cron registration and outbound delivery at runtime.
 
 ## Import boundary
 

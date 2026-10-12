@@ -52,6 +52,23 @@ The skill is also installed via `npx skills add vercel-labs/agent-browser`.
 
 ## Authentication
 
+### PR preview QA login
+
+For the release-workflow migration, use the canonical
+`https://pr-<number>.preview.getoverlay.io` URL after verifying that its assigned
+deployment SHA matches the current PR head. The preview-only
+`POST /api/auth/preview-login` route accepts an `x-overlay-preview-secret` header
+from the agent secret store and creates a normal sandbox session. Do not send
+the secret in a URL, write it into the PR, or save cookies/auth state in tracked
+files. Validate the session and `/api/auth/convex-token`, then use a real browser
+to check the rendered workspace, sample conversation, note, and text file.
+
+The server chooses the seeded QA identity; callers cannot supply an arbitrary
+user ID. This route returns 404 on staging and production. Real human OAuth uses
+the same canonical preview origin with the WorkOS sandbox wildcard callback.
+
+### Deployment protection
+
 `staging.getoverlay.io` and `www.getoverlay.io` are behind Vercel Deployment Protection
 (SSO). agent-browser's bundled Chrome has no session cookies, so we need to extract them
 from an authenticated Chrome profile and inject them.

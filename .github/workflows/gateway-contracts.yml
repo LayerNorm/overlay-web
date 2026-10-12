@@ -2,15 +2,8 @@ name: Gateway Contracts
 
 on:
   pull_request:
-    paths:
-      - '.github/workflows/gateway-contracts.yml'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'scripts/qa/vercel-ai-gateway-canary.ts'
-      - 'src/server/ai/gateway/**'
-      - 'src/server/app-api/v1/conversations/act/**'
-      - 'src/server/tools/**'
-      - 'src/shared/security/safe-log.ts'
+  merge_group:
+    types: [checks_requested]
   push:
     branches:
       - main

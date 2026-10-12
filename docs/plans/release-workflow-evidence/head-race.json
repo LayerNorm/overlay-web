@@ -1,0 +1,27 @@
+{
+  "pr": 188,
+  "result": {
+    "state": "superseded",
+    "number": 188
+  },
+  "oldHead": "a720c4dee5da1fff0e502678e78780494b416070",
+  "newHead": "06880c0cf899d0e6129b11c588d7f805e5d34566",
+  "oldDeploymentId": "dpl_92mKFFymZaxro2eKcQzLVyM719Sr",
+  "oldBuildState": "CANCELED",
+  "aliasPreserved": "dpl_DVDYfQdkfwSkFwKk1UoBWnqbgyXM",
+  "staleAliasWrite": false,
+  "writes": [
+    {
+      "path": "/v10/projects/prj_IKvugqekF8qLP14p7Rg4ilWErXPr/env",
+      "method": "POST"
+    },
+    {
+      "path": "/v13/deployments",
+      "method": "POST"
+    },
+    {
+      "path": "/v12/deployments/dpl_92mKFFymZaxro2eKcQzLVyM719Sr/cancel",
+      "method": "PATCH"
+    }
+  ]
+}

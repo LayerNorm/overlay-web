@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { hasValidSessionCookieSignature } from '@/server/auth/session-cookie-signature'
+import { previewHostnameAllowed } from '@/shared/web/preview-host'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const BETTER_AUTH_SESSION_COOKIE_NAME = 'better-auth.session_token'
@@ -245,6 +246,10 @@ function getCanonicalWorkspaceRewrite(request: NextRequest): URL | null {
 }
 
 export async function proxy(request: NextRequest) {
+  if (!previewHostnameAllowed(request.nextUrl.hostname, process.env.OVERLAY_DEPLOYMENT_ENV,
+    process.env.NEXT_PUBLIC_APP_URL ?? '')) {
+    return new NextResponse('Preview unavailable', { status: 404, headers: { 'cache-control': 'no-store' } })
+  }
   const { pathname } = request.nextUrl
 
   if (isDocsProxyRoute(pathname)) {

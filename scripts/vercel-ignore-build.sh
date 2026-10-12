@@ -7,11 +7,10 @@
 #   overlay-landing      production branch main    -> www.getoverlay.io
 #   overlay-web-staging  production branch staging -> staging.getoverlay.io
 #
-# By default Vercel builds every branch push in every connected project, so each
-# push produces preview deployments in both. Those preview URLs are not
-# registered WorkOS redirect URIs, cannot be signed into, and are not part of the
-# QA workflow in docs/develop/worktree-staging-qa.mdx. This guard keeps each
-# project to the one branch it is responsible for.
+# The existing release lanes remain branch-gated. The staging project can opt
+# into isolated internal PR previews with PREVIEW_BUILDS=pr and
+# OVERLAY_RELEASE_LANE=staging. Trusted automation provisions each canonical PR
+# origin first; previews use sandbox secrets and their own Convex deployment.
 #
 # Configure per project (Settings -> Environment Variables, all environments):
 #
@@ -44,6 +43,25 @@ skip_build() {
 # never silently re-enable the preview builds this guard exists to prevent.
 if [ -z "$target" ]; then
   skip_build "DEPLOY_BRANCH is unset (VERCEL_ENV=$environment)"
+fi
+
+# Preview credentials are configured only in the staging project. PR lifecycle
+# automation sets the canonical app URL before requesting the first build.
+if [ "$environment" = "preview" ] && [ "${PREVIEW_BUILDS:-}" = "pr" ]; then
+  if [ "${OVERLAY_RELEASE_LANE:-}" != "staging" ]; then
+    skip_build "PR previews are only enabled in the staging project"
+  fi
+  if [ "${VERCEL_GIT_REPO_OWNER:-}" != "LayerNorm" ] || [ "${VERCEL_GIT_REPO_SLUG:-}" != "overlay-web" ]; then
+    skip_build "PR source is not the internal Overlay repository"
+  fi
+  case "${VERCEL_GIT_PULL_REQUEST_ID:-}" in
+    ''|*[!0-9]*|0) skip_build "no valid open pull request id" ;;
+  esac
+  expected_url="https://pr-${VERCEL_GIT_PULL_REQUEST_ID}.preview.getoverlay.io"
+  if [ "${NEXT_PUBLIC_APP_URL:-}" != "$expected_url" ]; then
+    skip_build "PR origin is not provisioned yet"
+  fi
+  run_build "provisioned PR ${VERCEL_GIT_PULL_REQUEST_ID} preview"
 fi
 
 if [ -z "$branch" ]; then

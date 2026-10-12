@@ -5,6 +5,16 @@ description: "The standard workflow for parallel agent work, pull requests, inte
 
 ## Operating model
 
+The owner has authorized the release-workflow migration in
+`docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md`. During the transition, isolated
+PR previews are an exception to the shared staging lane below. The staging
+Vercel project may opt into `PREVIEW_BUILDS=pr` with
+`OVERLAY_RELEASE_LANE=staging`. A build runs only after trusted automation
+provisions its canonical `pr-<number>.preview.getoverlay.io` origin. Each preview
+uses its own Convex backend and a sandbox QA identity; the shared dev backend
+and production deploy path remain separate. Do not enable the paid preview
+suffix. The release-lane switch and merge queue require separate live evidence.
+
 **Current mode: direct pushes to `main`.** The owner has authorized direct pushes to `main` as the standard workflow. Work happens on `main` in the canonical checkout; commits are pushed directly without pull-request ceremony, and the staging/Vercel QA lane is skipped unless the owner requests it for a specific change. The Builder/Integration model below remains the reference for any change the owner flags for staged QA, and becomes the default again if this mode is revoked.
 
 `main` and `staging` do not need to stay in sync — either branch may be ahead of the other and that is expected. Do not realign, mirror, or host-commit one to the other as bookkeeping; restore parity only when the owner explicitly asks. Synchronization inside the staging→main promotion flow itself (when that lane is chosen) is release mechanics, not parity maintenance.
@@ -105,7 +115,48 @@ Every pull request must state:
 
 The pull request is the detailed change record. `CHANGELOG.md` stays user-focused and concise.
 
+## Preview automation during migration
+
+The opt-in PR lane uses `.github/workflows/pr-preview.yml` and the dependency-free
+`scripts/release/preview-control.mjs`. The controller always executes protected
+`main`, even for `pull_request_target` and manual runs. It validates an internal
+PR targeting `main`, provisions its branch app URL and custom domain, pins the
+build to its head SHA, and assigns only a READY deployment from the staging
+project. `PR Preview` reports the canonical URL and deployed SHA; it is build
+readiness evidence, and the Builder must still provide browser QA.
+
+Configure `VERCEL_STAGING_TOKEN` in the GitHub `release-control` environment,
+whose deployment branch policy permits only `main`, and scope the token to
+`overlay-web-staging`. Rotate it before expiration (current token: 2027-01-10). Management credentials
+must never be included in a Vercel Preview build. Per-PR concurrency serializes
+open/update/close and reconciliation jobs. Scheduled reconciliation repairs
+missed events and removes closed or retargeted PR resources. Unassigned wildcard
+hosts return 404 instead of exposing staging under a PR-looking address. The
+wildcard is certificate-only on reserved branch `codex/preview-unassigned`,
+with no deployment alias; never deploy that branch or use it for a PR. Cleanup
+checks both resource absence and HTTPS `404`. Transient API reads retry up to
+three attempts; mutations require state reconciliation before repetition. Older
+builds are canceled with terminal-state readback before a newer build can
+replace the same PR backend, including recovery from an abandoned job.
+The same environment holds `CONVEX_PREVIEW_CONTROL_KEY`, scoped to preview
+deployments in Overlay's Convex project. Reconciliation renews open PR backends
+within the five-day retention limit; closed PRs expire naturally. If a backend
+has already expired, rebuild the exact PR SHA and reseed before reusing its URL.
+
+All required workflows also report on `merge_group: checks_requested`. Docs
+and schema contracts have no PR path filters, so unchanged paths cannot leave a
+required report missing. Dependency Review compares the group's explicit base
+and head SHAs. CLA checks read the current signature registry and verify grouped
+commit authors; merge-group events never create signatures. These changes
+prepare the queue; the queue rule is enabled only after live check verification.
+
 ## Checks should match risk
+
+The `test:all` tsx group preloads server-only/style shims and React before
+importing test modules. Package TSX sources that preserve JSX may evaluate
+static elements during import; setting React inside a test body is too late.
+This setup lets the rendered component checks execute without changing the
+production JSX transform.
 
 Overlay does not require the maximum possible gate for every change. It requires enough evidence for the actual risk:
 

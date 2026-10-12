@@ -74,8 +74,10 @@ export class McpOAuthProvider {
   private capturedAuthorizationUrl?: URL
 
   constructor(private readonly options: McpOAuthProviderOptions) {
-    this.tokensCache = options.initialTokens
-    this.clientCache = options.initialClient
+    // Legacy credentials have no reliable issuer binding. Do not send them to
+    // whichever authorization server an MCP resource discovers next; reconnect.
+    this.tokensCache = options.initialTokens?.issuer ? options.initialTokens : undefined
+    this.clientCache = options.initialClient?.issuer ? options.initialClient : undefined
     this.tokenVersion = options.initialTokenVersion ?? 0
   }
 
@@ -110,9 +112,10 @@ export class McpOAuthProvider {
   }
 
   clientInformation(): McpOAuthClientInformation | undefined {
-    if (!this.clientCache) return undefined
+    if (!this.clientCache?.issuer) return undefined
     return {
       client_id: this.clientCache.clientId,
+      ...(this.clientCache.issuer ? { issuer: this.clientCache.issuer } : {}),
       ...(this.clientCache.clientSecret ? { client_secret: this.clientCache.clientSecret } : {}),
     }
   }
@@ -121,6 +124,7 @@ export class McpOAuthProvider {
     const client: McpOAuthClient = {
       clientId: info.client_id,
       registered: true,
+      ...(info.issuer ? { issuer: info.issuer } : {}),
       ...(info.client_secret ? { clientSecret: info.client_secret } : {}),
     }
     this.clientCache = client
@@ -132,7 +136,7 @@ export class McpOAuthProvider {
   }
 
   tokens(): McpOAuthTokensShape | undefined {
-    if (!this.tokensCache) return undefined
+    if (!this.tokensCache?.issuer) return undefined
     return toSdkTokens(this.tokensCache)
   }
 
@@ -208,11 +212,13 @@ export class McpOAuthProvider {
 
 export interface McpOAuthClientInformation {
   client_id: string
+  issuer?: string
   client_secret?: string
 }
 
 export interface McpOAuthTokensShape {
   access_token: string
+  issuer?: string
   refresh_token?: string
   expires_in?: number
   scope?: string
@@ -223,6 +229,7 @@ export interface McpOAuthTokensShape {
 export function toSdkTokens(tokens: McpOAuthTokens): McpOAuthTokensShape {
   return {
     access_token: tokens.accessToken,
+    ...(tokens.issuer ? { issuer: tokens.issuer } : {}),
     token_type: tokens.tokenType ?? 'Bearer',
     ...(tokens.refreshToken ? { refresh_token: tokens.refreshToken } : {}),
     ...(tokens.scope ? { scope: tokens.scope } : {}),
@@ -235,6 +242,7 @@ export function toSdkTokens(tokens: McpOAuthTokens): McpOAuthTokensShape {
 export function fromSdkTokens(tokens: McpOAuthTokensShape): McpOAuthTokens {
   return {
     accessToken: tokens.access_token,
+    ...(tokens.issuer ? { issuer: tokens.issuer } : {}),
     ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
     ...(tokens.scope ? { scope: tokens.scope } : {}),
     ...(tokens.token_type ? { tokenType: tokens.token_type } : {}),

@@ -4,8 +4,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Fixed
+
+- **Removed preview wildcard fallback.** Exact PR aliases serve previews; unknown or closed preview hostnames return 404. Trusted control checks the certificate-only wildcard, verifies cleanup, settles superseded builds before deploying newer backend code, and retries transient reads without blindly repeating mutations.
+- **Stale note saves report conflicts.** Convex rejection now reaches the existing HTTP `409` response instead of reporting a successful save with unchanged content. Found during isolated-preview CRUD QA.
+
 ### Added
 
+- **PR preview lifecycle automation and merge-queue checks.** Trusted main workflows provision per-PR custom origins, pin builds to the current head, verify alias assignment, and clean up on close or retarget; scheduled reconciliation covers missed events. Wildcard fallback hosts return 404. All required checks support merge groups, including explicit dependency comparisons and existing CLA-signature verification.
+  Management credentials are confined to a main-only GitHub environment, and the controller disables automatic domain assignment before provenance checks.
+  Open PR backends renew within Convex's retention limit; expired backends force a fresh web build and seed instead of reusing a broken READY frontend.
+
+- **Isolated PR preview foundations.** The staging project's opt-in PR build gate requires its canonical custom URL and a preview-scoped Convex key. Builds keep each PR's backend separate from shared development; internal seed fixtures and a sandbox-only QA login support browser checks. Preview crons, email delivery, and outbound webhooks are disabled. Production web builds continue to leave Convex deployment to the separate promotion step.
 - **Personal plans are gone from the code and the data (workspace pricing, phase 6).** A person's own entitlements are always the free allowance of the workspace they are working in; nothing is ever charged to a person's own account, and only a paid workspace has credit, top-ups and automatic top-ups. The personal subscription writers, the personal branches of the Stripe webhook, the personal balance mirror (`syncPersonalBillingShadows`), personal auto top-ups, the account checkout/portal services, the admin console's personal budget grant (the admin list is now just People), and the old personal billing scripts are deleted; `/api/checkout/verify`, `/api/topups/verify`, `/api/portal` and `POST /api/subscription/settings` answer `410 account_plans_retired`. The plan and credit fields are stripped from people's rows and dropped from the schema. Fixed: in a paid workspace, enabling or running an automation could be refused because the check read the person's (now always free) plan; it now checks the automation's workspace. Memory extraction uses the paid model only when a paid workspace pays for it.
 - **Workspace billing has no switch anymore (workspace pricing, phase 6, first part).** The `workspaceWallets` flag, `OVERLAY_FEATURE_WORKSPACE_WALLETS`, `OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE` and the internal/selected workspace allowlists are deleted; a workspace with a paid plan always pays, and the Billing tab no longer shows a rollout notice. The plan-conversion tool and its runbook are deleted (the six plans were converted in phase 1); Stripe events for those subscriptions still reach the workspace by subscription id. Behavior in production is unchanged.
 - **Accounts are never free or paid; credit expires monthly; plans and top-ups take any amount from $8 to $500 (workspace pricing, phase 4).** Account-plan checkout and account top-ups are retired (`/api/checkout` and `/api/topups/checkout` answer 410); the old account pricing page is deleted; the chat's "add a top-up" opens Workspace → Billing. Usage recorded outside a billing hold (chat suggestions and similar) is now charged to the paid workspace instead of the person's own account. The usage list always adds up to what was charged, with an "Earlier usage" line for charges from before itemization. At each renewal the month's credit and any top-up balance reset; nothing carries over. Workspace → Billing accepts any whole-dollar plan or top-up from $8 to $500.
@@ -68,6 +78,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **Sandbox commands honour their own environment.** The Boat adapter applied only the machine-wide environment and silently dropped a command's `environment`.
 
 ### Security
+
+- Updated the MCP SDK, sharp, proxy-addr, and source-map-js to patched versions required by the production dependency audit. MCP OAuth credentials now preserve their authorization-server binding; older unbound credentials require reconnecting.
 
 - **`devalue` 5.9.4** is pinned past three advisories (GHSA-j22f-vq7h-c4qm, GHSA-mcm9-63f2-9j32, GHSA-x5rw-q4pp-hg5g) that failed the production audit.
 

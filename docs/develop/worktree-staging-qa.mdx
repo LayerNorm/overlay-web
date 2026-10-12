@@ -7,6 +7,39 @@ This guide covers hosted QA and release promotion only. Follow [Agentic Developm
 
 ## Deployment lanes
 
+The migration in `docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md` authorizes an
+isolated PR preview lane alongside the existing shared staging lane. The
+staging Vercel project opts into `PREVIEW_BUILDS=pr` and
+`OVERLAY_RELEASE_LANE=staging`; the guard requires a positive PR number and
+exactly `NEXT_PUBLIC_APP_URL=https://pr-<number>.preview.getoverlay.io` before
+building. The build uses a project-scoped Convex preview key, reuses
+`pr-<number>` with `--preview-name`, and cannot use shared dev or production.
+Verify the alias and current head SHA before browser QA. The native Preview
+Deployment Suffix remains disabled. The branch-based lane below stays in place
+until preview QA proves the cutover is ready.
+
+Preview provisioning uses trusted `main` code in `pr-preview.yml` with the
+project-scoped GitHub environment secret `VERCEL_STAGING_TOKEN` in
+`release-control` (only `main` workflows can access it). It checks repository,
+branch, current head SHA, Preview target, and project before alias assignment.
+Enable only REST API Preview deployment sources: native Preview Git builds stay
+disabled. The controller supplies the Preview build-command override and disables
+automatic custom-domain assignment; the legacy staging Production lane retains
+its existing settings until cutover. Preview providers must use dedicated test
+resources. Disabled bootstrap providers do not count as upload, model, or billing QA.
+Preview backend expiry is renewed by the main-only controller using the Convex
+project preview key. Reconciliation preserves existing data; if an expired
+backend must be recreated, it requests a fresh build and seed at the same SHA.
+The `PR Preview` commit status links the canonical address and identifies its
+revision; verify that status against the current PR head before QA. Closing or
+retargeting a PR removes its alias/domain and managed branch app URL, and a
+six-hour reconciliation repairs missed events. Missing/closed wildcard hosts
+return 404. Register the wildcard on reserved branch
+`codex/preview-unassigned` for certificate coverage only, with no deployment
+alias; never deploy that branch or use it for a PR. The controller verifies this
+configuration before provisioning and HTTPS `404` after cleanup. Preview configuration is still being rolled out; this section does
+not assert that the live lane has passed its acceptance checks.
+
 Overlay has two backend lanes that must stay paired with their matching web deployment:
 
 | Lane | Git branch | Web URL | Convex deployment |

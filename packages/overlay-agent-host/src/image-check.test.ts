@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { join } from 'node:path'
 import { checkOverlayImage, credentialFilePaths } from './image-check'
 
 const manifest = { imageVersion: 5, hostVersion: '0.3.10', packages: {}, builtAt: '2026-10-01T00:00:00Z' }
@@ -18,5 +19,5 @@ test('missing manifest, unsupported version, missing adapters, and leaked creden
   assert.equal(byName(checkOverlayImage({ manifest, exists: () => false, resolveAgent: () => undefined }))['agent:codex'], false)
   const leaked = checkOverlayImage({ manifest, home: '/home/user', exists: (path) => path.endsWith('.credentials.json'), resolveAgent: () => ({}) })
   assert.equal(byName(leaked)['credential-free'], false)
-  assert.ok(credentialFilePaths('/home/user').includes('/home/user/.codex/auth.json'))
+  assert.ok(credentialFilePaths('/home/user').includes(join('/home/user', '.codex', 'auth.json')))
 })
