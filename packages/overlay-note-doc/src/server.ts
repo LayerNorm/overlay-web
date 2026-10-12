@@ -1,30 +1,34 @@
 /**
  * Server-side conversion via `ServerBlockNoteEditor` (JSDOM-backed).
  * Import from `@overlay/note-doc/server` — never in client bundles.
+ *
+ * `@blocknote/*` is loaded lazily through `import()`: its CJS bundle is
+ * broken under plain `require()` (tiptap interop), and server call sites in
+ * the app may be compiled to CJS (e.g. node --test via tsx). Dynamic import
+ * always resolves the ESM build.
  */
-import { ServerBlockNoteEditor } from '@blocknote/server-util'
+import type { ServerBlockNoteEditor } from '@blocknote/server-util'
 import type { PartialBlock } from '@blocknote/core'
-import { createOverlayNoteSchemaHeadless } from './schema.js'
-import {
-  markdownToNoteDocAsync,
-  noteDocToMarkdownAsync,
-  type MarkdownToDocResult,
-  type NoteDocConverter,
-} from './convert.js'
+import type { MarkdownToDocResult, NoteDocConverter } from './convert.js'
 
-let serverEditor: ServerBlockNoteEditor | null = null
+let serverEditorPromise: Promise<ServerBlockNoteEditor> | null = null
 
-function getServerEditor(): ServerBlockNoteEditor {
-  if (!serverEditor) {
-    serverEditor = ServerBlockNoteEditor.create({
+function getServerEditor(): Promise<ServerBlockNoteEditor> {
+  serverEditorPromise ??= (async () => {
+    const [{ ServerBlockNoteEditor }, { createOverlayNoteSchemaHeadless }] =
+      await Promise.all([
+        import('@blocknote/server-util'),
+        import('./schema.js'),
+      ])
+    return ServerBlockNoteEditor.create({
       schema: createOverlayNoteSchemaHeadless(),
     }) as unknown as ServerBlockNoteEditor
-  }
-  return serverEditor
+  })()
+  return serverEditorPromise
 }
 
-function getConverter(): NoteDocConverter {
-  const editor = getServerEditor()
+async function getConverter(): Promise<NoteDocConverter> {
+  const editor = await getServerEditor()
   return {
     tryParseHTMLToBlocks: (html: string) =>
       editor.tryParseHTMLToBlocks(html) as Promise<PartialBlock[]>,
@@ -39,17 +43,26 @@ function getConverter(): NoteDocConverter {
 export async function markdownToNoteDocServer(
   markdown: string,
 ): Promise<MarkdownToDocResult> {
-  return markdownToNoteDocAsync(getConverter(), markdown)
+  const [{ markdownToNoteDocAsync }, converter] = await Promise.all([
+    import('./convert.js'),
+    getConverter(),
+  ])
+  return markdownToNoteDocAsync(converter, markdown)
 }
 
 /** Server equivalent of `noteDocToMarkdown` (async; runs under JSDOM). */
 export async function noteDocToMarkdownServer(docJson: string): Promise<string> {
-  return noteDocToMarkdownAsync(getConverter(), docJson)
+  const [{ noteDocToMarkdownAsync }, converter] = await Promise.all([
+    import('./convert.js'),
+    getConverter(),
+  ])
+  return noteDocToMarkdownAsync(converter, docJson)
 }
 
 /** Tears down the shared server editor (tests/shutdown). */
 export async function disposeServerConverter(): Promise<void> {
-  const pending = serverEditor
-  serverEditor = null
-  pending?.editor?.unmount?.()
+  const pending = serverEditorPromise
+  serverEditorPromise = null
+  const editor = await pending?.catch(() => null)
+  editor?.editor?.unmount?.()
 }
