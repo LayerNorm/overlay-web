@@ -3,8 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-
-const PRODUCTION_BACKEND = 'colorful-chickadee-419'
+import { STAGING, revision } from './staging-control.mjs'
 
 /** Select the lane before starting a command that can deploy Convex. */
 export function buildPlan(env) {
@@ -52,8 +51,14 @@ export function buildPlan(env) {
   if (env.VERCEL_ENV === 'production' && env.OVERLAY_DEPLOYMENT_ENV === 'staging') {
     const name = env.OVERLAY_STAGING_CONVEX_DEPLOYMENT
     const keyTarget = (env.CONVEX_DEPLOY_KEY ?? '').split('|')[0]
-    if (!name || name === PRODUCTION_BACKEND || keyTarget !== 'prod:' + name) {
+    if (name !== STAGING.backend || keyTarget !== 'prod:' + STAGING.backend) {
       throw new Error('Staging requires the deploy key for its dedicated staging backend')
+    }
+    const sha = revision(env.OVERLAY_STAGING_BUILD_SHA)
+    if (env.OVERLAY_STAGING_BUILD !== 'trusted-main' || env.VERCEL_GIT_COMMIT_REF !== 'main'
+      || env.VERCEL_GIT_COMMIT_SHA !== sha || env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm'
+      || env.VERCEL_GIT_REPO_SLUG !== 'overlay-web' || env.NEXT_PUBLIC_APP_URL !== STAGING.origin) {
+      throw new Error('Staging requires a trusted main build at the requested SHA and origin')
     }
     return {
       command: './node_modules/.bin/convex',

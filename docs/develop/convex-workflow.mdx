@@ -49,7 +49,19 @@ crons are not registered, and email/webhook delivery actions return without
 sending. Project preview defaults contain matching internal API/service secrets,
 the sandbox client ID and seed identity; passwords stay on the web app only.
 
-## Production backend
+## Prepared dedicated staging backend
+
+The prepared dedicated staging backend is `doting-cuttlefish-819` in separate
+project `overlay-staging` (`3199896`). Convex classifies this persistent backend
+as `prod`; it is not Overlay's customer production `colorful-chickadee-419`.
+The hosted staging build accepts only `prod:doting-cuttlefish-819|…` and requires
+the trusted controller's exact main SHA, internal repository and staging origin.
+No app code or environment is deployed to this empty backend yet. Do not run
+production scripts from feature worktrees to initialize it. The staging cutover
+must supply matching sandbox auth/internal secrets and dedicated test providers,
+plus authenticated staging smoke, before the activation variable is enabled.
+
+## Customer production backend
 
 Use the production script only from the clean canonical `main` worktree after the matching main web deployment is live:
 

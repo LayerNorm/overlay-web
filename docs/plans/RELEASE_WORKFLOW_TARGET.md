@@ -4,6 +4,12 @@
 > [`RELEASE_WORKFLOW_MIGRATION_PLAN.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md) lands,
 > follow `docs/develop/agentic-development.mdx` and `docs/develop/worktree-staging-qa.mdx`.
 
+Preparation status: preview foundations are merged. Dedicated staging backend
+`doting-cuttlefish-819` in project `overlay-staging` is provisioned but empty.
+The staging controller is being prepared behind an unset
+`RELEASE_STAGING_FROM_MAIN` repository variable. The current branch-based
+staging lane remains authoritative until the migration checkpoint and cutover.
+
 ## Preview-domain decision — 2026-10-12
 
 Implement stable `pr-<number>.preview.getoverlay.io` URLs with ordinary Vercel
@@ -48,7 +54,7 @@ manual promotion of that exact SHA → getoverlay.io (web first, then Convex pro
 | Environment | Web | Convex backend | WorkOS | Third parties | Built from |
 |---|---|---|---|---|---|
 | Local | `localhost` | Each engineer's own Convex dev deployment | Staging environment | Test mode, CLI forwarding | Working tree |
-| Preview | `pr-<number>.preview.getoverlay.io` (ordinary custom alias in the staging Vercel project, Preview scope) | One Convex preview deployment per branch, auto-created and auto-deleted | Staging environment, wildcard redirect URI | Test mode; webhooks not delivered | Each PR head |
+| Preview | `pr-<number>.preview.getoverlay.io` (ordinary custom alias in the staging Vercel project, Preview scope) | One Convex preview deployment per PR, renewed while open and expired after close | Staging environment, wildcard redirect URI | Test mode; webhooks not delivered | Each PR head |
 | Staging | `staging.getoverlay.io` (staging Vercel project, Production scope) | Dedicated staging deployment | Staging environment | Test mode with real webhooks | Every push to `main` |
 | Production | `getoverlay.io` (production Vercel project) | Production deployment | Production environment | Live mode | A `main` SHA, promoted manually |
 
@@ -174,6 +180,10 @@ References: [Vercel custom aliases for previews](https://vercel.com/kb/guide/how
 - Everything else may merge once checks pass and the preview has been verified.
 - Agents may open and update PRs, verify previews, and enqueue merges for
   low-risk changes. Production promotion is always a human decision.
+
+During the sole-owner period, retain CODEOWNERS and substantive agent review
+without requiring an approving human review that the sole author cannot supply.
+Enable the human approval gate when a second eligible reviewer joins.
 
 ## Roles
 

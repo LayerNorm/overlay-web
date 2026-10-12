@@ -47,6 +47,33 @@ Overlay has two backend lanes that must stay paired with their matching web depl
 | Production | `main` | `www.getoverlay.io` | production |
 | Shared staging | `staging` | `staging.getoverlay.io` | development |
 
+### Prepared main-based staging controller
+
+`staging-release.yml` is gated by the repository variable
+`RELEASE_STAGING_FROM_MAIN=enabled`, which remains unset during migration
+preparation. The prepared lane targets only Divyansh's Vercel team
+`team_VT3uNspuyAOwicxedhtG4SMe`, project `overlay-web-staging`, and dedicated
+Convex `doting-cuttlefish-819` in project `overlay-staging` (`3199896`). Its
+deployment-scoped key expires 2027-01-10 and is stored privately; the empty
+backend is not serving the current staging site.
+
+Before activation, complete the preview soak, isolate staging providers,
+configure the dedicated backend/app environment, switch the staging project's
+production branch and domain to `main`, add authenticated staging smoke, freeze
+the legacy staging branch and rewrite the process docs in the cutover PR.
+Keep root `git.deploymentEnabled.main=false` and production manual.
+
+Trusted control executes protected main with the project-scoped staging token,
+without installing packages or checking out feature code. Per-request build
+overrides carry a validated SHA. The ignore/build guards reject missing or
+mismatched SHA, other refs, wrong origins, and any other backend key. All main
+staging builds share one concurrency group; obsolete builds are confirmed
+terminal before a new persistent-backend build can start. Alias assignment
+requires READY plus project/repository/main/SHA/backend metadata and readback.
+Deployment evidence records `smoke: pending`: it is not promotion evidence until
+the exact revision passes authenticated smoke. The existing lane above stays
+active until these cutover requirements are met.
+
 A feature worktree must never change production Convex. The `main` app and production Convex are a single release unit: deploy them only from an up-to-date, clean `main` worktree.
 
 The development Convex deployment is shared by local development and `staging.getoverlay.io`. A Convex change from one branch changes that backend for every user of this lane. Do not run concurrent staging QA sessions that make incompatible changes under `convex/`.

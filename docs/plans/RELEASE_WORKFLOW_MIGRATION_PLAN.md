@@ -17,7 +17,7 @@ Implementation begins with the preview foundations (Phases 1–4); cut over the
 release lane only after their live acceptance checks pass. A separately scoped
 Vercel CI credential is required for unattended domain and deployment control.
 
-## Account preflight — verified 2026-10-12
+## Initial account preflight — verified 2026-10-12
 
 - GitHub CLI is authenticated as `DevelopedByDev` with repository admin access.
   `LayerNorm/overlay-web` is public and organization-owned, so GitHub merge queue
@@ -48,8 +48,11 @@ by readback. Vercel has verified `*.preview.getoverlay.io` on the staging projec
 
 Preview build/URL isolation, internal seed fixtures, outbound-delivery guards,
 preview-only QA login, trusted alias control and merge-group CI support are
-implemented in draft PR #187. Its current verified revision is
-`7efe03e562011bd1f97ef6221b3952fa92500252`; required GitHub workflows passed.
+merged through PR #187 into `main` at
+`bb8e346573ba4b834d5f36f8ef80346d840c4d7f`. Accepted PR head
+`f0f48e6ecc3b16045a2ad3940b31e589d9fca87e` passed every required GitHub check,
+exact-head sandbox login, note CRUD, stale-edit `409`, seed preservation and
+authenticated browser rendering.
 Local full-suite, typecheck, build, lint, config, release-safety, boundary, docs,
 production audit and staged secret scan passed. These foundations do not yet
 complete the release-lane migration.
@@ -63,15 +66,19 @@ were preserved. Storage, model and billing providers are temporarily disabled
 until dedicated test resources are wired. Preview deployment policy permits
 REST API sources only; native Preview Git builds remain disabled.
 
-PR #187 is READY at `https://pr-187.preview.getoverlay.io`, deployment
-`dpl_wpThvEU3v6Rh3bPxHGeW5tLrtb6g`, with backend `zany-dalmatian-999`
-(reference `preview/pr-187`). Real Chrome sandbox sign-in and seeded workspace
-navigation passed on its earlier successful revision. HTTP QA on the current
-revision passed genuine sandbox login, note create/read/update/delete, stale
-write `409`, and preservation of the seeded note across a head update. The note
-adapter now propagates Convex mutation conflicts, with regression coverage.
+PR #187's accepted Preview was READY at
+`https://pr-187.preview.getoverlay.io`, deployment
+`dpl_BCsNtWxTT8bR9B5ShcQsNpcoNV9y`, with backend `zany-dalmatian-999`
+(reference `preview/pr-187`). After merge, the first trusted-main workflow
+run `38312156190` completed successfully and cleaned its domain, alias and
+branch app URL; the former origin returned HTTPS `404`. This verifies access to
+the main-only control secrets and real lifecycle execution in GitHub Actions.
+The production deployment remained `dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f`; no
+production deployment was created for the merge SHA. Existing shared staging
+was preserved. Future PR open/update automation still needs a live open-event
+probe before declaring the unattended lane fully accepted.
 
-Temporary draft QA PRs #188 and #189 are simultaneously READY with distinct
+Temporary draft QA PRs #188 and #189 were simultaneously READY with distinct
 backends `laudable-lynx-602` and `accomplished-mallard-199`. Live internal queries
 proved incompatible string and number values in the same schema column. These
 PRs must never merge. Genuine sandbox login passed in both; a note created and
@@ -96,8 +103,22 @@ mutations whose responses were lost; reconcile ownership and state first.
 The Convex preview key successfully renewed backend expiry with API readback.
 Reconciliation renews validated open PR backends within Starter's five-day
 limit; closed PRs expire naturally. Missing or expired backends force a fresh
-same-SHA frontend build and seed. Provider QA, full two-PR lifecycle acceptance,
+same-SHA frontend build and seed. Provider QA, the unattended open-event probe,
 merge queue enablement, staging cutover and production promotion remain open.
+
+Staging preparation: Divyansh's Convex team now has project `overlay-staging`
+(`3199896`) and persistent backend `doting-cuttlefish-819`. Its deployment-scoped
+key is stored privately and expires 2027-01-10; it is not a team credential.
+No functions, environment variables, or customer data have been deployed to it.
+Original Overlay production/development deployments were preserved by readback.
+The prepared `staging-control.mjs` and `staging-release.yml` require the exact
+Divyansh Vercel team/project, internal repository, `main` SHA, and dedicated
+backend. Builds are serialized, abandoned builds are settled, automatic aliases
+are disabled, and READY provenance is checked before assigning staging.
+`RELEASE_STAGING_FROM_MAIN` remains unset: the existing staging branch and web
+deployment still serve the current lane. This is preparation, not Phase 5
+acceptance. Authenticated staging smoke, provider isolation, the preview soak,
+platform cutover, and the process-doc rewrite must precede activation.
 
 Plan adjustments before implementation:
 
@@ -116,7 +137,10 @@ Sources: [GitHub merge queue availability](https://docs.github.com/en/repositori
 [Vercel pricing](https://vercel.com/docs/pricing),
 [Convex deployment types and limits](https://docs.convex.dev/production/multiple-deployments).
 
-## Where we are today
+## Baseline before migration
+
+This table records the original lane. Current implementation progress is above
+and in each phase's checklist.
 
 | Area | Current state | Source |
 |---|---|---|
@@ -151,9 +175,9 @@ Answer these before writing code; several later choices depend on them.
       40-deployment team limit. Keep open PRs alive by bounded expiry renewal
       through the project preview key, not by assuming a push resets expiration.
 - [x] **Convex:** use a separate `overlay-staging` project with its own staging
-      deployment/key. Project `3199896` is created and read back with no
-      deployments yet; existing projects were preserved. Provision its backend
-      and configure the web project only at the Phase 5 cutover.
+      deployment/key. Project `3199896`, backend `doting-cuttlefish-819`, and a
+      deployment-scoped key are provisioned. The backend is empty and has no
+      application configuration. Configure the web project only at cutover.
 - [x] **WorkOS:** confirm the staging environment accepts a wildcard redirect URI
       such as `https://*.preview.getoverlay.io/api/auth/callback`. Accepted,
       registered, and verified; no relay is needed for this pattern.
@@ -165,8 +189,8 @@ Answer these before writing code; several later choices depend on them.
 - [x] **GitHub:** confirm merge queue is available for `LayerNorm/overlay-web`.
 
 Checkboxes below track code implementation and platform configuration. Phase
-acceptance still requires each "Done when" result; code in draft PR #187 is
-not yet active trusted `main` automation.
+acceptance still requires each "Done when" result. PR #187 is merged; trusted
+`main` automation is active and its first real cleanup run passed.
 
 ## Phase 1 — Preview builds in the staging project
 
@@ -335,6 +359,11 @@ Code:
       it applies to both connected projects, so changing the staging project's
       production branch alone cannot enable automatic builds. Record the web
       deployment, backend, and SHA together as promotion evidence.
+      Prepared in `staging-release.yml` behind
+      `vars.RELEASE_STAGING_FROM_MAIN == 'enabled'`; do not enable until the
+      smoke workflow, test providers and complete cutover docs are ready.
+      Controller/build guards pin `doting-cuttlefish-819` and the requested SHA.
+      A `Staging Deploy` success alone is not staging-smoke or promotion proof.
 - [ ] `scripts/vercel-build.sh`: in the staging project's production build,
       deploy the staging Convex backend first
       (`npx convex deploy --cmd 'npm run build'` with the staging deploy key),

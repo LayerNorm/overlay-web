@@ -11,6 +11,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- **Prepared dedicated staging deployments from main.** An inactive, serialized workflow pins Divyansh's staging project, exact accepted revision and separate Convex backend. It rejects manual or mismatched builds and records web/backend provenance. Activation awaits the preview soak, isolated providers and authenticated staging smoke; current staging and manual production releases remain in place.
+
 - **PR preview lifecycle automation and merge-queue checks.** Trusted main workflows provision per-PR custom origins, pin builds to the current head, verify alias assignment, and clean up on close or retarget; scheduled reconciliation covers missed events. Wildcard fallback hosts return 404. All required checks support merge groups, including explicit dependency comparisons and existing CLA-signature verification.
   Management credentials are confined to a main-only GitHub environment, and the controller disables automatic domain assignment before provenance checks.
   Open PR backends renew within Convex's retention limit; expired backends force a fresh web build and seed instead of reusing a broken READY frontend.
