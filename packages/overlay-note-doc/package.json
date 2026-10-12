@@ -20,7 +20,7 @@
     "@blocknote/server-util": ">=0.55.0"
   },
   "scripts": {
-    "test": "tsx --test src/*.test.ts",
+    "test": "node --import tsx --import ./test/register.mjs --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

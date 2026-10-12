@@ -5,9 +5,9 @@
  * only: everything here is idempotent and only touches known legacy patterns.
  */
 
-const LEGACY_MARK_REGEX =
-  /<mark([^>]*)data-color="([^"]+)"([^>]*)style="([^"]*)"([^>]*)>/gi
-const LEGACY_MARK_NOCOLOR_REGEX = /<mark([^>]*)>/gi
+const MARK_OPEN_REGEX = /<mark[^>]*>/gi
+const ATTR_COLOR_REGEX = /data-color="([^"]+)"/i
+const ATTR_STYLE_REGEX = /style="([^"]*)"/i
 const INLINE_MATH_REGEX =
   /<span[^>]*data-type="inline-math"[^>]*data-latex="([^"]*)"[^>]*>([\s\S]*?)<\/span>/gi
 const BLOCK_MATH_REGEX =
@@ -32,17 +32,17 @@ export function legacyHtmlToBlocksHtml(html: string): string {
   let out = html
 
   // Colored <mark> -> <span style="background-color:..."> so BlockNote maps it
-  // to the backgroundColor style instead of dropping the color.
-  out = out.replace(
-    LEGACY_MARK_REGEX,
-    (_m, before: string, color: string, mid: string, style: string) => {
-      void mid
-      const bg = /background-color:\s*([^;"']+)/i.exec(style)?.[1]?.trim()
-      return `<span${before} style="background-color: ${bg ?? color}">`
-    },
-  )
+  // to the backgroundColor style instead of dropping the color. Marks without
+  // a data-color become plain <span>s.
+  out = out.replace(MARK_OPEN_REGEX, (tag) => {
+    const color = ATTR_COLOR_REGEX.exec(tag)?.[1]
+    if (!color) return `<span${tag.slice(5, -1)}>`
+    const before = tag.slice(5, tag.toLowerCase().indexOf('data-color'))
+    const style = ATTR_STYLE_REGEX.exec(tag)?.[1] ?? ''
+    const bg = /background-color:\s*([^;"']+)/i.exec(style)?.[1]?.trim()
+    return `<span${before} style="background-color: ${bg ?? color}">`
+  })
   out = out.replace(/<\/mark>/gi, '</span>')
-  out = out.replace(LEGACY_MARK_NOCOLOR_REGEX, '<span$1>')
 
   // Inline + block math -> MathML with a TeX annotation, which the math
   // specs parse natively.
