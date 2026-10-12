@@ -259,6 +259,39 @@ registerRoutes(http, components.stripe, {
       }
     },
 
+    // Automatic workspace top-ups charged off-session: Stripe may finish them after the request (3-D Secure), so the
+    // final outcome settles the pending row here (credited on success). `autoTopUpReconcile` is the backstop.
+    'payment_intent.succeeded': async (ctx, event: Stripe.PaymentIntentSucceededEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
+      const intent = event.data.object
+      if (intent.metadata?.kind !== 'budget_topup' || intent.metadata.source !== 'auto' || !intent.metadata.billingAccountId) return
+      await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+        stripePaymentIntentId: intent.id,
+        outcome: 'succeeded',
+      })
+    },
+
+    'payment_intent.payment_failed': async (ctx, event: Stripe.PaymentIntentPaymentFailedEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
+      const intent = event.data.object
+      if (intent.metadata?.kind !== 'budget_topup' || intent.metadata.source !== 'auto' || !intent.metadata.billingAccountId) return
+      await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+        stripePaymentIntentId: intent.id,
+        outcome: 'failed',
+        errorMessage: intent.last_payment_error?.message ?? 'payment_failed',
+      })
+    },
+
+    'payment_intent.canceled': async (ctx, event: Stripe.PaymentIntentCanceledEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
+      const intent = event.data.object
+      if (intent.metadata?.kind !== 'budget_topup' || intent.metadata.source !== 'auto' || !intent.metadata.billingAccountId) return
+      await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+        stripePaymentIntentId: intent.id,
+        outcome: 'canceled',
+      })
+    },
+
     'checkout.session.completed': async (ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
       if (!(await recordAndCheckEvent(ctx, event))) return
       const session = event.data.object

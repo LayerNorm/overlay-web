@@ -30,20 +30,24 @@ const subscriptionRecord = v.object({
   autoTopUpMonthlyLimitCents: v.optional(v.number()),
   /** Automatic top-ups charged (pending or succeeded) since the current period started. */
   autoTopUpSpentThisPeriodCents: v.number(),
+  /** An automatic top-up is still waiting on Stripe (for example 3-D Secure); no second one starts meanwhile. */
+  autoTopUpPending: v.boolean(),
   offSessionConsentAt: v.optional(v.number()),
   currentPeriodStart: v.optional(v.number()),
   currentPeriodEnd: v.optional(v.number()),
 })
 
-/** Automatic top-ups that were charged or are being charged (pending or succeeded) since `since`. */
-async function autoTopUpSpentSince(ctx: QueryCtx, billingAccountId: string, since: number | undefined): Promise<number> {
+/** Automatic top-ups charged or being charged (pending or succeeded) since `since`, and whether one is pending. */
+async function autoTopUpsSince(ctx: QueryCtx, billingAccountId: string, since: number | undefined) {
   const start = since ?? Date.now() - 31 * 24 * 60 * 60 * 1000
-  const rows = await ctx.db.query('budgetTopUps')
+  const rows = (await ctx.db.query('budgetTopUps')
     .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId).gte('createdAt', start))
-    .collect()
-  return rows.reduce((sum, row) => (
-    row.source === 'auto' && (row.status === 'pending' || row.status === 'succeeded') ? sum + row.amountCents : sum
-  ), 0)
+    .collect())
+    .filter((row) => row.source === 'auto' && (row.status === 'pending' || row.status === 'succeeded'))
+  return {
+    spentCents: rows.reduce((sum, row) => sum + row.amountCents, 0),
+    pending: rows.some((row) => row.status === 'pending'),
+  }
 }
 
 export const getByServer = query({
@@ -66,7 +70,10 @@ export const getByServer = query({
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: row.autoTopUpAmountCents,
       ...(row.autoTopUpMonthlyLimitCents === undefined ? {} : { autoTopUpMonthlyLimitCents: row.autoTopUpMonthlyLimitCents }),
-      autoTopUpSpentThisPeriodCents: await autoTopUpSpentSince(ctx, row.billingAccountId, row.currentPeriodStart),
+      ...(await autoTopUpsSince(ctx, row.billingAccountId, row.currentPeriodStart).then((auto) => ({
+        autoTopUpSpentThisPeriodCents: auto.spentCents,
+        autoTopUpPending: auto.pending,
+      }))),
       ...(row.offSessionConsentAt === undefined ? {} : { offSessionConsentAt: row.offSessionConsentAt }),
       ...(row.currentPeriodStart === undefined ? {} : { currentPeriodStart: row.currentPeriodStart }),
       ...(row.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: row.currentPeriodEnd }),

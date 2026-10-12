@@ -70,6 +70,8 @@ export type BillingSubscriptionRecord = {
   autoTopUpMonthlyLimitCents?: number
   /** Workspace plans: automatic top-ups charged (pending or succeeded) this period. */
   autoTopUpSpentThisPeriodCents?: number
+  /** Workspace plans: an automatic top-up is still waiting on Stripe. */
+  autoTopUpPending?: boolean
   offSessionConsentAt?: number
   currentPeriodStart?: number
   currentPeriodEnd?: number

@@ -14,6 +14,14 @@ crons.interval(
   internal.automations.automationRunner.runMinuteTick,
 )
 
+// Credits automatic workspace top-ups that Stripe finished after the request that started them (3-D Secure etc.),
+// in case the payment_intent webhook was missed.
+crons.interval(
+  'pending automatic top-up settlement',
+  { minutes: 5 },
+  internal.billing.autoTopUpReconcile.reconcilePendingAutoTopUps,
+)
+
 crons.interval(
   'tool loop agent run lease cleanup',
   { minutes: 2 },

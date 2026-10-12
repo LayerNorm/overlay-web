@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
-import { api } from './_generated/api'
+import { api, internal } from './_generated/api'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
@@ -58,5 +58,31 @@ describe('workspace automatic top-ups', () => {
     const plan = await convex.query(api.billing.accountSubscriptions.getByServer, { billingAccountId: 'ba-1', serverSecret })
     expect(plan?.autoTopUpEnabled).toBe(false)
     expect(plan?.autoTopUpMonthlyLimitCents).toBe(4_000)
+  })
+
+  test('a pending top-up is credited once when Stripe settles it, and a failed one is not', async () => {
+    const convex = convexTest(schema, modules)
+    await paidWorkspace(convex)
+    for (const id of ['pi_ok', 'pi_bad']) {
+      await convex.mutation(api.billing.accountSubscriptions.recordTopUpByServer, {
+        actorUserId: 'user-1', amountCents: 800, billingAccountId: 'ba-1', source: 'auto', status: 'pending', serverSecret,
+        stripePaymentIntentId: id,
+      })
+    }
+    const before = await convex.query(api.billing.accountSubscriptions.getByServer, { billingAccountId: 'ba-1', serverSecret })
+    expect(before?.autoTopUpPending).toBe(true)
+    const balance = () => convex.run(async (ctx) => (await ctx.db.query('billingAccountBalances').collect())[0]?.topUpBalanceMicros)
+    const startMicros = await balance()
+
+    const settle = (id: string, outcome: 'succeeded' | 'failed') =>
+      convex.mutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, { stripePaymentIntentId: id, outcome })
+    expect(await settle('pi_ok', 'succeeded')).toEqual({ settled: true, granted: true })
+    expect(await settle('pi_ok', 'succeeded')).toEqual({ settled: false, granted: false })
+    expect(await settle('pi_bad', 'failed')).toEqual({ settled: true, granted: false })
+    expect(await balance()).toBe((startMicros ?? 0) + 800 * 10_000)
+
+    const after = await convex.query(api.billing.accountSubscriptions.getByServer, { billingAccountId: 'ba-1', serverSecret })
+    expect(after?.autoTopUpPending).toBe(false)
+    expect(after?.autoTopUpSpentThisPeriodCents).toBe(800)
   })
 })

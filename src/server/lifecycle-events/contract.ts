@@ -15,6 +15,7 @@ export type LifecycleEventName =
   | 'workspace.invitation_sent'
   | 'workspace.mention'
   | 'workspace.dm_received'
+  | 'billing.auto_topup_limit_reached'
 
 type LifecycleEventBase<TName extends LifecycleEventName, TResource, TAttributes> = {
   attributes: TAttributes
@@ -106,6 +107,17 @@ type WorkspaceDmReceivedLifecycleEvent = LifecycleEventBase<'workspace.dm_receiv
     fromDisplayName: string
   }>
 
+/** A workspace's automatic top-ups hit the monthly limit, so paid resources stop at $0. Sent to owners and admins. */
+type AutoTopUpLimitReachedLifecycleEvent = LifecycleEventBase<'billing.auto_topup_limit_reached', {
+    id: string
+    type: 'billing_account'
+  }, {
+    workspaceId: string
+    workspaceName: string
+    monthlyLimitCents: number
+    periodEnd?: number
+  }>
+
 export type LifecycleEvent =
   | UserCreatedLifecycleEvent
   | SubscriptionChangedLifecycleEvent
@@ -116,6 +128,7 @@ export type LifecycleEvent =
   | WorkspaceInvitationSentLifecycleEvent
   | WorkspaceMentionLifecycleEvent
   | WorkspaceDmReceivedLifecycleEvent
+  | AutoTopUpLimitReachedLifecycleEvent
 
 export type LifecycleEventInput =
   | Omit<UserCreatedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
@@ -127,6 +140,7 @@ export type LifecycleEventInput =
   | Omit<WorkspaceInvitationSentLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<WorkspaceMentionLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<WorkspaceDmReceivedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
+  | Omit<AutoTopUpLimitReachedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
 
 const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleEventDestination[]> = {
   'user.created': ['analytics', 'audit', 'email', 'metrics', 'notification'],
@@ -138,6 +152,7 @@ const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleE
   'workspace.invitation_sent': ['analytics', 'audit', 'email', 'metrics', 'notification'],
   'workspace.mention': ['analytics', 'audit', 'email', 'metrics', 'notification'],
   'workspace.dm_received': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'billing.auto_topup_limit_reached': ['audit', 'email', 'notification'],
 }
 
 export function destinationsForLifecycleEvent(

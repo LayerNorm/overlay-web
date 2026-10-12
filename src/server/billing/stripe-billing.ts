@@ -233,6 +233,8 @@ export async function maybeAutoTopUpWorkspaceBudget(params: {
 }, repository: BillingRepository) {
   const plan = await repository.getBillingAccountSubscriptionByServer({ billingAccountId: params.billingAccountId })
   if (!plan || plan.planKind !== 'paid') return { applied: false as const, reason: 'not_paid' }
+  // One in flight at a time: a pending top-up is settled by the webhook or the reconcile job when Stripe finishes.
+  if (plan.autoTopUpPending) return { applied: false as const, reason: 'already_pending' }
   const decision = decideAutoTopUp({
     enabled: Boolean(plan.autoTopUpEnabled),
     amountCents: plan.autoTopUpAmountCents ?? 0,
