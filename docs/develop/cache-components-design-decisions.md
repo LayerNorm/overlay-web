@@ -27,7 +27,7 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
    reads `process.env` only. Removed opt-out.
    Also reads the workspace-billing rollout env (`OVERLAY_FEATURE_WORKSPACE_WALLETS`, stage `general`)
    to choose between the account-plan page (checkout) and the workspace pricing page; still
-   `process.env` only. `/pricing/preview` always renders the workspace page (noindex).
+   `process.env` only.
 
 ### Batch 2 — Root layout + home page (2 routes)
 

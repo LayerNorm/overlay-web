@@ -12,10 +12,9 @@ import s from './pricing.module.css'
 /**
  * Pricing. A workspace is free or paid (never the account). Paid is a monthly
  * plan of $8 to $500 that becomes that month's credit, then a hard stop or
- * automatic top-ups up to a monthly limit. `itemized` adds the example bill,
- * which ships with the per-resource usage ledger.
+ * automatic top-ups up to a monthly limit, itemized per resource.
  */
-export function PricingPage({ billingEnabled, itemized = false }: { billingEnabled: boolean; itemized?: boolean }) {
+export function PricingPage({ billingEnabled }: { billingEnabled: boolean }) {
   const { isAuthenticated } = useAuth()
   const appHref = getMarketingAppHref(isAuthenticated)
   return (
@@ -23,10 +22,10 @@ export function PricingPage({ billingEnabled, itemized = false }: { billingEnabl
       <main className={s.root}>
         {billingEnabled ? (
           <>
-            <PricingHero appHref={appHref} itemized={itemized} />
+            <PricingHero appHref={appHref} />
             <PricingKinds />
-            <PricingBill onDemand itemized={itemized} />
-            <PricingTrust onDemand itemized={itemized} />
+            <PricingBill />
+            <PricingTrust />
             <PricingFaq />
             <PricingEnd appHref={appHref} />
           </>

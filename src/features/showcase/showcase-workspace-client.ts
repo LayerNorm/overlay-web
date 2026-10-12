@@ -180,7 +180,25 @@ export function createShowcaseWorkspaceManagementClient(
         subscription: initialized
           ? { planKind: 'paid' as const, planAmountCents: 2_000, status: 'active' as const }
           : { planKind: 'free' as const, planAmountCents: 0 },
-        ...(initialized ? { autoTopUp: { enabled: false, amountCents: 800, monthlyLimitCents: null, spentThisPeriodCents: 0, limitReached: false } } : {}),
+        ...(initialized ? {
+          autoTopUp: { enabled: false, amountCents: 800, monthlyLimitCents: null, spentThisPeriodCents: 0, limitReached: false },
+          usage: {
+            periodStart: Date.now() - 14 * 24 * 60 * 60_000,
+            periodEnd: Date.now() + 16 * 24 * 60 * 60_000,
+            totalCents: 840,
+            onDemandCents: 0,
+            truncated: false,
+            lines: [
+              { key: 'models', label: 'Models', quantity: '4.2M tokens', cents: 512, details: [
+                { label: 'Claude Opus 4.7', quantity: '1.8M tokens', cents: 341 },
+                { label: 'GPT-5.4', quantity: '2.4M tokens', cents: 171 },
+              ] },
+              { key: 'computers', label: 'Overlay Cloud computers', quantity: '3h 10m', cents: 228 },
+              { key: 'web_search', label: 'Web search', quantity: '214 searches', cents: 86 },
+              { key: 'images', label: 'Image generation', quantity: '6 images', cents: 14 },
+            ],
+          },
+        } : {}),
       }
     },
     async initializeBilling(workspaceId) { return await this.billing(workspaceId) },

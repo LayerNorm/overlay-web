@@ -8,6 +8,7 @@ import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
+import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
 
 const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000, 50_000] as const
 
@@ -225,6 +226,8 @@ function WalletOverview({
         <WalletCreditsCard summary={summary} />
         <WalletSubscriptionCard summary={summary} />
       </div>
+
+      {summary.usage ? <WorkspaceUsagePanel usage={summary.usage} /> : null}
 
       {summary.autoTopUp && summary.rollout.checkoutEnabled ? (
         <WorkspaceAutoTopUpCard

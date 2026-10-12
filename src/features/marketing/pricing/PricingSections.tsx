@@ -12,23 +12,12 @@ const PAID_ITEMS = [
   'More storage',
 ]
 
-type TrustItem = readonly [title: string, text: string]
-
-/** Only promises the product keeps: on-demand and itemized lines appear once those ship. */
-function trustItems({ onDemand, itemized }: { onDemand: boolean; itemized: boolean }): TrustItem[] {
-  return [
-    ['Credit is spent first', 'Usage draws from the month’s credit before anything else.'],
-    onDemand
-      ? ['On-demand is off until you turn it on', 'Out of the box, paid resources stop at $0.']
-      : ['Nothing is charged past your credit', 'At $0, paid resources pause until next month or until you add credit yourself.'],
-    itemized
-      ? ['Every line is itemized', 'Each resource is totaled separately, to the cent, with its quantity.']
-      : ['Free workspaces never need a card', 'Free resources keep working whatever happens to a paid plan.'],
-    onDemand
-      ? ['Your limit is the limit', 'Automatic top-ups never go past the monthly limit you set.']
-      : ['Your plan is your monthly bill', 'You pay the amount you chose each month, and can change it at any time.'],
-  ]
-}
+const TRUST = [
+  ['Credit is spent first', 'Nothing is charged to your card for usage while credit remains.'],
+  ['On-demand is off until you turn it on', 'Out of the box, paid resources stop at $0.'],
+  ['Every line is itemized', 'Each resource is totaled separately, to the cent, with its quantity.'],
+  ['Your limit is the limit', 'Automatic top-ups never go past the monthly limit you set.'],
+] as const
 
 const FAQ = [
   ['Is free or paid a setting on my account?', 'No. Each workspace is free or paid on its own. You can have a free workspace and a paid one under the same account.'],
@@ -40,16 +29,14 @@ const FAQ = [
   ['Can I change my plan later?', 'Yes. Change the monthly amount, add credit, switch automatic top-ups on or off, or cancel at any time in your workspace’s billing settings.'],
 ] as const
 
-export function PricingHero({ appHref, itemized = false }: { appHref: string; itemized?: boolean }) {
+export function PricingHero({ appHref }: { appHref: string }) {
   return (
     <div className={s.hero}>
       <h1>Pay for what your workspace <mark>actually uses</mark>.</h1>
       <p>Every workspace is free or paid. Paid plans start at $8 a month, which becomes $8 of credit for that month. What you use comes out of it.</p>
       <div className={s.go}>
         <Link className={s.btn} href={appHref}>Start free</Link>
-        {itemized
-          ? <a className={`${s.btn} ${s.ghost}`} href="#bill">See an example bill</a>
-          : <a className={`${s.btn} ${s.ghost}`} href="#credit">How billing works</a>}
+        <a className={`${s.btn} ${s.ghost}`} href="#bill">See an example bill</a>
       </div>
     </div>
   )
@@ -95,12 +82,12 @@ export function PricingKinds() {
   )
 }
 
-export function PricingTrust({ onDemand = false, itemized = false }: { onDemand?: boolean; itemized?: boolean }) {
+export function PricingTrust() {
   return (
     <section>
       <div className={s.lab}><h2>No surprises</h2></div>
       <div className={s.trust}>
-        {trustItems({ onDemand, itemized }).map(([title, text]) => (
+        {TRUST.map(([title, text]) => (
           <div key={title}>
             <h3><Check className={s.i} aria-hidden="true" />{title}</h3>
             <p>{text}</p>

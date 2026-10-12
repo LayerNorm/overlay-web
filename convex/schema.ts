@@ -503,6 +503,9 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Quantities for the itemized usage list, summed from the usage events at finalize.
+    usageTokens: v.optional(v.number()),
+    usageSeconds: v.optional(v.number()),
     providerWorkStarted: v.optional(v.boolean()),
     providerWorkCompleted: v.optional(v.boolean()),
     errorMessage: v.optional(v.string()),

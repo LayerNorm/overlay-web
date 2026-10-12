@@ -15,6 +15,7 @@ import {
   quantityToPlanAmountCents,
 } from '@/shared/billing/billing-pricing'
 import { autoTopUpFitsLimit, validateAutoTopUpInput } from '@/shared/billing/auto-top-up'
+import { workspaceUsageSummary } from './workspace-usage-summary'
 import type { BillingRepository, BillingSubscriptionRecord } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
 import type { WorkspaceBillingRolloutDecision } from '@/shared/billing/workspace-billing-rollout'
@@ -78,7 +79,19 @@ export class WorkspaceBillingService {
         ...(subscription?.status ? { status: subscription.status } : {}),
         ...(subscription?.currentPeriodEnd ? { currentPeriodEnd: subscription.currentPeriodEnd } : {}),
       },
-      ...(subscription?.planKind === 'paid' ? { autoTopUp: autoTopUpSummary(subscription) } : {}),
+      ...(subscription?.planKind === 'paid'
+        ? {
+            autoTopUp: autoTopUpSummary(subscription),
+            usage: workspaceUsageSummary(
+              await this.deps.repository.getBillingAccountUsageTotalsByServer({
+                billingAccountId: account.billingAccountId,
+                periodStart: periodStartOf(subscription),
+              }),
+              subscription,
+              periodStartOf(subscription),
+            ),
+          }
+        : {}),
     }
   }
 
@@ -302,6 +315,11 @@ export class WorkspaceBillingService {
   private fail(message: string, statusCode: number): never {
     throw new BillingServiceError({ error: message }, statusCode)
   }
+}
+
+/** The current billing period, or the last 30 days when the plan has no period yet. */
+function periodStartOf(plan: BillingSubscriptionRecord): number {
+  return plan.currentPeriodStart ?? Date.now() - 30 * 24 * 60 * 60 * 1000
 }
 
 function autoTopUpSummary(plan: BillingSubscriptionRecord): NonNullable<WorkspaceBillingSummaryResponse['autoTopUp']> {

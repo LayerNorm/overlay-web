@@ -40,6 +40,8 @@ export {
   type WorkspaceBillingSummaryResponse,
   type WorkspaceBillingCheckoutInput,
   type WorkspaceBillingAutoTopUpInput,
+  type WorkspaceBillingUsage,
+  type WorkspaceBillingUsageLine,
   type WorkspaceBillingTopUpInput,
   type WorkspaceBillingCheckoutResponse,
   type WorkspaceBillingVerificationInput,

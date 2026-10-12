@@ -1,6 +1,6 @@
 # Workspace pricing: making the pricing page true
 
-Status: decisions made 2026-10-11 (below). Phases 1 and 2 shipped 2026-10-11; see "Phase 1 (done)" and "Phase 2 (done)".
+Status: decisions made 2026-10-11 (below). Phases 1–3 shipped 2026-10-11; see "Phase 1 (done)", "Phase 2 (done)" and "Phase 3 (done)".
 
 ## How we work on this (owner, 2026-10-11)
 
@@ -77,7 +77,15 @@ Left for later phases: the remaining personal-plan reads that do not gate anythi
 - Also in this round: the memory-profile job asks for plain text (its JSON schema failed on every run and left a hold to reconcile each time), memory extraction and profiles follow the workspace's plan and bill the workspace, and the Billing tab no longer shows customers Overlay's provider cost and margin.
 - Tests: `src/shared/billing/auto-top-up.test.ts`, `convex/workspaceAutoTopUp.convex.test.ts`.
 
-Not done: a top-up that Stripe leaves `pending` (for example 3-D Secure) is not credited until it is retried; there is no email when the limit is reached (the notice is in Workspace → Billing).
+Follow-ups (done 2026-10-11): a top-up Stripe leaves `pending` (3-D Secure) is settled when Stripe finishes it, by the `payment_intent.succeeded` / `payment_failed` / `canceled` webhook handlers and a 5-minute Convex job (`convex/billing/autoTopUpReconcile.ts`) that asks Stripe about anything still pending (given up after 24 hours); only one automatic top-up is in flight per workspace. Owners and admins get one email per billing period when the monthly limit is reached (`billing.auto_topup_limit_reached`). For the webhook path, the Stripe endpoint must send `payment_intent.*` events; the job works without it.
+
+## Phase 3 (done 2026-10-11)
+
+- **No second ledger.** Every charge to a workspace already settles as a finalized `budgetReservations` row (kind, model, operation, amount). The itemized list adds those up per resource for the current period (`usageTotalsByServer`, `convex/billing/usageTotals.ts`); finalize now also stores `usageTokens` and `usageSeconds` so lines show quantities. Older rows have amounts but no quantities.
+- **Resources** (`src/shared/billing/usage-resources.ts`): models (split per model), Overlay Cloud computers, web search, browser tasks, image and video generation, transcription, memory, knowledge and search indexing.
+- **Workspace → Billing → Usage this period:** total, on-demand charges, days left in the cycle, and one line per resource with quantity and cost; Models expands per model. Included for paid workspaces in the billing summary (`usage`).
+- **Pricing page:** `/pricing` is the full page; `/pricing/preview` is deleted.
+- Tests: `src/shared/billing/usage-resources.test.ts`, `convex/workspaceUsageTotals.convex.test.ts`.
 
 ## Order of work
 

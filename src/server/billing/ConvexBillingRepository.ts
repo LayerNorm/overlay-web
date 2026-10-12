@@ -3,6 +3,7 @@ import 'server-only'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { BillingAccountRecord } from '@/shared/billing/billing-account'
+import type { UsageTotal } from '@/shared/billing/usage-resources'
 import type {
   BillingBalanceParityReport,
   BillingSubscriptionVerificationRow,
@@ -100,6 +101,17 @@ export class ConvexBillingRepository implements BillingRepository, BillingWebhoo
       { ...args, serverSecret: this.serverSecret },
       { throwOnError: true },
     )
+  }
+
+  async getBillingAccountUsageTotalsByServer(args: {
+    billingAccountId: string
+    periodStart: number
+  }): Promise<{ totals: UsageTotal[]; truncated: boolean }> {
+    return await convex.query<{ totals: UsageTotal[]; truncated: boolean }>(
+      'billing/usageTotals:usageTotalsByServer',
+      { ...args, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    ) ?? { totals: [], truncated: false }
   }
 
   async getBillingAccountSubscriptionByServer(args: {

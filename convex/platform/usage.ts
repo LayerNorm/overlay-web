@@ -1626,6 +1626,14 @@ async function reconcileExpiredBudgetReservations(
   }
 }
 
+/** Token and second counts for the itemized usage list (only set when the events carry them). */
+function usageQuantities(events: Array<{ inputTokens?: number; outputTokens?: number; durationSeconds?: number }> | undefined) {
+  if (!events?.length) return {}
+  const tokens = events.reduce((sum, event) => sum + Math.max(0, event.inputTokens ?? 0) + Math.max(0, event.outputTokens ?? 0), 0)
+  const seconds = events.reduce((sum, event) => sum + Math.max(0, event.durationSeconds ?? 0), 0)
+  return { ...(tokens > 0 ? { usageTokens: tokens } : {}), ...(seconds > 0 ? { usageSeconds: seconds } : {}) }
+}
+
 export const finalizeBudgetReservationByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -1678,6 +1686,7 @@ export const finalizeBudgetReservationByServer = mutation({
     const providerCostMicros = events?.some((event) => event.providerCostUsd !== undefined)
       ? Math.round(events.reduce((total, event) => total + Math.max(0, event.providerCostUsd ?? 0), 0) * 1_000_000)
       : undefined
+    const quantities = usageQuantities(events)
     if (safeActualCents > reservation.reservedCents + 0.000001) {
       const now = Date.now()
       await ctx.db.patch(reservation._id, {
@@ -1710,6 +1719,7 @@ export const finalizeBudgetReservationByServer = mutation({
         status: 'finalized',
         finalizedCents: safeActualCents,
         ...(providerCostMicros === undefined ? {} : { providerCostMicros }),
+        ...quantities,
         providerWorkStarted: true,
         providerWorkCompleted: true,
         updatedAt: Date.now(),
@@ -1754,6 +1764,7 @@ export const finalizeBudgetReservationByServer = mutation({
       status: 'finalized',
       finalizedCents: safeActualCents,
       ...(providerCostMicros === undefined ? {} : { providerCostMicros }),
+      ...quantities,
       providerWorkStarted: true,
       providerWorkCompleted: true,
       updatedAt: Date.now(),

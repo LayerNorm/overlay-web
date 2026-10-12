@@ -203,6 +203,29 @@ export type WorkspaceBillingSummaryResponse = {
     /** Another automatic top-up would pass the monthly limit, so paid resources stop at $0 until next period. */
     limitReached: boolean
   }
+  /** Itemized usage for the current billing period: what was spent on each resource, largest first. */
+  usage?: WorkspaceBillingUsage
+}
+
+export type WorkspaceBillingUsageLine = {
+  key: string
+  label: string
+  /** "4.2M tokens", "1h 12m", "214 searches". */
+  quantity: string
+  cents: number
+  /** Models: one line per model. */
+  details?: Array<{ label: string; quantity: string; cents: number }>
+}
+
+export type WorkspaceBillingUsage = {
+  periodStart: number
+  periodEnd?: number
+  totalCents: number
+  /** Automatic top-ups charged this period (pending or succeeded). */
+  onDemandCents: number
+  lines: WorkspaceBillingUsageLine[]
+  /** More charges than one summary reads; totals are a lower bound. */
+  truncated: boolean
 }
 
 export type WorkspaceBillingCheckoutInput = {

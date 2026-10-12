@@ -20,7 +20,7 @@ function statusText(out: BillOutcome, deposit: number, topUp: number, limit: num
   }
 }
 
-function Deposit({ deposit, onChange, full }: { deposit: number; onChange: (n: number) => void; full: boolean }) {
+function Deposit({ deposit, onChange }: { deposit: number; onChange: (n: number) => void }) {
   const custom = !DEPOSITS.includes(deposit)
   return (
     <section id="credit">
@@ -44,11 +44,7 @@ function Deposit({ deposit, onChange, full }: { deposit: number; onChange: (n: n
           <span className={s.arrow} aria-hidden="true">→</span>
           <div className={s.box}><small>Your workspace gets</small><b>{formatUsd(deposit)} of credit</b></div>
         </div>
-        {full ? (
-          <p className={s.note}>Usage draws from this credit first. Anything past it is <b>on-demand</b>, and only if you allow it below. Unused credit does not roll over.</p>
-        ) : (
-          <p className={s.note}>Usage draws from this credit. At $0, paid resources pause until next month or until you add credit. <b>Unused credit does not roll over.</b></p>
-        )}
+        <p className={s.note}>Usage draws from this credit first. Anything past it is <b>on-demand</b>, and only if you allow it below. Unused credit does not roll over.</p>
       </div>
     </section>
   )
@@ -153,11 +149,8 @@ function UsagePanel({ deposit, out, usage, sliderMax, status, onUsage }: {
   )
 }
 
-/**
- * The monthly amount, what happens at $0 (`onDemand`), and the example bill that reacts to both (`itemized`, which
- * waits for the per-resource usage ledger to ship).
- */
-export function PricingBill({ onDemand = false, itemized = false }: { onDemand?: boolean; itemized?: boolean }) {
+/** The monthly amount, what happens at $0, and the example bill that reacts to both. */
+export function PricingBill() {
   const [deposit, setDeposit] = useState(20)
   const [mode, setMode] = useState<RunOutMode>('stop')
   const [topUp, setTopUp] = useState(8)
@@ -171,10 +164,8 @@ export function PricingBill({ onDemand = false, itemized = false }: { onDemand?:
 
   return (
     <>
-      <Deposit deposit={deposit} onChange={setDeposit} full={onDemand} />
-      {onDemand ? <RunOut mode={mode} topUp={topUp} limit={limit} max={maxCharge(settings)} onMode={setMode} onTopUp={setTopUp} onLimit={setLimit} /> : null}
-      {itemized ? (
-        <>
+      <Deposit deposit={deposit} onChange={setDeposit} />
+      <RunOut mode={mode} topUp={topUp} limit={limit} max={maxCharge(settings)} onMode={setMode} onTopUp={setTopUp} onLimit={setLimit} />
       <section id="bill">
         <div className={s.lab}>
           <h2>See where every cent goes</h2>
@@ -192,8 +183,6 @@ export function PricingBill({ onDemand = false, itemized = false }: { onDemand?:
           <p className={s.fine}>Illustrative numbers. Every line shows its quantity.</p>
         </div>
       </section>
-        </>
-      ) : null}
     </>
   )
 }

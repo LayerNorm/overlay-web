@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { BillingAccountRecord } from '@/shared/billing/billing-account'
+import type { UsageTotal } from '@/shared/billing/usage-resources'
 import type {
   BillingAccountSpendLimitRecord,
   BillingSpendSubject,
@@ -127,6 +128,10 @@ export interface BillingRepository {
   getWorkspaceBillingAccountByWorkspaceIdByServer(args: {
     workspaceId: string
   }): Promise<BillingAccountRecord | null>
+  getBillingAccountUsageTotalsByServer(args: {
+    billingAccountId: string
+    periodStart: number
+  }): Promise<{ totals: UsageTotal[]; truncated: boolean }>
   getBillingAccountEntitlementsByServer(args: {
     billingAccountId: string
   }): Promise<BillingAccountEntitlementsRecord | null>

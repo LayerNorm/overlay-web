@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
 /**
  * The workspace pricing page, once workspace billing is on for everyone (deployments that never turn it on keep the
- * account-plan page). `/pricing/preview` also shows the on-demand and itemized-bill sections that are not built yet.
+ * account-plan page).
  */
 export default function PricingPage() {
   const capabilities = getOverlayCapabilitiesSync()
