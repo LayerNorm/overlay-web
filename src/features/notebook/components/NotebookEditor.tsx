@@ -21,7 +21,9 @@ import {
 import {
   CanonicalNotebookEditor,
   type NotebookEditorRepository,
+  type NoteMentionProvider,
 } from '@overlay/modules-react/notes'
+import { searchMentions } from '@/components/mentions/mention-search'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
@@ -124,6 +126,13 @@ export default function NotebookEditor({
     },
   }), [])
 
+  const mentionProvider = useMemo<NoteMentionProvider>(
+    () => ({
+      search: (query) => searchMentions(query),
+    }),
+    [],
+  )
+
   return (
     <CanonicalNotebookEditor
       noteId={searchParams?.get('id') ?? null}
@@ -142,6 +151,7 @@ export default function NotebookEditor({
       onModelChange={(modelId) => {
         try { localStorage.setItem(ACT_MODEL_KEY, modelId) } catch { /* storage may be unavailable */ }
       }}
+      mentionProvider={mentionProvider}
       onNavigateNote={(noteId) => {
         // Preserve non-id params (e.g. ?editor=blocks) across note opens;
         // openNote calls this on every open, including the initial load.

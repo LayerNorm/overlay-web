@@ -40,7 +40,7 @@ test('legacy transform maps mark, math, and youtube embed markup', () => {
   assert.match(out, /background-color: rgb\(250,240,0\)/)
   assert.match(out, /<math display="inline">.*x\^2/)
   assert.match(out, /<math display="block">.*a\+b/)
-  assert.match(out, /<video src="https:\/\/www\.youtube\.com\/embed\/abc123"/)
+  assert.match(out, /<figure data-embed-url="https:\/\/www\.youtube\.com\/embed\/abc123"/)
 })
 
 test('markdown -> docJson -> markdown projection preserves structure', async () => {
@@ -90,4 +90,51 @@ test('underline HTML survives conversion as underline style', async () => {
   const source = 'text <u>underlined</u> tail'
   const { docJson } = await markdownToNoteDocServer(source)
   assert.match(docJson, /"underline":true/)
+})
+
+test('GFM alert blockquote becomes a callout block', async () => {
+  const source = '> [!WARNING]\n> careful with this\n'
+  const { docJson } = await markdownToNoteDocServer(source)
+  const blocks = parseNoteDocJson(docJson) ?? []
+  const callout = blocks.find((b) => b.type === 'callout')
+  assert.ok(callout)
+  assert.equal(
+    (callout as { props?: { icon?: string } }).props?.icon,
+    'warning',
+  )
+})
+
+test('youtube embed markup becomes an embed block with normalized URL', async () => {
+  const html = legacyHtmlToBlocksHtml(
+    '<p><a href="https://youtu.be/dQw4w9WgXcQ">watch</a></p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>',
+  )
+  assert.match(html, /data-embed-url="https:\/\/www\.youtube\.com\/embed\/dQw4w9WgXcQ"/)
+})
+
+test('embeddableUrl normalizes youtube watch/share and rejects others', async () => {
+  const { embeddableUrl } = await import('./blocks')
+  assert.equal(
+    embeddableUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+    'https://www.youtube.com/embed/dQw4w9WgXcQ',
+  )
+  assert.equal(
+    embeddableUrl('https://youtu.be/dQw4w9WgXcQ'),
+    'https://www.youtube.com/embed/dQw4w9WgXcQ',
+  )
+  assert.equal(
+    embeddableUrl('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'),
+    'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+  )
+  assert.equal(embeddableUrl('https://example.com/embed/x'), null)
+  assert.equal(embeddableUrl('http://www.youtube.com/watch?v=x'), null)
+})
+
+test('mention anchor parses to mention inline content', async () => {
+  const { markdownToNoteDocServer: toDoc } = await import('./server')
+  const { docJson } = await toDoc(
+    'see [Roadmap](overlay://file/mh7abc) for details',
+  )
+  assert.match(docJson, /"type":"mention"/)
+  assert.match(docJson, /"mentionType":"file"/)
+  assert.match(docJson, /"mentionId":"mh7abc"/)
 })
