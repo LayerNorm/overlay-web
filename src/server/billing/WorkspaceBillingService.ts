@@ -1,6 +1,10 @@
 import 'server-only'
 
-import { canManageWorkspace, type WorkspaceBillingSummaryResponse } from '@overlay/workspace-contracts'
+import {
+  canManageWorkspace,
+  type WorkspaceBillingAutoTopUpInput,
+  type WorkspaceBillingSummaryResponse,
+} from '@overlay/workspace-contracts'
 import type { BillingProvider } from '@overlay/app-core'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { centsToBillingCredits } from '@/shared/billing/billing-account'
@@ -10,7 +14,8 @@ import {
   isValidTopUpAmount,
   quantityToPlanAmountCents,
 } from '@/shared/billing/billing-pricing'
-import type { BillingRepository } from './BillingRepository'
+import { autoTopUpFitsLimit, validateAutoTopUpInput } from '@/shared/billing/auto-top-up'
+import type { BillingRepository, BillingSubscriptionRecord } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
 import type { WorkspaceBillingRolloutDecision } from '@/shared/billing/workspace-billing-rollout'
 import { BillingServiceError } from './BillingCustomerService'
@@ -73,7 +78,37 @@ export class WorkspaceBillingService {
         ...(subscription?.status ? { status: subscription.status } : {}),
         ...(subscription?.currentPeriodEnd ? { currentPeriodEnd: subscription.currentPeriodEnd } : {}),
       },
+      ...(subscription?.planKind === 'paid' ? { autoTopUp: autoTopUpSummary(subscription) } : {}),
     }
+  }
+
+  /**
+   * Owners and admins choose what happens at $0: a hard stop, or automatic top-ups up to a monthly limit. Turning
+   * top-ups on records consent to charge the workspace's saved card off-session.
+   */
+  async updateAutoTopUp(args: { actorUserId: string; workspaceId: string } & WorkspaceBillingAutoTopUpInput) {
+    const { account } = await this.requireEligibleAccountManager(args)
+    const plan = await this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId })
+    if (plan?.planKind !== 'paid') this.fail('Add a plan before turning on automatic top-ups.', 409)
+    const input = {
+      enabled: Boolean(args.enabled),
+      amountCents: Math.round(Number(args.amountCents)),
+      monthlyLimitCents: Math.round(Number(args.monthlyLimitCents)),
+    }
+    const valid = validateAutoTopUpInput(input)
+    if (!valid.ok) this.fail(valid.error, 400)
+    await this.deps.repository.upsertBillingAccountSubscription({
+      billingAccountId: account.billingAccountId,
+      autoTopUpEnabled: input.enabled,
+      ...(input.enabled
+        ? {
+            autoTopUpAmountCents: input.amountCents,
+            autoTopUpMonthlyLimitCents: input.monthlyLimitCents,
+            offSessionConsentAt: Date.now(),
+          }
+        : {}),
+    })
+    return await this.summary(args)
   }
 
   async createSubscriptionCheckout(args: {
@@ -266,6 +301,20 @@ export class WorkspaceBillingService {
 
   private fail(message: string, statusCode: number): never {
     throw new BillingServiceError({ error: message }, statusCode)
+  }
+}
+
+function autoTopUpSummary(plan: BillingSubscriptionRecord): NonNullable<WorkspaceBillingSummaryResponse['autoTopUp']> {
+  const enabled = Boolean(plan.autoTopUpEnabled)
+  const amountCents = plan.autoTopUpAmountCents ?? 0
+  const spentThisPeriodCents = plan.autoTopUpSpentThisPeriodCents ?? 0
+  const monthlyLimitCents = plan.autoTopUpMonthlyLimitCents ?? null
+  return {
+    enabled,
+    amountCents,
+    monthlyLimitCents,
+    spentThisPeriodCents,
+    limitReached: enabled && !autoTopUpFitsLimit({ monthlyLimitCents: monthlyLimitCents ?? undefined, spentThisPeriodCents }, amountCents),
   }
 }
 

@@ -180,23 +180,13 @@ export function createShowcaseWorkspaceManagementClient(
         subscription: initialized
           ? { planKind: 'paid' as const, planAmountCents: 2_000, status: 'active' as const }
           : { planKind: 'free' as const, planAmountCents: 0 },
-        ...(initialized ? { observability: {
-          actualProviderCostCents: 672,
-          costCoveragePercent: 100,
-          meteredReservations: 41,
-          oldestReconciliationAgeMs: 0,
-          periodEnd: Date.now(),
-          periodStart: Date.now() - 14 * 24 * 60 * 60_000,
-          realizedMarginPercent: 20,
-          reconciliationReservations: 0,
-          retailCredits: 8_400,
-          staleReconciliationReservations: 0,
-        } } : {}),
+        ...(initialized ? { autoTopUp: { enabled: false, amountCents: 800, monthlyLimitCents: null, spentThisPeriodCents: 0, limitReached: false } } : {}),
       }
     },
     async initializeBilling(workspaceId) { return await this.billing(workspaceId) },
     async createBillingCheckout() { return { url: null } },
     async createBillingTopUp() { return { url: null } },
+    async updateBillingAutoTopUp(workspaceId) { return await this.billing(workspaceId) },
     async createBillingPortal() { return { url: null } },
     async verifyBillingCheckout(_workspaceId, input) { return { success: true as const, amountCents: 0, kind: input.kind } },
     async load(workspaceId, tab) {

@@ -12,20 +12,23 @@ const PAID_ITEMS = [
   'More storage',
 ]
 
-/** What is true today. `TRUST_FULL` adds the on-demand and itemized-bill promises once those ship. */
-const TRUST = [
-  ['Credit is spent first', 'Usage draws from the month’s credit before anything else.'],
-  ['Nothing is charged past your credit', 'At $0, paid resources pause until next month or until you add credit yourself.'],
-  ['Your plan is your monthly bill', 'You pay the amount you chose each month, and can change it at any time.'],
-  ['Free workspaces never need a card', 'Free resources keep working whatever happens to a paid plan.'],
-] as const
+type TrustItem = readonly [title: string, text: string]
 
-const TRUST_FULL = [
-  ['Credit is spent first', 'Nothing is charged to your card for usage while credit remains.'],
-  ['On-demand is off until you turn it on', 'Out of the box, paid resources stop at $0.'],
-  ['Every line is itemized', 'Each resource is totaled separately, to the cent, with its quantity.'],
-  ['Your limit is the limit', 'The monthly limit you set is the most a workspace can be charged.'],
-] as const
+/** Only promises the product keeps: on-demand and itemized lines appear once those ship. */
+function trustItems({ onDemand, itemized }: { onDemand: boolean; itemized: boolean }): TrustItem[] {
+  return [
+    ['Credit is spent first', 'Usage draws from the month’s credit before anything else.'],
+    onDemand
+      ? ['On-demand is off until you turn it on', 'Out of the box, paid resources stop at $0.']
+      : ['Nothing is charged past your credit', 'At $0, paid resources pause until next month or until you add credit yourself.'],
+    itemized
+      ? ['Every line is itemized', 'Each resource is totaled separately, to the cent, with its quantity.']
+      : ['Free workspaces never need a card', 'Free resources keep working whatever happens to a paid plan.'],
+    onDemand
+      ? ['Your limit is the limit', 'Automatic top-ups never go past the monthly limit you set.']
+      : ['Your plan is your monthly bill', 'You pay the amount you chose each month, and can change it at any time.'],
+  ]
+}
 
 const FAQ = [
   ['Is free or paid a setting on my account?', 'No. Each workspace is free or paid on its own. You can have a free workspace and a paid one under the same account.'],
@@ -33,17 +36,20 @@ const FAQ = [
   ['How many free workspaces can I own?', 'Up to three. Joining other people’s workspaces does not count. Add a plan to any workspace whenever you want more.'],
   ['What counts as a paid resource?', 'Premium models, Overlay Cloud computers, web search, browser tasks, image and video generation, and storage beyond the free 10 MB.'],
   ['Does unused credit roll over?', 'No. Each month starts with the credit your plan buys; anything left at renewal does not carry over.'],
-  ['Can I change my plan later?', 'Yes. Change the monthly amount, add credit, or cancel at any time in your workspace’s billing settings.'],
+  ['What happens when credit runs out?', 'By default paid resources stop until next month. An owner can instead turn on automatic top-ups, which add credit from the workspace’s card up to a monthly limit they choose.'],
+  ['Can I change my plan later?', 'Yes. Change the monthly amount, add credit, switch automatic top-ups on or off, or cancel at any time in your workspace’s billing settings.'],
 ] as const
 
-export function PricingHero({ appHref }: { appHref: string }) {
+export function PricingHero({ appHref, itemized = false }: { appHref: string; itemized?: boolean }) {
   return (
     <div className={s.hero}>
       <h1>Pay for what your workspace <mark>actually uses</mark>.</h1>
       <p>Every workspace is free or paid. Paid plans start at $8 a month, which becomes $8 of credit for that month. What you use comes out of it.</p>
       <div className={s.go}>
         <Link className={s.btn} href={appHref}>Start free</Link>
-        <a className={`${s.btn} ${s.ghost}`} href="#bill">See an example bill</a>
+        {itemized
+          ? <a className={`${s.btn} ${s.ghost}`} href="#bill">See an example bill</a>
+          : <a className={`${s.btn} ${s.ghost}`} href="#credit">How billing works</a>}
       </div>
     </div>
   )
@@ -89,12 +95,12 @@ export function PricingKinds() {
   )
 }
 
-export function PricingTrust({ full = false }: { full?: boolean }) {
+export function PricingTrust({ onDemand = false, itemized = false }: { onDemand?: boolean; itemized?: boolean }) {
   return (
     <section>
       <div className={s.lab}><h2>No surprises</h2></div>
       <div className={s.trust}>
-        {(full ? TRUST_FULL : TRUST).map(([title, text]) => (
+        {trustItems({ onDemand, itemized }).map(([title, text]) => (
           <div key={title}>
             <h3><Check className={s.i} aria-hidden="true" />{title}</h3>
             <p>{text}</p>

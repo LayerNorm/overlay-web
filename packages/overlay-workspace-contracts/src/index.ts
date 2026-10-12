@@ -39,6 +39,7 @@ export {
   type WorkspaceBillingSubscription,
   type WorkspaceBillingSummaryResponse,
   type WorkspaceBillingCheckoutInput,
+  type WorkspaceBillingAutoTopUpInput,
   type WorkspaceBillingTopUpInput,
   type WorkspaceBillingCheckoutResponse,
   type WorkspaceBillingVerificationInput,

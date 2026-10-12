@@ -23,7 +23,7 @@ function statusText(out: BillOutcome, deposit: number, topUp: number, limit: num
 function Deposit({ deposit, onChange, full }: { deposit: number; onChange: (n: number) => void; full: boolean }) {
   const custom = !DEPOSITS.includes(deposit)
   return (
-    <section>
+    <section id="credit">
       <div className={s.lab}>
         <h2>Choose your monthly credit</h2>
         <p>Pick $8 or any amount up to $500. Each month your workspace gets the same amount of credit.</p>
@@ -101,7 +101,7 @@ function RunOut({ mode, topUp, limit, max, onMode, onTopUp, onLimit }: RunOutPro
             'Keep going',
             'Add credit automatically when it hits $0, up to a limit you set.',
             <div className={s.row}>
-              Add <NumberField small value={topUp} min={MIN_DEPOSIT} onChange={onTopUp} label="Top-up amount" /> each time, up to{' '}
+              Add <NumberField small value={topUp} min={MIN_DEPOSIT} max={MAX_DEPOSIT} onChange={onTopUp} label="Top-up amount" /> each time, up to{' '}
               <NumberField small value={limit} min={0} onChange={onLimit} label="Monthly limit" /> a month
             </div>,
           )}
@@ -154,10 +154,10 @@ function UsagePanel({ deposit, out, usage, sliderMax, status, onUsage }: {
 }
 
 /**
- * The monthly amount, and (with `full`) what happens at $0 plus the example bill that reacts to both. `full` waits
- * for on-demand top-ups and the itemized usage ledger to ship.
+ * The monthly amount, what happens at $0 (`onDemand`), and the example bill that reacts to both (`itemized`, which
+ * waits for the per-resource usage ledger to ship).
  */
-export function PricingBill({ full = false }: { full?: boolean }) {
+export function PricingBill({ onDemand = false, itemized = false }: { onDemand?: boolean; itemized?: boolean }) {
   const [deposit, setDeposit] = useState(20)
   const [mode, setMode] = useState<RunOutMode>('stop')
   const [topUp, setTopUp] = useState(8)
@@ -171,10 +171,10 @@ export function PricingBill({ full = false }: { full?: boolean }) {
 
   return (
     <>
-      <Deposit deposit={deposit} onChange={setDeposit} full={full} />
-      {full ? (
+      <Deposit deposit={deposit} onChange={setDeposit} full={onDemand} />
+      {onDemand ? <RunOut mode={mode} topUp={topUp} limit={limit} max={maxCharge(settings)} onMode={setMode} onTopUp={setTopUp} onLimit={setLimit} /> : null}
+      {itemized ? (
         <>
-      <RunOut mode={mode} topUp={topUp} limit={limit} max={maxCharge(settings)} onMode={setMode} onTopUp={setTopUp} onLimit={setLimit} />
       <section id="bill">
         <div className={s.lab}>
           <h2>See where every cent goes</h2>

@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 
 /** The workspace pricing page, before workspace billing is switched on for everyone. */
 export default function PricingPreviewPage() {
-  return <PricingPage billingEnabled={getOverlayCapabilitiesSync().billing} full />
+  return <PricingPage billingEnabled={getOverlayCapabilitiesSync().billing} itemized />
 }

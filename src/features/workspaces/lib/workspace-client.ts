@@ -130,6 +130,15 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
     )
   },
 
+  async updateBillingAutoTopUp(workspaceId, input) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/auto-top-up`,
+      'POST',
+      input,
+    )
+  },
+
   async createBillingPortal(workspaceId) {
     return await workspaceMutation(
       workspaceId,

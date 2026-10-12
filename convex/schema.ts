@@ -93,6 +93,8 @@ export default defineSchema({
     ),
     autoTopUpEnabled: v.boolean(),
     autoTopUpAmountCents: v.number(),
+    // Most that automatic top-ups may add in one billing period; automatic top-ups stop at it.
+    autoTopUpMonthlyLimitCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),

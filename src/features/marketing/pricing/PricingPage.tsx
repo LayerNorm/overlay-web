@@ -11,10 +11,11 @@ import s from './pricing.module.css'
 
 /**
  * Pricing. A workspace is free or paid (never the account). Paid is a monthly
- * plan of $8 to $500 that becomes that month's credit. `full` adds the on-demand
- * controls and the itemized example bill, which ship with those features.
+ * plan of $8 to $500 that becomes that month's credit, then a hard stop or
+ * automatic top-ups up to a monthly limit. `itemized` adds the example bill,
+ * which ships with the per-resource usage ledger.
  */
-export function PricingPage({ billingEnabled, full = false }: { billingEnabled: boolean; full?: boolean }) {
+export function PricingPage({ billingEnabled, itemized = false }: { billingEnabled: boolean; itemized?: boolean }) {
   const { isAuthenticated } = useAuth()
   const appHref = getMarketingAppHref(isAuthenticated)
   return (
@@ -22,10 +23,10 @@ export function PricingPage({ billingEnabled, full = false }: { billingEnabled: 
       <main className={s.root}>
         {billingEnabled ? (
           <>
-            <PricingHero appHref={appHref} />
+            <PricingHero appHref={appHref} itemized={itemized} />
             <PricingKinds />
-            <PricingBill full={full} />
-            <PricingTrust full={full} />
+            <PricingBill onDemand itemized={itemized} />
+            <PricingTrust onDemand itemized={itemized} />
             <PricingFaq />
             <PricingEnd appHref={appHref} />
           </>

@@ -191,17 +191,17 @@ export type WorkspaceBillingSummaryResponse = {
     topUpBalance: number
   }
   subscription: WorkspaceBillingSubscription
-  observability?: {
-    actualProviderCostCents: number
-    costCoveragePercent: number
-    meteredReservations: number
-    oldestReconciliationAgeMs: number
-    periodEnd: number
-    periodStart: number
-    realizedMarginPercent: number | null
-    reconciliationReservations: number
-    retailCredits: number
-    staleReconciliationReservations: number
+  /**
+   * What happens when the workspace's credit runs out: a hard stop (`enabled: false`, the default) or an automatic
+   * top-up of `amountCents`, at most `monthlyLimitCents` per billing period.
+   */
+  autoTopUp?: {
+    enabled: boolean
+    amountCents: number
+    monthlyLimitCents: number | null
+    spentThisPeriodCents: number
+    /** Another automatic top-up would pass the monthly limit, so paid resources stop at $0 until next period. */
+    limitReached: boolean
   }
 }
 
@@ -212,6 +212,12 @@ export type WorkspaceBillingCheckoutInput = {
   planAmountCents: number
   topUpAmountCents: number
   autoTopUpEnabled?: boolean
+}
+
+export type WorkspaceBillingAutoTopUpInput = {
+  enabled: boolean
+  amountCents: number
+  monthlyLimitCents: number
 }
 
 export type WorkspaceBillingTopUpInput = {

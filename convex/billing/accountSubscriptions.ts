@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { internalMutation, mutation, query, type MutationCtx } from '../_generated/server'
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
 
@@ -27,10 +27,24 @@ const subscriptionRecord = v.object({
   status: subscriptionStatus,
   autoTopUpEnabled: v.boolean(),
   autoTopUpAmountCents: v.number(),
+  autoTopUpMonthlyLimitCents: v.optional(v.number()),
+  /** Automatic top-ups charged (pending or succeeded) since the current period started. */
+  autoTopUpSpentThisPeriodCents: v.number(),
   offSessionConsentAt: v.optional(v.number()),
   currentPeriodStart: v.optional(v.number()),
   currentPeriodEnd: v.optional(v.number()),
 })
+
+/** Automatic top-ups that were charged or are being charged (pending or succeeded) since `since`. */
+async function autoTopUpSpentSince(ctx: QueryCtx, billingAccountId: string, since: number | undefined): Promise<number> {
+  const start = since ?? Date.now() - 31 * 24 * 60 * 60 * 1000
+  const rows = await ctx.db.query('budgetTopUps')
+    .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId).gte('createdAt', start))
+    .collect()
+  return rows.reduce((sum, row) => (
+    row.source === 'auto' && (row.status === 'pending' || row.status === 'succeeded') ? sum + row.amountCents : sum
+  ), 0)
+}
 
 export const getByServer = query({
   args: { billingAccountId: v.string(), serverSecret: v.string() },
@@ -51,6 +65,8 @@ export const getByServer = query({
       status: row.status,
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: row.autoTopUpAmountCents,
+      ...(row.autoTopUpMonthlyLimitCents === undefined ? {} : { autoTopUpMonthlyLimitCents: row.autoTopUpMonthlyLimitCents }),
+      autoTopUpSpentThisPeriodCents: await autoTopUpSpentSince(ctx, row.billingAccountId, row.currentPeriodStart),
       ...(row.offSessionConsentAt === undefined ? {} : { offSessionConsentAt: row.offSessionConsentAt }),
       ...(row.currentPeriodStart === undefined ? {} : { currentPeriodStart: row.currentPeriodStart }),
       ...(row.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: row.currentPeriodEnd }),
@@ -140,6 +156,7 @@ export const upsertByServer = mutation({
     status: v.optional(subscriptionStatus),
     autoTopUpEnabled: v.optional(v.boolean()),
     autoTopUpAmountCents: v.optional(v.number()),
+    autoTopUpMonthlyLimitCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
@@ -191,6 +208,9 @@ export const upsertByServer = mutation({
       status: args.status ?? existing?.status ?? 'active' as const,
       autoTopUpEnabled: args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
       autoTopUpAmountCents: args.autoTopUpAmountCents ?? existing?.autoTopUpAmountCents ?? 0,
+      ...(args.autoTopUpMonthlyLimitCents ?? existing?.autoTopUpMonthlyLimitCents
+        ? { autoTopUpMonthlyLimitCents: args.autoTopUpMonthlyLimitCents ?? existing?.autoTopUpMonthlyLimitCents }
+        : {}),
       ...(args.offSessionConsentAt ?? existing?.offSessionConsentAt
         ? { offSessionConsentAt: args.offSessionConsentAt ?? existing?.offSessionConsentAt }
         : {}),

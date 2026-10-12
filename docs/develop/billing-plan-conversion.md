@@ -24,7 +24,7 @@ The whole conversion is one Convex transaction: it either happens or nothing cha
 - The person's own plan becomes **Free** everywhere else. Their storage limit drops to the free limit (files stay; they
   cannot add more until under it), and automation and similar plan-based limits follow the free plan.
 - Everyone in the workspace (including the person) uses the pool. Per-member spend limits, if set later, apply to it.
-- **Auto top-up is not supported for a workspace plan**, so a conversion is refused while it is on; turn it off first.
+- A conversion is refused while the personal plan's auto top-up is on; turn it off first. Workspace plans have their own automatic top-ups with a monthly limit (Workspace → Billing → When credit runs out), which an owner turns on after converting.
 
 ## Before converting
 
@@ -59,4 +59,4 @@ npx convex run billing/planConversion:revertPlanConversion '{"workspaceId":"<wor
 
 ## Not done
 
-A self-serve button in Workspace → Billing, and auto top-up for workspace plans. Both are follow-ups.
+A self-serve button in Workspace → Billing. (Automatic top-ups for workspace plans shipped 2026-10-11.)

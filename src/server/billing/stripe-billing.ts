@@ -2,6 +2,7 @@ import 'server-only'
 
 import { stripe } from '@/server/billing/stripe'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
+import { decideAutoTopUp } from '@/shared/billing/auto-top-up'
 import {
   PAID_PLAN_UNIT_AMOUNT_CENTS,
   TOP_UP_MAX_AMOUNT_CENTS,
@@ -216,6 +217,92 @@ export async function maybeAutoTopUpBudget(params: {
       reason: 'payment_failed',
       errorMessage,
     }
+  }
+}
+
+/**
+ * When a workspace on a paid plan runs out of credit: charge the workspace's saved card for one automatic top-up, if
+ * an owner turned top-ups on and this period's total stays within their monthly limit. Otherwise nothing is charged
+ * and paid resources stop until next period or a manual top-up (hard stop).
+ */
+export async function maybeAutoTopUpWorkspaceBudget(params: {
+  actorUserId: string
+  billingAccountId: string
+  minimumRequiredCents?: number
+  workspaceId: string
+}, repository: BillingRepository) {
+  const plan = await repository.getBillingAccountSubscriptionByServer({ billingAccountId: params.billingAccountId })
+  if (!plan || plan.planKind !== 'paid') return { applied: false as const, reason: 'not_paid' }
+  const decision = decideAutoTopUp({
+    enabled: Boolean(plan.autoTopUpEnabled),
+    amountCents: plan.autoTopUpAmountCents ?? 0,
+    monthlyLimitCents: plan.autoTopUpMonthlyLimitCents,
+    spentThisPeriodCents: plan.autoTopUpSpentThisPeriodCents ?? 0,
+    offSessionConsentAt: plan.offSessionConsentAt,
+    stripeCustomerId: plan.stripeCustomerId,
+  }, params.minimumRequiredCents)
+  if (!decision.charge) return { applied: false as const, reason: decision.reason }
+  const amountCents = decision.amountCents
+  const state: SubscriptionBillingState = { ...plan, userId: params.actorUserId }
+
+  try {
+    const paymentMethodId = await resolveDefaultPaymentMethodId(state)
+    if (!paymentMethodId) return { applied: false as const, reason: 'missing_payment_method' }
+    const now = Date.now()
+    // One charge per account per window, whoever triggers it: concurrent runs share the same Stripe idempotency key.
+    const idempotencyKey = [
+      'workspace-auto-topup',
+      params.billingAccountId,
+      plan.currentPeriodStart ?? 'no-period',
+      plan.autoTopUpSpentThisPeriodCents ?? 0,
+      amountCents,
+      Math.floor(now / AUTO_TOP_UP_IDEMPOTENCY_WINDOW_MS),
+    ].join(':')
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountCents,
+      currency: 'usd',
+      customer: plan.stripeCustomerId,
+      payment_method: paymentMethodId,
+      off_session: true,
+      confirm: true,
+      metadata: {
+        kind: 'budget_topup',
+        source: 'auto',
+        billingAccountId: params.billingAccountId,
+        workspaceId: params.workspaceId,
+        userId: params.actorUserId,
+      },
+    }, { idempotencyKey })
+    await repository.recordBillingAccountTopUp({
+      actorUserId: params.actorUserId,
+      billingAccountId: params.billingAccountId,
+      amountCents,
+      source: 'auto',
+      status: paymentIntent.status === 'succeeded' ? 'succeeded' : 'pending',
+      stripeCustomerId: plan.stripeCustomerId,
+      stripePaymentIntentId: paymentIntent.id,
+    })
+    return {
+      applied: paymentIntent.status === 'succeeded',
+      amountCents,
+      reason: paymentIntent.status === 'succeeded' ? 'succeeded' : paymentIntent.status,
+    } as const
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error ?? 'Auto top-up failed')
+    if (/idempotent key|in-progress request/i.test(errorMessage)) {
+      return { applied: false as const, reason: 'already_pending' }
+    }
+    // A declined card: record it and fall back to the hard stop for this attempt.
+    await repository.recordBillingAccountTopUp({
+      actorUserId: params.actorUserId,
+      billingAccountId: params.billingAccountId,
+      amountCents,
+      source: 'auto',
+      status: 'failed',
+      stripeCustomerId: plan.stripeCustomerId,
+      errorMessage: errorMessage.slice(0, 500),
+    }).catch((_error) => undefined)
+    return { applied: false as const, reason: 'payment_failed' }
   }
 }
 

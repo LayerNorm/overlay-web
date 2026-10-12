@@ -66,6 +66,10 @@ export type BillingSubscriptionRecord = {
   status?: 'active' | 'canceled' | 'past_due' | 'trialing'
   autoTopUpEnabled?: boolean
   autoTopUpAmountCents?: number
+  /** Workspace plans: most automatic top-ups may add per billing period. */
+  autoTopUpMonthlyLimitCents?: number
+  /** Workspace plans: automatic top-ups charged (pending or succeeded) this period. */
+  autoTopUpSpentThisPeriodCents?: number
   offSessionConsentAt?: number
   currentPeriodStart?: number
   currentPeriodEnd?: number

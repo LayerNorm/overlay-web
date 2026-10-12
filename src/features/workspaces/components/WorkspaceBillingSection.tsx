@@ -7,6 +7,7 @@ import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
+import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 
 const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000, 50_000] as const
 
@@ -224,6 +225,17 @@ function WalletOverview({
         <WalletCreditsCard summary={summary} />
         <WalletSubscriptionCard summary={summary} />
       </div>
+
+      {summary.autoTopUp && summary.rollout.checkoutEnabled ? (
+        <WorkspaceAutoTopUpCard
+          key={`${summary.autoTopUp.enabled}:${summary.autoTopUp.amountCents}:${summary.autoTopUp.monthlyLimitCents}`}
+          autoTopUp={summary.autoTopUp}
+          canManage={summary.canManage}
+          periodEnd={summary.subscription.currentPeriodEnd}
+          busy={busy === 'auto-top-up'}
+          onSave={(input) => void run('auto-top-up', () => client.updateBillingAutoTopUp(workspaceId, input))}
+        />
+      ) : null}
 
       {checkoutAvailable ? <CheckoutActions client={client} workspaceId={workspaceId} summary={summary} billing={billing} /> : null}
 

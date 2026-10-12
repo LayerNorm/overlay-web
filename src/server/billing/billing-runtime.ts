@@ -13,6 +13,7 @@ import {
   TOP_UP_STEP_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
 import { maybeAutoTopUpBudget } from '@/server/billing/stripe-billing'
+import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 
@@ -282,10 +283,11 @@ export async function ensurePayerBudgetAvailable(params: {
 }): Promise<{ entitlements: Entitlements; remainingCents: number }> {
   const payerContext = await resolveProviderBillingContext(params)
   if (payerContext.payer.scope === 'workspace') {
-    return {
-      entitlements: payerContext.entitlements,
-      remainingCents: getBudgetTotals(payerContext.entitlements).remainingCents,
-    }
+    const { billingAccountId, workspaceId } = payerContext.payer
+    const { entitlements } = payerContext
+    return await ensureWorkspaceBudgetAvailable({ ...params, billingAccountId, entitlements, workspaceId }, {
+      billingEnabled: billingCapabilityEnabled, remainingCents: (e) => getBudgetTotals(e).remainingCents, repository: billingRepository,
+    })
   }
   return await ensureBudgetAvailable({
     entitlements: payerContext.entitlements,

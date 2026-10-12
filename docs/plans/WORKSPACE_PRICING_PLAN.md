@@ -1,6 +1,6 @@
 # Workspace pricing: making the pricing page true
 
-Status: decisions made 2026-10-11 (below). Phase 1 shipped 2026-10-11; see "Phase 1 (done)".
+Status: decisions made 2026-10-11 (below). Phases 1 and 2 shipped 2026-10-11; see "Phase 1 (done)" and "Phase 2 (done)".
 
 ## How we work on this (owner, 2026-10-11)
 
@@ -66,6 +66,18 @@ The only blocker was billing being off; all six are `active` (D5 needs nothing).
 - Production: `OVERLAY_FEATURE_WORKSPACE_WALLETS=true` and stage `general` on Vercel and Convex; the six paid plans converted.
 
 Left for later phases: the remaining personal-plan reads that do not gate anything a paid person needs (admin page, analytics, the account hook), and the personal checkout API.
+
+## Phase 2 (done 2026-10-11)
+
+- **Hard stop by default.** A paid workspace at $0 stops paid resources (free ones keep working) unless an owner turns on automatic top-ups.
+- **Automatic top-ups with a monthly limit.** `billingAccountSubscriptions.autoTopUpMonthlyLimitCents` (new); `getByServer` also returns `autoTopUpSpentThisPeriodCents` (automatic top-ups pending or succeeded since the period started). The rule is one pure function, `decideAutoTopUp` (`src/shared/billing/auto-top-up.ts`): on, consented, a Stripe customer, a valid amount, and spent + amount ≤ limit; no limit means no top-ups.
+- **Charging.** `maybeAutoTopUpWorkspaceBudget` (`src/server/billing/stripe-billing.ts`) charges the workspace's saved card off-session and records the top-up through `recordTopUpByServer` (credited on success; a declined card is recorded as failed and falls back to the hard stop). `ensurePayerBudgetAvailable` calls it when a workspace payer is short, which covers chat, agents, generation, browser tasks and notebooks.
+- **Settings.** `POST /api/v1/workspaces/[workspaceId]/billing/auto-top-up` (owners and admins; turning it on records off-session consent). Workspace → Billing has a "When credit runs out" card (hard stop / keep going, amount, monthly limit) and a notice when this month's limit is reached. The billing summary carries `autoTopUp`.
+- **Pricing page.** `/pricing` now shows the "When credit runs out" section; the itemized example bill stays on `/pricing/preview` until phase 3.
+- Also in this round: the memory-profile job asks for plain text (its JSON schema failed on every run and left a hold to reconcile each time), memory extraction and profiles follow the workspace's plan and bill the workspace, and the Billing tab no longer shows customers Overlay's provider cost and margin.
+- Tests: `src/shared/billing/auto-top-up.test.ts`, `convex/workspaceAutoTopUp.convex.test.ts`.
+
+Not done: a top-up that Stripe leaves `pending` (for example 3-D Secure) is not credited until it is retried; there is no email when the limit is reached (the notice is in Workspace → Billing).
 
 ## Order of work
 
