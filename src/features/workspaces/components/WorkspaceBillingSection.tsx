@@ -3,14 +3,20 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
-import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'
+import { Button, EmptyState, Toggle } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
+import {
+  PAID_PLAN_MAX_AMOUNT_CENTS,
+  PAID_PLAN_MIN_AMOUNT_CENTS,
+  TOP_UP_MAX_AMOUNT_CENTS,
+  TOP_UP_MIN_AMOUNT_CENTS,
+} from '@/shared/billing/billing-pricing'
+import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
 
-const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000, 50_000] as const
 
 type BillingState =
   | { status: 'loading' }
@@ -308,11 +314,11 @@ function CheckoutActions({
     <>
       <div className="grid gap-3 lg:grid-cols-2">
         {summary.canManage ? <BillingActionCard title="Monthly workspace credits" description="Choose a monthly amount from $8 to $500. It becomes the workspace’s credit each month.">
-          <Select aria-label="Workspace monthly plan" value={String(planAmountCents)} onChange={(event) => setPlanAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100}/month`}</option>)}</Select>
+          <DollarAmountInput label="Workspace monthly plan" valueCents={planAmountCents} minCents={PAID_PLAN_MIN_AMOUNT_CENTS} maxCents={PAID_PLAN_MAX_AMOUNT_CENTS} suffix="/month" onChange={setPlanAmountCents} />
           <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspaceId, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
         </BillingActionCard> : null}
-        <BillingActionCard title="One-time top-up" description="Add credits to this workspace now.">
-          <Select aria-label="Workspace top-up" value={String(topUpAmountCents)} onChange={(event) => setTopUpAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100} in credits`}</option>)}</Select>
+        <BillingActionCard title="One-time top-up" description="Add credits to this workspace now. Like the monthly credit, it does not carry over to next month.">
+          <DollarAmountInput label="Workspace top-up" valueCents={topUpAmountCents} minCents={TOP_UP_MIN_AMOUNT_CENTS} maxCents={TOP_UP_MAX_AMOUNT_CENTS} suffix="in credits" onChange={setTopUpAmountCents} />
           <Button size="sm" variant="ghost" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('topup', () => client.createBillingTopUp(workspaceId, { amountCents: topUpAmountCents, ...currentLegalAcceptancePayload() }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
         </BillingActionCard>
       </div>

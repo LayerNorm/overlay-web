@@ -6,6 +6,7 @@ import { requireAccessToken, requireServerSecret, validateServerSecret } from '.
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForUser } from '../files/lib/storageQuota'
+import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
 import { derivePlanAmountCents, derivePlanKind } from '../../src/shared/billing/billing-pricing'
 import { usageCountSubject } from '../../src/shared/billing/free-allowance'
 import {
@@ -15,7 +16,7 @@ import {
 } from '../../src/shared/billing/usage-buckets'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
 import { syncPersonalBillingShadows } from '../billing/accountMigration'
-import { ensurePersonalBillingAccount } from '../billing/accountModel'
+import { ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
 
 const usageReconciliationQueueItemValidator = v.object({
   createdAt: v.number(),
@@ -676,6 +677,8 @@ export const recordBatch = mutation({
   args: {
     serverSecret: v.string(),
     userId: v.string(),
+    /** The workspace the usage happened in; defaults to the person's active workspace. */
+    workspaceId: v.optional(v.string()),
     operationId: v.optional(v.string()),
     forceFreeTierLimits: v.optional(v.boolean()),
     events: v.array(
@@ -700,9 +703,8 @@ export const recordBatch = mutation({
       })
     )
   },
-  handler: async (ctx, { serverSecret, userId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
+  handler: async (ctx, { serverSecret, userId, workspaceId, operationId: rawOperationId, forceFreeTierLimits, events }) => {
     requireServerSecret(serverSecret)
-    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const operationId = rawOperationId?.trim()
     if (operationId) {
       const existing = await ctx.db
@@ -714,6 +716,13 @@ export const recordBatch = mutation({
         return { success: true, recorded: 0, idempotent: true }
       }
     }
+    // Plans belong to workspaces: in a workspace with a paid plan the workspace pays, never the person.
+    const paidWorkspace = await paidWorkspaceAccountFor(ctx, userId, workspaceId)
+    if (paidWorkspace) {
+      await chargeWorkspaceDirect(ctx, { billingAccountId: paidWorkspace.billingAccountId, userId, operationId, events })
+      return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false }
+    }
+    const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     await enforceFreeTierUsageLimits(ctx, userId, events, forceFreeTierLimits === true)
     const result = await applyUsageEvents(ctx, userId, events)
     if (operationId) {
@@ -730,6 +739,40 @@ export const recordBatch = mutation({
     return { ...result, recorded: events.length, idempotent: false }
   }
 })
+
+/**
+ * Charges usage recorded after the fact (no reservation) to a paid workspace's balance, capped at what the balance
+ * holds, and records the amount on the usage operation for the itemized usage list.
+ */
+async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
+  billingAccountId: string
+  userId: string
+  operationId: string | undefined
+  events: Array<{ type: UsageEvent['type']; modelId?: string; cost: number; inputTokens?: number; outputTokens?: number; durationSeconds?: number }>
+}) {
+  const cents = args.events.reduce((sum, event) => sum + Math.max(0, event.cost), 0)
+  const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
+  const availableMicros = Math.max(0, balance.includedMicros + balance.institutionalGrantMicros - balance.allowanceUsedMicros)
+    + Math.max(0, balance.topUpBalanceMicros)
+  const chargeMicros = Math.min(Math.round(cents * 10_000), availableMicros)
+  if (chargeMicros > 0) {
+    const limit = await ctx.db.query('billingAccountSpendLimits')
+      .withIndex('by_account_subject', (q) => q
+        .eq('billingAccountId', args.billingAccountId).eq('subjectKind', 'member').eq('subjectId', args.userId))
+      .unique()
+    await finalizeWorkspaceLedger(ctx, { actualMicros: chargeMicros, balance, limit, reservedMicros: 0 })
+  }
+  await ctx.db.insert('usageOperations', {
+    userId: args.userId,
+    billingAccountId: args.billingAccountId,
+    operationId: args.operationId || `batch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+    recorded: args.events.length,
+    ...(chargeMicros > 0
+      ? { cents: chargeMicros / 10_000, kind: args.events[0].type, ...(args.events[0].modelId ? { modelId: args.events[0].modelId } : {}), ...usageQuantities(args.events) }
+      : {}),
+    createdAt: Date.now(),
+  })
+}
 
 export const adjustBudgetByServer = mutation({
   args: {

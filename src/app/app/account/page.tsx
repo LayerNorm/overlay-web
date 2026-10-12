@@ -520,13 +520,7 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
   const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
   const currentUserId = user?.id || null
   const [signingOut, setSigningOut] = useState(false)
-  const billing = useAccountBillingState({
-    authLoading,
-    currentUserId,
-    isAuthenticated,
-    router,
-    searchParams,
-  })
+  const billing = useAccountBillingState()
   const sessionCheckComplete = useSessionCheckOnMount(isAuthenticated, authLoading, refreshSession)
 
   const { accountSignInHref, handleOpenInApp } = useAccountHandoffs({

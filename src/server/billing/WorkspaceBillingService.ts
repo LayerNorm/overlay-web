@@ -89,6 +89,7 @@ export class WorkspaceBillingService {
               }),
               subscription,
               periodStartOf(subscription),
+              usedCents,
             ),
           }
         : {}),

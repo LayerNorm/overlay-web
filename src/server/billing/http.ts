@@ -63,3 +63,14 @@ export function billingErrorResponse(error: unknown, fallback: string) {
   }
   return NextResponse.json({ error: fallback }, { status: 500 })
 }
+
+/**
+ * Plans, credit and top-ups belong to workspaces; an account is never free or paid. The old account-plan purchase
+ * endpoints answer with this instead of starting a checkout.
+ */
+export function accountPlansRetiredResponse() {
+  return NextResponse.json({
+    code: 'account_plans_retired',
+    error: 'Plans and credit belong to workspaces now. Add them in Workspace → Billing.',
+  }, { status: 410 })
+}

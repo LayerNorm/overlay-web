@@ -239,7 +239,9 @@ export const upsertByServer = mutation({
     if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
     const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
     const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
-    const nextTopUpPurchasedMicros = periodChanged ? balance.topUpBalanceMicros : balance.topUpPurchasedMicros
+    // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
+    const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
+    const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
     if (nextUsedMicros + nextReservedMicros
       > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
       throw new Error('Subscription change would remove already consumed or reserved credits')
@@ -251,6 +253,7 @@ export const upsertByServer = mutation({
       usedMicros: nextUsedMicros,
       reservedMicros: nextReservedMicros,
       topUpPurchasedMicros: nextTopUpPurchasedMicros,
+      topUpBalanceMicros: nextTopUpBalanceMicros,
       updatedAt: now,
       version: balance.version + 1,
     })
@@ -492,7 +495,9 @@ export const upsertFromStripeInternal = internalMutation({
     if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
     const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
     const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
-    const nextTopUpPurchasedMicros = periodChanged ? balance.topUpBalanceMicros : balance.topUpPurchasedMicros
+    // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
+    const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
+    const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
     if (nextUsedMicros + nextReservedMicros
       > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
       throw new Error('Subscription change would remove already consumed or reserved credits')
@@ -503,6 +508,7 @@ export const upsertFromStripeInternal = internalMutation({
       usedMicros: nextUsedMicros,
       reservedMicros: nextReservedMicros,
       topUpPurchasedMicros: nextTopUpPurchasedMicros,
+      topUpBalanceMicros: nextTopUpBalanceMicros,
       updatedAt: now,
       version: balance.version + 1,
     })

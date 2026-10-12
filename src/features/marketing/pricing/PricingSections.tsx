@@ -24,7 +24,7 @@ const FAQ = [
   ['What does a free workspace include?', 'The Auto model, notes, chats, files and knowledge, and 10 MB of storage. Each free workspace gets 15 chat messages, 15 writing requests and 15 agent runs a week, and 10 minutes of transcription.'],
   ['How many free workspaces can I own?', 'Up to three. Joining other people’s workspaces does not count. Add a plan to any workspace whenever you want more.'],
   ['What counts as a paid resource?', 'Premium models, Overlay Cloud computers, web search, browser tasks, image and video generation, and storage beyond the free 10 MB.'],
-  ['Does unused credit roll over?', 'No. Each month starts with the credit your plan buys; anything left at renewal does not carry over.'],
+  ['Does unused credit roll over?', 'No. Each month starts with the credit your plan buys. Anything left at renewal, including credit you added, does not carry over.'],
   ['What happens when credit runs out?', 'By default paid resources stop until next month. An owner can instead turn on automatic top-ups, which add credit from the workspace’s card up to a monthly limit they choose.'],
   ['Can I change my plan later?', 'Yes. Change the monthly amount, add credit, switch automatic top-ups on or off, or cancel at any time in your workspace’s billing settings.'],
 ] as const

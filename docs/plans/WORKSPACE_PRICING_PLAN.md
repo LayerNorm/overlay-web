@@ -1,6 +1,6 @@
 # Workspace pricing: making the pricing page true
 
-Status: decisions made 2026-10-11 (below). Phases 1–3 shipped 2026-10-11; see "Phase 1 (done)", "Phase 2 (done)" and "Phase 3 (done)".
+Status: decisions made 2026-10-11 (below). Phases 1–4 shipped 2026-10-11/12; see the "(done)" sections.
 
 ## How we work on this (owner, 2026-10-11)
 
@@ -84,10 +84,24 @@ Follow-ups (done 2026-10-11): a top-up Stripe leaves `pending` (3-D Secure) is s
 - **No second ledger.** Every charge to a workspace already settles as a finalized `budgetReservations` row (kind, model, operation, amount). The itemized list adds those up per resource for the current period (`usageTotalsByServer`, `convex/billing/usageTotals.ts`); finalize now also stores `usageTokens` and `usageSeconds` so lines show quantities. Older rows have amounts but no quantities.
 - **Charges outside reservations.** The machine-time meter charges a workspace balance directly, and `recordBatch` records usage in batches; both now store the amount, kind and seconds/tokens on their `usageOperations` row, which the totals include. Rows from before 2026-10-12 have no amount, so the first period's list can be a little under "used this period" (about 11¢ of $12.62 on the owner's workspace).
 - **Resources** (`src/shared/billing/usage-resources.ts`): models (split per model; ids the catalog does not know are shown as readable names), automations (workflow steps), Overlay Cloud computers, web search, browser tasks, image and video generation, transcription, memory, knowledge and search indexing.
-- **Follow-up found:** `recordBatch` (chat suggestions and other batch-recorded usage) still charges the person's own account, even when the workspace is paid; after the conversion those charges land on the person's new free account. Move it onto the workspace payer.
+- **Follow-up (fixed 2026-10-12):** `recordBatch` (chat suggestions, notebook and chat usage recorded without a reservation) charged the person's own account even in a paid workspace. It now charges the paid workspace's balance (`chargeWorkspaceDirect`, capped at what the balance holds) and records the amount for the itemized list; the person's account is untouched. "The person's current paid workspace" is one helper, `paidWorkspaceAccountFor` (`convex/billing/workspacePayer.ts`), also used by storage limits.
+- **Reconciled total (2026-10-12):** the list always adds up to the balance's "used this period"; anything the per-resource lines cannot account for (charges recorded before amounts were stored) shows as one "Earlier usage" line.
 - **Workspace → Billing → Usage this period:** total, on-demand charges, days left in the cycle, and one line per resource with quantity and cost; Models expands per model. Included for paid workspaces in the billing summary (`usage`).
 - **Pricing page:** `/pricing` is the full page; `/pricing/preview` is deleted.
 - Tests: `src/shared/billing/usage-resources.test.ts`, `convex/workspaceUsageTotals.convex.test.ts`.
+
+## An account is never free or paid (2026-10-12)
+
+- `POST /api/checkout` and `POST /api/topups/checkout` answer `410 account_plans_retired`; turning on an account auto top-up through `/api/subscription/settings` does too. Workspace plans and top-ups are the only purchase paths.
+- The legacy account-plan pricing page (`PricingClient`, `MarketingShowcase`) is deleted; `/pricing` is always the workspace page.
+- The chat's "add a top-up" and top-up preference actions open Workspace → Billing; the account page's billing hook keeps only capabilities and messages.
+- Left for cleanup (phase 6): the personal `subscriptions` billing fields and the personal payer fallback for free workspaces (which only counts the free allowance).
+
+## Phase 4 (done 2026-10-12)
+
+- **Plan range:** any whole dollar from $8 to $500 for the monthly plan and for one-time top-ups (Workspace → Billing now takes a typed amount instead of fixed choices; server validation already accepted the range). Storage scales with the plan (about 1 GB per $8), so a $500 plan gets about 62.5 GB.
+- **Credit expiry (D2):** at renewal both the month's credit and any top-up balance start again (`upsertByServer` and `upsertFromStripeInternal`); before, leftover top-up balance carried over. The top-up card and the pricing FAQ say so.
+- Test: renewal case in `convex/workspaceAutoTopUp.convex.test.ts`.
 
 ## Order of work
 

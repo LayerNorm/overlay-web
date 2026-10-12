@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getOverlaySession } from '@/server/auth/session'
 import { requireOverlayCapability } from '@/server/capabilities'
-import { billingCustomerService, billingErrorResponse } from '@/server/billing/http'
+import { accountPlansRetiredResponse, billingCustomerService, billingErrorResponse } from '@/server/billing/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getClientIp } from '@/server/security/rate-limit'
 
@@ -40,6 +40,8 @@ export async function POST(request: NextRequest) {
   if (!('confirmation' in body) || body.confirmation !== 'UPDATE_BILLING_SETTINGS') {
     return NextResponse.json({ error: 'Billing settings confirmation required' }, { status: 403 })
   }
+  // Automatic top-ups are a workspace setting now; an account can only turn its old one off.
+  if ('autoTopUpEnabled' in body && body.autoTopUpEnabled === true) return accountPlansRetiredResponse()
 
   try {
     const server = getOverlayServerContext()

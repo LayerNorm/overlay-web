@@ -12,10 +12,9 @@ import {
   getEnabledChatModels,
   modelSupportsZeroDataRetention,
 } from '@/shared/ai/gateway/model-data'
+import { useRouter } from 'next/navigation'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
-import { safeHttpUrl } from '@/shared/security/safe-url'
-import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import type { Entitlements } from '../chat-interface/types'
 
@@ -29,7 +28,7 @@ type ChatSearchParams = {
 } | null
 
 const BUDGET_EXHAUSTED_NOTICE =
-  'Budget exhausted. Add a top-up to continue with paid models, or switch to Auto for free chat.'
+  'This workspace’s credit is used up. Add credit in Workspace → Billing to keep using paid models, or switch to Auto for free chat.'
 
 function budgetTotalCentsFor(entitlements: Entitlements): number {
   return entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100))
@@ -278,89 +277,15 @@ function applyFetchedEntitlements(
   }
 }
 
-function useTopUpActions({
-  pathname,
-  searchParams,
-  setBillingActionLoading,
-  setComposerNotice,
-  loadSubscription,
-  topUpAmountDraftCents,
-  autoTopUpEnabledDraft,
-}: {
-  pathname: string
-  searchParams: ChatSearchParams
-  setBillingActionLoading: (loading: 'checkout' | 'save' | null) => void
-  setComposerNotice: ComposerNoticeSetter
-  loadSubscription: () => Promise<Entitlements | null>
-  topUpAmountDraftCents: number
-  autoTopUpEnabledDraft: boolean
-}) {
-  const buildTopUpReturnPath = useCallback(() => {
-    const nextParams = new URLSearchParams(searchParams?.toString() ?? '')
-    nextParams.delete('topup_success')
-    nextParams.delete('topup_session_id')
-    nextParams.delete('topup_canceled')
-    const query = nextParams.toString()
-    return `${pathname}${query ? `?${query}` : ''}`
-  }, [pathname, searchParams])
+const WORKSPACE_BILLING_PATH = '/app/settings?section=workspace&workspace_tab=billing'
 
-  const handleStartTopUp = useCallback(async () => {
-    setBillingActionLoading('checkout')
-    try {
-      // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
-      const response = await fetch('/api/topups/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amountCents: topUpAmountDraftCents,
-          autoTopUpEnabled: autoTopUpEnabledDraft,
-          returnPath: buildTopUpReturnPath(),
-          ...currentLegalAcceptancePayload(),
-        }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok || !data.url) {
-        setComposerNotice(data.error || 'Failed to start top-up checkout.')
-        return
-      }
-      const checkoutUrl = safeHttpUrl(data.url)
-      if (!checkoutUrl) {
-        setComposerNotice('Failed to start top-up checkout.')
-        return
-      }
-      window.location.href = checkoutUrl
-    } catch {
-      setComposerNotice('Failed to start top-up checkout.')
-    } finally {
-      setBillingActionLoading(null)
-    }
-  }, [autoTopUpEnabledDraft, buildTopUpReturnPath, setBillingActionLoading, setComposerNotice, topUpAmountDraftCents])
-
-  const handleSaveTopUpPreference = useCallback(async () => {
-    setBillingActionLoading('save')
-    try {
-      const response = await overlayAppClient.subscription.updateSettingsResponse({
-        autoTopUpEnabled: autoTopUpEnabledDraft,
-        confirmation: 'UPDATE_BILLING_SETTINGS',
-        topUpAmountCents: topUpAmountDraftCents,
-        grantOffSessionConsent: autoTopUpEnabledDraft,
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        setComposerNotice(data.error || 'Failed to save top-up preference.')
-        return
-      }
-      await loadSubscription()
-      setComposerNotice('Top-up preference updated.')
-      window.setTimeout(() => setComposerNotice((current) => current === 'Top-up preference updated.' ? null : current), 5000)
-    } catch {
-      setComposerNotice('Failed to save top-up preference.')
-    } finally {
-      setBillingActionLoading(null)
-    }
-  }, [autoTopUpEnabledDraft, loadSubscription, setBillingActionLoading, setComposerNotice, topUpAmountDraftCents])
-
-  return { handleStartTopUp, handleSaveTopUpPreference }
+/** Credit and top-ups belong to the workspace, so both actions open Workspace → Billing. */
+function useTopUpActions() {
+  const router = useRouter()
+  const openWorkspaceBilling = useCallback(async () => {
+    router.push(WORKSPACE_BILLING_PATH)
+  }, [router])
+  return { handleStartTopUp: openWorkspaceBilling, handleSaveTopUpPreference: openWorkspaceBilling }
 }
 
 function resolveEntitlementDerived(
@@ -434,7 +359,7 @@ export function useChatBillingControls({
 }) {
   const [topUpAmountDraftCents, setTopUpAmountDraftCents] = useState(800)
   const [autoTopUpEnabledDraft, setAutoTopUpEnabledDraft] = useState(false)
-  const [billingActionLoading, setBillingActionLoading] = useState<'checkout' | 'save' | null>(null)
+  const [billingActionLoading] = useState<'checkout' | 'save' | null>(null)
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const announcedBudgetExhaustedRef = useRef(false)
 
@@ -524,15 +449,7 @@ export function useChatBillingControls({
     return null
   }, [activeWorkspaceId, billingEnabled, setComposerNotice])
 
-  const { handleStartTopUp, handleSaveTopUpPreference } = useTopUpActions({
-    pathname,
-    searchParams,
-    setBillingActionLoading,
-    setComposerNotice,
-    loadSubscription,
-    topUpAmountDraftCents,
-    autoTopUpEnabledDraft,
-  })
+  const { handleStartTopUp, handleSaveTopUpPreference } = useTopUpActions()
 
   useTopUpCheckoutResult({
     billingEnabled,

@@ -85,4 +85,25 @@ describe('workspace automatic top-ups', () => {
     expect(after?.autoTopUpPending).toBe(false)
     expect(after?.autoTopUpSpentThisPeriodCents).toBe(800)
   })
+
+  test('credit does not carry over: the plan credit and any top-up balance reset at renewal', async () => {
+    const convex = convexTest(schema, modules)
+    await paidWorkspace(convex)
+    await convex.mutation(api.billing.accountSubscriptions.recordTopUpByServer, {
+      actorUserId: 'user-1', amountCents: 2_000, billingAccountId: 'ba-1', source: 'manual', status: 'succeeded', serverSecret,
+      stripePaymentIntentId: 'pi_manual',
+    })
+    const balance = () => convex.run(async (ctx) => (await ctx.db.query('billingAccountBalances').collect())[0])
+    expect((await balance())?.topUpBalanceMicros).toBe(2_000 * 10_000)
+    // Renewal: the period moves forward by a month.
+    await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
+      billingAccountId: 'ba-1', serverSecret, currentPeriodStart: 1_000 + 31 * 24 * 60 * 60 * 1000,
+    })
+    const after = await balance()
+    expect(after?.topUpBalanceMicros).toBe(0)
+    expect(after?.topUpPurchasedMicros).toBe(0)
+    expect(after?.usedMicros).toBe(0)
+    expect(after?.includedMicros).toBe(800 * 10_000)
+  })
 })
+

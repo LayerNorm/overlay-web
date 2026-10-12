@@ -16,8 +16,10 @@ export function workspaceUsageSummary(
   usage: { totals: UsageTotal[]; truncated: boolean },
   plan: BillingSubscriptionRecord,
   periodStart: number,
+  /** What the balance says was used this period; the lines are reconciled to it. */
+  usedCents?: number,
 ): WorkspaceBillingUsage {
-  const lines = usage.totals
+  const lines: WorkspaceBillingUsage['lines'] = usage.totals
     .filter((total) => total.cents > 0)
     .map((total) => ({
       key: total.resource,
@@ -36,6 +38,13 @@ export function workspaceUsageSummary(
           }
         : {}),
     }))
+  // Charges recorded before amounts were stored on every usage record cannot be split by resource; show them as one
+  // line so the list adds up to what the workspace was actually charged.
+  const itemizedCents = lines.reduce((sum, line) => sum + line.cents, 0)
+  const earlierCents = roundCents((usedCents ?? 0) - itemizedCents)
+  if (earlierCents >= 1) {
+    lines.push({ key: 'earlier', label: 'Earlier usage', quantity: 'recorded before itemized billing', cents: earlierCents })
+  }
   return {
     periodStart,
     ...(plan.currentPeriodEnd ? { periodEnd: plan.currentPeriodEnd } : {}),
