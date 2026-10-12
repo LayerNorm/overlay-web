@@ -131,7 +131,13 @@ whose deployment branch policy permits only `main`, and scope the token to
 must never be included in a Vercel Preview build. Per-PR concurrency serializes
 open/update/close and reconciliation jobs. Scheduled reconciliation repairs
 missed events and removes closed or retargeted PR resources. Unassigned wildcard
-hosts return 404 instead of exposing staging under a PR-looking address.
+hosts return 404 instead of exposing staging under a PR-looking address. The
+wildcard is certificate-only on reserved branch `codex/preview-unassigned`,
+with no deployment alias; never deploy that branch or use it for a PR. Cleanup
+checks both resource absence and HTTPS `404`. Transient API reads retry up to
+three attempts; mutations require state reconciliation before repetition. Older
+builds are canceled with terminal-state readback before a newer build can
+replace the same PR backend, including recovery from an abandoned job.
 The same environment holds `CONVEX_PREVIEW_CONTROL_KEY`, scoped to preview
 deployments in Overlay's Convex project. Reconciliation renews open PR backends
 within the five-day retention limit; closed PRs expire naturally. If a backend

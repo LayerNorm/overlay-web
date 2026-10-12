@@ -11,9 +11,10 @@ function deployment(patch = {}) {
   return { id: 'dpl_fixture', projectId: CONFIG.projectId, target: null, readyState: 'READY',
     gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: 'codex/fixture', sha }, ...patch }
 }
-function fixture({ current = pull(), existing = true, backendActive = true, changeHead = false, failReadback = false, failHttps = false } = {}) {
+function fixture({ current = pull(), existing = true, backendActive = true, changeHead = false, failReadback = false,
+  failHttps = false, failRemoved = false, buildState = 'READY', cancelError = false, cancelFinishes = true, wildcardBranch = CONFIG.previewWildcardBranch, wildcardAlias = false } = {}) {
   const calls = []
-  let envs = []; let domain; let alias; let reads = 0
+  let envs = []; let domain; let alias; let reads = 0; let state = buildState
   const github = async (path, options = {}) => {
     calls.push({ service: 'github', path, ...options })
     if (path.endsWith('/pulls/123')) {
@@ -29,6 +30,13 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
     const method = options.method ?? 'GET'
     if (path === `/v9/projects/${CONFIG.projectId}`) return { id: CONFIG.projectId, name: CONFIG.projectName,
       link: { type: 'github', repoId: CONFIG.repositoryId, org: 'LayerNorm', repo: 'overlay-web' } }
+    if (path === `/v9/projects/${CONFIG.projectId}/domains/${CONFIG.previewWildcardDomain}`) {
+      return { name: CONFIG.previewWildcardDomain, verified: true, gitBranch: wildcardBranch }
+    }
+    if (path === `/v4/aliases/${CONFIG.previewWildcardDomain}`) {
+      if (wildcardAlias) return { projectId: CONFIG.projectId }
+      throw new ApiError('Vercel', 404)
+    }
     if (path.endsWith('/env')) {
       if (method === 'POST') { envs = [{ ...options.body, id: 'env_fixture' }]; return envs[0] }
       return { envs }
@@ -44,7 +52,12 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
       return domain
     }
     if (path === '/v7/deployments') return { deployments: existing ? [{ uid: 'dpl_fixture', state: 'READY' }] : [] }
-    if (path === '/v13/deployments' || path === '/v13/deployments/dpl_fixture') return deployment()
+    if (path === '/v13/deployments' || path === '/v13/deployments/dpl_fixture') return deployment({ readyState: state })
+    if (path === '/v12/deployments/dpl_fixture/cancel') {
+      if (cancelFinishes) state = 'CANCELED'
+      if (cancelError) throw new Error('Lost cancellation response')
+      return deployment({ readyState: state })
+    }
     if (path === '/v2/deployments/dpl_fixture/aliases') { alias = { uid: 'alias_fixture', projectId: CONFIG.projectId,
       deployment: { id: failReadback ? 'dpl_wrong' : 'dpl_fixture' } }; return {} }
     if (path.startsWith('/v4/aliases/')) { if (!alias) throw new ApiError('Vercel', 404); return alias }
@@ -53,6 +66,10 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
   }
   const controller = new PreviewController({ github, vercel, report: () => {}, sleep: async () => {},
     backends: { active: async () => backendActive, renew: async () => ({ name: 'fixture-backend', expiresAt: 123 }) },
+    verifyRemoved: async origin => {
+      calls.push({ service: 'removed-https', origin })
+      if (failRemoved) throw new Error('Closed preview hostname must return 404')
+    },
     verifyHttps: async origin => {
       calls.push({ service: 'https', origin })
       if (failHttps) throw new Error('TLS verification failed')
@@ -72,6 +89,7 @@ test('forks, another repository, main as a source, and other bases cannot receiv
   assert.throws(() => trustedPull(pull({ head: { ...pull().head, repo: { id: 1, full_name: 'outside/fork' } } })))
   assert.throws(() => trustedPull(pull({ base: { ...pull().base, ref: 'staging' } })))
   assert.throws(() => trustedPull(pull({ head: { ...pull().head, ref: 'main' } })))
+  assert.throws(() => trustedPull(pull({ head: { ...pull().head, ref: CONFIG.previewWildcardBranch } })))
 })
 test('deployment provenance requires project, repository, branch, SHA, preview target, and READY', () => {
   assert.equal(deploymentMatches(deployment(), pull(), { ready: true }), true)
@@ -128,7 +146,23 @@ test('close cleans managed resources idempotently; retained wildcard is never to
   assert.equal((await f.controller.run(123)).state, 'closed')
   assert.equal((await f.controller.run(123)).state, 'closed')
   assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
-  assert.ok(!f.calls.some(c => c.path?.includes('*.preview')))
+  assert.ok(!f.calls.some(c => c.path?.includes('*.preview') && c.method && c.method !== 'GET'))
+  assert.ok(f.calls.some(c => c.service === 'removed-https' && c.origin === previewAddress(123).origin))
+})
+
+test('a wildcard bound to production or a fallback alias prevents preview provisioning', async () => {
+  for (const options of [{ wildcardBranch: null }, { wildcardAlias: true }]) {
+    const f = fixture(options)
+    await assert.rejects(f.controller.run(123), /wildcard/)
+    assert.ok(!f.calls.some(c => c.method === 'POST'))
+  }
+})
+
+test('cleanup requires the former hostname to return 404 before reporting completion', async () => {
+  const f = fixture({ failRemoved: true })
+  await f.controller.run(123)
+  f.setCurrent(pull({ state: 'closed' }))
+  await assert.rejects(f.controller.run(123), /must return 404/)
 })
 test('retargeting away from main cleans the former preview', async () => {
   const f = fixture(); await f.controller.run(123)
@@ -171,6 +205,26 @@ test('API client accepts successful empty bodies without suppressing malformed J
   await assert.rejects(client('invalid')('/x'), /invalid_json/)
 })
 
+test('transient API reads retry with bounded backoff; mutations are never blindly repeated', async () => {
+  let reads = 0; const pauses = []
+  const api = apiClient({ token: 'fixture', service: 'GitHub', base: 'https://api.github.com',
+    sleep: async ms => pauses.push(ms), fetchImpl: async () => {
+      reads++
+      if (reads === 1) throw new Error('Transport failure with private details')
+      return { status: reads === 2 ? 503 : 200, ok: reads !== 2, text: async () => '{}' }
+    } })
+  assert.deepEqual(await api('/read'), {})
+  assert.equal(reads, 3)
+  assert.deepEqual(pauses, [1000, 2000])
+  let writes = 0
+  const mutation = apiClient({ token: 'fixture', service: 'Vercel', base: 'https://api.vercel.com',
+    sleep: async () => assert.fail('Mutations cannot retry'), fetchImpl: async () => {
+      writes++; throw new Error('Transport failure with private details')
+    } })
+  await assert.rejects(mutation('/write', { method: 'POST', body: {} }), /Vercel API network request failed/)
+  assert.equal(writes, 1)
+})
+
 test('renewal preserves backend identity and patches only expiry within the retention limit', async () => {
   const now = 1000; const calls = []
   let d = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
@@ -193,4 +247,40 @@ test('renewal preserves backend identity and patches only expiry within the rete
   d = { ...d, projectId: CONFIG.convexProjectId, expiresAt: now - 1 }
   assert.equal(await b.active(123), false)
   await assert.rejects(b.renew(123), /expired/)
+})
+
+test('superseded running build is canceled and confirmed before releasing the PR job', async () => {
+  const f = fixture({ changeHead: true, buildState: 'BUILDING' })
+  assert.equal((await f.controller.run(123)).state, 'superseded')
+  assert.equal(f.calls.filter(c => c.path.endsWith('/cancel') && c.method === 'PATCH').length, 1)
+  assert.ok(!f.calls.some(c => c.path.endsWith('/aliases') || c.body?.state === 'success'))
+})
+test('lost cancellation response uses state readback, never blind mutation retry', async () => {
+  const f = fixture({ changeHead: true, buildState: 'BUILDING', cancelError: true })
+  assert.equal((await f.controller.run(123)).state, 'superseded')
+  assert.equal(f.calls.filter(c => c.path.endsWith('/cancel')).length, 1)
+  const blocked = fixture({ changeHead: true, buildState: 'BUILDING', cancelError: true, cancelFinishes: false })
+  await assert.rejects(blocked.controller.run(123), /cancellation could not be confirmed/)
+})
+test('cancellation refuses a production deployment before sending a mutation', async () => {
+  const f = fixture()
+  f.controller.vercel = async () => deployment({ target: 'production' })
+  await assert.rejects(f.controller.settleBuild(pull(), 'dpl_fixture'), /unrelated deployment/)
+})
+
+test('a recovered job settles abandoned older builds before requesting the current head', async () => {
+  const f = fixture({ existing: false })
+  const delegate = f.controller.vercel
+  let canceled = false
+  const oldSha = 'b'.repeat(40)
+  f.controller.vercel = async (path, options = {}) => {
+    if (path === '/v7/deployments') return { deployments: [{ uid: 'dpl_old', state: 'BUILDING' }] }
+    if (path === '/v13/deployments/dpl_old') return deployment({ id: 'dpl_old', readyState: canceled ? 'CANCELED' : 'BUILDING',
+      gitSource: { ...deployment().gitSource, sha: oldSha } })
+    if (path === '/v12/deployments/dpl_old/cancel') { canceled = true; return {} }
+    if (path === '/v13/deployments' && options.method === 'POST') assert.equal(canceled, true)
+    return delegate(path, options)
+  }
+  assert.equal((await f.controller.run(123)).state, 'ready')
+  assert.equal(canceled, true)
 })

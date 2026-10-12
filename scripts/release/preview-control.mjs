@@ -8,6 +8,8 @@ export const CONFIG = Object.freeze({
   teamId: 'team_VT3uNspuyAOwicxedhtG4SMe',
   projectId: 'prj_IKvugqekF8qLP14p7Rg4ilWErXPr', projectName: 'overlay-web-staging',
   convexProjectId: 1649204,
+  previewWildcardDomain: '*.preview.getoverlay.io',
+  previewWildcardBranch: 'codex/preview-unassigned',
 })
 const segment = encodeURIComponent
 export function previewAddress(number) {
@@ -23,7 +25,8 @@ export function trustedPull(pr, { requireMain = true } = {}) {
     || pr.head?.repo?.full_name !== CONFIG.repository || pr.head?.repo?.id !== CONFIG.repositoryId) {
     throw new Error('Preview requires an internal pull request targeting main')
   }
-  if (!/^[a-f0-9]{40}$/.test(pr.head.sha) || !pr.head.ref || pr.head.ref === 'main') {
+  if (!/^[a-f0-9]{40}$/.test(pr.head.sha) || !pr.head.ref || pr.head.ref === 'main'
+    || pr.head.ref === CONFIG.previewWildcardBranch) {
     throw new Error('Invalid PR source revision')
   }
   return pr
@@ -47,7 +50,8 @@ export class ApiError extends Error {
     this.status = status
   }
 }
-export function apiClient({ token, service, base, teamId, fetchImpl = fetch }) {
+export function apiClient({ token, service, base, teamId, fetchImpl = fetch,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   if (!token) throw new Error(`${service} credential is missing`)
   return async (path, { method = 'GET', body, query = {} } = {}) => {
     if (!path.startsWith('/') || path.startsWith('//')) throw new Error('Invalid API path')
@@ -55,12 +59,24 @@ export function apiClient({ token, service, base, teamId, fetchImpl = fetch }) {
     for (const [key, value] of Object.entries({ ...query, ...(teamId ? { teamId } : {}) })) {
       if (value !== undefined) url.searchParams.set(key, String(value))
     }
-    const response = await fetchImpl(url, {
-      method, redirect: 'error', signal: AbortSignal.timeout(60_000),
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json',
-        ...(service === 'GitHub' ? { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' } : {}) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    })
+    let response
+    for (let attempt = 0; ; attempt++) {
+      try {
+        response = await fetchImpl(url, {
+          method, redirect: 'error', signal: AbortSignal.timeout(60_000),
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json',
+            ...(service === 'GitHub' ? { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' } : {}) },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        })
+        if (method !== 'GET' || attempt >= 2 || ![429, 502, 503, 504].includes(response.status)) break
+        await response.body?.cancel()
+      } catch {
+        if (method !== 'GET' || attempt >= 2) throw new Error(`${service} API network request failed`)
+      }
+      // Retry reads only. A mutation may have succeeded despite a lost response;
+      // reconciliation must inspect ownership/state before repeating it.
+      await sleep((attempt + 1) * 1000)
+    }
     let value
     try {
       const raw = response.status === 204 ? '' : await response.text()
@@ -123,7 +139,10 @@ async function pages(api, path, key, query = {}) {
 
 export class PreviewController {
   constructor({ github, vercel, backends, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
-    now = Date.now, report = console.log, verifyHttps = async origin => {
+    now = Date.now, report = console.log, verifyRemoved = async origin => {
+      const result = await fetch(origin, { redirect: 'manual', signal: AbortSignal.timeout(30_000) })
+      if (result.status !== 404 || result.headers.get('location')) throw new Error('Closed preview hostname must return 404')
+    }, verifyHttps = async origin => {
       const result = await fetch(origin, { redirect: 'manual', signal: AbortSignal.timeout(30_000) })
       // A protected preview can return 401/403 or redirect to Vercel sign-in.
       // Receiving an HTTP response proves TLS issuance; redirects to staging do not.
@@ -135,6 +154,7 @@ export class PreviewController {
     this.github = github; this.vercel = vercel; this.backends = backends
     this.sleep = sleep; this.now = now; this.report = report
     this.verifyHttps = verifyHttps
+    this.verifyRemoved = verifyRemoved
     this.repoPath = `/repos/${CONFIG.repository}`
     this.projectPath = `/v9/projects/${CONFIG.projectId}`
   }
@@ -144,6 +164,14 @@ export class PreviewController {
     if (p.id !== CONFIG.projectId || p.name !== CONFIG.projectName || p.link?.type !== 'github'
       || Number(p.link.repoId) !== CONFIG.repositoryId || p.link.org !== 'LayerNorm' || p.link.repo !== 'overlay-web') {
       throw new Error('Staging project repository identity mismatch')
+    }
+    const wildcard = await this.vercel(`${this.projectPath}/domains/${segment(CONFIG.previewWildcardDomain)}`)
+    if (wildcard.name !== CONFIG.previewWildcardDomain || wildcard.verified !== true
+      || wildcard.gitBranch !== CONFIG.previewWildcardBranch || wildcard.redirect) {
+      throw new Error('Preview wildcard must be certificate-only on its reserved branch')
+    }
+    if (await optional(this.vercel, `/v4/aliases/${segment(CONFIG.previewWildcardDomain)}`)) {
+      throw new Error('Preview wildcard must not have a fallback deployment alias')
     }
   }
   async status(pr, state, description, url) {
@@ -200,21 +228,57 @@ export class PreviewController {
       || (await this.environment(pr)).some(e => e.comment === address.marker)) {
       throw new Error('Preview cleanup readback failed')
     }
+    await this.verifyRemoved(address.origin)
     this.report(`PR ${pr.number}: domain, alias, and branch app URL removed`)
     return { state: 'closed', number: pr.number }
+  }
+  async settleBuild(pr, id) {
+    const path = `/v13/deployments/${segment(id)}`
+    let d = await this.vercel(path)
+    if (!deploymentMatches(d, pr)) throw new Error('Refusing to cancel an unrelated deployment')
+    if (['READY', 'ERROR', 'CANCELED'].includes(d.readyState ?? d.state)) return d
+    try {
+      await this.vercel(`/v12/deployments/${segment(id)}/cancel`, { method: 'PATCH' })
+    } catch {
+      // The build can finish during cancellation, or a response can be lost.
+      // Inspect it instead of repeating a potentially completed mutation.
+      d = await this.vercel(path)
+      if (!deploymentMatches(d, pr) || !['READY', 'ERROR', 'CANCELED'].includes(d.readyState ?? d.state)) {
+        throw new Error('Preview cancellation could not be confirmed')
+      }
+      return d
+    }
+    const deadline = this.now() + 60_000
+    do {
+      d = await this.vercel(path)
+      if (!deploymentMatches(d, pr)) throw new Error('Canceled deployment provenance mismatch')
+      if (['READY', 'ERROR', 'CANCELED'].includes(d.readyState ?? d.state)) return d
+      await this.sleep(1000)
+    } while (this.now() < deadline)
+    throw new Error('Preview cancellation readiness timeout')
   }
   async start(pr) {
     const backendActive = await this.backends.active(pr.number)
     const results = await this.vercel('/v7/deployments', { query: {
-      projectId: CONFIG.projectId, branch: pr.head.ref, sha: pr.head.sha, limit: 100,
+      projectId: CONFIG.projectId, branch: pr.head.ref, limit: 100,
     } })
-    // List records omit gitSource; inspect each candidate before reuse.
+    // Settle abandoned older builds before the new backend deploy can start.
+    // List records omit gitSource; inspect candidates before reuse/cancellation.
+    const candidates = []
     for (const candidate of results.deployments) {
       if (!['READY', 'QUEUED', 'INITIALIZING', 'BUILDING'].includes(candidate.readyState ?? candidate.state)) continue
       if ((candidate.readyState ?? candidate.state) === 'READY' && !backendActive) continue
       const d = await this.vercel(`/v13/deployments/${segment(candidate.uid ?? candidate.id)}`)
-      if (deploymentMatches(d, pr)) return d
+      if (deploymentMatches(d, pr)) { candidates.push(d); continue }
+      if (['QUEUED', 'INITIALIZING', 'BUILDING'].includes(d.readyState ?? d.state)) {
+        const old = { ...pr, head: { ...pr.head, sha: d.gitSource?.sha } }
+        if (!/^[a-f0-9]{40}$/.test(old.head.sha ?? '') || !deploymentMatches(d, old)) {
+          throw new Error('Running preview deployment provenance mismatch')
+        }
+        await this.settleBuild(old, d.id)
+      }
     }
+    if (candidates.length) return candidates[0]
     return this.vercel('/v13/deployments', { method: 'POST', query: { forceNew: '1' }, body: {
       name: CONFIG.projectName, project: CONFIG.projectId,
       // The controller owns canonical assignment; native branch aliases must
@@ -241,9 +305,13 @@ export class PreviewController {
       let lastState
       while (this.now() < deadline) {
         const current = trustedPull(await this.pull(number), { requireMain: false })
-        if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
+        if (current.state !== 'open' || current.base.ref !== 'main') {
+          await this.settleBuild(pr, deployment.id ?? deployment.uid)
+          return this.cleanup(current)
+        }
         if (current.head.sha !== pr.head.sha || current.head.ref !== pr.head.ref) {
-          this.report(`PR ${number}: head changed; superseded deployment will not be aliased`)
+          await this.settleBuild(pr, deployment.id ?? deployment.uid)
+          this.report(`PR ${number}: head changed; old build settled without alias assignment`)
           return { state: 'superseded', number }
         }
         deployment = await this.vercel(`/v13/deployments/${segment(deployment.id ?? deployment.uid)}`)

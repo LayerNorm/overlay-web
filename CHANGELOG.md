@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Removed preview wildcard fallback.** Exact PR aliases serve previews; unknown or closed preview hostnames return 404. Trusted control checks the certificate-only wildcard, verifies cleanup, settles superseded builds before deploying newer backend code, and retries transient reads without blindly repeating mutations.
 - **Stale note saves report conflicts.** Convex rejection now reaches the existing HTTP `409` response instead of reporting a successful save with unchanged content. Found during isolated-preview CRUD QA.
 
 ### Added

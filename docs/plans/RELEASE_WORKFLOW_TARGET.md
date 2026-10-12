@@ -74,6 +74,11 @@ Add `*.preview.getoverlay.io` to the staging project using Vercel DNS and HTTPS.
 `getoverlay.io` already uses Vercel nameservers. Trusted automation manages each
 open PR's stable address, for example `pr-123.preview.getoverlay.io`:
 
+The wildcard is registered for DNS and certificate coverage on the reserved
+`codex/preview-unassigned` branch, with no deployment alias. Never deploy that
+branch or use it for a PR. Only exact PR hostnames receive aliases; an unknown
+or removed hostname must return HTTPS `404` without redirecting to staging.
+
 1. On PR open or reopen, register its custom domain and configure the branch's
    Preview-scoped `NEXT_PUBLIC_APP_URL` before requesting a build. The server,
    browser, WorkOS callback, and enabled Convex callbacks use this same origin.
@@ -84,7 +89,7 @@ open PR's stable address, for example `pr-123.preview.getoverlay.io`:
 3. Report the canonical URL and tested SHA in the PR. Browser QA runs after the
    alias resolves over HTTPS and points to that revision.
 4. On PR close or merge, remove its alias/domain and branch-scoped app URL
-   override. Keep the shared wildcard and WorkOS callback registered; Convex
+   override, read back their absence, and require HTTPS `404`. Keep the shared wildcard and WorkOS callback registered; Convex
    preview backends follow their configured expiration/cleanup policy. Reject
    unassigned or closed PR hostnames so wildcard routing cannot expose staging
    under an address that appears to be a valid PR preview.

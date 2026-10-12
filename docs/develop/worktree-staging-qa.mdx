@@ -34,7 +34,10 @@ The `PR Preview` commit status links the canonical address and identifies its
 revision; verify that status against the current PR head before QA. Closing or
 retargeting a PR removes its alias/domain and managed branch app URL, and a
 six-hour reconciliation repairs missed events. Missing/closed wildcard hosts
-return 404. Preview configuration is still being rolled out; this section does
+return 404. Register the wildcard on reserved branch
+`codex/preview-unassigned` for certificate coverage only, with no deployment
+alias; never deploy that branch or use it for a PR. The controller verifies this
+configuration before provisioning and HTTPS `404` after cleanup. Preview configuration is still being rolled out; this section does
 not assert that the live lane has passed its acceptance checks.
 
 Overlay has two backend lanes that must stay paired with their matching web deployment:

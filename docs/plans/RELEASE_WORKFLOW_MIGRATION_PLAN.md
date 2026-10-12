@@ -47,41 +47,53 @@ verified. Overlay's project-scoped Convex preview key and preview defaults
 by readback. Vercel has verified `*.preview.getoverlay.io` on the staging project.
 
 Preview build/URL isolation, internal seed fixtures, outbound-delivery guards,
-and the preview-only QA login are implemented in the migration worktree.
+preview-only QA login, trusted alias control and merge-group CI support are
+implemented in draft PR #187. Its current verified revision is
+`7efe03e562011bd1f97ef6221b3952fa92500252`; required GitHub workflows passed.
 Local full-suite, typecheck, build, lint, config, release-safety, boundary, docs,
-and production-audit checks pass; the staged diff passes the secret scan. These are not yet a live, verified preview lane. Trusted PR alias provisioning/cleanup and merge-group CI support are also
-implemented locally, with contract tests. Four blocking dependency advisories
-were fixed and the production audit gate passes. Live alias/HTTPS/auth checks,
-merge queue enablement, staging cutover, and production promotion remain open.
-The Vercel CLI's app credential cannot create a CI token (API 403). The supported
-token UI can scope a 90-day token to `overlay-web-staging`; the owner approved creation and storage as `VERCEL_STAGING_TOKEN` in GitHub's
-`release-control` environment. That environment allows only `main` workflows;
-the token is restricted to the staging Vercel project and expires 2027-01-10.
-API scope checks succeeded for staging and denied production access. Preview
-configuration now contains 46 isolated sandbox variables; all 71 existing
-Production variables were preserved. External storage, model, and billing
-providers are temporarily disabled until dedicated test resources are wired.
-Preview deployment policy now permits REST API sources only; native Preview
-Git builds remain disabled. The first live build verified the PR guard and
-canonical origin, then exposed Convex's explicit-env-file authentication
-semantics. The wrapper now retains only the approved key in its private file;
-live preview acceptance remains pending a successful rebuild.
-The second build provisioned isolated backend `zany-dalmatian-999` with reference
-`preview/pr-187`. The project preview key successfully changed its expiry and
-readback confirmed the result. Reconciliation now renews only validated open PR
-backends; closed PRs expire naturally, and an expired backend forces a fresh web
-build and seed at the same SHA. Full browser and two-PR acceptance remain open.
-PR #187's first successful Preview is READY at
-`https://pr-187.preview.getoverlay.io`, deployment
-`dpl_9SFrNpHWvRVfxtgSjE9DgWtHYAWQ`, SHA
-`15280ebf0172dbb31659325fdd609be7cc912a2a`. Alias readback and HTTPS passed;
-Chrome rendered the page, completed real sandbox email/password sign-in and
-opened the seeded personal workspace. This evidence applies to that exact SHA;
-CRUD, provider QA, two-PR isolation and lifecycle acceptance remain open.
-Live note create/read/update/delete and the preview-only login succeeded. An
-existing note-adapter bug hid rejected stale writes behind HTTP `200`; the
-adapter now propagates mutation errors into the existing `409` contract, with
-regression tests. Rebuild and repeat that live check before marking it verified.
+production audit and staged secret scan passed. These foundations do not yet
+complete the release-lane migration.
+
+The owner-approved 90-day `VERCEL_STAGING_TOKEN` is stored in GitHub's
+`release-control` environment, whose branch policy permits only `main`.
+It is restricted to `overlay-web-staging` and expires 2027-01-10. API scope
+checks succeeded for staging and denied production access. Preview configuration
+contains 46 isolated sandbox variables; all 71 existing Production variables
+were preserved. Storage, model and billing providers are temporarily disabled
+until dedicated test resources are wired. Preview deployment policy permits
+REST API sources only; native Preview Git builds remain disabled.
+
+PR #187 is READY at `https://pr-187.preview.getoverlay.io`, deployment
+`dpl_wpThvEU3v6Rh3bPxHGeW5tLrtb6g`, with backend `zany-dalmatian-999`
+(reference `preview/pr-187`). Real Chrome sandbox sign-in and seeded workspace
+navigation passed on its earlier successful revision. HTTP QA on the current
+revision passed genuine sandbox login, note create/read/update/delete, stale
+write `409`, and preservation of the seeded note across a head update. The note
+adapter now propagates Convex mutation conflicts, with regression coverage.
+
+Temporary draft QA PRs #188 and #189 are simultaneously READY with distinct
+backends `laudable-lynx-602` and `accomplished-mallard-199`. Live internal queries
+proved incompatible string and number values in the same schema column. These
+PRs must never merge. Genuine sandbox login passed in both; a note created and
+updated in #188 was absent from #189, where reading its ID returned `404` and
+existing notes stayed unchanged. The temporary note was removed. Live head-race QA
+pushed revision B while revision A built, confirmed A became `CANCELED`, and
+verified its deployment never replaced the existing alias. The current-head
+rebuild and close/cleanup acceptance remain open.
+
+Wildcard inspection found an old staging fallback alias. The wildcard now uses
+reserved branch `codex/preview-unassigned`, registered only for DNS/certificates,
+with no deployment alias. Unknown preview hostname HTTPS `404` and the unchanged
+existing staging alias were verified by readback. The controller refuses a
+fallback wildcard or that reserved branch as a PR source, retries transient GET
+reads only, and checks HTTPS `404` after close cleanup. Do not blindly retry
+mutations whose responses were lost; reconcile ownership and state first.
+
+The Convex preview key successfully renewed backend expiry with API readback.
+Reconciliation renews validated open PR backends within Starter's five-day
+limit; closed PRs expire naturally. Missing or expired backends force a fresh
+same-SHA frontend build and seed. Provider QA, full two-PR lifecycle acceptance,
+merge queue enablement, staging cutover and production promotion remain open.
 
 Plan adjustments before implementation:
 
