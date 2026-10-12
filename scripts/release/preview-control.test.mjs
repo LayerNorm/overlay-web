@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CONFIG, PreviewController, ApiError, apiClient, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
+import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
 
 const sha = 'a'.repeat(40)
 function pull(patch = {}) {
@@ -11,7 +11,7 @@ function deployment(patch = {}) {
   return { id: 'dpl_fixture', projectId: CONFIG.projectId, target: null, readyState: 'READY',
     gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: 'codex/fixture', sha }, ...patch }
 }
-function fixture({ current = pull(), existing = true, changeHead = false, failReadback = false, failHttps = false } = {}) {
+function fixture({ current = pull(), existing = true, backendActive = true, changeHead = false, failReadback = false, failHttps = false } = {}) {
   const calls = []
   let envs = []; let domain; let alias; let reads = 0
   const github = async (path, options = {}) => {
@@ -52,6 +52,7 @@ function fixture({ current = pull(), existing = true, changeHead = false, failRe
     throw new Error('Unexpected Vercel request: ' + method + ' ' + path)
   }
   const controller = new PreviewController({ github, vercel, report: () => {}, sleep: async () => {},
+    backends: { active: async () => backendActive, renew: async () => ({ name: 'fixture-backend', expiresAt: 123 }) },
     verifyHttps: async origin => {
       calls.push({ service: 'https', origin })
       if (failHttps) throw new Error('TLS verification failed')
@@ -100,6 +101,7 @@ test('new deployment requests pin repository, branch and exact SHA', async () =>
   assert.equal(build.body.project, CONFIG.projectId)
   assert.equal(build.body.target, undefined)
   assert.equal(build.body.autoAssignCustomDomains, false)
+  assert.equal(build.query.forceNew, '1')
   assert.equal(build.body.projectSettings.buildCommand, 'bash scripts/vercel-build.sh')
 })
 test('new PR head prevents old deployment assignment and success status', async () => {
@@ -152,7 +154,43 @@ test('API failures never print credentials, bodies, or attacker-controlled messa
     teamId: CONFIG.teamId, fetchImpl: async (url, options) => {
       assert.equal(url.searchParams.get('teamId'), CONFIG.teamId)
       assert.equal(options.redirect, 'error')
-      return { status: 403, ok: false, json: async () => ({ error: { code: 'forbidden', message: 'private-fixture' } }) }
+      return { status: 403, ok: false, text: async () => JSON.stringify({ error: { code: 'forbidden', message: 'private-fixture' } }) }
     } })
   await assert.rejects(api('/v9/projects/x'), error => error.message === 'Vercel API 403 (forbidden)')
+})
+
+test('an expired backend prevents reuse of a READY frontend at the same SHA', async () => {
+  const f = fixture({ backendActive: false }); await f.controller.run(123)
+  assert.ok(f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST' && c.query.forceNew === '1'))
+})
+
+test('API client accepts successful empty bodies without suppressing malformed JSON', async () => {
+  const client = raw => apiClient({ token: 'fixture', service: 'Convex', base: 'https://api.convex.dev/v1',
+    fetchImpl: async () => ({ status: 200, ok: true, text: async () => raw }) })
+  assert.deepEqual(await client('')('/deployments/fixture', { method: 'PATCH', body: { expiresAt: 1 } }), {})
+  await assert.rejects(client('invalid')('/x'), /invalid_json/)
+})
+
+test('renewal preserves backend identity and patches only expiry within the retention limit', async () => {
+  const now = 1000; const calls = []
+  let d = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
+    reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview', expiresAt: now + 100_000 }
+  const b = new PreviewBackends({ now: () => now, api: async (path, options = {}) => {
+    calls.push({ path, ...options })
+    if (options.method === 'PATCH') { d = { ...d, ...options.body }; return {} }
+    return [d]
+  } })
+  assert.equal(await b.active(123), true)
+  assert.equal((await b.renew(123)).expiresAt, now + 4 * 86400_000)
+  assert.deepEqual(calls.find(c => c.method === 'PATCH').body, { expiresAt: now + 4 * 86400_000 })
+  assert.equal(calls.filter(c => c.method === 'PATCH').length, 1)
+  await b.renew(123)
+  assert.equal(calls.filter(c => c.method === 'PATCH').length, 1)
+  d = { ...d, deploymentType: 'prod' }
+  await assert.rejects(b.renew(123), /identity/)
+  d = { ...d, deploymentType: 'preview', projectId: 1 }
+  await assert.rejects(b.renew(123), /identity/)
+  d = { ...d, projectId: CONFIG.convexProjectId, expiresAt: now - 1 }
+  assert.equal(await b.active(123), false)
+  await assert.rejects(b.renew(123), /expired/)
 })

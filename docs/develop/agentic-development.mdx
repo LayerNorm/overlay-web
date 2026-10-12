@@ -132,6 +132,10 @@ must never be included in a Vercel Preview build. Per-PR concurrency serializes
 open/update/close and reconciliation jobs. Scheduled reconciliation repairs
 missed events and removes closed or retargeted PR resources. Unassigned wildcard
 hosts return 404 instead of exposing staging under a PR-looking address.
+The same environment holds `CONVEX_PREVIEW_CONTROL_KEY`, scoped to preview
+deployments in Overlay's Convex project. Reconciliation renews open PR backends
+within the five-day retention limit; closed PRs expire naturally. If a backend
+has already expired, rebuild the exact PR SHA and reseed before reusing its URL.
 
 All required workflows also report on `merge_group: checks_requested`. Docs
 and schema contracts have no PR path filters, so unchanged paths cannot leave a

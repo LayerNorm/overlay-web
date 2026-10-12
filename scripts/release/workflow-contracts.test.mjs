@@ -31,6 +31,7 @@ test('preview management never checks out PR code, installs packages, or interpo
       if (step.run) {
         assert.ok(!step.run.includes('${{'))
         assert.ok(!/npm|npx|curl/.test(step.run))
+        assert.equal(step.env.CONVEX_PREVIEW_CONTROL_KEY, '${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}')
       }
     }
   }

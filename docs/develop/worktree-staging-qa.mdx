@@ -27,6 +27,9 @@ disabled. The controller supplies the Preview build-command override and disable
 automatic custom-domain assignment; the legacy staging Production lane retains
 its existing settings until cutover. Preview providers must use dedicated test
 resources. Disabled bootstrap providers do not count as upload, model, or billing QA.
+Preview backend expiry is renewed by the main-only controller using the Convex
+project preview key. Reconciliation preserves existing data; if an expired
+backend must be recreated, it requests a fresh build and seed at the same SHA.
 The `PR Preview` commit status links the canonical address and identifies its
 revision; verify that status against the current PR head before QA. Closing or
 retargeting a PR removes its alias/domain and managed branch app URL, and a

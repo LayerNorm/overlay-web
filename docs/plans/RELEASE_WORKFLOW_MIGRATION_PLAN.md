@@ -66,6 +66,18 @@ Git builds remain disabled. The first live build verified the PR guard and
 canonical origin, then exposed Convex's explicit-env-file authentication
 semantics. The wrapper now retains only the approved key in its private file;
 live preview acceptance remains pending a successful rebuild.
+The second build provisioned isolated backend `zany-dalmatian-999` with reference
+`preview/pr-187`. The project preview key successfully changed its expiry and
+readback confirmed the result. Reconciliation now renews only validated open PR
+backends; closed PRs expire naturally, and an expired backend forces a fresh web
+build and seed at the same SHA. Full browser and two-PR acceptance remain open.
+PR #187's first successful Preview is READY at
+`https://pr-187.preview.getoverlay.io`, deployment
+`dpl_9SFrNpHWvRVfxtgSjE9DgWtHYAWQ`, SHA
+`15280ebf0172dbb31659325fdd609be7cc912a2a`. Alias readback and HTTPS passed;
+Chrome rendered the page, completed real sandbox email/password sign-in and
+opened the seeded personal workspace. This evidence applies to that exact SHA;
+CRUD, provider QA, two-PR isolation and lifecycle acceptance remain open.
 
 Plan adjustments before implementation:
 
@@ -115,8 +127,9 @@ Sources: [GitHub merge queue availability](https://docs.github.com/en/repositori
 
 Answer these before writing code; several later choices depend on them.
 
-- [ ] **Convex:** the plan includes preview deployments; note the maximum
-      number and retention period.
+- [x] **Convex:** Starter supports previews with five-day retention and a
+      40-deployment team limit. Keep open PRs alive by bounded expiry renewal
+      through the project preview key, not by assuming a push resets expiration.
 - [ ] **Convex:** decide where staging lives. Options:
       (a) a separate Convex project `overlay-staging` whose production deployment
       is staging (recommended: clean isolation, its own deploy key);
@@ -223,6 +236,10 @@ Code:
       follows its configured retention policy. Reject unassigned and closed PR
       hostnames; removing an alias must not allow the shared wildcard to serve
       staging under that hostname. Add reconciliation for missed lifecycle events.
+- [ ] Reconcile Convex preview expiry for open PRs using the project preview
+      key. Validate project, preview type, reference and identifier before
+      renewal; never renew closed PRs. If a backend expired, force a fresh web
+      build and seed at the same SHA rather than reusing a READY frontend.
 - [ ] Keep credential-bearing automation on trusted workflow code; do not
       execute PR code with domain-management credentials or automatically
       provision secret-bearing previews for outside contributors' forks.

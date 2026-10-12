@@ -33,6 +33,15 @@ The temporary `--env-file` contains only the approved deploy key (mode `0600`)
 and is deleted after the build. An empty file also removes Convex authentication
 inputs, even when the key exists in the parent process; do not use an empty file.
 
+The trusted PR controller also holds the project preview key as
+`CONVEX_PREVIEW_CONTROL_KEY` in the main-only `release-control` environment.
+Six-hour reconciliation validates the project, preview type, PR identifier and
+reference before extending an open PR backend to four days from now when fewer
+than two days remain. This is within Starter's five-day retention entitlement
+and preserves data. Closed PRs stop renewing and expire naturally. A missing or
+expired backend forces a fresh web build at the same SHA, with fresh seed data;
+an old READY frontend cannot be reused just because its SHA matches.
+
 Convex injects the preview URL into the web build. `deploymentEnv()` keeps
 server configuration on the same captured URL as the browser; generic runtime
 `process.env` lookups must not recover an old shared dashboard URL. Preview

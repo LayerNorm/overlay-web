@@ -33,6 +33,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
+          CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
 
   preview:
     if: >-
@@ -58,6 +59,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
+          CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
 
   reconcile:
     needs: inventory
@@ -86,3 +88,4 @@ jobs:
           PREVIEW_PR_NUMBER: ${{ matrix.pr }}
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
+          CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
