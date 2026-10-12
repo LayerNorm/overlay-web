@@ -30,6 +30,13 @@ resources. Disabled bootstrap providers do not count as upload, model, or billin
 Preview backend expiry is renewed by the main-only controller using the Convex
 project preview key. Reconciliation preserves existing data; if an expired
 backend must be recreated, it requests a fresh build and seed at the same SHA.
+
+Hosted app previews are unnecessary for diffs confined to docs, root Markdown
+and GitHub metadata/workflows. Those changes keep their required CI and docs
+preview. Apply `needs-preview` or manually dispatch PR Preview to request one
+explicitly. Runtime/build/dependency changes still provision a full isolated
+preview; incomplete file inventories also build. Existing managed resources are
+cleaned up only after owned remote builds settle, with the normal HTTPS 404 check.
 The `PR Preview` commit status links the canonical address and identifies its
 revision; verify that status against the current PR head before QA. Closing or
 retargeting a PR removes its alias/domain and managed branch app URL, and a

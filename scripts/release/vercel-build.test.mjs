@@ -81,6 +81,33 @@ test('staging refuses a production backend or mismatched key', () => {
   ]) assert.throws(() => buildPlan({ ...staging, ...patch }))
 })
 
+test('trusted staging deploys backend, then seed, then web; failure stops subsequent steps', () => {
+  const env = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
+    OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: STAGING.backend,
+    CONVEX_DEPLOY_KEY: 'prod:' + STAGING.backend + '|fixture',
+    OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),
+    VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40),
+    VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web', NEXT_PUBLIC_APP_URL: STAGING.origin }
+  for (const failAt of [0, 1, 2, 3]) {
+    const calls = []
+    const result = runBuild(env, (command, args, options) => {
+      calls.push({ command, args: [...args] })
+      assert.equal(options.env.NEXT_PUBLIC_CONVEX_URL, `https://${STAGING.backend}.convex.cloud`)
+      if (command.includes('convex')) {
+        const path = args[args.indexOf('--env-file') + 1]
+        assert.equal(readFileSync(path, 'utf8'), deploymentEnvFile(env))
+      }
+      return { status: calls.length - 1 === failAt ? 1 : 0 }
+    })
+    assert.equal(result, failAt === 3 ? 0 : 1)
+    assert.equal(calls.length, Math.min(failAt + 1, 3))
+    assert.equal(calls[0].args[0], 'deploy')
+    assert.ok(!calls[0].args.includes('--cmd'))
+    if (calls[1]) assert.deepEqual(calls[1].args.slice(0, 3), ['run', 'dev/seed:initStaging', '{}'])
+    if (calls[2]) assert.deepEqual(calls[2], { command: 'node', args: ['scripts/release/build-web.mjs'] })
+  }
+})
+
 test('dedicated staging ignore guard rejects manual, hook, other-ref and wrong-SHA builds', () => {
   const script = fileURLToPath(new URL('../vercel-ignore-build.sh', import.meta.url))
   const staging = { ...preview, DEPLOY_BRANCH: 'main', VERCEL_ENV: 'production',

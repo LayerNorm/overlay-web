@@ -113,6 +113,13 @@ References: [Vercel custom aliases for previews](https://vercel.com/kb/guide/how
 
 ## The life of a change
 
+Runtime, dependency and build changes receive hosted app previews. A PR confined
+to docs, root Markdown or GitHub metadata/workflows keeps required CI and its
+docs preview without rebuilding the unchanged app. `needs-preview` or a manual
+PR Preview dispatch requests an app preview explicitly. Unknown or incomplete
+file inventories still build. This avoids maintenance-only builds consuming the
+capacity needed for feature QA.
+
 1. **Start.** Create a `codex/<slug>` branch in its own worktree from the latest
    `origin/main`. One task per branch, one agent per worktree.
 2. **Build.** Keep the change small. Unfinished user-facing work goes behind a
@@ -206,3 +213,10 @@ longer needed: the merge queue integrates, and staging deploys itself.
 - Custom preview addresses depend on alias automation. Failed builds leave the
   last successful alias in place; QA must check the deployed SHA before treating
   a preview as evidence for the current PR head.
+
+Prepared staging backend: `doting-cuttlefish-819` has separately generated
+internal secrets, its sandbox smoke identity and staging app URL configured, with
+readback verified. Application functions and synthetic fixtures are not deployed
+yet. The gated build sequence deploys backend functions, seeds guarded fixtures,
+then builds web; Convex `deploy --cmd` alone runs the command before its push.
+Activation still requires provider isolation, authenticated smoke and the cutover.

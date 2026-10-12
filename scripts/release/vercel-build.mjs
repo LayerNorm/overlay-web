@@ -62,9 +62,15 @@ export function buildPlan(env) {
     }
     return {
       command: './node_modules/.bin/convex',
-      args: ['deploy', '--typecheck', 'enable', '--cmd', 'node scripts/release/build-web.mjs',
-        '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL'],
-      env: childEnv,
+      // Convex's --cmd runs BEFORE the function push. Staging must instead
+      // finish the backend deploy before seeding and building the frontend.
+      args: ['deploy', '--typecheck', 'enable', '--yes'],
+      after: [
+        { command: './node_modules/.bin/convex', args: ['run', 'dev/seed:initStaging', '{}'] },
+        { command: 'node', args: ['scripts/release/build-web.mjs'] },
+      ],
+      env: { ...childEnv, NEXT_PUBLIC_CONVEX_URL: `https://${STAGING.backend}.convex.cloud`,
+        CONVEX_URL: `https://${STAGING.backend}.convex.cloud` },
       target: 'staging ' + name,
     }
   }
@@ -88,11 +94,16 @@ export function runBuild(env = process.env, spawn = spawnSync) {
       directory = mkdtempSync(join(tmpdir(), 'overlay-convex-build-'))
       const envFile = join(directory, 'deployment.env')
       writeFileSync(envFile, deploymentEnvFile(plan.env), { mode: 0o600 })
-      plan.args.push('--env-file', envFile)
+      for (const step of [plan, ...(plan.after ?? [])]) {
+        if (step.command.includes('convex')) step.args.push('--env-file', envFile)
+      }
     }
-    const result = spawn(plan.command, plan.args, { env: plan.env, stdio: 'inherit' })
-    if (result.error) throw result.error
-    return result.status ?? 1
+    for (const step of [plan, ...(plan.after ?? [])]) {
+      const result = spawn(step.command, step.args, { env: plan.env, stdio: 'inherit' })
+      if (result.error) throw result.error
+      if (result.status !== 0) return result.status ?? 1
+    }
+    return 0
   } finally {
     if (directory) rmSync(directory, { recursive: true, force: true })
   }

@@ -61,6 +61,64 @@ production scripts from feature worktrees to initialize it. The staging cutover
 must supply matching sandbox auth/internal secrets and dedicated test providers,
 plus authenticated staging smoke, before the activation variable is enabled.
 
+Internal `dev/seed:initStaging` prepares synthetic fixtures for the configured
+sandbox QA identity. It requires `OVERLAY_DEPLOYMENT_ENV=staging`, the sandbox
+client, the fixed QA identity and Convex's platform-supplied
+`CONVEX_CLOUD_URL=https://doting-cuttlefish-819.convex.cloud`; a customer production
+or shared dev backend refuses it before writing. It preserves edited fixtures
+on repeat calls and creates only a paused automation. Preview `dev/seed:init`
+retains its separate preview-only guard and fixture identifiers.
+
+## Expand, migrate, then contract
+
+Web and Convex deploy independently. The incoming web must work with the old
+backend, and the incoming backend must work with the old web, including retained
+rollback revisions. Never remove an old field or require a new field in the same
+release that first introduces its replacement.
+
+Worked example: rename `files.name` to `displayName` (illustrative; this migration
+does not change the current schema).
+
+1. **Expand.** Add `displayName: v.optional(v.string())`; retain required `name`.
+   Keep `name` authoritative during the overlap. Existing create/rename handlers
+   accept the existing request shape and write both values. The incoming web
+   keeps sending `name`, so production's previous backend still accepts it.
+2. **Backfill.** Use an internal mutation that advances through bounded pages,
+   copying each current `name` into missing `displayName`. Save the returned
+   cursor, repeat until `isDone`, and count missing fields. Do not export customer
+   data into preview fixtures. Rehearse against synthetic staging data first.
+3. **Switch reads.** In a later compatible revision, read
+   `displayName ?? name` only once every active and retained rollback backend
+   dual-writes. Until then read `name`: an older backend can rename a file while
+   leaving its backfilled `displayName` stale. Keep legacy request arguments. Verify
+   old/new web against old/new backend and exercise web-first production
+   deployment plus rollback before accepting it.
+4. **Contract.** Remove `name` only after backfill is complete, old callers are
+   no longer supported, and the oldest retained rollback web/backend also uses
+   the new shape. Record that minimum rollback revision. Until then, retaining
+   the alias is cheaper than making rollback unsafe.
+
+The backfill pattern is bounded and restartable:
+
+```ts
+export const backfillDisplayNames = internalMutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  returns: v.object({ cursor: v.string(), isDone: v.boolean() }),
+  handler: async (ctx, { cursor }) => {
+    const page = await ctx.db.query('files').paginate({ cursor, numItems: 100 })
+    for (const row of page.page) {
+      if (row.displayName === undefined) await ctx.db.patch(row._id, { displayName: row.name })
+    }
+    return { cursor: page.continueCursor, isDone: page.isDone }
+  },
+})
+```
+
+The example needs the expanded schema before it can compile. Backfill only the
+target deployment, verify counts/readback, and retain compatibility until the
+contract gate is satisfied. For large deployments, schedule the next bounded
+batch rather than running one unbounded mutation.
+
 ## Customer production backend
 
 Use the production script only from the clean canonical `main` worktree after the matching main web deployment is live:
@@ -118,3 +176,12 @@ mark generating messages without an active AgentRun as interrupted. Confirm the
 scheduled chain has finished before deploying the following phase-5 cleanup
 revision, which removes the table, queries, and crons. Never skip directly to
 the cleanup revision on a deployment that may still contain delta rows.
+
+### Prepared staging build order
+
+The installed Convex CLI runs `deploy --cmd` before pushing functions. The gated
+main staging build therefore runs three commands sequentially with an explicit,
+private deployment-key env file: backend deploy, `dev/seed:initStaging`, then
+`build-web.mjs`. Any failure stops the remaining steps. The web build receives
+the pinned staging URL; production web builds still do not deploy Convex. This
+path remains inactive until the platform cutover and authenticated smoke gate.

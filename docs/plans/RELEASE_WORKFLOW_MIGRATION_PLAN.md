@@ -103,13 +103,19 @@ mutations whose responses were lost; reconcile ownership and state first.
 The Convex preview key successfully renewed backend expiry with API readback.
 Reconciliation renews validated open PR backends within Starter's five-day
 limit; closed PRs expire naturally. Missing or expired backends force a fresh
-same-SHA frontend build and seed. Provider QA, the unattended open-event probe,
+same-SHA frontend build and seed. PR #190's unattended open event built accepted head
+`2675e4a700725ace91dcc30cc40e3347235856ce` and assigned its canonical URL.
+Authenticated note create/read/update/delete and stale-edit `409` checks passed;
+the normal browser sign-in opened Files with both synthetic fixtures. Provider QA,
 merge queue enablement, staging cutover and production promotion remain open.
+These results apply to that revision; subsequent commits require fresh checks.
 
 Staging preparation: Divyansh's Convex team now has project `overlay-staging`
 (`3199896`) and persistent backend `doting-cuttlefish-819`. Its deployment-scoped
 key is stored privately and expires 2027-01-10; it is not a team credential.
-No functions, environment variables, or customer data have been deployed to it.
+Nine staging environment variables are configured and verified by readback, including
+fresh internal API/service secrets and the sandbox smoke identity. The web secrets
+are prepared privately. No app functions or customer data have been deployed to it.
 Original Overlay production/development deployments were preserved by readback.
 The prepared `staging-control.mjs` and `staging-release.yml` require the exact
 Divyansh Vercel team/project, internal repository, `main` SHA, and dedicated
@@ -121,6 +127,15 @@ acceptance. Authenticated staging smoke, provider isolation, the preview soak,
 platform cutover, and the process-doc rewrite must precede activation.
 
 Plan adjustments before implementation:
+
+- Measured PR #190 timings: full suite 2m39s, required quality gate 9m7s,
+  preview queue 20m56s, hosted build 4m. The queue dominated that PR's wall time.
+  Cancel obsolete PR CI revisions; omit app previews for complete docs/root
+  Markdown/GitHub-only diffs while retaining required checks and a manual or
+  `needs-preview` override. Runtime/build/dependency and unknown diffs still build.
+  Dependency Review must execute its comparison, not infer availability from an
+  absent repository field. Separate paid canaries from required contract checks
+  so deployment-status skips cannot obscure the actual PR result.
 
 - Agent test login must create a session containing a genuine sandbox WorkOS
   access token accepted by Convex, with the same user identity used by the seed.
@@ -366,8 +381,9 @@ Code:
       A `Staging Deploy` success alone is not staging-smoke or promotion proof.
 - [ ] `scripts/vercel-build.sh`: in the staging project's production build,
       deploy the staging Convex backend first
-      (`npx convex deploy --cmd 'npm run build'` with the staging deploy key),
-      so staging web and Convex always come from the same commit.
+      (separate `convex deploy`, guarded `dev/seed:initStaging`, then web build),
+      so staging web and Convex always come from the same commit. `--cmd` runs before
+      the Convex function push in the installed CLI and does not enforce this order.
 - [ ] `convex-url.ts`: remove the `staging.getoverlay.io` host sniffing once
       staging sets `OVERLAY_DEPLOYMENT_ENV=staging` explicitly.
 - [ ] Staging smoke tests: a GitHub Action on `deployment_status` for staging
@@ -420,8 +436,10 @@ Code:
       SHA, remote build), waits for it to be live, then runs `convex:push:prod`
       from a clean checkout of that SHA, then runs the production smoke suite.
       Keeps today's ordering rule: web first, Convex after.
-- [ ] Feature flags: add a minimal flag helper (PostHog flags are already in the
-      stack) so unfinished work can merge dark.
+- [x] Feature flags: `createReleaseFlags` evaluates an explicit set of boolean
+      PostHog keys once per authenticated request, bounded to 300ms with an off
+      fallback. No product feature is enabled automatically; callsites still
+      need both-path QA before rollout.
 - [ ] Document expand/contract for Convex schema changes in
       `docs/develop/convex-workflow.mdx`, with a worked example.
 - [ ] Rollback runbook: Vercel instant rollback for web; Convex rollback is

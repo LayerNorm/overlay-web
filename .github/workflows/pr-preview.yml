@@ -3,7 +3,7 @@ name: PR Preview
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, reopened, synchronize, closed, ready_for_review, edited]
+    types: [opened, reopened, synchronize, closed, ready_for_review, edited, labeled, unlabeled]
   workflow_dispatch:
     inputs:
       pr_number:
