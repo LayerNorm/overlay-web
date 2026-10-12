@@ -10,9 +10,8 @@
  * turns compiles once) and read by the app through `memoryProfileStore.getProfile`.
  */
 import { createHash } from 'node:crypto'
-import { generateObject, type FlexibleSchema } from 'ai'
+import { generateText } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { z } from 'zod'
 import { internalAction } from '../_generated/server'
 import { v } from 'convex/values'
 import { api, internal } from '../_generated/api'
@@ -26,10 +25,6 @@ import { normalizeOpenAiCompatibleBaseUrl } from '../../src/shared/ai/gateway/op
 // definitions would be bundled into the node graph).
 const PROFILE_MEMORY_LIMIT = 200
 const MAX_PROFILE_CHARS = 1800
-
-const profileSchema = z.object({
-  profile: z.string().describe('The compiled owner profile, under 1800 characters.'),
-})
 
 const PROFILE_SYSTEM_PROMPT = `You maintain the durable profile for one memory owner (a user or an agent).
 
@@ -47,7 +42,8 @@ Rules:
 - Keep concrete dates when they matter (birthdays, deadlines, trips).
 - Do not include one-off events that carry no lasting signal.
 - Plain prose or short labeled lines — no headers, no markdown bullets with more than one level.
-- If the memories are thin, say what little is known rather than padding.`
+- If the memories are thin, say what little is known rather than padding.
+- Reply with the profile text only: no preamble, no JSON, no code fences.`
 
 function getCompilerModel(modelId: string) {
   const gateway = createOpenAICompatible({
@@ -76,6 +72,8 @@ export const compileInternal = internalAction({
     ownerId: v.string(),
     workspaceId: v.optional(v.string()),
     billingActorUserId: v.optional(v.string()),
+    /** The workspace billing account to charge, when the workspace is the payer. */
+    billingAccountId: v.optional(v.string()),
     isPaid: v.optional(v.boolean()),
     force: v.optional(v.boolean()),
   },
@@ -106,6 +104,7 @@ export const compileInternal = internalAction({
       ((args.isPaid ?? false) && !lowCredit ? 'google/gemini-2.5-flash-lite' : 'openrouter/free')
     const serverSecret = getServerSecretForBackground()
     const billingUserId = args.billingActorUserId?.trim() || args.ownerId
+    const workspaceBillingAccountId = args.workspaceId ? args.billingAccountId?.trim() || undefined : undefined
 
     const memoryLines = memories
       .map((m) => {
@@ -129,16 +128,32 @@ export const compileInternal = internalAction({
 
     if (reservationId && serverSecret) {
       try {
-        const reservation = await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
-          serverSecret,
-          userId: billingUserId,
-          reservationId,
-          kind: 'generation',
-          modelId,
-          operationId: 'knowledge.compile-memory-profile',
-          requestFingerprint,
-          reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
-        })
+        const reservedCents = applyMarkupToDollars({ providerCostUsd: estimatedCostUsd })
+        const reservation = workspaceBillingAccountId
+          ? await ctx.runMutation(api.platform.usage.reserveWorkspaceBudgetByServer, {
+              billingAccountId: workspaceBillingAccountId,
+              serverSecret,
+              userId: billingUserId,
+              workspaceId: args.workspaceId!,
+              spendSubjectId: billingUserId,
+              spendSubjectKind: 'member',
+              reservationId,
+              kind: 'generation',
+              modelId,
+              operationId: 'knowledge.compile-memory-profile',
+              requestFingerprint,
+              reservedCents,
+            })
+          : await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
+              serverSecret,
+              userId: billingUserId,
+              reservationId,
+              kind: 'generation',
+              modelId,
+              operationId: 'knowledge.compile-memory-profile',
+              requestFingerprint,
+              reservedCents,
+            })
         if (reservation.idempotent || reservation.status !== 'reserved') {
           return { compiled: false, reason: 'already_processed' }
         }
@@ -147,7 +162,9 @@ export const compileInternal = internalAction({
       }
     }
 
-    let result: { object: { profile: string }; usage?: { inputTokens?: number; outputTokens?: number } }
+    // Plain text, not a structured object: the profile is one string, and asking for JSON made some models fail the
+    // schema check on every run (each failure left a hold to reconcile, and the stale profile retried every turn).
+    let result: { text: string; usage?: { inputTokens?: number; outputTokens?: number } }
     try {
       if (reservationId && serverSecret) {
         await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
@@ -156,13 +173,12 @@ export const compileInternal = internalAction({
           reservationId,
         })
       }
-      result = (await generateObject({
+      result = await generateText({
         model: getCompilerModel(modelId),
-        schema: profileSchema as FlexibleSchema<unknown>,
-        instructions: PROFILE_SYSTEM_PROMPT,
+        system: PROFILE_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt }],
         maxOutputTokens: 800,
-      })) as typeof result
+      })
     } catch (err) {
       if (reservationId && serverSecret) {
         await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
@@ -208,7 +224,7 @@ export const compileInternal = internalAction({
       }
     }
 
-    const content = result.object.profile.trim().slice(0, MAX_PROFILE_CHARS)
+    const content = stripFences(result.text).slice(0, MAX_PROFILE_CHARS)
     if (!content) return { compiled: false, reason: 'empty' }
     await ctx.runMutation(internal.knowledge.memoryProfileStore.upsertProfile, {
       ownerId: args.ownerId,
@@ -220,3 +236,8 @@ export const compileInternal = internalAction({
     return { compiled: true, sourceMemoryCount: memories.length }
   },
 })
+
+/** Some models still wrap a plain reply in a code fence; keep only the text. */
+function stripFences(text: string): string {
+  return text.trim().replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```$/, '').trim()
+}

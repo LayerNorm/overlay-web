@@ -257,7 +257,7 @@ export class ActContextService {
         // Load the skill directory (name + description only, no full instructions).
         // This keeps the skill context within a small token budget. The agent
         // can load full instructions on demand via the list_skills tool.
-        const directory = await this.deps.repository.listSkillDirectory({ userId: args.userId })
+        const directory = await this.deps.repository.listSkillDirectory({ userId: args.userId, workspaceId: args.workspaceId })
         const enabledDirectory = directory.filter((s) => s.enabled !== false)
         // Return as ActSkillRow-shaped objects with empty instructions so the
         // rest of the pipeline (mentionsContext, etc.) still works.

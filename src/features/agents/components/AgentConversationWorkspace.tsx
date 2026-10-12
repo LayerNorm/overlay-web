@@ -260,6 +260,7 @@ export function AgentConversationWorkspace({ showcase = false }: { showcase?: bo
       open={createOpen}
       workspaceId={activeWorkspaceId}
       onClose={() => setCreateOpen(false)}
+      onOpenMachineSetup={() => { setCreateOpen(false); setEditorMode('new') }}
       onCreated={(agent, warning) => {
         setCreateOpen(false)
         openCreatedAgent(agent)

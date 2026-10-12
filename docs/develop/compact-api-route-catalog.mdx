@@ -40,6 +40,9 @@ For a description of what each route does and its associated implementation file
 - `POST /api/convex/[type]`
 - `GET /api/entitlements`
 - `GET /api/latest-release/download`
+- `DELETE, GET, OPTIONS, POST /api/mcp`
+- `GET, OPTIONS, POST /api/oauth/register`
+- `GET, OPTIONS, POST /api/oauth/token`
 - `GET /api/latest-release`
 - `POST /api/portal`
 - `POST /api/security/csp-report`
@@ -61,7 +64,7 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST /api/v1/admin/authorization/roles`
 - `GET /api/v1/admin/catalog`
 - `DELETE, GET, POST /api/v1/admin/principals`
-- `GET, POST /api/v1/admin/usage`
+- `GET /api/v1/admin/usage`
 - `DELETE, GET, PUT /api/v1/agent-bindings`
 - `GET /api/v1/capabilities`
 - `GET /api/v1/chat-suggestions`
@@ -91,13 +94,21 @@ For a description of what each route does and its associated implementation file
 - `PATCH /api/v1/agent-environments/[environmentId]/roots`
 - `POST /api/v1/agent-environments/artifacts/cleanup`
 - `POST /api/v1/agent-environments/enroll`
+- `POST /api/v1/agent-asks`
+- `POST /api/v1/provider-accounts/codex-sign-in`
+- `POST /api/v1/agent-profiles/upload`
 - `POST /api/v1/agent-environments/enrollment-sessions`
+- `POST /api/v1/agent-environments/cloud`
+- `POST /api/v1/agent-environments/[environmentId]/run-credentials`
 - `POST /api/v1/agent-environments/operations/reconcile`
 - `GET /api/v1/agent-environments`
 - `DELETE, GET, PATCH /api/v1/agents/[agentId]`
 - `GET /api/v1/agents/[agentId]/automations`
 - `GET /api/v1/agents/[agentId]/bundle`
+- `DELETE, GET, POST /api/v1/agents/[agentId]/machine`
+- `GET, POST /api/v1/agents/[agentId]/profile`
 - `POST /api/v1/agents/[agentId]/restore`
+- `DELETE /api/v1/agents/[agentId]/permanent`
 - `GET, POST /api/v1/agents/[agentId]/threads`
 - `DELETE, PATCH /api/v1/agents/[agentId]/threads/[threadId]`
 - `POST /api/v1/agents/[agentId]/threads/resolve`
@@ -188,6 +199,9 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/imports/slack/process`
 - `GET, POST /api/v1/imports/slack`
 - `GET, POST /api/v1/integrations`
+- `POST /api/v1/mcp/authorize`
+- `GET /api/v1/mcp/client`
+- `DELETE, GET, POST /api/v1/mcp/connections`
 - `GET, POST /api/v1/mcps/oauth/callback`
 - `DELETE, POST /api/v1/mcps/oauth`
 - `DELETE, GET, PATCH, POST /api/v1/mcps`
@@ -201,12 +215,14 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST /api/v1/notes`
 - `GET /api/v1/search`
 - `DELETE, GET, PATCH, POST /api/v1/skills`
+- `POST /api/v1/scope`
 
 ## Onboarding, providers, shares, subscription
 
 - `POST /api/v1/onboarding/complete`
 - `POST /api/v1/onboarding/reset`
 - `GET /api/v1/onboarding/status`
+- `DELETE, GET, PATCH, POST /api/v1/provider-accounts`
 - `DELETE, GET, PATCH, POST /api/v1/providers/connections`
 - `POST /api/v1/providers/connections/test`
 - `GET /api/v1/shares/impact`
@@ -221,6 +237,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/workspace-invitations/[invitationId]/accept`
 - `GET /api/v1/workspaces/[workspaceId]/audit-export`
 - `POST /api/v1/workspaces/[workspaceId]/billing/checkout`
+- `POST /api/v1/workspaces/[workspaceId]/billing/auto-top-up`
 - `POST /api/v1/workspaces/[workspaceId]/billing/portal`
 - `GET, POST /api/v1/workspaces/[workspaceId]/billing`
 - `POST /api/v1/workspaces/[workspaceId]/billing/top-ups`
@@ -228,7 +245,7 @@ For a description of what each route does and its associated implementation file
 - `GET, POST /api/v1/workspaces/[workspaceId]/governance`
 - `DELETE, POST /api/v1/workspaces/[workspaceId]/invitations/[invitationId]`
 - `GET, POST /api/v1/workspaces/[workspaceId]/invitations`
-- `DELETE /api/v1/workspaces/[workspaceId]/lifecycle`
+- `DELETE, PATCH /api/v1/workspaces/[workspaceId]/lifecycle`
 - `GET /api/v1/workspaces/[workspaceId]/management`
 - `DELETE, PATCH /api/v1/workspaces/[workspaceId]/members`
 - `GET, PATCH /api/v1/workspaces/[workspaceId]/policies`

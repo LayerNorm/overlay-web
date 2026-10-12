@@ -2,6 +2,8 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
+import { parseResourceScope, parseResourceView } from '@/shared/workspaces/resource-scope'
 import { repositoryProxy } from '@/server/app-data/errors'
 import { NoteRevisionConflictError, NoteService, NoteServiceError, type NoteRepository } from '@/server/notes'
 import type { CreateNoteRequest, UpdateNoteRequest } from '@overlay/app-core'
@@ -70,6 +72,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
       includeDeleted,
+      view: parseResourceView(request.nextUrl.searchParams.get('view')),
     })
     return NextResponse.json(notes)
   } catch (error) {
@@ -89,10 +92,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       clientId: body.clientId,
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
+      scope: parseResourceScope((body as { scope?: unknown }).scope),
     })
     return NextResponse.json(result)
   } catch (error) {
-    return toErrorResponse(error, 'Failed to create note')
+    return scopeForbiddenResponse(error) ?? toErrorResponse(error, 'Failed to create note')
   }
 }
 

@@ -49,6 +49,14 @@ official Nous Research distribution, then verify it before enrollment with
 ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and `args`
 shape.
 
+## acpx engine and Overlay Cloud images
+
+`--engine acpx` runs Claude Code and Codex through [acpx](https://github.com/openclaw/acpx)'s
+runtime instead of the host's direct ACP client. Overlay Cloud machines use it. The image they
+boot from is built by `infra/agent-image/provision.sh` in the Overlay repo;
+`overlay-agent-host image-check` verifies such an image (manifest version, pinned adapters
+installed, no credentials on disk) and runs automatically before `connect --kind overlay_cloud`.
+
 ## Eve
 
 Eve is connected through its supported `eve/client` session and durable NDJSON stream contract.

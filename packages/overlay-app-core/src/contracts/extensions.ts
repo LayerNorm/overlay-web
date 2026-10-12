@@ -1,3 +1,5 @@
+import type { ResourceScope, ScopedResourceFields } from './resource-scope'
+
 export type IntegrationProviderId = 'composio' | 'executor'
 export type IntegrationOAuthOwnership = 'provider-managed' | 'customer-managed' | 'mixed'
 export type IntegrationConnectionSetup = 'in-app-oauth' | 'provider-console' | 'manual-credential'
@@ -49,6 +51,8 @@ export interface ConnectedIntegrationsResponse {
   provider?: IntegrationProviderId
   providerCapabilities?: IntegrationProviderCapabilities
   connected: string[]
+  /** In the Workspace view: who connected each workspace account, and whether the caller may disconnect it. */
+  workspaceConnectors?: Array<{ providerKey: string; connectedBy: string; canDisconnect: boolean }>
   data?: IntegrationSummary[]
   items?: IntegrationSummary[]
   hasMore?: boolean
@@ -60,6 +64,8 @@ export interface IntegrationConnectionRequest {
   providerKey?: string
   /** Backward-compatible alias for older desktop clients. */
   toolkit?: string
+  /** `workspace` links (or removes) the workspace's own account for this connector instead of the person's. */
+  scope?: 'personal' | 'workspace'
   accessToken?: string
   userId?: string
 }
@@ -74,8 +80,10 @@ export interface IntegrationConnectionResponse {
   error?: string
 }
 
-export interface SkillSummary {
+export interface SkillSummary extends ScopedResourceFields {
   _id: string
+  /** The creator; only they can move it between scopes. */
+  userId?: string
   name: string
   description: string
   instructions: string
@@ -89,6 +97,8 @@ export interface CreateSkillRequest {
   description: string
   instructions: string
   enabled?: boolean
+  /** Defaults to personal. Creating in the workspace follows the workspace's admin settings. */
+  scope?: ResourceScope
   accessToken?: string
   userId?: string
 }

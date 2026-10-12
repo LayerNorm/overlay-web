@@ -58,6 +58,8 @@ export interface CreateAutomationRequest {
   graph?: AutomationGraph
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
+  /** Defaults to personal. */
+  scope?: 'personal' | 'workspace'
 }
 
 export interface CreateAutomationResponse {

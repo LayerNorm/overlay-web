@@ -43,10 +43,18 @@ import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import { logger } from '@/server/observability/logger'
+import type { AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
+import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
 const PROOF_CHALLENGE_TTL_MS = 15 * 60_000
 const CREDENTIAL_TTL_MS = 15 * 60_000
+/**
+ * An Overlay Cloud machine is stopped when idle for about as long as a credential lives, so its host usually wakes
+ * with an expired one. That credential may still refresh itself (nothing else) for this long, and only with the
+ * machine's device key signing the request.
+ */
+const CLOUD_REFRESH_EXPIRED_GRACE_MS = 7 * 24 * 60 * 60_000
 const REQUEST_CLOCK_SKEW_MS = 60_000
 const PROOF_NONCE_TTL_MS = 2 * 60_000
 const INTERACTIVE_QUEUE_TTL_MS = 2 * 60_000
@@ -86,6 +94,12 @@ export class ConnectedAgentControlPlaneService {
     objectStore?: ObjectStore
     /** For BYOK harness bindings — validates the actor owns the connection. */
     providerConnections?: Pick<ProviderConnectionRepository, 'get'>
+    /** The credentials an Overlay Cloud agent runs on. */
+    agentProviderAccounts?: Pick<AgentProviderAccountService, 'requireUsable' | 'resolveRunEnvironment' | 'markNeedsReauth'>
+    /** Puts files on an Overlay Cloud machine for a run (a Codex subscription's auth.json), which an environment variable cannot carry. */
+    deliverMachineFiles?: (args: { workspaceId: string; environmentId: string; files: Array<{ path: string; contents: string; mode?: number }> }) => Promise<void>
+    /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
+    agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
@@ -297,6 +311,8 @@ export class ConnectedAgentControlPlaneService {
     environmentId: string
     adapterId: string
     workingDirectory: string
+    /** The account (Claude Code or Codex credentials) this binding runs on, owned by the actor. */
+    providerAccountId?: string
   }) {
     await this.assertEnabled(args.workspaceId)
     await this.requireManager(args.actorUserId, args.workspaceId)
@@ -322,6 +338,20 @@ export class ConnectedAgentControlPlaneService {
     }
     const now = this.now()
     const adapterConfig: Record<string, unknown> = { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
+    if (args.providerAccountId) {
+      const accounts = this.dependencies.agentProviderAccounts
+      if (!accounts || !isAgentProviderId(args.adapterId)) {
+        throw controlPlaneError('This agent cannot run on a provider account', 400, 'provider_account_unsupported')
+      }
+      try {
+        await accounts.requireUsable({ userId: args.actorUserId, accountId: args.providerAccountId, provider: args.adapterId })
+      } catch (error) {
+        const detail = error as { message?: string; statusCode?: number }
+        throw controlPlaneError(detail.message ?? 'Account is unavailable', detail.statusCode ?? 400, 'provider_account_invalid')
+      }
+      adapterConfig.providerAccountId = args.providerAccountId
+      adapterConfig.providerAccountOwnerUserId = args.actorUserId
+    }
     const binding = await this.dependencies.repository.upsertBinding({
       id: randomUUID(),
       workspaceId: args.workspaceId,
@@ -516,10 +546,11 @@ export class ConnectedAgentControlPlaneService {
     return { deleted: artifacts.length - failed, ...(failed > 0 ? { failed } : {}) }
   }
 
-  async sweepRemoteRuns() {
+  async sweepRemoteRuns(options: { abandonEnvironmentId?: string } = {}) {
     const now = this.now()
     const result = await this.dependencies.repository.sweepRemoteRuns({
       now, hostOfflineBefore: now - 90_000, limit: 100,
+      ...(options.abandonEnvironmentId ? { abandonEnvironmentId: options.abandonEnvironmentId } : {}),
     })
     if (this.dependencies.settleUsage) {
       await Promise.all(result.settlements
@@ -621,7 +652,10 @@ export class ConnectedAgentControlPlaneService {
     }
     const tokenHash = sha256(token)
     const credential = await this.dependencies.repository.findEnvironmentCredential({ tokenHash })
-    if (!credential || credential.revokedAt || credential.expiresAt <= now ||
+    const expired = Boolean(credential && credential.expiresAt <= now)
+    const refreshingWithinGrace = expired && args.requiredMethod === 'agent:credentials:refresh'
+      && now - credential!.expiresAt < CLOUD_REFRESH_EXPIRED_GRACE_MS
+    if (!credential || credential.revokedAt || (expired && !refreshingWithinGrace) ||
       credential.audience !== AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE ||
       credential.environmentId !== args.environmentId ||
       !credential.methods.includes(args.requiredMethod)) {
@@ -643,12 +677,16 @@ export class ConnectedAgentControlPlaneService {
       bodySha256: sha256(args.rawBody),
       tokenSha256: tokenHash,
     })
+    if (expired && environment.kind !== 'overlay_cloud') {
+      throw controlPlaneError('Environment credential is invalid or expired', 401, 'credential_invalid')
+    }
     verifyDeviceSignature(environment.publicKey, canonical, headers.data.signature)
     const consumed = await this.dependencies.repository.consumeEnvironmentProofNonce({
       credentialId: credential.id,
       nonceHash: sha256(headers.data.nonce),
       expiresAt: now + PROOF_NONCE_TTL_MS,
       now,
+      ...(expired ? { expiredGraceMs: CLOUD_REFRESH_EXPIRED_GRACE_MS } : {}),
     })
     if (!consumed) throw controlPlaneError('Device request proof was already used', 409, 'proof_replayed')
     return { credential, environment }
@@ -664,6 +702,61 @@ export class ConnectedAgentControlPlaneService {
     })
     if (!rotated) throw controlPlaneError('Environment credential can no longer be refreshed', 401, 'credential_invalid')
     return credentialResponse(rotated, token, auth.environment.filesystemGrant!)
+  }
+
+  /**
+   * The provider credentials for one run, released to the Overlay Cloud
+   * machine that is running it. The run must belong to the calling environment
+   * and still be active, and its binding must have recorded an account and the
+   * user who chose it. The secret is returned once and is not stored anywhere
+   * on the control plane side beyond the vault.
+   */
+  async issueRunCredentials(auth: HostAuthentication, runId: string): Promise<{ env: Record<string, string> }> {
+    const accounts = this.dependencies.agentProviderAccounts
+    if (!accounts) throw controlPlaneError('Provider accounts are unavailable', 503, 'provider_accounts_unavailable')
+    if (auth.environment.kind !== 'overlay_cloud') {
+      throw controlPlaneError('Only Overlay Cloud environments receive provider credentials', 403, 'run_credentials_forbidden')
+    }
+    const session = await this.dependencies.repository.getRemoteSessionForRun({
+      workspaceId: auth.credential.workspaceId,
+      environmentId: auth.credential.environmentId,
+      runId,
+    })
+    if (!session || !['starting', 'running', 'waiting_for_approval', 'recovering'].includes(session.status)) {
+      throw controlPlaneError('This run is not active', 409, 'run_not_active')
+    }
+    const agentId = billingAgentId(session.capabilitySnapshot)
+    const bindings = await this.dependencies.repository.listBindings({
+      workspaceId: auth.credential.workspaceId, ...(agentId ? { agentId } : {}),
+    })
+    const binding = bindings.find((candidate) => candidate.id === session.bindingId && candidate.enabled)
+    const accountId = typeof binding?.adapterConfig.providerAccountId === 'string' ? binding.adapterConfig.providerAccountId : ''
+    const ownerUserId = typeof binding?.adapterConfig.providerAccountOwnerUserId === 'string' ? binding.adapterConfig.providerAccountOwnerUserId : ''
+    const adapterId = binding?.adapterConfig.adapterId
+    if (!binding || !accountId || !ownerUserId || !isAgentProviderId(adapterId)) {
+      throw controlPlaneError('This agent has no provider account', 409, 'provider_account_missing')
+    }
+    try {
+      const resolved = await accounts.resolveRunEnvironment({ accountId, ownerUserId, expectedProvider: adapterId as AgentProviderId })
+      await this.audit('agent_run.credentials_issued', 'service', undefined, {
+        workspaceId: auth.credential.workspaceId, agentId, environmentId: auth.environment.id, runId,
+        provider: resolved.provider, method: resolved.method,
+      }, runId, 'agent_run')
+      // The agent's own values go in first so they can never replace the account's credential.
+      const own = agentId && this.dependencies.agentSecretEnv ? await this.dependencies.agentSecretEnv(agentId).catch((_error) => ({})) : {}
+      if (resolved.files.length > 0) {
+        if (!this.dependencies.deliverMachineFiles) throw controlPlaneError('This account cannot be delivered to a machine', 501, 'machine_files_unavailable')
+        try {
+          await this.dependencies.deliverMachineFiles({ workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, files: resolved.files })
+        } catch (_error) {
+          throw controlPlaneError('The machine could not be prepared for this run. Try again.', 502, 'machine_files_failed')
+        }
+      }
+      return { env: { ...own, ...resolved.env } }
+    } catch (error) {
+      const detail = error as { message?: string; statusCode?: number; code?: string }
+      throw controlPlaneError(detail.message ?? 'Account is unavailable', detail.statusCode ?? 409, detail.code ?? 'account_unavailable')
+    }
   }
 
   async heartbeat(auth: HostAuthentication) {
@@ -729,6 +822,7 @@ export class ConnectedAgentControlPlaneService {
       environmentId: auth.credential.environmentId,
       commandId: acknowledgement.commandId,
       accepted: acknowledgement.accepted,
+      ...(acknowledgement.error ? { errorCode: acknowledgement.error.code, errorMessage: acknowledgement.error.message } : {}),
       now: this.now(),
     })
     if (!updated) throw controlPlaneError('Command was not found or is no longer acknowledgeable', 409, 'command_acknowledgement_rejected')
@@ -792,6 +886,7 @@ export class ConnectedAgentControlPlaneService {
         duplicate: result.duplicate,
       }, batch.runId, 'agent_run',
     )
+    await this.flagRejectedProviderAccount(auth, session, batch)
     if (result.terminal && this.dependencies.settleUsage &&
       (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
       await this.settleWithAudit(result.terminal)
@@ -811,6 +906,32 @@ export class ConnectedAgentControlPlaneService {
       })
     }
     return result
+  }
+
+  /** An agent that reports it could not sign in marks the account it ran on as needing a reconnect. */
+  private async flagRejectedProviderAccount(
+    auth: HostAuthentication,
+    session: { bindingId: string; capabilitySnapshot: Record<string, unknown> },
+    batch: EventBatch,
+  ) {
+    const accounts = this.dependencies.agentProviderAccounts
+    const rejected = batch.events.some((event) => {
+      const payload = event.payload as Record<string, unknown> | undefined
+      return event.type === 'failed' && payload?.code === AGENT_AUTH_FAILURE_CODE
+    })
+    if (!accounts || !rejected) return
+    try {
+      const agentId = billingAgentId(session.capabilitySnapshot)
+      const bindings = await this.dependencies.repository.listBindings({
+        workspaceId: auth.credential.workspaceId, ...(agentId ? { agentId } : {}),
+      })
+      const accountId = bindings.find((candidate) => candidate.id === session.bindingId)?.adapterConfig.providerAccountId
+      if (typeof accountId === 'string' && accountId) await accounts.markNeedsReauth(accountId, 'The agent reported that sign-in failed.')
+    } catch (error) {
+      logger.warn('[connected-agents] could not flag a rejected provider account', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   assertWorkingDirectory(environment: AgentEnvironment, workingDirectory: string): void {
@@ -948,7 +1069,10 @@ function createCredential(environment: AgentEnvironment, now: number) {
     environmentId: environment.id,
     tokenHash: sha256(token),
     audience: AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE,
-    methods: [...AGENT_ENVIRONMENT_CREDENTIAL_METHODS],
+    // Run credentials are for Overlay Cloud machines only: older hosts validate the
+    // list of methods strictly and must keep receiving the methods they know.
+    methods: AGENT_ENVIRONMENT_CREDENTIAL_METHODS.filter((method) =>
+      method !== 'agent:run-credentials' || environment.kind === 'overlay_cloud'),
     tokenNonce: randomSecret(16),
     expiresAt: now + CREDENTIAL_TTL_MS,
     createdAt: now,

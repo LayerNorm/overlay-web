@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
+import { parseResourceScope, parseResourceView } from '@/shared/workspaces/resource-scope'
 
 function repository() {
   return getOverlayServerContext().appData.repositories.skills
@@ -8,7 +10,11 @@ function repository() {
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    return NextResponse.json(await repository().list({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id }))
+    return NextResponse.json(await repository().list({
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      view: parseResourceView(request.nextUrl.searchParams.get('view')),
+    }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch skills' }, { status: 500 })
   }
@@ -32,10 +38,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       name,
       description,
       instructions,
+      scope: parseResourceScope(body.scope),
     })
     return NextResponse.json({ id })
-  } catch (_error) {
-    return NextResponse.json({ error: 'Failed to create skill' }, { status: 500 })
+  } catch (error) {
+    return scopeForbiddenResponse(error) ?? NextResponse.json({ error: 'Failed to create skill' }, { status: 500 })
   }
 }
 

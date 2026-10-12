@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overlay — Pricing mockup</title>
+<script>
+  (function () {
+    var t = null
+    try { t = localStorage.getItem('overlay-mockup-theme') } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    document.documentElement.dataset.theme = t
+  })()
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+  /* Pricing, rebuilt from first principles. A workspace is free or paid (never the account).
+     Paid = a deposit (min $8) that becomes credit, then pay-as-you-go, itemized per resource.
+     Flat surfaces, hairlines, no shadows. Text is short; the one live graphic is the usage panel. */
+  :root {
+    --background: #fafafa; --foreground: #0a0a0a; --muted: #71717a; --muted-light: #a1a1aa; --border: #e4e4e7;
+    --surface-elevated: #ffffff; --surface-muted: #f5f5f5; --button-primary-bg: #0a0a0a; --button-primary-text: #ffffff;
+    --serif: 'Libre Baskerville', Georgia, serif;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --hairline: 1px solid var(--border);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --c: #ea580c; --ok: #16a34a; --warn: #f59e0b;
+  }
+  :root[data-theme="dark"] {
+    --background: #09090b; --foreground: #f5f5f5; --muted: #a1a1aa; --muted-light: #71717a; --border: #27272a;
+    --surface-elevated: #111113; --surface-muted: #151518; --button-primary-bg: #f5f5f5; --button-primary-text: #09090b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--background); color: var(--foreground); font-family: var(--serif); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; text-decoration: none; }
+  button, input { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; }
+  svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--foreground) 40%, transparent); outline-offset: 2px; }
+
+  .nav { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: relative; }
+  .lockup { display: inline-flex; align-items: center; gap: .4em; font: 500 20px/1 var(--serif); letter-spacing: -0.025em; }
+  .orb { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff 0 8%, #9aa0a6 38%, #2b2f33 100%); }
+  .links { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 28px; font-size: 13.5px; color: var(--muted); }
+  .links a:hover, .links a.on { color: var(--foreground); }
+  .nr { display: flex; align-items: center; gap: 14px; }
+  .icon { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+  .icon:hover { background: var(--surface-muted); color: var(--foreground); }
+  .pill { padding: 7px 14px; border-radius: 999px; background: var(--button-primary-bg); color: var(--button-primary-text); font-size: 13px; }
+
+  main { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  .hero { padding: 96px 0 72px; }
+  h1 { font: 400 clamp(30px, 4vw, 44px)/1.2 var(--serif); letter-spacing: -0.02em; max-width: 14em; }
+  .hero p { font: 400 18px/1.55 var(--sans); color: var(--muted); max-width: 33em; margin-top: 20px; }
+  .hero .go { display: flex; gap: 12px; margin-top: 32px; align-items: center; }
+  .btn { padding: 10px 18px; border-radius: 999px; font: 500 14px var(--sans); background: var(--button-primary-bg); color: var(--button-primary-text); }
+  .btn.ghost { background: none; color: var(--foreground); border: var(--hairline); }
+  mark { background: none; color: inherit; position: relative; isolation: isolate; }
+  mark::after { content: ""; position: absolute; left: -.1em; right: -.1em; bottom: -.04em; height: .23em; z-index: -1; background: linear-gradient(var(--c), var(--c)) left bottom / 100% .075em no-repeat, color-mix(in srgb, var(--c) 17%, transparent); border-radius: .06em; }
+
+  section { display: grid; grid-template-columns: 250px minmax(0, 1fr); column-gap: 56px; padding: 56px 0; border-top: var(--hairline); }
+  section > .lab h2 { font: 400 22px/1.25 var(--serif); letter-spacing: -0.01em; }
+  section > .lab p { font: 400 14px/1.55 var(--sans); color: var(--muted); margin-top: 8px; }
+  .cap { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+  /* 01 free vs paid */
+  .kinds { display: grid; grid-template-columns: 1fr 1fr; border: var(--hairline); border-radius: 12px; overflow: hidden; }
+  .kind { padding: 26px 26px 28px; }
+  .kind + .kind { border-left: var(--hairline); }
+  .kind h3 { font: 400 20px var(--serif); }
+  .kind .price { font: 400 15px var(--sans); color: var(--muted); margin: 6px 0 20px; }
+  .kind .price b { font: 400 30px var(--serif); color: var(--foreground); letter-spacing: -0.02em; margin-right: 6px; }
+  .kind ul { list-style: none; display: flex; flex-direction: column; gap: 11px; }
+  .kind li { display: flex; gap: 10px; align-items: flex-start; font: 400 14.5px/1.4 var(--sans); }
+  .kind li svg { color: var(--ok); margin-top: 2px; }
+  .kind li.plus { color: var(--muted); }
+  .kind li.plus svg { color: var(--muted-light); }
+  .note { font: 400 14px/1.55 var(--sans); color: var(--muted); margin-top: 18px; }
+  .note b { font-weight: 500; color: var(--foreground); }
+
+  /* 02 / 03 controls */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip { height: 40px; padding: 0 18px; border: var(--hairline); border-radius: 10px; font: 500 15px var(--sans); transition: border-color .25s var(--ease-out), background .2s; }
+  .chip:hover { background: var(--surface-muted); }
+  .chip.on { border-color: var(--foreground); }
+  .money { display: inline-flex; align-items: center; height: 40px; border: var(--hairline); border-radius: 10px; padding: 0 12px; gap: 3px; font: 500 15px var(--sans); }
+  .money:focus-within, .money.on { border-color: var(--foreground); }
+  .money input { all: unset; width: 4.2ch; text-align: right; font: 500 15px var(--sans); }
+  .money.sm { height: 34px; border-radius: 8px; font-size: 14px; } .money.sm input { font-size: 14px; width: 3.4ch; }
+  .eq { display: flex; align-items: center; gap: 14px; margin-top: 26px; font: 400 15.5px var(--sans); }
+  .eq .box { border: var(--hairline); border-radius: 10px; padding: 12px 16px; min-width: 150px; }
+  .eq .box small { display: block; font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .eq .box b { font: 400 24px var(--serif); letter-spacing: -0.01em; }
+  .eq .arrow { color: var(--muted-light); }
+  .opts { display: flex; flex-direction: column; gap: 10px; }
+  .opt { text-align: left; display: grid; grid-template-columns: 22px 1fr; column-gap: 12px; padding: 18px 20px; border: var(--hairline); border-radius: 12px; cursor: pointer; transition: border-color .25s var(--ease-out); }
+  .opt:hover { border-color: var(--muted-light); }
+  .opt.on { border-color: var(--foreground); }
+  .opt .r { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border); margin-top: 2px; position: relative; }
+  .opt.on .r { border-color: var(--foreground); }
+  .opt.on .r::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--foreground); }
+  .opt h3 { font: 500 16px var(--sans); }
+  .opt p { font: 400 14px/1.55 var(--sans); color: var(--muted); margin-top: 3px; }
+  .opt .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; font: 400 14px var(--sans); color: var(--muted); cursor: default; }
+  .opt:not(.on) .row { opacity: .45; pointer-events: none; }
+  .cap-line { margin-top: 20px; padding-top: 18px; border-top: var(--hairline); display: flex; align-items: baseline; justify-content: space-between; gap: 16px; font: 400 15px var(--sans); color: var(--muted); }
+  .cap-line b { font: 400 24px var(--serif); color: var(--foreground); letter-spacing: -0.01em; }
+
+  /* 04 the usage panel */
+  .panel { border: var(--hairline); border-radius: 12px; overflow: hidden; background: var(--surface-elevated); }
+  .ph { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: var(--hairline); }
+  .ph strong { font: 500 15px var(--sans); }
+  .tag { font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: var(--hairline); border-radius: 999px; padding: 3px 9px; }
+  .bal { padding: 18px 20px 20px; border-bottom: var(--hairline); }
+  .bal .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; font: 400 13px var(--sans); color: var(--muted); }
+  .bal .top b { display: block; margin-top: 4px; font: 500 21px var(--sans); color: var(--foreground); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .bal .top .rt { text-align: right; }
+  .bar { height: 8px; border-radius: 4px; background: var(--surface-muted); border: var(--hairline); margin-top: 16px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--foreground); transition: width .35s var(--ease-out), background .25s; }
+  .bar.low i { background: var(--warn); }
+  .status { margin-top: 14px; display: flex; align-items: center; gap: 8px; font: 400 13.5px var(--sans); color: var(--muted); min-height: 20px; }
+  .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+  .status.warn i { background: var(--warn); } .status.stop i { background: #dc2626; }
+  .lines { padding: 6px 0; }
+  .ln { display: grid; grid-template-columns: 1fr auto auto; column-gap: 24px; align-items: baseline; padding: 11px 20px; font: 400 15px var(--sans); }
+  .ln:nth-child(odd) { background: var(--surface-muted); }
+  .ln small { font: 400 12.5px var(--sans); color: var(--muted); margin-left: 9px; font-variant-numeric: tabular-nums; }
+  .ln .v { font-variant-numeric: tabular-nums; min-width: 4.5ch; text-align: right; }
+  .sim { padding: 18px 20px 20px; border-top: var(--hairline); }
+  .sim .t { display: flex; justify-content: space-between; align-items: baseline; font: 400 13.5px var(--sans); color: var(--muted); }
+  .sim .t b { font: 500 14px var(--sans); color: var(--foreground); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: none; margin-top: 8px; }
+  input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--border); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--foreground); margin-top: -7px; border: 3px solid var(--background); box-sizing: content-box; }
+  input[type=range]::-moz-range-track { height: 2px; background: var(--border); }
+  input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--foreground); border: 3px solid var(--background); }
+  .fine { margin-top: 14px; font: 400 13px/1.5 var(--sans); color: var(--muted-light); }
+
+  /* 05 trust */
+  .trust { display: grid; grid-template-columns: 1fr 1fr; gap: 32px 40px; }
+  .trust h3 { font: 500 15.5px var(--sans); display: flex; gap: 9px; align-items: center; }
+  .trust h3 svg { color: var(--ok); }
+  .trust p { font: 400 14.5px/1.55 var(--sans); color: var(--muted); margin-top: 6px; padding-left: 25px; }
+
+  details { border-bottom: var(--hairline); }
+  details:first-child { border-top: var(--hairline); }
+  summary { list-style: none; cursor: pointer; padding: 18px 0; display: flex; justify-content: space-between; gap: 20px; font: 500 15.5px var(--sans); }
+  summary::-webkit-details-marker { display: none; }
+  summary svg { transition: transform .25s var(--ease-out); color: var(--muted); }
+  details[open] summary svg { transform: rotate(45deg); }
+  details p { font: 400 14.5px/1.6 var(--sans); color: var(--muted); padding: 0 40px 20px 0; max-width: 40em; }
+
+  .end { border-top: var(--hairline); padding: 80px 0 96px; text-align: center; }
+  .end h2 { font: 400 clamp(26px, 3.2vw, 36px)/1.25 var(--serif); letter-spacing: -0.015em; }
+  .end .go { display: flex; gap: 12px; justify-content: center; margin-top: 28px; }
+  footer { border-top: var(--hairline); padding: 28px 24px; display: flex; justify-content: space-between; font: 400 13px var(--sans); color: var(--muted); max-width: none; }
+
+  @media (max-width: 820px) {
+    .links { display: none; }
+    section { grid-template-columns: 1fr; row-gap: 26px; }
+    .kinds, .trust { grid-template-columns: 1fr; }
+    .kind + .kind { border-left: 0; border-top: var(--hairline); }
+    .eq { flex-direction: column; align-items: stretch; } .eq .arrow { transform: rotate(90deg); align-self: center; }
+    .hero { padding: 56px 0 48px; }
+  }
+</style>
+</head>
+<body>
+<header class="nav">
+  <a class="lockup" href="#"><span class="orb"></span>overlay</a>
+  <nav class="links"><a href="#">Product</a><a href="#">Docs</a><a class="on" href="#">Pricing</a><a href="#">Blog</a></nav>
+  <div class="nr">
+    <button class="icon" id="theme" aria-label="Toggle theme"><svg class="i" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+    <a class="pill" href="#">Get Started</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>Pay for what your workspace <mark>actually uses</mark>.</h1>
+    <p>Every workspace is free or paid. Paid starts at $8, which becomes $8 of credit. What you use comes out of it, one line per resource.</p>
+    <div class="go"><a class="btn" href="#">Start free</a><a class="btn ghost" href="#bill">See an example bill</a></div>
+  </div>
+
+  <section>
+    <div class="lab"><h2>Two kinds of workspace</h2><p>A workspace is free or paid. Your account is neither; it just belongs to workspaces.</p></div>
+    <div>
+      <div class="kinds">
+        <div class="kind">
+          <h3>Free</h3>
+          <div class="price"><b>$0</b>no card needed</div>
+          <ul>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Auto model</li>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Notes, chats, files and knowledge</li>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>10 MB of storage</li>
+          </ul>
+        </div>
+        <div class="kind">
+          <h3>Paid</h3>
+          <div class="price"><b>From $8</b>then pay as you go</div>
+          <ul>
+            <li class="plus"><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Everything in Free</li>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Premium models</li>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Overlay Cloud computers</li>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Web search and browser tasks</li>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Image and video generation</li>
+            <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>More storage</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note"><b>Free workspaces never need a card.</b> Each person can be part of up to three free workspaces at a time. A paid resource in a free workspace asks you to add a plan first.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="lab"><h2>Start with credit</h2><p>Deposit $8 or any amount you like. It becomes the same amount of credit.</p></div>
+    <div>
+      <div class="chips" id="dep">
+        <button class="chip" data-v="8">$8</button><button class="chip" data-v="20">$20</button><button class="chip" data-v="50">$50</button><button class="chip" data-v="100">$100</button>
+        <label class="money" id="depC">$<input id="depIn" inputmode="numeric" value="20" aria-label="Custom deposit" /></label>
+      </div>
+      <div class="eq">
+        <div class="box"><small>You pay once</small><b id="eqPay">$20</b></div>
+        <svg class="i arrow" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <div class="box"><small>Your workspace gets</small><b id="eqGet">$20 of credit</b></div>
+      </div>
+      <p class="note">Usage draws from this credit first. Anything past it is <b>on-demand</b>, and only if you allow it below.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="lab"><h2>When credit runs out</h2><p>Your call. Hard stop, or keep going with automatic top-ups.</p></div>
+    <div>
+      <div class="opts" id="opts">
+        <div class="opt on" data-m="stop" role="radio" aria-checked="true" tabindex="0"><span class="r"></span><div><h3>Hard stop</h3><p>Paid resources pause at $0. Free ones keep working. Nothing else is charged.</p></div></div>
+        <div class="opt" data-m="go" role="radio" aria-checked="false" tabindex="0"><span class="r"></span><div><h3>Keep going</h3><p>Add credit automatically when it hits $0, up to a limit you set.</p>
+          <div class="row">Add <label class="money sm">$<input id="topIn" inputmode="numeric" value="8" aria-label="Top-up amount" /></label> each time, up to <label class="money sm">$<input id="limIn" inputmode="numeric" value="40" aria-label="Monthly limit" /></label> a month</div></div></div>
+      </div>
+      <div class="cap-line"><span id="capText">The most this workspace can ever be charged this month</span><b id="capNum">$20</b></div>
+    </div>
+  </section>
+
+  <section id="bill">
+    <div class="lab"><h2>See where every cent goes</h2><p>Each resource is added up on its own line. Move the slider to see the settings above in action.</p></div>
+    <div>
+      <div class="panel">
+        <div class="ph"><strong>Usage</strong><span class="tag">Example workspace</span></div>
+        <div class="bal">
+          <div class="top">
+            <div>Credit<b id="credit">$0.00 / $20.00</b></div>
+            <div class="rt">On-demand charges<b id="od">$0.00</b></div>
+          </div>
+          <div class="bar" id="bar"><i id="barI"></i></div>
+          <div class="status" id="status"><i></i><span></span></div>
+        </div>
+        <div class="lines" id="lines"></div>
+        <div class="sim">
+          <div class="t"><span>Simulate a month of use</span><b id="simV">$9.00</b></div>
+          <input type="range" id="sim" min="0" max="60" step="0.5" value="9" aria-label="Simulated usage" />
+        </div>
+      </div>
+      <p class="fine">Illustrative numbers. Every line shows its quantity.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="lab"><h2>No surprises</h2></div>
+    <div class="trust">
+      <div><h3><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Credit is spent first</h3><p>Nothing is charged to your card for usage while credit remains.</p></div>
+      <div><h3><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>On-demand is off until you turn it on</h3><p>Out of the box, paid resources stop at $0.</p></div>
+      <div><h3><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Every line is itemized</h3><p>Each resource is totaled separately, to the cent, with its quantity.</p></div>
+      <div><h3><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Your limit is the limit</h3><p>The monthly limit you set is the most a workspace can be charged.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lab"><h2>Questions</h2></div>
+    <div>
+      <details><summary>Is free or paid a setting on my account?<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></summary><p>No. Each workspace is free or paid on its own. You can have a free workspace and a paid one under the same account.</p></details>
+      <details><summary>What counts as a paid resource?<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></summary><p>Premium models, Overlay Cloud computers, web search, browser tasks, image and video generation, and storage beyond the free 10 MB.</p></details>
+      <details><summary>How many free workspaces can I be part of?<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></summary><p>Up to three at a time. That keeps free workspaces fair for everyone. Add a plan to any workspace whenever you want more.</p></details>
+      <details><summary>How is usage billed?<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></summary><p>Each resource is metered on its own and added up as you go. The usage view lists the quantity and the cost for every one.</p></details>
+      <details><summary>Can I change my deposit or limit later?<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></summary><p>Yes. Add credit, switch between hard stop and automatic top-ups, or change the limit at any time in your workspace’s billing settings.</p></details>
+    </div>
+  </section>
+
+  <div class="end">
+    <h2>Free or paid, one workspace at a time.</h2>
+    <div class="go"><a class="btn" href="#">Start free</a><a class="btn ghost" href="#">Talk to us</a></div>
+  </div>
+</main>
+<footer><span>© 2026 Overlay</span><span>(the real site footer stays as it is)</span></footer>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s)
+  const clamp = (n, a, b) => Math.min(b, Math.max(a, n))
+  const num = (el, min, max, fallback) => { const v = parseInt(el.value, 10); return Number.isFinite(v) ? clamp(v, min, max) : fallback }
+  const usd = (n, d = 0) => '$' + (d ? n.toFixed(2) : Number.isInteger(n) ? String(n) : n.toFixed(2))
+  const st = { dep: 20, mode: 'stop', top: 8, lim: 40, use: 9 }
+
+  /* example bill: shares of one month of use, each with a quantity that scales with it */
+  const LINES = [
+    { n: 'Models', share: 1.84, unit: (f) => `${Math.max(1, Math.round(41 * f))} messages` },
+    { n: 'Overlay Cloud computers', share: 1.20, unit: (f) => { const m = Math.round(126 * f); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` } },
+    { n: 'Web search', share: 0.43, unit: (f) => `${Math.round(214 * f)} searches` },
+    { n: 'Browser tasks', share: 0.09, unit: (f) => `${Math.round(9 * f)} tasks` },
+    { n: 'Image generation', share: 0.04, unit: (f) => `${Math.round(6 * f)} images` },
+    { n: 'Storage', share: 0.02, unit: (f) => `${Math.round(212 * Math.min(f, 4))} MB` },
+  ]
+  const BASE = LINES.reduce((s, l) => s + l.share, 0)
+
+  function render() {
+    const C = st.dep, T = Math.max(st.top, 8), maxTops = Math.floor(st.lim / T)
+    $('#eqPay').textContent = usd(C); $('#eqGet').textContent = usd(C) + ' of credit'
+    $('#capNum').textContent = usd(st.mode === 'stop' ? C : C + maxTops * T)
+    $('#capText').textContent = st.mode === 'stop' ? 'The most this workspace can ever be charged' : 'The most this workspace can be charged in a month'
+    $('#simV').textContent = usd(st.use, 2)
+    $('#sim').max = String(Math.max(20, C * 3))
+
+    // what the settings do with this much use
+    const U = st.use
+    let tops = 0, paused = false
+    if (U > C) {
+      if (st.mode === 'stop') paused = true
+      else { tops = Math.min(Math.ceil((U - C) / T), maxTops); paused = U > C + tops * T }
+    }
+    const covered = st.mode === 'stop' ? Math.min(U, C) : Math.min(U, C + tops * T)
+    const creditUsed = Math.min(covered, C), charged = tops * T
+    $('#credit').textContent = `${usd(creditUsed, 2)} / ${usd(C, 2)}`
+    $('#od').textContent = usd(charged, 2)
+    const pct = C ? creditUsed / C : 0
+    $('#barI').style.width = (pct * 100).toFixed(1) + '%'
+    $('#bar').classList.toggle('low', pct > .85 && pct < 1)
+    const s = $('#status'); let msg = '', cls = ''
+    if (U <= C) msg = pct === 0 ? 'Nothing used yet' : `Within credit. ${usd(C - creditUsed, 2)} left`
+    else if (st.mode === 'stop') { msg = 'Credit used up. Paid resources are paused. Nothing is charged.'; cls = 'stop' }
+    else if (!paused) { msg = `Credit used up. ${tops} automatic top-up${tops > 1 ? 's' : ''} of ${usd(T)} added`; cls = 'warn' }
+    else { msg = `Monthly limit of ${usd(st.lim)} reached. Paid resources are paused.`; cls = 'stop' }
+    s.className = 'status ' + cls; s.querySelector('span').textContent = msg
+
+    // itemized lines (always sum to what was actually used)
+    const f = covered / BASE
+    let left = Math.round(covered * 100), cents = LINES.map((l) => Math.round(l.share * f * 100))
+    cents[0] += left - cents.reduce((a, b) => a + b, 0)
+    $('#lines').innerHTML = LINES.map((l, i) => `<div class="ln"><span>${l.n}<small>${l.unit(f)}</small></span><span></span><span class="v">${usd(cents[i] / 100, 2)}</span></div>`).join('')
+  }
+
+  const chips = document.querySelectorAll('#dep .chip')
+  function setDep(v, fromInput) {
+    st.dep = clamp(v, 8, 10000)
+    chips.forEach((c) => c.classList.toggle('on', +c.dataset.v === st.dep))
+    $('#depC').classList.toggle('on', ![8, 20, 50, 100].includes(st.dep))
+    if (!fromInput) $('#depIn').value = st.dep
+    st.use = Math.min(st.use, Math.max(20, st.dep * 3))
+    $('#sim').value = st.use
+    render()
+  }
+  chips.forEach((c) => c.addEventListener('click', () => setDep(+c.dataset.v)))
+  $('#depIn').addEventListener('input', (e) => { const v = parseInt(e.target.value, 10); if (Number.isFinite(v)) setDep(Math.max(v, 8), true) })
+  $('#depIn').addEventListener('blur', (e) => { e.target.value = st.dep })
+  document.querySelectorAll('.opt').forEach((o) => {
+    const pick = () => { st.mode = o.dataset.m; document.querySelectorAll('.opt').forEach((x) => { const on = x === o; x.classList.toggle('on', on); x.setAttribute('aria-checked', on) }); render() }
+    o.addEventListener('click', pick)
+    o.addEventListener('keydown', (e) => { if (e.target === o && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pick() } })
+  })
+  $('#topIn').addEventListener('input', (e) => { st.top = num(e.target, 1, 10000, 8); render() })
+  $('#topIn').addEventListener('blur', (e) => { st.top = Math.max(8, st.top); e.target.value = st.top; render() })
+  $('#limIn').addEventListener('input', (e) => { st.lim = num(e.target, 0, 100000, 40); render() })
+  $('#sim').addEventListener('input', (e) => { st.use = +e.target.value; render() })
+  $('#theme').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('overlay-mockup-theme', next) } catch (e) {}
+  })
+  setDep(20)
+})()
+</script>
+</body>
+</html>

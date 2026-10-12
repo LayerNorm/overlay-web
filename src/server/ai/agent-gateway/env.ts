@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { getBaseUrl } from '@/server/web/app-url'
+import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { mintAgentGatewayToken, AGENT_GATEWAY_TOKEN_TTL_MS } from './token'
 
 /**
@@ -26,7 +26,7 @@ export function agentGatewayExecEnv(args: {
     ttlMs: args.ttlMs,
   })
   if (!token) return {}
-  const base = getBaseUrl().replace(/\/+$/, '')
+  const base = getAgentFacingBaseUrl().replace(/\/+$/, '')
   return {
     ANTHROPIC_BASE_URL: `${base}/api/agent-gateway/anthropic`,
     // Both spellings: the Anthropic SDK reads ANTHROPIC_API_KEY (x-api-key),

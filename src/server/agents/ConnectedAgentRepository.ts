@@ -219,6 +219,8 @@ export interface ConnectedAgentRepository {
     nonceHash: string
     expiresAt: number
     now: number
+    /** Accept a credential that expired up to this long ago (a cloud host refreshing itself). */
+    expiredGraceMs?: number
   }): Promise<boolean>
   rotateEnvironmentCredential(args: {
     currentCredentialId: string
@@ -276,9 +278,21 @@ export interface ConnectedAgentRepository {
     environmentId: string
     commandId: string
     accepted?: boolean
+    /** Why the host rejected the command, when it said. */
+    errorCode?: string
+    errorMessage?: string
     now: number
   }): Promise<boolean>
   createApprovalRequest(input: ConnectedAgentCreateApprovalRequest): Promise<AgentApprovalRequest>
+  /** An Overlay tool the agent called over MCP needs the person's approval; reports where that request stands. */
+  requestMcpApproval(args: {
+    workspaceId: string
+    environmentId: string
+    runId: string
+    requestKey: string
+    prompt: string
+    now: number
+  }): Promise<{ state: 'pending' | 'resolved' | 'unavailable'; decision?: string }>
   resolveApprovalRequest(args: {
     workspaceId: string
     approvalId: string
@@ -320,6 +334,8 @@ export interface ConnectedAgentRepository {
     now: number
     hostOfflineBefore: number
     limit: number
+    /** Fail this cloud environment's active runs now (its machine is being paused or restarted). */
+    abandonEnvironmentId?: string
   }): Promise<ConnectedAgentSweepResult>
   listPendingSandboxSettlements(args: { limit: number }): Promise<RemoteAgentUsageSettlement[]>
   markSandboxSettlementComplete(args: {
@@ -341,7 +357,11 @@ export interface ConnectedAgentRepository {
     leaseId: string
     patch: Record<string, unknown>
     now: number
+    /** Starts the idle timer: the lease is checked for idleness this long from now (replacing any earlier timer). */
+    idleCheckInMs?: number
   }): Promise<AgentSandboxLease | null>
+  /** Whether a run on the environment has not finished (its machine must stay up). */
+  environmentHasActiveRuns(args: { environmentId: string }): Promise<boolean>
   meterSandboxLease(args: {
     workspaceId: string
     leaseId: string

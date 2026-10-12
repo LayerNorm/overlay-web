@@ -10,6 +10,10 @@ import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
 import { ChatAuxClient } from './chat/chat-aux-client'
 import { ComputersClient } from './computers/client'
+import { ProviderAccountsClient } from './provider-accounts/client'
+import { AgentProfilesClient } from './agent-profiles/client'
+import { CloudAgentsClient } from './cloud-agents/client'
+import { McpAccessClient } from './mcp-access/client'
 import { ConversationsClient } from './chat/conversations-client'
 import { DiscoveryClient } from './discovery/client'
 import { FilesClient } from './files/client'
@@ -19,6 +23,7 @@ import { MemoryClient } from './memory/client'
 import { NotesClient } from './notes/client'
 import { OnboardingClient } from './onboarding/client'
 import { OutputsClient } from './outputs/client'
+import { ScopeClient } from './scope/client'
 import { SettingsClient } from './settings/client'
 import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
@@ -43,6 +48,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     notes: new NotesClient(http),
     integrations: new IntegrationsClient(http),
     skills: new SkillsClient(http),
+    scope: new ScopeClient(http),
     mcpServers: new McpServersClient(http),
     automations: new AutomationsClient(http),
     settings: new SettingsClient(http),
@@ -60,6 +66,10 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     agents: new AgentsClient(http),
     agentEnvironments: new AgentEnvironmentsClient(http),
     computers: new ComputersClient(http),
+    providerAccounts: new ProviderAccountsClient(http),
+    cloudAgents: new CloudAgentsClient(http),
+    agentProfiles: new AgentProfilesClient(http),
+    mcpAccess: new McpAccessClient(http),
     surfaces: new SurfacesClient(http),
   }
 }

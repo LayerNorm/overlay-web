@@ -20,7 +20,7 @@
 - For verification, run the smallest check that covers the change. In this repo, targeted ESLint on changed files is acceptable when full `npm run lint` is blocked by unrelated generated or mobile issues.
 - Model dropdowns: order by intelligence/quality (`CHAT_MODEL_QUALITY_PRIORITY`), not provider grouping or alphabetical order; keep free-tier "Auto" at the top. Capability badges are small chips (`inline-flex w-4 h-4 rounded bg-[#f0f0f0]`) with thin Lucide icons (`ScanEye` vision, `Sparkles` reasoning)—only when the model supports the capability. Reveal secondary info (e.g. cost) on row hover via `group/row` + `group-hover/row:hidden` / `hidden group-hover/row:flex`.
 - Streaming text must render in complete, markdown-formatted chunks without per-character diffs that cause visible flickering. Agent loading should use bottom-placed dots, not parallel "Thinking..." text. Tool-call/action UIs should be minimal, collapsed, and sequential by default.
-- For quick UI prototypes, visual mockups, or throwaway demos, create a standalone HTML file in `artifacts/` (gitignored, repo root) and preview it in the browser—don't scaffold app code or routes until the design is approved.
+- For quick UI prototypes, visual mockups, or throwaway demos, create a standalone HTML file and preview it in the browser—don't scaffold app code or routes until the design is approved. Before creating the file, ask the user where to place it. The default is `docs/plans/mockups/` (tracked in git, so the mockup can be committed); the alternative is `artifacts/` at the repo root (gitignored, for scratch work that should not be committed). Don't force-add files from `artifacts/`.
 
 ## Learned Workspace Facts
 
@@ -81,6 +81,14 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/traversing-agent-conversations.md` | Any change to how Devin CLI, Codex, or Grok Build sessions are stored/queried, or new query patterns for extracting conversation data from `sessions.db`, Codex JSONL, or Grok `chat_history.jsonl` files. |
 | `docs/develop/bring-your-own-agents.md` | Any change to connected-agent contracts, host protocol, enrollment, remote execution, managed environments, or rollout policy. |
 | `docs/develop/bring-your-own-agents-architecture.md` | Any change to the connected-agent topology, protocol layering, enrollment flow, Agent Host loop, ACP adapters, memory flow, or public package boundaries. |
+| `docs/develop/billing-holds-and-machine-metering.md` | Any change to budget reservations and holds, the stale-hold sweep, machine metering or its credit floor, `OVERLAY_AGENT_PUBLIC_URL`, or the production environment for Overlay Cloud agents. |
+| `docs/develop/tool-catalog.md` | Any change to Overlay's tool ids, tool groups, who gets which tools (chat, native agents, connected agents, outside apps), or the outside-app access levels. |
+| `docs/develop/mcp-servers-overview.md` | Any change to what Overlay's MCP servers are for, how they sign in, or how they differ. |
+| `docs/develop/agent-to-agent.md` | Any change to agents asking agents: the `agent_chat` tools, `/api/v1/agent-asks`, lineage and limits, the budget counters, or how an asked agent's turn is started. |
+| `docs/develop/agent-profiles.md` | Any change to importing Claude Code / Codex config into Overlay Cloud agents: the allowlist and cleaning rules, the export-config host command, upload/apply flow, versions, or needed-value (secret) handling. |
+| `docs/develop/agent-machine-idle.md` | Any change to when an agent machine goes idle: the idle window, the Convex idle timer and token, the `idleCheck` BFF path, the meter sweep fallback, or the "a run is going" check. |
+| `docs/develop/codex-subscription.md` | Any change to Codex ChatGPT sign-in, the token broker and refresh lock, per-run `auth.json` delivery, experimental OpenCode/Hermes/Cursor agents, or the E2B sandbox adapter. |
+| `docs/develop/mcp-access.md` | Any change to Overlay's MCP server for other AI apps: OAuth endpoints, grants, access levels, token formats, consent page, or Settings → Connected apps. |
 | `docs/develop/convex-only-self-hosting.md` | Any change to the Convex-only backend decision, the Postgres-layer deletion plan, self-hosted Convex topology/scaling, the data-mirror/Data Sync integration path, or the big-brain control-plane plan. |
 
 **Rules:**

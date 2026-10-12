@@ -4,79 +4,31 @@ import { AdministrativeAuthorizationError } from '@/server/admin'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getClientIp } from '@/server/security/rate-limit'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { handleBffRoute, type BffDomainService } from '../../_utils/bff'
 
+// The people in this deployment (id and email), for the admin console's directory. Personal budgets are gone: plans
+// and credit belong to workspaces.
 const listUsage: BffDomainService = async (request, context) => {
   const server = getOverlayServerContext()
   try {
     if (!await server.administrativeService.canManageBilling(context.auth.userId)) {
       throw new AdministrativeAuthorizationError()
     }
-    return NextResponse.json({
-      usage: await server.appData.repositories.billing.listAdministrativeUsage({
-        limit: optionalNumber(context.parsedQuery.limit),
-        userId: optionalString(context.parsedQuery.userId),
-      }),
-    })
+    const { convex } = await import('@/server/database/convex')
+    const usage = await convex.query<Array<{ userId: string; email?: string }>>('auth/users:listUserDirectoryByServer', {
+      serverSecret: getInternalApiSecret(),
+      limit: optionalNumber(context.parsedQuery.limit),
+      userId: optionalString(context.parsedQuery.userId),
+    }, { throwOnError: true })
+    return NextResponse.json({ usage: usage ?? [] })
   } catch (error) {
     return await authorizationResponse(error, request, context, 'administration.usage.list')
   }
 }
 
-const adjustBudget: BffDomainService = async (request, context) => {
-  const server = getOverlayServerContext()
-  try {
-    if (!await server.administrativeService.canManageBilling(context.auth.userId)) {
-      throw new AdministrativeAuthorizationError()
-    }
-    const amountCents = requiredNumber(context, 'amountCents')
-    const userId = requiredString(context, 'userId')
-    const reason = optionalString(context.parsedJson.reason)
-    if (!reason) {
-      throw new Error('reason is required for budget adjustments')
-    }
-    // Cap adjustment magnitude to prevent catastrophic admin errors.
-    const MAX_ADJUSTMENT_CENTS = 1_000_000 // $10,000
-    if (Math.abs(amountCents) > MAX_ADJUSTMENT_CENTS) {
-      throw new Error(`amountCents must not exceed ±${MAX_ADJUSTMENT_CENTS} ($${MAX_ADJUSTMENT_CENTS / 100})`)
-    }
-    const usage = await server.appData.repositories.billing.adjustAdministrativeBudget({ amountCents, userId })
-    await server.auditService.record({
-      action: 'administration.budget.adjust',
-      actorApiKeyId: context.auth.apiKeyId,
-      actorType: context.auth.authType === 'api-key' ? 'api_key' : 'user',
-      actorUserId: context.auth.userId,
-      ipAddress: getClientIp(request),
-      metadata: { amountCents, reason },
-      outcome: 'success',
-      requestId: request.headers.get('x-request-id') ?? undefined,
-      resourceId: userId,
-      resourceType: 'usage_budget',
-    })
-    return NextResponse.json({ usage })
-  } catch (error) {
-    return await authorizationResponse(error, request, context, 'administration.budget.adjust')
-  }
-}
-
 export async function GET(request: NextRequest) {
   return handleBffRoute(request, {}, listUsage)
-}
-
-export async function POST(request: NextRequest) {
-  return handleBffRoute(request, {}, adjustBudget)
-}
-
-function requiredString(context: AppApiRouteContext, field: string): string {
-  const value = context.parsedJson[field]
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`${field} is required`)
-  return value.trim()
-}
-
-function requiredNumber(context: AppApiRouteContext, field: string): number {
-  const value = Number(context.parsedJson[field])
-  if (!Number.isFinite(value) || value === 0) throw new Error(`${field} must be a non-zero number`)
-  return value
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -108,9 +60,6 @@ async function authorizationResponse(
       resourceType: 'usage_budget',
     })
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-  if (error instanceof Error && /required|non-zero|not found|must not exceed/.test(error.message)) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
   }
   throw error
 }

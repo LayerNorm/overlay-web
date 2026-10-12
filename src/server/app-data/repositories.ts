@@ -6,7 +6,7 @@ import type { AutomationRepository } from '@/server/automations/AutomationReposi
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import { ConvexBillingProviderEventRepository } from '@/server/billing/ConvexBillingProviderEventRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
-import type { BillingProviderEventRepository, BillingWebhookRepository } from '@/server/billing/BillingProviderEventRepository'
+import type { BillingProviderEventRepository } from '@/server/billing/BillingProviderEventRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
@@ -72,6 +72,14 @@ import {
   type WorkspaceConnectorRepository,
 } from '@/server/integrations'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
+import type { AgentProfileRepository } from '@/server/agents/profiles/AgentProfileRepository'
+import { ConvexAgentProfileRepository } from '@/server/agents/profiles/ConvexAgentProfileRepository'
+import type { McpGrantRepository } from '@/server/mcp/McpGrantRepository'
+import { ConvexMcpGrantRepository } from '@/server/mcp/ConvexMcpGrantRepository'
+import type { CloudAgentProvisionRepository } from '@/server/agents/cloud/CloudAgentProvisionRepository'
+import { ConvexCloudAgentProvisionRepository } from '@/server/agents/cloud/ConvexCloudAgentProvisionRepository'
+import type { AgentProviderAccountRepository } from '@/server/agents/provider-accounts/AgentProviderAccountRepository'
+import { ConvexAgentProviderAccountRepository } from '@/server/agents/provider-accounts/ConvexAgentProviderAccountRepository'
 import { ConvexConnectedAgentRepository } from '@/server/agents/ConvexConnectedAgentRepository'
 import {
   ConvexProviderConnectionRepository,
@@ -83,6 +91,10 @@ import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
 import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceRepository'
 
 export interface AppDataRepositories {
+  agentProviderAccounts: AgentProviderAccountRepository
+  cloudAgentProvisions: CloudAgentProvisionRepository
+  mcpGrants: McpGrantRepository
+  agentProfiles: AgentProfileRepository
   accountDeletion: AccountDataDeletionRepository
   administration: AdministrativeRepository
   apiKeys: ApiKeyRepository
@@ -91,7 +103,6 @@ export interface AppDataRepositories {
   automations: AutomationRepository
   billing: BillingRepository
   billingEvents: BillingProviderEventRepository
-  billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
   computers: ComputerRepository
   conversationCollaboration: ConversationCollaborationRepository
@@ -129,6 +140,10 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
     capabilities,
     repositories: {
       accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
+      agentProviderAccounts: new ConvexAgentProviderAccountRepository(),
+      cloudAgentProvisions: new ConvexCloudAgentProvisionRepository(),
+      mcpGrants: new ConvexMcpGrantRepository(),
+      agentProfiles: new ConvexAgentProfileRepository(),
       administration: new ConvexAdministrativeRepository(),
       apiKeys: new ConvexApiKeyRepository(),
       audit: new ConvexAuditRepository(),
@@ -136,7 +151,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       billingEvents: new ConvexBillingProviderEventRepository(),
-      billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
       computers: new ConvexComputerRepository(),
       conversationCollaboration: new ConvexConversationCollaborationRepository(),

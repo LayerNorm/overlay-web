@@ -5,7 +5,6 @@ import { registerRoutes } from '@convex-dev/stripe'
 import type Stripe from 'stripe'
 import {
   extractPlanFromSubscription,
-  extractCustomerInfo,
   getSubscriptionPeriodMs,
   mapSubscriptionStatus,
 } from '../billing/lib/stripeOverlaySubscription'
@@ -22,6 +21,20 @@ function readNumberMetadata(value: string | undefined): number | undefined {
   if (!value) return undefined
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+// Subscriptions started before plans moved to workspaces carry the person in their metadata, not a billing account.
+// Their events route to the workspace billing account that holds the subscription.
+async function convertedAccountId(
+  ctx: Pick<GenericActionCtx<DataModel>, 'runQuery'>,
+  reference: { customer?: unknown; subscription?: unknown },
+): Promise<string | undefined> {
+  const idOf = (value: unknown): string | undefined =>
+    typeof value === 'string' ? value : value && typeof value === 'object' && 'id' in value && typeof value.id === 'string' ? value.id : undefined
+  const stripeCustomerId = idOf(reference.customer)
+  const stripeSubscriptionId = idOf(reference.subscription)
+  if (!stripeCustomerId && !stripeSubscriptionId) return undefined
+  return (await ctx.runQuery(internal.billing.accountSubscriptions.workspaceAccountByProviderReferenceInternal, { stripeCustomerId, stripeSubscriptionId })) ?? undefined
 }
 
 // Returns true if this is a new event and handlers should run, false if the
@@ -44,198 +57,112 @@ async function recordAndCheckEvent(
   return true
 }
 
+// Plans belong to workspaces: a subscription is synced to the workspace billing account it belongs to (from its
+// metadata, or by subscription/customer id for subscriptions started before plans moved). Anything else is ignored.
+async function syncWorkspaceSubscription(
+  ctx: Pick<GenericActionCtx<DataModel>, 'runQuery' | 'runMutation'>,
+  event: Stripe.CustomerSubscriptionCreatedEvent | Stripe.CustomerSubscriptionUpdatedEvent | Stripe.CustomerSubscriptionDeletedEvent,
+) {
+  const subscription = event.data.object
+  const billingAccountId = subscription.metadata?.billingAccountId
+    ?? await convertedAccountId(ctx, { customer: subscription.customer, subscription: subscription.id })
+  if (!billingAccountId) {
+    console.warn(`[Stripe Webhook] ${event.type} ${subscription.id} is not a workspace subscription; ignored`)
+    return
+  }
+  const deleted = event.type === 'customer.subscription.deleted'
+  const plan = extractPlanFromSubscription(subscription)
+  const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
+  await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
+    billingAccountId,
+    stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+    stripeSubscriptionId: subscription.id,
+    stripePriceId: plan.stripePriceId,
+    stripeQuantity: plan.stripeQuantity,
+    ...(deleted
+      ? { planKind: 'free' as const, planAmountCents: 0, status: 'canceled' as const }
+      : {
+          planKind: plan.planKind,
+          planAmountCents: plan.planAmountCents,
+          autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
+          autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
+          offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
+          status: mapSubscriptionStatus(subscription.status),
+        }),
+    currentPeriodStart,
+    currentPeriodEnd,
+    providerEventCreatedAt: event.created * 1000,
+  })
+}
+
 // Register Stripe webhook handler using @convex-dev/stripe component
 registerRoutes(http, components.stripe, {
   webhookPath: '/stripe/webhook',
   events: {
-    // Sync subscription changes to our custom subscriptions table
     'customer.subscription.created': async (ctx, event: Stripe.CustomerSubscriptionCreatedEvent) => {
       if (!(await recordAndCheckEvent(ctx, event))) return
-      const subscription = event.data.object
-
-      const userId = subscription.metadata?.userId
-      const billingAccountId = subscription.metadata?.billingAccountId
-
-      if (billingAccountId) {
-        const plan = extractPlanFromSubscription(subscription)
-        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
-        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
-          billingAccountId,
-          stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
-          stripeSubscriptionId: subscription.id,
-          stripePriceId: plan.stripePriceId,
-          stripeQuantity: plan.stripeQuantity,
-          planKind: plan.planKind,
-          planAmountCents: plan.planAmountCents,
-          autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
-          autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
-          offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
-          status: mapSubscriptionStatus(subscription.status),
-          currentPeriodStart,
-          currentPeriodEnd,
-          providerEventCreatedAt: event.created * 1000,
-        })
-        return
-      }
-
-      if (!userId) {
-        console.error('[Stripe Webhook] Missing userId in subscription metadata')
-        return
-      }
-
-      const plan = extractPlanFromSubscription(subscription)
-
-      const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
-      const email = subscription.metadata?.email || customerInfo.email
-      const name = customerInfo.name
-
-      const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
-
-      await ctx.runMutation(internal.billing.subscriptions.upsertFromStripeInternal, {
-        userId,
-        email,
-        name,
-        stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
-        stripeSubscriptionId: subscription.id,
-        stripePriceId: plan.stripePriceId,
-        stripeQuantity: plan.stripeQuantity,
-        tier: plan.tier,
-        planKind: plan.planKind,
-        planVersion: plan.planVersion,
-        planAmountCents: plan.planAmountCents,
-        autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
-        autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
-        offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
-        status: mapSubscriptionStatus(subscription.status),
-        currentPeriodStart,
-        currentPeriodEnd
-      })
-
-      console.log(`[Stripe Webhook] Created subscription for user ${userId}: tier=${plan.tier}, planKind=${plan.planKind}, planAmountCents=${plan.planAmountCents}, priceId=${plan.stripePriceId}, email=${email}`)
+      await syncWorkspaceSubscription(ctx, event)
     },
 
     'customer.subscription.updated': async (ctx, event: Stripe.CustomerSubscriptionUpdatedEvent) => {
       if (!(await recordAndCheckEvent(ctx, event))) return
-      const subscription = event.data.object
-      const userId = subscription.metadata?.userId
-      const billingAccountId = subscription.metadata?.billingAccountId
-
-      if (billingAccountId) {
-        const plan = extractPlanFromSubscription(subscription)
-        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
-        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
-          billingAccountId,
-          stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
-          stripeSubscriptionId: subscription.id,
-          stripePriceId: plan.stripePriceId,
-          stripeQuantity: plan.stripeQuantity,
-          planKind: plan.planKind,
-          planAmountCents: plan.planAmountCents,
-          autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
-          autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
-          offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
-          status: mapSubscriptionStatus(subscription.status),
-          currentPeriodStart,
-          currentPeriodEnd,
-          providerEventCreatedAt: event.created * 1000,
-        })
-        return
-      }
-
-      if (!userId) {
-        console.error('[Stripe Webhook] Missing userId in subscription metadata')
-        return
-      }
-
-      const plan = extractPlanFromSubscription(subscription)
-
-      const customerInfo = extractCustomerInfo(subscription.customer as Stripe.Customer | string)
-      const email = subscription.metadata?.email || customerInfo.email
-      const name = customerInfo.name
-
-      const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
-
-      await ctx.runMutation(internal.billing.subscriptions.upsertFromStripeInternal, {
-        userId,
-        email,
-        name,
-        stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
-        stripeSubscriptionId: subscription.id,
-        stripePriceId: plan.stripePriceId,
-        stripeQuantity: plan.stripeQuantity,
-        tier: plan.tier,
-        planKind: plan.planKind,
-        planVersion: plan.planVersion,
-        planAmountCents: plan.planAmountCents,
-        autoTopUpEnabled: readBooleanMetadata(subscription.metadata?.autoTopUpEnabled),
-        autoTopUpAmountCents: readNumberMetadata(subscription.metadata?.topUpAmountCents),
-        offSessionConsentAt: readNumberMetadata(subscription.metadata?.offSessionConsentAt),
-        status: mapSubscriptionStatus(subscription.status),
-        currentPeriodStart,
-        currentPeriodEnd
-      })
-
-      console.log(`[Stripe Webhook] Updated subscription for user ${userId}: tier=${plan.tier}, planKind=${plan.planKind}, planAmountCents=${plan.planAmountCents}, priceId=${plan.stripePriceId}, email=${email}`)
+      await syncWorkspaceSubscription(ctx, event)
     },
 
     'customer.subscription.deleted': async (ctx, event: Stripe.CustomerSubscriptionDeletedEvent) => {
       if (!(await recordAndCheckEvent(ctx, event))) return
-      const subscription = event.data.object
-
-      const userId = subscription.metadata?.userId
-      const billingAccountId = subscription.metadata?.billingAccountId
-
-      if (billingAccountId) {
-        const plan = extractPlanFromSubscription(subscription)
-        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriodMs(subscription)
-        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
-          billingAccountId,
-          stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
-          stripeSubscriptionId: subscription.id,
-          stripePriceId: plan.stripePriceId,
-          stripeQuantity: plan.stripeQuantity,
-          planKind: 'free',
-          planAmountCents: 0,
-          status: 'canceled',
-          currentPeriodStart,
-          currentPeriodEnd,
-          providerEventCreatedAt: event.created * 1000,
-        })
-      } else if (userId) {
-        await ctx.runMutation(internal.billing.subscriptions.updateStatus, {
-          userId,
-          status: 'canceled'
-        })
-        console.log(`[Stripe Webhook] Canceled subscription for user ${userId}`)
-      }
+      await syncWorkspaceSubscription(ctx, event)
     },
 
     'invoice.payment_failed': async (ctx, event: Stripe.InvoicePaymentFailedEvent) => {
       if (!(await recordAndCheckEvent(ctx, event))) return
       const invoice = event.data.object
-
-      console.log(`[HTTP] invoice.payment_failed: invoiceId=${invoice.id}`)
-
-      const userId =
-        invoice.parent?.subscription_details?.metadata?.userId ??
-        invoice.metadata?.userId
       const billingAccountId =
         invoice.parent?.subscription_details?.metadata?.billingAccountId ??
-        invoice.metadata?.billingAccountId
+        invoice.metadata?.billingAccountId ??
+        await convertedAccountId(ctx, {
+          customer: invoice.customer,
+          subscription: invoice.parent?.subscription_details?.subscription,
+        })
+      if (!billingAccountId) return
+      await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
+        billingAccountId,
+        status: 'past_due',
+        providerEventCreatedAt: event.created * 1000,
+      })
+    },
 
-      if (billingAccountId) {
-        await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
-          billingAccountId,
-          status: 'past_due',
-          providerEventCreatedAt: event.created * 1000,
-        })
-      } else if (userId) {
-        await ctx.runMutation(internal.billing.subscriptions.updateStatus, {
-          userId,
-          status: 'past_due'
-        })
-        console.log(`[Stripe Webhook] Marked subscription as past_due for user ${userId}`)
-      }
+    // Automatic workspace top-ups charged off-session: Stripe may finish them after the request (3-D Secure), so the
+    // final outcome settles the pending row here (credited on success). `autoTopUpReconcile` is the backstop.
+    'payment_intent.succeeded': async (ctx, event: Stripe.PaymentIntentSucceededEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
+      const intent = event.data.object
+      if (intent.metadata?.kind !== 'budget_topup' || intent.metadata.source !== 'auto' || !intent.metadata.billingAccountId) return
+      await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+        stripePaymentIntentId: intent.id,
+        outcome: 'succeeded',
+      })
+    },
+
+    'payment_intent.payment_failed': async (ctx, event: Stripe.PaymentIntentPaymentFailedEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
+      const intent = event.data.object
+      if (intent.metadata?.kind !== 'budget_topup' || intent.metadata.source !== 'auto' || !intent.metadata.billingAccountId) return
+      await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+        stripePaymentIntentId: intent.id,
+        outcome: 'failed',
+        errorMessage: intent.last_payment_error?.message ?? 'payment_failed',
+      })
+    },
+
+    'payment_intent.canceled': async (ctx, event: Stripe.PaymentIntentCanceledEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
+      const intent = event.data.object
+      if (intent.metadata?.kind !== 'budget_topup' || intent.metadata.source !== 'auto' || !intent.metadata.billingAccountId) return
+      await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+        stripePaymentIntentId: intent.id,
+        outcome: 'canceled',
+      })
     },
 
     'checkout.session.completed': async (ctx, event: Stripe.CheckoutSessionCompletedEvent) => {
@@ -246,6 +173,7 @@ registerRoutes(http, components.stripe, {
         session.metadata?.kind === 'budget_topup'
         && session.payment_status === 'paid'
         && session.metadata.userId
+        && session.metadata.billingAccountId
       ) {
         // Derive the top-up amount from Stripe's authoritative paid total, NOT
         // from client-set metadata. `session.amount_total` is what Stripe
@@ -275,32 +203,14 @@ registerRoutes(http, components.stripe, {
           )
         }
 
-        if (session.metadata.billingAccountId) {
-          await ctx.runMutation(internal.billing.accountSubscriptions.recordTopUpInternal, {
-            actorUserId: session.metadata.userId,
-            billingAccountId: session.metadata.billingAccountId,
-            amountCents: authoritativeAmountCents,
-            stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
-            stripeCheckoutSessionId: session.id,
-            stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
-          })
-        } else {
-          await ctx.runMutation(internal.billing.subscriptions.recordBudgetTopUpInternal, {
-            userId: session.metadata.userId,
-            amountCents: authoritativeAmountCents,
-            source: 'manual',
-            stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
-            stripeCheckoutSessionId: session.id,
-            stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
-            status: 'succeeded',
-          })
-          await ctx.runMutation(internal.billing.subscriptions.updateBillingPreferencesInternal, {
-            userId: session.metadata.userId,
-            autoTopUpEnabled: session.metadata.autoTopUpEnabled === 'true',
-            topUpAmountCents: authoritativeAmountCents,
-            grantOffSessionConsent: session.metadata.autoTopUpEnabled === 'true',
-          })
-        }
+        await ctx.runMutation(internal.billing.accountSubscriptions.recordTopUpInternal, {
+          actorUserId: session.metadata.userId,
+          billingAccountId: session.metadata.billingAccountId,
+          amountCents: authoritativeAmountCents,
+          stripeCustomerId: typeof session.customer === 'string' ? session.customer : undefined,
+          stripeCheckoutSessionId: session.id,
+          stripePaymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : undefined,
+        })
       }
     }
   },

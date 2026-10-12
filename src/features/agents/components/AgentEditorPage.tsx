@@ -63,13 +63,14 @@ export function AgentEditorPage({
   const [error, setError] = useState<string | null>(null)
 
   const bootstrap = useAgentEditorBootstrap({ showcase, mode, agentId, activeWorkspaceId, initial })
-  const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled } = bootstrap
+  const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked } = bootstrap
 
   const runtime = useAgentRuntime({ showcaseAgent })
 
   const byo = useByoConnection({
     activeWorkspaceId, showcase, agent, agentType: runtime.agentType, connectedAgentsEnabled,
     setAgentType: runtime.setAgentType, onLegacyHostedBinding: runtime.onLegacyHostedBinding,
+    onCloudBinding: runtime.onCloudBinding,
   })
 
   const form = useAgentEditorForm({
@@ -97,7 +98,7 @@ export function AgentEditorPage({
   const valid = isAgentEditorValid({
     name: form.name, instructions: form.instructions, modelId: form.modelId,
     agentType: runtime.agentType, legacyHostedRuntime: runtime.legacyHostedRuntime, connectedAgentsEnabled,
-    bindingValid: byo.bindingValid,
+    bindingValid: byo.bindingValid || runtime.cloudAgent,
   })
 
   const directoryHref = buildAgentsDirectoryHref(activeWorkspaceId, showcase)
@@ -105,7 +106,7 @@ export function AgentEditorPage({
 
   const buildInput = useCallback((): WorkspaceAgentCreateInput => {
     const harnessLabel = byo.selectedHarness?.label ?? byo.adapterId
-    return {
+    const built = {
       ...buildWorkspaceAgentInput({
         name: form.name,
         description: form.description,
@@ -121,7 +122,15 @@ export function AgentEditorPage({
       }),
       teamIds: agent?.teamIds ?? [],
     }
-  }, [byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
+    // An Overlay Cloud agent's Overlay access is set by its own control on this page, not by Save; sending the
+    // editor's copy (empty for connected agents) would wipe it.
+    // Its model is likewise set by its own control (Model).
+    if (runtime.cloudAgent) {
+      delete built.allowedToolIds
+      delete (built as { modelId?: string }).modelId
+    }
+    return built
+  }, [runtime.cloudAgent, byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
     runtime.agentType,
     form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility,
     agent])
@@ -181,6 +190,7 @@ export function AgentEditorPage({
       showcase={showcase}
       computersAvailable={computersAvailable}
       connectedAgentsEnabled={connectedAgentsEnabled}
+      connectedAgentsChecked={connectedAgentsChecked}
       modelOptions={modelOptions}
       form={form}
       runtime={runtime}

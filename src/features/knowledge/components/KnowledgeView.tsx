@@ -15,14 +15,23 @@ import {
   type MemoryRow,
 } from '@overlay/app-core'
 import {
+  KnowledgeBulkActionsContext,
+  KnowledgeCreateAccessContext,
+  KnowledgeRowActionsContext,
   SharedKnowledgeSurface,
   type SharedKnowledgeFilePort,
   type SharedKnowledgeMemoryPort,
+  type KnowledgeBulkSelection,
   type SharedKnowledgeRouteState,
 } from '@overlay/modules-react/knowledge'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
+import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
+import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
+import { ScopeBulkActions } from '@/components/layout/ScopeBulkActions'
+import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
+import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
 
 const nextKnowledgeMutation = createKnowledgeMutationPublisher(
@@ -49,6 +58,7 @@ async function responseError(response: Response, fallback: string): Promise<stri
 async function uploadWebFile(
   file: File,
   parentId: string | null,
+  scope?: 'workspace',
 ): Promise<{ ok: boolean; error?: string; file?: KnowledgeFileNode }> {
   const createdResult = async (response: Response, fallback: string) => {
     if (!response.ok) return { ok: false, error: await responseError(response, fallback) }
@@ -77,6 +87,7 @@ async function uploadWebFile(
       const form = new FormData()
       form.append('file', file)
       if (parentId) form.append('parentId', parentId)
+      if (scope) form.append('scope', scope)
       const response = await overlayAppClient.files.ingestDocumentResponse(form)
       return createdResult(response, 'Failed to index document')
     }
@@ -88,6 +99,7 @@ async function uploadWebFile(
         type: 'file',
         parentId,
         content: await file.text(),
+        scope,
       })
       return createdResult(response, 'Failed to save file')
     }
@@ -118,6 +130,7 @@ async function uploadWebFile(
       parentId,
       r2Key,
       sizeBytes: file.size,
+      scope,
     })
     return createdResult(createResponse, 'Failed to save file')
   } catch (error) {
@@ -167,9 +180,18 @@ export default function KnowledgeView({
     })
   }, [mode, pathname, router, searchParams])
 
+  // The Files page shows one scope at a time (Personal or Workspace), the same one as the secondary panel.
+  const scope = usePanelScope()
+  const listView = usePanelListView()
+  // Nothing is added to a Workspace its admin restricted.
+  const { canCreate } = useWorkspaceCreateAccess()
+  const canAdd = canCreate('content', newItemScope(scope) ?? 'personal')
+
   const adapters = useMemo(() => createWebKnowledgeSurfaceAdapters({
     navigate: (url, options) => options?.replace ? router.replace(url) : router.push(url),
-  }), [router])
+    getScope: () => scope,
+    getListView: () => listView,
+  }), [router, scope, listView])
 
   const memories = useMemo<SharedKnowledgeMemoryPort>(() => ({
     list: () => overlayAppClient.memory.get<MemoryRow[]>({ limit: 100 }),
@@ -188,7 +210,7 @@ export default function KnowledgeView({
     async saveContent(fileId, content) {
       return (await overlayAppClient.files.updateResponse({ fileId, textContent: content })).ok
     },
-    upload: uploadWebFile,
+    upload: (file, parentId) => uploadWebFile(file, parentId, newItemScope(scope)),
     isEditable: isEditableType,
     contentUrl(file) {
       return file.downloadUrl || file.isStorageBacked
@@ -198,20 +220,58 @@ export default function KnowledgeView({
     entityChanged(entity, id, operation) {
       publishKnowledgeMutation(entity, id, operation)
     },
-  }), [])
+  }), [scope])
+
+  // Move and Archive on a hovered row. The item leaves the list being viewed either way, so it is dropped from it.
+  const renderRowActions = useCallback((node: KnowledgeFileNode) => (
+    <ScopeItemActions
+      kind="content"
+      resource="files"
+      item={node}
+      onChanged={() => {
+        publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')
+        // From an open file, go back to the list it just left.
+        if (route.file) updateQuery({ file: null })
+      }}
+    />
+  ), [route.file, updateQuery])
+
+  const renderBulkActions = useCallback(({ nodes, afterChange }: KnowledgeBulkSelection) => (
+    <ScopeBulkActions
+      kind="content"
+      resource="files"
+      items={nodes}
+      onDone={(changedIds, all) => {
+        // The changed items left this list; when every one did, select mode ends too.
+        if (all) afterChange()
+        for (const node of nodes) {
+          if (changedIds.includes(node._id)) publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')
+        }
+      }}
+    />
+  ), [])
 
   return (
-    <SharedKnowledgeSurface
-      mode={mode}
-      initialFiles={initialFiles}
-      initialMemories={initialMemories}
-      route={route}
-      queryPending={queryPending}
-      onUpdateQuery={updateQuery}
-      adapters={adapters}
-      memories={memories}
-      files={files}
-      renderFileViewer={renderFileViewer}
-    />
+    <KnowledgeCreateAccessContext.Provider value={canAdd}>
+    <KnowledgeRowActionsContext.Provider value={renderRowActions}>
+    <KnowledgeBulkActionsContext.Provider value={renderBulkActions}>
+      <SharedKnowledgeSurface
+        // A new scope is a different list: start it fresh rather than patching the old one.
+        key={scope}
+        mode={mode}
+        // The server renders the Personal list, so it only seeds that scope.
+        initialFiles={scope === 'personal' ? initialFiles : undefined}
+        initialMemories={initialMemories}
+        route={route}
+        queryPending={queryPending}
+        onUpdateQuery={updateQuery}
+        adapters={adapters}
+        memories={memories}
+        files={files}
+        renderFileViewer={renderFileViewer}
+      />
+    </KnowledgeBulkActionsContext.Provider>
+    </KnowledgeRowActionsContext.Provider>
+    </KnowledgeCreateAccessContext.Provider>
   )
 }

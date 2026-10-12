@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { AcpAgentAdapter } from './acp-adapter.js'
+import { ACPX_AGENT_DISPLAY_NAMES, ACPX_AGENT_LAUNCH_OVERRIDES, AcpxAgentAdapter, acpxAgentNameFor } from './acpx-adapter.js'
 import type { AgentAdapter } from './adapter.js'
 import { loadAgentHostConfig, saveAgentHostConfig } from './config.js'
 import type { AgentHostConfig } from './config.js'
@@ -18,19 +19,48 @@ import { EveAgentAdapter } from './eve-adapter.js'
 import { verifyHermesAcpReadiness } from './hermes-readiness.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
+import { checkOverlayImage } from './image-check.js'
+import { exportConfig } from './export-config.js'
+import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.6'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.10'
 
 assertSupportedNodeVersion()
 
 const [command, ...args] = process.argv.slice(2)
 const configPath = option(args, '--config')
-if (command === 'connect') {
+if (command === 'image-check') {
+  const checks = checkOverlayImage()
+  for (const check of checks) process.stdout.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}: ${check.detail}\n`)
+  if (checks.some((check) => !check.ok)) process.exitCode = 1
+} else if (command === 'export-config') {
+  // overlay-agent-host export-config <claude-code|codex> --server <url> --code <code> [--dry-run]
+  const harness = args.find((value) => !value.startsWith('--') && value !== option(args, '--server') && value !== option(args, '--code') && value !== option(args, '--home'))
+  const serverUrl = option(args, '--server')
+  const code = option(args, '--code')
+  const dryRun = args.includes('--dry-run')
+  if (!isAgentProfileHarness(harness === 'claude' ? 'claude-code' : harness) || (!dryRun && (!serverUrl || !code))) {
+    process.stderr.write('Usage: overlay-agent-host export-config <claude-code|codex> --server <url> --code <code> [--dry-run]\n')
+    process.exit(2)
+  }
+  try {
+    await exportConfig({
+      harness: (harness === 'claude' ? 'claude-code' : harness) as 'claude-code' | 'codex',
+      serverUrl: serverUrl ?? '', code: code ?? '', dryRun,
+      ...(option(args, '--home') ? { home: option(args, '--home')! } : {}),
+    })
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exit(1)
+  }
+} else if (command === 'connect') {
   const code = args.find((value) => !value.startsWith('--') && value !== option(args, '--server') && value !== option(args, '--state-dir') && value !== option(args, '--name'))
   const serverUrl = option(args, '--server')
   if (!code || !serverUrl) usage()
   const stateDirectory = option(args, '--state-dir') ?? join(homedir(), '.overlay', 'agent-host')
   const adapterIds = options(args, '--adapter')
+  // `--engine acpx` runs ACP agents through acpx's runtime (Overlay Cloud machines use it).
+  const useAcpx = option(args, '--engine') === 'acpx'
   const adapterConfigs: AgentHostConfig['adapters'] = (adapterIds.length ? adapterIds : ['codex', 'claude-code']).map((id) => {
     if (id === 'eve') {
       const host = option(args, '--eve-url')
@@ -39,10 +69,18 @@ if (command === 'connect') {
         ...(option(args, '--eve-auth-env') ? { bearerTokenEnv: option(args, '--eve-auth-env') } : {}) }
     }
     const manifest = resolveAcpAdapterManifest(id)
+    if (useAcpx && acpxAgentNameFor(id)) {
+      return { id, displayName: manifest?.displayName ?? ACPX_AGENT_DISPLAY_NAMES[id] ?? id, protocol: 'acpx' as const, agent: acpxAgentNameFor(id)! }
+    }
     if (!manifest) throw new Error(`unknown ACP adapter manifest: ${id}`)
     return { ...manifest, args: [...manifest.args] }
   })
   if (adapterIds.includes('hermes')) await verifyHermesAcpReadiness()
+  // An Overlay Cloud machine must run the prepared image (pinned adapters, no credentials).
+  if (option(args, '--kind') === 'overlay_cloud') {
+    const failed = checkOverlayImage().filter((check) => !check.ok)
+    if (failed.length) throw new Error(`not an Overlay agent image: ${failed.map((check) => check.detail).join('; ')}`)
+  }
   const connection = await connectAgentHost({
     code,
     serverUrl,
@@ -52,7 +90,7 @@ if (command === 'connect') {
     adapters: adapterConfigs.map((adapter) => ({
       id: adapter.id,
       displayName: adapter.displayName,
-      protocol: adapter.protocol,
+      protocol: adapter.protocol === 'acpx' ? 'acp' as const : adapter.protocol,
       supports: { prompt: true, approval: true, cancel: true, resume: true },
     })),
     onPendingApproval: ({ verificationPhrase }) => {
@@ -104,7 +142,7 @@ if (command === 'connect') {
   usage()
 } else {
   const config = await loadAgentHostConfig(configPath)
-  const adapters = buildAdapters(config.adapters)
+  const adapters = buildAdapters(config.adapters, config.stateDirectory)
   if (command === 'doctor') {
   const checks = await diagnoseHost(config, adapters)
   for (const check of checks) process.stdout.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}: ${check.detail}\n`)
@@ -115,7 +153,7 @@ if (command === 'connect') {
 }
 
 async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[]) {
-  const adapters = prebuiltAdapters ?? buildAdapters(config.adapters)
+  const adapters = prebuiltAdapters ?? buildAdapters(config.adapters, config.stateDirectory)
   if (!config.credential) throw new Error(`agent host credential is missing from ${config.credentialEnv} and local connection state`)
   const [keys, stored] = await Promise.all([
     loadOrCreateDeviceKeyPair(config.stateDirectory),
@@ -127,6 +165,8 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
     workspaceId: config.workspaceId,
   })
   const runtime = new AgentHostRuntime({
+    // Only Overlay Cloud credentials carry this method (see the control plane's createCredential).
+    fetchRunCredentials: stored?.methods.includes('agent:run-credentials') === true,
     environmentId: config.environmentId,
     workspaceId: config.workspaceId,
     filesystem: stored?.filesystemGrant ?? config.filesystem,
@@ -151,9 +191,14 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
   try { await runtime.run(controller.signal) } finally { state.close() }
 }
 
-function buildAdapters(configs: AgentHostConfigAdapter[]): AgentAdapter[] {
+function buildAdapters(configs: AgentHostConfigAdapter[], stateDirectory: string): AgentAdapter[] {
   return configs.map((adapter) => {
     if (adapter.protocol === 'fake') return new FakeAgentAdapter()
+    if (adapter.protocol === 'acpx') return new AcpxAgentAdapter({
+      id: adapter.id, displayName: adapter.displayName, agent: adapter.agent, stateDirectory,
+      ...(adapter.env ? { env: adapter.env } : {}),
+      ...(ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent] ? { registryOverrides: { [adapter.agent]: ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent]! } } : {}),
+    })
     if (adapter.protocol === 'eve') return new EveAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, host: adapter.host,
       ...(adapter.bearerTokenEnv ? { bearerToken: () => {
@@ -190,7 +235,7 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--run] [--adapter codex|claude-code|hermes] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|overlay_cloud|external] [--engine acpx] [--run] [--adapter codex|claude-code|hermes] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n  overlay-agent-host image-check\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
   process.exit(2)
 }
 

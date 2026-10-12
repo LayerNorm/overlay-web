@@ -24,6 +24,14 @@ const DEFAULT_METER_LEASE_LIMIT = 100
 const CLEANUP_RETRY_BASE_MS = 60_000
 const CLEANUP_RETRY_MAX_MS = 30 * 60_000
 const MARKUP_MULTIPLIER = 1 + getMarkupBasisPoints() / 10_000
+/** How long past its idle window a machine may run before the sweep (the fallback) stops it itself. */
+const IDLE_FALLBACK_GRACE_MS = 2 * 60_000
+/**
+ * The meter sweep runs every minute (billing, run supervision), but its idle fallback only has to catch what the idle
+ * timer missed, so it runs on the ticks in the first 90 seconds of every 10-minute block (at least one tick lands in it).
+ */
+const IDLE_FALLBACK_INTERVAL_MS = 10 * 60_000
+const IDLE_FALLBACK_TICK_WINDOW_MS = 90_000
 const ACTIVE_STATUSES = ['reserved', 'provisioning', 'running'] as const
 const REAPABLE_STATUSES = ['stopping', 'cleanup_failed'] as const
 
@@ -53,6 +61,8 @@ export class ManagedAgentSandboxBilling {
     repository: ConnectedAgentRepository
     runtime?: (provider: string) => SandboxRuntime
     now?: () => number
+    /** Whether this sweep tick is one that runs the idle fallback (default: once every 10 minutes). */
+    idleFallbackDue?: (now: number) => boolean
   }) {}
 
   // A turn's upfront hold is only a bootstrap: enough to cover the low-balance
@@ -68,6 +78,8 @@ export class ManagedAgentSandboxBilling {
     requestFingerprint: string
     userId: string
     workspaceId: string
+    /** The turn may run this long; the idle meter will not stop the machine before then. */
+    activeForMs?: number
   }): Promise<ConnectedAgentSandboxBilling> {
     const lease = await this.dependencies.repository.getActiveSandboxLease({
       workspaceId: args.workspaceId,
@@ -125,19 +137,20 @@ export class ManagedAgentSandboxBilling {
       userId: args.userId,
       workspaceId: args.workspaceId,
     }).then((resolved) => sandboxLeasePayer(resolved, args.userId)).catch((_error) => undefined)
-    if (payer) {
-      await this.dependencies.repository.patchSandboxLeaseUsage({
-        workspaceId: args.workspaceId,
-        leaseId: lease.id,
-        patch: { lastPayer: payer },
-        now: this.now(),
-      }).catch((error) => {
-        logger.warn('[managed-harness] sandbox lease payer write failed', {
-          environmentId: args.environmentId,
-          error: error instanceof Error ? error.message : String(error),
-        })
+    const activityAt = this.now()
+    await this.dependencies.repository.patchSandboxLeaseUsage({
+      workspaceId: args.workspaceId,
+      leaseId: lease.id,
+      // A starting turn is activity, and the machine stays up for its whole run.
+      // A starting turn cancels the idle timer (a null token makes any pending check stale); the turn's end sets a new one.
+      patch: { ...(payer ? { lastPayer: payer } : {}), lastActiveAt: activityAt, activeUntil: activityAt + Math.max(0, args.activeForMs ?? 0), idleToken: null, idleCheckAt: null },
+      now: this.now(),
+    }).catch((error) => {
+      logger.warn('[managed-harness] sandbox lease payer write failed', {
+        environmentId: args.environmentId,
+        error: error instanceof Error ? error.message : String(error),
       })
-    }
+    })
     return {
       baselineUsage: serializableUsage(baselineUsage),
       leaseId: lease.id,
@@ -179,13 +192,53 @@ export class ManagedAgentSandboxBilling {
     return { ticks }
   }
 
+  /**
+   * The idle timer fired (Convex scheduled it when a run ended). Ignored when the token is no longer the lease's
+   * current one (a newer message or timer replaced it). Otherwise the machine is stopped if nothing has happened for
+   * the whole idle window and no run is going; if there was activity since, the check moves to the end of the window.
+   */
+  async idleCheck(args: { workspaceId: string; leaseId: string; token: string }): Promise<{
+    outcome: 'gone' | 'stale' | 'rescheduled' | 'busy' | 'checked'
+  }> {
+    const lease = await this.dependencies.repository.getSandboxLease({ workspaceId: args.workspaceId, leaseId: args.leaseId })
+    if (!lease || lease.status !== 'running') return { outcome: 'gone' }
+    const usage = lease.usage ?? {}
+    if (usage.idleToken !== args.token) return { outcome: 'stale' }
+    const now = this.now()
+    const remainingMs = idleActivityTimestamp(usage, lease, now) + idleWindowMs(usage) - now
+    if (remainingMs > 0) {
+      await this.dependencies.repository.patchSandboxLeaseUsage({
+        workspaceId: lease.workspaceId, leaseId: lease.id, patch: {}, now, idleCheckInMs: remainingMs,
+      })
+      return { outcome: 'rescheduled' }
+    }
+    // A run is going: its end sets the next timer, so nothing to do now.
+    if (await this.environmentHasActiveRuns(lease)) return { outcome: 'busy' }
+    await this.meterLeaseWithRetry(lease, { idleStop: 'timer' })
+    return { outcome: 'checked' }
+  }
+
+  /** True when a run on the lease's environment has not finished. A failed lookup counts as running (keep it up, retry). */
+  private async environmentHasActiveRuns(lease: AgentSandboxLease): Promise<boolean> {
+    const repository = this.dependencies.repository
+    if (typeof repository.environmentHasActiveRuns !== 'function') return finiteNumber(lease.usage?.activeUntil) > this.now()
+    return await repository.environmentHasActiveRuns({ environmentId: lease.environmentId }).catch((_error) => true)
+  }
+
+  /** Nothing has happened for the whole idle window (plus `graceMs`) and no run is going. */
+  private async leaseIsIdle(lease: AgentSandboxLease, now: number, graceMs: number): Promise<boolean> {
+    const usage = lease.usage ?? {}
+    if (now - idleActivityTimestamp(usage, lease, now) <= idleWindowMs(usage) + graceMs) return false
+    return !(await this.environmentHasActiveRuns(lease))
+  }
+
   // One atomic meter tick for a lease: read the provider's cumulative usage,
   // compute the delta against the persisted cursor, and commit debit + cursor
   // in a single transaction on the repository side. A lease whose usage was
   // never metered adopts its current counters as the cursor (no charge) —
   // billing starts from the first metered read, and freshly provisioned leases
   // seed an empty cursor so their full lifetime is billed.
-  async meterLease(lease: AgentSandboxLease, options?: { minRemainingCents?: number }): Promise<ManagedSandboxMeterResult> {
+  async meterLease(lease: AgentSandboxLease, options?: { minRemainingCents?: number; idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
     const now = this.now()
     const usage = lease.usage ?? {}
     const storedCursor = usage.meteredUsage && typeof usage.meteredUsage === 'object'
@@ -232,30 +285,45 @@ export class ManagedAgentSandboxBilling {
     // wall-clock — see usageDelta for the virtual-cursor rule that keeps the
     // final post-stop total from double-charging.
     const instanceRunning = probe.status !== 'stopped' && probe.status !== 'archived' && probe.status !== 'deleted' && probe.status !== 'failed'
-    // Provider-side idle-stop: Box has no idle timer, so the meter enforces
-    // the lease's idle window itself —
-    // a running sandbox with no activity for idleTimeoutMs is stopped while
-    // the lease stays 'running'; the next turn's acquire resumes it. The tick
-    // still bills the elapsed window it ran through.
-    if (!stopping && instanceRunning && typeof probe.instance.stop === 'function') {
-      const lastActiveAt = idleActivityTimestamp(usage, effectiveLease, now)
-      const idleTimeoutMs = finiteNumber(usage.idleTimeoutMs) || MANAGED_SANDBOX_IDLE_TIMEOUT_MS
-      if (now - lastActiveAt > idleTimeoutMs) {
-        await probe.instance.stop().then(() => {
-          logger.info('Managed sandbox idle-stopped by meter', {
-            environmentId: effectiveLease.environmentId,
-            idleForMs: now - lastActiveAt,
-            leaseId: effectiveLease.id,
-            workspaceId: effectiveLease.workspaceId,
-          })
-        }).catch((error) => {
-          logger.warn('Managed sandbox idle-stop failed', {
-            environmentId: effectiveLease.environmentId,
-            error: error instanceof Error ? error.message : String(error),
-            leaseId: effectiveLease.id,
-          })
+    let idleStoppedNow = false
+    const fallbackDue = options?.idleStop === 'timer'
+      || (this.dependencies.idleFallbackDue ?? ((at: number) => at % IDLE_FALLBACK_INTERVAL_MS < IDLE_FALLBACK_TICK_WINDOW_MS))(now)
+    // Provider-side idle-stop: Box has no idle timer, so Overlay stops idle machines itself, the lease stays
+    // 'running', and the next turn's acquire resumes it. The primary trigger is the idle timer (`idleCheck`, set when
+    // a run ends); this sweep is the fallback for a timer that never fired, so it waits a grace period past the
+    // window. The tick still bills the elapsed window it ran through.
+    if (!stopping && instanceRunning && typeof probe.instance.stop === 'function' && options?.idleStop !== 'none' && fallbackDue
+      && await this.leaseIsIdle(effectiveLease, now, options?.idleStop === 'timer' ? 0 : IDLE_FALLBACK_GRACE_MS)) {
+      const idleForMs = now - idleActivityTimestamp(usage, effectiveLease, now)
+      await probe.instance.stop().then(() => {
+        idleStoppedNow = true
+        logger.info('Managed sandbox idle-stopped', {
+          environmentId: effectiveLease.environmentId,
+          idleForMs,
+          trigger: options?.idleStop === 'timer' ? 'timer' : 'sweep',
+          leaseId: effectiveLease.id,
+          workspaceId: effectiveLease.workspaceId,
         })
-      }
+      }).catch((error) => {
+        logger.warn('Managed sandbox idle-stop failed', {
+          environmentId: effectiveLease.environmentId,
+          error: error instanceof Error ? error.message : String(error),
+          leaseId: effectiveLease.id,
+        })
+      })
+    }
+    // Fallback for a missing or overdue idle timer (a lost scheduled job, a run that ended without one): start it.
+    if (!stopping && instanceRunning && effectiveLease.status === 'running' && !idleStoppedNow && options?.idleStop !== 'none' && fallbackDue
+      && !idleTimerIsLive(usage, now)
+      && !(await this.environmentHasActiveRuns(effectiveLease))) {
+      const remainingMs = idleActivityTimestamp(usage, effectiveLease, now) + idleWindowMs(usage) - now
+      await this.dependencies.repository.patchSandboxLeaseUsage({
+        workspaceId: effectiveLease.workspaceId,
+        leaseId: effectiveLease.id,
+        patch: {},
+        now,
+        idleCheckInMs: Math.max(1_000, remainingMs),
+      }).catch((_error) => undefined)
     }
     if (probe.usage === null) {
       // Stopped instance with unreadable counters (a provider that does not
@@ -357,7 +425,8 @@ export class ManagedAgentSandboxBilling {
       try {
         // Turn end is just the final meter tick: bill usage since the last
         // periodic read, then release the bootstrap hold.
-        const tick = await this.meterLeaseWithRetry(lease, { minRemainingCents: 0 })
+        // A run just ended: bill it, but do not idle-stop here (the idle window starts now, via the timer set below).
+        const tick = await this.meterLeaseWithRetry(lease, { minRemainingCents: 0, idleStop: 'none' })
         if (!tick.applied && tick.reason === 'insufficient_budget') {
           await this.killLease(lease, 'budget_exhausted').catch((_error) => undefined)
         }
@@ -378,6 +447,7 @@ export class ManagedAgentSandboxBilling {
           leaseId: billing.leaseId,
           patch: {
             lastActiveAt: this.now(),
+            activeUntil: 0,
             lastSettlement: {
               agentId: settlement.agentId,
               environmentId: settlement.environmentId,
@@ -388,6 +458,8 @@ export class ManagedAgentSandboxBilling {
             },
           },
           now: this.now(),
+          // The run is over: the machine stops one idle window from now unless something else starts first.
+          idleCheckInMs: idleWindowMs(lease.usage),
         })
         return
       } catch (error) {
@@ -441,6 +513,7 @@ export class ManagedAgentSandboxBilling {
         leaseId: billing.leaseId,
         patch: {
           lastActiveAt: this.now(),
+          activeUntil: 0,
           meteredUsage: serializableUsage(currentUsage),
           meteredProviderReference: providerReference,
           meteredAt: this.now(),
@@ -613,7 +686,7 @@ export class ManagedAgentSandboxBilling {
     }
   }
 
-  private async meterLeaseWithRetry(lease: AgentSandboxLease, options?: { minRemainingCents?: number }): Promise<ManagedSandboxMeterResult> {
+  private async meterLeaseWithRetry(lease: AgentSandboxLease, options?: { minRemainingCents?: number; idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
     const first = await this.meterLease(lease, options)
     if (first.applied || first.reason !== 'lease_conflict') return first
     const fresh = await this.dependencies.repository.getSandboxLease({
@@ -711,6 +784,9 @@ export class ManagedAgentSandboxBudgetError extends Error {
   }
 }
 
+const E2B_USD_PER_VCPU_SECOND = 0.000014
+const E2B_USD_PER_GIB_SECOND = 0.0000045
+
 export function sandboxCostUsd(args: {
   provider: string
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
@@ -725,6 +801,11 @@ export function sandboxCostUsd(args: {
     const reported = providerReportedUsd(args.usage.providerMetrics)
     if (reported !== undefined) return reported
     return wallTimeMs / 1_000 / boxSecondsPerDollar()
+  }
+  if (args.provider === 'e2b') {
+    // E2B bills a running sandbox by the second for its CPUs and memory (list price); a paused one costs nothing here.
+    // A self-hosted deployment pays E2B directly, so this is Overlay's metering of its own credit, not E2B's invoice.
+    return (wallTimeMs / 1_000) * (args.resources.vcpus * E2B_USD_PER_VCPU_SECOND + args.resources.memoryGiB * E2B_USD_PER_GIB_SECOND)
   }
   throw new Error(`MANAGED_SANDBOX_PROVIDER_UNPRICED:${args.provider}`)
 }
@@ -817,6 +898,18 @@ function serializableUsage(usage: SandboxUsage): Record<string, unknown> {
   return Object.fromEntries(Object.entries(usage).filter((entry) => entry[1] !== undefined))
 }
 
+/** An agent machine's idle window; a lease made under the old 15-minute default also gets the current one. */
+function idleWindowMs(usage: Record<string, unknown> | undefined) {
+  const stored = finiteNumber(usage?.idleTimeoutMs)
+  return stored > 0 ? Math.min(stored, MANAGED_SANDBOX_IDLE_TIMEOUT_MS) : MANAGED_SANDBOX_IDLE_TIMEOUT_MS
+}
+
+/** A timer was set and is not long overdue (an overdue one is presumed lost). */
+function idleTimerIsLive(usage: Record<string, unknown>, now: number) {
+  return typeof usage.idleToken === 'string' && typeof usage.idleCheckAt === 'number'
+    && usage.idleCheckAt > now - IDLE_FALLBACK_GRACE_MS
+}
+
 function idleActivityTimestamp(usage: Record<string, unknown>, lease: AgentSandboxLease, fallback: number) {
   const lastSettlement = usage.lastSettlement && typeof usage.lastSettlement === 'object'
     ? usage.lastSettlement as Record<string, unknown>
@@ -845,6 +938,14 @@ function isBillingAccountUnavailableError(error: unknown) {
 
 function cleanupRetryDelayMs(attempts: number) {
   return Math.min(CLEANUP_RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1), CLEANUP_RETRY_MAX_MS)
+}
+
+/**
+ * The least remaining credit a machine can start with: the meter stops any machine whose payer is at or below
+ * the low-balance floor, so a machine started under it would be deleted within a minute.
+ */
+export function minimumBudgetToStartMachineCents(): number {
+  return sandboxLowBalanceCutoffCents() + 1
 }
 
 function sandboxLowBalanceCutoffCents() {

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import { internal } from './_generated/api'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'remote-agent-turn-test-secret'
@@ -35,6 +36,51 @@ describe('Convex remote agent room turns', () => {
     expect(target.environment.status).toBe('offline')
     expect(await call<boolean>('disableBindingsForAgentByServer', { workspaceId, agentId, now: now + 1 })).toBe(true)
     expect(await read('findInvocationTargetByServer', { workspaceId, agentId, now: now + 1, onlineWithinMs: 45_000 })).toBeNull()
+  })
+
+  test('a question one agent posts for another is a valid trigger that carries its lineage, for the same person only', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    // The lineage part must pass the message schema, or posting the question fails.
+    const questionId = await convex.run(async ctx => await ctx.db.insert('conversationMessages', {
+      conversationId: seeded.conversationId as never, userId: actorUserId, authorKind: 'agent', authorPrincipalId: agentPrincipalId,
+      turnId: 'ask-1', role: 'assistant', mode: 'act', content: 'Asked by Scout: hi', contentType: 'text', modelId: 'm', status: 'completed',
+      parts: [{ type: 'text', text: 'Asked by Scout: hi' }, { type: 'data-agent-lineage', data: { rootTurnId: 'r', hop: 1, chain: ['scout', 'planner'], askedByName: 'Scout' } }],
+      createdAt: now, updatedAt: now,
+    }))
+    const asked = await call<{ resumed: boolean }>('startRemoteAgentTurnByServer', startInput({ ...seeded, userMessageId: questionId as string }, { clientNonce: 'ask-nonce', commandId: 'ask-command', runId: 'ask-run', sessionId: 'ask-session' }))
+    expect(asked.resumed).toBe(false)
+    await expect(call('startRemoteAgentTurnByServer', startInput({ ...seeded, userMessageId: questionId as string }, {
+      actorUserId: 'someone-else', initiatorPrincipalId: 'foreign-principal', clientNonce: 'ask-nonce-2', commandId: 'ask-command-2', runId: 'ask-run-2', sessionId: 'ask-session-2',
+    }))).rejects.toThrow(/CONVERSATION_ACCESS_DENIED/)
+  })
+
+  test('stopping a machine for lack of credit ends its runs: the chat row stops generating and the session is closed', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    await convex.run(async ctx => {
+      await ctx.db.insert('agentSandboxLeases', {
+        leaseId: 'lease-stop', workspaceId, environmentId, provider: 'box', providerReference: 'sandbox', status: 'running',
+        reservedUntil: Number.MAX_SAFE_INTEGER, usage: {}, cleanupAttempts: 0, createdAt: now, updatedAt: now,
+      })
+    })
+    await call('stopSandboxLeaseByServer', { workspaceId, leaseId: 'lease-stop', reason: 'budget_exhausted', now: now + 1_000 })
+    const after = await convex.run(async ctx => ({
+      message: await ctx.db.get(started.messageId as never) as { status?: string; content: string } | null,
+      session: (await ctx.db.query('agentRemoteSessions').withIndex('by_environmentId_status', q => q.eq('environmentId', environmentId).eq('status', 'cancelled')).collect()).length,
+    }))
+    expect(after.message?.status).toBe('completed')
+    expect(after.message?.content).toMatch(/credit ran low/)
+    expect(after.session).toBe(1)
+    const active = await convex.query(queryRef('environmentHasActiveRunsByServer'), { serverSecret: secret, environmentId })
+    expect(active).toBe(false)
   })
 
   test('offline start is atomic, inaccessible callers are denied, and expired run leases cannot claim', async () => {
@@ -73,9 +119,11 @@ describe('Convex remote agent room turns', () => {
     expect(snapshot.runs).toHaveLength(1)
     expect(snapshot.commands).toHaveLength(1)
 
+    // The command of an expired run is not started; it still goes out, as a shutdown, so the host's command numbers
+    // have no hole.
     expect(await call('claimCommandsByServer', {
       workspaceId, environmentId, now: now + 60_001, leaseMs: 5_000, limit: 10,
-    })).toEqual([])
+    })).toEqual([expect.objectContaining({ type: 'shutdown', payload: { reason: 'This run is no longer active.' } })])
     expect(await call('controlRemoteAgentTurnByServer', {
       actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'retry',
       queueExpiresAt: now + 120_000, now: now + 60_002,
@@ -176,6 +224,138 @@ describe('Convex remote agent room turns', () => {
         state: 'recoverable', retryClass: 'transient',
       }) }),
     ]))
+  })
+
+  test('the host is told why it rejected a command, in one safe line', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('acknowledgeCommandByServer', {
+      workspaceId, environmentId, commandId: 'command-remote-turn', accepted: false, now: now + 1,
+      errorCode: 'command_sequence_gap', errorMessage: 'expected command sequence 6\n<script>x</script>'.padEnd(400, '!'),
+    })
+    const state = await projectedState(convex, started.messageId)
+    const content = String(state.message?.content)
+    expect(content).toMatch(/^The connected environment rejected this command \(command_sequence_gap: expected command sequence 6 <script>/)
+    expect(content).not.toContain('\n')
+    expect(content.length).toBeLessThan(330)
+    expect(content).toMatch(/Reconnect it, then retry this message\.$/)
+  })
+
+  test('cancelling a run before its commands are delivered leaves no hole in the host’s command numbers', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await call('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('controlRemoteAgentTurnByServer', {
+      actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel',
+      queueExpiresAt: now + 120_000, now: now + 10,
+    })
+    const delivered = await call<Array<{ sequence: number; type: string }>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: now + 20, leaseMs: 5_000, limit: 10,
+    })
+    // Both commands reach the host, in order: the start as a shutdown (its run is over) and the cancel.
+    expect(delivered.map((command) => [command.sequence, command.type])).toEqual([[1, 'shutdown'], [2, 'cancel']])
+  })
+
+  test('repairing a wedged environment sends the host the commands it never got, so it catches up and accepts new ones', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await call('startRemoteAgentTurnByServer', startInput(seeded))
+    // The state production was in: command 1 acknowledged, 2 and 3 cancelled without ever being delivered, the run over.
+    await convex.run(async (ctx) => {
+      const [first] = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', (q) => q.eq('environmentId', environmentId)).collect()
+      await ctx.db.patch(first!._id, { status: 'acknowledged', acknowledgedAt: now + 1 })
+      for (const sequence of [2, 3]) {
+        await ctx.db.insert('agentRunCommands', {
+          commandId: `lost-${sequence}`, workspaceId, environmentId, runId: 'run-remote-turn', type: 'reconnect', sequence,
+          payload: { remoteSessionId: 'acp-session' }, status: 'cancelled', createdAt: now + sequence, updatedAt: now + sequence,
+        })
+      }
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', 'run-remote-turn')).unique()
+      await ctx.db.patch(run!._id, { status: 'failed' })
+    })
+    expect(await call('claimCommandsByServer', { workspaceId, environmentId, now: now + 50, leaseMs: 5_000, limit: 10 })).toEqual([])
+
+    const repaired = await convex.mutation(internal.agents.connectedAgents.reopenUndeliveredCommands, { environmentId })
+    expect(repaired).toEqual({ lastAcknowledged: 1, reopened: [2, 3] })
+    const delivered = await call<Array<{ sequence: number; type: string }>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: now + 60, leaseMs: 5_000, limit: 10,
+    })
+    expect(delivered.map((command) => [command.sequence, command.type])).toEqual([[2, 'shutdown'], [3, 'shutdown']])
+  })
+
+  test('an approval for an Overlay MCP tool call shows a card, answers the waiting call, and sends the host nothing', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 10,
+      events: [event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' })] })
+    const ask = (at: number, overrides: Record<string, unknown> = {}) => call<{ state: string; decision?: string }>('requestMcpApprovalByServer', {
+      workspaceId, environmentId, runId: 'run-remote-turn', requestKey: 'mcp:abc', prompt: 'Allow call_mcp_tool (Monid)?', now: now + at, ...overrides })
+
+    expect(await ask(11, { runId: 'someone-elses-run' })).toEqual({ state: 'unavailable' })
+    expect(await ask(11)).toEqual({ state: 'pending' })
+    expect(await ask(12)).toEqual({ state: 'pending' })
+    const waiting = await projectedState(convex, started.messageId)
+    const card = (waiting.message?.parts ?? []).find(part => part.type === 'data-remote-agent-request') as { data: Record<string, unknown> }
+    expect(card.data).toEqual(expect.objectContaining({ requestKey: 'mcp:abc', state: 'pending', prompt: 'Allow call_mcp_tool (Monid)?' }))
+    expect(waiting.run?.status).toBe('waiting_for_approval')
+    await convex.run(async ctx => {
+      const rows = await ctx.db.query('agentApprovalRequests').collect()
+      expect(rows.filter(row => row.requestKey === 'mcp:abc')).toHaveLength(1)
+    })
+
+    expect(await call('resolveRemoteRequestByServer', { actorUserId: 'foreign-user', workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'mcp:abc', decision: 'allow', now: now + 13 })).toEqual({ applied: false })
+    await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'mcp:abc', decision: 'forged', now: now + 13 })).rejects.toThrow(/AGENT_APPROVAL_OPTION_INVALID/)
+    const resolved = await call<{ applied: boolean; commandId?: string }>('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey: 'mcp:abc', decision: 'allow', now: now + 14 })
+    expect(resolved.applied).toBe(true)
+    // The host is never told: there is no command for it, because the agent did not ask.
+    expect(resolved.commandId).toBeUndefined()
+    await convex.run(async ctx => {
+      const commands = await ctx.db.query('agentRunCommands').collect()
+      expect(commands.filter(command => command.type === 'approval_response')).toHaveLength(0)
+    })
+
+    expect(await ask(15)).toEqual({ state: 'resolved', decision: 'allow' })
+    const after = await projectedState(convex, started.messageId)
+    expect(after.run?.status).toBe('running')
+    const resolvedCard = (after.message?.parts ?? []).find(part => part.type === 'data-remote-agent-request') as { data: Record<string, unknown> }
+    expect(resolvedCard.data.state).toBe('resolved')
+  })
+
+  test('an MCP approval left unanswered is closed when the run ends, so the waiting call is refused', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await call('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 10,
+      events: [event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' })] })
+    const ask = (at: number) => call<{ state: string; decision?: string }>('requestMcpApprovalByServer', {
+      workspaceId, environmentId, runId: 'run-remote-turn', requestKey: 'mcp:late', prompt: 'Allow?', now: now + at })
+    expect(await ask(11)).toEqual({ state: 'pending' })
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 12,
+      events: [event(2, 'cancelled', {})] })
+    expect(await ask(13)).toEqual({ state: 'resolved', decision: 'cancelled' })
+    // And a new request on an ended run is unavailable.
+    expect(await call('requestMcpApprovalByServer', { workspaceId, environmentId, runId: 'run-remote-turn',
+      requestKey: 'mcp:new', prompt: 'Allow?', now: now + 14 })).toEqual({ state: 'unavailable' })
   })
 
   test('approval, elicitation, artifacts, and structured work remain server-authorized and exactly once', async () => {

@@ -2,6 +2,8 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
+import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
+import { parseResourceView } from '@/shared/workspaces/resource-scope'
 
 async function readJsonBody(request: NextRequest, context: AppApiRouteContext) {
   if (Object.keys(context.parsedJson).length > 0) return context.parsedJson
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       automationId,
       includeDeleted,
       includeRuns,
+      view: parseResourceView(request.nextUrl.searchParams.get('view')),
     })
     return NextResponse.json(result)
   } catch (error) {
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {
       logger.error('[automations POST]', error)
     }
-    return automationErrorResponse(error, 'Failed to create automation')
+    return scopeForbiddenResponse(error) ?? automationErrorResponse(error, 'Failed to create automation')
   }
 }
 

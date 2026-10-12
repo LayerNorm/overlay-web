@@ -23,6 +23,8 @@ export function useAgentEditorBootstrap({
   const [loadFailed, setLoadFailed] = useState(false)
   const [canCreate, setCanCreate] = useState(initial.canCreate)
   const [connectedAgentsEnabled, setConnectedAgentsEnabled] = useState(false)
+  /** Whether the connected-agents check has answered; the settings wait for it so the agent-type choice does not pop in. */
+  const [connectedAgentsChecked, setConnectedAgentsChecked] = useState(showcase)
 
   // Reset the load state when the load parameters change (before the effect
   // below kicks off the next fetch).
@@ -62,10 +64,10 @@ export function useAgentEditorBootstrap({
     if (showcase || !activeWorkspaceId) return
     let cancelled = false
     void overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId)
-      .then(() => { if (!cancelled) setConnectedAgentsEnabled(true) })
-      .catch(() => { if (!cancelled) setConnectedAgentsEnabled(false) })
+      .then(() => { if (!cancelled) { setConnectedAgentsEnabled(true); setConnectedAgentsChecked(true) } })
+      .catch(() => { if (!cancelled) { setConnectedAgentsEnabled(false); setConnectedAgentsChecked(true) } })
     return () => { cancelled = true }
   }, [activeWorkspaceId, showcase])
 
-  return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled }
+  return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked }
 }

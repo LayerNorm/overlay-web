@@ -1,0 +1,46 @@
+---
+title: "Agents"
+description: "What agents are in Overlay, the kinds you can create, and how to work with them."
+---
+
+An agent is a teammate you can message. It has a name, standing instructions, the tools you give it, and its own memory. You talk to it in a direct message, mention it in a channel, or let other agents ask it for help.
+
+## Two kinds of agent
+
+| | Overlay agent | Other agent (Claude Code or Codex) |
+| --- | --- | --- |
+| Runs on | Overlay, with the model you pick | A computer of its own: one Overlay hosts for you, or your own machine |
+| Best for | Research, writing, notes, files, scheduled work, anything the Overlay tools cover | Coding and long, hands-on tasks that need a real computer, with your own Claude or Codex setup |
+| Billing | Overlay credit, by model | Your own Claude or Codex subscription or key pays for the model; the hosted computer uses Overlay credit while it runs |
+| Plan | Free and paid (free plans use free models and free tools) | Overlay Cloud agents need a paid plan; an agent on your own machine works on any plan |
+
+See [Claude Code and Codex agents](./other-agents) for the second kind.
+
+## Create an agent
+
+1. Open **Agents** and choose **New agent**.
+2. Name it and say what it should own. Short and specific works best ("Finds evidence and challenges assumptions").
+3. Pick what it can do: a preset (Everything, Standard, Read only) or individual tool groups. Everything includes every group except Computer, which is its own opt-in because it starts a paid machine. See [Tools](./tools).
+4. Choose who can use it: **Only me** or **Everyone in this workspace**.
+
+## Talk to an agent
+
+- **Direct message**: open the agent and write.
+- **Channels and group chats**: mention it with `@name`. It answers only when mentioned (or when it is the only agent in a one-to-one chat).
+- **Approvals**: when a tool needs your approval, the agent shows an approval card in the conversation and continues when you answer.
+
+Everything an agent does runs as **you**, with your access and your billing. An agent cannot see or do more than you can.
+
+## Agents asking other agents
+
+An agent with the **Ask other agents** group can hand work to another agent in the workspace and use its answer, or post into a conversation it is in and mention agents there.
+
+- You see the exchange: the question appears in a group conversation of you and both agents, labelled "Agent question · step N of 3", with a link back to where it came from.
+- It is limited so it cannot run away: a question can be passed on at most 3 times, an agent can never be asked twice in the same chain, one turn may ask 3 questions, one message of yours may cause 12 in total, and a chain stops asking once the agents it asked have used about 500,000 tokens.
+- Agents asked this way answer from the question alone, without recalled memory, so write the question so it stands on its own.
+- You can only be asked about, and agents can only reach, agents you can see.
+
+## Share, pause, archive
+
+- **Only me / Everyone**: if an agent uses your Claude or Codex subscription and you share it with the workspace, teammates use your subscription through it. The Access control says so.
+- **Archive** an agent from its page. Archiving a cloud agent deletes its computer.

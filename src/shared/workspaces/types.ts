@@ -17,6 +17,7 @@ export type {
   WorkspaceManagementView,
   WorkspaceBillingCheckoutInput,
   WorkspaceBillingSummaryResponse,
+  WorkspaceBillingAutoTopUpInput,
   WorkspaceBillingTopUpInput,
   WorkspaceBillingVerificationInput,
   WorkspaceBillingVerificationResponse,
@@ -33,6 +34,7 @@ import type {
   WorkspaceManagementView,
   WorkspaceBillingCheckoutInput,
   WorkspaceBillingSummaryResponse,
+  WorkspaceBillingAutoTopUpInput,
   WorkspaceBillingTopUpInput,
   WorkspaceBillingVerificationInput,
   WorkspaceBillingVerificationResponse,
@@ -69,6 +71,7 @@ export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
   initializeBilling(workspaceId: string): Promise<WorkspaceBillingSummaryResponse>
   createBillingCheckout(workspaceId: string, input: WorkspaceBillingCheckoutInput): Promise<{ url: string | null }>
   createBillingTopUp(workspaceId: string, input: WorkspaceBillingTopUpInput): Promise<{ url: string | null }>
+  updateBillingAutoTopUp(workspaceId: string, input: WorkspaceBillingAutoTopUpInput): Promise<WorkspaceBillingSummaryResponse>
   createBillingPortal(workspaceId: string): Promise<{ url: string | null }>
   verifyBillingCheckout(
     workspaceId: string,
@@ -103,4 +106,5 @@ export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
   addTeamMember(workspaceId: string, teamId: string, principalId: string): Promise<void>
   removeTeamMember(workspaceId: string, teamId: string, principalId: string): Promise<void>
   archiveWorkspace(workspaceId: string): Promise<void>
+  renameWorkspace(workspaceId: string, name: string): Promise<void>
 }

@@ -1,0 +1,28 @@
+import { NextResponse } from 'next/server'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { WorkspaceAgentServiceError } from '@/server/agents'
+import { agentErrorResponse } from '../../shared'
+
+/** Deletes an archived agent for good (Settings → Archived). A live agent must be archived first. */
+export async function DELETE(_request: Request, context: AppApiRouteContext) {
+  try {
+    const agentId = requiredAgentId(await context.params)
+    await getOverlayServerContext().workspaceAgentService.deleteArchived({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      agentId,
+    })
+    return NextResponse.json({ deleted: true })
+  } catch (error) {
+    return agentErrorResponse(error)
+  }
+}
+
+function requiredAgentId(params: Record<string, string | string[]>) {
+  const value = params.agentId
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new WorkspaceAgentServiceError('validation', 'Agent ID is required')
+  }
+  return value.trim()
+}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
+import { parseResourceScope, parseResourceView } from '@/shared/workspaces/resource-scope'
 import type {
   McpAuthConfig,
   McpAuthType,
@@ -38,7 +40,11 @@ async function validateMcpUrl(url: unknown): Promise<string | null> {
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
-    return NextResponse.json(await repository().list({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id }))
+    return NextResponse.json(await repository().list({
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      view: parseResourceView(request.nextUrl.searchParams.get('view')),
+    }))
   } catch (_error) {
     return NextResponse.json({ error: 'Failed to fetch MCP servers' }, { status: 500 })
   }
@@ -76,6 +82,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       timeoutMs: parseTimeout(body.timeoutMs),
       defaultToolPolicy,
       toolPolicies,
+      scope: parseResourceScope(body.scope),
     })
     if (body.enabled !== false) {
       void refreshMcpServerToolCatalog({ mcpServerId: id, userId: context.auth.userId })
@@ -83,7 +90,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
     return NextResponse.json({ id })
   } catch (error) {
-    return mutationErrorResponse(error, 'Failed to create MCP server')
+    return scopeForbiddenResponse(error) ?? mutationErrorResponse(error, 'Failed to create MCP server')
   }
 }
 

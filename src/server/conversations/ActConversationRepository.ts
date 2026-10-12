@@ -260,6 +260,8 @@ export interface ActConversationRepository {
   listMemories(args: {
     userId: string
     workspaceId?: string
+    /** Only what the workspace shares: the person's own private memories are left out (used in rooms others can read). */
+    workspaceOnly?: boolean
   }): Promise<ActMemoryRow[] | null>
   /** Compiled owner profile — null when none has been generated yet. Optional: partial test repositories may omit it. */
   getMemoryProfile?(args: {
@@ -271,6 +273,9 @@ export interface ActConversationRepository {
   }): Promise<ActSkillRow[]>
   listSkillDirectory(args: {
     userId: string
+    workspaceId?: string
+    /** Only skills shared with the workspace: the person's personal skills are left out. */
+    workspaceOnly?: boolean
   }): Promise<Array<{ _id: string; name: string; description: string; enabled: boolean }>>
   getConversation(args: {
     conversationId: ConversationId
@@ -345,6 +350,8 @@ export interface ActConversationRepository {
     cancelledRunIds: string[]
     cancelledWorkflowRunIds: string[]
     cancelledWorkflows: Array<{ agentRunId: string; workflowRunId: string }>
+    /** Connected-agent runs the caller must cancel through the control plane (left untouched here). */
+    remoteRunIds?: string[]
     stoppedCount: number
   }>
   getLatestAgentRun(args: {

@@ -1,6 +1,10 @@
 import 'server-only'
 
-import { canManageWorkspace, type WorkspaceBillingSummaryResponse } from '@overlay/workspace-contracts'
+import {
+  canManageWorkspace,
+  type WorkspaceBillingAutoTopUpInput,
+  type WorkspaceBillingSummaryResponse,
+} from '@overlay/workspace-contracts'
 import type { BillingProvider } from '@overlay/app-core'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { centsToBillingCredits } from '@/shared/billing/billing-account'
@@ -10,18 +14,18 @@ import {
   isValidTopUpAmount,
   quantityToPlanAmountCents,
 } from '@/shared/billing/billing-pricing'
-import type { BillingRepository } from './BillingRepository'
+import { autoTopUpFitsLimit, validateAutoTopUpInput } from '@/shared/billing/auto-top-up'
+import { workspaceUsageSummary } from './workspace-usage-summary'
+import type { BillingRepository, BillingSubscriptionRecord } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
-import type { WorkspaceBillingRolloutDecision } from '@/shared/billing/workspace-billing-rollout'
 import { BillingServiceError } from './BillingCustomerService'
 
 type Deps = {
   baseUrl: () => string
   billingProvider: () => BillingProvider
   repository: BillingRepository
-  rollout: (workspaceId: string) => WorkspaceBillingRolloutDecision
   usage: UsageRepository
-  workspaces: Pick<WorkspaceService, 'resolveActiveWorkspace'>
+  workspaces: Pick<WorkspaceService, 'resolveActiveWorkspace' | 'getSharingPolicy'>
 }
 
 export class WorkspaceBillingService {
@@ -29,7 +33,6 @@ export class WorkspaceBillingService {
 
   async initialize(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.requireManager(args)
-    this.requireRollout(access.workspace.id)
     await this.deps.repository.ensureWorkspaceBillingAccount({
       primaryBillingContactUserId: args.actorUserId,
       workspaceId: access.workspace.id,
@@ -39,13 +42,12 @@ export class WorkspaceBillingService {
 
   async summary(args: { actorUserId: string; workspaceId: string }): Promise<WorkspaceBillingSummaryResponse> {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind !== 'organization') this.fail('Organization workspace required.', 400)
     const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
       workspaceId: access.workspace.id,
     })
-    const rollout = this.deps.rollout(access.workspace.id)
     const canManage = canManageWorkspace(access.membership.role)
-    if (!account) return emptySummary(access.workspace.id, canManage, rollout)
+    const canTopUp = await this.memberMayTopUp(access, args.actorUserId)
+    if (!account) return emptySummary(access.workspace.id, canManage, canTopUp)
     const [entitlements, subscription] = await Promise.all([
       this.deps.repository.getBillingAccountEntitlementsByServer({ billingAccountId: account.billingAccountId }),
       this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }),
@@ -53,20 +55,12 @@ export class WorkspaceBillingService {
     const totalCents = entitlements?.budgetTotalCents ?? 0
     const usedCents = entitlements?.budgetUsedCents ?? 0
     const remainingCents = entitlements?.budgetRemainingCents ?? 0
-    const periodStart = subscription?.currentPeriodStart ?? Date.now() - 30 * 24 * 60 * 60_000
-    const observability = canManage
-      ? await this.deps.usage.getBillingAccountOperationalReport({
-          billingAccountId: account.billingAccountId,
-          periodStart,
-          reconciliationSlaMs: 15 * 60_000,
-        })
-      : undefined
     return {
       workspaceId: access.workspace.id,
       canManage,
+      canTopUp,
       initialized: true,
       pricingVersion: account.pricingVersion,
-      rollout,
       credits: {
         total: centsToBillingCredits(totalCents),
         used: centsToBillingCredits(usedCents),
@@ -80,19 +74,50 @@ export class WorkspaceBillingService {
         ...(subscription?.status ? { status: subscription.status } : {}),
         ...(subscription?.currentPeriodEnd ? { currentPeriodEnd: subscription.currentPeriodEnd } : {}),
       },
-      ...(observability ? { observability: {
-        actualProviderCostCents: observability.actualProviderCostCents,
-        costCoveragePercent: observability.costCoveragePercent,
-        meteredReservations: observability.meteredReservations,
-        oldestReconciliationAgeMs: observability.oldestReconciliationAgeMs,
-        periodEnd: observability.periodEnd,
-        periodStart: observability.periodStart,
-        realizedMarginPercent: observability.realizedMarginPercent,
-        reconciliationReservations: observability.reconciliationReservations,
-        retailCredits: observability.retailCredits,
-        staleReconciliationReservations: observability.staleReconciliationReservations,
-      } } : {}),
+      ...(subscription?.planKind === 'paid'
+        ? {
+            autoTopUp: autoTopUpSummary(subscription),
+            usage: workspaceUsageSummary(
+              await this.deps.repository.getBillingAccountUsageTotalsByServer({
+                billingAccountId: account.billingAccountId,
+                periodStart: periodStartOf(subscription),
+              }),
+              subscription,
+              periodStartOf(subscription),
+              usedCents,
+            ),
+          }
+        : {}),
     }
+  }
+
+  /**
+   * Owners and admins choose what happens at $0: a hard stop, or automatic top-ups up to a monthly limit. Turning
+   * top-ups on records consent to charge the workspace's saved card off-session.
+   */
+  async updateAutoTopUp(args: { actorUserId: string; workspaceId: string } & WorkspaceBillingAutoTopUpInput) {
+    const { account } = await this.requireAccountManager(args)
+    const plan = await this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId })
+    if (plan?.planKind !== 'paid') this.fail('Add a plan before turning on automatic top-ups.', 409)
+    const input = {
+      enabled: Boolean(args.enabled),
+      amountCents: Math.round(Number(args.amountCents)),
+      monthlyLimitCents: Math.round(Number(args.monthlyLimitCents)),
+    }
+    const valid = validateAutoTopUpInput(input)
+    if (!valid.ok) this.fail(valid.error, 400)
+    await this.deps.repository.upsertBillingAccountSubscription({
+      billingAccountId: account.billingAccountId,
+      autoTopUpEnabled: input.enabled,
+      ...(input.enabled
+        ? {
+            autoTopUpAmountCents: input.amountCents,
+            autoTopUpMonthlyLimitCents: input.monthlyLimitCents,
+            offSessionConsentAt: Date.now(),
+          }
+        : {}),
+    })
+    return await this.summary(args)
   }
 
   async createSubscriptionCheckout(args: {
@@ -104,7 +129,7 @@ export class WorkspaceBillingService {
     workspaceId: string
     legalMetadata?: Record<string, string>
   }): Promise<{ url: string | null }> {
-    const { account, workspaceId } = await this.requireEligibleAccountManager(args)
+    const { account, workspaceId } = await this.requireAccountManager(args)
     if (!Number.isSafeInteger(args.planAmountCents)
       || clampPaidPlanAmountCents(args.planAmountCents) !== args.planAmountCents) {
       this.fail('Unsupported subscription amount.', 400)
@@ -133,7 +158,7 @@ export class WorkspaceBillingService {
     workspaceId: string
     legalMetadata?: Record<string, string>
   }): Promise<{ url: string | null }> {
-    const { account, workspaceId } = await this.requireEligibleAccountManager(args)
+    const { account, workspaceId } = await this.requireTopUpAccount(args)
     if (!isValidTopUpAmount(args.amountCents)) this.fail('Unsupported top-up amount.', 400)
     const result = await this.deps.billingProvider().createCheckoutSession({
       userId: args.actorUserId,
@@ -173,7 +198,10 @@ export class WorkspaceBillingService {
     sessionId: string
     workspaceId: string
   }): Promise<{ success: true; amountCents: number; kind: 'paid_plan' | 'budget_topup' }> {
-    const { account, workspaceId } = await this.requireAccountManager(args)
+    // Whoever may start a top-up may confirm it; a plan change stays with owners and admins.
+    const { account, workspaceId } = args.kind === 'budget_topup'
+      ? await this.requireTopUpAccount(args)
+      : await this.requireAccountManager(args)
     const provider = this.deps.billingProvider()
     if (!provider.verifyCheckoutSession) this.fail('Checkout verification is unavailable.', 501)
     const verification = await provider.verifyCheckoutSession({
@@ -223,7 +251,7 @@ export class WorkspaceBillingService {
 
   private async requireManager(args: { actorUserId: string; workspaceId: string }) {
     const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.workspace.kind !== 'organization' || !canManageWorkspace(access.membership.role)) {
+    if (!canManageWorkspace(access.membership.role)) {
       this.fail('Workspace billing can only be managed by owners and admins.', 403)
     }
     return access
@@ -239,36 +267,64 @@ export class WorkspaceBillingService {
     return { account, workspaceId: access.workspace.id }
   }
 
-  private async requireEligibleAccountManager(args: { actorUserId: string; workspaceId: string }) {
-    const result = await this.requireAccountManager(args)
-    this.requireRollout(result.workspaceId)
-    return result
+  /** Owners and admins may always add usage; members only when the workspace's `usageTopUpBy` setting says so. */
+  private async memberMayTopUp(access: Awaited<ReturnType<Deps['workspaces']['resolveActiveWorkspace']>>, actorUserId: string): Promise<boolean> {
+    if (canManageWorkspace(access.membership.role)) return true
+    if (access.membership.role !== 'member') return false
+    const policy = await this.deps.workspaces.getSharingPolicy({ actorUserId, workspaceId: access.workspace.id })
+    return policy.usageTopUpBy === 'members'
   }
 
-  private requireRollout(workspaceId: string): WorkspaceBillingRolloutDecision {
-    const rollout = this.deps.rollout(workspaceId)
-    if (!rollout.eligible || !rollout.checkoutEnabled) {
-      this.fail('Workspace billing is not enabled for this workspace yet.', 403)
+  private async requireTopUpAccount(args: { actorUserId: string; workspaceId: string }) {
+    const access = await this.deps.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    if (!(await this.memberMayTopUp(access, args.actorUserId))) {
+      this.fail('Adding usage to this workspace is limited to its owners and admins.', 403)
     }
-    return rollout
+    const account = await this.deps.repository.getWorkspaceBillingAccountByWorkspaceIdByServer({
+      workspaceId: access.workspace.id,
+    })
+    if (!account) this.fail('Workspace wallet is not initialized.', 404)
+    if (account.status !== 'active') this.fail('Workspace billing account is inactive.', 409)
+    return { account, workspaceId: access.workspace.id }
   }
+
+
 
   private fail(message: string, statusCode: number): never {
     throw new BillingServiceError({ error: message }, statusCode)
   }
 }
 
+/** The current billing period, or the last 30 days when the plan has no period yet. */
+function periodStartOf(plan: BillingSubscriptionRecord): number {
+  return plan.currentPeriodStart ?? Date.now() - 30 * 24 * 60 * 60 * 1000
+}
+
+function autoTopUpSummary(plan: BillingSubscriptionRecord): NonNullable<WorkspaceBillingSummaryResponse['autoTopUp']> {
+  const enabled = Boolean(plan.autoTopUpEnabled)
+  const amountCents = plan.autoTopUpAmountCents ?? 0
+  const spentThisPeriodCents = plan.autoTopUpSpentThisPeriodCents ?? 0
+  const monthlyLimitCents = plan.autoTopUpMonthlyLimitCents ?? null
+  return {
+    enabled,
+    amountCents,
+    monthlyLimitCents,
+    spentThisPeriodCents,
+    limitReached: enabled && !autoTopUpFitsLimit({ monthlyLimitCents: monthlyLimitCents ?? undefined, spentThisPeriodCents }, amountCents),
+  }
+}
+
 function emptySummary(
   workspaceId: string,
   canManage: boolean,
-  rollout: WorkspaceBillingRolloutDecision,
+  canTopUp: boolean,
 ): WorkspaceBillingSummaryResponse {
   return {
     workspaceId,
     canManage,
+    canTopUp,
     initialized: false,
     pricingVersion: 'markup_25_v1',
-    rollout,
     credits: {
       total: 0,
       used: 0,

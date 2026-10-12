@@ -47,7 +47,7 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     return getInternalApiSecret()
   }
 
-  async list(args: { userId: string }): Promise<McpServerSummary[]> {
+  async list(args: { userId: string; workspaceId?: string; view?: 'personal' | 'workspace' | 'archived' }): Promise<McpServerSummary[]> {
     const rows = await convex.query<ConvexMcpSummary[]>('integrations/mcpServers:list', {
       ...args,
       serverSecret: this.serverSecret,
@@ -60,7 +60,7 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     }))
   }
 
-  async listEnabled(args: { userId: string }): Promise<McpServerRecord[]> {
+  async listEnabled(args: { userId: string; workspaceId?: string; includeShared?: boolean; workspaceOnly?: boolean }): Promise<McpServerRecord[]> {
     const rows = await convex.query<ConvexMcpRecord[]>('integrations/mcpServers:listEnabled', {
       ...args,
       serverSecret: this.serverSecret,

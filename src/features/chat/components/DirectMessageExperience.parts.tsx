@@ -10,7 +10,6 @@ import {
   Hash,
   Monitor,
   MoreHorizontal,
-  Paperclip,
   Pin,
   Share2,
   Slack,
@@ -37,7 +36,6 @@ import { ConversationScopeActionDialog } from './collaboration/ConversationScope
 import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
-import { AttachResourceDialog } from '@/components/share/AttachResourceDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
 import {
   roomMessageRowKey,
@@ -253,9 +251,7 @@ export function RoomHeaderActions({
   menuOpen,
   setMenuOpen,
   menuTriggerRef,
-  onAttach,
   onShare,
-  readOnly = false,
 }: {
   desktop: ReturnType<typeof useAgentDesktop>
   vm: ReturnType<typeof useRoomViewModels>
@@ -269,10 +265,7 @@ export function RoomHeaderActions({
   menuOpen: boolean
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   menuTriggerRef: React.RefObject<HTMLButtonElement | null>
-  onAttach: () => void
   onShare: () => void
-  /** Surface-mirrored rooms take no attachments. */
-  readOnly?: boolean
 }) {
   const { currentParticipant } = vm
   const { updateState: onUpdateState, archiveMenuAction: onArchive } = roomActions
@@ -291,17 +284,6 @@ export function RoomHeaderActions({
           }`}
         >
           <Pin size={13} />{collab.pins.length}
-        </button>
-      ) : null}
-      {!showcase && !readOnly ? (
-        <button
-          type="button"
-          onClick={onAttach}
-          title="Attach a file, project, knowledge base, automation, or agent"
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-        >
-          <Paperclip size={14} />
-          <span className="hidden sm:inline">Attach</span>
         </button>
       ) : null}
       {!showcase && currentParticipant?.role === 'moderator' ? (
@@ -557,7 +539,6 @@ export function RoomTranscript({
   conversationType,
   title,
   channelTopic,
-  agentResponding,
   ctx,
 }: {
   transcript: ReturnType<typeof useRoomTranscript>
@@ -567,7 +548,6 @@ export function RoomTranscript({
   conversationType: 'dm' | 'channel'
   title: string
   channelTopic: string | undefined
-  agentResponding: string | null
   ctx: RoomMessageContext
 }) {
   const {
@@ -578,12 +558,10 @@ export function RoomTranscript({
     loadingOlderMessages,
     loadOlderMessages,
     loading,
-    generatingMessages,
   } = transcript
   const { newMessageCount } = readMarkers
   const { jumpToLatest: onJumpToLatest } = navigation
   const { mainMessages, unreadBoundaryMessageId } = vm
-  const generatingCount = generatingMessages.length
   const onLoadOlder = () => void loadOlderMessages()
   return (
     <div className="overlay-chat-surface relative min-h-0 flex-1">
@@ -663,20 +641,6 @@ export function RoomTranscript({
               )
             })
           )}
-          {agentResponding && generatingCount === 0 ? (
-            <div className="flex items-center gap-2 px-1" aria-live="polite" aria-label={`${agentResponding} response pending`}>
-              <span className="text-xs font-medium text-[var(--foreground)]">{agentResponding}</span>
-              <span className="flex items-center gap-1">
-                {[0, 1, 2].map((dot) => (
-                  <span
-                    key={dot}
-                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
-                    style={{ animationDelay: `${dot * 120}ms` }}
-                  />
-                ))}
-              </span>
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
@@ -901,8 +865,6 @@ export function RoomDialogs({
   isWorkspaceOwner,
   shareOpen,
   onShareClose,
-  attachOpen,
-  onAttachClose,
   addPeopleOpen,
   onAddPeopleOpenChange,
   conversationId,
@@ -913,7 +875,6 @@ export function RoomDialogs({
   participants,
   router,
   onParticipantsAdded,
-  sendMessage,
 }: {
   panels: ReturnType<typeof useRoomPanels>
   roomActions: ReturnType<typeof useRoomActions>
@@ -921,8 +882,6 @@ export function RoomDialogs({
   isWorkspaceOwner: boolean
   shareOpen: boolean
   onShareClose: () => void
-  attachOpen: boolean
-  onAttachClose: () => void
   addPeopleOpen: boolean
   onAddPeopleOpenChange: (open: boolean) => void
   conversationId: string
@@ -933,7 +892,6 @@ export function RoomDialogs({
   participants: ConversationParticipant[]
   router: ReturnType<typeof useRouter>
   onParticipantsAdded: () => void
-  sendMessage: RoomMessageContext['sendMessage']
 }) {
   const {
     attachmentPreview,
@@ -972,16 +930,6 @@ export function RoomDialogs({
         }}
       />
 
-      {attachOpen ? (
-        <AttachResourceDialog
-          workspaceId={activeWorkspaceId}
-          isOpen
-          conversationId={conversationId}
-          conversationTitle={title}
-          onClose={onAttachClose}
-          onPost={(message) => sendMessage(message)}
-        />
-      ) : null}
 
       {addPeopleOpen ? (
         <NewDirectMessageDialog

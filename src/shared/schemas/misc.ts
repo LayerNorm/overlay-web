@@ -14,9 +14,20 @@ export const BrowserTaskRequest = z.object({
   task: z.string().optional(),
 }).passthrough()
 
+/** Which slice of a scoped resource to list. Omitted means everything active the caller can see. */
+export const ResourceViewQuery = z.enum(['personal', 'workspace', 'archived']).optional()
+
 export const EntityListQuery = PaginationQuery.extend({
   skillId: z.string().optional(),
   mcpServerId: z.string().optional(),
+  view: ResourceViewQuery,
+})
+
+export const ScopeActionRequest = z.object({
+  resource: z.enum(['files', 'skills', 'mcp-servers', 'connectors', 'automations']),
+  id: z.string().min(1),
+  action: z.enum(['move', 'archive', 'restore']),
+  to: z.enum(['personal', 'workspace']).optional(),
 })
 
 export const EntityMutationRequest = z.object({

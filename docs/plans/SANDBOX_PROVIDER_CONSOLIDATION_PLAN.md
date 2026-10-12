@@ -48,3 +48,7 @@ _Revised 2026-10-01. Steps 1–3 landed on `main` the same day (not yet deployed
 ## What exists today (2026-10-01)
 
 - Production: Box key set, `OVERLAY_COMPUTER_PROVIDER=box`, Computers on; `OVERLAY_MANAGED_SANDBOX_PROVIDER=vercel`; Daytona key set. 8 Box computers. 4 Vercel harness leases ever, all released (last 2026-09-17). All 12 agent environments revoked. 3 Daytona workspaces (last 2026-07-11).
+
+## Boat rename (2026-10-01)
+
+Box renamed itself Boat. The adapter (`packages/overlay-sandbox-runtime/src/box.ts`) now calls `https://boat.dev/api/v1` and prefers `BOAT_API_KEY` over `BOX_API_KEY`; the internal provider id stays `box`. Production still has `BOX_API_KEY`, which keeps working.

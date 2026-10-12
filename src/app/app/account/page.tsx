@@ -6,7 +6,6 @@ import { useState, useEffect, Suspense, useRef, useCallback, type ReactNode } fr
 import Link from 'next/link'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { Download, MonitorDown, RefreshCw, ArrowRight } from 'lucide-react'
-import { AccountBillingPanel } from '@/features/billing/components/AccountBillingPanel'
 import { DeleteAccountSection } from '@/features/account/components/DeleteAccountSection'
 import { useAccountBillingState } from '@/features/account/hooks/useAccountBillingState'
 import { useAuth } from '@/contexts/AuthContext'
@@ -433,26 +432,20 @@ function AuthenticatedAccountPanels({
         onOpenInApp={onOpenInApp}
       />
 
-      <AccountBillingPanel
-        actionLoading={billing.actionLoading}
-        autoTopUpEnabledDraft={billing.autoTopUpEnabledDraft}
-        billingEnabled={billing.billingEnabled}
-        billingSettings={billing.billingSettings}
-        dark={dark}
-        entitlements={billing.entitlements}
-        entitlementsError={billing.entitlementsError}
-        headingClass={headingClass}
-        mutedClass={mutedClass}
-        onManageBilling={billing.handleManageBilling}
-        onRetryEntitlements={billing.retryEntitlements}
-        onSaveTopUpPreference={billing.handleTopUpPreferenceSave}
-        onStartTopUp={billing.handleStartTopUp}
-        panelClass={panelClass}
-        setAutoTopUpEnabledDraft={billing.setAutoTopUpEnabledDraft}
-        setTopUpAmountDraftCents={billing.setTopUpAmountDraftCents}
-        topUpAmountDraftCents={billing.topUpAmountDraftCents}
-        topUpHistory={billing.topUpHistory}
-      />
+      {billing.billingEnabled ? (
+        <section className={panelClass}>
+          <h2 className={`text-sm font-medium ${headingClass}`}>Billing</h2>
+          <p className={`mt-1 text-sm ${mutedClass}`}>
+            Plans belong to workspaces, not accounts. Each workspace is free or paid on its own.
+          </p>
+          <Link
+            href="/app/settings?section=workspace&workspace_tab=billing"
+            className="mt-3 inline-flex rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+          >
+            Workspace billing
+          </Link>
+        </section>
+      ) : null}
     </div>
   )
 }
@@ -527,13 +520,7 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
   const { user, isLoading: authLoading, isAuthenticated, signOut, refreshSession } = useAuth()
   const currentUserId = user?.id || null
   const [signingOut, setSigningOut] = useState(false)
-  const billing = useAccountBillingState({
-    authLoading,
-    currentUserId,
-    isAuthenticated,
-    router,
-    searchParams,
-  })
+  const billing = useAccountBillingState()
   const sessionCheckComplete = useSessionCheckOnMount(isAuthenticated, authLoading, refreshSession)
 
   const { accountSignInHref, handleOpenInApp } = useAccountHandoffs({

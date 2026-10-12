@@ -3,10 +3,16 @@
 import type { KnowledgeFileNode } from '@overlay/app-core'
 import { filePathLabel } from '@overlay/app-core'
 import { BookOpen, Folder, Trash2 } from 'lucide-react'
-import { useState, type MouseEvent } from 'react'
+import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { FileTypeIcon } from '../shared/file-type-icon'
 import { BulkSelectMarker } from './selection'
+
+/**
+ * Extra hover controls for a row (the web app puts Move to Workspace/Personal and Archive here, since they depend on who
+ * is viewing). Absent means none.
+ */
+export const KnowledgeRowActionsContext = createContext<((node: KnowledgeFileNode) => ReactNode) | null>(null)
 
 export function KnowledgeFileList({
   nodes,
@@ -71,6 +77,7 @@ export function FileTreeRow({
   onMove?: (fileId: string, parentId: string | null) => void
 }) {
   const [dragOver, setDragOver] = useState(false)
+  const renderRowActions = useContext(KnowledgeRowActionsContext)
   const isFileViewerSelected = node.type === 'file' && node._id === selectedId
   const isBulkSelected = Boolean(bulkSelectedIds?.has(node._id))
 
@@ -135,6 +142,11 @@ export function FileTreeRow({
           <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
         </button>
         {!bulkSelectMode ? (
+          <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {renderRowActions?.(node)}
+          </span>
+        ) : null}
+        {!bulkSelectMode ? (
           <button
             type="button"
             aria-label={`Delete ${node.name}`}
@@ -173,29 +185,58 @@ export function KnowledgeFileCards({
   return (
     <div className="overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
       {folders.map((folder) => (
-        <FolderCard
-          key={folder._id}
-          folder={folder}
-          bulkSel={selectedIds.has(folder._id)}
-          selectMode={selectMode}
-          onOpen={() =>
-            selectMode ? onToggleBulk(folder._id) : onOpenFolder(folder._id)
-          }
-          onMove={onMove}
-        />
+        <CardActionsOverlay key={folder._id} node={folder} selectMode={selectMode}>
+          <FolderCard
+            folder={folder}
+            bulkSel={selectedIds.has(folder._id)}
+            selectMode={selectMode}
+            onOpen={() =>
+              selectMode ? onToggleBulk(folder._id) : onOpenFolder(folder._id)
+            }
+            onMove={onMove}
+          />
+        </CardActionsOverlay>
       ))}
       {files.map((file) => (
-        <FileCard
-          key={file._id}
-          file={file}
-          allFiles={allFiles}
-          bulkSel={selectedIds.has(file._id)}
-          selectMode={selectMode}
-          onOpen={() =>
-            selectMode ? onToggleBulk(file._id) : onOpenFile(file)
-          }
-        />
+        <CardActionsOverlay key={file._id} node={file} selectMode={selectMode}>
+          <FileCard
+            file={file}
+            allFiles={allFiles}
+            bulkSel={selectedIds.has(file._id)}
+            selectMode={selectMode}
+            onOpen={() =>
+              selectMode ? onToggleBulk(file._id) : onOpenFile(file)
+            }
+          />
+        </CardActionsOverlay>
       ))}
+    </div>
+  )
+}
+
+/**
+ * A card is one big button, so its hover controls sit beside it rather than inside it (a button cannot hold buttons).
+ * Shows whatever the host supplies through `KnowledgeRowActionsContext`.
+ */
+function CardActionsOverlay({
+  node,
+  selectMode,
+  children,
+}: {
+  node: KnowledgeFileNode
+  selectMode: boolean
+  children: ReactNode
+}) {
+  const renderRowActions = useContext(KnowledgeRowActionsContext)
+  const actions = !selectMode ? renderRowActions?.(node) : null
+  return (
+    <div className="group/card relative" style={{ breakInside: 'avoid' }}>
+      {children}
+      {actions ? (
+        <span className="absolute right-2 top-2 z-10 flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] opacity-0 shadow-sm transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100">
+          {actions}
+        </span>
+      ) : null}
     </div>
   )
 }

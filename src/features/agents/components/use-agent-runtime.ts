@@ -22,11 +22,15 @@ export function useAgentRuntime({
     Boolean(showcaseAgent && workspaceAgentUsesManagedHarness(showcaseAgent))
   ))
 
+  const [cloudAgent, setCloudAgent] = useState(false)
+  /** The agent's binding is an Overlay Cloud machine. */
+  const onCloudBinding = useCallback(() => setCloudAgent(true), [])
+
   /** Called when the agent's loaded binding turns out to be a removed hosted runtime. */
   const onLegacyHostedBinding = useCallback(() => {
     setAgentType('overlay')
     setLegacyHostedRuntime(true)
   }, [])
 
-  return { agentType, setAgentType, legacyHostedRuntime, setLegacyHostedRuntime, onLegacyHostedBinding }
+  return { agentType, setAgentType, legacyHostedRuntime, setLegacyHostedRuntime, onLegacyHostedBinding, cloudAgent, onCloudBinding }
 }

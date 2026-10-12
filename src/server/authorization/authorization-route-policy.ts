@@ -69,6 +69,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agents/:agentId/automations', methods: { GET: authenticated() } },
   { path: '/api/v1/agents/:agentId/bundle', methods: { GET: authenticated() } },
   { path: '/api/v1/agents/:agentId/restore', methods: { POST: authenticated() } },
+  { path: '/api/v1/agents/:agentId/permanent', methods: { DELETE: authenticated() } },
+  { path: '/api/v1/agents/:agentId/machine', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
   {
     path: '/api/v1/agents/:agentId/threads',
     methods: { GET: authenticated(), POST: authenticated() },
@@ -100,6 +102,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: authenticated() },
   },
   {
+    path: '/api/v1/agent-environments/cloud',
+    methods: { POST: authenticated() },
+  },
+  {
     path: '/api/v1/agent-environments/:environmentId/approve',
     methods: { POST: authenticated() },
   },
@@ -118,8 +124,12 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated(), PUT: authenticated(), DELETE: authenticated() },
   },
   { path: '/api/v1/agent-environments/enroll', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-profiles/upload', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-asks', methods: { POST: authenticated() } },
+  { path: '/api/v1/agents/:agentId/profile', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/run-credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/heartbeat', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/capabilities', methods: { PUT: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },
@@ -180,7 +190,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   {
     path: '/api/v1/workspaces/:workspaceId/lifecycle',
-    methods: { DELETE: authenticated() },
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
   },
   {
     path: '/api/v1/workspaces/:workspaceId/policies',
@@ -213,6 +223,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/workspaces/:workspaceId/billing/checkout', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/portal', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/auto-top-up', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
   {
     path: '/api/v1/subscription/settings',
@@ -220,10 +231,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
 
   { path: '/api/v1/admin/audit', methods: { GET: capability('audit.read') } },
-  {
-    path: '/api/v1/admin/usage',
-    methods: { GET: capability('usage.read'), POST: capability('usage.manage') },
-  },
+  { path: '/api/v1/admin/usage', methods: { GET: capability('usage.read') } },
   {
     path: '/api/v1/admin/principals',
     methods: {
@@ -510,6 +518,21 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   { path: '/api/v1/providers/connections/test', methods: { POST: authenticated() } },
+  // Agent provider accounts (Claude Code / Codex credentials) are scoped to the caller's own user id.
+  {
+    path: '/api/v1/provider-accounts',
+    methods: {
+      GET: authenticated(),
+      POST: authenticated(),
+      PATCH: authenticated(),
+      DELETE: authenticated(),
+    },
+  },
+  { path: '/api/v1/provider-accounts/codex-sign-in', methods: { POST: authenticated() } },
+  // Other AI apps connected over MCP: every operation is scoped to the caller's own user id.
+  { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
+  { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
+  { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
   // Surfaces: SurfaceService enforces bind permission (visible agent, no
   // guests, personal agents only by their creator). connect/callback are browser
   // navigations that check the Overlay session themselves; the Slack webhook
@@ -530,6 +553,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/integrations',
     methods: { GET: capability('integrations.use'), POST: capability('integrations.use') },
   },
+  // Convex enforces who may move, archive, or restore a given item; any signed-in member may ask.
+  { path: '/api/v1/scope', methods: { POST: authenticated() } },
   {
     path: '/api/v1/skills',
     methods: {

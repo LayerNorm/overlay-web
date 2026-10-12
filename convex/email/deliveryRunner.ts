@@ -208,6 +208,7 @@ function parseEvent(payloadJson: string): LifecycleEmailEvent {
     'workspace.invitation_sent',
     'workspace.mention',
     'workspace.dm_received',
+    'billing.auto_topup_limit_reached',
   ]
   if (!allowed.includes(String(value.name))) throw new Error('Unsupported lifecycle email event')
   return {

@@ -53,7 +53,7 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
       userId: input.userId,
       displayName: input.displayName,
       email: input.email,
-      workspaceName: `${input.displayName.trim() || 'My'}’s workspace`,
+      workspaceName: input.workspaceName,
       now: input.now,
     }))
   }
@@ -105,6 +105,17 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
       if (hasCode(error, 'WORKSPACE_NOT_FOUND') || hasCode(error, 'WORKSPACE_ACCESS_DENIED')) {
         return null
       }
+      throw error
+    }
+  }
+
+  async renameWorkspace(args: Parameters<WorkspaceRepository['renameWorkspace']>[0]) {
+    try {
+      const row = await mutation<ConvexWorkspace | null>('renameByServer', args)
+      return row ? workspace(row) : null
+    } catch (error) {
+      if (hasCode(error, 'WORKSPACE_NOT_FOUND')) return null
+      if (hasCode(error, 'WORKSPACE_NAME_TOO_LONG')) throw new Error('WORKSPACE_NAME_TOO_LONG')
       throw error
     }
   }

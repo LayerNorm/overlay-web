@@ -6,6 +6,7 @@ import {
   executeAppendToNote,
   executeEditNote,
   executeGetNote,
+  executeListNotes,
   executeReplaceNoteSection,
 } from './notes-executes'
 import type { OverlayToolsOptions } from './types'
@@ -116,5 +117,31 @@ test('a lost race is retried once on the fresh text', async () => {
     assert.deepEqual(api.writes.map((write) => write.expectedUpdatedAt), [1, 2])
   } finally {
     api.restore()
+  }
+})
+
+test('list_notes reads the route\'s page envelope across pages, and still reads a bare array', async () => {
+  const originalFetch = globalThis.fetch
+  const note = (n: number) => ({ _id: `note_${n}`, title: `Note ${n}`, tags: [], createdAt: n, updatedAt: n })
+  const urls: string[] = []
+  globalThis.fetch = (async (input) => {
+    const url = new URL(String(input))
+    urls.push(url.search)
+    return url.searchParams.get('cursor')
+      ? Response.json({ data: [note(1)], hasMore: false, total: 2 })
+      : Response.json({ data: [note(2)], nextCursor: 'next', hasMore: true, total: 2 })
+  }) as typeof fetch
+  try {
+    const paged = await executeListNotes(options, {})
+    assert.equal(paged.success, true)
+    assert.deepEqual('notes' in paged ? paged.notes.map((entry) => entry.noteId) : [], ['note_2', 'note_1'])
+    assert.equal(urls.length, 2)
+    assert.match(urls[0]!, /limit=100/)
+
+    globalThis.fetch = (async () => Response.json([note(3), note(4)])) as typeof fetch
+    const bare = await executeListNotes(options, {})
+    assert.deepEqual('notes' in bare ? bare.notes.map((entry) => entry.noteId) : [], ['note_4', 'note_3'])
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })

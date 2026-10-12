@@ -164,6 +164,7 @@ export function productEventForLifecycle(event: LifecycleEvent): ProductEvent | 
         userId: event.userId,
       }
     case 'api_key.changed':
+    case 'billing.auto_topup_limit_reached':
       return null
     case 'workspace.invitation_sent':
       return {

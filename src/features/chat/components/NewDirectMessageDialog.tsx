@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, Check, Search, UserRound, UserPlus } from 'lucide-react'
+import { Check, Search, UserRound, UserPlus } from 'lucide-react'
+import { AgentCreature } from '@/components/orb/Creature'
 import { Button, DialogFrame, Input } from '@overlay/ui/primitives'
 import type { WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -196,7 +197,6 @@ function MemberListItem({
   onToggle: (principalId: string) => void
 }) {
   const principalId = item.principalId!
-  const AgentIcon = item.principalType === 'agent' ? Bot : UserRound
   return (
     <button
       type="button"
@@ -205,9 +205,15 @@ function MemberListItem({
         checked ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'
       }`}
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-        <AgentIcon size={14} />
-      </span>
+      {item.principalType === 'agent' ? (
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+          <AgentCreature agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={32} />
+        </span>
+      ) : (
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+          <UserRound size={14} />
+        </span>
+      )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-[var(--foreground)]">{item.name}</span>
         <span className="block truncate text-[11px] text-[var(--muted-light)]">{item.description}</span>

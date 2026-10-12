@@ -1,13 +1,9 @@
 import 'server-only'
 
 import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
-import { getDynamicTopUpConfig, isRecognizedTopUpAmount } from '@/server/billing/stripe-billing'
-import { TOP_UP_MIN_AMOUNT_CENTS, derivePlanKind } from '@/shared/billing/billing-pricing'
-import type {
-  BillingEntitlementsRecord,
-  BillingRepository,
-  BillingSubscriptionRecord,
-} from './BillingRepository'
+import { getDynamicTopUpConfig } from '@/server/billing/stripe-billing'
+import { TOP_UP_MIN_AMOUNT_CENTS } from '@/shared/billing/billing-pricing'
+import type { BillingEntitlementsRecord, BillingRepository } from './BillingRepository'
 
 export class BillingServiceError extends Error {
   constructor(
@@ -26,10 +22,6 @@ export type BillingCustomerServiceDeps = {
 
 function serviceError(payload: Record<string, unknown>, statusCode: number): never {
   throw new BillingServiceError(payload, statusCode)
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function normalizeLimitValue(value: number | string | undefined): number {
@@ -114,79 +106,18 @@ export class BillingCustomerService {
     }
   }
 
-  async getBillingSettings(args: {
-    userId: string
-  }) {
-    const subscription = await this.deps.repository.getSubscriptionByUserIdByServer({
-      userId: args.userId,
-    })
-    return this.toBillingSettingsResponse(subscription)
-  }
-
-  async updateBillingSettings(args: {
-    body: unknown
-    userId: string
-  }): Promise<{ success: true }> {
-    if (!isPlainObject(args.body)) {
-      serviceError({ error: 'Invalid request body' }, 400)
+  /** A person's own billing settings. An account has no plan or automatic top-ups (plans belong to workspaces). */
+  getBillingSettings() {
+    const topUpConfig = getDynamicTopUpConfig()
+    return {
+      planKind: 'free' as const,
+      autoTopUpEnabled: false,
+      topUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
+      autoTopUpAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
+      topUpMinAmountCents: topUpConfig.minAmountCents,
+      topUpMaxAmountCents: topUpConfig.maxAmountCents,
+      topUpStepAmountCents: topUpConfig.stepAmountCents,
     }
-    const body = args.body
-
-    if (typeof body.autoTopUpEnabled !== 'boolean') {
-      serviceError({ error: 'Invalid autoTopUpEnabled' }, 400)
-    }
-    if (body.grantOffSessionConsent !== undefined && typeof body.grantOffSessionConsent !== 'boolean') {
-      serviceError({ error: 'Invalid grantOffSessionConsent' }, 400)
-    }
-
-    const autoTopUpEnabled = body.autoTopUpEnabled
-    const providedTopUpAmountCents = body.topUpAmountCents ?? body.autoTopUpAmountCents
-    if (providedTopUpAmountCents !== undefined && typeof providedTopUpAmountCents !== 'number') {
-      serviceError({ error: 'Invalid topUpAmountCents' }, 400)
-    }
-    const grantOffSessionConsent = body.grantOffSessionConsent === true
-
-    const subscription = await this.deps.repository.getSubscriptionByUserIdByServer({
-      userId: args.userId,
-    })
-
-    if (derivePlanKind(subscription ?? {}) !== 'paid') {
-      serviceError({ error: 'Auto top-up is available only on paid plans' }, 403)
-    }
-    if (autoTopUpEnabled && !grantOffSessionConsent && !subscription?.offSessionConsentAt) {
-      serviceError({ error: 'Off-session consent is required to enable auto top-up' }, 400)
-    }
-
-    const topUpAmountCents = Math.round(
-      Number(providedTopUpAmountCents ?? subscription?.autoTopUpAmountCents ?? TOP_UP_MIN_AMOUNT_CENTS),
-    )
-    if (!Number.isFinite(topUpAmountCents)) {
-      serviceError({ error: 'Invalid top-up amount' }, 400)
-    }
-
-    if (!isRecognizedTopUpAmount(topUpAmountCents)) {
-      serviceError({ error: 'Unsupported top-up amount' }, 400)
-    }
-
-    const result = await this.deps.repository.updateBillingPreferences({
-      userId: args.userId,
-      autoTopUpEnabled,
-      topUpAmountCents,
-      grantOffSessionConsent,
-    })
-
-    if (!result?.success) {
-      serviceError({ error: result?.error || 'Failed to update billing settings' }, 400)
-    }
-
-    return { success: true }
-  }
-
-  async getTopUpHistory(args: {
-    userId: string
-  }) {
-    const rows = await this.deps.repository.listBudgetTopUpsByServer({ userId: args.userId })
-    return { items: rows ?? [] }
   }
 
   async getEntitlements(args: {
@@ -197,20 +128,6 @@ export class BillingCustomerService {
       serviceError({ error: 'Failed to load subscription' }, 502)
     }
     return this.toEntitlementsResponse(convexData)
-  }
-
-  private toBillingSettingsResponse(subscription: BillingSubscriptionRecord | null) {
-    const topUpConfig = getDynamicTopUpConfig()
-    return {
-      planKind: derivePlanKind(subscription ?? {}),
-      autoTopUpEnabled: Boolean(subscription?.autoTopUpEnabled),
-      topUpAmountCents: subscription?.autoTopUpAmountCents ?? TOP_UP_MIN_AMOUNT_CENTS,
-      autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? TOP_UP_MIN_AMOUNT_CENTS,
-      offSessionConsentAt: subscription?.offSessionConsentAt,
-      topUpMinAmountCents: topUpConfig.minAmountCents,
-      topUpMaxAmountCents: topUpConfig.maxAmountCents,
-      topUpStepAmountCents: topUpConfig.stepAmountCents,
-    }
   }
 
   private toEntitlementsResponse(convexData: BillingEntitlementsRecord) {

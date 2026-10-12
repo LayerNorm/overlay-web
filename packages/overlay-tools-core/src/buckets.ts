@@ -12,6 +12,8 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'move_file',
   'search_memory',
   'search_messages',
+  'list_chats',
+  'read_chat',
   'save_memory',
   'save_memory_batch',
   'update_memory',
@@ -32,6 +34,10 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'update_automation',
   'pause_automation',
   'delete_automation',
+  'list_agents',
+  'ask_agent',
+  'read_agent_reply',
+  'post_message',
 ])
 
 /** Maps tool name -> usage/cost bucket. */
