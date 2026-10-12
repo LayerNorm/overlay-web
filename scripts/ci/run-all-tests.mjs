@@ -39,6 +39,7 @@ const VITEST = /from ['"]vitest['"]/
 const PRELOADS = [
   '--require=./scripts/ci/register-server-only.cjs',
   '--require=./scripts/ci/register-style-noop.cjs',
+  '--require=./scripts/ci/register-blocknote-esm.cjs',
 ]
 // Deterministic placeholders for modules that read config at import time.
 // Tests never reach these endpoints.
