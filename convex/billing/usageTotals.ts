@@ -17,7 +17,7 @@ const totalValidator = v.object({
 
 /**
  * The itemized usage list for a workspace billing account: every charge settled since `periodStart` (finalized
- * reservations), added up per resource.
+ * reservations, plus usage operations that record their own amount), added up per resource.
  */
 export const usageTotalsByServer = query({
   args: { billingAccountId: v.string(), periodStart: v.number(), serverSecret: v.string() },
@@ -30,14 +30,26 @@ export const usageTotalsByServer = query({
         .eq('status', 'finalized')
         .gte('createdAt', args.periodStart))
       .take(MAX_CHARGES + 1)
-    const charges = rows.slice(0, MAX_CHARGES).map((row) => ({
-      kind: row.kind,
-      operationId: row.operationId,
-      modelId: row.modelId,
-      cents: row.finalizedCents ?? 0,
-      tokens: row.usageTokens,
-      seconds: row.usageSeconds,
-    }))
-    return { totals: totalUsage(charges), truncated: rows.length > MAX_CHARGES }
+    // Charges that skip reservations (the machine-time meter, batch-recorded usage) carry their amount on the
+    // usage operation instead.
+    const operations = await ctx.db.query('usageOperations')
+      .withIndex('by_billingAccountId_createdAt', (q) => q
+        .eq('billingAccountId', args.billingAccountId)
+        .gte('createdAt', args.periodStart))
+      .take(MAX_CHARGES + 1)
+    const charges = [
+      ...rows.slice(0, MAX_CHARGES).map((row) => ({
+        kind: row.kind,
+        operationId: row.operationId,
+        modelId: row.modelId,
+        cents: row.finalizedCents ?? 0,
+        tokens: row.usageTokens,
+        seconds: row.usageSeconds,
+      })),
+      ...operations.slice(0, MAX_CHARGES).flatMap((row) => (row.cents && row.kind
+        ? [{ kind: row.kind, operationId: row.operationId, modelId: row.modelId, cents: row.cents, tokens: row.usageTokens, seconds: row.usageSeconds }]
+        : [])),
+    ]
+    return { totals: totalUsage(charges), truncated: rows.length > MAX_CHARGES || operations.length > MAX_CHARGES }
   },
 })

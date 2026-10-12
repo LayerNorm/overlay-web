@@ -4,6 +4,8 @@ import {
   USAGE_RESOURCE_LABELS,
   formatTokens,
   formatUsageQuantity,
+  humanizeModelId,
+  pluralize,
   type UsageResourceKey,
   type UsageTotal,
 } from '@/shared/billing/usage-resources'
@@ -28,7 +30,7 @@ export function workspaceUsageSummary(
               .filter((model) => model.cents > 0)
               .map((model) => ({
                 label: modelLabel(model.modelId),
-                quantity: model.tokens > 0 ? `${formatTokens(model.tokens)} tokens` : `${model.count} requests`,
+                quantity: model.tokens > 0 ? `${formatTokens(model.tokens)} tokens` : pluralize(model.count, 'request', 'requests'),
                 cents: roundCents(model.cents),
               })),
           }
@@ -46,7 +48,7 @@ export function workspaceUsageSummary(
 
 function modelLabel(modelId: string): string {
   if (modelId === 'unknown') return 'Other models'
-  return getModel(modelId)?.name ?? modelId.split('/').pop() ?? modelId
+  return getModel(modelId)?.name ?? humanizeModelId(modelId)
 }
 
 function roundCents(cents: number): number {

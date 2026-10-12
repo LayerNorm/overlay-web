@@ -82,7 +82,9 @@ Follow-ups (done 2026-10-11): a top-up Stripe leaves `pending` (3-D Secure) is s
 ## Phase 3 (done 2026-10-11)
 
 - **No second ledger.** Every charge to a workspace already settles as a finalized `budgetReservations` row (kind, model, operation, amount). The itemized list adds those up per resource for the current period (`usageTotalsByServer`, `convex/billing/usageTotals.ts`); finalize now also stores `usageTokens` and `usageSeconds` so lines show quantities. Older rows have amounts but no quantities.
-- **Resources** (`src/shared/billing/usage-resources.ts`): models (split per model), Overlay Cloud computers, web search, browser tasks, image and video generation, transcription, memory, knowledge and search indexing.
+- **Charges outside reservations.** The machine-time meter charges a workspace balance directly, and `recordBatch` records usage in batches; both now store the amount, kind and seconds/tokens on their `usageOperations` row, which the totals include. Rows from before 2026-10-12 have no amount, so the first period's list can be a little under "used this period" (about 11¢ of $12.62 on the owner's workspace).
+- **Resources** (`src/shared/billing/usage-resources.ts`): models (split per model; ids the catalog does not know are shown as readable names), automations (workflow steps), Overlay Cloud computers, web search, browser tasks, image and video generation, transcription, memory, knowledge and search indexing.
+- **Follow-up found:** `recordBatch` (chat suggestions and other batch-recorded usage) still charges the person's own account, even when the workspace is paid; after the conversion those charges land on the person's new free account. Move it onto the workspace payer.
 - **Workspace → Billing → Usage this period:** total, on-demand charges, days left in the cycle, and one line per resource with quantity and cost; Models expands per model. Included for paid workspaces in the billing summary (`usage`).
 - **Pricing page:** `/pricing` is the full page; `/pricing/preview` is deleted.
 - Tests: `src/shared/billing/usage-resources.test.ts`, `convex/workspaceUsageTotals.convex.test.ts`.

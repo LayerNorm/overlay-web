@@ -537,6 +537,16 @@ export default defineSchema({
     billingAccountId: v.optional(v.string()),
     operationId: v.string(),
     recorded: v.number(),
+    // What the operation charged, for the itemized usage list (charges that do not go through a reservation, such
+    // as the machine-time meter). Unset on rows written before 2026-10-12.
+    cents: v.optional(v.number()),
+    kind: v.optional(v.union(
+      v.literal('ask'), v.literal('write'), v.literal('agent'), v.literal('embedding'),
+      v.literal('transcription'), v.literal('generation'), v.literal('sandbox'),
+    )),
+    modelId: v.optional(v.string()),
+    usageTokens: v.optional(v.number()),
+    usageSeconds: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index('by_operationId', ['operationId'])

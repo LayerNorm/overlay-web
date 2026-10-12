@@ -4,6 +4,7 @@
  */
 export type UsageResourceKey =
   | 'models'
+  | 'automations'
   | 'computers'
   | 'web_search'
   | 'browser_tasks'
@@ -15,6 +16,7 @@ export type UsageResourceKey =
 
 export const USAGE_RESOURCE_LABELS: Record<UsageResourceKey, string> = {
   models: 'Models',
+  automations: 'Automations',
   computers: 'Overlay Cloud computers',
   web_search: 'Web search',
   browser_tasks: 'Browser tasks',
@@ -36,6 +38,8 @@ export function usageResourceFor(charge: UsageCharge): UsageResourceKey {
   if (charge.kind === 'sandbox') return 'computers'
   if (charge.kind === 'transcription' || op.startsWith('audio.')) return 'transcription'
   if (op.startsWith('websearch.')) return 'web_search'
+  // Automation runs are metered per workflow step under the pseudo-model `workflow-steps`.
+  if (op.startsWith('automation.') || charge.modelId === 'workflow-steps') return 'automations'
   if (op.startsWith('agent.browser-task')) return 'browser_tasks'
   if (op.startsWith('media.generate-image')) return 'images'
   if (op.startsWith('media.generate-video')) return 'video'
@@ -84,6 +88,7 @@ export function totalUsage(rows: readonly UsageRow[]): UsageTotal[] {
 
 const COUNT_UNITS: Record<UsageResourceKey, [singular: string, plural: string]> = {
   models: ['request', 'requests'],
+  automations: ['step', 'steps'],
   computers: ['session', 'sessions'],
   web_search: ['search', 'searches'],
   browser_tasks: ['task', 'tasks'],
@@ -109,4 +114,18 @@ export function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
   return String(Math.round(tokens))
+}
+
+export function pluralize(count: number, one: string, many: string): string {
+  return `${count.toLocaleString('en-US')} ${count === 1 ? one : many}`
+}
+
+/** A readable name for a model id the catalog does not know: `openai/gpt-5.6-luna` → "GPT 5.6 Luna". */
+export function humanizeModelId(modelId: string): string {
+  const base = modelId.split('/').pop() ?? modelId
+  return base
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => (/^(gpt|ai|llm|o\d)$/i.test(part) ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join(' ')
 }

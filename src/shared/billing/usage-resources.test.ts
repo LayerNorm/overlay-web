@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { formatUsageQuantity, totalUsage, usageResourceFor } from './usage-resources'
+import { formatUsageQuantity, humanizeModelId, totalUsage, usageResourceFor } from './usage-resources'
 
 test('charges map to the resource a person pays for', () => {
   assert.equal(usageResourceFor({ kind: 'sandbox', operationId: 'workspace-agent-sandbox:t1' }), 'computers')
@@ -28,4 +28,11 @@ test('totals add up per resource, largest first, with models split per model', (
   assert.equal(formatUsageQuantity(totals[0]), '1.6K tokens')
   assert.equal(formatUsageQuantity(totals[1]), '1h 05m')
   assert.equal(formatUsageQuantity(totals[2]), '1 search')
+})
+
+test('automation steps are their own resource, and unknown model ids read as names', () => {
+  assert.equal(usageResourceFor({ kind: 'agent', operationId: 'automation.workflow-run', modelId: 'workflow-steps' }), 'automations')
+  assert.equal(usageResourceFor({ kind: 'agent', modelId: 'workflow-steps' }), 'automations')
+  assert.equal(humanizeModelId('gpt-5.6-luna'), 'GPT 5.6 Luna')
+  assert.equal(humanizeModelId('meta/muse-spark-1.3-contributor'), 'Muse Spark 1.3 Contributor')
 })

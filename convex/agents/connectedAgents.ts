@@ -1886,6 +1886,7 @@ export const meterSandboxLeaseDebitByServer = mutation({
             billingAccountId,
             operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
             recorded: 1,
+            ...meterUsageFields(charge),
             createdAt: args.now,
           })
         }
@@ -1913,6 +1914,7 @@ export const meterSandboxLeaseDebitByServer = mutation({
             billingAccountId: billingAccount.billingAccountId,
             operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
             recorded: 1,
+            ...meterUsageFields(charge),
             createdAt: args.now,
           })
         }
@@ -2837,3 +2839,13 @@ export const reopenUndeliveredCommands = internalMutation({
     return { lastAcknowledged, reopened: toReopen.map((command) => command.sequence) }
   },
 })
+
+/** The machine-time charge, recorded on the usage operation so it shows on the itemized usage list. */
+function meterUsageFields(charge: { costCents: number; modelId?: string; durationSeconds?: number }) {
+  return {
+    cents: Math.max(0, charge.costCents),
+    kind: 'sandbox' as const,
+    ...(charge.modelId ? { modelId: charge.modelId } : {}),
+    ...(charge.durationSeconds ? { usageSeconds: charge.durationSeconds } : {}),
+  }
+}

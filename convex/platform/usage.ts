@@ -717,11 +717,13 @@ export const recordBatch = mutation({
     await enforceFreeTierUsageLimits(ctx, userId, events, forceFreeTierLimits === true)
     const result = await applyUsageEvents(ctx, userId, events)
     if (operationId) {
+      const cents = events.reduce((sum, event) => sum + Math.max(0, event.cost), 0)
       await ctx.db.insert('usageOperations', {
         userId,
         billingAccountId: billingAccount.billingAccountId,
         operationId,
         recorded: events.length,
+        ...(cents > 0 ? { cents, kind: events[0].type, ...(events[0].modelId ? { modelId: events[0].modelId } : {}), ...usageQuantities(events) } : {}),
         createdAt: Date.now(),
       })
     }

@@ -26,14 +26,23 @@ test('usage totals add up this period’s settled charges per resource', async (
     await row('r5', { status: 'released', finalizedCents: 999 })
     await row('r6', { billingAccountId: 'ba-2', finalizedCents: 999 })
     await row('r7', { createdAt: 500, finalizedCents: 999 })
+    // Machine time metered straight onto the balance records its amount on the usage operation.
+    await ctx.db.insert('usageOperations', {
+      userId: 'user-1', billingAccountId: 'ba-1', operationId: 'sandbox-meter:l1:1', recorded: 1,
+      cents: 25, kind: 'sandbox', usageSeconds: 1_200, createdAt: 3_000,
+    })
+    // Older rows without an amount are skipped.
+    await ctx.db.insert('usageOperations', {
+      userId: 'user-1', billingAccountId: 'ba-1', operationId: 'chat.suggestions:1', recorded: 1, createdAt: 3_000,
+    })
   })
   const result = await convex.query(api.billing.usageTotals.usageTotalsByServer, {
     billingAccountId: 'ba-1', periodStart: 1_000, serverSecret: 'test-secret',
   })
   expect(result.truncated).toBe(false)
   expect(result.totals.map((t) => [t.resource, t.cents, t.count])).toEqual([
-    ['models', 50, 2], ['computers', 40, 1], ['web_search', 5, 1],
+    ['computers', 65, 2], ['models', 50, 2], ['web_search', 5, 1],
   ])
-  expect(result.totals[0].tokens).toBe(1_500)
-  expect(result.totals[1].seconds).toBe(3_600)
+  expect(result.totals[1].tokens).toBe(1_500)
+  expect(result.totals[0].seconds).toBe(4_800)
 })
