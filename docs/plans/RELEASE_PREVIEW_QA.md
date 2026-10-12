@@ -14,3 +14,5 @@ sandbox sign-in works, a note created in one is absent in the other, and the
 internal queries return their respective incompatible types. Update a PR and
 check data preservation/current-head assignment; close it and verify alias,
 domain and branch-origin cleanup plus rejection of wildcard fallback.
+
+Lifecycle QA revision A: request a build, then supersede it with revision B.
