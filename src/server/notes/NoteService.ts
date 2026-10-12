@@ -11,6 +11,7 @@ import type {
 } from '@overlay/app-core'
 import { BillingQuotaError, QuotaEnforcer } from '@overlay/billing'
 import { toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
+import { markdownToNoteDocServer } from '@overlay/note-doc/server'
 
 export interface NoteRecord {
   _id: string
@@ -20,6 +21,8 @@ export interface NoteRecord {
   kind?: string
   content?: string
   textContent?: string
+  docJson?: string
+  docFormat?: 'markdown' | 'blocknote'
   tags?: string[]
   createdAt: number
   updatedAt: number
@@ -59,6 +62,8 @@ export interface NoteRepository {
     content?: string
     tags?: string[]
     expectedUpdatedAt?: number
+    docJson?: string
+    docFormat?: 'markdown' | 'blocknote'
     workspaceId?: string
   }): Promise<NoteRecord | null>
   deleteNote(args: {
@@ -99,6 +104,8 @@ function noteRecordToDoc(note: NoteRecord): ServerNoteDoc {
     title: note.name || 'Untitled',
     // Notes are Markdown; rows written before the switch still hold TipTap HTML.
     content: toCanonicalNoteMarkdown(note.textContent ?? note.content ?? ''),
+    docJson: note.docJson,
+    docFormat: note.docFormat,
     tags: note.tags ?? [],
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
@@ -164,6 +171,28 @@ export class NoteService {
       throw new NoteServiceError('noteId required', 400)
     }
 
+    // Format negotiation: writers that send `docJson` own the block document
+    // (content stays the markdown projection). Markdown-only writers hitting a
+    // blocknote note get their content converted so blocks stay canonical.
+    let docJson = args.docJson
+    let docFormat = args.docFormat
+    if (docJson !== undefined) {
+      docFormat = 'blocknote'
+    } else if (args.content !== undefined && args.docFormat === undefined) {
+      const existing = await this.context.noteRepository.getNote({
+        noteId: args.noteId,
+        userId: args.userId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      })
+      if (existing?.docFormat === 'blocknote') {
+        const converted = await markdownToNoteDocServer(
+          toCanonicalNoteMarkdown(args.content),
+        )
+        docJson = converted.docJson
+        docFormat = 'blocknote'
+      }
+    }
+
     const note = await this.context.noteRepository.updateNote({
       noteId: args.noteId,
       userId: args.userId,
@@ -171,6 +200,8 @@ export class NoteService {
       content: args.content === undefined ? undefined : toCanonicalNoteMarkdown(args.content),
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
+      docJson,
+      ...(docFormat !== undefined ? { docFormat } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
     if (!note) {

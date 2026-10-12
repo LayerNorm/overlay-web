@@ -2,6 +2,8 @@
 @import '@overlay/modules-react/knowledge-surface.css';
 @import '@overlay/modules-react/file-viewer.css';
 @import '@overlay/modules-react/notebook-editor.css';
+@import '@blocknote/shadcn/style.css';
+@import '@overlay/modules-react/blocknote.css';
 
 @tailwind base;
 @tailwind components;

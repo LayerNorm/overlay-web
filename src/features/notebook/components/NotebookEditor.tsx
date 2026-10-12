@@ -94,11 +94,12 @@ export default function NotebookEditor({
         content: '',
       }
     },
-    async save({ noteId, title, content, expectedUpdatedAt }) {
+    async save({ noteId, title, content, docJson, expectedUpdatedAt }) {
       const response = await overlayAppClient.notes.updateResponse({
         noteId,
         title,
         content,
+        docJson,
         expectedUpdatedAt,
       })
       const body = await response.json().catch(() => null) as (UpdateNoteResponse & {
@@ -126,6 +127,7 @@ export default function NotebookEditor({
   return (
     <CanonicalNotebookEditor
       noteId={searchParams?.get('id') ?? null}
+      editorMode={searchParams?.get('editor') === 'blocks' ? 'blocknote' : 'auto'}
       hideSidebar={hideSidebar}
       projectName={projectName}
       repository={repository}

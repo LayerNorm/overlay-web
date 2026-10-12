@@ -11010,6 +11010,19 @@
                   "noteId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "expectedUpdatedAt": {
+                    "type": "number"
+                  },
+                  "docJson": {
+                    "type": "string"
+                  },
+                  "docFormat": {
+                    "type": "string",
+                    "enum": [
+                      "markdown",
+                      "blocknote"
+                    ]
                   }
                 },
                 "required": [

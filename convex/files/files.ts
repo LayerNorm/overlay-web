@@ -1126,6 +1126,8 @@ export const update = mutation({
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
+    docJson: v.optional(v.string()),
+    docFormat: v.optional(v.union(v.literal('markdown'), v.literal('blocknote'))),
   },
   handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
     await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
@@ -1157,6 +1159,10 @@ export const update = mutation({
       patch.extension = extensionOf(updates.name)
     }
     if (updates.tags !== undefined && kind === 'note') patch.tags = noteTags(updates.tags)
+    if (kind === 'note') {
+      if (updates.docJson !== undefined) patch.docJson = updates.docJson
+      if (updates.docFormat !== undefined) patch.docFormat = updates.docFormat
+    }
     if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
     if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
     if (updates.indexError !== undefined) patch.indexError = updates.indexError
