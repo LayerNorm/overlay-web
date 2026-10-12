@@ -2,6 +2,10 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
 export default defineSchema({
+  releasePreviewIsolationQa: defineTable({
+    marker: v.string(),
+    value: v.string(),
+  }).index('by_marker', ['marker']),
   userUiSettings: defineTable({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),

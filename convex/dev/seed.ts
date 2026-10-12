@@ -16,6 +16,12 @@ export const init = internalMutation({
     const principalId = 'preview-human-' + userId
     const membershipId = 'preview-membership-' + userId
 
+    const isolation = await ctx.db.query('releasePreviewIsolationQa')
+      .withIndex('by_marker', q => q.eq('marker', 'isolation-fixture')).unique()
+    if (!isolation) await ctx.db.insert('releasePreviewIsolationQa', {
+      marker: 'isolation-fixture', value: 'string-preview-only',
+    })
+
     const profile = await ctx.db.query('subscriptions')
       .withIndex('by_userId', (q) => q.eq('userId', userId)).unique()
     if (!profile) await ctx.db.insert('subscriptions', {
