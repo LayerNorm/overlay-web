@@ -1,13 +1,7 @@
 import type { Doc } from '../../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../../_generated/server'
 import { paidWorkspaceAccountFor } from '../../billing/workspacePayer'
-import {
-  derivePlanAmountCents,
-  derivePlanKind,
-  getStorageLimitBytes,
-  type LegacyOverlayTier,
-  type OverlayPlanKind,
-} from '../../../src/shared/billing/billing-pricing'
+import { FREE_PLAN_STORAGE_BYTES, getStorageLimitBytes } from '../../../src/shared/billing/billing-pricing'
 
 type SubscriptionCtx = MutationCtx
 
@@ -18,13 +12,6 @@ export class StorageQuotaExceededError extends Error {
   }
 }
 
-function defaultBillingWindow(now: number) {
-  return {
-    currentPeriodStart: now,
-    currentPeriodEnd: now + 30 * 24 * 60 * 60 * 1000,
-  }
-}
-
 export async function getOrCreateSubscription(ctx: SubscriptionCtx, userId: string): Promise<Doc<'subscriptions'>> {
   const existing = await ctx.db
     .query('subscriptions')
@@ -32,18 +19,7 @@ export async function getOrCreateSubscription(ctx: SubscriptionCtx, userId: stri
     .first()
   if (existing) return existing
 
-  const now = Date.now()
-  const createdId = await ctx.db.insert('subscriptions', {
-    userId,
-    tier: 'free',
-    status: 'active',
-    creditsUsed: 0,
-    allowanceUsedCents: 0,
-    topUpPurchasedCents: 0,
-    topUpBalanceCents: 0,
-    overlayStorageBytesUsed: 0,
-    ...defaultBillingWindow(now),
-  })
+  const createdId = await ctx.db.insert('subscriptions', { userId, overlayStorageBytesUsed: 0 })
     // Read-your-write: must run after the insert above, not concurrently.
     // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
   const created = await ctx.db
@@ -56,38 +32,21 @@ export async function getOrCreateSubscription(ctx: SubscriptionCtx, userId: stri
   return created
 }
 
-export function getSubscriptionTier(subscription: Doc<'subscriptions'> | null | undefined): LegacyOverlayTier {
-  return (subscription?.tier ?? 'free') as LegacyOverlayTier
-}
-
-export function getSubscriptionPlanKind(subscription: Doc<'subscriptions'> | null | undefined): OverlayPlanKind {
-  return derivePlanKind(subscription ?? {})
-}
-
 export function getStorageBytesUsed(subscription: Doc<'subscriptions'> | null | undefined): number {
   return Math.max(0, subscription?.overlayStorageBytesUsed ?? 0)
 }
 
-export function getStorageLimitForSubscription(subscription: Doc<'subscriptions'> | null | undefined): number {
-  return getStorageLimitBytes({
-    planKind: getSubscriptionPlanKind(subscription),
-    planAmountCents: derivePlanAmountCents(subscription ?? {}),
-  })
-}
-
 /**
- * A person's storage limit: their own plan's, raised to the workspace's when they are working in a workspace with a
- * paid plan. Bytes are still counted per person.
+ * A person's storage limit: the free amount, raised to the workspace's when they are working in a workspace with a
+ * paid plan (an account has no plan of its own). Bytes are still counted per person.
  */
 export async function getStorageLimitForUser(
   ctx: QueryCtx | MutationCtx,
   userId: string,
-  subscription: Doc<'subscriptions'> | null | undefined,
 ): Promise<number> {
-  const personal = getStorageLimitForSubscription(subscription)
   const workspace = await paidWorkspaceAccountFor(ctx, userId)
-  if (!workspace) return personal
-  return Math.max(personal, getStorageLimitBytes({ planKind: 'paid', planAmountCents: workspace.planAmountCents }))
+  if (!workspace) return FREE_PLAN_STORAGE_BYTES
+  return Math.max(FREE_PLAN_STORAGE_BYTES, getStorageLimitBytes({ planKind: 'paid', planAmountCents: workspace.planAmountCents }))
 }
 
 export async function applyStorageUsageDelta(ctx: SubscriptionCtx, userId: string, deltaBytes: number): Promise<Doc<'subscriptions'>> {
@@ -108,7 +67,7 @@ export async function ensureStorageAvailable(
   const subscription = await getOrCreateSubscription(ctx, userId)
   if (requiredAdditionalBytes <= 0) return subscription
   const nextValue = getStorageBytesUsed(subscription) + requiredAdditionalBytes
-  const limit = await getStorageLimitForUser(ctx, userId, subscription)
+  const limit = await getStorageLimitForUser(ctx, userId)
   if (nextValue > limit) {
     throw new StorageQuotaExceededError(
       `storage_limit_exceeded:${nextValue}:${limit}`

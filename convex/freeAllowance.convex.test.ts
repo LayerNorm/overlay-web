@@ -64,19 +64,34 @@ describe('the free allowance belongs to the workspace', () => {
     expect(rows.map((row) => row.userId)).toEqual(['carol'])
   })
 
-  test('a paid person is not held to the free count, and is counted under their own id', async () => {
+  test('in a paid workspace the workspace pays, and nothing is counted against the free allowance', async () => {
     const convex = convexTest(schema, modules)
     await setActiveWorkspace(convex, 'dana', 'ws-team')
     await convex.run(async (ctx) => {
-      await ctx.db.insert('subscriptions', {
-        userId: 'dana', tier: 'pro', planKind: 'paid', status: 'active', creditsUsed: 0,
+      await ctx.db.insert('billingAccounts', {
+        billingAccountId: 'ba-team', scope: 'workspace', workspaceId: 'ws-team', status: 'active', pricingVersion: 'markup_25_v1',
+        markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('billingAccountSubscriptions', {
+        billingAccountId: 'ba-team', provider: 'stripe', planKind: 'paid', planVersion: 'variable_v2', planAmountCents: 2_000,
+        markupBasisPoints: 2_500, status: 'active', autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: 1, updatedAt: 1,
       })
     })
     await turn(convex, 'dana', 20)
-    const rows = await convex.run(async (ctx) => await ctx.db.query('dailyUsage').collect())
-    expect(rows.map((row) => row.userId)).toEqual(['dana'])
-    // Dana's usage did not touch the workspace's free allowance, which a free teammate still has in full.
+    expect(await convex.run(async (ctx) => (await ctx.db.query('dailyUsage').collect()).length)).toBe(0)
     await setActiveWorkspace(convex, 'erin', 'ws-team')
     expect(await used(convex, 'erin')).toBe(0)
+  })
+
+  test('an old paid row on the person no longer lifts the free limit', async () => {
+    const convex = convexTest(schema, modules)
+    await setActiveWorkspace(convex, 'dana', 'ws-free')
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('subscriptions', { userId: 'dana', tier: 'pro', planKind: 'paid', status: 'active', creditsUsed: 0 })
+    })
+    await turn(convex, 'dana', 15)
+    await expect(turn(convex, 'dana')).rejects.toThrow(/free_tier_limit_exceeded/)
+    const entitlements = await convex.query(getEntitlements, { serverSecret: secret, userId: 'dana' })
+    expect({ planKind: entitlements.planKind, tier: entitlements.tier }).toEqual({ planKind: 'free', tier: 'free' })
   })
 })

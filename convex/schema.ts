@@ -270,6 +270,8 @@ export default defineSchema({
   // mutated on every usage event.
   // currentPeriodStart/End are always set — on Stripe-backed subscriptions they come from
   // the webhook; on free tier they are set to now/+30d at account creation.
+  // A person's own row: profile, onboarding, chat starters and storage used. The plan and credit fields below are
+  // leftovers from personal plans (plans belong to workspaces) and are being stripped from rows, then the schema.
   subscriptions: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
@@ -279,18 +281,18 @@ export default defineSchema({
     stripeSubscriptionId: v.optional(v.string()),
     stripePriceId: v.optional(v.string()),
     stripeQuantity: v.optional(v.number()),
-    tier: v.union(v.literal('free'), v.literal('pro'), v.literal('max')),
+    tier: v.optional(v.union(v.literal('free'), v.literal('pro'), v.literal('max'))),
     planKind: v.optional(v.union(v.literal('free'), v.literal('paid'))),
     planVersion: v.optional(v.union(v.literal('fixed_v1'), v.literal('variable_v2'))),
     planAmountCents: v.optional(v.number()),
     institutionalGrantCents: v.optional(v.number()),
     markupBasisPoints: v.optional(v.number()),
-    status: v.union(
+    status: v.optional(v.union(
       v.literal('active'),
       v.literal('canceled'),
       v.literal('past_due'),
       v.literal('trialing')
-    ),
+    )),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
     // Live credit accumulator for the current billing period (in cents, may

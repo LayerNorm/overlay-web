@@ -23,25 +23,9 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 
 When billing is disabled, pair `billing.provider="none"` with `capabilities.billing=false`.
 
-## Billing account compatibility
+## Billing accounts
 
-Personal and workspace payment ownership is modeled by a billing account with an explicit `markup_25_v1` pricing version. This keeps the existing 25% markup and current personal subscriptions intact while making a workspace wallet possible without attributing shared usage to one member.
-
-Creating a personal billing account is idempotent and creates an empty budgeted balance. It does not create a Stripe customer, subscription, payment, allowance, or top-up. The personal-account backfill attaches every existing subscription, top-up, reservation, and usage row while preserving the user-keyed records as the authoritative enforcement and rollback path. New writes populate both identifiers and refresh canonical subscription and balance shadows.
-
-Before switching any read to the account-keyed balance, run the development backfill and require a zero-difference parity report:
-
-```bash
-npm run billing:backfill:personal-accounts -- --apply=true
-```
-
-The command defaults to development and requires both `--target=prod` and `--allow-prod=true` for production. Stripe verification is read-only and requires an environment-appropriate key. It fails unless the local active subscriptions and Stripe active subscriptions are the expected six exact matches by account link, subscription, customer, price, quantity, amount, and status:
-
-```bash
-npm run billing:verify:personal-subscriptions
-```
-
-The compatibility reads still use the personal legacy records. A parity report is a gate, not permission to switch reads automatically.
+Payment ownership is modeled by a billing account with an explicit `markup_25_v1` pricing version. Every workspace that adds a plan gets a workspace billing account (its Stripe subscription, balance and history). Each person also has a personal billing account, which never holds credit: an account is never free or paid, so it only records free usage and storage. Account-plan endpoints (`/api/checkout`, `/api/checkout/verify`, `/api/topups/checkout`, `/api/topups/verify`, `/api/portal`, and `POST /api/subscription/settings`) answer `410 account_plans_retired`.
 
 ## Workspace reservation foundation
 
