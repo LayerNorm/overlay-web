@@ -53,14 +53,6 @@ export class WorkspaceBillingService {
     const totalCents = entitlements?.budgetTotalCents ?? 0
     const usedCents = entitlements?.budgetUsedCents ?? 0
     const remainingCents = entitlements?.budgetRemainingCents ?? 0
-    const periodStart = subscription?.currentPeriodStart ?? Date.now() - 30 * 24 * 60 * 60_000
-    const observability = canManage
-      ? await this.deps.usage.getBillingAccountOperationalReport({
-          billingAccountId: account.billingAccountId,
-          periodStart,
-          reconciliationSlaMs: 15 * 60_000,
-        })
-      : undefined
     return {
       workspaceId: access.workspace.id,
       canManage,
@@ -81,18 +73,6 @@ export class WorkspaceBillingService {
         ...(subscription?.status ? { status: subscription.status } : {}),
         ...(subscription?.currentPeriodEnd ? { currentPeriodEnd: subscription.currentPeriodEnd } : {}),
       },
-      ...(observability ? { observability: {
-        actualProviderCostCents: observability.actualProviderCostCents,
-        costCoveragePercent: observability.costCoveragePercent,
-        meteredReservations: observability.meteredReservations,
-        oldestReconciliationAgeMs: observability.oldestReconciliationAgeMs,
-        periodEnd: observability.periodEnd,
-        periodStart: observability.periodStart,
-        realizedMarginPercent: observability.realizedMarginPercent,
-        reconciliationReservations: observability.reconciliationReservations,
-        retailCredits: observability.retailCredits,
-        staleReconciliationReservations: observability.staleReconciliationReservations,
-      } } : {}),
     }
   }
 

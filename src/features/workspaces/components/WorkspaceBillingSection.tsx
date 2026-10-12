@@ -231,7 +231,6 @@ function WalletOverview({
         <div className="flex justify-end"><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspaceId))}>Manage billing</Button></div>
       ) : <p className="text-xs text-[var(--muted)]">{summary.canTopUp ? 'Only workspace owners and admins can change the subscription.' : 'Only workspace owners and admins can add credits or change the subscription.'}</p>}
 
-      {summary.observability ? <MarginPanel report={summary.observability} /> : null}
     </>
   )
 }
@@ -293,11 +292,11 @@ function CheckoutActions({
   return (
     <>
       <div className="grid gap-3 lg:grid-cols-2">
-        {summary.canManage ? <BillingActionCard title="Monthly workspace credits" description="Choose a recurring allowance from $8 to $200. Existing personal subscriptions are untouched.">
+        {summary.canManage ? <BillingActionCard title="Monthly workspace credits" description="Choose a monthly amount from $8 to $500. It becomes the workspace’s credit each month.">
           <Select aria-label="Workspace monthly plan" value={String(planAmountCents)} onChange={(event) => setPlanAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100}/month`}</option>)}</Select>
           <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspaceId, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
         </BillingActionCard> : null}
-        <BillingActionCard title="One-time top-up" description="Add credits directly to this workspace. Personal-wallet transfers are not supported.">
+        <BillingActionCard title="One-time top-up" description="Add credits to this workspace now.">
           <Select aria-label="Workspace top-up" value={String(topUpAmountCents)} onChange={(event) => setTopUpAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100} in credits`}</option>)}</Select>
           <Button size="sm" variant="ghost" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('topup', () => client.createBillingTopUp(workspaceId, { amountCents: topUpAmountCents, ...currentLegalAcceptancePayload() }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
         </BillingActionCard>
@@ -310,53 +309,6 @@ function CheckoutActions({
 
 function BillingActionCard({ children, description, title }: { children: ReactNode; description: string; title: string }) {
   return <div className="rounded-xl border border-[var(--border)] p-4"><p className="text-sm font-medium text-[var(--foreground)]">{title}</p><p className="mt-1 min-h-10 text-xs leading-5 text-[var(--muted)]">{description}</p><div className="mt-4 flex items-center gap-2">{children}</div></div>
-}
-
-function MarginPanel({ report }: { report: NonNullable<WorkspaceBillingSummaryResponse['observability']> }) {
-  return (
-    <div
-      data-testid='workspace-margin-report'
-      className='rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4'
-    >
-      <div className='flex items-center justify-between gap-3'>
-        <p className='text-sm font-medium text-[var(--foreground)]'>
-          Billing health
-        </p>
-        <span className='text-[10px] uppercase tracking-[0.14em] text-[var(--muted-light)]'>
-          Owners & admins
-        </span>
-      </div>
-      <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
-        <Metric label="Provider cost" value={`$${(report.actualProviderCostCents / 100).toFixed(2)}`} />
-        <Metric label="Retail usage" value={formatCredits(report.retailCredits)} />
-        <Metric label="Realized margin" value={report.realizedMarginPercent === null ? '—' : `${report.realizedMarginPercent.toFixed(1)}%`} />
-        <Metric label="Cost coverage" value={`${report.costCoveragePercent.toFixed(0)}%`} />
-        <Metric label="Reconcile queue" value={String(report.reconciliationReservations)} />
-        <Metric label="Past 15m SLA" value={String(report.staleReconciliationReservations)} danger={report.staleReconciliationReservations > 0} />
-      </dl>
-    </div>
-  )
-}
-
-function Metric({
-  danger,
-  label,
-  value,
-}: {
-  danger?: boolean
-  label: string
-  value: string
-}) {
-  return (
-    <div>
-      <dt className='text-[var(--muted-light)]'>{label}</dt>
-      <dd
-        className={`mt-1 font-medium ${danger ? 'text-red-500' : 'text-[var(--foreground)]'}`}
-      >
-        {value}
-      </dd>
-    </div>
-  )
 }
 
 const CREDITS_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
