@@ -3,8 +3,8 @@
 // Slash menu and @-mention suggestion wiring for the BlockNote surface.
 
 import type {
-  AnyBlockSchema,
   BlockNoteEditor,
+  BlockSchema,
   InlineContentSchema,
   StyleSchema,
 } from '@blocknote/core'
@@ -46,7 +46,7 @@ const CALLOUT_ITEMS = [
 ] as const
 
 type NoteEditor = BlockNoteEditor<
-  AnyBlockSchema,
+  BlockSchema,
   InlineContentSchema,
   StyleSchema
 >

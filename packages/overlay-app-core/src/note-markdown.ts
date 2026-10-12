@@ -327,7 +327,6 @@ const noteSanitizeSchema: Schema = {
     // projection; keep them through the sanitize pass.
     href: [...(defaultSchema.protocols?.href ?? []), 'overlay'],
   },
-  allowDataAttributes: true,
   attributes: {
     ...defaultSchema.attributes,
     span: ['dataType', 'dataLatex'],
