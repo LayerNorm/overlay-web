@@ -129,7 +129,7 @@ export class ConvexNoteRepository implements NoteRepository {
           ? { expectedUpdatedAt: args.expectedUpdatedAt }
           : {}),
         ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
-      })
+      }, { throwOnError: true })
     } catch (error) {
       if (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT')) {
         const current = await this.getNote({ noteId: args.noteId, userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}) })

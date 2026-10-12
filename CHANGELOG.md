@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Fixed
+
+- **Stale note saves report conflicts.** Convex rejection now reaches the existing HTTP `409` response instead of reporting a successful save with unchanged content. Found during isolated-preview CRUD QA.
+
 ### Added
 
 - **PR preview lifecycle automation and merge-queue checks.** Trusted main workflows provision per-PR custom origins, pin builds to the current head, verify alias assignment, and clean up on close or retarget; scheduled reconciliation covers missed events. Wildcard fallback hosts return 404. All required checks support merge groups, including explicit dependency comparisons and existing CLA-signature verification.

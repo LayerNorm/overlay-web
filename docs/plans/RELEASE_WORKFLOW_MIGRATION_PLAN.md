@@ -78,6 +78,10 @@ PR #187's first successful Preview is READY at
 Chrome rendered the page, completed real sandbox email/password sign-in and
 opened the seeded personal workspace. This evidence applies to that exact SHA;
 CRUD, provider QA, two-PR isolation and lifecycle acceptance remain open.
+Live note create/read/update/delete and the preview-only login succeeded. An
+existing note-adapter bug hid rejected stale writes behind HTTP `200`; the
+adapter now propagates mutation errors into the existing `409` contract, with
+regression tests. Rebuild and repeat that live check before marking it verified.
 
 Plan adjustments before implementation:
 
