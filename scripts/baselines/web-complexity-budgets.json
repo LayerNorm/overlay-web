@@ -10,6 +10,10 @@
     [
       "src/sentry.edge.config.ts",
       "src/sentry.server.config.ts"
+    ],
+    [
+      "src/app/.well-known/oauth-authorization-server/route.ts",
+      "src/app/.well-known/openid-configuration/route.ts"
     ]
   ],
   "zeroFanInOverrides": {
