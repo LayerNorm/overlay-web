@@ -201,11 +201,30 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
         tags: note.tags ?? [],
         revision: revisionOf(note),
         outline: noteOutline(note.content),
+        ...(note.docFormat === 'blocknote' && note.docJson
+          ? { blocks: noteBlockOutline(note.docJson) }
+          : {}),
         updatedAt: note.updatedAt,
       },
     }
   } catch (err) {
     return failure(err, 'Failed to load note')
+  }
+}
+
+/** Top-level `{id, type}` anchors for `edit_blocks`, parsed from docJson. */
+function noteBlockOutline(
+  docJson: string,
+): { id: string; type: string }[] {
+  try {
+    const parsed = JSON.parse(docJson) as {
+      blocks?: { id?: string; type?: string }[]
+    }
+    return (parsed.blocks ?? [])
+      .filter((block) => block.id)
+      .map((block) => ({ id: block.id!, type: block.type ?? 'paragraph' }))
+  } catch (_error) {
+    return []
   }
 }
 
@@ -291,6 +310,58 @@ export async function executeReplaceNoteSection(
     ))
   } catch (err) {
     return failure(err, 'Failed to update note section')
+  }
+}
+
+export async function executeEditBlocks(
+  options: OverlayToolsOptions,
+  input: {
+    noteId: string
+    edits: { op: string; blockId?: string; markdown?: string }[]
+    expectedRevision?: string
+  },
+) {
+  try {
+    const note = await fetchNote(options, input.noteId)
+    if ('success' in note) return note
+    const edits = input.edits
+      .filter((edit) => edit.blockId)
+      .map((edit) => ({
+        op: edit.op,
+        blockId: edit.blockId!,
+        markdown: edit.markdown,
+      }))
+    if (!edits.length) {
+      return { success: false as const, error: 'Each edit needs a blockId from get_note.' }
+    }
+    if (input.expectedRevision && input.expectedRevision !== revisionOf(note)) {
+      return staleRevision(input.expectedRevision, revisionOf(note))
+    }
+    const res = await callInternalApi(
+      NOTES_PATH,
+      {
+        noteId: note._id,
+        blockEdits: edits,
+        expectedUpdatedAt: note.updatedAt,
+        ...toolAuthBody(options),
+      },
+      options.accessToken,
+      options.baseUrl,
+      { method: 'PATCH', forwardCookie: options.forwardCookie },
+    )
+    if (res.status === 409) {
+      return staleRevision(input.expectedRevision ?? revisionOf(note), 'changed')
+    }
+    if (!res.ok) {
+      return { success: false as const, error: await errorMessage(res, 'Failed to edit note blocks') }
+    }
+    const data = (await res.json()) as { note?: NoteDoc | null }
+    return {
+      success: true,
+      revision: data.note ? revisionOf(data.note) : undefined,
+    }
+  } catch (err) {
+    return failure(err, 'Failed to edit note blocks')
   }
 }
 

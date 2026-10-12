@@ -26,6 +26,7 @@ import {
 import { searchMentions } from '@/components/mentions/mention-search'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
+import { NoteHistoryMenu } from '@/features/notebook/components/NoteHistoryMenu'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { MentionInput } from '@/features/chat/components/chat-interface/MentionInput'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -178,6 +179,24 @@ export default function NotebookEditor({
           content={content}
           metadata={{ createdAt: note.createdAt, updatedAt: note.updatedAt }}
           renderShareDialog={(props) => <ShareDialog {...props} />}
+        />
+        <NoteHistoryMenu
+          noteId={note._id}
+          onRestore={(version) => {
+            // Restoring is just another save: the writer snapshots the
+            // current state as a version first, so nothing is lost.
+            void repository.save({
+              noteId: note._id,
+              ...(version.name !== undefined ? { title: version.name } : {}),
+              ...(version.content !== undefined ? { content: version.content } : {}),
+              ...(version.docJson !== undefined
+                ? { docJson: version.docJson }
+                : {}),
+              expectedUpdatedAt: note.updatedAt,
+            }).then((result) => {
+              if (!result.conflict) publishNotebookMutation(note._id, 'updated')
+            })
+          }}
         />
         </>
       )}

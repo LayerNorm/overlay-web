@@ -11,7 +11,10 @@ import type {
 } from '@overlay/app-core'
 import { BillingQuotaError, QuotaEnforcer } from '@overlay/billing'
 import { toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
-import { markdownToNoteDocServer } from '@overlay/note-doc/server'
+import {
+  applyNoteBlockEditsServer,
+  markdownToNoteDocServer,
+} from '@overlay/note-doc/server'
 
 export interface NoteRecord {
   _id: string
@@ -36,6 +39,18 @@ export interface NoteRecord {
 export type ServerNoteDoc = NoteDoc & {
   userId: string
   legacyNoteId?: string
+}
+
+/** A prior-state snapshot of a note (see `noteVersions` table). */
+export interface NoteVersionRecord {
+  _id: string
+  updatedAt: number
+  name?: string
+  content?: string
+  docJson?: string
+  docFormat?: 'markdown' | 'blocknote'
+  actorId: string
+  createdAt: number
 }
 
 export interface NoteRepository {
@@ -66,6 +81,12 @@ export interface NoteRepository {
     docFormat?: 'markdown' | 'blocknote'
     workspaceId?: string
   }): Promise<NoteRecord | null>
+  listNoteVersions(args: {
+    noteId: string
+    userId: string
+    workspaceId?: string
+    limit?: number
+  }): Promise<NoteVersionRecord[]>
   deleteNote(args: {
     noteId: string
     userId: string
@@ -174,9 +195,35 @@ export class NoteService {
     // Format negotiation: writers that send `docJson` own the block document
     // (content stays the markdown projection). Markdown-only writers hitting a
     // blocknote note get their content converted so blocks stay canonical.
+    // `blockEdits` splice into the stored doc on the server so untouched
+    // blocks (custom or otherwise) survive.
     let docJson = args.docJson
     let docFormat = args.docFormat
-    if (docJson !== undefined) {
+    let content = args.content
+    if (args.blockEdits?.length) {
+      const existing = await this.context.noteRepository.getNote({
+        noteId: args.noteId,
+        userId: args.userId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      })
+      if (!existing) throw new NoteServiceError('Not found', 404)
+      if (existing.docFormat !== 'blocknote' || !existing.docJson) {
+        throw new NoteServiceError(
+          'edit_blocks only applies to notes stored in the block editor format; use content edits for markdown notes.',
+          400,
+        )
+      }
+      const applied = await applyNoteBlockEditsServer(existing.docJson, args.blockEdits)
+      if (!applied.applied) {
+        throw new NoteServiceError(
+          `No block edits applied; unknown block ids: ${applied.skipped.join(', ')}`,
+          400,
+        )
+      }
+      docJson = applied.docJson
+      content = applied.markdown
+      docFormat = 'blocknote'
+    } else if (docJson !== undefined) {
       docFormat = 'blocknote'
     } else if (args.content !== undefined && args.docFormat === undefined) {
       const existing = await this.context.noteRepository.getNote({
@@ -197,7 +244,7 @@ export class NoteService {
       noteId: args.noteId,
       userId: args.userId,
       title: args.title,
-      content: args.content === undefined ? undefined : toCanonicalNoteMarkdown(args.content),
+      content: content === undefined ? undefined : toCanonicalNoteMarkdown(content),
       tags: args.tags,
       expectedUpdatedAt: args.expectedUpdatedAt,
       docJson,

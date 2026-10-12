@@ -35,7 +35,7 @@ async function readJsonBody<T>(request: NextRequest, fallback: T): Promise<T> {
   }
 }
 
-function toErrorResponse(error: unknown, fallbackMessage: string) {
+export function toErrorResponse(error: unknown, fallbackMessage: string) {
   if (error instanceof NoteRevisionConflictError) {
     return NextResponse.json({
       success: false,
@@ -113,6 +113,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       expectedUpdatedAt: body.expectedUpdatedAt,
       docJson: body.docJson,
       docFormat: body.docFormat,
+      blockEdits: body.blockEdits,
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
     })

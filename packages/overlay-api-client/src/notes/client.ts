@@ -5,6 +5,7 @@ import type {
   KnowledgeFile,
   NoteDoc,
   NotebookAgentRequest,
+  NoteVersion,
   UpdateNoteRequest,
   UpdateNoteResponse,
 } from '@overlay/app-core'
@@ -57,6 +58,13 @@ export class NotesClient {
 
   deleteResponse(query: { noteId: string }, init?: RequestInit) {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
+  }
+
+  listVersions<T = NoteVersion[]>(query: { noteId: string }, init?: RequestInit) {
+    return this.http.jsonData<T>(
+      this.http.appendQuery('/api/v1/notes/versions', query as QueryParams),
+      init,
+    )
   }
 
   notebookAgentResponse(body: NotebookAgentRequest, init?: RequestInit) {

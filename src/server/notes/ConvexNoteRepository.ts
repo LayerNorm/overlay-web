@@ -3,7 +3,12 @@ import 'server-only'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { hashTextContent } from '@/server/storage/text-content-hash'
-import { NoteRevisionConflictError, type NoteRecord, type NoteRepository } from './NoteService'
+import {
+  NoteRevisionConflictError,
+  type NoteRecord,
+  type NoteRepository,
+  type NoteVersionRecord,
+} from './NoteService'
 
 export class ConvexNoteRepository implements NoteRepository {
   private get serverSecret(): string {
@@ -147,6 +152,30 @@ export class ConvexNoteRepository implements NoteRepository {
       userId: args.userId,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     })
+  }
+
+  async listNoteVersions(args: {
+    noteId: string
+    userId: string
+    workspaceId?: string
+    limit?: number
+  }): Promise<NoteVersionRecord[]> {
+    const existing = await this.getNote({
+      noteId: args.noteId,
+      userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+    })
+    if (!existing) return []
+    const versions = await convex.query<NoteVersionRecord[] | null>(
+      'files/files:listVersions',
+      {
+        fileId: existing._id,
+        userId: args.userId,
+        serverSecret: this.serverSecret,
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      },
+    )
+    return versions ?? []
   }
 
   async deleteNote(args: {

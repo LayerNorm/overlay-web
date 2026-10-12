@@ -8,6 +8,7 @@ import {
   executeAppendToNote,
   executeCreateNote,
   executeDeleteNote,
+  executeEditBlocks,
   executeEditNote,
   executeGetNote,
   executeListNotes,
@@ -920,6 +921,28 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('edit_note')
         return executeEditNote(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('edit_blocks')) {
+      tools.edit_blocks = tool({
+      description:
+        'Edit a blocknote-format note block by block, anchored on the block ids from get_note\'s `blocks` list. ' +
+        'Blocks you do not touch are preserved exactly, including callouts, embeds, and mentions — prefer this over ' +
+        'rewriting a note\'s whole Markdown. Each op: replace a block, delete it, or insert new Markdown blocks before/after it.',
+      inputSchema: z.object({
+        noteId: z.string(),
+        edits: z.array(z.object({
+          op: z.enum(['replace', 'delete', 'insert_before', 'insert_after']),
+          blockId: z.string().describe('Block id from get_note\'s blocks list'),
+          markdown: z.string().optional().describe('Markdown for the replacement/inserted blocks (not needed for delete)'),
+        })).min(1).max(50),
+        expectedRevision,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('edit_blocks')
+        return executeEditBlocks(options, input)
       },
     })
     }

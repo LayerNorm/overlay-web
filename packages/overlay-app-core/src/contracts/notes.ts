@@ -46,6 +46,27 @@ export interface CreateNoteResponse {
   error?: string
 }
 
+/** A block-level edit anchored on an existing block id (the `edit_blocks` tool). */
+export interface NoteBlockEdit {
+  op: 'replace' | 'delete' | 'insert_after' | 'insert_before'
+  blockId: string
+  /** Markdown fragment parsed into the replacement/inserted blocks. */
+  markdown?: string
+}
+
+/** A snapshot of a note's state before a save, from the version history. */
+export interface NoteVersion {
+  _id: string
+  /** The note's updatedAt at snapshot time — the revision this version held. */
+  updatedAt: number
+  name?: string
+  content?: string
+  docJson?: string
+  docFormat?: NoteDocFormat
+  actorId: string
+  createdAt: number
+}
+
 export interface UpdateNoteRequest {
   noteId: string
   title?: string
@@ -53,6 +74,8 @@ export interface UpdateNoteRequest {
   /** BlockNote envelope + markdown `content` projection for block-edited notes. */
   docJson?: string
   docFormat?: NoteDocFormat
+  /** Block-level edits applied server-side on top of the stored docJson. */
+  blockEdits?: NoteBlockEdit[]
   tags?: string[]
   expectedUpdatedAt?: number
   accessToken?: string

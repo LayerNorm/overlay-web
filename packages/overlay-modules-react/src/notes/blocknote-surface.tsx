@@ -7,6 +7,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MutableRefObject,
 } from 'react'
@@ -91,6 +92,7 @@ export function BlockNoteSurface({
   onHydrated?: (note: NotebookNote) => void
 }) {
   const dark = useIsDarkMode()
+  const containerRef = useRef<HTMLDivElement>(null)
 
   // A matching outbox entry means a previous session had unsaved changes for
   // this exact server revision — restore that draft instead of stored content.
@@ -149,6 +151,51 @@ export function BlockNoteSurface({
     [editor],
   )
 
+  // Diff marks: when the stored doc changes outside this editor (an agent
+  // write, another tab), reload the document and briefly mark the blocks that
+  // arrived or changed. Local saves keep flowing through the lifecycle.
+  const seenDocJsonRef = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (seenDocJsonRef.current === undefined) {
+      seenDocJsonRef.current = note.docJson ?? null
+      return
+    }
+    if (seenDocJsonRef.current === (note.docJson ?? null)) return
+    seenDocJsonRef.current = note.docJson ?? null
+    const incoming = parseNoteDocJson(note.docJson)
+    if (!incoming) return
+
+    const previousById = new Map(
+      editor.document.map((block) => [block.id, JSON.stringify(block)]),
+    )
+    const changedIds: string[] = []
+    for (const block of incoming as { id?: string }[]) {
+      if (!block.id) continue
+      const previous = previousById.get(block.id)
+      if (previous === undefined || previous !== JSON.stringify(block)) {
+        changedIds.push(block.id)
+      }
+    }
+    if (!changedIds.length) return
+
+    editor.replaceBlocks(
+      editor.document.map((block) => block.id),
+      incoming as never,
+    )
+    const root = containerRef.current
+    for (const id of changedIds) {
+      root
+        ?.querySelector(`[data-id="${id}"]`)
+        ?.classList.add('bn-diff-changed')
+    }
+    const timeout = setTimeout(() => {
+      root
+        ?.querySelectorAll('.bn-diff-changed')
+        .forEach((element) => element.classList.remove('bn-diff-changed'))
+    }, 6000)
+    return () => clearTimeout(timeout)
+  }, [note.docJson, editor])
+
   const mentionItems = useMemo(
     () => async (query: string) => {
       if (!mentionProvider) return []
@@ -170,7 +217,7 @@ export function BlockNoteSurface({
   )
 
   return (
-    <div className="bn-surface app-note-editor h-full">
+    <div ref={containerRef} className="bn-surface app-note-editor h-full">
       <BlockNoteView
         editor={editor}
         theme={dark ? 'dark' : 'light'}

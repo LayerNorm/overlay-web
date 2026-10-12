@@ -178,3 +178,19 @@
 .bn-surface .bn-formatting-toolbar button {
   color: var(--muted);
 }
+
+/* --- Diff marks: blocks changed by an external write (agent, other tab) ---- */
+
+.bn-surface .bn-diff-changed {
+  position: relative;
+}
+
+.bn-surface .bn-diff-changed::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, #b5883c 10%, transparent);
+  border-left: 2px solid #b5883c;
+  pointer-events: none;
+}

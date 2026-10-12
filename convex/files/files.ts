@@ -21,6 +21,7 @@ type FileKind = 'folder' | 'note' | 'upload' | 'output'
 type MutationDb = MutationCtx['db']
 const UPLOAD_INTENT_FINALIZE_GRACE_MS = 15 * 60_000
 const FILE_PREVIEW_CHARS = 1200
+const NOTE_VERSION_CAP = 50
 
 function utf8ByteLength(value: string): number {
   return utf8Encoder.encode(value).length
@@ -1225,6 +1226,38 @@ export const update = mutation({
       shouldPurge = true
       shouldReindex = indexable && !canonicalDuplicate
     }
+    // Version history: snapshot the note's prior state whenever its content,
+    // doc, title, or tags change. Restores flow back through this same writer,
+    // so the current state is captured as a version then too.
+    const noteContentChanged =
+      kind === 'note' &&
+      (nextText !== undefined ||
+        updates.docJson !== undefined ||
+        updates.name !== undefined ||
+        updates.tags !== undefined)
+    if (noteContentChanged) {
+      await ctx.db.insert('noteVersions', {
+        noteId: fileId,
+        workspaceId: existing.workspaceId,
+        userId: existing.userId,
+        updatedAt: existing.updatedAt,
+        name: existing.name,
+        content: existing.content ?? existing.textContent,
+        docJson: existing.docJson,
+        docFormat: existing.docFormat,
+        actorId: callerId,
+        createdAt: Date.now(),
+      })
+      const versions = await ctx.db
+        .query('noteVersions')
+        .withIndex('by_noteId', (q) => q.eq('noteId', fileId))
+        .order('desc')
+        .collect()
+      for (const stale of versions.slice(NOTE_VERSION_CAP)) {
+        await ctx.db.delete(stale._id)
+      }
+    }
+
     await ctx.db.patch(fileId, patch)
     if (storageDelta !== 0) await applyStorageUsageDelta(ctx as never, userId, storageDelta)
     if (existing.type === 'file' && shouldPurge) {
@@ -1380,5 +1413,39 @@ export const getPublicByToken = query({
       createdAt: file.createdAt,
       sharedAt: file.sharedAt ?? file.createdAt,
     }
+  },
+})
+
+export const listVersions = query({
+  args: {
+    fileId: v.id('files'),
+    userId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { fileId, userId, accessToken, serverSecret, limit }) => {
+    try {
+      await authorizeUserAccess({ userId, accessToken, serverSecret })
+    } catch {
+      return []
+    }
+    const file = await getReadableRow(ctx, { row: await ctx.db.get(fileId), userId })
+    if (!file) return []
+    const versions = await ctx.db
+      .query('noteVersions')
+      .withIndex('by_noteId', (q) => q.eq('noteId', fileId))
+      .order('desc')
+      .take(Math.min(limit ?? 50, 200))
+    return versions.map((version) => ({
+      _id: version._id,
+      updatedAt: version.updatedAt,
+      name: version.name,
+      content: version.content,
+      docJson: version.docJson,
+      docFormat: version.docFormat,
+      actorId: version.actorId,
+      createdAt: version.createdAt,
+    }))
   },
 })

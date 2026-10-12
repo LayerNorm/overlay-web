@@ -96,7 +96,9 @@ test('GFM alert blockquote becomes a callout block', async () => {
   const source = '> [!WARNING]\n> careful with this\n'
   const { docJson } = await markdownToNoteDocServer(source)
   const blocks = parseNoteDocJson(docJson) ?? []
-  const callout = blocks.find((b) => b.type === 'callout')
+  const callout = blocks.find(
+    (b) => (b as { type?: string }).type === 'callout',
+  )
   assert.ok(callout)
   assert.equal(
     (callout as { props?: { icon?: string } }).props?.icon,
