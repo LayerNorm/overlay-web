@@ -2,15 +2,15 @@ export {
   createOverlayNoteSchema,
   overlayNoteSchema,
   type OverlayNoteSchema,
-} from './schema.js'
+} from './schema'
 export {
   NOTE_DOC_VERSION,
   parseNoteDocJson,
   stringifyNoteDoc,
   type NoteDocEnvelope,
   type NoteDocFormat,
-} from './envelope.js'
-export { legacyHtmlToBlocksHtml } from './legacy.js'
+} from './envelope'
+export { legacyHtmlToBlocksHtml } from './legacy'
 export {
   getClientConverter,
   markdownToNoteDoc,
@@ -21,4 +21,4 @@ export {
   noteDocToMarkdownSync,
   type MarkdownToDocResult,
   type NoteDocConverter,
-} from './convert.js'
+} from './convert'

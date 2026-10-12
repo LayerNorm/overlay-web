@@ -9,7 +9,7 @@
  */
 import type { ServerBlockNoteEditor } from '@blocknote/server-util'
 import type { PartialBlock } from '@blocknote/core'
-import type { MarkdownToDocResult, NoteDocConverter } from './convert.js'
+import type { MarkdownToDocResult, NoteDocConverter } from './convert'
 
 let serverEditorPromise: Promise<ServerBlockNoteEditor> | null = null
 
@@ -18,7 +18,7 @@ function getServerEditor(): Promise<ServerBlockNoteEditor> {
     const [{ ServerBlockNoteEditor }, { createOverlayNoteSchemaHeadless }] =
       await Promise.all([
         import('@blocknote/server-util'),
-        import('./schema.js'),
+        import('./schema'),
       ])
     return ServerBlockNoteEditor.create({
       schema: createOverlayNoteSchemaHeadless(),
@@ -44,7 +44,7 @@ export async function markdownToNoteDocServer(
   markdown: string,
 ): Promise<MarkdownToDocResult> {
   const [{ markdownToNoteDocAsync }, converter] = await Promise.all([
-    import('./convert.js'),
+    import('./convert'),
     getConverter(),
   ])
   return markdownToNoteDocAsync(converter, markdown)
@@ -53,7 +53,7 @@ export async function markdownToNoteDocServer(
 /** Server equivalent of `noteDocToMarkdown` (async; runs under JSDOM). */
 export async function noteDocToMarkdownServer(docJson: string): Promise<string> {
   const [{ noteDocToMarkdownAsync }, converter] = await Promise.all([
-    import('./convert.js'),
+    import('./convert'),
     getConverter(),
   ])
   return noteDocToMarkdownAsync(converter, docJson)
