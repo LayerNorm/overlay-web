@@ -135,17 +135,6 @@ export const extractFromTurn = internalAction({
         };
       }
 
-      const configuredModelId = process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim();
-      const lowCredit =
-        !configuredModelId &&
-        (isPaid ?? false) &&
-        (await isGatewayCreditLow(API_KEY, GATEWAY_BASE_URL));
-      const modelId =
-        configuredModelId ||
-        ((isPaid ?? false) && !lowCredit ? "google/gemini-2.5-flash-lite" : "openrouter/free");
-      const model = getExtractorModel(modelId);
-      const serverSecret = process.env.INTERNAL_API_SECRET;
-      const systemPrompt = targetActor === "agent" ? AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT : HUMAN_MEMORY_EXTRACTION_SYSTEM_PROMPT;
 
       const billingUserId = billingActorUserId?.trim() || userId;
       let resolvedBillingAccountId = billingAccountId?.trim() || undefined;
@@ -162,6 +151,19 @@ export const extractFromTurn = internalAction({
       if (resolvedBillingAccountId && !workspaceId) {
         throw new Error("workspace_billing_payer_incomplete");
       }
+      // Plans belong to workspaces: a workspace on a paid plan counts as paid even when the person's own plan is free.
+      const paid = (isPaid ?? false) || Boolean(resolvedBillingAccountId);
+      const configuredModelId = process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim();
+      const lowCredit =
+        !configuredModelId &&
+        paid &&
+        (await isGatewayCreditLow(API_KEY, GATEWAY_BASE_URL));
+      const modelId =
+        configuredModelId ||
+        (paid && !lowCredit ? "google/gemini-2.5-flash-lite" : "openrouter/free");
+      const model = getExtractorModel(modelId);
+      const serverSecret = process.env.INTERNAL_API_SECRET;
+      const systemPrompt = targetActor === "agent" ? AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT : HUMAN_MEMORY_EXTRACTION_SYSTEM_PROMPT;
       const resolvedSpendSubjectId = billingSpendSubjectId?.trim() || billingUserId;
       const resolvedSpendSubjectKind = billingSpendSubjectKind ?? "member";
 
@@ -186,7 +188,7 @@ export const extractFromTurn = internalAction({
         const estimatedInputTokens = Math.ceil((opts.systemPrompt.length + opts.prompt.length) / 4);
         const estimatedCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, estimatedInputTokens, 0, opts.maxOutputTokens);
         if (estimatedCostUsd === null) return { status: "unavailable", reason: "pricing_missing" };
-        if ((isPaid ?? false) && !serverSecret) return { status: "unavailable", reason: "background_budget_exhausted" };
+        if (paid && !serverSecret) return { status: "unavailable", reason: "background_budget_exhausted" };
 
         const requestFingerprint = createHash("sha256")
           .update(`${conversationId}:${turnId}:${opts.fingerprintSeed}`)
@@ -546,7 +548,8 @@ export const extractFromTurn = internalAction({
           ownerId,
           workspaceId,
           billingActorUserId: billingUserId,
-          isPaid,
+          billingAccountId: resolvedBillingAccountId,
+          isPaid: paid,
         });
       }
 
