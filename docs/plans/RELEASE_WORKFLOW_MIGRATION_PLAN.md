@@ -123,7 +123,7 @@ backend. Builds are serialized, abandoned builds are settled, automatic aliases
 are disabled, and READY provenance is checked before assigning staging.
 `RELEASE_STAGING_FROM_MAIN` remains unset: the existing staging branch and web
 deployment still serve the current lane. This is preparation, not Phase 5
-acceptance. Authenticated staging smoke, provider isolation, the preview soak,
+acceptance. Authenticated staging smoke, provider isolation,
 platform cutover, and the process-doc rewrite must precede activation.
 
 Plan adjustments before implementation:
@@ -360,8 +360,9 @@ Dashboard (owner):
 Done when: an agent, given only the PR number, finds the preview URL, signs in,
 and posts screenshots to the PR.
 
-**Checkpoint:** previews are now fully usable. Run Phases 1–4 for a week or two
-alongside the current staging flow before changing the release lane.
+**Checkpoint:** the owner waived the one-to-two-week soak on 2026-10-12.
+Cut over after live provider isolation and authenticated staging smoke pass.
+A calendar waiting period is not required; the acceptance checks still are.
 
 ## Phase 5 — Staging deploys from `main`
 
@@ -506,3 +507,14 @@ longer exists.
 - Phase 5: set the staging project's production branch back to `staging` and
   unfreeze the branch.
 - Phase 6: disable the merge-queue requirement in the ruleset.
+
+Owner decision (2026-10-12): cut over when live isolation and staging smoke
+checks pass; the planned one-to-two-week waiting period is waived.
+
+Additional preparation (2026-10-12): Stripe test account
+`acct_1SzOAWFmeUVgDzgI` now has a dedicated synthetic staging product, monthly
+$1 unit price, $1 top-up unit price and a test billing portal configuration.
+The app environment and webhook are not changed yet, so billing QA is pending.
+The PR rebuild probe found a legacy note `textContent` field masking accepted
+`content` edits; the canonical text-update fix and regression coverage are
+included before accepting the updated revision.

@@ -1208,6 +1208,9 @@ export const update = mutation({
           ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
           : null
       patch.content = nextText
+      // Legacy rows can still carry textContent, which readers prefer over
+      // content. Remove it when writing canonical text so it cannot mask a save.
+      patch.textContent = undefined
       patch.sizeBytes = nextSizeBytes
       patch.contentHash = updates.contentHash
       patch.duplicateOfFileId = canonicalDuplicate?._id

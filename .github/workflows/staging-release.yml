@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   deploy:
-    # Activated only after the preview soak, provider isolation, and smoke gate.
+    # Activated only after live provider isolation and authenticated smoke pass.
     # Changing the production branch alone cannot enable this migration.
     if: github.ref == 'refs/heads/main' && vars.RELEASE_STAGING_FROM_MAIN == 'enabled'
     runs-on: ubuntu-latest

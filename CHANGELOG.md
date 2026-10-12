@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Edits to legacy notes stay visible.** Canonical text updates remove an older text field that could mask the saved content on subsequent reads.
+
 - **PR checks and previews spend less time on obsolete work.** New revisions cancel superseded code checks; maintenance-only diffs keep CI and docs checks without rebuilding the unchanged app. Hosted previews remain available through an explicit request. Dependency Review now performs its comparison, and paid canary deployment events no longer publish skipped required contract checks.
 
 - **Removed preview wildcard fallback.** Exact PR aliases serve previews; unknown or closed preview hostnames return 404. Trusted control checks the certificate-only wildcard, verifies cleanup, settles superseded builds before deploying newer backend code, and retries transient reads without blindly repeating mutations.

@@ -220,3 +220,6 @@ readback verified. Application functions and synthetic fixtures are not deployed
 yet. The gated build sequence deploys backend functions, seeds guarded fixtures,
 then builds web; Convex `deploy --cmd` alone runs the command before its push.
 Activation still requires provider isolation, authenticated smoke and the cutover.
+
+Owner decision (2026-10-12): cut over when live isolation and staging smoke
+checks pass; the planned one-to-two-week waiting period is waived.
