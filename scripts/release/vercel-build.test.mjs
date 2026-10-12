@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import test from 'node:test'
-import { buildPlan } from './vercel-build.mjs'
+import { buildPlan, deploymentEnvFile, runBuild } from './vercel-build.mjs'
 
 const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
@@ -11,6 +12,22 @@ const preview = {
   NEXT_PUBLIC_APP_URL: 'https://pr-123.preview.getoverlay.io',
   CONVEX_DEPLOY_KEY: 'preview:team:project|fixture-key',
 }
+
+test('Convex explicit env file retains the approved key and is removed after spawn', () => {
+  let path
+  const status = runBuild({ ...preview, CONVEX_DEPLOYMENT: 'prod:wrong' }, (command, args) => {
+    assert.equal(command, './node_modules/.bin/convex')
+    path = args[args.indexOf('--env-file') + 1]
+    assert.equal(readFileSync(path, 'utf8'), 'CONVEX_DEPLOY_KEY="' + preview.CONVEX_DEPLOY_KEY + '"\n')
+    assert.equal(statSync(path).mode & 0o777, 0o600)
+    return { status: 0 }
+  })
+  assert.equal(status, 0)
+  assert.equal(existsSync(path), false)
+  for (const key of ['', 'key\nCONVEX_DEPLOYMENT=prod:wrong', 'key"']) {
+    assert.throws(() => deploymentEnvFile({ CONVEX_DEPLOY_KEY: key }))
+  }
+})
 
 test('production builds never push Convex as part of the web build', () => {
   const plan = buildPlan({ VERCEL_ENV: 'production', CONVEX_DEPLOY_KEY: 'prod:wrong|key' })

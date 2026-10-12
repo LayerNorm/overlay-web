@@ -61,7 +61,11 @@ API scope checks succeeded for staging and denied production access. Preview
 configuration now contains 46 isolated sandbox variables; all 71 existing
 Production variables were preserved. External storage, model, and billing
 providers are temporarily disabled until dedicated test resources are wired.
-Preview deployment sources remain disabled until the first reviewed build.
+Preview deployment policy now permits REST API sources only; native Preview
+Git builds remain disabled. The first live build verified the PR guard and
+canonical origin, then exposed Convex's explicit-env-file authentication
+semantics. The wrapper now retains only the approved key in its private file;
+live preview acceptance remains pending a successful rebuild.
 
 Plan adjustments before implementation:
 

@@ -66,7 +66,15 @@ export function buildPlan(env) {
   throw new Error('Unsupported staging project build environment')
 }
 
-export function runBuild(env = process.env) {
+export function deploymentEnvFile(env) {
+  const key = env.CONVEX_DEPLOY_KEY
+  if (!key || /[\r\n"]/.test(key)) throw new Error('Invalid Convex deploy key')
+  // --env-file replaces Convex's selection AND authentication inputs. Keep
+  // exactly the approved key, without reading a checkout's .env.local.
+  return 'CONVEX_DEPLOY_KEY="' + key + '"\n'
+}
+
+export function runBuild(env = process.env, spawn = spawnSync) {
   const plan = buildPlan(env)
   console.log('release-build target: ' + plan.target)
   let directory
@@ -74,10 +82,10 @@ export function runBuild(env = process.env) {
     if (plan.command.includes('convex')) {
       directory = mkdtempSync(join(tmpdir(), 'overlay-convex-build-'))
       const envFile = join(directory, 'deployment.env')
-      writeFileSync(envFile, '', { mode: 0o600 })
+      writeFileSync(envFile, deploymentEnvFile(plan.env), { mode: 0o600 })
       plan.args.push('--env-file', envFile)
     }
-    const result = spawnSync(plan.command, plan.args, { env: plan.env, stdio: 'inherit' })
+    const result = spawn(plan.command, plan.args, { env: plan.env, stdio: 'inherit' })
     if (result.error) throw result.error
     return result.status ?? 1
   } finally {

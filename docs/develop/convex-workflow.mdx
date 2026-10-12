@@ -29,6 +29,9 @@ selectors and dev URL overrides, then runs `convex deploy --preview-name
 pr-<number>` with internal `dev/seed:init` fixtures. The seed refuses non-preview
 deployments and requires the configured sandbox user identity. Do not use
 `--preview-create` on ordinary pushes: it destroys an existing preview's data.
+The temporary `--env-file` contains only the approved deploy key (mode `0600`)
+and is deleted after the build. An empty file also removes Convex authentication
+inputs, even when the key exists in the parent process; do not use an empty file.
 
 Convex injects the preview URL into the web build. `deploymentEnv()` keeps
 server configuration on the same captured URL as the browser; generic runtime
