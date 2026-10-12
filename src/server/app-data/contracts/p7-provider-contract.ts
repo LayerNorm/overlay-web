@@ -96,18 +96,18 @@ export async function runP7ProviderContract(
         userId,
       })
       assert.equal(reserved.ok, true)
+      // A person's own account has no credit: anything but free work is refused.
       const paidId = `${scope}_paid`
-      await assert.rejects(
-        backend.usage.reserve({
-          entitlements,
-          kind: 'ask',
-          ...reservationSecurityContext(paidId),
-          reservationId: paidId,
-          reservedCents: 100,
-          userId,
-        }),
-        /insufficient_budget/,
-      )
+      const refused = await backend.usage.reserve({
+        entitlements,
+        kind: 'ask',
+        ...reservationSecurityContext(paidId),
+        reservationId: paidId,
+        reservedCents: 100,
+        userId,
+      })
+      assert.equal(refused.ok, false)
+      assert.equal(refused.ok ? null : refused.code, 'insufficient_budget')
       await assert.rejects(
         backend.usage.reserve({
           entitlements,
@@ -210,7 +210,7 @@ export async function runP7ProviderContract(
         kind: 'generation',
         ...reservationSecurityContext(releaseId),
         reservationId: releaseId,
-        reservedCents: 25,
+        reservedCents: 0,
         userId,
       })
       await backend.usage.markStarted({ reservationId: releaseId, userId })
@@ -240,7 +240,7 @@ export async function runP7ProviderContract(
         userId,
       }), { idempotent: true, status: 'released' })
       await assert.rejects(backend.usage.resolveReconciliation({
-        actualCostCents: 20,
+        actualCostCents: 0,
         evidence,
         reservationId: releaseId,
         resolution: 'finalize',
@@ -253,7 +253,7 @@ export async function runP7ProviderContract(
         kind: 'generation',
         ...reservationSecurityContext(finalizeId),
         reservationId: finalizeId,
-        reservedCents: 25,
+        reservedCents: 0,
         userId,
       })
       await backend.usage.markStarted({ reservationId: finalizeId, userId })
@@ -263,7 +263,7 @@ export async function runP7ProviderContract(
         userId,
       })
       const finalized = await backend.usage.resolveReconciliation({
-        actualCostCents: 20,
+        actualCostCents: 0,
         evidence: {
           reason: 'Provider usage record confirms the completed request.',
           reference: `${scope}_provider_usage_record`,
@@ -274,7 +274,7 @@ export async function runP7ProviderContract(
         userId,
       })
       assert.deepEqual(finalized, {
-        finalizedCents: 20,
+        finalizedCents: 0,
         idempotent: false,
         status: 'finalized',
       })
