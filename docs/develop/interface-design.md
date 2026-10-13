@@ -8,6 +8,22 @@ description: "Product UI decisions every surface follows: toggles-only controls,
 Product UI decisions that every surface follows. When a new control is needed,
 check here first — the answer is usually "use the existing pattern".
 
+## Tailwind CSS v4 configuration
+
+`postcss.config.mjs` loads `@tailwindcss/postcss`. The app imports `tailwindcss`
+in `src/app/globals.css`; `@theme` defines utility tokens there. The same file
+uses `@source` to scan app code and the UI, chat, and module React packages.
+When adding a package that renders utilities, add its source path there.
+
+`dark:` follows `[data-theme='dark']` through `@custom-variant`, so it follows
+the in-app theme setting. The base semantic palette lives in
+`packages/overlay-ui/src/styles.css`; `globals.css` adds app-specific variables.
+The base border rule preserves the earlier gray default. Use an explicit
+border color for new controls.
+
+Tailwind utility names apply to class names. Literal CSS, including injected
+note-editor styles, uses standard properties such as `flex-shrink: 0`.
+
 ## Toggles are the only on/off control
 
 Nowhere in the web app do we render checkboxes (`<input type="checkbox">`).
