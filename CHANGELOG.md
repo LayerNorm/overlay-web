@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Work phase 7a: UTC Timeline bars, child-derived objective spans, date dragging and resizing, and a scrollable calendar starting at today.
+
 - Work phase 6: Board dragging, keyboard/touch status and ordering controls, optimistic rollback, and transactionally checked ranks with bounded rebalancing.
 
 - Work phase 5: task brief with Markdown, scoped context, checklist, comments, revision-safe saves, and Settings archive/restore. The usable web feature is enabled by default with an explicit-off rollout gate.

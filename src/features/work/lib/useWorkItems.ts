@@ -69,7 +69,7 @@ export function useWorkItems(workspaceId: string | null, view: WorkView | undefi
     const captured = contextVersion.current
     busy(item._id, true); ++version.current; controller.current?.abort()
     // Nullable optional fields are normalized only by the backend; keep the optimistic projection narrow.
-    setState((old) => old.key !== key ? old : { ...old, items: old.items.map((row) => row._id === item._id ? { ...row, ...(patch.status ? { status: patch.status } : {}), ...(patch.title ? { title: patch.title } : {}), ...(patch.assigneePrincipalId !== undefined ? { assigneePrincipalId: patch.assigneePrincipalId ?? undefined } : {}) } : row) })
+    setState((old) => old.key !== key ? old : { ...old, items: old.items.map((row) => row._id === item._id ? { ...row, ...(patch.startDate !== undefined ? { startDate: patch.startDate ?? undefined } : {}), ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate ?? undefined } : {}), ...(patch.status ? { status: patch.status } : {}), ...(patch.title ? { title: patch.title } : {}), ...(patch.assigneePrincipalId !== undefined ? { assigneePrincipalId: patch.assigneePrincipalId ?? undefined } : {}) } : row) })
     try {
       const saved = await overlayAppClient.work.update(item._id, { expectedUpdatedAt: item.updatedAt, patch }, init())
       if (captured === contextVersion.current) setState((old) => old.key !== key ? old : { ...old, items: old.items.map((row) => row._id === item._id ? saved : row) })
