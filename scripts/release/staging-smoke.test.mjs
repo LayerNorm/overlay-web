@@ -49,8 +49,9 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
   }, newPage: async () => ({
     on: () => {},
     goto: async url => { calls.push({ navigation: url }) },
-    locator: () => ({ waitFor: async () => {}, count: async () => 1, fill: async () => {} }),
-    getByRole: () => ({ waitFor: async () => {}, click: async () => { calls.push({ sendMessage: true }) } }),
+    getByRole: role => role === 'combobox'
+      ? { waitFor: async () => {}, count: async () => 1, fill: async () => {} }
+      : { waitFor: async () => {}, click: async () => { calls.push({ sendMessage: true }) } },
     getByText: text => ({ count: async () => 0, nth: () => ({ waitFor: async () => {
       if (text === 'RELEASE_SMOKE_OK' && chatFailure) throw new Error('Provider failed private-test-fixture')
     } }), waitFor: async () => {

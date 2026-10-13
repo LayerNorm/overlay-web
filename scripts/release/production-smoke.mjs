@@ -47,7 +47,7 @@ export async function productionSmoke({ env, vercel, deployment, sha, launch,
     phase = 'production chat'
     const page = await context.newPage(), verifyRuntime = browserRuntimeErrors(page)
     await page.goto('/app/chat', { waitUntil: 'domcontentloaded' })
-    const composer = page.locator('textarea')
+    const composer = page.getByRole('combobox', { name: /Ask anything/ })
     await composer.waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await composer.count(), 1)
     const replies = page.getByText('RELEASE_SMOKE_OK', { exact: true })

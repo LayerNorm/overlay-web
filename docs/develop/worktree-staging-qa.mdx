@@ -30,6 +30,7 @@ pushes production Convex using a private key-only env file, and performs normal
 sign-in, note CRUD/conflict/cleanup, persisted chat, Files and realtime QA.
 Files checks target the accessible named file button: hidden alternate layouts
 also contain the title text and must not create a strict-locator failure.
+The chat composer is the accessible `Ask anything` combobox, not a textarea.
 No production seed runs. Root `git.deploymentEnabled.main=false` remains required.
 
 The production Convex target is announced before its push. Neither `.env.local`
