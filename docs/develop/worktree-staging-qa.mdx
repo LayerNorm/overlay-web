@@ -61,8 +61,9 @@ Vercel Preview/default Convex settings now include
 dedicated staging backend has its separate test key; legacy staging web stays
 unchanged until cutover. Shared test model/storage credentials and the project-scoped Vercel controller
 token have no scheduled expiry. Each OpenRouter lane key has a $1 total limit
-and no reset. Rebuild before QA and confirm an actual application
-reply; a direct provider response is insufficient. Update existing preview
+and no reset. PR #194 returned a real Free Router reply and retained it after reload. Rebuild
+before subsequent QA and confirm an actual application reply; a direct provider
+response is insufficient. Update existing preview
 backends separately when rotating defaults. Preserve the customer production
 gate while preparing test environments.
 
@@ -74,8 +75,10 @@ settings inherit the Preview credential; dedicated staging uses its own. Default
 do not rotate existing backends: update them separately before rebuilding. Native
 write/read, cross-lane/shared-dev denial and owned-object cleanup passed. CORS
 permits `https://pr-*.preview.getoverlay.io` for Preview and
-`https://staging.getoverlay.io` for staging. Verify an actual presigned application
-upload before accepting the storage lane.
+`https://staging.getoverlay.io` for staging. Authenticated presigned upload/finalization, byte-for-byte content proxy readback
+and browser image rendering passed on PR #194. The browser extension could not
+select a local file; API upload and the resulting browser viewer were checked
+separately, alongside native CORS preflights.
 
 ### Rollback runbook
 

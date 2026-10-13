@@ -260,8 +260,8 @@ existing LayerNorm sandbox Stripe credentials/prices and the test Gateway key,
 verified by readback. The dedicated staging Convex backend has corresponding
 test settings with its own Gateway and OpenRouter keys. Each OpenRouter key has
 no expiry and a $1 total limit without reset. Shared Preview model keys and
-hosted-access flags are verified by readback; an actual Free Router reply and reload persistence passed. R2 application
-acceptance remains pending a rebuild with the corrected storage selectors. No provider credentials need copying per new PR.
+hosted-access flags are verified by readback; an actual Free Router reply and reload persistence passed. Authenticated R2 upload/finalization, exact byte download, browser image
+rendering and CORS isolation also passed. No provider credentials need copying per new PR.
 
 Initial staging cutover is prepared as a candidate build and authenticated smoke
 on its verified native hostname, leaving the current staging alias unchanged.
