@@ -1,4 +1,5 @@
 export const AUTHORIZATION_CAPABILITY_DEFINITIONS = [
+  { key: 'work.use', category: 'content', label: 'Use Work' },
   { key: 'administration.access', category: 'administration', label: 'Access administration' },
   { key: 'users.read', category: 'identity', label: 'View users' },
   { key: 'users.manage', category: 'identity', label: 'Manage users' },

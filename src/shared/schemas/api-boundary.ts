@@ -1,4 +1,5 @@
 import { z, type ZodTypeAny } from 'zod'
+import { CreateWorkSchema, UpdateWorkSchema, WorkActionSchema, WorkQuerySchema, WorkItemSchema, WorkEventSchema } from '@/shared/work/schema'
 import {
   commandAcknowledgementSchema,
   enrollmentRequestSchema,
@@ -147,6 +148,12 @@ const ProviderConnectionTestRequest = z.object({
 })
 
 export const webApiBoundaryDefinitions = [
+  { method: 'GET', path: '/api/v1/work', schema: { query: WorkQuerySchema, response: WorkItemSchema.array() }, summary: 'List scoped tasks', tag: 'Work' },
+  { method: 'POST', path: '/api/v1/work', schema: { json: CreateWorkSchema, response: WorkItemSchema }, summary: 'Create a human task', tag: 'Work' },
+  { method: 'GET', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { response: z.object({ item: WorkItemSchema, events: WorkEventSchema.array() }) }, summary: 'Read a task and activity', tag: 'Work' },
+  { method: 'PATCH', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { json: UpdateWorkSchema, response: WorkItemSchema }, summary: 'Edit a task at a known revision', tag: 'Work' },
+  { method: 'POST', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { json: WorkActionSchema, response: z.object({ success: z.boolean() }) }, summary: 'Comment, move, archive or restore a task', tag: 'Work' },
+  { method: 'DELETE', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { response: z.object({ success: z.boolean() }) }, summary: 'Archive a task', tag: 'Work' },
   {
     method: 'GET', path: '/api/v1/agent-environments', schema: { query: EmptyQuery, response: UnknownResponse },
     summary: 'List connected agent environments in the active workspace', tag: 'Agent environments',

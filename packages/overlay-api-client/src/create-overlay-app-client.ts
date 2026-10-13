@@ -1,3 +1,4 @@
+import { WorkClient } from './work/client'
 import { AccountClient } from './auth/account-client'
 import { BillingClient } from './auth/billing-client'
 import { SubscriptionClient } from './auth/subscription-client'
@@ -37,6 +38,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
   const http = createHttpContext(options)
 
   return {
+    work: new WorkClient(http),
     request: http.request,
     json: http.json,
     bootstrap: new BootstrapClient(http),

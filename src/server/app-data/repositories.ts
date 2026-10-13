@@ -1,4 +1,5 @@
 import 'server-only'
+import { ConvexWorkRepository, type WorkRepository } from '@/server/work/WorkService'
 
 import type { AccountDataDeletionRepository } from '@/server/account/AccountDataDeletionRepository'
 import { ConvexAutomationRepository } from '@/server/automations/ConvexAutomationRepository'
@@ -91,6 +92,7 @@ import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
 import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceRepository'
 
 export interface AppDataRepositories {
+  work: WorkRepository
   agentProviderAccounts: AgentProviderAccountRepository
   cloudAgentProvisions: CloudAgentProvisionRepository
   mcpGrants: McpGrantRepository
@@ -168,6 +170,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       providerConnections: new ConvexProviderConnectionRepository(),
       settings: unsupportedRepository<AppSettingsRepository>('AppSettingsRepository'),
       skills: new ConvexSkillRepository(),
+      work: new ConvexWorkRepository(),
       surfaces: new ConvexSurfaceRepository(),
       serviceAuthReplay: new ConvexServiceAuthReplayRepository(),
       users: new ConvexUserRepository(),

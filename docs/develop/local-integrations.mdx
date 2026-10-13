@@ -8,10 +8,10 @@ description: "Run provider-dependent web features during local development."
 Run the app locally, then forward Stripe events:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+stripe listen --forward-to https://<selected-dev-deployment>.convex.site/stripe/webhook
 ```
 
-Use matching Stripe test secrets in `.env.local`.
+Use matching Stripe test secrets for that explicitly selected local/personal dev Convex deployment. Stripe webhooks are served by Convex; the former Next webhook route is removed.
 
 ## Auth
 

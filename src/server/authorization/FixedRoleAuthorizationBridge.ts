@@ -44,6 +44,7 @@ export const MEMBER_AUTHORIZATION_CAPABILITIES: AuthorizationCapability[] = [
   'web_search.use',
   'memory.use',
   'automations.use',
+  'work.use',
   'api_keys.manage',
   'webhooks.manage',
 ]

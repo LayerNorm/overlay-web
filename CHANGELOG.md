@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Work phase 2 adds the authenticated `/api/v1/work` task API and typed client, with server-derived workspace identity, scoped reads, revision conflicts, comments and archive/restore actions.
+
 - Work phase 1 adds scoped human tasks, calendar dates, fractional ranks, revision-checked edits, and private activity/comments. No Work UI is exposed yet.
 
 - Added a taggable **Development Workflow** guide with Builder and Integration prompts, preview QA, PR handoff, merge ordering, and authorized release steps.

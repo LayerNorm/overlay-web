@@ -1,5 +1,5 @@
-export const WORK_STATUSES = ['backlog', 'todo', 'progress', 'review', 'done'] as const
-export type WorkStatus = (typeof WORK_STATUSES)[number]
+import type { WorkStatus } from '@overlay/app-core/work'
+export { WORK_STATUSES, type WorkStatus } from '@overlay/app-core/work'
 export const WORK_STATUS_LABELS: Record<WorkStatus, string> = {
   backlog: 'Backlog', todo: 'To do', progress: 'In progress', review: 'In review', done: 'Done',
 }

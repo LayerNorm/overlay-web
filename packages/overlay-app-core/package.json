@@ -24,7 +24,8 @@
     "./note-markdown": "./src/note-markdown.ts",
     "./notes": "./src/notes.ts",
     "./settings-account": "./src/settings-account.ts",
-    "./theme": "./src/theme.ts"
+    "./theme": "./src/theme.ts",
+    "./work": "./src/work.ts"
   },
   "dependencies": {
     "@overlay/auth-contracts": "file:../overlay-auth-contracts",

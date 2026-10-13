@@ -87,3 +87,6 @@ export {
 export { createHttpContext, type HttpContext } from './shared/http'
 export { createIdempotencyKey, toRequestInit, type MutationRequestInit } from './shared/mutation'
 export * from '../../../src/shared/schemas'
+
+export { WorkClient } from './work/client'
+export type * from './work/types'
