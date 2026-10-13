@@ -198,3 +198,5 @@ search apply together; groups keep the fixed workflow order.
 The Work brief uses a focus-trapped right drawer with explicit Save changes / Cancel changes in the form flow. Objective Markdown converts only through `@overlay/app-core/note-markdown`; checklist completion uses the shared Toggle. Comments save independently. Dirty dismissal asks before discarding, and a stale revision requires an explicit reload.
 
 Work on narrow screens stacks the List title and controls; Board columns snap-scroll and the Timeline scrolls inside its own frame. C focuses quick-add, Escape clears it or closes the brief, and dirty dismissal uses the shared ConfirmDialog. Work usage metrics include only action/scope/status/view enums, never task text, comments, links, or IDs.
+
+Work briefs use the shared confirmation dialog for unsaved changes. A parent Escape handler must honor `defaultPrevented` so dismissing a nested dialog keeps the brief open. Timeline pointer movement suppresses its trailing click while keyboard activation still opens the brief.

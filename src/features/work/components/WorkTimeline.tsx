@@ -343,7 +343,7 @@ export function WorkTimeline({
                           aria-label={`${item.title}: ${span.startDate} to ${span.dueDate}`}
                           onPointerDown={(e) => begin(e, item, 'move')}
                           onClick={(e) => {
-                            if (ignoreClick.current) {
+                            if (ignoreClick.current && e.detail !== 0) {
                               ignoreClick.current = false
                               return
                             }

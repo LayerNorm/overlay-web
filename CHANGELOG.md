@@ -4,25 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Work phase 8: global task search, C/Escape shortcuts, scoped pagination, large-list rendering, narrow-screen controls, privacy-safe usage metrics, complete rollout-off visibility, client errors for malformed cursors, and guarded Escape dismissal of unsaved briefs.
-
-- Work phase 7b: same-scope dependencies, cycle rejection, indexed incoming-link guards, and Timeline arrows that follow date edits. Brief sections now fit the existing complexity gate.
-
-- Work phase 7a: UTC Timeline bars, child-derived objective spans, date dragging and resizing, and a scrollable calendar starting at today.
-
-- Work phase 6: Board dragging, keyboard/touch status and ordering controls, optimistic rollback, and transactionally checked ranks with bounded rebalancing.
-
-- Work phase 5: task brief with Markdown, scoped context, checklist, comments, revision-safe saves, and Settings archive/restore. The usable web feature is enabled by default with an explicit-off rollout gate.
-
 ### Added
 
-- Work phase 4 adds the task List: quick-add, rename, status/owner edits, workflow groups, Needs you/Assigned to me filters, search, and optimistic updates with scope-safe refresh. Task pickers use an active-human workspace directory.
-
-- Work phase 3 adds a gated Work destination above Agents, shared Personal/Workspace navigation with List, Board and Timeline, and a Suspense-wrapped empty screen with retry/loading states. It remains off by default.
-
-- Work phase 2 adds the authenticated `/api/v1/work` task API and typed client, with server-derived workspace identity, scoped reads, revision conflicts, comments and archive/restore actions.
-
-- Work phase 1 adds scoped human tasks, calendar dates, fractional ranks, revision-checked edits, and private activity/comments. No Work UI is exposed yet.
+- Work tracks human tasks in Personal and Workspace scopes through List, Board and Timeline views, with briefs, Markdown, context, checklists, comments, dependencies, search, shortcuts and archive/restore. Scoped pagination and revision checks protect large lists and concurrent edits. The web feature is enabled by default; an explicit false flag hides all entry points.
 
 - Added a taggable **Development Workflow** guide with Builder and Integration prompts, preview QA, PR handoff, merge ordering, and authorized release steps.
 - **Personal plans are gone from the code and the data (workspace pricing, phase 6).** A person's own entitlements are always the free allowance of the workspace they are working in; nothing is ever charged to a person's own account, and only a paid workspace has credit, top-ups and automatic top-ups. The personal subscription writers, the personal branches of the Stripe webhook, the personal balance mirror (`syncPersonalBillingShadows`), personal auto top-ups, the account checkout/portal services, the admin console's personal budget grant (the admin list is now just People), and the old personal billing scripts are deleted; `/api/checkout/verify`, `/api/topups/verify`, `/api/portal` and `POST /api/subscription/settings` answer `410 account_plans_retired`. The plan and credit fields are stripped from people's rows and dropped from the schema. Fixed: in a paid workspace, enabling or running an automation could be refused because the check read the person's (now always free) plan; it now checks the automation's workspace. Memory extraction uses the paid model only when a paid workspace pays for it.

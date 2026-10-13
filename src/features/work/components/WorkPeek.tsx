@@ -80,7 +80,7 @@ export function WorkPeek({
   }, [id, workspaceId, attempt])
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
         event.preventDefault()
         if (discard !== null) return
         event.stopPropagation()
