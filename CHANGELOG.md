@@ -10,6 +10,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - **Tailwind CSS upgraded to v4.** The app now builds on `tailwindcss@4` via `@tailwindcss/postcss` with CSS-first configuration (`@theme`, `@custom-variant`, `@source`). `dark:` utilities now follow the app's `[data-theme]` attribute instead of the OS color scheme — previously 61 `dark:` classes ignored the in-app theme toggle. The base palette has a single canonical definition in `@overlay/ui` styles; `globals.css` keeps only app-specific variables. No visual changes intended. First step of the shadcn/ui migration (`docs/plans/SHADCN_MIGRATION_PLAN.md`).
 
+- Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit as holds settle or release, and disabling automatic top-ups.
+
+- Wait for chat transcript hydration in release smoke, explicitly select Chat, and clean fresh production QA conversations.
+
 - Resolve the actual synthetic workspace in release smoke and clean fresh test chats; consolidate main queue/check protection and restore universal history guards.
 
 - Repair missing PR preview fixtures after interrupted builds, preserving existing personal workspaces and test data.

@@ -12,7 +12,7 @@ export async function productionSmoke({ env, vercel, deployment, sha, launch,
     && env.PRODUCTION_SMOKE_USER_ID !== 'user_01M4R1EKTMDZ4E6BQ5DMZXD0F2', 'Use the production QA identity')
   await verifyProductionProject(vercel)
   await verifyProductionLive(vercel, deployment, sha)
-  let browser, context, probeId, phase = 'browser setup'
+  let browser, context, probeId, probeChatId, phase = 'browser setup'
   try {
     browser = await launch()
     context = await browser.newContext({ baseURL: PRODUCTION.origin,
@@ -46,7 +46,30 @@ export async function productionSmoke({ env, vercel, deployment, sha, launch,
     assert.equal((await after.json()).content, 'Accepted smoke edit')
     phase = 'production chat'
     const page = await context.newPage(), verifyRuntime = browserRuntimeErrors(page)
-    await page.goto('/app/chat', { waitUntil: 'domcontentloaded' })
+    const chatTitle = 'Production release smoke ' + Date.now()
+    const chat = await context.request.post('/api/v1/conversations', { data: {
+      title: chatTitle, askModelIds: ['openrouter/free'], actModelId: 'openrouter/free', lastMode: 'act',
+    } })
+    assert.equal(chat.status(), 200)
+    probeChatId = (await chat.json()).id
+    assert.ok(probeChatId)
+    const transcriptReady = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return url.pathname === '/api/v1/conversations'
+        && url.searchParams.get('conversationId') === probeChatId
+        && url.searchParams.get('messages') === 'true'
+    }, { timeout: 60_000 })
+    const [transcript] = await Promise.all([transcriptReady,
+      page.goto('/app/chat?id=' + encodeURIComponent(probeChatId), { waitUntil: 'domcontentloaded' }),
+    ])
+    assert.equal(transcript.status(), 200)
+    await transcript.finished()
+    await page.locator(`[data-overlay-chat-id=${JSON.stringify(probeChatId)}][data-overlay-chat-hydrated="true"]`)
+      .waitFor({ state: 'visible', timeout: 60_000 })
+    await page.getByRole('heading', { name: chatTitle, exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
+    const chatMode = page.getByRole('tab', { name: /^Chat:/ })
+    await chatMode.click()
+    assert.equal(await chatMode.getAttribute('aria-selected'), 'true')
     const composer = page.getByRole('combobox', { name: /Ask anything/ })
     await composer.waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await composer.count(), 1)
@@ -81,6 +104,10 @@ export async function productionSmoke({ env, vercel, deployment, sha, launch,
         assert.equal(remaining.status(), 200)
         assert.ok(!(await remaining.json()).data.some(n => n._id === probeId), 'Production smoke note cleanup failed')
       }
-    } finally { await browser?.close() }
+    } finally {
+      try {
+        if (probeChatId) assert.equal((await context.request.delete('/api/v1/conversations?conversationId=' + encodeURIComponent(probeChatId))).status(), 200)
+      } finally { await browser?.close() }
+    }
   }
 }

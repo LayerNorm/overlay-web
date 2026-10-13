@@ -188,7 +188,8 @@ export const upsertByServer = mutation({
       && args.providerEventCreatedAt < existing.providerEventCreatedAt
     ) return { billingAccountId, applied: false }
     const now = Date.now()
-    const periodChanged = existing?.currentPeriodStart !== undefined
+    const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
+    const periodChanged = !isCancellation && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const planKind = args.planKind ?? existing?.planKind ?? 'free'
@@ -213,7 +214,7 @@ export const upsertByServer = mutation({
       planAmountCents,
       markupBasisPoints: args.markupBasisPoints ?? existing?.markupBasisPoints ?? account.markupBasisPoints,
       status: args.status ?? existing?.status ?? 'active' as const,
-      autoTopUpEnabled: args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
+      autoTopUpEnabled: isCancellation ? false : args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
       autoTopUpAmountCents: args.autoTopUpAmountCents ?? existing?.autoTopUpAmountCents ?? 0,
       ...(args.autoTopUpMonthlyLimitCents ?? existing?.autoTopUpMonthlyLimitCents
         ? { autoTopUpMonthlyLimitCents: args.autoTopUpMonthlyLimitCents ?? existing?.autoTopUpMonthlyLimitCents }
@@ -235,13 +236,18 @@ export const upsertByServer = mutation({
     if (existing) await ctx.db.patch(existing._id, value)
     else await ctx.db.insert('billingAccountSubscriptions', { ...value, createdAt: now })
     const balance = await ensureEmptyBalance(ctx, billingAccountId)
-    const includedMicros = planAmountCents * 10_000
+    const planIncludedMicros = planAmountCents * 10_000
     if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
     const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
     const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
     // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
     const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
     const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
+    // Cancellation removes unused plan credit, while retaining the historical
+    // funding needed for consumed spend and existing reservations.
+    const includedMicros = isCancellation
+      ? Math.max(0, nextUsedMicros + nextReservedMicros - balance.institutionalGrantMicros - nextTopUpPurchasedMicros)
+      : planIncludedMicros
     if (nextUsedMicros + nextReservedMicros
       > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
       throw new Error('Subscription change would remove already consumed or reserved credits')
@@ -451,7 +457,8 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing?.providerEventCreatedAt !== undefined
       && args.providerEventCreatedAt < existing.providerEventCreatedAt) return { applied: false }
     const now = Date.now()
-    const periodChanged = existing?.currentPeriodStart !== undefined
+    const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
+    const periodChanged = !isCancellation && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const value = {
@@ -474,7 +481,7 @@ export const upsertFromStripeInternal = internalMutation({
       planAmountCents: args.planAmountCents ?? existing?.planAmountCents ?? 0,
       markupBasisPoints: account.markupBasisPoints,
       status: args.status,
-      autoTopUpEnabled: args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
+      autoTopUpEnabled: isCancellation ? false : args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
       autoTopUpAmountCents: args.autoTopUpAmountCents ?? existing?.autoTopUpAmountCents ?? 0,
       ...(args.offSessionConsentAt ?? existing?.offSessionConsentAt
         ? { offSessionConsentAt: args.offSessionConsentAt ?? existing?.offSessionConsentAt }
@@ -491,13 +498,18 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing) await ctx.db.patch(existing._id, value)
     else await ctx.db.insert('billingAccountSubscriptions', { ...value, createdAt: now })
     const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
-    const includedMicros = (args.planAmountCents ?? existing?.planAmountCents ?? 0) * 10_000
+    const planIncludedMicros = (args.planAmountCents ?? existing?.planAmountCents ?? 0) * 10_000
     if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
     const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
     const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
     // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
     const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
     const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
+    // Cancellation removes unused plan credit, while retaining the historical
+    // funding needed for consumed spend and existing reservations.
+    const includedMicros = isCancellation
+      ? Math.max(0, nextUsedMicros + nextReservedMicros - balance.institutionalGrantMicros - nextTopUpPurchasedMicros)
+      : planIncludedMicros
     if (nextUsedMicros + nextReservedMicros
       > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
       throw new Error('Subscription change would remove already consumed or reserved credits')

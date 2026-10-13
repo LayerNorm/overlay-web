@@ -58,3 +58,20 @@ Flags (all set on production): `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`, 
 ## A machine deleted for lack of credit
 
 When the meter kills a lease (`budget_exhausted`, `low_balance`) the Boat machine and lease are deleted but the agent keeps its environment and a `ready` provision record. The agent page derives `unavailable` (`deriveCloudAgentState`: provision `ready`, no machine) and offers **Start a new machine**, which POSTs `/api/v1/agent-environments/cloud` again; `CloudAgentMachineService.reviveIfMachineGone` then revokes the old environment and clears the record so the normal provisioning runs (it still needs the $1 floor). A message to such an agent fails with the `machine_gone` start-failure message.
+
+## Cancellation after spending plan credit
+
+A Stripe subscription deletion switches the workspace to Free and disables
+automatic top-ups even after paid usage. The balance retains only enough included
+funding for already-used credit and outstanding reservations, after grants and
+purchased top-ups. It removes unused plan credit while preserving ledger history
+and existing holds; cancellation does not reset a billing period or grant a new
+paid allowance. Ordinary active-plan reductions still reject insufficient funding.
+
+The release checkout drill found that zeroing the allowance previously rejected
+700 micros of used credit, leaving the app paid after Stripe canceled. Regression
+coverage exercises internal/server updates, reservations, grants/top-ups, normal
+downgrades and older provider events. Acceptance checks the actual subscription
+and balance, in addition to webhook receipt; an event row alone is insufficient.
+
+Canceled-plan funding also shrinks when holds are released or settled below their estimate. The ledger retains only consumed spend and remaining reservations; a finished hold cannot restore unused paid credit. Active paid accounts retain their normal allowance.
