@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { apiClient } from './preview-control.mjs'
 import { STAGING, StagingController, candidateOrigin, revision, stagingDeploymentMatches } from './staging-control.mjs'
+import { probeReactiveQueries, browserRuntimeErrors } from './reactive-smoke.mjs'
 
 export function smokeCandidate(value, sha) {
   revision(sha)
@@ -20,7 +21,8 @@ export function smokeCandidate(value, sha) {
 
 /** Runs inside the staging release job's lock, from reviewed main only. */
 export async function runSmoke({ env = process.env, github, vercel, launch, report = console.log,
-  artifact, saveEvidence = evidence => writeFileSync('staging-smoke.json', JSON.stringify(evidence, null, 2)) }) {
+  artifact, probeRealtime = probeReactiveQueries,
+  saveEvidence = evidence => writeFileSync('staging-smoke.json', JSON.stringify(evidence, null, 2)) }) {
   if (env.GITHUB_REPOSITORY !== STAGING.repository || env.GITHUB_REF !== 'refs/heads/main'
     || env.STAGING_SMOKE_EMAIL !== 'overlay-preview-qa@getoverlay.io' || !env.STAGING_SMOKE_PASSWORD
     || !/^\d+$/.test(env.GITHUB_RUN_ID ?? '')) {
@@ -98,23 +100,33 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     }
     phase = 'real chat reply'
     const page = await context.newPage()
+    const verifyRuntime = browserRuntimeErrors(page)
     await page.goto('/app/chat', { waitUntil: 'domcontentloaded' })
     const composer = page.locator('textarea')
     await composer.waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await composer.count(), 1)
+    const replies = page.getByText('RELEASE_SMOKE_OK', { exact: true })
+    const previousReplies = await replies.count()
     await composer.fill('Reply with exactly RELEASE_SMOKE_OK. Do not use tools.')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
-    await page.getByText('RELEASE_SMOKE_OK', { exact: true }).waitFor({ state: 'visible', timeout: 90_000 })
+    await replies.nth(previousReplies).waitFor({ state: 'visible', timeout: 90_000 })
     await page.screenshot({ path: 'staging-smoke-chat.png' })
     phase = 'files interface'
     await page.goto(`/app/w/staging-personal-${identity.user.id}/files`, { waitUntil: 'domcontentloaded' })
     await page.getByText('Staging note', { exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
     await page.screenshot({ path: 'staging-smoke-files.png' })
+    phase = 'realtime authorization'
+    const tokenResponse = await context.request.get('/api/auth/convex-token')
+    assert.equal(tokenResponse.status(), 200)
+    await probeRealtime({ backendUrl: candidate.backendUrl, userId: identity.user.id,
+      token: (await tokenResponse.json()).token, workspaceId: 'staging-personal-' + identity.user.id })
+    verifyRuntime()
     phase = 'final provenance'
     await verify()
     const evidence = { ...candidate, smoke: 'passed', runId: env.GITHUB_RUN_ID,
       checks: { authenticatedSandboxIdentity: true, dedicatedFixture: true,
-        noteCrudAndStaleEdit: true, noteCleanup: true, realChatReply: true, filesUi: true } }
+        noteCrudAndStaleEdit: true, noteCleanup: true, realChatReply: true, filesUi: true,
+        realtimeAuthorization: true } }
     saveEvidence(evidence)
     await status('success', `Authenticated smoke passed for ${sha.slice(0, 12)}`)
     report(JSON.stringify(evidence))

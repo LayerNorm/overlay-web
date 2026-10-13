@@ -103,6 +103,9 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
+- Reactive handlers receive the short-lived BFF HMAC token as an explicit
+  `accessToken` argument. This token does not configure Convex platform `setAuth`;
+  the handler verifies it and binds it to the requested account.
 - Personal chat creation is deferred until the first send. Newly created DMs and
   channels are client-side drafts until their first message succeeds: they are not
   inserted into the sidebar list, and navigating away removes the current member

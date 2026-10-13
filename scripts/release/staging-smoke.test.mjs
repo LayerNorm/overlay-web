@@ -47,10 +47,13 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
     },
     delete: async path => { calls.push({ path, method: 'DELETE' }); return response(200) },
   }, newPage: async () => ({
+    on: () => {},
     goto: async url => { calls.push({ navigation: url }) },
     locator: () => ({ waitFor: async () => {}, count: async () => 1, fill: async () => {} }),
     getByRole: () => ({ click: async () => { calls.push({ sendMessage: true }) } }),
-    getByText: text => ({ waitFor: async () => {
+    getByText: text => ({ count: async () => 0, nth: () => ({ waitFor: async () => {
+      if (text === 'RELEASE_SMOKE_OK' && chatFailure) throw new Error('Provider failed private-test-fixture')
+    } }), waitFor: async () => {
       if (text === 'RELEASE_SMOKE_OK' && chatFailure) throw new Error('Provider failed private-test-fixture')
     } }),
     screenshot: async options => { calls.push({ screenshot: options.path }) },
@@ -70,7 +73,7 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
       meta: { overlayReleaseLane: 'staging', overlayStagingSha: sha, overlayStagingBackend: STAGING.backend } }
     return { projectId: STAGING.projectId, deployment: { id: deploymentId } }
   }
-  return { env, github, vercel, artifact: candidate, calls, saved, reports,
+  return { env, github, vercel, artifact: candidate, calls, saved, reports, probeRealtime: async () => {},
     launch: async () => { calls.push({ launch: true }); return { newContext: async () => context,
       close: async () => { calls.push({ closed: true }) } } },
     saveEvidence: e => saved.push(e), report: e => reports.push(e) }

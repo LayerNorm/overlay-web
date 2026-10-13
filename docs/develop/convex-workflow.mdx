@@ -160,10 +160,18 @@ Convex **queries and mutations cannot call `fetch()`**. WorkOS / Better Auth JWK
 Browser→Convex subscriptions must use short-lived **HS256** tokens:
 
 1. Next BFF `GET /api/auth/convex-token` mints a token with `INTERNAL_API_SECRET` (`mintBrowserConvexAccessToken`).
-2. `ConvexAuthProvider` passes that token into Convex client queries.
+2. `ConvexAuthProvider` refreshes the token; consumers pass it explicitly as the
+   `accessToken` query argument. Keep the ordinary `ConvexProvider` transport.
 3. Convex `requireAccessToken` verifies HS256 with `crypto.subtle` only (`verifyBrowserConvexAccessToken`).
 
 `INTERNAL_API_SECRET` must match between the Next app env and the Convex deployment. Do not send the raw WorkOS access token into reactive queries.
+
+Do not call the client's native `setAuth` with these handler tokens. Convex's
+platform verifier expects a configured native identity provider; it rejects the
+internal HMAC token and interrupts subscriptions. Handler authorization still
+verifies signature, expiry and the requested user's identity. Release smoke must
+read a real subscription for the signed-in synthetic user, deny a different user
+with the same token, and fail on browser runtime or authentication errors.
 
 Collaboration realtime is native Convex when `appDataCapabilities.provider === 'convex'`:
 

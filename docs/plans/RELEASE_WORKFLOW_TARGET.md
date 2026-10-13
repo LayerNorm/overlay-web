@@ -10,6 +10,15 @@ The staging controller is being prepared behind an unset
 `RELEASE_STAGING_FROM_MAIN` repository variable. The current branch-based
 staging lane remains authoritative until the migration checkpoint and cutover.
 
+The prepared production command is `bash scripts/release/promote.sh <main-sha>`;
+append `--check` for preflight only. It requires clean canonical current `main`,
+Divyansh's identities and complete canonical staging smoke proof, including
+reactive authorization. It builds production remotely without assigning domains,
+verifies and publishes web, then pushes production Convex and runs authenticated
+smoke with a separate synthetic account. Live promotion and rollback rehearsal
+remain pending. See `docs/develop/worktree-staging-qa.mdx` for configuration,
+checkpoints and the rollback runbook.
+
 ## Preview-domain decision — 2026-10-12
 
 Implement stable `pr-<number>.preview.getoverlay.io` URLs with ordinary Vercel

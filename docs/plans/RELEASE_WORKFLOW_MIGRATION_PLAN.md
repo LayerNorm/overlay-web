@@ -438,8 +438,18 @@ land; the second fails in the queue.
 
 Goal: promotion is boring and reversible.
 
+Preparation on 2026-10-12: `promote.sh` and its guarded remote-build/web-first
+orchestrator are implemented with ordering and refusal tests. Production smoke
+uses a separate synthetic account and verifies normal auth, note CRUD/conflict
+and cleanup, a newly generated chat reply after reload, Files and reactive
+authorization. Checkpoints preserve partial state and previous deployment IDs.
+This is source preparation: dedicated staging acceptance, production QA identity,
+the live promotion and rollback drill are still pending. PR #191 browser QA
+exposed an invalid native Convex `setAuth` call; its handler-token fix and a new
+mandatory realtime staging check are prepared before activation.
+
 Code:
-- [ ] `scripts/release/promote.sh <sha>`: checks the SHA is on `main` and has a
+- [x] Prepare `scripts/release/promote.sh <sha>`: checks the SHA is on `main` and has a
       green staging smoke run, deploys prod web (`vercel deploy --prod` at that
       SHA, remote build), waits for it to be live, then runs `convex:push:prod`
       from a clean checkout of that SHA, then runs the production smoke suite.
@@ -448,10 +458,14 @@ Code:
       PostHog keys once per authenticated request, bounded to 300ms with an off
       fallback. No product feature is enabled automatically; callsites still
       need both-path QA before rollout.
-- [ ] Document expand/contract for Convex schema changes in
+- [x] Document expand/contract for Convex schema changes in
       `docs/develop/convex-workflow.mdx`, with a worked example.
-- [ ] Rollback runbook: Vercel instant rollback for web; Convex rollback is
-      "deploy the previous SHA's functions", safe because of expand/contract.
+- [x] Prepare the rollback runbook in `worktree-staging-qa.mdx`: verify the
+      previous web deployment before instant rollback; restore previous function
+      source through reviewed main history while retaining expanded schema.
+      A feature checkout or obsolete schema is not a production rollback lane.
+- [ ] Provision the separate production QA identity, perform the live promotion
+      and deliberately exercise rollback with recorded deployment/alias readback.
 
 Done when: the owner promotes a SHA with one command and has rolled back once
 on purpose as a drill.

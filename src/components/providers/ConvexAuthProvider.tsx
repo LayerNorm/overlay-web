@@ -29,7 +29,7 @@ export function ConvexAuthProvider({
 
   // Single token refresh path: fetch via the shared broker and update state.
   // The broker deduplicates in-flight requests so the interval refresh and
-  // the Convex client's on-demand callback share the same fetch.
+  // other callers share the same fetch.
   useEffect(() => {
     let alive = true
     if (!convexEnabled || isLoading || !userId) {
@@ -53,15 +53,9 @@ export function ConvexAuthProvider({
     }
   }, [convexEnabled, isLoading, userId])
 
-  // Register the auth callback with the Convex client.
-  // Uses the same shared broker — no duplicate fetch.
-  useEffect(() => {
-    if (!convexEnabled || !convexReactClient) return
-    convexReactClient.setAuth(async () => {
-      if (!convexEnabled || isLoading || !userId) return null
-      return await fetchConvexToken()
-    })
-  }, [convexEnabled, isLoading, userId])
+  // These HS256 tokens are explicit query arguments checked by our handlers.
+  // They are not native Convex identity tokens: setAuth would send them to the
+  // platform verifier and block realtime subscriptions with an auth error.
 
   const value = useMemo(() => ({ accessToken }), [accessToken])
   const content = (
