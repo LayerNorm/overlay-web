@@ -52,7 +52,11 @@ export async function workPage(
             ? prefix.gt('archivedAt', 0)
             : prefix.eq('archivedAt', undefined)
         })
-  const page = await source.paginate({ numItems: limit, cursor })
+  const page = await source.paginate({ numItems: limit, cursor }).catch((error: unknown) => {
+    if (error instanceof Error && /InvalidCursor|Failed to parse cursor/.test(error.message))
+      fail('INVALID', 'Invalid task cursor')
+    throw error
+  })
   const data = await listScopedRows(ctx, {
     userId: args.userId,
     workspaceId: args.workspaceId,

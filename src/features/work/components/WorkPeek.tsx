@@ -83,6 +83,7 @@ export function WorkPeek({
       if (event.key === 'Escape') {
         event.preventDefault()
         if (discard !== null) return
+        event.stopPropagation()
         if (dirty) setDiscard('close')
         else onClose()
       }

@@ -35,7 +35,7 @@ export function workError(error: unknown): NextResponse {
     )
   if (error instanceof Error && error.message.includes('ArgumentValidationError'))
     return NextResponse.json({ error: 'Invalid task reference' }, { status: 400 })
-  if (error instanceof Error && error.message.includes('InvalidCursor'))
+  if (error instanceof Error && /InvalidCursor|Failed to parse cursor/.test(error.message))
     return NextResponse.json({ error: 'Invalid task cursor' }, { status: 400 })
   logger.error('[Work] Request failed', {
     kind: error instanceof Error ? error.name : 'Unknown error',

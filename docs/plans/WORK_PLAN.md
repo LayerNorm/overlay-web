@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 passed hosted brief/comment/archive/Settings restore QA at `0894e79e8`; phase 6 passed hosted Board drag, keyboard reorder and two-tab persistence QA at `a96131282`; phase 7a passed hosted bar move/resize and objective-span QA at `4b7985e41`; phase 7b passed hosted dependency saves, cycle rejection and arrows following resized bars at `d25706343`; phase 8 implemented, final hosted polish and rollout gate QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
+Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 passed hosted brief/comment/archive/Settings restore QA at `0894e79e8`; phase 6 passed hosted Board drag, keyboard reorder and two-tab persistence QA at `a96131282`; phase 7a passed hosted bar move/resize and objective-span QA at `4b7985e41`; phase 7b passed hosted dependency saves, cycle rejection and arrows following resized bars at `d25706343`; phase 8 passed hosted search, quick-add shortcuts and narrow List QA at `9e82e8066`; final cursor/keyboard fixes and explicit-off preview QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
 
 ## Goal
 
@@ -69,7 +69,7 @@ PR 7a and 7b split because the Timeline is the costliest view and dependencies a
 
 ### Sequencing notes
 
-- Phases 1 to 3 are invisible to users. From phase 4 on, the flag keeps work hidden.
+- Phases 1 to 3 are invisible to users. Phases 4 and 5 built the usable surface; the completed web feature is enabled by default and an explicit false flag hides every entry point.
 - PR 4 and PR 6 only need PR 3 and PR 2; with two builders they can run in parallel on separate worktrees. PR 5 needs PR 4.
 - Keep schema and UI in separate phase commits. This PR owns an isolated preview backend; no shared backend is deployed from the feature worktree.
 
