@@ -13,8 +13,9 @@ const fields = {
   context: z.array(z.object({ type: z.enum(['file', 'note', 'chat', 'link']), id: z.string().trim().min(1).max(2000), label: z.string().trim().min(1).max(200) }).strict()).max(50).optional(),
 }
 export const CreateWorkSchema = z.object({ ...fields, scope: scope.optional() }).omit({ rank: true }).partial().required({ title: true }).strict() satisfies z.ZodType<CreateWork>
-export const UpdateWorkSchema = z.object({ expectedUpdatedAt: z.number().finite().nonnegative(), patch: z.object({ ...fields, assigneePrincipalId: id.nullable().optional(), reviewerUserId: id.nullable().optional(), startDate: date.nullable().optional(), dueDate: date.nullable().optional(), parentId: id.nullable().optional() }).partial().strict() }).strict() satisfies z.ZodType<UpdateWork>
+export const UpdateWorkSchema = z.object({ expectedUpdatedAt: z.number().finite().nonnegative(), patch: z.object({ ...fields, assigneePrincipalId: id.nullable().optional(), reviewerUserId: id.nullable().optional(), startDate: date.nullable().optional(), dueDate: date.nullable().optional(), parentId: id.nullable().optional() }).omit({ rank: true }).partial().strict() }).strict() satisfies z.ZodType<UpdateWork>
 export const WorkActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('reorder'), expectedUpdatedAt: z.number().finite().nonnegative(), status: z.enum(WORK_STATUSES), beforeId: id.optional(), afterId: id.optional() }).strict(),
   z.object({ action: z.literal('scope'), to: scope }).strict(),
   z.object({ action: z.enum(['archived', 'restored', 'permanent']) }).strict(),
   z.object({ action: z.literal('comment'), text: z.string().trim().min(1).max(5000) }).strict(),

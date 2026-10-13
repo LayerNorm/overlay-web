@@ -102,3 +102,22 @@ test('brief checklist, context visibility and archived-only deletion', async () 
   await t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: task._id, action: 'permanent' })
   await expect(t.query(q('workItems:get'), { ...auth, userId: 'alice', id: task._id })).rejects.toThrow(/not found/)
 })
+
+test('board ordering checks adjacent gaps, isolation, stale moves and rebalance exhaustion', async () => {
+  const t = await fixture()
+  const a = await create(t, { title: 'a' }); const b = await create(t, { title: 'b' }); const c = await create(t, { title: 'c' })
+  const reordered = await t.mutation(m('workItems:reorder'), { ...auth, userId: 'alice', id: c._id, expectedUpdatedAt: c.updatedAt, status: 'todo', afterId: a._id }) as Task
+  expect((await list(t, 'alice', 'personal')).map((row) => row._id)).toEqual([c._id, a._id, b._id])
+  await expect(t.mutation(m('workItems:reorder'), { ...auth, userId: 'alice', id: c._id, expectedUpdatedAt: c.updatedAt, status: 'done' })).rejects.toThrow(/changed/)
+  const privateBob = await create(t, { userId: 'bob' })
+  await expect(t.mutation(m('workItems:reorder'), { ...auth, userId: 'alice', id: reordered._id, expectedUpdatedAt: reordered.updatedAt, status: 'todo', afterId: privateBob._id })).rejects.toThrow(/not found/)
+  await expect(t.mutation(m('workItems:reorder'), { ...auth, userId: 'alice', id: reordered._id, expectedUpdatedAt: reordered.updatedAt, status: 'todo', afterId: b._id })).rejects.toThrow(/column changed/)
+  await t.run(async (ctx) => {
+    const first = ctx.db.normalizeId('workItems', a._id)!; const last = ctx.db.normalizeId('workItems', b._id)!
+    await ctx.db.patch(first, { rank: 'i' }); await ctx.db.patch(last, { rank: 'z'.repeat(32) })
+  })
+  const appended = await create(t, { title: 'After exhausted rank' })
+  expect((await list(t, 'alice', 'personal')).at(-1)?._id).toBe(appended._id)
+  const moved = await t.mutation(m('workItems:reorder'), { ...auth, userId: 'alice', id: reordered._id, expectedUpdatedAt: reordered.updatedAt, status: 'done' }) as Task
+  expect((await list(t, 'alice', 'personal')).find((row) => row._id === moved._id)?.status).toBe('done')
+})

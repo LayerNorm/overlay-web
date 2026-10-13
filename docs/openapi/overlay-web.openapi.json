@@ -14439,9 +14439,6 @@
                           }
                         ]
                       },
-                      "rank": {
-                        "type": "string"
-                      },
                       "assigneePrincipalId": {
                         "type": "string",
                         "minLength": 1,
@@ -14602,6 +14599,47 @@
             "application/json": {
               "schema": {
                 "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "reorder"
+                        ]
+                      },
+                      "expectedUpdatedAt": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "backlog",
+                          "todo",
+                          "progress",
+                          "review",
+                          "done"
+                        ]
+                      },
+                      "beforeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "afterId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "action",
+                      "expectedUpdatedAt",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  },
                   {
                     "type": "object",
                     "properties": {

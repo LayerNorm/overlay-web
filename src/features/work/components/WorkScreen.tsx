@@ -16,6 +16,7 @@ import { useWorkItems } from '../lib/useWorkItems'
 import { useWorkPeople } from '../lib/useWorkPeople'
 import { selectWork, type WorkFilter } from '../lib/selection'
 import { QuickAdd } from './QuickAdd'
+import { WorkBoard } from './WorkBoard'
 import { WorkPeek } from './WorkPeek'
 import { WorkList } from './WorkList'
 
@@ -54,7 +55,7 @@ export default function WorkScreen() {
       {data.error || people.error ? <div role="alert" className="mx-6 mb-3 flex flex-wrap items-center gap-3 text-xs text-red-600 dark:text-red-400">{data.error ?? people.error}<button className="underline" onClick={() => { void data.refresh(); people.refresh() }}>Try again</button></div> : null}
       {data.loading ? <div aria-busy="true" aria-label="Loading tasks" className="mx-6 space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded bg-(--surface-subtle) motion-reduce:animate-none" />)}</div>
         : view === 'list' ? <WorkList items={items} people={people.people} pending={data.pending} canEdit={editable} onUpdate={data.update} onOpen={(item) => open(item._id)} />
-          : <div className="px-6 py-16 text-center"><List size={20} className="mx-auto mb-3 text-(--muted)" /><h2 className="text-sm font-medium">Your tasks are available in List</h2><button onClick={() => { const next = new URLSearchParams(params.toString()); next.set('view', 'list'); router.replace(`${pathname}?${next}`, { scroll: false }) }} className="mt-3 text-sm text-(--muted) underline">Open List</button></div>}
+          : view === 'board' ? <WorkBoard items={items} allItems={data.items} pending={data.pending} canEdit={editable} onMove={data.move} onOpen={(item) => open(item._id)} /> : <div className="px-6 py-16 text-center"><List size={20} className="mx-auto mb-3 text-(--muted)" /><h2 className="text-sm font-medium">Your tasks are available in List</h2><button onClick={() => { const next = new URLSearchParams(params.toString()); next.set('view', 'list'); router.replace(`${pathname}?${next}`, { scroll: false }) }} className="mt-3 text-sm text-(--muted) underline">Open List</button></div>}
     </AppScreenBody>
     {params.get('id') && activeWorkspaceId ? <WorkPeek key={`${activeWorkspaceId}:${params.get('id')}`} id={params.get('id')!} workspaceId={activeWorkspaceId} people={people.people} items={data.items} canEdit={editable} onUpdate={data.update} onClose={close} /> : null}
   </AppScreenShell>

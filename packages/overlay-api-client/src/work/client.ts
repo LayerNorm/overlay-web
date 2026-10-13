@@ -1,4 +1,4 @@
-import type { CreateWork, UpdateWork, WorkAction, WorkItem, WorkEvent, WorkView, WorkPerson, WorkContext, WorkScope } from '@overlay/app-core/work'
+import type { CreateWork, UpdateWork, WorkAction, WorkItem, WorkEvent, WorkView, WorkPerson, WorkContext, WorkScope, WorkPlacement } from '@overlay/app-core/work'
 import type { HttpContext } from '../shared/http'
 export class WorkClient {
   constructor(private readonly http: HttpContext) {}
@@ -8,6 +8,7 @@ export class WorkClient {
   get(id: string, init?: RequestInit) { return this.http.json<{ item: WorkItem; events: WorkEvent[] }>(`/api/v1/work/${encodeURIComponent(id)}`, init) }
   create(body: CreateWork, init?: RequestInit) { return this.http.json<WorkItem>('/api/v1/work', this.http.jsonRequest(body, { ...init, method: 'POST' })) }
   update(id: string, body: UpdateWork, init?: RequestInit) { return this.http.json<WorkItem>(`/api/v1/work/${encodeURIComponent(id)}`, this.http.jsonRequest(body, { ...init, method: 'PATCH' })) }
+  reorder(id: string, body: Omit<WorkPlacement, 'action'>, init?: RequestInit) { return this.http.json<{ success: true; item: WorkItem }>(`/api/v1/work/${encodeURIComponent(id)}`, this.http.jsonRequest({ ...body, action: 'reorder' }, { ...init, method: 'POST' })) }
   action(id: string, body: WorkAction, init?: RequestInit) { return this.http.json<{ success: true }>(`/api/v1/work/${encodeURIComponent(id)}`, this.http.jsonRequest(body, { ...init, method: 'POST' })) }
   archive(id: string, init?: RequestInit) { return this.http.json<{ success: true }>(`/api/v1/work/${encodeURIComponent(id)}`, { ...init, method: 'DELETE' }) }
 }

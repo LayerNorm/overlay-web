@@ -7,7 +7,7 @@ import { noteMarkdownToEditorHtml, editorHtmlToNoteMarkdown } from '@overlay/app
 export function WorkObjectiveEditor({ value, onChange, disabled }: { value: string; onChange: (markdown: string) => void; disabled: boolean }) {
   const editor = useEditor({
     immediatelyRender: false, editable: !disabled,
-    extensions: [StarterKit.configure({ heading: { levels: [2, 3] } }), Link.configure({ openOnClick: false, protocols: ['http', 'https'], autolink: true })],
+    extensions: [StarterKit.configure({ heading: { levels: [2, 3] }, link: false }), Link.configure({ openOnClick: false, protocols: ['http', 'https'], autolink: true })],
     content: noteMarkdownToEditorHtml(value),
     editorProps: { attributes: { 'aria-label': 'Objective', role: 'textbox', 'aria-multiline': 'true', class: 'min-h-28 px-3 py-2 text-sm outline-none [&_p]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_a]:underline' } },
     onUpdate: ({ editor: current }) => onChange(editorHtmlToNoteMarkdown(current.getHTML())),

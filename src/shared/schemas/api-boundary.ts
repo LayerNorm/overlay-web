@@ -154,7 +154,7 @@ export const webApiBoundaryDefinitions = [
   { method: 'GET', path: '/api/v1/work/people', schema: { response: WorkPersonSchema.array() }, summary: 'List active human task assignees', tag: 'Work' },
   { method: 'GET', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { response: z.object({ item: WorkItemSchema, events: WorkEventSchema.array() }) }, summary: 'Read a task and activity', tag: 'Work' },
   { method: 'PATCH', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { json: UpdateWorkSchema, response: WorkItemSchema }, summary: 'Edit a task at a known revision', tag: 'Work' },
-  { method: 'POST', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { json: WorkActionSchema, response: z.object({ success: z.boolean() }) }, summary: 'Comment, move, archive or restore a task', tag: 'Work' },
+  { method: 'POST', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { json: WorkActionSchema, response: z.object({ success: z.boolean(), item: WorkItemSchema.optional() }) }, summary: 'Comment, move, archive or restore a task', tag: 'Work' },
   { method: 'DELETE', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { response: z.object({ success: z.boolean() }) }, summary: 'Archive a task', tag: 'Work' },
   {
     method: 'GET', path: '/api/v1/agent-environments', schema: { query: EmptyQuery, response: UnknownResponse },

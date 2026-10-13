@@ -300,3 +300,5 @@ and scope moves are explicit POST actions. Expected backend failures use
 Task pickers use `GET /api/v1/work/people`: a scoped, active-human directory.
 It returns principal and user IDs explicitly rather than inferring one from the
 other. Agents are deliberately excluded until the agent-execution follow-up.
+
+Board placement uses the `reorder` task action: Convex checks the task revision, scope, edit rights and neighbor adjacency, then writes status/rank/activity in one transaction. Generic patches cannot write ranks. Exhausted fractional gaps rebalance the active column in a bounded mutation; stale gaps return 409.

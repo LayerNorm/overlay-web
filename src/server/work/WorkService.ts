@@ -20,7 +20,7 @@ export interface WorkRepository {
   create(actor: WorkActor, body: CreateWork): Promise<WorkItem>
   update(actor: WorkActor, id: string, body: UpdateWork): Promise<WorkItem>
   events(actor: WorkActor, id: string): Promise<WorkEvent[]>
-  action(actor: WorkActor, id: string, body: WorkAction): Promise<void>
+  action(actor: WorkActor, id: string, body: WorkAction): Promise<WorkItem | void>
 }
 export class ConvexWorkRepository implements WorkRepository {
   private auth(actor: WorkActor) { return { ...actor, serverSecret: getInternalApiSecret() } }
@@ -46,6 +46,10 @@ export class ConvexWorkRepository implements WorkRepository {
     return read(WorkEventSchema.array(), await lazyConvex.query('work/workItemEvents:list', { ...this.auth(actor), id }, { throwOnError: true }))
   }
   async action(actor: WorkActor, id: string, body: WorkAction) {
+    if (body.action === 'reorder') {
+      const { action: _action, ...placement } = body
+      return read(WorkItemSchema, await lazyConvex.mutation('work/workItems:reorder', { ...placement, ...this.auth(actor), id }, { throwOnError: true }))
+    }
     if (body.action === 'comment') {
       await lazyConvex.mutation('work/workItemEvents:comment', { ...this.auth(actor), id, text: body.text }, { throwOnError: true })
     } else {

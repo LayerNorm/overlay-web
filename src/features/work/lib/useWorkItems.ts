@@ -1,8 +1,9 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CreateWork, WorkItem, WorkPatch, WorkView } from '@overlay/app-core/work'
+import type { CreateWork, WorkItem, WorkPatch, WorkView, WorkPlacement } from '@overlay/app-core/work'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { rankBetween } from '@/shared/work/rank'
 import { WORK_UPDATED_EVENT } from '@/shared/work/status'
 
 export function notifyWorkChanged(workspaceId: string) {
@@ -79,5 +80,22 @@ export function useWorkItems(workspaceId: string | null, view: WorkView | undefi
       throw error
     } finally { busy(item._id, false); if (captured === contextVersion.current) void refresh() }
   }
-  return { items: state.key === key ? state.items : [], loading: state.key !== key, error: state.key === key ? state.error : null, pending: new Set([...pending].filter((entry) => entry.startsWith(`${key}|`)).map((entry) => entry.slice(key.length + 1))), create, update, refresh, init }
+  async function move(item: WorkItem, placement: Omit<WorkPlacement, 'action' | 'expectedUpdatedAt'>) {
+    if (pendingRef.current.has(`${key}|${item._id}`)) throw new Error('This task is being saved')
+    const captured = contextVersion.current
+    busy(item._id, true); ++version.current; controller.current?.abort()
+    let rank = item.rank
+    try { rank = rankBetween(state.items.find((row) => row._id === placement.beforeId)?.rank, state.items.find((row) => row._id === placement.afterId)?.rank) } catch { /* Backend rebalances exhausted/equal gaps. */ }
+    setState((old) => old.key !== key ? old : { ...old, items: old.items.map((row) => row._id === item._id ? { ...row, status: placement.status, rank } : row) })
+    try {
+      const { item: saved } = await overlayAppClient.work.reorder(item._id, { ...placement, expectedUpdatedAt: item.updatedAt }, init())
+      if (captured === contextVersion.current) setState((old) => old.key !== key ? old : { ...old, items: old.items.map((row) => row._id === item._id ? saved : row) })
+      notifyWorkChanged(item.workspaceId)
+      return saved
+    } catch (e) {
+      if (captured === contextVersion.current) setState((old) => old.key !== key ? old : { ...old, items: old.items.map((row) => row._id === item._id ? item : row) })
+      throw e
+    } finally { busy(item._id, false); if (captured === contextVersion.current) void refresh() }
+  }
+  return { items: state.key === key ? state.items : [], loading: state.key !== key, error: state.key === key ? state.error : null, pending: new Set([...pending].filter((entry) => entry.startsWith(`${key}|`)).map((entry) => entry.slice(key.length + 1))), create, update, move, refresh, init }
 }

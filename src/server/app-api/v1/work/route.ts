@@ -57,8 +57,8 @@ export function createWorkHandlers(service: WorkService) {
     },
     async action(request: NextRequest, context: AppApiRouteContext) {
       try {
-        await service.action(actor(context), await id(context), WorkActionSchema.parse(await request.json()))
-        return NextResponse.json({ success: true })
+        const item = await service.action(actor(context), await id(context), WorkActionSchema.parse(await request.json()))
+        return NextResponse.json({ success: true, ...(item ? { item } : {}) })
       } catch (error) { return workError(error) }
     },
     async archive(_request: NextRequest, context: AppApiRouteContext) {

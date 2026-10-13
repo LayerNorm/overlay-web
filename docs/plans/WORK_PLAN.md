@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 implements the brief and Archived registration. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
+Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 passed hosted brief/comment/archive/Settings restore QA at `0894e79e8`; phase 6 Board implemented and locally validated, hosted QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
 
 ## Goal
 
