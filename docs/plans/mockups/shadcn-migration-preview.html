@@ -970,7 +970,7 @@ function renderCmd(q){
       list.appendChild(b);
     });
   });
-  if (!any) { list.innerHTML = '<div class="cmd-empty">No results for “' + q + '”</div>'; return; }
+  if (!any) { const e = document.createElement('div'); e.className = 'cmd-empty'; e.textContent = 'No results for “' + q + '”'; list.appendChild(e); return; }
   const first = list.querySelector('.cmd-item'); if (first) first.classList.add('active');
 }
 const cmdInput = document.getElementById('cmdInput');
