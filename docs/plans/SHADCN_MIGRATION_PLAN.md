@@ -1,7 +1,7 @@
 # shadcn/ui migration plan
 
 _Dated 2026-10-13. Companion visual mockup:
-[`mockups/shadcn-migration-preview.html`](mockups/shadcn-migration-preview.html)._
+`docs/plans/mockups/shadcn-migration-preview.html`._
 
 ## Progress
 
