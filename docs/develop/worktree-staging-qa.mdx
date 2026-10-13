@@ -54,15 +54,31 @@ published web or backend: read `lastCompletedState` and the previous deployment 
 
 ### Hosted model acceptance
 
-The bootstrap hosted-provider gate is still closed. Configured test credentials
-alone do not enable application inference. After all selected model credentials
-are verified as isolated test keys, explicitly set
+Isolated Gateway and OpenRouter test credentials passed native readback. Shared
+Vercel Preview/default Convex settings now include
 `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` and
-`OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0` in the matching test web scope and rebuild.
-Store these shared settings once per scope. Confirm an actual application reply;
-a direct provider API response is insufficient. OpenRouter Auto setup still
-requires the pending separate test keys. Preserve the customer production gate
-while preparing test environments.
+`OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0`, inherited by new builds/backends. The
+dedicated staging backend has its separate test key; legacy staging web stays
+unchanged until cutover. Shared test model/storage credentials and the project-scoped Vercel controller
+token have no scheduled expiry. Each OpenRouter lane key has a $1 total limit
+and no reset. PR #194 returned a real Free Router reply and retained it after reload. Rebuild
+before subsequent QA and confirm an actual application reply; a direct provider
+response is insufficient. Update existing preview
+backends separately when rotating defaults. Preserve the customer production
+gate while preparing test environments.
+
+### Shared storage acceptance
+
+Preview/staging use distinct private R2 buckets and Object Read & Write credentials
+restricted to their own bucket, with no expiry. Shared Preview web/default Convex
+settings inherit the Preview credential; dedicated staging uses its own. Defaults
+do not rotate existing backends: update them separately before rebuilding. Native
+write/read, cross-lane/shared-dev denial and owned-object cleanup passed. CORS
+permits `https://pr-*.preview.getoverlay.io` for Preview and
+`https://staging.getoverlay.io` for staging. Authenticated presigned upload/finalization, byte-for-byte content proxy readback
+and browser image rendering passed on PR #194. The browser extension could not
+select a local file; API upload and the resulting browser viewer were checked
+separately, alongside native CORS preflights.
 
 ### Rollback runbook
 
@@ -141,7 +157,7 @@ Overlay has two backend lanes that must stay paired with their matching web depl
 preparation. The prepared lane targets only Divyansh's Vercel team
 `team_VT3uNspuyAOwicxedhtG4SMe`, project `overlay-web-staging`, and dedicated
 Convex `doting-cuttlefish-819` in project `overlay-staging` (`3199896`). Its
-deployment-scoped key expires 2027-01-10 and is stored privately. Sandbox auth,
+deployment-scoped key has no expiry and is stored privately. Sandbox auth,
 separate internal secrets and test Stripe/Gateway settings are configured, but
 the backend has no app functions or fixtures and does not serve current staging.
 

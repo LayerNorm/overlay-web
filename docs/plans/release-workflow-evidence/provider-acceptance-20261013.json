@@ -1,0 +1,39 @@
+{
+  "sha": "6e076e318efe9a4715cabb9a8c46e46e1cba7269",
+  "normalSandboxLogin": true,
+  "freeRouterReply": true,
+  "replyPersistedAfterReload": true,
+  "replySourceSha": "04aadb599f8fff41b25a15cc9bcd2fed8b701910",
+  "uploadedImageRendered": true,
+  "image": {
+    "alt": "overlay-release-upload-proof.png",
+    "complete": true,
+    "height": 1,
+    "width": 1
+  },
+  "browserUploadPerformed": false,
+  "uploadMethod": "authenticated app API and presigned R2 PUT",
+  "filesUi": true,
+  "upload": {
+    "authenticatedPresign": true,
+    "presignedPutStatus": 200,
+    "finalizeStatus": 200,
+    "contentProxyStatus": 200,
+    "byteForByteReadback": true,
+    "bucket": "overlay-release-preview"
+  },
+  "credentialRetirement": {
+    "oldVercelTokenRevoked": true,
+    "oldGatewayKeysRevoked": true,
+    "oldOpenRouterKeys": [
+      {
+        "lane": "staging",
+        "disabled": true
+      },
+      {
+        "lane": "preview",
+        "disabled": true
+      }
+    ]
+  }
+}

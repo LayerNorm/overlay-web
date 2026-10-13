@@ -57,14 +57,16 @@ Local full-suite, typecheck, build, lint, config, release-safety, boundary, docs
 production audit and staged secret scan passed. These foundations do not yet
 complete the release-lane migration.
 
-The owner-approved 90-day `VERCEL_STAGING_TOKEN` is stored in GitHub's
+The owner-approved non-expiring `VERCEL_STAGING_TOKEN` is stored in GitHub's
 `release-control` environment, whose branch policy permits only `main`.
-It is restricted to `overlay-web-staging` and expires 2027-01-10. API scope
+It is restricted to `overlay-web-staging` and remains valid until revoked. API scope
 checks succeeded for staging and denied production access. Initial Preview
 configuration contained 46 isolated sandbox variables; all 71 existing Production
 variables were preserved. Shared test Stripe/Gateway settings are now configured
-and readback verified. Storage and Auto-model OpenRouter access remain pending
-isolated test resources. Preview deployment policy permits
+and readback verified. Separate non-expiring OpenRouter test keys now have a $1 total
+limit each with no reset. Shared Preview web/defaults and the dedicated staging
+backend readback passed; a real application Free Router reply and reload persistence passed. Authenticated R2 upload/finalization, exact byte download, browser image
+rendering and CORS isolation passed on PR #194. Preview deployment policy permits
 REST API sources only; native Preview Git builds remain disabled.
 
 PR #187's accepted Preview was READY at
@@ -109,23 +111,27 @@ call. The unscoped Vercel Preview defaults now explicitly disable integrations,
 browser use, sandboxes and web search with their corresponding feature flags;
 readback preserved every legacy Production variable. Release builds reject
 inconsistent disabled-provider flags. Existing deployments need rebuilding to
-receive these settings. Model reply/Auto and isolated storage acceptance remain
-pending; none of these preparation checks activate staging or production.
+receive these settings. PR #194 subsequently passed a real Free Router reply,
+reload persistence, isolated R2 upload/download, image rendering and CORS denial.
+These provider checks do not activate staging or production.
 Reconciliation renews validated open PR backends within Starter's five-day
 limit; closed PRs expire naturally. Missing or expired backends force a fresh
 same-SHA frontend build and seed. PR #190's unattended open event built accepted head
 `2675e4a700725ace91dcc30cc40e3347235856ce` and assigned its canonical URL.
 Authenticated note create/read/update/delete and stale-edit `409` checks passed;
-the normal browser sign-in opened Files with both synthetic fixtures. Provider QA,
-merge queue enablement, staging cutover and production promotion remain open.
+the normal browser sign-in opened Files with both synthetic fixtures. Provider QA
+was subsequently accepted on PR #194; merge queue enablement, staging cutover
+and production promotion remain open.
 These results apply to that revision; subsequent commits require fresh checks.
 
 Staging preparation: Divyansh's Convex team now has project `overlay-staging`
 (`3199896`) and persistent backend `doting-cuttlefish-819`. Its deployment-scoped
-key is stored privately and expires 2027-01-10; it is not a team credential.
+key is stored privately with no expiry; it is not a team credential.
 Staging core and test Stripe/Gateway variables are configured and verified by readback, including
 fresh internal API/service secrets and the sandbox smoke identity. The web secrets
-are prepared privately. No app functions or customer data have been deployed to it.
+are installed in staging Vercel Production scope, preserving Preview defaults.
+The staging project production branch is `main`, with automatic domain assignment
+disabled; its canonical alias still serves the previous staging deployment. No app functions or customer data have been deployed to it.
 Original Overlay production/development deployments were preserved by readback.
 The prepared `staging-control.mjs` and `staging-release.yml` require the exact
 Divyansh Vercel team/project, internal repository, `main` SHA, and dedicated
@@ -565,12 +571,37 @@ Only the canonical app URL and injected Convex identity vary per PR.
 The file is a mixed configuration, not an importable dev-only bundle: its primary
 Stripe key is live, its OpenRouter key matches production and its Convex URLs
 point to shared development. Those values are excluded from the new defaults.
-Separate test Gateway keys are configured per preview/staging lane. OpenRouter
-test access remains pending. Existing R2 credentials can access `overlay-dev`,
-but bucket inventory returns `403 AccessDenied`; isolated bucket provisioning
-and cross-environment upload proof remain pending. Do not mark provider isolation
-complete or enable staging publication on the strength of these credentials alone.
+Separate test Gateway and OpenRouter keys are configured per preview/staging
+lane. Both OpenRouter keys have no expiry and reject requests after $1 total use,
+without a reset. Native key limits and shared environment readback
+passed; Preview hosted-access settings are enabled for a fresh application QA
+build. The customer production gate and legacy staging web scope are preserved.
+Cloudflare browser and existing CLI login are refreshed under Divyansh. The
+existing development S3 key remains restricted to `overlay-dev`. Separate lane
+buckets and non-expiring Object Read & Write credentials are configured. Own-lane
+write/read, cross-lane/shared-dev denial, browser image rendering, CORS isolation
+and object cleanup passed on PR #194. Provider isolation is accepted; staging
+publication still requires its own exact-revision authenticated smoke.
 
 The PR rebuild probe found a legacy note `textContent` field masking accepted
 `content` edits; the canonical text-update fix and regression coverage are
 included before accepting the updated revision.
+
+### Shared test credential lifetime (owner decision, 2026-10-13)
+
+Shared Preview/staging credentials have no scheduled expiry: the project-scoped
+Vercel controller token, deployment-scoped staging Convex key, separate Gateway
+and OpenRouter lane keys, and bucket-restricted R2 credentials. Readback confirms
+the new keys and shared defaults; existing PR #194 backend settings were also
+updated. R2 keys passed write/read, cross-lane/shared-dev denial and cleanup checks.
+Application chat and reload persistence passed. Authenticated upload/finalization, exact byte download and browser image
+rendering passed at `6e076e318efe9a4715cabb9a8c46e46e1cba7269`. Use
+`OVERLAY_PROVIDER_OBJECT_STORAGE=r2` and `STORAGE_PROVIDER=r2`; the similar
+`OVERLAY_PROVIDER_STORAGE` name is ignored.
+
+Keep the existing $1 total model limits without resets; increasing a depleted
+limit does not require replacing the key. Store defaults once and inherit them
+for future PRs. Remove owned PR aliases/resources when closed or merged. Convex
+Starter managed previews still have its service-imposed five-day retention;
+trusted reconciliation renews open PRs automatically and rebuilds expired backends.
+Session JWT and presigned upload URL lifetimes remain short.
