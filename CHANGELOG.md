@@ -12,6 +12,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - **Tailwind CSS upgraded to v4.** The app now builds on `tailwindcss@4` via `@tailwindcss/postcss` with CSS-first configuration (`@theme`, `@custom-variant`, `@source`). `dark:` utilities now follow the app's `[data-theme]` attribute instead of the OS color scheme — previously 61 `dark:` classes ignored the in-app theme toggle. The base palette has a single canonical definition in `@overlay/ui` styles; `globals.css` keeps only app-specific variables. No visual changes intended. First step of the shadcn/ui migration (`docs/plans/SHADCN_MIGRATION_PLAN.md`).
 
+- Submit production builds asynchronously and poll owned readiness; bound other command output at 16 MiB so large build logs cannot terminate release orchestration.
+
 - Parse Vercel CLI 63 structured production output and wait for the owned exact-SHA remote build to become READY before publishing web or pushing production Convex.
 
 - Recognize the primary submodule checkout in production release validation while continuing to refuse linked feature worktrees.
