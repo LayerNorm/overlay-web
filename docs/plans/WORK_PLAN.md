@@ -1,10 +1,10 @@
 # Work: tasks, board, and timeline
 
-Status: planned, not started. Mockup approved: [`mockups/work-mockup.html`](mockups/work-mockup.html).
+Status: planned, not started. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
 
 ## Goal
 
-A new **Work** page above Agents in the primary sidebar: one place to track work, personal and workspace, shown as a **List**, a **Board**, and a **Timeline** over the same tasks. v1 is humans only. The model is shaped so that, later, a task can be assigned to an agent and the agent reports back for review (see [`THESIS.md`](THESIS.md): humans set direction, AI employees do the work).
+A new **Work** page above Agents in the primary sidebar: one place to track work, personal and workspace, shown as a **List**, a **Board**, and a **Timeline** over the same tasks. v1 is humans only. The model is shaped so that, later, a task can be assigned to an agent and the agent reports back for review (see [`THESIS.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/THESIS.md): humans set direction, AI employees do the work).
 
 Not in v1: agent execution, sprints, estimates, custom fields, custom workflows, per-task sharing.
 
