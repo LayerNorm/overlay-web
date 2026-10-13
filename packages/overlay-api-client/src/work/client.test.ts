@@ -6,9 +6,10 @@ test('work client sends typed methods, encoded IDs, revisions and workspace head
   const requests: { url: string; method: string; body?: unknown; workspace: string | null }[] = []
   const client = createOverlayAppClient({ baseUrl: 'https://preview.example.test', getAuthHeaders: () => ({ 'x-overlay-workspace-id': 'ws-1' }), fetch: async (url, init) => {
     requests.push({ url: String(url), method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined, workspace: new Headers(init?.headers).get('x-overlay-workspace-id') })
-    return Response.json({ success: true })
+    return requests.length === 1 ? Response.json({ data: [{ _id: 'task-1' }], hasMore: false }) : Response.json({ success: true })
   } })
-  await client.work.list('personal')
+  const tasks = await client.work.list('personal')
+  assert.deepEqual(tasks.map((task) => task._id), ['task-1'])
   await client.work.create({ title: 'Ship', scope: 'workspace' })
   await client.work.get('task-1')
   await client.work.update('task-1', { expectedUpdatedAt: 42, patch: { status: 'review' } })
