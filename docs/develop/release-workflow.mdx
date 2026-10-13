@@ -1,0 +1,56 @@
+---
+title: "Release Workflow"
+description: "PR previews, main integration, dedicated staging, and manual production."
+---
+
+## Operating contract
+
+| Environment | Source | Data and providers |
+| --- | --- | --- |
+| Local | Working tree | Engineer-owned dev backend and test credentials |
+| PR preview | Current internal main PR head | Per-PR Convex, synthetic Sandbox identity, shared test credentials |
+| Staging | Accepted main SHA | Dedicated `doting-cuttlefish-819`, Sandbox identity, staging test providers |
+| Customer production | Manually promoted current main SHA | `colorful-chickadee-419`, production identity/providers |
+
+Builder verifies a focused main PR on its isolated preview and stops when ready.
+Integration reviews it, resolves findings and enters the main merge queue once
+required checks and proportionate QA pass. Queue workflows verify the combined
+candidate against current main and earlier queued changes. Keep approving reviews
+at zero while the sole maintainer cannot approve his own PR; retain history
+protection and the explicit emergency-only owner bypass.
+
+Staging is a main deployment, not a branch. The legacy staging branch is frozen.
+The serialized staging build pushes its dedicated backend, seeds synthetic data,
+then builds web. Its authenticated smoke and exact deployment evidence are
+required before production. `needs-staging` requests stronger hosted QA without
+changing PR base.
+
+Production remains manual with root `git.deploymentEnabled.main=false`.
+With owner authorization, run `bash scripts/release/promote.sh <main-sha>` from
+clean current canonical main. It checks canonical staging proof, builds remotely,
+publishes/verifies web, pushes production Convex, then runs synthetic-account
+smoke. Preserve saved checkpoints and verify rollback through actual alias
+readback. Never pass `.env.local`, customer fixtures or feature-worktree source
+to production deployment commands.
+
+Shared Preview/staging test credentials are configured once per scope, with no
+scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
+calls. Convex's five-day preview retention is renewed while PRs are open and is
+independent of credential lifetime. Closure cleans owned aliases and stops renewal.
+Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
+Preview Deployment Suffix.
+
+## Activation checkpoint
+
+The owner authorized the migration and waived the calendar soak. Preview model,
+storage, auth, persistence, isolation and cleanup acceptance passed. Dedicated
+staging settings/functions/fixtures are deployed. Initial Sandbox sign-in passed,
+but stale-note conflicts required a structured error fix for production-type
+Convex. Canonical staging and automatic main activation still require a complete
+new smoke run. Queue semantic proof, full checkout and the live production/rollback
+drill remain acceptance tasks; source instructions are not proof of completion.
+
+The authoritative checkpoint is in the [migration plan](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md).
+See [Agentic Development](/develop/agentic-development),
+[Staging and Production Promotion](/develop/worktree-staging-qa), and
+[Convex Workflow](/develop/convex-workflow) for commands and guards.

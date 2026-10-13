@@ -1,5 +1,5 @@
 ---
-title: "Worktree Staging QA"
+title: "Staging and Production Promotion"
 description: "Test a staging release candidate and promote the verified revision to production."
 ---
 
@@ -40,8 +40,8 @@ does not qualify. It then remotely builds production web without assigning
 domains, checks provenance, publishes and verifies the canonical web alias,
 pushes production Convex using a private key-only env file, and performs normal
 sign-in, note CRUD/conflict/cleanup, persisted chat, Files and realtime QA.
-Files checks target the accessible named file button: hidden alternate layouts
-also contain the title text and must not create a strict-locator failure.
+Files checks target the accessible named file button; scope the locator to the
+main Files region when the sidebar exposes a button with the same name.
 The chat composer is the accessible `Ask anything` combobox, not a textarea.
 No production seed runs. Root `git.deploymentEnabled.main=false` remains required.
 
@@ -58,8 +58,8 @@ Isolated Gateway and OpenRouter test credentials passed native readback. Shared
 Vercel Preview/default Convex settings now include
 `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` and
 `OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0`, inherited by new builds/backends. The
-dedicated staging backend has its separate test key; legacy staging web stays
-unchanged until cutover. Shared test model/storage credentials and the project-scoped Vercel controller
+dedicated staging backend and staging web use separate test credentials;
+the canonical alias stays on its previous deployment until smoke passes. Shared test model/storage credentials and the project-scoped Vercel controller
 token have no scheduled expiry. Each OpenRouter lane key has a $1 total limit
 and no reset. PR #194 returned a real Free Router reply and retained it after reload. Rebuild
 before subsequent QA and confirm an actual application reply; a direct provider
@@ -101,234 +101,90 @@ separately, alongside native CORS preflights.
 4. A deliberate live rollback drill remains required before migration completion.
    Unit ordering tests and this prepared command do not substitute for that drill.
 
-## Existing and prepared deployment lanes
+## Cutover acceptance checkpoint
 
-The migration in `docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md` authorizes an
-isolated PR preview lane alongside the existing shared staging lane. The
-staging Vercel project opts into `PREVIEW_BUILDS=pr` and
-`OVERLAY_RELEASE_LANE=staging`; the guard requires a positive PR number and
-exactly `NEXT_PUBLIC_APP_URL=https://pr-<number>.preview.getoverlay.io` before
-building. The build uses a project-scoped Convex preview key, reuses
-`pr-<number>` with `--preview-name`, and cannot use shared dev or production.
-Verify the alias and current head SHA before browser QA. The native Preview
-Deployment Suffix remains disabled. The branch-based lane below stays in place
-until preview QA proves the cutover is ready.
+The dedicated staging functions and fixtures are deployed. Sandbox sign-in
+passed; the first full smoke found that note revision conflicts were hidden as
+ordinary developer errors on a production-type Convex backend. The cutover source
+uses structured application errors and preserves their data across the HTTP
+adapter. Canonical publication and automatic main staging remain gated on a new
+complete smoke run. Stripe test endpoint `we_1UQ1FzPH7ssnO0LIvzG2T8VW` delivered
+an actual test PaymentIntent event to the dedicated backend, where it was
+recorded as processed. Billing checkout acceptance remains separate.
 
-Preview provisioning uses trusted `main` code in `pr-preview.yml` with the
-project-scoped GitHub environment secret `VERCEL_STAGING_TOKEN` in
-`release-control` (only `main` workflows can access it). It checks repository,
-branch, current head SHA, Preview target, and project before alias assignment.
-Enable only REST API Preview deployment sources: native Preview Git builds stay
-disabled. The controller supplies the Preview build-command override and disables
-automatic custom-domain assignment; the legacy staging Production lane retains
-its existing settings until cutover. Preview providers must use dedicated test
-resources. Disabled bootstrap providers do not count as upload, model, or billing QA.
-Preview backend expiry is renewed by the main-only controller using the Convex
-project preview key. Reconciliation preserves existing data; if an expired
-backend must be recreated, it requests a fresh build and seed at the same SHA.
+## Deployment lanes
 
-Hosted app previews are unnecessary for diffs confined to docs, root Markdown
-and GitHub metadata/workflows. Those changes keep their required CI and docs
-preview. Apply `needs-preview` or manually dispatch PR Preview to request one
-explicitly. Runtime/build/dependency changes still provision a full isolated
-preview; incomplete file inventories also build. Existing managed resources are
-cleaned up only after owned remote builds settle, with the normal HTTPS 404 check.
-The `PR Preview` commit status links the canonical address and identifies its
-revision; verify that status against the current PR head before QA. Closing or
-retargeting a PR removes its alias/domain and managed branch app URL, and a
-six-hour reconciliation repairs missed events. Missing/closed wildcard hosts
-return 404. Register the wildcard on reserved branch
-`codex/preview-unassigned` for certificate coverage only, with no deployment
-alias; never deploy that branch or use it for a PR. The controller verifies this
-configuration before provisioning and HTTPS `404` after cleanup. Preview configuration is still being rolled out; this section does
-not assert that the live lane has passed its acceptance checks.
-
-Overlay has two backend lanes that must stay paired with their matching web deployment:
-
-| Lane | Git branch | Web URL | Convex deployment |
+| Lane | Source | Web | Convex |
 | --- | --- | --- | --- |
-| Production | `main` | `www.getoverlay.io` | production |
-| Shared staging | `staging` | `staging.getoverlay.io` | development |
+| Preview | Internal main PR head | `pr-<number>.preview.getoverlay.io` | Per-PR preview, synthetic sandbox fixtures |
+| Staging | Accepted main SHA | `staging.getoverlay.io` | `doting-cuttlefish-819`, dedicated sandbox/test providers |
+| Customer production | Manually promoted current main SHA | `getoverlay.io` | `colorful-chickadee-419`, production identity/providers |
 
-### Prepared main-based staging controller
+The legacy staging branch is frozen. There is no staging-to-main release PR or
+branch-parity work. Local development uses an engineer-owned development backend.
 
-`staging-release.yml` is gated by the repository variable
-`RELEASE_STAGING_FROM_MAIN=enabled`, which remains unset during migration
-preparation. The prepared lane targets only Divyansh's Vercel team
-`team_VT3uNspuyAOwicxedhtG4SMe`, project `overlay-web-staging`, and dedicated
-Convex `doting-cuttlefish-819` in project `overlay-staging` (`3199896`). Its
-deployment-scoped key has no expiry and is stored privately. Sandbox auth,
-separate internal secrets and test Stripe/Gateway settings are configured, but
-the backend has no app functions or fixtures and does not serve current staging.
+### Preview lifecycle
 
-The owner waived the calendar soak on 2026-10-12. Before activation, prove live
-provider isolation,
-configure the dedicated backend/app environment, switch the staging project's
-production branch and domain to `main`, pass authenticated staging smoke, freeze
-the legacy staging branch and rewrite the process docs in the cutover PR.
-Keep root `git.deploymentEnabled.main=false` and production manual.
+Trusted main control creates ordinary custom aliases, verifies current PR head
+before assignment, and keeps model/storage/test secrets inherited from shared
+Preview web and Convex defaults. Native Git previews stay disabled; controller
+API builds require canonical origin and scoped preview key. Docs/root-Markdown/
+GitHub-only diffs skip hosted app builds while retaining required checks.
+`needs-preview` or manual dispatch requests one. Unknown/app/build/dependency
+changes build. Closing/merging removes owned aliases, domain and URL overrides;
+reconciliation every six hours repairs missed events and renews open backends.
+Closed/unknown preview hosts return HTTPS 404. Backend retention is a platform
+limit, independent of the non-expiring shared credentials.
 
-Trusted control executes protected main with the project-scoped staging token,
-without installing packages or checking out feature code. Per-request build
-overrides carry a validated SHA. The ignore/build guards reject missing or
-mismatched SHA, other refs, wrong origins, and any other backend key. All main
-staging builds share one concurrency group; obsolete builds are confirmed
-terminal before a new persistent-backend build can start. Alias assignment
-requires READY plus project/repository/main/SHA/backend metadata and readback.
-Deployment evidence records `smoke: pending`: it is not promotion evidence until
-the exact revision passes authenticated smoke. The existing lane above stays
-active until these cutover requirements are met.
+### Main staging
 
-For the first cutover, manually dispatch reviewed `main` with
-`prepare_candidate=true`. The controller builds a candidate with automatic
-custom-domain assignment disabled, verifies its native Vercel hostname against
-the owned deployment, and leaves the canonical staging alias unchanged. The
-same serialized job installs reviewed smoke dependencies without management
-secrets, then performs ordinary sandbox password sign-in, fixture reads, note
-CRUD and a stale-save conflict, a real chat reply and a rendered Files check.
-Only the smoke step receives the synthetic account credentials.
+`RELEASE_STAGING_FROM_MAIN=enabled` activates `staging-release.yml` on main pushes.
+All staging jobs share one serialized lock. The staging project's Production
+branch is main; Production and Preview deployment sources permit controller REST
+API builds only. Root Git main deployments remain disabled. The ignore/build
+guards accept an exact trusted-main SHA override and reject unrelated refs,
+manual builds and wrong backends. Automatic custom-domain assignment is disabled.
 
-After provider isolation is independently proved, set
-`STAGING_ISOLATION_VERIFIED=enabled`. Dispatch with both candidate inputs true
-to publish only after those checks pass. Publication verifies evidence from
-the same workflow run, current main, deployment provenance and the unchanged
-previous alias before assigning `staging.getoverlay.io`. Canonical smoke runs
-again afterward. Save `staging-smoke-<sha>` and its screenshots as evidence;
-an unpublished candidate or a deployment artifact with `smoke: pending` is not
-production promotion proof. Enable `RELEASE_STAGING_FROM_MAIN` only after this
-cutover passes. These steps are prepared in source and have not run live yet.
+The remote build deploys dedicated staging functions, invokes guarded synthetic
+seed, then builds web with the same backend URL. Controller verifies repository,
+main SHA, project, backend and READY state before alias assignment. The same job
+runs Sandbox sign-in, fixture reads, note CRUD/stale-edit conflict/cleanup, a real
+chat reply, Files UI and realtime own-user/other-user authorization. Inspect
+`Staging Deploy`, `Staging Smoke`, artifacts and screenshots for that exact SHA.
+A ready web build or stale smoke result is insufficient for production.
 
-A feature worktree must never change production Convex. The `main` app and production Convex are a single release unit: deploy them only from an up-to-date, clean `main` worktree.
-
-The development Convex deployment is shared by local development and `staging.getoverlay.io`. A Convex change from one branch changes that backend for every user of this lane. Do not run concurrent staging QA sessions that make incompatible changes under `convex/`.
-
-## Prepare the staging release candidate
-
-Use one dedicated, long-lived worktree for the shared `staging` branch. Reuse it for every sequential Builder pull request; the Integration agent does not create a new worktree per PR or check out each feature branch into this worktree. This prevents a feature worktree from accidentally becoming the staging or production deployment source while avoiding duplicate checkouts.
+For initial cutover/rehearsal, dispatch `prepare_candidate=true` to keep the
+canonical alias unchanged while testing the verified native candidate hostname.
+After isolated provider proof, `STAGING_ISOLATION_VERIFIED=enabled` plus
+`publish_candidate=true` permits same-run publication only after smoke passes.
+Canonical smoke runs again; unpublished candidate evidence cannot promote prod.
+Subsequent normal main jobs deploy canonical staging and retain smoke evidence.
 
 ```bash
-cd ~/Downloads/overlay-mono/overlay-landing
-git fetch origin
-git worktree add ../overlay-landing-staging staging
-cd ../overlay-landing-staging
-git pull --ff-only origin staging
+gh run list --repo LayerNorm/overlay-web --workflow staging-release.yml
+gh run view <run-id> --repo LayerNorm/overlay-web
 ```
 
-The Builder normally opens its pull request against `staging` and stops at submission. The Integration agent reviews the diff and required checks, then merges the Builder PR into `staging` through GitHub. If `DevelopedByDev` explicitly authorizes the owner-only direct-push fast path, the Integration agent instead performs the documented local review and checks, integrates in this dedicated staging worktree, confirms a fast-forward update, and pushes without force. A direct `staging` push normally starts the staging Vercel build.
-
-Review feature branches through GitHub and the pull request diff. After each merge, update this same staging worktree to the exact remote `staging` revision before testing. Create a short-lived additional worktree only when an unusual conflict or side-by-side investigation cannot be performed safely in the dedicated staging worktree; remove it after the investigation.
-
-After that merge, update the dedicated staging worktree to the exact remote revision:
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-git fetch origin
-git pull --ff-only origin staging
-git rev-parse HEAD
-git rev-parse origin/staging
-```
-
-Both SHAs must match. Record the staging SHA before testing. Do not force-push `staging`; if a candidate must be removed, create a revert commit so staging history stays auditable.
-
-Prefer one release candidate at a time. If the Integration agent intentionally batches several Builder PRs, record every included PR and test the combined staging revision.
-
-The staging Vercel project is branch-gated to `staging` to keep build costs predictable:
-
-- Its Git production branch is `staging`.
-- `DEPLOY_BRANCH=staging` is configured for both the Preview and Production environments.
-- `bash scripts/vercel-ignore-build.sh` is the project's Ignored Build Step. With the staging target, it runs only when `VERCEL_GIT_COMMIT_REF` exactly matches `DEPLOY_BRANCH`; missing variables, missing branch refs, pull-request branches, manual deployments, and deploy hooks are skipped (Vercel exit `0`). If the shared script is ever reused for another explicit target, its no-ref manual-release behavior remains available for that target.
-- Preview deployment sources remain disabled. The project therefore has one hosted QA lane: the `staging` branch's deployment.
-
-When changing this policy, verify the project settings and run the guard locally with both matching and non-matching branch refs before merging. Do not rely on an account-level deployment-source policy alone; the repository guard is the defense that travels with the project configuration.
-
-## Push Convex for staging QA
-
-If and only if the staged change includes `convex/` changes, deploy the exact staging revision to the shared development deployment before testing the staging website:
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-npm run convex:push:dev
-```
-
-Then wait for the `staging` Vercel build to finish and open `https://staging.getoverlay.io`.
-
-For every staging QA run, verify the changed flow plus these basics where applicable:
-
-- Authentication/session loading succeeds.
-- The affected API route or UI flow returns the expected result.
-- A chat change streams, completes, and persists after a refresh.
-- A billing or entitlement change creates and finalizes its expected usage state.
-- Browser console and staging runtime logs have no new errors.
-
-If staging is broken after a Convex schema or function change, first restore the shared development deployment by checking out the last known-good `staging` commit in the dedicated staging worktree and running `npm run convex:push:dev`. Never use a feature worktree or production deployment as the rollback source.
+Before promotion, verify current origin/main still equals the smoke SHA, the
+canonical alias serves its deployment and all required behavioral checks passed.
+The production command checks this automatically. If main advances or smoke
+fails, wait for and verify the new revision; do not promote older proof.
 
 ## Convex contract QA
 
-The app-data repository contract suite runs against the shared development Convex deployment with `npm run test:app-data-contracts:convex`. For self-hosted backend validation, use the reference stack in `examples/customer-deployment/` and the runbook at `docs/deploy-operate/self-hosted-convex.mdx`. Redis-backed rate-limit checks run locally through `npm run test:p1:redis` against the `local-redis` service in `docker/docker-compose.better-auth.yml`.
+Compare web callsites with deployed function validators when debugging drift.
+Use synthetic staging data, explicit validators and expand/migrate/contract.
+Never copy customer data into fixtures. Rehearse new/old web and backend overlap
+and retained web rollback against the expanded schema. See
+[Convex Workflow](/develop/convex-workflow).
 
-## Promote a verified release
+## Integration checklist
 
-After staging passes, confirm that the tested staging SHA is still current and that the latest `main` is included in the candidate:
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-git fetch origin
-git rev-parse HEAD
-git rev-parse origin/staging
-git merge-base --is-ancestor origin/main origin/staging
-```
-
-If either staging SHA differs from the recorded QA revision, or if the ancestry check fails, update `staging` and repeat the affected QA before promotion.
-
-The Integration agent normally opens or updates a release pull request from `staging` to `main`, waits for the main-branch checks, and merges it with a merge commit. The release PR must identify every included Builder PR and the exact tested staging SHA. If `DevelopedByDev` explicitly authorizes a direct push to `main`, the Integration agent may instead fast-forward `main` to the exact tested staging revision after completing the owner fast-path checks in [Agentic Development](/develop/agentic-development). The direct path must not change the tested tree or rewrite either branch.
-
-Before merging a release PR, confirm root `vercel.json` sets `git.deploymentEnabled.main` to `false`. Vercel evaluates this source-controlled rule for Git events, so `staging` continues to deploy for hosted QA while a release PR merge updates `main` without creating a production deployment. Do not rely on an account-level deployment-source policy alone. After the merge, verify both the exact `origin/main` SHA and that Vercel created no production deployment for it. `main` and `staging` do not need to stay in sync — only align `staging` with the accepted merge commit when the owner requests parity or the next Builder candidate needs a clean base:
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing-staging
-git fetch origin
-git merge --ff-only origin/main
-git push origin staging
-```
-
-This is a non-rewriting fast-forward: the release merge commit has the tested staging revision as a parent. If it cannot fast-forward, stop and inspect the unexpected branch movement instead of force-pushing. If Vercel unexpectedly creates a production deployment, cancel it before aliases are assigned and treat the deployment gate as failed until the trigger configuration is corrected. After the no-deployment check (and the alignment, when performed), report the accepted SHA as **merged but not deployed**, then stop unless the user explicitly authorizes production deployment.
-
-Before any production Convex deploy, use the canonical `main` worktree and verify it is clean and matches `origin/main`:
-
-```bash
-cd ~/Downloads/overlay-mono/overlay-landing
-git fetch origin
-git status --short
-git log --oneline -1 HEAD
-git log --oneline -1 origin/main
-```
-
-After explicit user authorization, create a production build without immediately assigning the production domain:
-
-```bash
-npx --yes vercel@59.5.0 deploy --prod --skip-domain --yes
-```
-
-Inspect the returned deployment and verify it was built from the accepted `origin/main` SHA. Promote that verified deployment explicitly:
-
-```bash
-npx --yes vercel@59.5.0 promote <deployment-url> --yes
-```
-
-After `main` is deployed to Vercel, and only when that main revision contains `convex/` changes, sync production Convex from this `main` checkout:
-
-```bash
-npm run convex:push:prod
-```
-
-Then run an authenticated smoke test on `https://www.getoverlay.io`. For chat, send a message, confirm the streamed answer completes, refresh the page, and confirm the message remains in the conversation.
-
-## Integration agent checklist
-
-Before the Integration agent runs a Convex command, it must state:
-
-1. its current branch and worktree path;
-2. whether it is targeting the shared development or production deployment;
-3. why that deployment is the correct lane for the revision being tested.
-
-The Integration agent may run `npm run convex:push:dev` only from the dedicated `staging` worktree for a staging release candidate. It may run `npm run convex:push:prod` only after explicit production-deployment authorization, from the clean canonical `main` worktree, and after main's web deployment is live. `convex:push:all` is not part of the worktree workflow. The Builder never deploys Convex.
+1. Review exact PR head, resolved findings, required checks and affected preview QA.
+2. Enqueue through main's merge queue; verify accepted main SHA after merge.
+3. Verify no automatic customer production build and inspect exact-main staging smoke.
+4. For `needs-staging`, verify the affected flow before production promotion.
+5. With explicit production authorization, use clean current canonical main and
+   the guarded promotion command. Verify web live before production Convex.
+6. Preserve checkpoints and previous deployment IDs; run authenticated QA and
+   verify any rollback through actual alias readback. Report incomplete work clearly.

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { ConvexError } from 'convex/values'
 import test, { type TestContext } from 'node:test'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { ConvexNoteRepository } from './ConvexNoteRepository'
@@ -30,6 +31,19 @@ test('a rejected Convex revision becomes a note conflict instead of unchanged su
     userId: note.userId, workspaceId: 'workspace_fixture', content: 'Stale content', expectedUpdatedAt: 10 }),
   error => error instanceof NoteRevisionConflictError
     && error.expectedUpdatedAt === 10 && error.currentUpdatedAt === 20)
+})
+
+test('production-redacted Convex application data preserves a note revision conflict', async t => {
+  secret(t)
+  t.mock.method(lazyConvex, 'query', async () => note)
+  t.mock.method(lazyConvex, 'mutation', async () => {
+    const error = new ConvexError('NOTE_REVISION_CONFLICT')
+    error.message = 'Server Error'
+    throw error
+  })
+  await assert.rejects(new ConvexNoteRepository().updateNote({ noteId: note._id,
+    userId: note.userId, content: 'Stale content', expectedUpdatedAt: 10 }),
+  error => error instanceof NoteRevisionConflictError && error.currentUpdatedAt === 20)
 })
 
 test('other Convex update failures propagate rather than reporting a successful save', async t => {

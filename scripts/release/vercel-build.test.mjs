@@ -72,12 +72,15 @@ test('a preview cannot deploy with a production key, shared origin, or missing P
 
 test('staging refuses a production backend or mismatched key', () => {
   const staging = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
+    WORKOS_CLIENT_ID: 'client_01KJ9A19X317J7VWRWQ6XBME9Z', WORKOS_API_KEY: 'fixture-sandbox',
     OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: STAGING.backend,
     CONVEX_DEPLOY_KEY: 'prod:' + STAGING.backend + '|fixture',
     OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),
     VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40),
     VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web', NEXT_PUBLIC_APP_URL: STAGING.origin }
   assert.equal(buildPlan(staging).target, 'staging ' + STAGING.backend)
+  assert.throws(() => buildPlan({ ...staging, WORKOS_API_KEY: '' }), /sandbox WorkOS/)
+  assert.throws(() => buildPlan({ ...staging, WORKOS_CLIENT_ID: 'customer-production' }), /sandbox WorkOS/)
   assert.throws(() => buildPlan({ ...staging, CONVEX_DEPLOY_KEY: 'prod:wrong|key' }))
   assert.throws(() => buildPlan({ ...staging,
     OVERLAY_STAGING_CONVEX_DEPLOYMENT: 'colorful-chickadee-419',
@@ -93,6 +96,7 @@ test('staging refuses a production backend or mismatched key', () => {
 
 test('trusted staging deploys backend, then seed, then web; failure stops subsequent steps', () => {
   const env = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
+    WORKOS_CLIENT_ID: 'client_01KJ9A19X317J7VWRWQ6XBME9Z', WORKOS_API_KEY: 'fixture-sandbox',
     OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: STAGING.backend,
     CONVEX_DEPLOY_KEY: 'prod:' + STAGING.backend + '|fixture',
     OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),

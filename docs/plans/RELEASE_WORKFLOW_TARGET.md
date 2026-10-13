@@ -5,8 +5,8 @@
 > follow `docs/develop/agentic-development.mdx` and `docs/develop/worktree-staging-qa.mdx`.
 
 Preparation status: preview foundations are merged. Dedicated staging backend
-`doting-cuttlefish-819` in project `overlay-staging` is provisioned but empty.
-The staging controller is being prepared behind an unset
+`doting-cuttlefish-819` in project `overlay-staging` has isolated settings, app functions and synthetic fixtures.
+The staging controller runs manual candidates behind an unset
 `RELEASE_STAGING_FROM_MAIN` repository variable. The current branch-based
 staging lane remains authoritative until the migration checkpoint and cutover.
 
@@ -36,6 +36,9 @@ custom domains and automated aliases. The native Preview Deployment Suffix
 add-on is not a prerequisite and must remain disabled. This saves the add-on
 subscription; existing hosting, build, domain, and backend usage charges still
 apply. We own the alias provisioning, revision checks, and cleanup automation.
+
+The living operating contract is [Release Workflow](/develop/release-workflow);
+the migration plan retains the exact activation/acceptance checkpoint.
 
 ## Goals
 
@@ -274,3 +277,12 @@ main-based staging stays disabled until this live cutover succeeds.
 
 Owner decision (2026-10-12): cut over when live isolation and staging smoke
 checks pass; the planned one-to-two-week waiting period is waived.
+
+### Cutover acceptance status (2026-10-13)
+
+Initial staging sign-in and fixture access passed after restoring the protected
+Sandbox key. Stale-note conflict handling must preserve structured Convex error
+data on production-type deployments; that fix is in the cutover change. The
+canonical alias and automatic-main activation stay gated until complete smoke
+passes. A real test Stripe event reached the dedicated backend and was processed;
+full checkout, queue semantic proof and production/rollback drill remain pending.

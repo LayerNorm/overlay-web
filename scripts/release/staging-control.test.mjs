@@ -161,7 +161,7 @@ test('main advancing before or during alias assignment cannot produce promotion 
 
 test('failed, untrusted, or wrongly assigned deployments never publish success', async () => {
   for (const options of [
-    { buildState: 'ERROR' }, { aliasMismatch: true },
+    { buildState: 'ERROR' }, { buildState: 'BLOCKED' }, { aliasMismatch: true },
     { deploymentPatch: { projectId: 'another-project' } }, { lostRead: true },
   ]) {
     const f = fixture(options)

@@ -56,6 +56,10 @@ export function buildPlan(env) {
   }
 
   if (env.VERCEL_ENV === 'production' && env.OVERLAY_DEPLOYMENT_ENV === 'staging') {
+    if (env.WORKOS_CLIENT_ID !== 'client_01KJ9A19X317J7VWRWQ6XBME9Z'
+      || !env.WORKOS_API_KEY?.trim()) {
+      throw new Error('Staging requires the sandbox WorkOS client and a nonempty API key')
+    }
     const name = env.OVERLAY_STAGING_CONVEX_DEPLOYMENT
     const keyTarget = (env.CONVEX_DEPLOY_KEY ?? '').split('|')[0]
     if (name !== STAGING.backend || keyTarget !== 'prod:' + STAGING.backend) {
