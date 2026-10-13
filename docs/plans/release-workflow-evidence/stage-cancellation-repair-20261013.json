@@ -1,0 +1,16 @@
+{
+  "sha": "f863915508795c695d9778f33476eaaf4d14436e",
+  "deploymentId": "dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ",
+  "backend": "doting-cuttlefish-819",
+  "billingAccountId": "ba_a36fd077794f47179b34695b74d306aa",
+  "replayedCanceledEventId": "evt_1UQ3i3PH7ssnO0LIhVIEYNHF",
+  "syntheticAccountOnly": true,
+  "manualRepairOfPreviouslyFailedTestEvent": true,
+  "appPlan": "free",
+  "status": "canceled",
+  "autoTopUpEnabled": false,
+  "historicalSpendPreserved": true,
+  "usedMicros": 900,
+  "reservedMicros": 0,
+  "includedMicros": 900
+}
