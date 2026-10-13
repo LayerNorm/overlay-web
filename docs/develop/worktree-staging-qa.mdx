@@ -59,11 +59,23 @@ Vercel Preview/default Convex settings now include
 `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` and
 `OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0`, inherited by new builds/backends. The
 dedicated staging backend has its separate test key; legacy staging web stays
-unchanged until cutover. Each OpenRouter lane key expires after 90 days with a
-$1 total limit and no reset. Rebuild before QA and confirm an actual application
+unchanged until cutover. Shared test model/storage credentials and the project-scoped Vercel controller
+token have no scheduled expiry. Each OpenRouter lane key has a $1 total limit
+and no reset. Rebuild before QA and confirm an actual application
 reply; a direct provider response is insufficient. Update existing preview
 backends separately when rotating defaults. Preserve the customer production
 gate while preparing test environments.
+
+### Shared storage acceptance
+
+Preview/staging use distinct private R2 buckets and Object Read & Write credentials
+restricted to their own bucket, with no expiry. Shared Preview web/default Convex
+settings inherit the Preview credential; dedicated staging uses its own. Defaults
+do not rotate existing backends: update them separately before rebuilding. Native
+write/read, cross-lane/shared-dev denial and owned-object cleanup passed. CORS
+permits `https://pr-*.preview.getoverlay.io` for Preview and
+`https://staging.getoverlay.io` for staging. Verify an actual presigned application
+upload before accepting the storage lane.
 
 ### Rollback runbook
 
@@ -142,7 +154,7 @@ Overlay has two backend lanes that must stay paired with their matching web depl
 preparation. The prepared lane targets only Divyansh's Vercel team
 `team_VT3uNspuyAOwicxedhtG4SMe`, project `overlay-web-staging`, and dedicated
 Convex `doting-cuttlefish-819` in project `overlay-staging` (`3199896`). Its
-deployment-scoped key expires 2027-01-10 and is stored privately. Sandbox auth,
+deployment-scoped key has no expiry and is stored privately. Sandbox auth,
 separate internal secrets and test Stripe/Gateway settings are configured, but
 the backend has no app functions or fixtures and does not serve current staging.
 

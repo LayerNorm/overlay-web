@@ -87,6 +87,12 @@ Rules that follow from this table:
   live Stripe and the production OpenRouter key are excluded. Preserve separate
   preview/staging internal secrets. Update existing Convex previews separately
   when rotating credentials; defaults affect newly created backends only.
+- Shared test provider credentials and release automation tokens have **no scheduled
+  expiry**, while keeping lane scopes and existing $1 total model limits. Rotate
+  them when necessary and update inherited defaults plus existing backends.
+  A depleted model budget can be raised without reissuing credentials. Per-PR
+  resources are cleaned on close/merge; managed Convex retention is renewed
+  automatically for open PRs. Session and presigned URL expiry stays short.
 - Preview and staging secrets are **test-mode only**. Preview builds run whatever
   code a pull request contains, so they must never hold a production secret.
 - A disabled integration, browser, sandbox or web-search provider also disables
@@ -253,7 +259,7 @@ Shared Vercel Preview settings and Convex preview defaults now contain the
 existing LayerNorm sandbox Stripe credentials/prices and the test Gateway key,
 verified by readback. The dedicated staging Convex backend has corresponding
 test settings with its own Gateway and OpenRouter keys. Each OpenRouter key has
-a 90-day expiry and $1 total limit without reset. Shared Preview model keys and
+no expiry and a $1 total limit without reset. Shared Preview model keys and
 hosted-access flags are verified by readback; a fresh app build/reply and isolated
 R2 acceptance remain pending. No provider credentials need copying per new PR.
 

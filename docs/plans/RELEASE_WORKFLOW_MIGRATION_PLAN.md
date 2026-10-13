@@ -57,13 +57,13 @@ Local full-suite, typecheck, build, lint, config, release-safety, boundary, docs
 production audit and staged secret scan passed. These foundations do not yet
 complete the release-lane migration.
 
-The owner-approved 90-day `VERCEL_STAGING_TOKEN` is stored in GitHub's
+The owner-approved non-expiring `VERCEL_STAGING_TOKEN` is stored in GitHub's
 `release-control` environment, whose branch policy permits only `main`.
-It is restricted to `overlay-web-staging` and expires 2027-01-10. API scope
+It is restricted to `overlay-web-staging` and remains valid until revoked. API scope
 checks succeeded for staging and denied production access. Initial Preview
 configuration contained 46 isolated sandbox variables; all 71 existing Production
 variables were preserved. Shared test Stripe/Gateway settings are now configured
-and readback verified. Separate 90-day OpenRouter test keys now have a $1 total
+and readback verified. Separate non-expiring OpenRouter test keys now have a $1 total
 limit each with no reset. Shared Preview web/defaults and the dedicated staging
 backend readback passed; real application model replies and isolated storage
 acceptance remain pending. Preview deployment policy permits
@@ -124,7 +124,7 @@ These results apply to that revision; subsequent commits require fresh checks.
 
 Staging preparation: Divyansh's Convex team now has project `overlay-staging`
 (`3199896`) and persistent backend `doting-cuttlefish-819`. Its deployment-scoped
-key is stored privately and expires 2027-01-10; it is not a team credential.
+key is stored privately with no expiry; it is not a team credential.
 Staging core and test Stripe/Gateway variables are configured and verified by readback, including
 fresh internal API/service secrets and the sandbox smoke identity. The web secrets
 are prepared privately. No app functions or customer data have been deployed to it.
@@ -568,8 +568,8 @@ The file is a mixed configuration, not an importable dev-only bundle: its primar
 Stripe key is live, its OpenRouter key matches production and its Convex URLs
 point to shared development. Those values are excluded from the new defaults.
 Separate test Gateway and OpenRouter keys are configured per preview/staging
-lane. Both OpenRouter keys expire after 90 days and reject requests after $1
-total use, without a reset. Native key limits and shared environment readback
+lane. Both OpenRouter keys have no expiry and reject requests after $1 total use,
+without a reset. Native key limits and shared environment readback
 passed; Preview hosted-access settings are enabled for a fresh application QA
 build. The customer production gate and legacy staging web scope are preserved.
 Cloudflare browser and existing CLI login are refreshed under Divyansh. The
@@ -580,3 +580,19 @@ complete or enable staging publication on the strength of these credentials alon
 The PR rebuild probe found a legacy note `textContent` field masking accepted
 `content` edits; the canonical text-update fix and regression coverage are
 included before accepting the updated revision.
+
+### Shared test credential lifetime (owner decision, 2026-10-13)
+
+Shared Preview/staging credentials have no scheduled expiry: the project-scoped
+Vercel controller token, deployment-scoped staging Convex key, separate Gateway
+and OpenRouter lane keys, and bucket-restricted R2 credentials. Readback confirms
+the new keys and shared defaults; existing PR #194 backend settings were also
+updated. R2 keys passed write/read, cross-lane/shared-dev denial and cleanup checks.
+Application chat/upload acceptance remains pending the rebuilt preview.
+
+Keep the existing $1 total model limits without resets; increasing a depleted
+limit does not require replacing the key. Store defaults once and inherit them
+for future PRs. Remove owned PR aliases/resources when closed or merged. Convex
+Starter managed previews still have its service-imposed five-day retention;
+trusted reconciliation renews open PRs automatically and rebuilds expired backends.
+Session JWT and presigned upload URL lifetimes remain short.
