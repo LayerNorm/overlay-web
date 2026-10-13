@@ -21,10 +21,10 @@ checkpoints and the rollback runbook.
 
 The separate production QA identity and deployment-scoped Convex credential are
 prepared privately. WorkOS password authentication passed; production application
-smoke and deployment remain pending. The bootstrap hosted-provider gate also
-remains closed in test apps until their model keys are accepted. Enabling model
-QA requires the shared hosted-access flag and emergency-switch settings described
-in the staging guide, followed by a rebuild and a real application reply.
+smoke and deployment remain pending. Isolated test Gateway and OpenRouter keys
+are accepted by their native readback. Shared Preview hosted-access flags now
+permit a fresh model QA build; a real application reply is still required.
+Legacy staging web and customer production settings remain unchanged.
 
 ## Preview-domain decision — 2026-10-12
 
@@ -252,8 +252,10 @@ Activation still requires provider isolation, authenticated smoke and the cutove
 Shared Vercel Preview settings and Convex preview defaults now contain the
 existing LayerNorm sandbox Stripe credentials/prices and the test Gateway key,
 verified by readback. The dedicated staging Convex backend has corresponding
-test settings with its own Gateway key. OpenRouter test access and isolated R2
-storage remain pending. No provider credentials need copying per new PR.
+test settings with its own Gateway and OpenRouter keys. Each OpenRouter key has
+a 90-day expiry and $1 total limit without reset. Shared Preview model keys and
+hosted-access flags are verified by readback; a fresh app build/reply and isolated
+R2 acceptance remain pending. No provider credentials need copying per new PR.
 
 Initial staging cutover is prepared as a candidate build and authenticated smoke
 on its verified native hostname, leaving the current staging alias unchanged.

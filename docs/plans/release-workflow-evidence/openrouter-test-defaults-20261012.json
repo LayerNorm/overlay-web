@@ -1,0 +1,46 @@
+{
+  "keys": [
+    {
+      "lane": "staging",
+      "name": "overlay-release-staging-20261012",
+      "limit": 1,
+      "limitReset": null,
+      "expiresAt": "2027-01-11T06:21:05.470Z",
+      "usage": 0,
+      "managementKey": false,
+      "keyHash": "c2fefbf3e8683d997a8a26575e391ae55f74ccbaf21a853c460478b8413e1736",
+      "verified": true
+    },
+    {
+      "lane": "preview",
+      "name": "overlay-release-preview-20261012",
+      "limit": 1,
+      "limitReset": null,
+      "expiresAt": "2027-01-11T06:28:00.013Z",
+      "usage": 0,
+      "managementKey": false,
+      "keyHash": "2b5df220d478a719de3528ba4a32de16e21d8f02f9ff68fb47bcc8551f2effc3",
+      "verified": true
+    }
+  ],
+  "productionKeyExcluded": true,
+  "verifiedAt": "2026-10-13T06:32:05.133Z",
+  "webProject": "overlay-web-staging",
+  "webScope": "preview",
+  "branchScope": null,
+  "sharedKeys": [
+    "OPENROUTER_API_KEY",
+    "OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED",
+    "OVERLAY_HOSTED_PROVIDER_KILL_SWITCH"
+  ],
+  "futurePreviewsInherit": true,
+  "previewDefaultsReadback": true,
+  "stagingBackend": "doting-cuttlefish-819",
+  "stagingBackendReadback": true,
+  "legacyWebProductionPreserved": true,
+  "sharedDevAndCustomerProductionDefaultsPreserved": true,
+  "existingWebDeploymentsChanged": false,
+  "applicationReplyVerified": false,
+  "storagePending": true,
+  "configuredAt": "2026-10-13T06:35:44.552Z"
+}

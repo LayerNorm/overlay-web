@@ -63,8 +63,10 @@ It is restricted to `overlay-web-staging` and expires 2027-01-10. API scope
 checks succeeded for staging and denied production access. Initial Preview
 configuration contained 46 isolated sandbox variables; all 71 existing Production
 variables were preserved. Shared test Stripe/Gateway settings are now configured
-and readback verified. Storage and Auto-model OpenRouter access remain pending
-isolated test resources. Preview deployment policy permits
+and readback verified. Separate 90-day OpenRouter test keys now have a $1 total
+limit each with no reset. Shared Preview web/defaults and the dedicated staging
+backend readback passed; real application model replies and isolated storage
+acceptance remain pending. Preview deployment policy permits
 REST API sources only; native Preview Git builds remain disabled.
 
 PR #187's accepted Preview was READY at
@@ -565,10 +567,14 @@ Only the canonical app URL and injected Convex identity vary per PR.
 The file is a mixed configuration, not an importable dev-only bundle: its primary
 Stripe key is live, its OpenRouter key matches production and its Convex URLs
 point to shared development. Those values are excluded from the new defaults.
-Separate test Gateway keys are configured per preview/staging lane. OpenRouter
-test access remains pending. Existing R2 credentials can access `overlay-dev`,
-but bucket inventory returns `403 AccessDenied`; isolated bucket provisioning
-and cross-environment upload proof remain pending. Do not mark provider isolation
+Separate test Gateway and OpenRouter keys are configured per preview/staging
+lane. Both OpenRouter keys expire after 90 days and reject requests after $1
+total use, without a reset. Native key limits and shared environment readback
+passed; Preview hosted-access settings are enabled for a fresh application QA
+build. The customer production gate and legacy staging web scope are preserved.
+Cloudflare browser and existing CLI login are refreshed under Divyansh. The
+existing development S3 key remains restricted to `overlay-dev`; separate bucket
+credentials and cross-environment upload proof remain pending. Do not mark provider isolation
 complete or enable staging publication on the strength of these credentials alone.
 
 The PR rebuild probe found a legacy note `textContent` field masking accepted

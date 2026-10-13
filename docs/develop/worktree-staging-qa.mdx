@@ -54,15 +54,16 @@ published web or backend: read `lastCompletedState` and the previous deployment 
 
 ### Hosted model acceptance
 
-The bootstrap hosted-provider gate is still closed. Configured test credentials
-alone do not enable application inference. After all selected model credentials
-are verified as isolated test keys, explicitly set
+Isolated Gateway and OpenRouter test credentials passed native readback. Shared
+Vercel Preview/default Convex settings now include
 `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` and
-`OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0` in the matching test web scope and rebuild.
-Store these shared settings once per scope. Confirm an actual application reply;
-a direct provider API response is insufficient. OpenRouter Auto setup still
-requires the pending separate test keys. Preserve the customer production gate
-while preparing test environments.
+`OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0`, inherited by new builds/backends. The
+dedicated staging backend has its separate test key; legacy staging web stays
+unchanged until cutover. Each OpenRouter lane key expires after 90 days with a
+$1 total limit and no reset. Rebuild before QA and confirm an actual application
+reply; a direct provider response is insufficient. Update existing preview
+backends separately when rotating defaults. Preserve the customer production
+gate while preparing test environments.
 
 ### Rollback runbook
 
