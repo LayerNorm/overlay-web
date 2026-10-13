@@ -9,7 +9,7 @@ function read(value: string | undefined): string {
 }
 
 export const publicEnv = {
-  workEnabled: read(process.env.NEXT_PUBLIC_OVERLAY_FEATURE_WORK) === 'true',
+  workEnabled: read(process.env.NEXT_PUBLIC_OVERLAY_FEATURE_WORK) !== 'false',
   appUrl: read(process.env.NEXT_PUBLIC_APP_URL),
   convexUrl: read(process.env.NEXT_PUBLIC_CONVEX_URL),
   devConvexUrl:

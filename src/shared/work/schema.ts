@@ -16,7 +16,7 @@ export const CreateWorkSchema = z.object({ ...fields, scope: scope.optional() })
 export const UpdateWorkSchema = z.object({ expectedUpdatedAt: z.number().finite().nonnegative(), patch: z.object({ ...fields, assigneePrincipalId: id.nullable().optional(), reviewerUserId: id.nullable().optional(), startDate: date.nullable().optional(), dueDate: date.nullable().optional(), parentId: id.nullable().optional() }).partial().strict() }).strict() satisfies z.ZodType<UpdateWork>
 export const WorkActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('scope'), to: scope }).strict(),
-  z.object({ action: z.enum(['archived', 'restored']) }).strict(),
+  z.object({ action: z.enum(['archived', 'restored', 'permanent']) }).strict(),
   z.object({ action: z.literal('comment'), text: z.string().trim().min(1).max(5000) }).strict(),
 ]) satisfies z.ZodType<WorkAction>
 export const WorkQuerySchema = z.object({ view: z.enum(['personal', 'workspace', 'archived']).optional() }).strict()

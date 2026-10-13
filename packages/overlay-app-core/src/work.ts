@@ -19,7 +19,7 @@ export type WorkPatch = Partial<Omit<WorkFields, 'assigneePrincipalId' | 'review
   assigneePrincipalId?: string | null; reviewerUserId?: string | null; startDate?: string | null; dueDate?: string | null; parentId?: string | null
 }
 export type UpdateWork = { expectedUpdatedAt: number; patch: WorkPatch }
-export type WorkAction = { action: 'scope'; to: WorkScope } | { action: 'archived' | 'restored' } | { action: 'comment'; text: string }
+export type WorkAction = { action: 'scope'; to: WorkScope } | { action: 'archived' | 'restored' | 'permanent' } | { action: 'comment'; text: string }
 export type WorkEvent = {
   _id: string; _creationTime: number; workItemId: string; workspaceId: string; actorPrincipalId: string
   kind: 'created' | 'updated' | 'status' | 'assignee' | 'comment' | 'scope' | 'archived' | 'restored'

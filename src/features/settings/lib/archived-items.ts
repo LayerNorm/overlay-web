@@ -1,12 +1,13 @@
 import type { ResourceScope } from '@/shared/workspaces/resource-scope'
 
 /** The dropdown on Settings → Archived. `all` shows everything. */
-export const ARCHIVED_CATEGORIES = ['all', 'chats', 'files', 'agents', 'extensions', 'automations'] as const
+export const ARCHIVED_CATEGORIES = ['all', 'work', 'chats', 'files', 'agents', 'extensions', 'automations'] as const
 export type ArchivedCategoryFilter = (typeof ARCHIVED_CATEGORIES)[number]
 export type ArchivedCategory = Exclude<ArchivedCategoryFilter, 'all'>
 
 export const ARCHIVED_CATEGORY_LABELS: Record<ArchivedCategoryFilter, string> = {
   all: 'All',
+  work: 'Work',
   chats: 'Chats',
   files: 'Files & notes',
   agents: 'Agents',
@@ -19,6 +20,7 @@ export const ARCHIVED_CATEGORY_LABELS: Record<ArchivedCategoryFilter, string> = 
  * only that thread, deleting an archived thread deletes only that thread, and neither ever touches the agent itself.
  */
 export type ArchivedItemKind =
+  | 'work'
   | 'chat'
   | 'file'
   | 'folder'
@@ -55,6 +57,7 @@ export function archivedItemKey(kind: ArchivedItemKind, id: string): string {
 }
 
 export const ARCHIVED_KIND_LABELS: Record<ArchivedItemKind, string> = {
+  work: 'Task',
   chat: 'Chat',
   file: 'File',
   folder: 'Folder',

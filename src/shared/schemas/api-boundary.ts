@@ -150,6 +150,7 @@ const ProviderConnectionTestRequest = z.object({
 export const webApiBoundaryDefinitions = [
   { method: 'GET', path: '/api/v1/work', schema: { query: WorkQuerySchema, response: WorkItemSchema.array() }, summary: 'List scoped tasks', tag: 'Work' },
   { method: 'POST', path: '/api/v1/work', schema: { json: CreateWorkSchema, response: WorkItemSchema }, summary: 'Create a human task', tag: 'Work' },
+  { method: 'GET', path: '/api/v1/work/context', schema: { query: z.object({ scope: z.enum(['personal', 'workspace']) }).strict(), response: WorkItemSchema.shape.context.unwrap() }, summary: 'List visible task context choices', tag: 'Work' },
   { method: 'GET', path: '/api/v1/work/people', schema: { response: WorkPersonSchema.array() }, summary: 'List active human task assignees', tag: 'Work' },
   { method: 'GET', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { response: z.object({ item: WorkItemSchema, events: WorkEventSchema.array() }) }, summary: 'Read a task and activity', tag: 'Work' },
   { method: 'PATCH', path: '/api/v1/work/:id', routePath: '/api/v1/work/[id]', pattern: /^\/api\/v1\/work\/[^/]+$/, schema: { json: UpdateWorkSchema, response: WorkItemSchema }, summary: 'Edit a task at a known revision', tag: 'Work' },

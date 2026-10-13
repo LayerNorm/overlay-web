@@ -93,3 +93,7 @@ Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including na
 ### Asynchronous production build submission
 
 Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
+
+### Work activation
+
+Work's web flag becomes default-on after its usable List/brief phase. Before the first production promotion containing Work, Integration must build with `NEXT_PUBLIC_OVERLAY_FEATURE_WORK=false` until the additive Work backend has been deployed through the authorized web-first release lane. Then rebuild the same accepted main SHA with the flag enabled and verify authenticated task creation. Feature PR previews enable Work only on their branch. This is an activation checkpoint, not permission for a Builder to deploy a shared backend.

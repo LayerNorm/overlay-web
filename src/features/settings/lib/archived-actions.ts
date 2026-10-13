@@ -25,6 +25,10 @@ import {
   type BulkOutcome,
 } from './archived-items'
 
+import { publicEnv } from '@/shared/env/public-env'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { WORK_UPDATED_EVENT } from '@/shared/work/status'
+
 const LIST_LIMIT = 100
 
 type ScopedFields = { archivedFromScope?: 'personal' | 'workspace'; scope?: 'personal' | 'workspace'; archivedAt?: number }
@@ -182,6 +186,7 @@ async function loadAgents(workspaceId: string): Promise<ArchivedItem[]> {
 /** Everything the person has archived, from every source. A source that fails is reported; the others still show. */
 export async function loadArchivedItems(workspaceId: string | null): Promise<ArchivedLoadResult> {
   const sources: Array<[ArchivedCategory, Promise<ArchivedItem[]>]> = [
+    ...(publicEnv.workEnabled && workspaceId ? [['work', overlayAppClient.work.list('archived', { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } }).then((rows) => rows.map((row): ArchivedItem => ({ key: archivedItemKey('work', row._id), kind: 'work', category: 'work', id: row._id, name: row.title, scope: scopeOf(row), archivedAt: row.archivedAt, href: `/app/w/${encodeURIComponent(workspaceId)}/work?id=${encodeURIComponent(row._id)}` })))] as [ArchivedCategory, Promise<ArchivedItem[]>]] : []),
     ['chats', loadChats()],
     ['files', loadFiles()],
     ['extensions', loadExtensions()],
@@ -205,6 +210,11 @@ async function requireOk(response: Response, message: string): Promise<void> {
 /** Puts one archived item back where it came from. The server decides who may; a refusal throws. */
 export async function restoreArchivedItem(item: ArchivedItem, workspaceId: string | null): Promise<void> {
   switch (item.kind) {
+    case 'work':
+      if (!workspaceId) throw new Error('No workspace')
+      await overlayAppClient.work.action(item.id, { action: 'restored' }, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } })
+      window.dispatchEvent(new CustomEvent(WORK_UPDATED_EVENT, { detail: workspaceId }))
+      return
     case 'chat':
       await overlayAppClient.conversations.updateParticipantState(item.id, { archived: false })
       dispatchChatModified({
@@ -253,6 +263,11 @@ export async function restoreArchivedItem(item: ArchivedItem, workspaceId: strin
 /** Deletes one archived item for good. Only ever called on rows from the Archived list. */
 export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string | null): Promise<void> {
   switch (item.kind) {
+    case 'work':
+      if (!workspaceId) throw new Error('No workspace')
+      await overlayAppClient.work.action(item.id, { action: 'permanent' }, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } })
+      window.dispatchEvent(new CustomEvent(WORK_UPDATED_EVENT, { detail: workspaceId }))
+      return
     case 'chat':
       await deleteArchivedChat(item)
       dispatchChatDeleted({ chatId: item.id })

@@ -1,6 +1,6 @@
 import 'server-only'
 import type { z } from 'zod'
-import type { CreateWork, UpdateWork, WorkAction, WorkEvent, WorkItem, WorkView, WorkPerson } from '@overlay/app-core/work'
+import type { CreateWork, UpdateWork, WorkAction, WorkEvent, WorkItem, WorkView, WorkPerson, WorkContext, WorkScope } from '@overlay/app-core/work'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { WorkEventSchema, WorkItemSchema, WorkPersonSchema } from '@/shared/work/schema'
@@ -13,6 +13,7 @@ function read<T>(schema: z.ZodType<T>, value: unknown): T {
 
 export type WorkActor = { userId: string; workspaceId: string }
 export interface WorkRepository {
+  context(actor: WorkActor, scope: WorkScope): Promise<WorkContext[]>
   people(actor: WorkActor): Promise<WorkPerson[]>
   list(actor: WorkActor, view?: WorkView): Promise<WorkItem[]>
   get(actor: WorkActor, id: string): Promise<WorkItem>
@@ -23,6 +24,9 @@ export interface WorkRepository {
 }
 export class ConvexWorkRepository implements WorkRepository {
   private auth(actor: WorkActor) { return { ...actor, serverSecret: getInternalApiSecret() } }
+  async context(actor: WorkActor, scope: WorkScope) {
+    return read(WorkItemSchema.shape.context.unwrap(), await lazyConvex.query('work/context:list', { ...this.auth(actor), scope }, { throwOnError: true }))
+  }
   async people(actor: WorkActor) {
     return read(WorkPersonSchema.array(), await lazyConvex.query('work/people:list', this.auth(actor), { throwOnError: true }))
   }
@@ -51,6 +55,7 @@ export class ConvexWorkRepository implements WorkRepository {
 }
 export class WorkService {
   constructor(private readonly repository: WorkRepository) {}
+  context(actor: WorkActor, scope: WorkScope) { return this.repository.context(actor, scope) }
   people(actor: WorkActor) { return this.repository.people(actor) }
   list(actor: WorkActor, view?: WorkView) { return this.repository.list(actor, view) }
   get(actor: WorkActor, id: string) { return this.repository.get(actor, id) }

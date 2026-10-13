@@ -17,6 +17,7 @@ import {
   Sparkles,
   Trash2,
   Workflow,
+  ListChecks,
   type LucideIcon,
 } from 'lucide-react'
 import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
@@ -38,6 +39,7 @@ import {
 import { deleteArchivedItem, loadArchivedItems, restoreArchivedItem, runBulk } from '../lib/archived-actions'
 
 const KIND_ICONS: Record<ArchivedItemKind, LucideIcon> = {
+  work: ListChecks,
   chat: MessageSquare,
   file: FileText,
   folder: Folder,

@@ -57,3 +57,20 @@ export async function recordEvent(ctx: MutationCtx, args: WorkActor, workItemId:
   if (!actor) fail('FORBIDDEN', 'Workspace identity required')
   await ctx.db.insert('workItemEvents', { workItemId, workspaceId: args.workspaceId, actorPrincipalId: actor.principalId, kind, data, createdAt: Date.now() })
 }
+
+/** Shared briefs may only point at shared resources; personal chat references stay personal. */
+export async function validateContext(ctx: QueryCtx, row: Pick<Doc<'workItems'>, 'scope' | 'userId' | 'workspaceId' | 'context'>) {
+  for (const ref of row.context ?? []) {
+    if (ref.type === 'link') continue
+    if (ref.type === 'chat') {
+      const id = ctx.db.normalizeId('conversations', ref.id)
+      const chat = id ? await ctx.db.get(id) : null
+      if (row.scope !== 'personal' || !chat || chat.userId !== row.userId || chat.workspaceId !== row.workspaceId || chat.deletedAt || (chat.conversationType && chat.conversationType !== 'personal')) fail('INVALID', 'Choose a personal chat you can read')
+    } else {
+      const id = ctx.db.normalizeId('files', ref.id)
+      const file = id ? await ctx.db.get(id) : null
+      const visible = await getReadableRow(ctx, { row: file, userId: row.userId, workspaceId: row.workspaceId })
+      if (!visible || visible.archivedAt !== undefined || visible.type === 'folder' || (row.scope === 'workspace' && visible.scope !== 'workspace') || (ref.type === 'note' && visible.kind !== 'note')) fail('INVALID', 'Choose a resource visible in this scope')
+    }
+  }
+}

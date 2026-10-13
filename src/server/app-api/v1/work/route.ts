@@ -23,6 +23,12 @@ export function createWorkHandlers(service: WorkService) {
   const actor = (context: AppApiRouteContext) => ({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id })
   const id = async (context: AppApiRouteContext) => z.string().min(1).max(200).parse((await context.params).id)
   return {
+    async context(request: NextRequest, context: AppApiRouteContext) {
+      try {
+        const query = z.object({ scope: z.enum(['personal', 'workspace']) }).strict().parse(Object.fromEntries(request.nextUrl.searchParams))
+        return NextResponse.json(await service.context(actor(context), query.scope))
+      } catch (error) { return workError(error) }
+    },
     async people(_request: NextRequest, context: AppApiRouteContext) {
       try { return NextResponse.json(await service.people(actor(context))) } catch (error) { return workError(error) }
     },
@@ -41,7 +47,8 @@ export function createWorkHandlers(service: WorkService) {
     async get(_request: NextRequest, context: AppApiRouteContext) {
       try {
         const taskId = await id(context)
-        return NextResponse.json({ item: await service.get(actor(context), taskId), events: await service.events(actor(context), taskId) })
+        const [item, events] = await Promise.all([service.get(actor(context), taskId), service.events(actor(context), taskId)])
+        return NextResponse.json({ item, events })
       } catch (error) { return workError(error) }
     },
     async update(request: NextRequest, context: AppApiRouteContext) {
@@ -75,3 +82,5 @@ export const actionWork = gated(handlers.action)
 export const archiveWork = gated(handlers.archive)
 
 export const peopleWork = gated(handlers.people)
+
+export const contextWork = gated(handlers.context)

@@ -14632,7 +14632,8 @@
                         "type": "string",
                         "enum": [
                           "archived",
-                          "restored"
+                          "restored",
+                          "permanent"
                         ]
                       }
                     },
@@ -14667,6 +14668,79 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/work/context": {
+      "get": {
+        "operationId": "getWorkContext",
+        "summary": "List visible task context choices",
+        "tags": [
+          "Work"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "personal",
+                "workspace"
+              ]
+            }
+          }
+        ]
       }
     },
     "/api/v1/work/people": {

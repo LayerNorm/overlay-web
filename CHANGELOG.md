@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Work phase 5: task brief with Markdown, scoped context, checklist, comments, revision-safe saves, and Settings archive/restore. The usable web feature is enabled by default with an explicit-off rollout gate.
+
 ### Added
 
 - Work phase 4 adds the task List: quick-add, rename, status/owner edits, workflow groups, Needs you/Assigned to me filters, search, and optimistic updates with scope-safe refresh. Task pickers use an active-human workspace directory.

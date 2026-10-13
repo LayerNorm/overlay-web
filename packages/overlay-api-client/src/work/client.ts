@@ -1,7 +1,8 @@
-import type { CreateWork, UpdateWork, WorkAction, WorkItem, WorkEvent, WorkView, WorkPerson } from '@overlay/app-core/work'
+import type { CreateWork, UpdateWork, WorkAction, WorkItem, WorkEvent, WorkView, WorkPerson, WorkContext, WorkScope } from '@overlay/app-core/work'
 import type { HttpContext } from '../shared/http'
 export class WorkClient {
   constructor(private readonly http: HttpContext) {}
+  context(scope: WorkScope, init?: RequestInit) { return this.http.jsonData<WorkContext[]>(this.http.appendQuery('/api/v1/work/context', { scope }), init) }
   people(init?: RequestInit) { return this.http.jsonData<WorkPerson[]>('/api/v1/work/people', init) }
   list(view?: WorkView, init?: RequestInit) { return this.http.jsonData<WorkItem[]>(this.http.appendQuery('/api/v1/work', { view }), init) }
   get(id: string, init?: RequestInit) { return this.http.json<{ item: WorkItem; events: WorkEvent[] }>(`/api/v1/work/${encodeURIComponent(id)}`, init) }

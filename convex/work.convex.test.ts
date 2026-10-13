@@ -87,3 +87,18 @@ test('Work directory contains active humans who may receive workspace tasks, exc
   expect(people.map((p) => p.principalId).sort()).toEqual(['p-alice', 'p-bob', 'p-owner'])
   await expect(t.query(q('people:list'), { ...auth, userId: 'guest' })).rejects.toThrow(/membership/)
 })
+
+test('brief checklist, context visibility and archived-only deletion', async () => {
+  const t = await fixture()
+  const fileId = await t.run((ctx) => ctx.db.insert('files', { userId: 'alice', workspaceId: auth.workspaceId, scope: 'personal', name: 'Private note', type: 'file', kind: 'note', createdAt: 1, updatedAt: 1 }))
+  const task = await create(t, { context: [{ type: 'note', id: fileId, label: 'Private note' }], doneWhen: [{ text: 'Reviewed', checked: false }] })
+  const edited = await t.mutation(m('workItems:update'), { ...auth, userId: 'alice', id: task._id, expectedUpdatedAt: task.updatedAt, patch: { description: '**Clear outcome**', doneWhen: [{ text: 'Reviewed', checked: true }] } }) as Task & { description: string; doneWhen: { checked: boolean }[] }
+  expect(edited.doneWhen[0].checked).toBe(true)
+  expect(edited.description).toContain('**Clear outcome**')
+  await expect(create(t, { scope: 'workspace', context: [{ type: 'note', id: fileId, label: 'Private note' }] })).rejects.toThrow(/visible/)
+  await expect(t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: task._id, action: 'scope', to: 'workspace' })).rejects.toThrow(/visible/)
+  await expect(t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: task._id, action: 'permanent' })).rejects.toThrow(/archived/)
+  await t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: task._id, action: 'archived' })
+  await t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: task._id, action: 'permanent' })
+  await expect(t.query(q('workItems:get'), { ...auth, userId: 'alice', id: task._id })).rejects.toThrow(/not found/)
+})

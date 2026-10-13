@@ -141,3 +141,7 @@ The workspace Billing tab shows the plan and credit, the itemized usage for the 
 ## Model Providers
 
 Register model provider metadata in `modelProviders`. Use `modelPolicy` hooks for local model filtering and defaults. Hooks are not serialized to bootstrap; only serializable model provider metadata is returned to other surfaces.
+
+## Work and archived tasks
+
+Work is enabled by the web registry once its List and brief are usable. Set `NEXT_PUBLIC_OVERLAY_FEATURE_WORK=false` before a build to hide its navigation, route and HTTP API. Settings → Archived includes Work with restore and archived-only permanent deletion; objectives must have their children detached before deletion. Shared briefs only reference shared files/notes; personal chats stay in personal briefs.

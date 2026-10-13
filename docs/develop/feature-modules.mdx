@@ -53,7 +53,7 @@ Prefer composition over editing existing primitives. Add a new primitive to `@ov
 ## Work
 
 The `work` shell flag controls the primary navigation item (before Agents), feature
-registry, page, and task HTTP exports. It is off by default during implementation;
+registry, page, and task HTTP exports. The web app enables it after the List and brief phase; an explicit `false` hides it. The portable shell registry remains off by default;
 `NEXT_PUBLIC_OVERLAY_FEATURE_WORK=true` enables an isolated preview at build time.
 Work uses the shared scoped secondary navigation with List, Board and Timeline.
 Solo workspaces retain the existing flat navigation convention. Scope/view are

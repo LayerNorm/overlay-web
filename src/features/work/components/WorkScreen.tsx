@@ -16,6 +16,7 @@ import { useWorkItems } from '../lib/useWorkItems'
 import { useWorkPeople } from '../lib/useWorkPeople'
 import { selectWork, type WorkFilter } from '../lib/selection'
 import { QuickAdd } from './QuickAdd'
+import { WorkPeek } from './WorkPeek'
 import { WorkList } from './WorkList'
 
 export default function WorkScreen() {
@@ -36,6 +37,8 @@ export default function WorkScreen() {
   const input = useRef<HTMLInputElement>(null)
   const items = selectWork(data.items, { query, filter, userId: user?.id ?? '', principalId })
   const viewer = { userId: user?.id ?? '', role: activeWorkspace?.role ?? null }
+  const editable = (item: import('@overlay/app-core/work').WorkItem) => canEditResource(item, viewer) && (item.scope !== 'workspace' || canCreate('content', 'workspace'))
+  const close = () => { const next = new URLSearchParams(params.toString()); next.delete('id'); router.replace(`${pathname}?${next}`, { scroll: false }) }
   const open = (id: string) => { const next = new URLSearchParams(params.toString()); next.set('id', id); router.replace(`${pathname}?${next}`, { scroll: false }) }
   return <AppScreenShell>
     <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-(--border) px-6 py-3">
@@ -50,8 +53,9 @@ export default function WorkScreen() {
       <QuickAdd key={`${activeWorkspaceId}:${scope}`} inputRef={input} pending={data.pending.has('new')} disabled={!canCreate('content', scope)} onCreate={(title) => data.create({ title, scope })} />
       {data.error || people.error ? <div role="alert" className="mx-6 mb-3 flex flex-wrap items-center gap-3 text-xs text-red-600 dark:text-red-400">{data.error ?? people.error}<button className="underline" onClick={() => { void data.refresh(); people.refresh() }}>Try again</button></div> : null}
       {data.loading ? <div aria-busy="true" aria-label="Loading tasks" className="mx-6 space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded bg-(--surface-subtle) motion-reduce:animate-none" />)}</div>
-        : view === 'list' ? <WorkList items={items} people={people.people} pending={data.pending} canEdit={(item) => canEditResource(item, viewer) && (item.scope !== 'workspace' || canCreate('content', 'workspace'))} onUpdate={data.update} onOpen={(item) => open(item._id)} />
+        : view === 'list' ? <WorkList items={items} people={people.people} pending={data.pending} canEdit={editable} onUpdate={data.update} onOpen={(item) => open(item._id)} />
           : <div className="px-6 py-16 text-center"><List size={20} className="mx-auto mb-3 text-(--muted)" /><h2 className="text-sm font-medium">Your tasks are available in List</h2><button onClick={() => { const next = new URLSearchParams(params.toString()); next.set('view', 'list'); router.replace(`${pathname}?${next}`, { scroll: false }) }} className="mt-3 text-sm text-(--muted) underline">Open List</button></div>}
     </AppScreenBody>
+    {params.get('id') && activeWorkspaceId ? <WorkPeek key={`${activeWorkspaceId}:${params.get('id')}`} id={params.get('id')!} workspaceId={activeWorkspaceId} people={people.people} items={data.items} canEdit={editable} onUpdate={data.update} onClose={close} /> : null}
   </AppScreenShell>
 }

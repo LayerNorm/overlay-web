@@ -170,3 +170,5 @@ Status and owner choices save immediately, with row controls disabled during the
 request, optimistic feedback and rollback on failure. Personal tasks offer only
 their creator as owner; workspace tasks offer active human members. Filters and
 search apply together; groups keep the fixed workflow order.
+
+The Work brief uses a focus-trapped right drawer with explicit Save changes / Cancel changes in the form flow. Objective Markdown converts only through `@overlay/app-core/note-markdown`; checklist completion uses the shared Toggle. Comments save independently. Dirty dismissal asks before discarding, and a stale revision requires an explicit reload.

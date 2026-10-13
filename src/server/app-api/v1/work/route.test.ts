@@ -14,7 +14,7 @@ const request = (path: string, method = 'GET', body?: unknown) => new NextReques
 function fixture() {
   const calls: unknown[] = []
   const repository: WorkRepository = {
-    people: async () => [],
+    context: async () => [], people: async () => [],
     list: async (...args) => { calls.push(args); return [task] },
     get: async (...args) => { calls.push(args); return task },
     create: async (...args) => { calls.push(args); return task },
@@ -58,10 +58,13 @@ test('Convex structured failures preserve HTTP 400/403/404/409 on hosted backend
 })
 
 test('disabled rollout gate hides every Work HTTP export', async () => {
-  const { GET, POST, getWork, updateWork, actionWork, archiveWork } = await import('./route')
+  const { GET, POST, getWork, updateWork, actionWork, archiveWork, peopleWork, contextWork } = await import('./route')
   const { publicEnv } = await import('@/shared/env/public-env')
-  if (publicEnv.workEnabled) return
-  for (const handler of [GET, POST, getWork, updateWork, actionWork, archiveWork]) {
+  const previous = publicEnv.workEnabled
+  Object.assign(publicEnv, { workEnabled: false })
+  try {
+  for (const handler of [GET, POST, getWork, updateWork, actionWork, archiveWork, peopleWork, contextWork]) {
     assert.equal((await handler(request(''), context)).status, 404)
   }
+  } finally { Object.assign(publicEnv, { workEnabled: previous }) }
 })

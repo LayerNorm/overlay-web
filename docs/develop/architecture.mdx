@@ -338,3 +338,5 @@ npm run convex:push:prod
 ```
 
 Never run a Convex deploy from a feature worktree, never use `convex:push:all`, and do not pass `.env.local` to production Convex deploy commands; that can point deploys at the dev slug.
+
+Work permanent deletion removes the archived task first and purges its events in scheduled batches of 200. Event reads always require the live readable task; context references are validated against task scope before saves and scope transitions.
