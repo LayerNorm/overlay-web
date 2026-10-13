@@ -50,6 +50,13 @@ test('production waits for READY while verifying every remote build revision and
     await assert.rejects(waitForProductionBuild({ vercel: async () => ({ ...deployment, ...patch }),
       origin: 'https://release-proof.vercel.app', sha, sleep: async () => {} }))
   }
+  for (const patch of [{ projectId: STAGING.projectId }, { url: 'different.vercel.app' },
+    { meta: { ...deployment.meta, githubCommitSha: 'b'.repeat(40) } }]) {
+    const replies = [{ ...deployment, readyState: 'BUILDING' }, { ...deployment, ...patch }]
+    await assert.rejects(waitForProductionBuild({ vercel: async () => replies.shift(),
+      origin: 'https://release-proof.vercel.app', sha, sleep: async () => {} }))
+    assert.equal(replies.length, 0, 'The changed ownership must be rejected on the later poll')
+  }
   await assert.rejects(waitForProductionBuild({ vercel: async () => ({ ...deployment, readyState: 'BUILDING' }),
     origin: 'https://release-proof.vercel.app', sha, attempts: 2, sleep: async () => {} }), /timeout/)
 })
