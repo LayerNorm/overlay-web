@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useSyncExternalStore } from 'react'
+import { publicEnv } from '@/shared/env/public-env'
 import { SettingsGroup } from '@overlay/modules-react/settings'
 import {
   formatShortcutKey,
@@ -46,7 +47,7 @@ export function ShortcutsSettings() {
 
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return SHORTCUT_GROUPS.map((group) => ({
+    return SHORTCUT_GROUPS.filter((group) => group.id !== 'work' || publicEnv.workEnabled).map((group) => ({
       ...group,
       shortcuts: SHORTCUTS.filter(
         (shortcut) =>

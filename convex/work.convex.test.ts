@@ -22,7 +22,14 @@ async function fixture(policy?: 'admins') {
 }
 type Task = { _id: string; title: string; updatedAt: number; scope: string }
 const create = (t: Awaited<ReturnType<typeof fixture>>, fields: Record<string, unknown> = {}) => t.mutation(m('workItems:create'), { ...auth, userId: 'alice', title: 'Task', ...fields }) as Promise<Task>
-const list = (t: Awaited<ReturnType<typeof fixture>>, userId: string, view = 'personal') => t.query(q('workItems:list'), { ...auth, userId, view }) as Promise<Task[]>
+const list = async (t: Awaited<ReturnType<typeof fixture>>, userId: string, view: string = 'personal') => {
+  const rows: Array<Task & { status: string; rank: string }> = []; let cursor: string | undefined
+  do {
+    const page = await t.query(q('workItems:list'), { ...auth, userId, ...(view && view !== 'all' ? { view } : {}), ...(cursor ? { cursor } : {}) }) as { data: typeof rows; nextCursor: string | null }
+    rows.push(...page.data); cursor = page.nextCursor ?? undefined
+  } while (cursor)
+  return rows.sort((a, b) => a.rank.localeCompare(b.rank) || a._id.localeCompare(b._id))
+}
 
 describe('Work scope and identity boundaries', () => {
   test('private tasks and their activity remain creator-only; shared tasks are readable across members', async () => {
@@ -137,4 +144,18 @@ test('dependency cycles, cross-scope edges and inbound scope/delete transitions 
   b = await change(b, [])
   await t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: c._id, action: 'permanent' })
   expect(await t.run((ctx) => ctx.db.query('workDependencies').collect())).toHaveLength(1)
+})
+
+test('pagination reaches beyond 1000 rows without exposing another member private tasks', async () => {
+  const t = await fixture()
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 1105; i++) await ctx.db.insert('workItems', { userId: 'alice', workspaceId: auth.workspaceId, scope: 'personal', title: `Task ${i}`, description: '', status: 'todo', priority: 2, blocked: false, rank: 'i', createdAt: i, updatedAt: i })
+  })
+  await create(t, { userId: 'bob', title: 'Bob private' }); await create(t, { userId: 'bob', scope: 'workspace', title: 'Bob shared' })
+  const rows = await list(t, 'alice', 'all')
+  expect(rows).toHaveLength(1106)
+  expect(rows.some((row) => row.title === 'Bob private')).toBe(false)
+  expect(rows.filter((row) => row.title === 'Bob shared')).toHaveLength(1)
+  await expect(t.query(q('workItems:list'), { ...auth, userId: 'alice', cursor: 'malformed' })).rejects.toThrow(/cursor/)
+  await expect(t.query(q('workItems:list'), { ...auth, userId: 'alice', limit: 201 })).rejects.toThrow(/Limit/)
 })

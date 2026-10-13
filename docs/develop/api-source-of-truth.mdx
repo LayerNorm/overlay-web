@@ -302,3 +302,5 @@ It returns principal and user IDs explicitly rather than inferring one from the
 other. Agents are deliberately excluded until the agent-execution follow-up.
 
 Board placement uses the `reorder` task action: Convex checks the task revision, scope, edit rights and neighbor adjacency, then writes status/rank/activity in one transaction. Generic patches cannot write ranks. Exhausted fractional gaps rebalance the active column in a bounded mutation; stale gaps return 409.
+
+Work list pagination runs in Convex over indexed, authenticated scope partitions. HTTP pages contain `data`, `hasMore`, and an opaque `nextCursor`, with 1–200 rows per request. The typed client consumes every page, deduplicates IDs, and aborts on workspace changes. The List and Board reveal large groups incrementally; Timeline mounts only a viewport of rows and computes objective spans in one pass. Context and people return explicit data envelopes, avoiding the generic array paginator's default truncation.

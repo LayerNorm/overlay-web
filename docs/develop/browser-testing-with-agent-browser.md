@@ -272,7 +272,9 @@ Release smoke awaits chat navigation and its transcript response together so a f
 ## Work preview rollout gate
 
 While Work is under construction, set `NEXT_PUBLIC_OVERLAY_FEATURE_WORK=true`
-only in the feature branch's Preview settings before its build. The default
-hides the rail entry, route, feature module and HTTP exports. Test the off branch
+only in the feature branch's Preview settings before its build. The web default is enabled after the List/brief phase; an explicit `false`
+hides the rail entry, route, feature module, global task search, Archived category, shortcuts and HTTP exports. Test the off branch
 as well; do not change customer Production settings for Builder QA. Keep the
 branch override for the PR's lifetime and remove it when that PR is retired.
+
+For long drawers, call `scrollintoview` on a fresh control reference before clicking it. An AX snapshot can list an offscreen Save button even when a coordinate click cannot reach it. Wait for the fieldset to stop matching `:disabled`, then verify persisted data; the input `.disabled` property alone does not include an inherited disabled fieldset. Configure preview bypass headers on each new QA tab (`set headers`); tab creation alone does not inherit origin-scoped headers.

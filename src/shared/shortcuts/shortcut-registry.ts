@@ -9,7 +9,7 @@
  * `mod` modifier in react-hotkeys-hook.
  */
 
-export type ShortcutGroupId = 'global' | 'navigation' | 'chat' | 'composer' | 'search'
+export type ShortcutGroupId = 'global' | 'navigation' | 'chat' | 'composer' | 'search' | 'work'
 
 export interface ShortcutDefinition {
   id: string
@@ -36,15 +36,18 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   { id: 'global', label: 'Global', description: 'Available anywhere in the app.' },
   { id: 'navigation', label: 'Navigation', description: 'Jump between the main sidebar surfaces.' },
   { id: 'search', label: 'Search', description: 'Inside the command palette (⌘K).' },
+  { id: 'work', label: 'Work', description: 'While Work is open.' },
   { id: 'chat', label: 'Chat', description: 'While a chat surface is open.' },
   { id: 'composer', label: 'Composer', description: 'While writing a message.' },
 ] as const
 
 export const SHORTCUTS: readonly ShortcutDefinition[] = [
+  { id: 'work.create', label: 'Add a task', description: 'Focus quick-add when the Work brief is closed.', group: 'work', hotkey: 'c', keys: [['C']] },
+  { id: 'work.close', label: 'Dismiss task editing', description: 'Close a brief or clear quick-add; unsaved brief changes ask before discarding.', group: 'work', keys: [['Esc']] },
   {
     id: 'global.search',
     label: 'Open search',
-    description: 'Open the command palette to search chats, files, agents, and extensions.',
+    description: 'Open the command palette to search tasks, chats, files, agents, and extensions.',
     group: 'global',
     hotkey: 'mod+k',
     keys: [['Mod', 'K']],
@@ -52,7 +55,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
     id: 'navigation.section',
     label: 'Go to sidebar section',
-    description: 'Jump to the 1st through 6th item in the sidebar (Chat, Files, Tools, …).',
+    description: 'Jump to the 1st through 6th item in the sidebar (Work, Agents, Chats, Files, Extensions, Automations).',
     group: 'navigation',
     hotkey: 'alt+1,alt+2,alt+3,alt+4,alt+5,alt+6',
     keys: [['Alt', '1'], ['Alt', '…'], ['Alt', '6']],

@@ -15,6 +15,7 @@ import { CommandPalette, type CommandPaletteRow } from '@overlay/ui/overlays'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   Bot,
+  ListChecks,
   FileText,
   MessageSquare,
   Plug,
@@ -22,15 +23,19 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
+import { publicEnv } from '@/shared/env/public-env'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 /** Mention categories plus the search-only categories that have no mention type. */
-type SearchType = MentionType | 'agent'
+type SearchType = MentionType | 'agent' | 'work'
 
 interface SearchItem extends Omit<MentionItem, 'type'> {
   type: SearchType
+  workspaceId?: string
+  scope?: 'personal' | 'workspace'
 }
 
 interface SearchCategory extends Omit<MentionCategory, 'type' | 'items'> {
@@ -40,6 +45,7 @@ interface SearchCategory extends Omit<MentionCategory, 'type' | 'items'> {
 
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
   Bot,
+  ListChecks,
   FileText,
   Plug,
   Zap,
@@ -49,6 +55,7 @@ const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; str
 }
 
 const CATEGORY_ORDER: Array<{ type: SearchType; label: string; icon: string }> = [
+  { type: 'work', label: 'Work', icon: 'ListChecks' },
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
   { type: 'agent', label: 'Agents', icon: 'Bot' },
   { type: 'file', label: 'Files', icon: 'FileText' },
@@ -66,6 +73,8 @@ function CategoryIcon({ icon, className, size = 16 }: { icon: string; className?
 
 function hrefForItem(item: SearchItem): string {
   switch (item.type) {
+    case 'work':
+      return `/app/w/${encodeURIComponent(item.workspaceId ?? '')}/work?view=list&scope=${item.scope ?? 'personal'}&id=${encodeURIComponent(item.id)}`
     case 'chat':
       return `/app/chat?id=${encodeURIComponent(item.id)}`
     case 'agent':
@@ -110,6 +119,7 @@ export function GlobalSearchDialog({
   const [query, setQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<SearchType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
+  const [work, setWork] = useState<{ workspaceId: string; items: SearchItem[] } | null>(null)
   const [agents, setAgents] = useState<SearchItem[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -177,6 +187,15 @@ export function GlobalSearchDialog({
     }
   }, [open, workspaceId])
 
+  useEffect(() => {
+    if (!open || !workspaceId || !publicEnv.workEnabled) return
+    const controller = new AbortController()
+    void overlayAppClient.work.list(undefined, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId }, signal: controller.signal }).then((items) => {
+      if (!controller.signal.aborted) setWork({ workspaceId, items: items.map((item) => ({ type: 'work', id: item._id, name: item.title, description: item.description, icon: 'ListChecks', workspaceId, scope: item.scope })) })
+    }).catch(() => { if (!controller.signal.aborted) setWork({ workspaceId, items: [] }) })
+    return () => controller.abort()
+  }, [open, workspaceId])
+
   const allCategories: SearchCategory[] = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const matches = (item: SearchItem) =>
@@ -185,11 +204,12 @@ export function GlobalSearchDialog({
       (item.description || '').toLowerCase().includes(needle)
 
     const extras: SearchCategory[] = [
+      { type: 'work' as const, label: 'Work', icon: 'ListChecks', items: publicEnv.workEnabled && work?.workspaceId === workspaceId ? work.items.filter(matches).slice(0, 10) : [] },
       { type: 'agent' as const, label: 'Agents', icon: 'Bot', items: agents.filter(matches).slice(0, 10) },
     ].filter((cat) => cat.items.length > 0)
 
     return [...(categories as SearchCategory[]), ...extras]
-  }, [agents, categories, query])
+  }, [agents, categories, query, work, workspaceId])
 
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []

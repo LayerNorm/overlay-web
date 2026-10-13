@@ -27,6 +27,7 @@ import {
 
 import { publicEnv } from '@/shared/env/public-env'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { trackWorkAction } from '@/shared/observability/client-metrics'
 import { WORK_UPDATED_EVENT } from '@/shared/work/status'
 
 const LIST_LIMIT = 100
@@ -186,7 +187,7 @@ async function loadAgents(workspaceId: string): Promise<ArchivedItem[]> {
 /** Everything the person has archived, from every source. A source that fails is reported; the others still show. */
 export async function loadArchivedItems(workspaceId: string | null): Promise<ArchivedLoadResult> {
   const sources: Array<[ArchivedCategory, Promise<ArchivedItem[]>]> = [
-    ...(publicEnv.workEnabled && workspaceId ? [['work', overlayAppClient.work.list('archived', { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } }).then((rows) => rows.map((row): ArchivedItem => ({ key: archivedItemKey('work', row._id), kind: 'work', category: 'work', id: row._id, name: row.title, scope: scopeOf(row), archivedAt: row.archivedAt, href: `/app/w/${encodeURIComponent(workspaceId)}/work?id=${encodeURIComponent(row._id)}` })))] as [ArchivedCategory, Promise<ArchivedItem[]>]] : []),
+    ...(publicEnv.workEnabled && workspaceId ? [['work', overlayAppClient.work.list('archived', { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } }).then((rows) => rows.map((row): ArchivedItem => ({ key: archivedItemKey('work', row._id), kind: 'work', category: 'work', id: row._id, name: row.title, scope: scopeOf(row), archivedAt: row.archivedAt, href: `/app/w/${encodeURIComponent(workspaceId)}/work?scope=${scopeOf(row)}&id=${encodeURIComponent(row._id)}` })))] as [ArchivedCategory, Promise<ArchivedItem[]>]] : []),
     ['chats', loadChats()],
     ['files', loadFiles()],
     ['extensions', loadExtensions()],
@@ -213,6 +214,7 @@ export async function restoreArchivedItem(item: ArchivedItem, workspaceId: strin
     case 'work':
       if (!workspaceId) throw new Error('No workspace')
       await overlayAppClient.work.action(item.id, { action: 'restored' }, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } })
+      trackWorkAction({ action: 'restored', scope: item.scope ?? undefined })
       window.dispatchEvent(new CustomEvent(WORK_UPDATED_EVENT, { detail: workspaceId }))
       return
     case 'chat':
@@ -266,6 +268,7 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
     case 'work':
       if (!workspaceId) throw new Error('No workspace')
       await overlayAppClient.work.action(item.id, { action: 'permanent' }, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } })
+      trackWorkAction({ action: 'permanent', scope: item.scope ?? undefined })
       window.dispatchEvent(new CustomEvent(WORK_UPDATED_EVENT, { detail: workspaceId }))
       return
     case 'chat':

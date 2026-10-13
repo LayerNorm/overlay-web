@@ -1,5 +1,9 @@
 'use client'
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import type { WorkItem } from '@overlay/app-core/work'
+import { useHotkeys } from 'react-hotkeys-hook'
+import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
+import { trackWorkAction } from '@/shared/observability/client-metrics'
 import { Plus } from 'lucide-react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { HeaderSearch } from '@overlay/ui/primitives'
@@ -37,27 +41,155 @@ export default function WorkScreen() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<WorkFilter>('all')
   const input = useRef<HTMLInputElement>(null)
+  useHotkeys(
+    requireShortcutHotkey('work.create'),
+    () => input.current?.focus(),
+    {
+      preventDefault: true,
+      enabled: !params.get('id') && canCreate('content', scope),
+      enableOnContentEditable: false,
+      enableOnFormTags: false,
+    },
+    [scope, params.get('id'), canCreate],
+  )
+  useEffect(() => {
+    trackWorkAction({ action: 'view', view, scope })
+  }, [view, scope])
   const items = selectWork(data.items, { query, filter, userId: user?.id ?? '', principalId })
   const viewer = { userId: user?.id ?? '', role: activeWorkspace?.role ?? null }
-  const editable = (item: import('@overlay/app-core/work').WorkItem) => canEditResource(item, viewer) && (item.scope !== 'workspace' || canCreate('content', 'workspace'))
-  const close = () => { const next = new URLSearchParams(params.toString()); next.delete('id'); router.replace(`${pathname}?${next}`, { scroll: false }) }
-  const open = (id: string) => { const next = new URLSearchParams(params.toString()); next.set('id', id); router.replace(`${pathname}?${next}`, { scroll: false }) }
-  return <AppScreenShell>
-    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-(--border) px-6 py-3">
-      <h1 className="mr-auto text-lg font-medium lowercase tracking-tight" style={{ fontFamily: 'var(--font-serif)' }}>work{!solo ? <span className="ml-2 text-sm text-(--muted)">/ {scope}</span> : null}</h1>
-      <HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks…" />
-      <button onClick={() => input.current?.focus()} disabled={!canCreate('content', scope)} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-(--surface-subtle) px-3 text-xs font-medium disabled:opacity-50"><Plus size={14} />New task</button>
-    </header>
-    <div className="flex shrink-0 flex-wrap gap-2 border-b border-(--border) px-6 py-3" aria-label="Task filters">
-      {([{ id: 'all', label: 'Everything' }, { id: 'needs-you', label: 'Needs you' }, { id: 'assigned', label: 'Assigned to me' }] satisfies { id: WorkFilter; label: string }[]).map((option) => <button key={option.id} aria-pressed={filter === option.id} onClick={() => setFilter(option.id)} className={`rounded-full border px-3 py-1 text-xs ${filter === option.id ? 'border-(--muted-light) bg-(--surface-subtle) text-(--foreground)' : 'border-(--border) text-(--muted)'}`}>{option.label}</button>)}
-    </div>
-    <AppScreenBody padding="none" maxWidth="none" className="min-w-0 flex-1" scroll="auto">
-      <QuickAdd key={`${activeWorkspaceId}:${scope}`} inputRef={input} pending={data.pending.has('new')} disabled={!canCreate('content', scope)} onCreate={(title) => data.create({ title, scope })} />
-      {data.error || people.error ? <div role="alert" className="mx-6 mb-3 flex flex-wrap items-center gap-3 text-xs text-red-600 dark:text-red-400">{data.error ?? people.error}<button className="underline" onClick={() => { void data.refresh(); people.refresh() }}>Try again</button></div> : null}
-      {data.loading ? <div aria-busy="true" aria-label="Loading tasks" className="mx-6 space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded bg-(--surface-subtle) motion-reduce:animate-none" />)}</div>
-        : view === 'list' ? <WorkList items={items} people={people.people} pending={data.pending} canEdit={editable} onUpdate={data.update} onOpen={(item) => open(item._id)} />
-          : view === 'board' ? <WorkBoard items={items} allItems={data.items} pending={data.pending} canEdit={editable} onMove={data.move} onOpen={(item) => open(item._id)} /> : <WorkTimeline items={items} allItems={data.items} pending={data.pending} canEdit={editable} onUpdate={data.update} onOpen={(item) => open(item._id)} />}
-    </AppScreenBody>
-    {params.get('id') && activeWorkspaceId ? <WorkPeek key={`${activeWorkspaceId}:${params.get('id')}`} id={params.get('id')!} workspaceId={activeWorkspaceId} people={people.people} items={data.items} canEdit={editable} onUpdate={data.update} onClose={close} /> : null}
-  </AppScreenShell>
+  const editable = (item: WorkItem) =>
+    canEditResource(item, viewer) &&
+    (item.scope !== 'workspace' || canCreate('content', 'workspace'))
+  const close = () => {
+    const next = new URLSearchParams(params.toString())
+    next.delete('id')
+    router.replace(`${pathname}?${next}`, { scroll: false })
+  }
+  const open = (id: string) => {
+    const next = new URLSearchParams(params.toString())
+    next.set('id', id)
+    router.replace(`${pathname}?${next}`, { scroll: false })
+  }
+  return (
+    <AppScreenShell>
+      <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-(--border) px-6 py-3">
+        <h1
+          className="mr-auto text-lg font-medium lowercase tracking-tight"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
+          work{!solo ? <span className="ml-2 text-sm text-(--muted)">/ {scope}</span> : null}
+        </h1>
+        <HeaderSearch
+          value={query}
+          onChange={setQuery}
+          label="Search tasks"
+          placeholder="Search tasks…"
+        />
+        <button
+          onClick={() => input.current?.focus()}
+          disabled={!canCreate('content', scope)}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-(--surface-subtle) px-3 text-xs font-medium disabled:opacity-50"
+        >
+          <Plus size={14} />
+          New task
+        </button>
+      </header>
+      <div
+        className="flex shrink-0 flex-wrap gap-2 border-b border-(--border) px-6 py-3"
+        aria-label="Task filters"
+      >
+        {(
+          [
+            { id: 'all', label: 'Everything' },
+            { id: 'needs-you', label: 'Needs you' },
+            { id: 'assigned', label: 'Assigned to me' },
+          ] satisfies { id: WorkFilter; label: string }[]
+        ).map((option) => (
+          <button
+            key={option.id}
+            aria-pressed={filter === option.id}
+            onClick={() => setFilter(option.id)}
+            className={`rounded-full border px-3 py-1 text-xs ${filter === option.id ? 'border-(--muted-light) bg-(--surface-subtle) text-(--foreground)' : 'border-(--border) text-(--muted)'}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <AppScreenBody padding="none" maxWidth="none" className="min-w-0 flex-1" scroll="auto">
+        <QuickAdd
+          key={`${activeWorkspaceId}:${scope}`}
+          inputRef={input}
+          pending={data.pending.has('new')}
+          disabled={!canCreate('content', scope)}
+          onCreate={(title) => data.create({ title, scope })}
+        />
+        {data.error || people.error ? (
+          <div
+            role="alert"
+            className="mx-6 mb-3 flex flex-wrap items-center gap-3 text-xs text-red-600 dark:text-red-400"
+          >
+            {data.error ?? people.error}
+            <button
+              className="underline"
+              onClick={() => {
+                void data.refresh()
+                people.refresh()
+              }}
+            >
+              Try again
+            </button>
+          </div>
+        ) : null}
+        {data.loading ? (
+          <div aria-busy="true" aria-label="Loading tasks" className="mx-6 space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-10 animate-pulse rounded bg-(--surface-subtle) motion-reduce:animate-none"
+              />
+            ))}
+          </div>
+        ) : view === 'list' ? (
+          <WorkList
+            items={items}
+            people={people.people}
+            pending={data.pending}
+            canEdit={editable}
+            onUpdate={data.update}
+            onOpen={(item) => open(item._id)}
+          />
+        ) : view === 'board' ? (
+          <WorkBoard
+            items={items}
+            allItems={data.items}
+            pending={data.pending}
+            canEdit={editable}
+            onMove={data.move}
+            onOpen={(item) => open(item._id)}
+          />
+        ) : (
+          <WorkTimeline
+            items={items}
+            allItems={data.items}
+            pending={data.pending}
+            canEdit={editable}
+            onUpdate={data.update}
+            onOpen={(item) => open(item._id)}
+          />
+        )}
+      </AppScreenBody>
+      {params.get('id') && activeWorkspaceId ? (
+        <WorkPeek
+          key={`${activeWorkspaceId}:${params.get('id')}`}
+          id={params.get('id')!}
+          workspaceId={activeWorkspaceId}
+          people={people.people}
+          items={data.items}
+          canEdit={editable}
+          onUpdate={data.update}
+          onClose={close}
+        />
+      ) : null}
+    </AppScreenShell>
+  )
 }

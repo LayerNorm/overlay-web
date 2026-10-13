@@ -24,6 +24,7 @@ import { Button, Input, ListboxSelect } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { publicEnv } from '@/shared/env/public-env'
 import { ScopeTag } from '@/components/layout/ScopeTag'
 import {
   ARCHIVED_CATEGORIES,
@@ -193,7 +194,7 @@ export function ArchivedSettings() {
       <div className="flex flex-wrap items-center gap-2">
         <ListboxSelect<ArchivedCategoryFilter>
           value={category}
-          options={ARCHIVED_CATEGORIES.map((value) => ({ value, label: ARCHIVED_CATEGORY_LABELS[value] }))}
+          options={ARCHIVED_CATEGORIES.filter((value) => value !== 'work' || publicEnv.workEnabled).map((value) => ({ value, label: ARCHIVED_CATEGORY_LABELS[value] }))}
           aria-label="Show"
           className="shrink-0"
           buttonClassName="min-w-38"

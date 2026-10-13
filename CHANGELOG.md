@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Work phase 8: global task search, C/Escape shortcuts, scoped pagination, large-list rendering, narrow-screen controls, privacy-safe usage metrics, and complete rollout-off visibility.
+
 - Work phase 7b: same-scope dependencies, cycle rejection, indexed incoming-link guards, and Timeline arrows that follow date edits. Brief sections now fit the existing complexity gate.
 
 - Work phase 7a: UTC Timeline bars, child-derived objective spans, date dragging and resizing, and a scrollable calendar starting at today.

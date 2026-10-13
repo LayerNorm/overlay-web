@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 passed hosted brief/comment/archive/Settings restore QA at `0894e79e8`; phase 6 passed hosted Board drag, keyboard reorder and two-tab persistence QA at `a96131282`; phase 7a passed hosted bar move/resize and objective-span QA at `4b7985e41`; phase 7b dependencies implemented and locally validated, hosted arrows/cycle QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
+Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 passed hosted brief/comment/archive/Settings restore QA at `0894e79e8`; phase 6 passed hosted Board drag, keyboard reorder and two-tab persistence QA at `a96131282`; phase 7a passed hosted bar move/resize and objective-span QA at `4b7985e41`; phase 7b passed hosted dependency saves, cycle rejection and arrows following resized bars at `d25706343`; phase 8 implemented, final hosted polish and rollout gate QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
 
 ## Goal
 
@@ -15,7 +15,7 @@ This is why the plan is mostly wiring and not invention.
 | Need | Already in the repo | What we do |
 | --- | --- | --- |
 | Personal / Workspace split | `scope`, `archivedAt`, `archivedBy`, `archivedFromScope` fields; `src/shared/workspaces/resource-scope.ts` rules; `convex/lib/resourceScope.ts` (`ScopedTable`, `listScopedRows`, `scopeContextLoader`); `by_workspaceId_scope_archivedAt` index pattern | Add `workItems` as a sixth scoped table of kind `content` |
-| Move / archive / restore | `scopeMutations(table, kind)` in `convex/lib/scopeMutations.ts` | One line: `scopeMutations('workItems', 'content')` |
+| Move / archive / restore | Shared lifecycle planners in `convex/lib/resourceScope.ts` | Domain mutations reuse planners and atomically guard task relations/activity |
 | Admin policy (who may create in Workspace, may members move) | `workspaceContentEditors`, `memberCanMoveScope` | Free, because kind is `content` |
 | Archived page | Settings → Archived (`src/features/settings/lib/archived-actions.ts`, `archived-items.ts`) | Register a `work` category |
 | Secondary sidebar | `buildScopedPanelNav` renders Personal / Workspace with sub-rows | Sub-rows: List, Board, Timeline |
@@ -104,3 +104,7 @@ Browser, flag on, both scopes, light and dark:
 ## After v1: agents (its own plan)
 
 Everything is already in place: the assignee is a principal, events are logged, the brief fields exist. The follow-up plan adds a `workRuns` table, the handoff cards from the mockup (running, needs input, ready for review), a `work` tool group (`buildWorkspaceAgentTooling`, with a `LATER_GROUP_MEMBERS` entry so existing agents do not lose a group), budgets and approvals through `agentApprovalRequests`, and a "Needs you" review queue. Update `tool-catalog.md` and `agent-to-agent.md` when that lands.
+
+## v1 bounds
+
+Lists page through all readable tasks. Context choices load up to 100 files/notes and 100 personal chats; the task people directory supports up to 1000 humans and refuses larger directories explicitly. Activity shows the newest 200 events. Dependency validation is bounded to 500 reachable tasks and 50 direct blockers. Rank rebalancing is bounded to 2000 active tasks in a column; ordinary indexed moves and list pagination do not scan a whole column. These bounds keep a single Convex transaction within its limits.

@@ -1,6 +1,11 @@
 /** Orthogonal routing gives each row-to-row link a small distinct elbow. */
-export function dependencyPath(from: { x: number; y: number }, to: { x: number; y: number }, lane = 0) {
-  if (![from.x, from.y, to.x, to.y, lane].every(Number.isFinite)) throw new Error('Invalid arrow coordinates')
+export function dependencyPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  lane = 0,
+) {
+  if (![from.x, from.y, to.x, to.y, lane].every(Number.isFinite))
+    throw new Error('Invalid arrow coordinates')
   const gap = 12 + (lane % 4) * 4
   if (to.x - from.x > gap * 2) {
     const elbow = from.x + gap

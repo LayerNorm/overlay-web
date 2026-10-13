@@ -13,6 +13,7 @@
 const METRICS_EVENT = 'overlay:metrics'
 
 export type MetricsEventName =
+  | 'overlay.work.action'
   | 'overlay.metrics.client_request'
   | 'overlay.metrics.cache'
   | 'overlay.metrics.duplicate_request'
@@ -176,4 +177,9 @@ export function addMetricsListener(
   }
   window.addEventListener(METRICS_EVENT, listener)
   return () => window.removeEventListener(METRICS_EVENT, listener)
+}
+
+/** Usage metadata only: task text, IDs, comments and context are never sent. */
+export function trackWorkAction(properties: { action: 'view' | 'created' | 'updated' | 'reorder' | 'comment' | 'scope' | 'archived' | 'restored' | 'permanent'; scope?: 'personal' | 'workspace'; status?: 'backlog' | 'todo' | 'progress' | 'review' | 'done'; view?: 'list' | 'board' | 'timeline' }) {
+  emit('overlay.work.action', properties)
 }
