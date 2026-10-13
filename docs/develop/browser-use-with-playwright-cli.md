@@ -4,11 +4,55 @@ How agents drive the user's **real, signed-in Chrome** — the LayerNorm profile
 (`Profile 6`). This is the supported path for any task that needs live browser
 state: Slack app consoles, staging QA with real sessions, third-party admin UIs.
 
-Do NOT try `--remote-debugging-port` on the default profile — Chrome 136+
-silently ignores it. Do NOT use the `mcp-playwright` MCP server — it runs the
+Do NOT try `--remote-debugging-port` on the default user-data dir — Chrome 136+
+silently ignores it (a non-default dir works; see the background mode below). Do NOT use the `mcp-playwright` MCP server — it runs the
 same extension underneath but adds a fragile server layer (stdio truncation on
 long payloads, stale connections, hung `browser_tabs` calls). The CLI path is
 stateless and restartable.
+
+## Pick a mode: background (default) or live
+
+| | Background — `pw-bg.sh` | Live — `pw-chrome.sh` |
+| --- | --- | --- |
+| Browser | Headless Chrome on a **clone** of Profile 6's logins, CDP on `:9224` | The user's real Chrome via the extension |
+| Window / focus | None. Never touches the user's windows, tabs, cursor, or keyboard | `tab-new` takes the foreground tab; hidden tabs stall |
+| Rendering | Always `visibilityState: visible`; `requestAnimationFrame` runs (the app shell, Suspense reveals, and screenshots all work) | Only the active tab of a visible window renders |
+| Logins | Snapshot of Profile 6 cookies and site storage; re-sync when they go stale | Live — always current |
+| Use for | Default for QA, scraping, staging checks, admin consoles | Sessions you can't clone (device-bound or fresh logins), or when the user wants to watch |
+
+**Default to `pw-bg.sh`.** Same commands as below, just a different script:
+
+```bash
+~/.config/devin/pw-bg.sh goto <url>      # starts the headless browser on first use
+~/.config/devin/pw-bg.sh snapshot
+~/.config/devin/sync-chrome-p6.sh        # refresh logins from the live Profile 6, restart
+```
+
+How it works and why it's built this way:
+
+- `--remote-debugging-port` is blocked on the *default* user-data dir (Chrome
+  136+) but allowed on any other dir. `launch-chrome-p6.sh` starts headless
+  Chrome on `~/Chrome-Automation-P6`, seeded from Profile 6.
+- Headless has no window to be hidden or occluded, so tabs always render. This
+  was tested: in the live browser a non-active tab reported `hidden` with zero
+  rAF frames, and the extension rejects raw CDP (`Target.attachToBrowserTarget:
+  Not allowed`), so you can't force-unhide a tab there.
+- The clone must keep the folder name `Profile 6`: it carries `Local State`,
+  whose last-used profile makes Chrome open that folder. Putting files in
+  `Default/` silently yields a logged-out browser.
+- This Profile 6 keeps `Cookies` at the profile root (not `Network/Cookies`).
+  Copy with `sqlite3 … .backup`, not `cp`, since the live DB is being written.
+- macOS cookie encryption uses the shared "Chrome Safe Storage" keychain
+  entry, so cookies decrypt in the clone with no extra setup.
+- Verified signed in to GitHub and Slack; the sites' own re-auth rules still
+  apply, so a device-bound or short-lived session may need a re-sync or a
+  live-mode login.
+
+**Security:** `~/Chrome-Automation-P6` is a copy of signed-in session data
+(`chmod go-rwx`). Treat it like the token file: never commit it, never copy it
+elsewhere, and the debug port is bound to localhost only. Delete the directory
+to revoke the clone. Changes made in the clone (new logins, cookies) do not
+flow back to the real profile.
 
 ## Pieces
 
@@ -17,7 +61,9 @@ stateless and restartable.
 | Chrome profile | `~/Library/Application Support/Google/Chrome/Profile 6` |
 | Playwright extension | installed in that profile, id `mmlmfjhmonkocbjadbfplnigmagldckm` |
 | Extension token | `~/.config/devin/playwright-mcp-extension-token` |
-| Wrapper | `~/.config/devin/pw-chrome.sh` |
+| Wrapper (live) | `~/.config/devin/pw-chrome.sh` |
+| Wrapper (background) | `~/.config/devin/pw-bg.sh`, `launch-chrome-p6.sh`, `sync-chrome-p6.sh` |
+| Background clone | `~/Chrome-Automation-P6/` (CDP `localhost:9224`) |
 
 The token auto-approves the extension connection — no "Allow & select" dialog.
 Never print or commit it; it grants access to a fully signed-in browser profile.
@@ -52,6 +98,15 @@ missing feature:
 - `tab-list` only ever shows group tabs.
 
 ## Gotchas (learned the hard way)
+
+0. **Live mode only: `tab-new` takes the foreground and hidden tabs stall.**
+   Switching away leaves `visibilityState: hidden` and no rAF, so React
+   Suspense never reveals. Prefer `pw-bg.sh`; otherwise `page.bringToFront()`.
+   Root cause (checked 2026-10-11, not an app bug): React's streaming inline
+   scripts (`$RC`/`$RV`/`$RT`) batch Suspense reveals in `requestAnimationFrame`.
+   The queued callbacks run the moment the tab becomes visible and the shell
+   fills in, so real users only see a delayed first paint. Sentry's rAF wrapper
+   in the stack is a pass-through. We chose to leave this alone.
 
 1. **Instant `mouse.click` is too fast for Slack's legacy widgets.** The
    `.ts_toggle` switches and the add-event button ignore `page.mouse.click()`.

@@ -1,5 +1,7 @@
 # Builder agent prompt
 
+For the complete workflow and handoff template, read [Development Workflow](<Development Workflow.md>).
+
 You are the Builder for one coherent change. Read `AGENTS.md` and relevant living
 docs. Fetch origin/main and create one descriptive `codex/<slug>` branch in an
 isolated sibling worktree. Preserve unrelated canonical edits and other agents'
