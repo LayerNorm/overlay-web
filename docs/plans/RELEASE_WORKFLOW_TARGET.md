@@ -335,3 +335,5 @@ Cancellation then found the existing consumed-credit invariant rejecting the
 Free transition. The fix retains historical spend/holds, removes unused included
 credit, and disables automatic top-ups. Live cancellation replay and a new
 complete candidate run remain required before production acceptance.
+
+Cancellation removes unused paid funding again as existing holds are released or settled below their estimate. Synthetic release smoke closes pending navigation/response waits safely and cleans the exact temporary chat even when note cleanup fails.

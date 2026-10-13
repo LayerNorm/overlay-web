@@ -73,3 +73,5 @@ The release checkout drill found that zeroing the allowance previously rejected
 coverage exercises internal/server updates, reservations, grants/top-ups, normal
 downgrades and older provider events. Acceptance checks the actual subscription
 and balance, in addition to webhook receipt; an event row alone is insufficient.
+
+Canceled-plan funding also shrinks when holds are released or settled below their estimate. The ledger retains only consumed spend and remaining reservations; a finished hold cannot restore unused paid credit. Active paid accounts retain their normal allowance.

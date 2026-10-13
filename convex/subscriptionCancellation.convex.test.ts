@@ -47,6 +47,32 @@ describe('subscription cancellation preserves paid usage accounting', () => {
     await t.mutation(internalUpdate, { ...cancel, currentPeriodStart: 4_000_000 })
     expect((await snapshot(t)).balance).toMatchObject({ includedMicros: 1000, usedMicros: 700, reservedMicros: 300 })
   })
+  for (const route of ['internal', 'server'] as const) {
+    for (const settle of [false, true]) {
+      test(`${route} cancellation removes released hold funding (settle=${settle})`, async () => {
+        const t = await fixture({ used: 700, reserved: 300 })
+        await t.run(async ctx => {
+          await ctx.db.insert('budgetReservations', { userId: 'user-test', billingAccountId: 'ba-test',
+            spendSubjectKind: 'programmatic', spendSubjectId: 'agent:test', reservationId: 'hold-test',
+            status: 'reserved', kind: 'agent', reservedCents: 0.03, createdAt: 1, updatedAt: 1 })
+        })
+        await t.mutation(route === 'internal' ? internalUpdate : serverUpdate,
+          route === 'internal' ? cancel : { ...cancel, serverSecret: secret })
+        const path = settle ? 'finalizeBudgetReservationByServer' : 'releaseBudgetReservationByServer'
+        await t.mutation(makeFunctionReference<'mutation'>('platform/usage:' + path), {
+          serverSecret: secret, userId: 'user-test', reservationId: 'hold-test',
+          ...(settle ? { actualCents: 0.01 } : {}),
+        })
+        const { balance } = await snapshot(t)
+        expect(balance).toMatchObject({ includedMicros: settle ? 800 : 700,
+          usedMicros: settle ? 800 : 700, reservedMicros: 0 })
+        expect(balance!.includedMicros - balance!.usedMicros).toBe(0)
+        const entitlements = await t.query(makeFunctionReference<'query'>('billing/accountSubscriptions:getEntitlementsByServer'),
+          { billingAccountId: 'ba-test', serverSecret: secret })
+        expect(entitlements).toMatchObject({ planKind: 'free', status: 'canceled', budgetRemainingCents: 0 })
+      })
+    }
+  }
   test('grants and top-ups remain accounted for without retaining unused plan credit', async () => {
     const t = await fixture({ used: 1500, reserved: 500, grant: 700, topUps: 300 })
     await t.mutation(internalUpdate, cancel)

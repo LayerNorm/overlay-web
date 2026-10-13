@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit and disabling automatic top-ups.
+- Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit as holds settle or release, and disabling automatic top-ups.
 
 - Wait for chat transcript hydration in release smoke, explicitly select Chat, and clean fresh production QA conversations.
 

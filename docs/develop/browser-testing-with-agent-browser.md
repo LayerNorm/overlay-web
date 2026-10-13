@@ -266,3 +266,5 @@ the existing active runtime state after messages/meta have been applied. A
 finished network response alone is insufficient. Select Chat, send the real
 model request, verify the visible reply and reload persistence, then clean the
 synthetic conversation. Keep failed diagnostics separate from trusted CI proof.
+
+Release smoke awaits chat navigation and its transcript response together so a failed navigation cannot leave an unhandled response wait during browser cleanup. Production regressions assert deletion of the exact temporary chat even when chat verification or note cleanup fails.

@@ -125,9 +125,10 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
         && url.searchParams.get('conversationId') === probeChatId
         && url.searchParams.get('messages') === 'true'
     }, { timeout: 60_000 })
-    await page.goto('/app/w/' + encodeURIComponent(workspaceId) + '/chat?id=' + encodeURIComponent(probeChatId),
-      { waitUntil: 'domcontentloaded' })
-    const transcript = await transcriptReady
+    const [transcript] = await Promise.all([transcriptReady,
+      page.goto('/app/w/' + encodeURIComponent(workspaceId) + '/chat?id=' + encodeURIComponent(probeChatId),
+      { waitUntil: 'domcontentloaded' }),
+    ])
     assert.equal(transcript.status(), 200)
     await transcript.finished()
     await page.locator(`[data-overlay-chat-id=${JSON.stringify(probeChatId)}][data-overlay-chat-hydrated="true"]`)

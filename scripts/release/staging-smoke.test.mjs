@@ -24,9 +24,10 @@ test('smoke refuses other refs or identities before browser or service access', 
 const env = { GITHUB_REPOSITORY: STAGING.repository, GITHUB_REF: 'refs/heads/main',
   GITHUB_SHA: sha, GITHUB_RUN_ID: '123', STAGING_SMOKE_EMAIL: 'overlay-preview-qa@getoverlay.io',
   STAGING_SMOKE_PASSWORD: 'private-test-fixture' }
-function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure = false,
+function smokeFixture({ wrongIdentity = false, chatFailure = false, navigationFailure = false, staleFailure = false,
   deploymentId = candidate.deploymentId, workspaceId = 'staging-personal-user_01M4R1EKTMDZ4E6BQ5DMZXD0F2', badWorkspace = false } = {}) {
   const calls = [], saved = [], reports = []
+  let rejectResponse
   const response = (status, body = {}) => ({ status: () => status, json: async () => body })
   const context = { request: {
     post: async (path, options) => {
@@ -57,11 +58,12 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
       return { waitFor: async () => { calls.push({ appHydrated: true }) } }
     },
     waitForResponse: async predicate => {
+      if (navigationFailure) return new Promise((_, reject) => { rejectResponse = reject })
       assert.equal(predicate({ url: () => STAGING.origin + '/api/v1/conversations?conversationId=other&messages=true' }), false)
       assert.equal(predicate({ url: () => STAGING.origin + '/api/v1/conversations?conversationId=chat_probe&messages=true' }), true)
       return { status: () => 200, finished: async () => { calls.push({ transcriptReady: true }) } }
     },
-    goto: async url => { calls.push({ navigation: url }) },
+    goto: async url => { calls.push({ navigation: url }); if (navigationFailure) throw new Error('private-test-fixture navigation failure') },
     getByRole: role => role === 'main' ? { getByRole: () => ({ waitFor: async () => {} }) } : role === 'combobox'
       ? { waitFor: async () => {}, count: async () => 1, fill: async () => {} }
       : { waitFor: async () => {}, getAttribute: async () => 'true', click: async () => { calls.push({ sendMessage: role === 'button', chatMode: role === 'tab' }) } },
@@ -89,7 +91,7 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
   }
   return { env, github, vercel, artifact: candidate, calls, saved, reports, probeRealtime: async args => { calls.push({ realtimeWorkspaceId: args.workspaceId }) },
     launch: async () => { calls.push({ launch: true }); return { newContext: async () => context,
-      close: async () => { calls.push({ closed: true }) } } },
+      close: async () => { calls.push({ closed: true }); rejectResponse?.(new Error('private-test-fixture response wait closed')) } } },
     saveEvidence: e => saved.push(e), report: e => reports.push(e) }
 }
 test('authenticated smoke performs normal sign-in, note conflict/cleanup and chat before saving proof', async () => {
@@ -109,7 +111,7 @@ test('authenticated smoke performs normal sign-in, note conflict/cleanup and cha
   assert.ok(!JSON.stringify(f.reports).includes(env.STAGING_SMOKE_PASSWORD))
 })
 test('failed identity, conflict or provider response cannot create promotion proof', async () => {
-  for (const option of [{ wrongIdentity: true }, { staleFailure: true }, { chatFailure: true }, { badWorkspace: true }]) {
+  for (const option of [{ wrongIdentity: true }, { staleFailure: true }, { chatFailure: true }, { navigationFailure: true }, { badWorkspace: true }]) {
     const f = smokeFixture(option)
     await assert.rejects(runSmoke(f))
     assert.equal(f.saved.length, 0)
