@@ -65,8 +65,8 @@ configuration contained 46 isolated sandbox variables; all 71 existing Productio
 variables were preserved. Shared test Stripe/Gateway settings are now configured
 and readback verified. Separate non-expiring OpenRouter test keys now have a $1 total
 limit each with no reset. Shared Preview web/defaults and the dedicated staging
-backend readback passed; real application model replies and isolated storage
-acceptance remain pending. Preview deployment policy permits
+backend readback passed; a real application Free Router reply and reload persistence passed. Isolated
+storage application acceptance awaits the corrected storage-selector rebuild. Preview deployment policy permits
 REST API sources only; native Preview Git builds remain disabled.
 
 PR #187's accepted Preview was READY at
@@ -588,7 +588,9 @@ Vercel controller token, deployment-scoped staging Convex key, separate Gateway
 and OpenRouter lane keys, and bucket-restricted R2 credentials. Readback confirms
 the new keys and shared defaults; existing PR #194 backend settings were also
 updated. R2 keys passed write/read, cross-lane/shared-dev denial and cleanup checks.
-Application chat/upload acceptance remains pending the rebuilt preview.
+Application chat and reload persistence passed. Upload acceptance awaits a new
+revision build with `OVERLAY_PROVIDER_OBJECT_STORAGE=r2` and `STORAGE_PROVIDER=r2`;
+`OVERLAY_PROVIDER_STORAGE` is not the runtime selector.
 
 Keep the existing $1 total model limits without resets; increasing a depleted
 limit does not require replacing the key. Store defaults once and inherit them
