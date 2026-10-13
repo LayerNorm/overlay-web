@@ -295,3 +295,22 @@ After every successful preview deploy, the hosted build therefore explicitly run
 idempotent repair preserves edited fixture data and reuses any existing personal
 workspace; it does not recreate the backend or deploy shared development/production.
 A failed deploy never runs the repair, and a failed repair fails the hosted build.
+
+
+### Verified workspace and queue protections
+
+Release smoke resolves and activates the synthetic account's actual personal
+workspace through the authenticated app API. It uses that ID for chat, Files and
+realtime checks, including when seeding reuses an app-created workspace. It creates
+a fresh Auto-model smoke conversation, verifies its real reply and reload, then
+cleans that conversation; seed examples are not model-response evidence.
+
+Main protection is consolidated in ruleset `21959970`: PRs, conversation
+resolution, nine required GitHub Actions checks and the native merge queue.
+The duplicate classic owner-only push protection was retired; queue publication
+is governed by these rules. History ruleset `16007495` separately blocks force
+pushes and deletion for main/staging with no bypass. Legacy staging is frozen by
+`24986525`. Owner emergency bypass and zero sole-author approvals remain.
+Queue interaction probes #196/#197 passed individually but their combined tree
+was marked UNMERGEABLE; both closed without merging and the temporary check was
+removed. Live queue acceptance of the release PR remains pending.

@@ -47,13 +47,13 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
   })
   await verify()
   await status('pending', 'Authenticated staging smoke running on the accepted main SHA')
-  let browser
+  let browser, context, probeChatId
   let phase = 'browser setup'
   try {
     const project = await vercel(`/v9/projects/${STAGING.projectId}`)
     const bypass = Object.entries(project.protectionBypass ?? {}).find(([, v]) => v.scope === 'automation-bypass')?.[0]
     browser = await launch()
-    const context = await browser.newContext({ baseURL: candidate.url,
+    context = await browser.newContext({ baseURL: candidate.url,
       extraHTTPHeaders: { origin: candidate.url, ...(bypass ? { 'x-vercel-protection-bypass': bypass } : {}) } })
     phase = 'sandbox sign-in'
     const login = await context.request.post('/api/auth/sign-in', {
@@ -63,6 +63,17 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     const identity = await login.json()
     assert.equal(identity.success, true)
     assert.equal(identity.user?.id, 'user_01M4R1EKTMDZ4E6BQ5DMZXD0F2')
+    phase = 'synthetic workspace resolution'
+    const workspaceResponse = await context.request.get('/api/v1/workspaces')
+    assert.equal(workspaceResponse.status(), 200)
+    const personal = (await workspaceResponse.json()).workspaces.filter(w =>
+      w.kind === 'personal' && w.role === 'owner' && w.status === 'active')
+    assert.equal(personal.length, 1, 'Expected one synthetic personal workspace')
+    const workspaceId = personal[0].id
+    assert.ok(typeof workspaceId === 'string' && workspaceId.length > 0)
+    const active = await context.request.post('/api/v1/workspaces/active', { data: { workspaceId } })
+    assert.equal(active.status(), 200)
+    assert.equal((await active.json()).activeWorkspaceId, workspaceId)
     phase = 'notes and fixture'
     const notes = await context.request.get('/api/v1/notes')
     assert.equal(notes.status(), 200)
@@ -101,11 +112,15 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     phase = 'real chat reply'
     const page = await context.newPage()
     const verifyRuntime = browserRuntimeErrors(page)
-    const conversations = await context.request.get('/api/v1/conversations')
-    assert.equal(conversations.status(), 200)
-    const seededChat = (await conversations.json()).find(c => c.clientId === 'staging-seed-chat-v1')
-    assert.ok(seededChat?._id, 'Synthetic Auto-model conversation missing')
-    await page.goto('/app/chat?id=' + encodeURIComponent(seededChat._id), { waitUntil: 'domcontentloaded' })
+    const chat = await context.request.post('/api/v1/conversations', { data: {
+      title: 'Release smoke ' + sha.slice(0, 12), askModelIds: ['openrouter/free'],
+      actModelId: 'openrouter/free', lastMode: 'ask',
+    } })
+    assert.equal(chat.status(), 200)
+    probeChatId = (await chat.json()).id
+    assert.ok(probeChatId)
+    await page.goto('/app/w/' + encodeURIComponent(workspaceId) + '/chat?id=' + encodeURIComponent(probeChatId),
+      { waitUntil: 'domcontentloaded' })
     const composer = page.getByRole('combobox', { name: /Ask anything/ })
     await composer.waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await composer.count(), 1)
@@ -118,20 +133,23 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     await replies.nth(previousReplies).waitFor({ state: 'visible', timeout: 60_000 })
     await page.screenshot({ path: 'staging-smoke-chat.png' })
     phase = 'files interface'
-    await page.goto(`/app/w/staging-personal-${identity.user.id}/files`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/app/w/${encodeURIComponent(workspaceId)}/files`, { waitUntil: 'domcontentloaded' })
     await page.getByRole('main').getByRole('button', { name: 'Staging note', exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
     await page.screenshot({ path: 'staging-smoke-files.png' })
     phase = 'realtime authorization'
     const tokenResponse = await context.request.get('/api/auth/convex-token')
     assert.equal(tokenResponse.status(), 200)
     await probeRealtime({ backendUrl: candidate.backendUrl, userId: identity.user.id,
-      token: (await tokenResponse.json()).token, workspaceId: 'staging-personal-' + identity.user.id })
+      token: (await tokenResponse.json()).token, workspaceId })
     verifyRuntime()
+    phase = 'chat cleanup'
+    assert.equal((await context.request.delete('/api/v1/conversations?conversationId=' + encodeURIComponent(probeChatId))).status(), 200)
+    probeChatId = undefined
     phase = 'final provenance'
     await verify()
-    const evidence = { ...candidate, smoke: 'passed', runId: env.GITHUB_RUN_ID,
-      checks: { authenticatedSandboxIdentity: true, dedicatedFixture: true,
-        noteCrudAndStaleEdit: true, noteCleanup: true, realChatReply: true, chatPersistence: true, filesUi: true,
+    const evidence = { ...candidate, workspaceId, smoke: 'passed', runId: env.GITHUB_RUN_ID,
+      checks: { authenticatedSandboxIdentity: true, workspaceResolution: true, dedicatedFixture: true,
+        noteCrudAndStaleEdit: true, noteCleanup: true, realChatReply: true, chatPersistence: true, chatCleanup: true, filesUi: true,
         realtimeAuthorization: true } }
     saveEvidence(evidence)
     await status('success', `Authenticated smoke passed for ${sha.slice(0, 12)}`)
@@ -143,7 +161,11 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     report(JSON.stringify({ state: 'failed', sha, phase }))
     await status('failure', 'Staging smoke failed; this revision is not promotion evidence')
     throw error
-  } finally { if (browser) await browser.close() }
+  } finally {
+    try {
+      if (probeChatId) assert.equal((await context.request.delete('/api/v1/conversations?conversationId=' + encodeURIComponent(probeChatId))).status(), 200)
+    } finally { await browser?.close() }
+  }
 }
 
 export async function main(env = process.env) {

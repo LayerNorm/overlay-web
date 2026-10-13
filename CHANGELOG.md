@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resolve the actual synthetic workspace in release smoke and clean fresh test chats; consolidate main queue/check protection and restore universal history guards.
+
 - Repair missing PR preview fixtures after interrupted builds, preserving existing personal workspaces and test data.
 
 - Prepare exact-main release candidates only on demand; reuse PR preview infrastructure and accept verified native candidate proof before manual production promotion.

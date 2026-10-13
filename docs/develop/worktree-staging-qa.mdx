@@ -34,7 +34,7 @@ GitHub/Vercel CLI accounts must be `DevelopedByDev`/`developedbydev1`. Install t
 reviewed dependencies and Playwright Chromium before release.
 
 The command downloads the successful manually dispatched candidate workflow's
-exact smoke artifact, checks all eight behavioral checks and its producer, and
+exact smoke artifact, checks all ten behavioral checks and its producer, and
 verifies its native origin and ready deployment provenance (or published alias). Older proof without realtime authorization
 does not qualify. It then remotely builds production web without assigning
 domains, checks provenance, publishes and verifies the canonical web alias,
@@ -191,3 +191,22 @@ and retained web rollback against the expanded schema. See
    the guarded promotion command. Verify web live before production Convex.
 6. Preserve checkpoints and previous deployment IDs; run authenticated QA and
    verify any rollback through actual alias readback. Report incomplete work clearly.
+
+
+### Verified workspace and queue protections
+
+Release smoke resolves and activates the synthetic account's actual personal
+workspace through the authenticated app API. It uses that ID for chat, Files and
+realtime checks, including when seeding reuses an app-created workspace. It creates
+a fresh Auto-model smoke conversation, verifies its real reply and reload, then
+cleans that conversation; seed examples are not model-response evidence.
+
+Main protection is consolidated in ruleset `21959970`: PRs, conversation
+resolution, nine required GitHub Actions checks and the native merge queue.
+The duplicate classic owner-only push protection was retired; queue publication
+is governed by these rules. History ruleset `16007495` separately blocks force
+pushes and deletion for main/staging with no bypass. Legacy staging is frozen by
+`24986525`. Owner emergency bypass and zero sole-author approvals remain.
+Queue interaction probes #196/#197 passed individually but their combined tree
+was marked UNMERGEABLE; both closed without merging and the temporary check was
+removed. Live queue acceptance of the release PR remains pending.

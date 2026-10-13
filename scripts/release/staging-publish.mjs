@@ -6,8 +6,8 @@ import { apiClient } from './preview-control.mjs'
 import { STAGING, StagingController, candidateOrigin, revision, stagingDeploymentMatches } from './staging-control.mjs'
 import { smokeCandidate } from './staging-smoke.mjs'
 
-export const SMOKE_CHECKS = Object.freeze(['authenticatedSandboxIdentity', 'dedicatedFixture',
-  'noteCrudAndStaleEdit', 'noteCleanup', 'realChatReply', 'chatPersistence', 'filesUi', 'realtimeAuthorization'])
+export const SMOKE_CHECKS = Object.freeze(['authenticatedSandboxIdentity', 'workspaceResolution', 'dedicatedFixture',
+  'noteCrudAndStaleEdit', 'noteCleanup', 'realChatReply', 'chatPersistence', 'chatCleanup', 'filesUi', 'realtimeAuthorization'])
 
 export function verifiedSmoke(value, sha) {
   smokeCandidate(value, sha)
