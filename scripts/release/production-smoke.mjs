@@ -63,6 +63,8 @@ export async function productionSmoke({ env, vercel, deployment, sha, launch,
     const transcript = await transcriptReady
     assert.equal(transcript.status(), 200)
     await transcript.finished()
+    await page.locator(`[data-overlay-chat-id=${JSON.stringify(probeChatId)}][data-overlay-chat-hydrated="true"]`)
+      .waitFor({ state: 'visible', timeout: 60_000 })
     await page.getByRole('heading', { name: chatTitle, exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
     const chatMode = page.getByRole('tab', { name: /^Chat:/ })
     await chatMode.click()

@@ -13,7 +13,10 @@ function fixture({ badLogin = false, badConflict = false, badChat = false, badCl
       overlayConvexBackend: PRODUCTION.backend, githubCommitSha: sha, githubCommitRef: 'main' } }
   const response = (status, body = {}) => ({ status: () => status, json: async () => body })
   let edited = false
-  const page = { on: () => {}, waitForResponse: async predicate => {
+  const page = { on: () => {}, locator: selector => {
+    assert.equal(selector, '[data-overlay-chat-id="chat_probe"][data-overlay-chat-hydrated="true"]')
+    return { waitFor: async () => calls.push('app-hydrated') }
+  }, waitForResponse: async predicate => {
     assert.equal(predicate({ url: () => PRODUCTION.origin + '/api/v1/conversations?conversationId=chat_probe&messages=true' }), true)
     return { status: () => 200, finished: async () => calls.push('transcript-ready') }
   }, goto: async url => calls.push(url), reload: async () => calls.push('reload'),
@@ -53,7 +56,8 @@ test('production smoke uses normal auth, checks persisted chat and cleans only i
   assert.ok(Object.values(result).every(value => value === true))
   for (const action of ['send', 'reload', 'realtime', 'cleanup']) assert.ok(f.calls.includes(action))
   assert.ok(f.calls.includes('/ignored/proof/production-smoke-files.png'))
-  assert.ok(f.calls.indexOf('transcript-ready') < f.calls.indexOf('send'))
+  assert.ok(f.calls.indexOf('transcript-ready') < f.calls.indexOf('app-hydrated'))
+  assert.ok(f.calls.indexOf('app-hydrated') < f.calls.indexOf('send'))
   assert.equal(f.calls.at(-1), 'close')
   assert.ok(!JSON.stringify(f.reports).includes('private-fixture'))
 })

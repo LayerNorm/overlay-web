@@ -52,6 +52,10 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
   }, newPage: async () => ({
     on: () => {},
     reload: async () => { calls.push({ reload: true }) },
+    locator: selector => {
+      assert.equal(selector, '[data-overlay-chat-id="chat_probe"][data-overlay-chat-hydrated="true"]')
+      return { waitFor: async () => { calls.push({ appHydrated: true }) } }
+    },
     waitForResponse: async predicate => {
       assert.equal(predicate({ url: () => STAGING.origin + '/api/v1/conversations?conversationId=other&messages=true' }), false)
       assert.equal(predicate({ url: () => STAGING.origin + '/api/v1/conversations?conversationId=chat_probe&messages=true' }), true)
@@ -97,7 +101,8 @@ test('authenticated smoke performs normal sign-in, note conflict/cleanup and cha
   assert.equal(f.calls.some(c => c.path?.includes('preview-login')), false)
   assert.ok(f.calls.some(c => c.method === 'DELETE'))
   assert.ok(f.calls.some(c => c.sendMessage))
-  assert.ok(f.calls.findIndex(c => c.transcriptReady) < f.calls.findIndex(c => c.sendMessage))
+  assert.ok(f.calls.findIndex(c => c.transcriptReady) < f.calls.findIndex(c => c.appHydrated))
+  assert.ok(f.calls.findIndex(c => c.appHydrated) < f.calls.findIndex(c => c.sendMessage))
   assert.ok(f.calls.some(c => c.reload))
   assert.ok(f.calls.some(c => c.navigation === '/app/w/staging-personal-user_01M4R1EKTMDZ4E6BQ5DMZXD0F2/chat?id=chat_probe'))
   assert.equal(f.calls.at(-1).closed, true)

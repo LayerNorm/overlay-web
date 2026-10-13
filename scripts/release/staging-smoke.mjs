@@ -130,6 +130,8 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     const transcript = await transcriptReady
     assert.equal(transcript.status(), 200)
     await transcript.finished()
+    await page.locator(`[data-overlay-chat-id=${JSON.stringify(probeChatId)}][data-overlay-chat-hydrated="true"]`)
+      .waitFor({ state: 'visible', timeout: 60_000 })
     // The composer mounts before route hydration; wait for the requested chat.
     await page.getByRole('heading', { name: 'Release smoke ' + sha.slice(0, 12), exact: true })
       .waitFor({ state: 'visible', timeout: 60_000 })
