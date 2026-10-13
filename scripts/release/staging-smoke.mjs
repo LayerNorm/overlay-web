@@ -113,7 +113,7 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     await page.screenshot({ path: 'staging-smoke-chat.png' })
     phase = 'files interface'
     await page.goto(`/app/w/staging-personal-${identity.user.id}/files`, { waitUntil: 'domcontentloaded' })
-    await page.getByText('Staging note', { exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
+    await page.getByRole('button', { name: 'Staging note', exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
     await page.screenshot({ path: 'staging-smoke-files.png' })
     phase = 'realtime authorization'
     const tokenResponse = await context.request.get('/api/auth/convex-token')

@@ -60,7 +60,7 @@ export async function productionSmoke({ env, vercel, deployment, sha, launch,
     await page.screenshot({ path: join(evidenceDirectory, 'production-smoke-chat.png') })
     phase = 'production files'
     await page.goto('/app/files', { waitUntil: 'domcontentloaded' })
-    await page.getByText(title, { exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
+    await page.getByRole('button', { name: title, exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
     await page.screenshot({ path: join(evidenceDirectory, 'production-smoke-files.png') })
     phase = 'production realtime authorization'
     const token = await context.request.get('/api/auth/convex-token')

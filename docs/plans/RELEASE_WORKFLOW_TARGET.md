@@ -195,10 +195,13 @@ capacity needed for feature QA.
 
 ## Ownership and review
 
-- `CODEOWNERS` requires human review for `convex/schema.ts`, migrations, auth
+- `CODEOWNERS` identifies the review owner for `convex/schema.ts`, migrations, auth
   (`src/server/auth/`, `src/app/api/auth/`), billing (`src/server/billing/`,
   Stripe webhooks), tenant boundaries, and release configuration (`vercel.json`,
   build scripts, `.github/`).
+- Mandatory approving/code-owner reviews wait until a second eligible maintainer
+  joins. With one owner, required approval remains zero under the standing owner
+  instructions; Integration review and the stronger relevant QA still apply.
 - Everything else may merge once checks pass and the preview has been verified.
 - Agents may open and update PRs, verify previews, and enqueue merges for
   low-risk changes. Production promotion is always a human decision.

@@ -415,21 +415,25 @@ minutes, and the smoke suite reports on it.
 Goal: parallel merges cannot break `main`.
 
 Code:
-- [ ] `.github/workflows/security.yml`: add `merge_group:` to `on:` (required —
-      without it, queued PRs wait forever for checks). Drop `staging` from the
-      push branches once Phase 5 is done.
-- [ ] `.github/CODEOWNERS`: owners for `convex/schema.ts`, `convex/migrations/`,
+- [x] All required check workflows, including security, support `merge_group:`.
+      Without it, queued PRs wait forever for checks.
+- [ ] Drop `staging` from security push branches once Phase 5 is done.
+- [x] `.github/CODEOWNERS`: owners for `convex/schema.ts`, `convex/migrations/`,
       `src/server/auth/`, `src/app/api/auth/`, `src/server/billing/`,
       `src/app/api/webhooks/`, `vercel.json`, `scripts/vercel-*.sh`, `.github/`.
-- [ ] `.github/pull_request_template.md`: change summary, preview evidence,
+- [x] `.github/pull_request_template.md`: change summary, preview evidence,
       `needs-staging` checkbox, schema-change checkbox (expand/contract confirmed).
 
 Dashboard (owner):
-- [ ] `main` ruleset: require merge queue; require CODEOWNERS review; keep
-      required checks; keep force-push and deletion blocks.
+- [ ] `main` ruleset: require merge queue; keep required checks and history
+      protection. Configure main separately so legacy staging is not queued.
+- [ ] Require CODEOWNERS approval only after a second eligible maintainer joins.
+      Standing owner instructions prohibit reinstating approving reviews while
+      the sole author cannot approve their own PR. The current requirement stays
+      zero; owner-authorized Integration review and protected-area QA still apply.
 - [ ] Remove the `DevelopedByDev` bypass once a second engineer joins (keep it
       only as an emergency break-glass, documented).
-- [ ] Create the `needs-staging` label.
+- [x] Create the `needs-staging` label.
 
 Done when: two PRs that conflict semantically (each green alone) cannot both
 land; the second fails in the queue.
