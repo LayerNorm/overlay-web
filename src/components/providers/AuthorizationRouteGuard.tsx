@@ -25,14 +25,14 @@ export function AuthorizationRouteGuard({ children }: { children: React.ReactNod
     return (
       <div className="flex min-h-full items-center justify-center px-6 py-16" data-testid="authorization-route-denied">
         <div className="max-w-md text-center">
-          <ShieldX className="mx-auto text-[var(--muted)]" size={24} />
+          <ShieldX className="mx-auto text-(--muted)" size={24} />
           <h1 className="mt-4 text-lg font-semibold">Access not available</h1>
-          <p className="mt-2 text-sm text-[var(--muted)]">
+          <p className="mt-2 text-sm text-(--muted)">
             Your current role does not include access to this area.
           </p>
           <Link
             href="/app/chat"
-            className="mt-5 inline-flex h-9 items-center rounded-md border border-[var(--border)] px-4 text-sm font-medium hover:bg-[var(--surface-subtle)]"
+            className="mt-5 inline-flex h-9 items-center rounded-md border border-(--border) px-4 text-sm font-medium hover:bg-(--surface-subtle)"
           >
             Return to chat
           </Link>

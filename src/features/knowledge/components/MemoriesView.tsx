@@ -103,7 +103,7 @@ function getDateLabel(timestamp: number): string {
 
 function getBadgeTone(kind: string): string {
   void kind;
-  return "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]";
+  return "border-(--border) bg-(--surface-subtle) text-(--foreground)";
 }
 
 function memoryDomId(memoryId: string): string {
@@ -237,11 +237,11 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const [saveError, setSaveError] = useState<string | null>(null)
   const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
   const actionButtonClass =
-    'flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+    'flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)'
   const dialogButtonClass =
-    'rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+    'rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)'
   const metaChipClass =
-    'rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--muted)]'
+    'rounded-full border border-(--border) bg-(--surface-muted) px-2 py-0.5 text-[10px] text-(--muted)'
 
   const loadMemories = useCallback(async (memberPrincipalId = 'all') => {
     const requestId = ++loadRequestIdRef.current
@@ -438,11 +438,11 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   return (
     <div className="flex h-full flex-col">
       {!onHeaderStateChange ? (
-        <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-6">
-          <h2 className="text-sm font-medium text-[var(--foreground)]">
+        <div className="flex h-16 items-center justify-between border-b border-(--border) px-6">
+          <h2 className="text-sm font-medium text-(--foreground)">
             Memories
             {memories.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-[var(--muted-light)]">
+              <span className="ml-2 text-xs font-normal text-(--muted-light)">
                 {memories.length}
               </span>
             )}
@@ -481,19 +481,19 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
           <div className="mx-auto max-w-3xl space-y-6 px-6 py-4">
             {pendingSavePreview ? (
               <div
-                className="flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3"
+                className="flex items-start gap-3 rounded-xl border border-(--border) bg-(--surface-subtle) px-3 py-3"
                 aria-busy
                 aria-live="polite"
               >
                 <Loader2
                   size={18}
-                  className="mt-0.5 shrink-0 animate-spin text-[var(--muted)]"
+                  className="mt-0.5 shrink-0 animate-spin text-(--muted)"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-[var(--foreground)]">
+                  <p className="text-xs font-medium text-(--foreground)">
                     Saving memory…
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-(--muted)">
                     {pendingSavePreview}
                   </p>
                 </div>
@@ -501,7 +501,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
             ) : null}
             {groupLabels.map((label) => (
               <div key={label}>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-(--muted-light)">
                   {label}
                 </p>
                 <div className="space-y-2">
@@ -567,10 +567,10 @@ function MemoriesHeaderActions({
       />
       <button
         onClick={onToggleSelectionMode}
-        className={`flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs transition-colors ${
+        className={`flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs transition-colors ${
           selectionMode
-            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-            : 'bg-[var(--surface-elevated)] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+            ? 'bg-(--surface-subtle) text-(--foreground)'
+            : 'bg-(--surface-elevated) text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
         }`}
       >
         <CheckSquare size={12} />
@@ -637,20 +637,20 @@ function AddMemoryDialog({
     // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close control.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-(--overlay-scrim)"
       onClick={(event) => {
         if (event.target === event.currentTarget) onDismiss()
       }}
     >
       {/* Inline modal keeps a lightweight form flow; focus trapped via useDialogFocus. */}
       {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div ref={addDialogRef} role="dialog" aria-modal="true" aria-labelledby="add-memory-title" className="w-[520px] max-w-[92vw] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-xl">
+      <div ref={addDialogRef} role="dialog" aria-modal="true" aria-labelledby="add-memory-title" className="w-[520px] max-w-[92vw] rounded-xl border border-(--border) bg-(--surface-elevated) p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h3 id="add-memory-title" className="text-sm font-medium text-[var(--foreground)]">Add memory</h3>
+          <h3 id="add-memory-title" className="text-sm font-medium text-(--foreground)">Add memory</h3>
           <button
             aria-label="Close"
             onClick={onClose}
-            className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
             <X size={14} />
           </button>
@@ -665,10 +665,10 @@ function AddMemoryDialog({
           onKeyDown={(event) => {
             if (event.key === 'Enter' && event.metaKey) void onSave()
           }}
-          className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)]"
+          className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)"
         />
         <div className="mt-3 grid grid-cols-2 gap-3">
-          <label className="text-xs text-[var(--muted)]">
+          <label className="text-xs text-(--muted)">
             Type
             <ListboxSelect
               value={addType ?? 'fact'}
@@ -683,7 +683,7 @@ function AddMemoryDialog({
               className="mt-1 w-full"
             />
           </label>
-          <label className="text-xs text-[var(--muted)]">
+          <label className="text-xs text-(--muted)">
             Importance
             <ListboxSelect
               value={addImportance}
@@ -693,7 +693,7 @@ function AddMemoryDialog({
             />
           </label>
         </div>
-        <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted)]">
+        <p className="mt-3 text-[11px] leading-relaxed text-(--muted)">
           Saved memories stay as a single record, but the knowledge sidebar can still preview
           them in short segments for easier scanning.
         </p>
@@ -732,7 +732,7 @@ function MemoriesEmptyState({
   onAddMemory: () => void
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 text-[var(--muted)]">
+    <div className="flex h-full flex-col items-center justify-center gap-3 text-(--muted)">
       <Brain size={40} strokeWidth={1} className="opacity-40" />
       <p className="text-sm">
         {selectedMemberPrincipalId === 'all'
@@ -741,7 +741,7 @@ function MemoriesEmptyState({
       </p>
       <button
         onClick={onAddMemory}
-        className="text-xs text-[var(--foreground)] underline underline-offset-2 transition-colors"
+        className="text-xs text-(--foreground) underline underline-offset-2 transition-colors"
       >
         Add your first memory
       </button>
@@ -809,11 +809,11 @@ function MemoryCard({
       id={memoryDomId(memory.memoryId)}
       className={`group scroll-mt-6 rounded-xl border px-3 py-3 transition-colors ${
         isSelected
-          ? 'border-[var(--border)] bg-[var(--surface-subtle)]'
-          : 'border-[var(--border)] bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)]'
+          ? 'border-(--border) bg-(--surface-subtle)'
+          : 'border-(--border) bg-(--surface-elevated) hover:bg-(--surface-muted)'
       } ${
         isHighlighted
-          ? 'ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
+          ? 'ring-2 ring-(--foreground) ring-offset-4 ring-offset-(--background)'
           : ''
       }`}
     >
@@ -823,17 +823,17 @@ function MemoryCard({
             type="button"
             aria-label={isSelected ? 'Deselect memory' : 'Select memory'}
             onClick={() => onToggleSelected(memory.memoryId)}
-            className="mt-0.5 shrink-0 text-[var(--muted)]"
+            className="mt-0.5 shrink-0 text-(--muted)"
           >
             {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
           </button>
         )}
         <div className="min-w-0 flex-1">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-(--foreground)">
             {memory.content}
           </p>
           <MemoryMetaChips memory={memory} metaChipClass={metaChipClass} />
-          <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-light)]">
+          <div className="mt-2 flex items-center gap-2 text-[11px] text-(--muted-light)">
             <span>
               {new Date(memory.createdAt).toLocaleTimeString('en-US', {
                 hour: '2-digit',
@@ -855,15 +855,15 @@ function MemoryCard({
           <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               onClick={() => void onCopy(memory)}
-              className="rounded p-1 transition-colors hover:bg-[var(--surface-subtle)]"
+              className="rounded-sm p-1 transition-colors hover:bg-(--surface-subtle)"
               title="Copy memory"
             >
-              <Copy size={13} className="text-[var(--muted)]" />
+              <Copy size={13} className="text-(--muted)" />
             </button>
             {memory.canDelete ? (
               <button
                 onClick={() => void onDelete(memory.memoryId)}
-                className="rounded p-1 transition-colors hover:bg-red-500/10"
+                className="rounded-sm p-1 transition-colors hover:bg-red-500/10"
                 title="Delete memory"
               >
                 <Trash2 size={13} className="text-red-400" />

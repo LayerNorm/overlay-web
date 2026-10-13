@@ -46,7 +46,7 @@ export function ToolCallRowWithReasoning({
         <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
         <span
           className={`min-w-0 ${
-            running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-[var(--tool-line-label)]'
+            running && !err ? 'tool-line-shimmer' : err ? 'text-red-600' : 'text-(--tool-line-label)'
           }`}
         >
           {label}
@@ -61,7 +61,7 @@ const upgradeLink = (
   // react-doctor-disable-next-line react-doctor/nextjs-no-a-element
   <a
     href='/pricing'
-    className='whitespace-nowrap font-medium text-[var(--foreground)] underline underline-offset-2 hover:opacity-80'
+    className='whitespace-nowrap font-medium text-(--foreground) underline underline-offset-2 hover:opacity-80'
   >
     Upgrade
   </a>
@@ -83,7 +83,7 @@ export function GatedPaidFeatureCallout({
     <div className="w-full px-1 py-0.5">
       <div className="flex w-full max-w-full items-start justify-start gap-2.5">
         <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
-        <p className="w-fit max-w-[min(100%,22rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-[11px] leading-relaxed text-[var(--muted)]">
+        <p className="w-fit max-w-[min(100%,22rem)] rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-[11px] leading-relaxed text-(--muted)">
           {line} {upgradeLink}
         </p>
       </div>
@@ -137,7 +137,7 @@ export function ToolCallsCollapsedGroup({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-[var(--tool-line-label)] hover:bg-transparent"
+        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent"
       >
         <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
         <span className="inline-flex min-w-0 items-center gap-1">
@@ -149,7 +149,7 @@ export function ToolCallsCollapsedGroup({
           <ChevronDown
             size={14}
             strokeWidth={1.75}
-            className={`shrink-0 text-[var(--tool-line-chevron)] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            className={`shrink-0 text-(--tool-line-chevron) transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
             aria-hidden
           />
         </span>

@@ -23,7 +23,7 @@ export function WorkspaceNameEditor({
   const [error, setError] = useState<string | null>(null)
 
   if (!canRename) {
-    return <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{workspace.name}</h2>
+    return <h2 className="truncate text-sm font-semibold text-(--foreground)">{workspace.name}</h2>
   }
 
   async function save() {
@@ -54,10 +54,10 @@ export function WorkspaceNameEditor({
           setEditing(true)
         }}
         title="Rename workspace"
-        className="group -mx-1 inline-flex max-w-full items-center gap-1.5 rounded px-1 text-left"
+        className="group -mx-1 inline-flex max-w-full items-center gap-1.5 rounded-sm px-1 text-left"
       >
-        <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{workspace.name}</h2>
-        <Pencil size={11} className="shrink-0 text-[var(--muted-light)] opacity-0 transition-opacity group-hover:opacity-100" />
+        <h2 className="truncate text-sm font-semibold text-(--foreground)">{workspace.name}</h2>
+        <Pencil size={11} className="shrink-0 text-(--muted-light) opacity-0 transition-opacity group-hover:opacity-100" />
       </button>
     )
   }
@@ -76,12 +76,12 @@ export function WorkspaceNameEditor({
             if (event.key === 'Enter') void save()
             if (event.key === 'Escape') setEditing(false)
           }}
-          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-sm font-semibold text-[var(--foreground)] outline-none"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-sm font-semibold text-(--foreground) outline-hidden"
         />
-        <button type="button" aria-label="Save name" disabled={busy} onClick={() => void save()} className="rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+        <button type="button" aria-label="Save name" disabled={busy} onClick={() => void save()} className="rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
         </button>
-        <button type="button" aria-label="Cancel" disabled={busy} onClick={() => setEditing(false)} className="rounded p-1 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+        <button type="button" aria-label="Cancel" disabled={busy} onClick={() => setEditing(false)} className="rounded-sm p-1 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
           <X size={13} />
         </button>
       </div>

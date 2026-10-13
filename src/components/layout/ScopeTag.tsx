@@ -8,7 +8,7 @@ export function ScopeTag({ scope }: { scope: ResourceScope }) {
   // With one person there is no other scope for an item to have come from.
   if (useIsSoloWorkspace()) return null
   return (
-    <span className="shrink-0 rounded-full bg-[var(--surface-subtle)] px-1.5 py-[3px] text-[10px] leading-none text-[var(--muted)]">
+    <span className="shrink-0 rounded-full bg-(--surface-subtle) px-1.5 py-[3px] text-[10px] leading-none text-(--muted)">
       {scope === 'workspace' ? 'Workspace' : 'Personal'}
     </span>
   )

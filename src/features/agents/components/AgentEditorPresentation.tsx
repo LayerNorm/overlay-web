@@ -30,7 +30,7 @@ export function AgentEditorSidePanel({ title, mode, savedFlash, onTogglePanelMod
       actions={(
         <>
           {savedFlash && mode === 'edit'
-            ? <span role="status" className="text-[11px] text-[var(--muted)]">Saved</span>
+            ? <span role="status" className="text-[11px] text-(--muted)">Saved</span>
             : null}
           {onTogglePanelMode ? (
             <button
@@ -38,7 +38,7 @@ export function AgentEditorSidePanel({ title, mode, savedFlash, onTogglePanelMod
               onClick={onTogglePanelMode}
               title="Show as dialog"
               aria-label="Show as dialog"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
             >
               <AppWindow size={15} />
             </button>
@@ -71,7 +71,7 @@ export function AgentEditorDialog({ title, onTogglePanelMode, onClose, children 
           onClick={onTogglePanelMode}
           title="Dock panel to the side"
           aria-label="Dock panel to the side"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <PanelRight size={14} />
         </button>

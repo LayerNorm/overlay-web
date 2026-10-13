@@ -28,7 +28,7 @@ function PresentationToggle({
     <button
       type="button"
       onClick={() => onPresentationChange(next)}
-      className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
       aria-label={label}
       title={label}
     >
@@ -117,33 +117,33 @@ export function SourcesPanel({
                     }
                   : undefined
               }
-              className="group block rounded-lg px-2 py-2 transition-colors hover:bg-[var(--surface-subtle)]"
+              className="group block rounded-lg px-2 py-2 transition-colors hover:bg-(--surface-subtle)"
             >
               <div className="flex min-w-0 items-start gap-2.5">
-                <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-[var(--surface-elevated)] ring-1 ring-[var(--border)]">
+                <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-(--surface-elevated) ring-1 ring-(--border)">
                   {internal ? (
                     source.internalKind === 'memory' ? (
-                      <Brain size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                      <Brain size={12} strokeWidth={1.75} className="text-(--muted)" />
                     ) : source.internalKind === 'message' ? (
-                      <MessageSquare size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                      <MessageSquare size={12} strokeWidth={1.75} className="text-(--muted)" />
                     ) : (
-                      <FileText size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                      <FileText size={12} strokeWidth={1.75} className="text-(--muted)" />
                     )
                   ) : fav ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={fav} alt="" className="h-3.5 w-3.5" width={14} height={14} />
                   ) : (
-                    <span className="text-[9px] font-semibold text-[var(--muted)]">
+                    <span className="text-[9px] font-semibold text-(--muted)">
                       {site.charAt(0).toUpperCase()}
                     </span>
                   )}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium leading-snug text-[var(--foreground)] group-hover:underline">
+                  <p className="truncate text-[13px] font-medium leading-snug text-(--foreground) group-hover:underline">
                     {displayTitle}
                   </p>
                   {subtext ? (
-                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-[var(--muted)]">
+                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-(--muted)">
                       {subtext}
                     </p>
                   ) : null}
@@ -165,7 +165,7 @@ export function SourcesPanel({
         aria-label="Sources"
         aria-hidden={!open}
         actions={presentationToggle}
-        className="bg-[var(--sidebar-surface)]"
+        className="bg-(--sidebar-surface)"
         bodyClassName="overflow-y-auto px-3 py-3"
       >
         {sourceList}
@@ -179,7 +179,7 @@ export function SourcesPanel({
       aria-hidden={!open}
       // Floating fades rather than slides, matching AppScreen's floating right
       // panel so the two surfaces appear and disappear the same way.
-      className={`absolute inset-y-2 right-2 z-30 hidden w-[min(40vw,380px)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--sidebar-surface)] shadow-xl transition-opacity duration-300 ease-[var(--overlay-ease)] md:flex ${
+      className={`absolute inset-y-2 right-2 z-30 hidden w-[min(40vw,380px)] flex-col overflow-hidden rounded-xl border border-(--border) bg-(--sidebar-surface) shadow-xl transition-opacity duration-300 ease-(--overlay-ease) md:flex ${
         open ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
     >
@@ -190,7 +190,7 @@ export function SourcesPanel({
           closeLabel="Close sources"
           actions={presentationToggle}
           compactHeader
-          className="bg-[var(--sidebar-surface)]"
+          className="bg-(--sidebar-surface)"
           bodyClassName="overflow-y-auto px-3 py-3"
         >
           {sourceList}

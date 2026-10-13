@@ -42,14 +42,14 @@ export function ConfirmDialog({
 
   const confirmClass = destructive
     ? 'rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40'
-    : 'rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-40'
+    : 'rounded-lg bg-(--foreground) px-4 py-1.5 text-sm font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-40'
 
   return (
     // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or Cancel.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={cn(
-        'fixed inset-0 z-[10070] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)]',
+        'fixed inset-0 z-10070 flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-(--overlay-ease)',
         visible ? 'opacity-100' : 'opacity-0',
       )}
       onClick={(e) => {
@@ -64,22 +64,22 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         className={cn(
-          'w-[min(420px,92vw)] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)]',
+          'w-[min(420px,92vw)] rounded-xl border border-(--border) bg-(--surface-elevated) p-5 shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease)',
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1',
         )}
       >
-        <h2 id="confirm-dialog-title" className="text-sm font-semibold text-[var(--foreground)]">
+        <h2 id="confirm-dialog-title" className="text-sm font-semibold text-(--foreground)">
           {title}
         </h2>
         {description ? (
-          <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">{description}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-(--muted)">{description}</p>
         ) : null}
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+            className="rounded-lg border border-(--border) bg-transparent px-3 py-1.5 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-40"
           >
             {cancelLabel}
           </button>

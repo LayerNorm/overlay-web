@@ -25,12 +25,12 @@ export function DollarAmountInput({
   const [text, setText] = useState<string | null>(null)
   const clamp = (dollars: number) => Math.min(maxCents, Math.max(minCents, dollars * 100))
   return (
-    <span className="inline-flex flex-none items-center gap-1.5 whitespace-nowrap text-sm text-[var(--muted)]">
+    <span className="inline-flex flex-none items-center gap-1.5 whitespace-nowrap text-sm text-(--muted)">
       $
       <Input
         aria-label={label}
         inputMode="numeric"
-        className="h-8 !w-16 flex-none tabular-nums"
+        className="h-8 w-16! flex-none tabular-nums"
         value={text ?? String(valueCents / 100)}
         onChange={(event) => {
           const raw = event.target.value.replace(/[^\d]/g, '').slice(0, 5)

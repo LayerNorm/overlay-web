@@ -41,13 +41,13 @@ export function CollapsibleSection({
         aria-expanded={open}
         aria-controls={contentId}
         className={cn(
-          'flex w-full items-center gap-1.5 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)] transition-colors hover:text-[var(--foreground)]',
+          'flex w-full items-center gap-1.5 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light) transition-colors hover:text-(--foreground)',
           headerClassName,
         )}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {!open && collapsedSummary ? (
-          <span className="max-w-[9rem] truncate normal-case tracking-normal text-[var(--muted-light)]">{collapsedSummary}</span>
+          <span className="max-w-36 truncate normal-case tracking-normal text-(--muted-light)">{collapsedSummary}</span>
         ) : null}
         <ChevronDown
           size={12}

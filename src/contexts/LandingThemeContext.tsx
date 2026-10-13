@@ -200,7 +200,7 @@ export function LandingThemeProvider({ children }: { children: React.ReactNode }
           colorScheme: landingTheme,
           ...LANDING_CSS_VARS[landingTheme],
         }}
-        className={`flex flex-col bg-[var(--background)] text-[var(--foreground)] ${embeddedInApp ? "min-h-full" : "min-h-screen"}`}
+        className={`flex flex-col bg-(--background) text-(--foreground) ${embeddedInApp ? "min-h-full" : "min-h-screen"}`}
       >
         {children}
       </div>

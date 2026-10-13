@@ -108,7 +108,7 @@ export function DelayedTooltip({
               width: 'max-content',
               maxWidth: 'min(calc(100vw - 16px), 20rem)',
             }}
-            className="pointer-events-none rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-center text-[11px] font-medium leading-snug text-[var(--muted)] shadow-sm"
+            className="pointer-events-none rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-center text-[11px] font-medium leading-snug text-(--muted) shadow-xs"
           >
             {label}
           </span>,

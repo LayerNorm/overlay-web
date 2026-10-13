@@ -78,18 +78,18 @@ export function FileShareMenu({
       <button
         type="button"
         onClick={() => setShowMenu((v) => !v)}
-        className="rounded-md p-1.5 text-[var(--muted)] transition-[color,background-color,transform] duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90"
+        className="rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90"
         aria-label="More options"
       >
         <MoreVertical size={16} strokeWidth={1.75} />
       </button>
 
       {showMenu && (
-        <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+        <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
           <button
             type="button"
             onClick={() => setShowShareSubmenu((v) => !v)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors"
+            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
           >
             <Share2 size={14} />
             <span>Share</span>

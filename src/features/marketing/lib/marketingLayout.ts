@@ -11,7 +11,7 @@
 
 /** Full-width marketing section with top hairline + vertical rhythm. */
 export function marketingSection(): string {
-  return "border-t border-[var(--border)] px-5 py-16 md:px-8 md:py-24";
+  return "border-t border-(--border) px-5 py-16 md:px-8 md:py-24";
 }
 
 /** Centered max-width container used inside every marketing section. */
@@ -29,7 +29,7 @@ export function marketingHeroGrid(): string {
 
 /** Uppercase eyebrow label above section headings. */
 export function marketingEyebrow(): string {
-  return "text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]";
+  return "text-xs font-medium uppercase tracking-[0.24em] text-(--muted-light)";
 }
 
 /**
@@ -62,17 +62,17 @@ export const MARKETING_LOGO_SIZE = 10 as const;
  * `rounded-md` control styling (not `rounded-lg`).
  */
 export function marketingIconChip(): string {
-  return "flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)]";
+  return "flex h-10 w-10 items-center justify-center rounded-md border border-(--border) bg-(--surface-muted)";
 }
 
 /** Small feature card in a primitives grid. */
 export function marketingFeatureCard(): string {
-  return "bg-[var(--surface-elevated)] p-5";
+  return "bg-(--surface-elevated) p-5";
 }
 
 /** Large product demo window chrome. */
 export function marketingDemoFrame(): string {
-  return "overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-[0_24px_80px_var(--overlay-scrim)]";
+  return "overflow-hidden rounded-2xl border border-(--border) bg-(--background) shadow-[0_24px_80px_var(--overlay-scrim)]";
 }
 
 /**
@@ -96,10 +96,10 @@ export function marketingTint(tint: MarketingTint): string {
 
 /** Mini-scene stage inside a feature card. */
 export function marketingMiniScene(): string {
-  return "relative h-[140px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3";
+  return "relative h-[140px] overflow-hidden rounded-lg border border-(--border) bg-(--surface-muted) p-3";
 }
 
 /** Dark ownership / security band surface — inverts the theme tokens. */
 export function marketingDarkBand(): string {
-  return "bg-[var(--foreground)] text-[var(--background)]";
+  return "bg-(--foreground) text-(--background)";
 }

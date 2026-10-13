@@ -24,11 +24,11 @@ export function KnowledgeFileDetailPanel({
             value={fileContent}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start typing..."
-            className="min-h-[calc(100vh-11rem)] w-full flex-1 resize-none bg-transparent px-2 py-4 font-mono text-sm leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+            className="min-h-[calc(100vh-11rem)] w-full flex-1 resize-none bg-transparent px-2 py-4 font-mono text-sm leading-relaxed text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
           />
-          <div className="shrink-0 border-t border-[var(--border)] px-2 py-2 text-[11px] text-[var(--muted-light)]">
+          <div className="shrink-0 border-t border-(--border) px-2 py-2 text-[11px] text-(--muted-light)">
             Reference in chat with{' '}
-            <code className="rounded bg-[var(--surface-subtle)] px-1 py-0.5 font-mono text-[var(--foreground)]">
+            <code className="rounded-sm bg-(--surface-subtle) px-1 py-0.5 font-mono text-(--foreground)">
               @{fileName}
             </code>
           </div>

@@ -34,7 +34,7 @@ export function WorkspaceBillingSection({
   const { state } = billing
 
   if (state.status === 'loading') {
-    return <div className="flex min-h-72 items-center justify-center text-sm text-[var(--muted)]"><Loader2 size={16} className="mr-2 animate-spin" />Loading workspace billing…</div>
+    return <div className="flex min-h-72 items-center justify-center text-sm text-(--muted)"><Loader2 size={16} className="mr-2 animate-spin" />Loading workspace billing…</div>
   }
   if (state.status === 'error') {
     return (
@@ -160,7 +160,7 @@ function WorkspaceBillingLoaded({
       {message ? (
         <div
           role='status'
-          className='rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm text-[var(--foreground)]'
+          className='rounded-xl border border-(--border) bg-(--surface-subtle) px-4 py-3 text-sm text-(--foreground)'
         >
           {message}
         </div>
@@ -189,11 +189,11 @@ function WalletSetupCard({
   onSetup: () => void
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] p-5">
+    <div className="rounded-xl border border-(--border) p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-[var(--foreground)]">Free</p>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-[var(--muted)]">Everyone working in this workspace shares one free weekly allowance of chat turns. Add a plan to give the workspace its own pool of credits for agents, files, automations, browser runs, and other hosted work, shared by every member.</p>
+          <p className="text-sm font-medium text-(--foreground)">Free</p>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-(--muted)">Everyone working in this workspace shares one free weekly allowance of chat turns. Add a plan to give the workspace its own pool of credits for agents, files, automations, browser runs, and other hosted work, shared by every member.</p>
         </div>
         {canManage ? <Button size="sm" disabled={busy !== null} onClick={onSetup}>{busy === 'initialize' ? <Loader2 size={13} className="animate-spin" /> : <WalletCards size={13} />}Add a plan</Button> : null}
       </div>
@@ -239,7 +239,7 @@ function WalletOverview({
 
       {summary.canManage ? (
         <div className="flex justify-end"><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspaceId))}>Manage billing</Button></div>
-      ) : <p className="text-xs text-[var(--muted)]">{summary.canTopUp ? 'Only workspace owners and admins can change the subscription.' : 'Only workspace owners and admins can add credits or change the subscription.'}</p>}
+      ) : <p className="text-xs text-(--muted)">{summary.canTopUp ? 'Only workspace owners and admins can change the subscription.' : 'Only workspace owners and admins can add credits or change the subscription.'}</p>}
 
     </>
   )
@@ -248,20 +248,20 @@ function WalletOverview({
 function WalletCreditsCard({ summary }: { summary: WorkspaceBillingSummaryResponse }) {
   const allowanceUsed = Math.min(100, Math.max(0, summary.credits.allowancePercentUsed))
   return (
-    <div className="rounded-xl border border-[var(--border)] p-4">
+    <div className="rounded-xl border border-(--border) p-4">
       <div className="flex items-baseline justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-[var(--foreground)]">Workspace credits</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">{formatCredits(summary.credits.remaining)} remaining</p>
+          <p className="text-sm font-medium text-(--foreground)">Workspace credits</p>
+          <p className="mt-1 text-xs text-(--muted)">{formatCredits(summary.credits.remaining)} remaining</p>
         </div>
-        <span className="text-xs text-[var(--muted)]">{allowanceUsed.toFixed(0)}% allowance used</span>
+        <span className="text-xs text-(--muted)">{allowanceUsed.toFixed(0)}% allowance used</span>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-subtle)]" aria-label={`${allowanceUsed.toFixed(0)}% allowance used`}>
-        <div className="h-full rounded-full bg-[var(--foreground)] transition-[width]" style={{ width: `${allowanceUsed}%` }} />
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-(--surface-subtle)" aria-label={`${allowanceUsed.toFixed(0)}% allowance used`}>
+        <div className="h-full rounded-full bg-(--foreground) transition-[width]" style={{ width: `${allowanceUsed}%` }} />
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
-        <div><dt className="text-[var(--muted-light)]">Used this period</dt><dd className="mt-1 text-[var(--foreground)]">{formatCredits(summary.credits.used)}</dd></div>
-        <div><dt className="text-[var(--muted-light)]">Top-up credits</dt><dd className="mt-1 text-[var(--foreground)]">{formatCredits(summary.credits.topUpBalance)}</dd></div>
+        <div><dt className="text-(--muted-light)">Used this period</dt><dd className="mt-1 text-(--foreground)">{formatCredits(summary.credits.used)}</dd></div>
+        <div><dt className="text-(--muted-light)">Top-up credits</dt><dd className="mt-1 text-(--foreground)">{formatCredits(summary.credits.topUpBalance)}</dd></div>
       </dl>
     </div>
   )
@@ -269,10 +269,10 @@ function WalletCreditsCard({ summary }: { summary: WorkspaceBillingSummaryRespon
 
 function WalletSubscriptionCard({ summary }: { summary: WorkspaceBillingSummaryResponse }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] p-4">
-      <p className="text-sm font-medium text-[var(--foreground)]">{summary.subscription.planKind === 'paid' ? `$${summary.subscription.planAmountCents / 100}/month` : 'No subscription'}</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">One plan for the whole workspace. Unlimited members. Owners and admins control funding.</p>
-      {summary.subscription.status ? <span className="mt-3 inline-flex rounded-full bg-[var(--surface-subtle)] px-2 py-1 text-[10px] font-medium capitalize text-[var(--muted)]">{summary.subscription.status}</span> : null}
+    <div className="rounded-xl border border-(--border) p-4">
+      <p className="text-sm font-medium text-(--foreground)">{summary.subscription.planKind === 'paid' ? `$${summary.subscription.planAmountCents / 100}/month` : 'No subscription'}</p>
+      <p className="mt-1 text-xs leading-5 text-(--muted)">One plan for the whole workspace. Unlimited members. Owners and admins control funding.</p>
+      {summary.subscription.status ? <span className="mt-3 inline-flex rounded-full bg-(--surface-subtle) px-2 py-1 text-[10px] font-medium capitalize text-(--muted)">{summary.subscription.status}</span> : null}
     </div>
   )
 }
@@ -312,13 +312,13 @@ function CheckoutActions({
         </BillingActionCard>
       </div>
 
-      <div className="flex items-start gap-3 text-xs leading-5 text-[var(--muted)]"><Toggle checked={acceptedCheckoutTerms} onCheckedChange={setAcceptedCheckoutTerms} aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms" /><span>I agree to the current <a className="underline" href="/terms">Terms of Service</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing and cancellation terms</a>.</span></div>
+      <div className="flex items-start gap-3 text-xs leading-5 text-(--muted)"><Toggle checked={acceptedCheckoutTerms} onCheckedChange={setAcceptedCheckoutTerms} aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms" /><span>I agree to the current <a className="underline" href="/terms">Terms of Service</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing and cancellation terms</a>.</span></div>
     </>
   )
 }
 
 function BillingActionCard({ children, description, title }: { children: ReactNode; description: string; title: string }) {
-  return <div className="rounded-xl border border-[var(--border)] p-4"><p className="text-sm font-medium text-[var(--foreground)]">{title}</p><p className="mt-1 min-h-10 text-xs leading-5 text-[var(--muted)]">{description}</p><div className="mt-4 flex items-center gap-2">{children}</div></div>
+  return <div className="rounded-xl border border-(--border) p-4"><p className="text-sm font-medium text-(--foreground)">{title}</p><p className="mt-1 min-h-10 text-xs leading-5 text-(--muted)">{description}</p><div className="mt-4 flex items-center gap-2">{children}</div></div>
 }
 
 const CREDITS_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })

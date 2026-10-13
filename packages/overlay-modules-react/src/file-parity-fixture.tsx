@@ -74,7 +74,7 @@ function CanonicalFilesSurfaceFixture() {
     nodes: files.map(normalizeKnowledgeSurfaceNode),
   }), [files])
   return (
-    <div className="shared-app-scope h-[760px] overflow-hidden rounded-xl border border-[var(--border)]">
+    <div className="shared-app-scope h-[760px] overflow-hidden rounded-xl border border-(--border)">
       <SharedKnowledgeSurface
         mode="files"
         initialFiles={files}
@@ -123,7 +123,7 @@ function CanonicalNotebookEditorFixture() {
   }), [])
 
   return (
-    <div className="shared-app-scope h-[760px] overflow-hidden rounded-xl border border-[var(--border)]">
+    <div className="shared-app-scope h-[760px] overflow-hidden rounded-xl border border-(--border)">
       <CanonicalNotebookEditor
         noteId={CANONICAL_NOTE_FIXTURE._id}
         hideSidebar

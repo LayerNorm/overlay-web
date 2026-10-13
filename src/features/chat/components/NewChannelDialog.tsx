@@ -108,27 +108,27 @@ export function NewChannelDialog({
       )}
     >
       <div className="mt-5 space-y-4">
-        <label className="block text-xs font-medium text-[var(--foreground)]">
+        <label className="block text-xs font-medium text-(--foreground)">
           Name
           <div className="relative mt-1.5">
-            <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
+            <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
             <Input autoFocus value={name} onChange={(event) => setName(event.target.value)} className="pl-9" placeholder="product-launch" />
           </div>
         </label>
-        <label className="block text-xs font-medium text-[var(--foreground)]">
-          Topic <span className="font-normal text-[var(--muted-light)]">optional</span>
+        <label className="block text-xs font-medium text-(--foreground)">
+          Topic <span className="font-normal text-(--muted-light)">optional</span>
           <Input value={topic} onChange={(event) => setTopic(event.target.value)} className="mt-1.5" placeholder="What belongs in this channel?" />
         </label>
         <div>
-          <span className="text-xs font-medium text-[var(--foreground)]">Visibility</span>
+          <span className="text-xs font-medium text-(--foreground)">Visibility</span>
           <div className="mt-1.5 grid grid-cols-2 gap-2">
             {([
               ['public', Hash, 'Everyone joins automatically'],
               ['private', Lock, 'Only invited members can open it'],
             ] as const).map(([value, Icon, detail]) => (
-              <button key={value} type="button" onClick={() => setVisibility(value)} className={`rounded-lg border p-3 text-left ${visibility === value ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]' : 'border-[var(--border)]'}`}>
+              <button key={value} type="button" onClick={() => setVisibility(value)} className={`rounded-lg border p-3 text-left ${visibility === value ? 'border-(--foreground) bg-(--surface-subtle)' : 'border-(--border)'}`}>
                 <span className="flex items-center gap-2 text-xs font-medium capitalize"><Icon size={13} />{value}</span>
-                <span className="mt-1 block text-[10px] leading-4 text-[var(--muted-light)]">{detail}</span>
+                <span className="mt-1 block text-[10px] leading-4 text-(--muted-light)">{detail}</span>
               </button>
             ))}
           </div>
@@ -136,7 +136,7 @@ export function NewChannelDialog({
         {visibility === 'private' ? (
           <div>
             <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
               <Input value={query} onChange={(event) => setQuery(event.target.value)} className="pl-9" placeholder="Add people or agents" />
             </div>
             <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
@@ -147,10 +147,10 @@ export function NewChannelDialog({
                 const active = selectedSet.has(principalId)
                 const Icon = item.principalType === 'agent' ? Bot : UserRound
                 return (
-                  <button key={principalId} type="button" onClick={() => setSelected((current) => active ? current.filter((id) => id !== principalId) : [...current, principalId])} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-[var(--surface-subtle)]">
-                    <Icon size={13} className="text-[var(--muted)]" />
+                  <button key={principalId} type="button" onClick={() => setSelected((current) => active ? current.filter((id) => id !== principalId) : [...current, principalId])} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-(--surface-subtle)">
+                    <Icon size={13} className="text-(--muted)" />
                     <span className="min-w-0 flex-1 truncate text-xs">{item.name}</span>
-                    <span className={`flex h-4 w-4 items-center justify-center rounded border ${active ? 'border-[var(--muted)] bg-[var(--muted)] text-[var(--background)]' : 'border-[var(--border)]'}`}>{active ? <Check size={10} /> : null}</span>
+                    <span className={`flex h-4 w-4 items-center justify-center rounded-sm border ${active ? 'border-(--muted) bg-(--muted) text-(--background)' : 'border-(--border)'}`}>{active ? <Check size={10} /> : null}</span>
                   </button>
                 )
               })

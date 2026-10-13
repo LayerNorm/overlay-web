@@ -124,7 +124,7 @@ export default function AppSidebar({
             label={brandLabel}
             onNavigate={s.closeMobileDrawer}
             className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
-            labelClassName="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
+            labelClassName="truncate text-lg font-medium tracking-tight text-(--foreground)"
           />
         }
         isGuestConfirmed={s.isGuestConfirmed}

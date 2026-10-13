@@ -21,7 +21,7 @@ export function IconButton({
     <button
       type={type}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50',
+        'inline-flex shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50',
         sizeClasses[size],
         className,
       )}

@@ -30,7 +30,7 @@ export function AgentSlashMenu({
       role="listbox"
       aria-label="Agent commands"
       ref={listRef}
-      className="absolute inset-x-3 bottom-full z-20 mb-1.5 max-h-56 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+      className="absolute inset-x-3 bottom-full z-20 mb-1.5 max-h-56 overflow-y-auto rounded-xl border border-(--border) bg-(--surface-elevated) p-1 shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
     >
       {commands.map((command, index) => (
         <button
@@ -43,17 +43,17 @@ export function AgentSlashMenu({
             onSelect(command)
           }}
           onMouseEnter={() => undefined}
-          className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${index === highlightedIndex ? 'bg-[var(--surface-subtle)]' : ''}`}
+          className={`flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${index === highlightedIndex ? 'bg-(--surface-subtle)' : ''}`}
         >
-          <span aria-hidden className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-[var(--border)] text-[11px] font-semibold leading-none text-[var(--muted)]">/</span>
+          <span aria-hidden className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-(--border) text-[11px] font-semibold leading-none text-(--muted)">/</span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium text-[var(--foreground)]">/{command.name}</span>
+            <span className="block truncate text-xs font-medium text-(--foreground)">/{command.name}</span>
             {command.description ? (
-              <span className="mt-0.5 block truncate text-[11px] leading-4 text-[var(--muted)]">{command.description}</span>
+              <span className="mt-0.5 block truncate text-[11px] leading-4 text-(--muted)">{command.description}</span>
             ) : null}
           </span>
           {command.inputHint ? (
-            <span className="mt-0.5 shrink-0 truncate rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] leading-4 text-[var(--muted)]">{command.inputHint}</span>
+            <span className="mt-0.5 shrink-0 truncate rounded-sm border border-(--border) px-1.5 py-0.5 text-[10px] leading-4 text-(--muted)">{command.inputHint}</span>
           ) : null}
         </button>
       ))}

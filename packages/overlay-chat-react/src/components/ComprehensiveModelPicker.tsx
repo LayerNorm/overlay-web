@@ -15,8 +15,8 @@ function isByokModel(model: ChatModel): boolean {
 function ByokBadge({ pill }: { pill?: boolean }) {
   return (
     <span
-      className={`inline-flex h-5 items-center bg-[var(--surface-subtle)] text-[9px] font-semibold leading-none text-[var(--muted)] ${
-        pill ? 'rounded-full px-1.5 tracking-tight' : 'rounded px-1'
+      className={`inline-flex h-5 items-center bg-(--surface-subtle) text-[9px] font-semibold leading-none text-(--muted) ${
+        pill ? 'rounded-full px-1.5 tracking-tight' : 'rounded-sm px-1'
       }`}
     >
       <KeyRound size={8} strokeWidth={2} className="mr-0.5" />
@@ -29,7 +29,7 @@ function CostBadge({ cost }: { cost: number }) {
   return (
     <span
       className={`inline-flex h-5 items-center rounded-full px-1.5 text-[9px] font-semibold leading-none tracking-tight ${
-        cost === 0 ? '' : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+        cost === 0 ? '' : 'bg-(--surface-subtle) text-(--muted)'
       }`}
       style={cost === 0 ? { background: 'var(--chat-badge-free-bg)', color: 'var(--chat-badge-free-fg)' } : undefined}
     >
@@ -40,7 +40,7 @@ function CostBadge({ cost }: { cost: number }) {
 
 function CapabilityBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[var(--surface-subtle)] text-[var(--muted)]">
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-(--surface-subtle) text-(--muted)">
       {children}
     </span>
   )
@@ -148,8 +148,8 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => !disabled && setOpen((v) => !v)}
-        className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-xs md:max-w-[13rem] ${
-          disabled ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+        className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-1.5 text-left text-xs md:max-w-52 ${
+          disabled ? 'cursor-not-allowed text-(--muted-light)' : 'text-(--muted) hover:bg-(--border)'
         }`}
       >
         <span className="min-w-0 truncate">{buttonLabel}</span>
@@ -157,7 +157,7 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
       </button>
       {open ? (
         <div
-          className="overlay-pop-in absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64"
+          className="overlay-pop-in absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-hidden rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg md:left-auto md:right-0 md:w-64"
           onMouseLeave={() => setHoveredId(null)}
         >
           <div className="max-h-72 overflow-y-auto">
@@ -168,8 +168,8 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                     <button
                       key={m.id}
                       type="button"
-                      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${
-                        isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
+                        isSel ? 'font-medium text-(--foreground)' : 'text-(--muted)'
                       }`}
                       onClick={() => {
                         onPreferencesChange({ ...preferences, imageModelId: m.id })
@@ -190,8 +190,8 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                       <button
                         key={m.id}
                         type="button"
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${
-                          isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
+                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
+                          isSel ? 'font-medium text-(--foreground)' : 'text-(--muted)'
                         }`}
                         onClick={() => {
                           onPreferencesChange({ ...preferences, videoModelId: m.id })
@@ -212,8 +212,8 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                       <button
                         key={m.id}
                         type="button"
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${
-                          isSel ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
+                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
+                          isSel ? 'font-medium text-(--foreground)' : 'text-(--muted)'
                         }`}
                         onMouseEnter={() => setHoveredId(m.id)}
                         onClick={() => {
@@ -225,7 +225,7 @@ export function ComprehensiveModelPicker<TPreferences extends ChatModelPreferenc
                           {isSel ? <Check size={10} className="shrink-0" /> : <span className="inline-block w-[10px] shrink-0" />}
                           <span className="min-w-0 truncate">{m.name}</span>
                           {byok && m.provider ? (
-                            <span className="shrink-0 truncate text-[10px] text-[var(--muted-light)]">{m.provider}</span>
+                            <span className="shrink-0 truncate text-[10px] text-(--muted-light)">{m.provider}</span>
                           ) : null}
                         </span>
                         <ModelBadges m={m} isHovered={hoveredId === m.id} />

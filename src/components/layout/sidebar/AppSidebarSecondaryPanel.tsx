@@ -39,10 +39,10 @@ export function SecondaryPanelHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="flex h-16 min-h-16 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
+    <div className="flex h-16 min-h-16 shrink-0 items-center gap-2 border-b border-(--border) px-4">
       {/* Match the primary rail wordmark: Libre Baskerville, lowercase, text-lg. */}
       <span
-        className="min-w-0 flex-1 truncate text-lg font-medium lowercase tracking-tight text-[var(--foreground)]"
+        className="min-w-0 flex-1 truncate text-lg font-medium lowercase tracking-tight text-(--foreground)"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
         {title}
@@ -83,7 +83,7 @@ export function SecondaryPanelContent({
         </SidebarResourceSection>
       ) : null}
       {footer ? (
-        <div className="mt-auto shrink-0 border-t border-[var(--border)] px-2 py-3">{footer}</div>
+        <div className="mt-auto shrink-0 border-t border-(--border) px-2 py-3">{footer}</div>
       ) : null}
     </div>
   )

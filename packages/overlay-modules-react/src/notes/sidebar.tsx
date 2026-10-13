@@ -20,11 +20,11 @@ export function NotebookNotesSidebar({
   onDeleteNote,
 }: NotebookNotesSidebarProps) {
   return (
-    <div className="w-52 h-full flex flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]">
-      <div className="flex h-16 items-center border-b border-[var(--border)] px-3">
+    <div className="w-52 h-full flex flex-col border-r border-(--border) bg-(--sidebar-surface)">
+      <div className="flex h-16 items-center border-b border-(--border) px-3">
         <button
           onClick={onCreateNote}
-          className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
+          className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors"
         >
           <Plus size={13} />
           New note
@@ -61,8 +61,8 @@ const NotebookNoteRow = memo(function NotebookNoteRow({
   return (
     <div className={`group flex items-center justify-between rounded-md transition-colors ${
       active
-        ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-        : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
+        ? 'bg-(--surface-subtle) text-(--foreground)'
+        : 'text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)'
     }`}>
       <button
         type="button"
@@ -75,7 +75,7 @@ const NotebookNoteRow = memo(function NotebookNoteRow({
         type="button"
         onClick={(event) => onDeleteNote(note._id, event)}
         aria-label={`Delete ${note.title || 'Untitled'}`}
-        className="mr-1 rounded p-1 opacity-0 transition-opacity hover:bg-[var(--border)] focus:opacity-100 group-hover:opacity-100"
+        className="mr-1 rounded-sm p-1 opacity-0 transition-opacity hover:bg-(--border) focus:opacity-100 group-hover:opacity-100"
       >
         <Trash2 size={11} />
       </button>
@@ -91,13 +91,13 @@ export function NotebookEmptyState({ onCreateNote }: NotebookEmptyStateProps) {
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center">
-        <p className="mb-2 text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
+        <p className="mb-2 text-3xl text-(--foreground)" style={{ fontFamily: 'var(--font-serif)' }}>
           notes
         </p>
-        <p className="text-sm text-[var(--muted)] mb-4">Select a note or create a new one</p>
+        <p className="text-sm text-(--muted) mb-4">Select a note or create a new one</p>
         <button
           onClick={onCreateNote}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-colors"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-(--border) bg-(--surface-muted) text-(--foreground) hover:bg-(--surface-subtle) transition-colors"
         >
           <Plus size={14} />
           New Note

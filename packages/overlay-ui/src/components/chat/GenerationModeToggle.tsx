@@ -117,10 +117,10 @@ export function GenerationModeSelect({
         type="button"
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}
-        className={`flex h-8 min-h-8 max-w-[7.5rem] min-w-0 items-center justify-center gap-1 rounded-md bg-[var(--surface-subtle)] px-2 text-xs leading-none text-[var(--muted)] transition-colors ${
+        className={`flex h-8 min-h-8 max-w-30 min-w-0 items-center justify-center gap-1 rounded-md bg-(--surface-subtle) px-2 text-xs leading-none text-(--muted) transition-colors ${
           disabled
             ? 'cursor-not-allowed opacity-50'
-            : 'hover:bg-[var(--border)] hover:text-[var(--foreground)]'
+            : 'hover:bg-(--border) hover:text-(--foreground)'
         }`}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -134,7 +134,7 @@ export function GenerationModeSelect({
       {open && (
         <ul
           role="listbox"
-          className="overlay-pop-in absolute right-0 top-full z-30 mt-1 min-w-[7.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+          className="overlay-pop-in absolute right-0 top-full z-30 mt-1 min-w-30 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg"
         >
           {MODES.map(({ value, label, Icon }) => {
             const active = mode === value
@@ -149,7 +149,7 @@ export function GenerationModeSelect({
                     setOpen(false)
                   }}
                   className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs ${
-                    active ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]' : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)]'
+                    active ? 'bg-(--surface-muted) font-medium text-(--foreground)' : 'text-(--muted) hover:bg-(--surface-subtle)'
                   }`}
                 >
                   {active ? <Check size={10} className="shrink-0" /> : <span className="inline-block w-[10px] shrink-0" />}
@@ -213,16 +213,16 @@ export function CollapsibleGenerationMode({
         disabled={disabled}
         onClick={() => !disabled && setOpen((v) => !v)}
         title={`Output: ${label}`}
-        className={`inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--surface-subtle)] px-2 text-xs text-[var(--muted)] transition-colors ${
-          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
+        className={`inline-flex h-8 items-center gap-1 rounded-lg bg-(--surface-subtle) px-2 text-xs text-(--muted) transition-colors ${
+          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-(--surface-muted) hover:text-(--foreground)'
         }`}
       >
         <Icon size={14} className="shrink-0" />
-        <span className="max-w-[4.5rem] truncate sm:max-w-none">{label}</span>
+        <span className="max-w-18 truncate sm:max-w-none">{label}</span>
         <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
-        <div className="overlay-pop-in absolute bottom-full left-0 z-50 mb-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
+        <div className="overlay-pop-in absolute bottom-full left-0 z-50 mb-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
           <GenerationModeToggle
             mode={mode}
             onChange={(next) => {
@@ -258,7 +258,7 @@ interface AskActModeToggleProps {
 /** Same chrome as {@link GenerationModeToggle} — for the composer only. */
 export function AskActModeToggle({ mode, onChange, disabled, className = '' }: AskActModeToggleProps) {
   return (
-    <div className={`flex h-8 shrink-0 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5 ${className}`}>
+    <div className={`flex h-8 shrink-0 items-center rounded-lg bg-(--surface-subtle) p-0.5 ${className}`}>
       {ASK_ACT_MODES.map(({ value, label, Icon }) => {
         const active = mode === value
         return (
@@ -272,8 +272,8 @@ export function AskActModeToggle({ mode, onChange, disabled, className = '' }: A
               disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
             } ${
               active
-                ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs'
+                : 'text-(--muted) hover:text-(--foreground)'
             }`}
           >
             <Icon size={11} />

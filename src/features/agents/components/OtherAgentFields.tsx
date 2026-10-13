@@ -71,7 +71,7 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
           onChange={(adapterId) => onChange({ adapterId, providerAccountId: '', model: '' })}
         />
         {AGENT_PROVIDERS[other.adapterId].experimental ? (
-          <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+          <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
             Experimental: {AGENT_PROVIDERS[other.adapterId].label} runs with your own key and has not been proven with as many accounts as Claude Code and Codex.
           </p>
         ) : null}
@@ -88,10 +88,10 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
               <button
                 type="button"
                 onClick={() => setConnecting(true)}
-                className="flex w-full items-center justify-between rounded-xl border border-[var(--border)] px-3 py-2.5 text-left text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+                className="flex w-full items-center justify-between rounded-xl border border-(--border) px-3 py-2.5 text-left text-sm text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
               >
                 <span>Connect {AGENT_PROVIDERS[other.adapterId].label}</span>
-                <span className="text-xs text-[var(--muted)]">{other.adapterId === 'codex' ? 'Sign in with ChatGPT' : 'Sign in or add a key'}</span>
+                <span className="text-xs text-(--muted)">{other.adapterId === 'codex' ? 'Sign in with ChatGPT' : 'Sign in or add a key'}</span>
               </button>
             ) : (
               <ListboxSelect
@@ -120,9 +120,9 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
           </div>
         </>
       ) : (
-        <div className="rounded-xl border border-[var(--border)] p-3 text-xs text-[var(--muted)]">
+        <div className="rounded-xl border border-(--border) p-3 text-xs text-(--muted)">
           Connecting your own computer takes a short command and an approval.{' '}
-          <button type="button" onClick={onOpenMachineSetup} className="font-medium text-[var(--foreground)] underline underline-offset-2">
+          <button type="button" onClick={onOpenMachineSetup} className="font-medium text-(--foreground) underline underline-offset-2">
             Set it up
           </button>
         </div>

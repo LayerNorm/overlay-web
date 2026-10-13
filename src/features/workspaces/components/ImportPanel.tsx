@@ -46,8 +46,8 @@ export function ImportPanel() {
   return (
     <div className="px-5 py-4">
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-[var(--foreground)]">Import from another service</h3>
-        <p className="mt-0.5 text-xs text-[var(--muted)]">
+        <h3 className="text-sm font-semibold text-(--foreground)">Import from another service</h3>
+        <p className="mt-0.5 text-xs text-(--muted)">
           Bring your existing conversation history into Overlay. Pick a service to begin.
         </p>
       </div>
@@ -65,17 +65,17 @@ export function ImportPanel() {
               </span>
               <span className="min-w-0 flex-1 text-left">
                 <span className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium text-[var(--foreground)]">{item.name}</span>
+                  <span className="truncate text-sm font-medium text-(--foreground)">{item.name}</span>
                   {!item.available ? (
-                    <span className="rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
+                    <span className="rounded-sm bg-(--surface-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--muted)">
                       Coming soon
                     </span>
                   ) : null}
                 </span>
-                <span className="mt-0.5 block truncate text-[11px] text-[var(--muted)]">{item.blurb}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-(--muted)">{item.blurb}</span>
               </span>
               {item.available ? (
-                <ArrowRight size={14} className="shrink-0 text-[var(--muted)]" />
+                <ArrowRight size={14} className="shrink-0 text-(--muted)" />
               ) : null}
             </>
           )
@@ -85,7 +85,7 @@ export function ImportPanel() {
               <div
                 key={item.key}
                 aria-disabled
-                className="flex cursor-not-allowed items-center gap-3 rounded-xl border border-[var(--border)] p-3 opacity-60"
+                className="flex cursor-not-allowed items-center gap-3 rounded-xl border border-(--border) p-3 opacity-60"
               >
                 {cardBody}
               </div>
@@ -97,7 +97,7 @@ export function ImportPanel() {
               key={item.key}
               type="button"
               onClick={() => setService(item.key)}
-              className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-3 text-left transition-colors hover:border-[var(--foreground)]/30 hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--foreground)]"
+              className="flex items-center gap-3 rounded-xl border border-(--border) p-3 text-left transition-colors hover:border-(--foreground)/30 hover:bg-(--surface-subtle) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--foreground)"
             >
               {cardBody}
             </button>
@@ -105,7 +105,7 @@ export function ImportPanel() {
         })}
       </div>
 
-      <p className="mt-4 text-[11px] text-[var(--muted-light)]">
+      <p className="mt-4 text-[11px] text-(--muted-light)">
         Imported messages are read-only and appear as conversations in your workspace. More services are on the way.
       </p>
     </div>

@@ -72,7 +72,7 @@ function ManifestoContent() {
                 <Reveal key={principle.title}>
                   <div className="flex gap-6">
                     <span
-                      className="shrink-0 pt-1 text-sm tabular-nums text-[var(--muted-light)]"
+                      className="shrink-0 pt-1 text-sm tabular-nums text-(--muted-light)"
                       style={minimalSerif()}
                     >
                       {String(i + 1).padStart(2, "0")}
@@ -84,7 +84,7 @@ function ManifestoContent() {
                       >
                         {principle.title}
                       </h2>
-                      <p className={`mt-4 text-lg leading-9 text-[var(--muted)]`}>
+                      <p className={`mt-4 text-lg leading-9 text-(--muted)`}>
                         {principle.body}
                       </p>
                     </div>
@@ -100,7 +100,7 @@ function ManifestoContent() {
           <div className={minimalProse()}>
             <Reveal>
               <p
-                className="text-lg text-[var(--foreground)]"
+                className="text-lg text-(--foreground)"
                 style={minimalSerif()}
               >
                 — LayerNorm

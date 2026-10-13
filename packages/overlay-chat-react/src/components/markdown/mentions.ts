@@ -83,4 +83,4 @@ export function isMentionHref(value: unknown): value is string {
 }
 
 export const mentionChipClass =
-  'mx-0.5 inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-1.5 py-0.5 align-middle text-xs font-medium text-[var(--foreground)] no-underline!'
+  'mx-0.5 inline-flex items-center rounded-md border border-(--border) bg-(--surface-muted) px-1.5 py-0.5 align-middle text-xs font-medium text-(--foreground) no-underline!'

@@ -48,8 +48,8 @@ export function SettingsSectionRenderer({
               className={cn(
                 'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors',
                 activeSection?.id === section.id
-                  ? 'bg-[var(--surface-subtle)] font-medium text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+                  ? 'bg-(--surface-subtle) font-medium text-(--foreground)'
+                  : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)',
               )}
             >
               {section.label}
@@ -60,13 +60,13 @@ export function SettingsSectionRenderer({
     >
       <AppScreenBody padding="none" maxWidth="none" className="p-6">
         {loading ? (
-          <div className="text-xs text-[var(--muted)]">Loading settings...</div>
+          <div className="text-xs text-(--muted)">Loading settings...</div>
         ) : selectedPanel ? (
           <div className="mx-auto max-w-3xl">
             <div className="mb-5">
               <h1 className="text-lg font-semibold">{selectedPanel.label}</h1>
               {selectedPanel.description ? (
-                <p className="mt-1 text-sm text-[var(--muted)]">{selectedPanel.description}</p>
+                <p className="mt-1 text-sm text-(--muted)">{selectedPanel.description}</p>
               ) : null}
             </div>
             {renderPanel(selectedPanel)}

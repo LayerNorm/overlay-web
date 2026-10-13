@@ -1219,7 +1219,7 @@ export const INLINE_DIFF_CSS = `
     color: rgba(52, 199, 89, 0.6);
     font-family: ui-monospace, monospace;
     font-size: 11px;
-    flex-shrink: 0;
+    shrink: 0;
     margin-top: 2px;
     user-select: none;
   }
@@ -1256,7 +1256,7 @@ export const INLINE_DIFF_CSS = `
   .inline-diff-btn-group {
     display: flex;
     gap: 5px;
-    flex-shrink: 0;
+    shrink: 0;
   }
 
   .inline-diff-btn {

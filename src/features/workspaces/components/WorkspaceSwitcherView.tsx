@@ -49,19 +49,19 @@ function WorkspaceList({
         <div className="space-y-1 px-2 py-2" aria-label="Loading workspaces">
           {[0, 1].map((item) => (
             <div key={item} className="flex items-center gap-2.5">
-              <span className="h-7 w-7 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
-              <span className="h-3 flex-1 animate-pulse rounded bg-[var(--surface-subtle)]" />
+              <span className="h-7 w-7 animate-pulse rounded-lg bg-(--surface-subtle)" />
+              <span className="h-3 flex-1 animate-pulse rounded-sm bg-(--surface-subtle)" />
             </div>
           ))}
         </div>
       ) : null}
 
       {status === 'error' ? (
-        <div className="px-2 py-3 text-xs text-[var(--muted)]">
+        <div className="px-2 py-3 text-xs text-(--muted)">
           <p>{error ?? 'Could not load workspaces.'}</p>
           <button
             type="button"
-            className="mt-2 inline-flex items-center gap-1.5 font-medium text-[var(--foreground)]"
+            className="mt-2 inline-flex items-center gap-1.5 font-medium text-(--foreground)"
             onClick={onRetry}
           >
             <RefreshCw size={12} />
@@ -71,7 +71,7 @@ function WorkspaceList({
       ) : null}
 
       {status === 'ready' && workspaces.length === 0 ? (
-        <div className="px-2 py-3 text-xs text-[var(--muted)]">
+        <div className="px-2 py-3 text-xs text-(--muted)">
           No workspaces yet. Create one to start collaborating.
         </div>
       ) : null}
@@ -92,17 +92,17 @@ function WorkspaceList({
           >
             <WorkspaceAvatar workspace={workspace} size="sm" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-[var(--foreground)]">
+              <span className="block truncate font-medium text-(--foreground)">
                 {workspace.name}
               </span>
-              <span className="block truncate text-[10px] capitalize text-[var(--muted-light)]">
+              <span className="block truncate text-[10px] capitalize text-(--muted-light)">
                 {memberLabel}
               </span>
             </span>
             {switching ? (
               <Loader2 size={13} className="animate-spin" />
             ) : selected ? (
-              <Check size={13} className="text-[var(--foreground)]" />
+              <Check size={13} className="text-(--foreground)" />
             ) : null}
           </MenuItem>
         )
@@ -149,7 +149,7 @@ function WorkspaceSwitcherMenu({
   const menu = (
     <div
       ref={menuRef}
-      className={`overlay-pop-in z-[10080] ${
+      className={`overlay-pop-in z-10080 ${
         portalMenu
           ? 'fixed'
           : `absolute w-[min(280px,calc(100vw-2rem))] ${
@@ -251,7 +251,7 @@ function WorkspaceSwitcherTriggerAvatar({
     return <WorkspaceAvatar workspace={activeWorkspace} size={compact || isFooter ? 'sm' : 'md'} />
   }
   return (
-    <span className={`${compact || isFooter ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-[var(--surface-subtle)]`} />
+    <span className={`${compact || isFooter ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-(--surface-subtle)`} />
   )
 }
 
@@ -266,11 +266,11 @@ function WorkspaceSwitcherTriggerLabels({
 }) {
   return (
     <span className="min-w-0 flex-1">
-      <span className={`block truncate font-medium text-[var(--foreground)] ${isFooter ? 'text-xs' : 'text-[13px]'}`}>
+      <span className={`block truncate font-medium text-(--foreground) ${isFooter ? 'text-xs' : 'text-[13px]'}`}>
         {workspaceLabel}
       </span>
       {secondaryLabel ? (
-        <span className="block truncate text-[10px] text-[var(--muted-light)]">
+        <span className="block truncate text-[10px] text-(--muted-light)">
           {secondaryLabel}
         </span>
       ) : null}
@@ -294,7 +294,7 @@ function WorkspaceSwitcherTrigger({
       aria-label={isFooter ? 'Workspace and account menu' : 'Switch workspace'}
       aria-haspopup="menu"
       aria-expanded={open}
-      className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-[var(--surface-subtle)] ${triggerButtonClassName(isFooter, compact)}`}
+      className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-(--surface-subtle) ${triggerButtonClassName(isFooter, compact)}`}
     >
       <WorkspaceSwitcherTriggerAvatar
         compact={compact}
@@ -311,7 +311,7 @@ function WorkspaceSwitcherTrigger({
       {!compact ? (
         <ChevronDown
           size={13}
-          className={`shrink-0 text-[var(--muted-light)] transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`shrink-0 text-(--muted-light) transition-transform ${open ? 'rotate-180' : ''}`}
         />
       ) : null}
     </button>

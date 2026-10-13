@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 
 export const resourceRowClass =
-  'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
 
 export type AgentsPanelView = 'personal' | 'workspace'
 

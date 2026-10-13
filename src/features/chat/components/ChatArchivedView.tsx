@@ -135,7 +135,7 @@ export function ChatArchivedView({
   if (state.status === 'loading') {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
-        <div className="flex h-full min-h-72 items-center justify-center text-sm text-[var(--muted)]">
+        <div className="flex h-full min-h-72 items-center justify-center text-sm text-(--muted)">
           <Loader2 size={16} className="mr-2 animate-spin" />
           Loading archived chat…
         </div>
@@ -174,7 +174,7 @@ export function ChatArchivedView({
   if (!selected) {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
-        <div className="flex h-full min-h-72 items-center justify-center text-sm text-[var(--muted)]">
+        <div className="flex h-full min-h-72 items-center justify-center text-sm text-(--muted)">
           <Loader2 size={16} className="mr-2 animate-spin" />
           Opening archived chat…
         </div>

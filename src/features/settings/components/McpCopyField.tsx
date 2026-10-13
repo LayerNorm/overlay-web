@@ -13,15 +13,15 @@ export function McpCopyField({ value, label, multiline = false }: { value: strin
     }).catch(() => undefined)
   }
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2">
+    <div className="flex items-start gap-2 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2">
       {multiline
-        ? <pre aria-label={label} className="min-w-0 flex-1 overflow-x-auto whitespace-pre text-xs text-[var(--foreground)]">{value}</pre>
-        : <code aria-label={label} className="min-w-0 flex-1 truncate text-xs leading-5 text-[var(--foreground)]">{value}</code>}
+        ? <pre aria-label={label} className="min-w-0 flex-1 overflow-x-auto whitespace-pre text-xs text-(--foreground)">{value}</pre>
+        : <code aria-label={label} className="min-w-0 flex-1 truncate text-xs leading-5 text-(--foreground)">{value}</code>}
       <button
         type="button"
         aria-label={`Copy ${label}`}
         onClick={copy}
-        className="mt-0.5 shrink-0 text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+        className="mt-0.5 shrink-0 text-(--muted) transition-colors hover:text-(--foreground)"
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>

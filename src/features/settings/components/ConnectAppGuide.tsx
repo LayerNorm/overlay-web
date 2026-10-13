@@ -44,11 +44,11 @@ export function ConnectAppGuide({ endpoint }: { endpoint: string }) {
   return (
     <div className="space-y-3">
       <div>
-        <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">Overlay address</p>
+        <p className="mb-1.5 text-xs font-medium text-(--foreground)">Overlay address</p>
         <McpCopyField value={endpoint} label="Overlay MCP address" />
       </div>
       <SegmentedControl ariaLabel="App" layout="stretch" value={app} options={[...APPS]} onChange={setApp} />
-      <p className="text-xs leading-5 text-[var(--muted)]">{guide.text}</p>
+      <p className="text-xs leading-5 text-(--muted)">{guide.text}</p>
       {guide.snippet ? <McpCopyField value={guide.snippet.value} label={guide.snippet.label} multiline={guide.snippet.multiline} /> : null}
     </div>
   )

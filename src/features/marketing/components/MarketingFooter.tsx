@@ -15,9 +15,9 @@ import {
 } from "@/shared/marketing/marketing";
 
 const linkClass =
-  "block py-1 text-[13px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors";
+  "block py-1 text-[13px] text-(--muted) hover:text-(--foreground) transition-colors";
 
-const colClass = "mb-3.5 text-xs font-semibold text-[var(--foreground)]";
+const colClass = "mb-3.5 text-xs font-semibold text-(--foreground)";
 
 type FootLink = { label: string; href: string; external?: boolean };
 
@@ -70,20 +70,20 @@ export function MarketingFooter() {
   const landing = useLandingThemeOptional();
 
   return (
-    <footer className="border-t border-[var(--border)] px-6 py-12 md:px-10 md:py-16">
+    <footer className="border-t border-(--border) px-6 py-12 md:px-10 md:py-16">
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div>
             <Link href="/home" className="flex items-center gap-2">
               <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
               <span
-                className="text-lg font-medium tracking-tight text-[var(--foreground)]"
+                className="text-lg font-medium tracking-tight text-(--foreground)"
                 style={marketingSerifStyle()}
               >
                 overlay
               </span>
             </Link>
-            <p className="mt-3 text-xs leading-5 text-[var(--muted)]">
+            <p className="mt-3 text-xs leading-5 text-(--muted)">
               The control plane for your workspace.
             </p>
           </div>
@@ -112,7 +112,7 @@ export function MarketingFooter() {
           ))}
         </div>
 
-        <div className="mt-12 flex items-center justify-between text-xs text-[var(--muted-light)]">
+        <div className="mt-12 flex items-center justify-between text-xs text-(--muted-light)">
           <span>© LayerNorm</span>
           <div className="flex items-center gap-4">
             <span>Built for the agent era.</span>
@@ -120,7 +120,7 @@ export function MarketingFooter() {
               <button
                 type="button"
                 onClick={landing.toggleLandingTheme}
-                className={`inline-flex items-center gap-2 ${linkClass} !py-0`}
+                className={`inline-flex items-center gap-2 ${linkClass} py-0!`}
               >
                 {landing.landingTheme === "light" ? (
                   <MoonStar className="h-4 w-4" />

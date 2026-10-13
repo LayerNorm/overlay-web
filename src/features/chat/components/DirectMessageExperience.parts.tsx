@@ -208,7 +208,7 @@ export function RoomHeaderLeading({
     return <AgentCreature agent={headerAgent ?? { name: soloAgentParticipant.displayName }} size={32} />
   }
   return (
-    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">
       <RoomHeaderIcon conversationType={conversationType} otherCount={otherCount} size={15} surfacePlatform={surfacePlatform} />
     </span>
   )
@@ -223,7 +223,7 @@ function AgentDesktopButton({ desktop }: { desktop: ReturnType<typeof useAgentDe
       onClick={openAgentDesktop}
       disabled={desktopOpenBusy}
       title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
-      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-60"
+      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-60"
     >
       <span className="relative">
         <Monitor size={14} />
@@ -279,8 +279,8 @@ export function RoomHeaderActions({
           onClick={() => setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))}
           aria-pressed={roomPanel === 'pinned'}
           title="Pinned messages"
-          className={`inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-            roomPanel === 'pinned' ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+          className={`inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+            roomPanel === 'pinned' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
           }`}
         >
           <Pin size={13} />{collab.pins.length}
@@ -290,7 +290,7 @@ export function RoomHeaderActions({
         <button
           type="button"
           onClick={onShare}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <Share2 size={14} />
           <span className="hidden sm:inline">Share</span>
@@ -301,8 +301,8 @@ export function RoomHeaderActions({
         onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
         aria-pressed={roomPanel === 'people'}
         title="People in this room"
-        className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-          roomPanel === 'people' ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+        className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
         }`}
       >
         <UsersRound size={14} />
@@ -313,7 +313,7 @@ export function RoomHeaderActions({
         type="button"
         aria-label="Conversation options"
         onClick={() => setMenuOpen((open) => !open)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
       >
         <MoreHorizontal size={15} />
       </button>
@@ -382,7 +382,7 @@ export function RoomNoticeBar({
 }) {
   if (!notice) return null
   return (
-    <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-xs text-[var(--muted)]">
+    <div className="flex items-center justify-between border-b border-(--border) bg-(--surface-subtle) px-4 py-2 text-xs text-(--muted)">
       <span>{notice}</span>
       <button type="button" onClick={onDismiss} aria-label="Dismiss"><X size={13} /></button>
     </div>
@@ -518,11 +518,11 @@ function RoomEmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">
         {conversationType === 'channel' ? <Hash size={20} /> : <UsersRound size={20} />}
       </span>
-      <h2 className="mt-4 text-base font-medium text-[var(--foreground)]">{title}</h2>
-      <p className="mt-1 max-w-sm text-sm text-[var(--muted)]">
+      <h2 className="mt-4 text-base font-medium text-(--foreground)">{title}</h2>
+      <p className="mt-1 max-w-sm text-sm text-(--muted)">
         {conversationType === 'channel'
           ? channelTopic ?? 'This is the beginning of this channel.'
           : 'This is the beginning of your conversation. Messages are visible only to its participants.'}
@@ -570,7 +570,7 @@ export function RoomTranscript({
           type="button"
           onClick={onJumpToLatest}
           data-testid="jump-to-latest"
-          className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-lg transition-colors hover:bg-[var(--surface-subtle)]"
+          className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--border) bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
         >
           {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
         </button>
@@ -586,7 +586,7 @@ export function RoomTranscript({
               type="button"
               onClick={onLoadOlder}
               disabled={loadingOlderMessages}
-              className="mx-auto my-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-60"
+              className="mx-auto my-2 rounded-lg border border-(--border) px-3 py-1.5 text-xs text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-60"
             >
               {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
             </button>
@@ -594,7 +594,7 @@ export function RoomTranscript({
           {loading ? (
             <div className="space-y-3 py-4" aria-label="Loading messages">
               {[0, 1, 2].map((row) => (
-                <div key={row} className="h-12 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
+                <div key={row} className="h-12 animate-pulse rounded-lg bg-(--surface-subtle)" />
               ))}
             </div>
           ) : mainMessages.length === 0 ? (
@@ -618,10 +618,10 @@ export function RoomTranscript({
               return (
                 <div key={roomMessageRowKey(message)} className="contents">
                   {showDayDivider ? (
-                    <div className="flex items-center gap-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">
-                      <span className="h-px flex-1 bg-[var(--border)]" />
+                    <div className="flex items-center gap-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">
+                      <span className="h-px flex-1 bg-(--border)" />
                       <span>{roomDayLabel(message.createdAt)}</span>
-                      <span className="h-px flex-1 bg-[var(--border)]" />
+                      <span className="h-px flex-1 bg-(--border)" />
                     </div>
                   ) : null}
                   {isUnreadBoundary ? (
@@ -752,8 +752,8 @@ export function surfaceReadOnlyNotice(surfacePlatform: string): string {
 /** Stands in for the composer: surface-mirrored rooms are read-only in Overlay. */
 export function SurfaceReadOnlyComposer({ surfacePlatform }: { surfacePlatform: string }) {
   return (
-    <div className="border-t border-[var(--border)] px-4 py-3.5">
-      <div className="flex items-center justify-center gap-2 text-xs text-[var(--muted)]">
+    <div className="border-t border-(--border) px-4 py-3.5">
+      <div className="flex items-center justify-center gap-2 text-xs text-(--muted)">
         {surfacePlatform === 'slack' ? <Slack size={13} /> : <Hash size={13} />}
         <span>{surfaceReadOnlyNotice(surfacePlatform)}</span>
       </div>

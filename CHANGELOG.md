@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Changed
+
+- **Tailwind CSS upgraded to v4.** The app now builds on `tailwindcss@4` via `@tailwindcss/postcss` with CSS-first configuration (`@theme`, `@custom-variant`, `@source`). `dark:` utilities now follow the app's `[data-theme]` attribute instead of the OS color scheme — previously 61 `dark:` classes ignored the in-app theme toggle. The base palette has a single canonical definition in `@overlay/ui` styles; `globals.css` keeps only app-specific variables. No visual changes intended. First step of the shadcn/ui migration (`docs/plans/SHADCN_MIGRATION_PLAN.md`).
+
 ### Fixed
 
 - **Disabled preview providers also disable their capabilities.** Shared Preview settings and release build guards prevent chat from loading an integration provider configured as `none`. Legacy staging Production settings are preserved.

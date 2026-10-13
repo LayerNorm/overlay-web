@@ -24,7 +24,7 @@ import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeP
 
 function PanelState({ icon, message }: { icon: React.ReactNode; message: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-xs text-[var(--muted)]">
+    <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-xs text-(--muted)">
       {icon}
       <span>{message}</span>
     </div>
@@ -122,12 +122,12 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
             {item.title?.trim() || 'Notification'}
           </span>
           {conversationActivityLabel(item.conversationState) ? (
-            <span className="shrink-0 text-[10px] text-[var(--muted-light)]">
+            <span className="shrink-0 text-[10px] text-(--muted-light)">
               {conversationActivityLabel(item.conversationState)}
             </span>
           ) : null}
           {!item.readAt ? (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]" aria-label="Unread" />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--muted)" aria-label="Unread" />
           ) : null}
         </SidebarResourceRow>
       ))}

@@ -245,8 +245,8 @@ function ToolbarButton({
       onClick={onClick}
       className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
         active
-          ? 'bg-[var(--foreground)] text-[var(--background)]'
-          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+          ? 'bg-(--foreground) text-(--background)'
+          : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
       }`}
       aria-label={label}
     >
@@ -291,7 +291,7 @@ export function AutomationInstructionsEditor({
       Mention.configure({
         HTMLAttributes: {
           class:
-            'inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-medium text-[var(--foreground)] align-baseline',
+            'inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md bg-(--surface-muted) border border-(--border) text-xs font-medium text-(--foreground) align-baseline',
         },
         renderText: ({ node }) => `@${node.attrs.label}`,
         suggestion: overlayMentionSuggestion,
@@ -306,7 +306,7 @@ export function AutomationInstructionsEditor({
     },
     editorProps: {
       attributes: {
-        class: 'app-note-editor min-h-[18rem] px-3 py-3 text-sm leading-6 outline-none',
+        class: 'app-note-editor min-h-72 px-3 py-3 text-sm leading-6 outline-hidden',
       },
     },
   })
@@ -322,8 +322,8 @@ export function AutomationInstructionsEditor({
   }, [editor, value])
 
   return (
-    <div className="mt-1 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1.5">
+    <div className="mt-1 overflow-hidden rounded-xl border border-(--border) bg-(--background)">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--border) bg-(--surface-elevated) px-2 py-1.5">
         <div className="flex flex-wrap items-center gap-1">
           <ToolbarButton active={editor?.isActive('bold')} label="Bold" onClick={() => editor?.chain().focus().toggleBold().run()}>
             <Bold size={14} />
@@ -334,7 +334,7 @@ export function AutomationInstructionsEditor({
           <ToolbarButton active={editor?.isActive('code')} label="Code" onClick={() => editor?.chain().focus().toggleCode().run()}>
             <Code size={14} />
           </ToolbarButton>
-          <span className="mx-1 h-5 w-px bg-[var(--border)]" />
+          <span className="mx-1 h-5 w-px bg-(--border)" />
           <ToolbarButton active={editor?.isActive('bulletList')} label="Bullet list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>
             <List size={14} />
           </ToolbarButton>
@@ -351,12 +351,12 @@ export function AutomationInstructionsEditor({
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="rounded-md px-2 py-1 text-[11px] font-medium text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           {expanded ? 'Collapse' : 'Expand'}
         </button>
       </div>
-      <div className={expanded ? 'max-h-[32rem] overflow-y-auto' : 'max-h-36 overflow-hidden'}>
+      <div className={expanded ? 'max-h-128 overflow-y-auto' : 'max-h-36 overflow-hidden'}>
         <EditorContent editor={editor} />
       </div>
     </div>

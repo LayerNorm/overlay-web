@@ -214,18 +214,18 @@ export const baseMdComponents = {
       return (
         <a href={href} target="_blank" rel="noopener noreferrer" className="no-underline">
           <span
-            className="my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 transition-colors hover:bg-[var(--surface-subtle)]"
+            className="my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5 transition-colors hover:bg-(--surface-subtle)"
           >
             <span
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-xs font-bold text-[var(--foreground)]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-xs font-bold text-(--foreground)"
             >
               {serviceName.charAt(0).toUpperCase()}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium leading-snug text-[var(--foreground)]">{serviceName}</span>
-              <span className="block text-xs leading-snug text-[var(--muted)]">{description}</span>
+              <span className="block text-sm font-medium leading-snug text-(--foreground)">{serviceName}</span>
+              <span className="block text-xs leading-snug text-(--muted)">{description}</span>
             </span>
-            <span className="shrink-0 whitespace-nowrap rounded-md bg-[var(--foreground)] px-3 py-1.5 text-xs text-[var(--background)]">
+            <span className="shrink-0 whitespace-nowrap rounded-md bg-(--foreground) px-3 py-1.5 text-xs text-(--background)">
               Connect
             </span>
           </span>

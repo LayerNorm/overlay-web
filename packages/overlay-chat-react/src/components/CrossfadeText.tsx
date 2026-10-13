@@ -25,7 +25,7 @@ export function CrossfadeText({ text, className }: { text: string; className?: s
 
   return (
     <span
-      className={`transition-opacity duration-150 ease-[var(--overlay-ease)] motion-reduce:transition-none ${
+      className={`transition-opacity duration-150 ease-(--overlay-ease) motion-reduce:transition-none ${
         fading ? 'opacity-0' : 'opacity-100'
       }${className ? ` ${className}` : ''}`}
     >

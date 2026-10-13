@@ -71,7 +71,7 @@ export function KnowledgeFileTree({
   renderActions,
 }: KnowledgeFileTreeProps) {
   if (loading) {
-    return <div className="p-4 text-xs text-[var(--muted)]">Loading files...</div>
+    return <div className="p-4 text-xs text-(--muted)">Loading files...</div>
   }
   if (nodes.length === 0) {
     return <EmptyState className="h-full min-h-48" title={emptyLabel} />
@@ -110,8 +110,8 @@ function KnowledgeFileTreeRow({
         className={cn(
           'group/row flex min-h-9 items-center gap-2 px-3 text-sm transition-colors',
           selectedId === file._id
-            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-            : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+            ? 'bg-(--surface-subtle) text-(--foreground)'
+            : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)',
         )}
         style={{ paddingLeft: 12 + node.depth * 16 }}
       >
@@ -120,7 +120,7 @@ function KnowledgeFileTreeRow({
           className="min-w-0 flex-1 truncate text-left"
           onClick={() => onSelectFile?.(file)}
         >
-          <span className="mr-2 text-[10px] text-[var(--muted-light)]">{isFolder ? 'Folder' : 'File'}</span>
+          <span className="mr-2 text-[10px] text-(--muted-light)">{isFolder ? 'Folder' : 'File'}</span>
           {file.name}
         </button>
         {renderActions ? (
@@ -148,19 +148,19 @@ export interface OutputGalleryProps {
 }
 
 export function OutputGallery({ outputs, loading, onOpenOutput, onDeleteOutput }: OutputGalleryProps) {
-  if (loading) return <div className="p-4 text-xs text-[var(--muted)]">Loading outputs...</div>
+  if (loading) return <div className="p-4 text-xs text-(--muted)">Loading outputs...</div>
   if (outputs.length === 0) return <EmptyState className="h-full min-h-48" title="No outputs yet" />
   return (
     <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
       {outputs.map((output) => (
         <article
           key={output._id}
-          className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-3"
+          className="rounded-lg border border-(--border) bg-(--surface-elevated) p-3"
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{output.fileName ?? output.type}</p>
-              <p className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{output.prompt}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-(--muted)">{output.prompt}</p>
             </div>
             <Badge variant={output.status === 'failed' ? 'danger' : output.status === 'pending' ? 'warning' : 'success'}>
               {output.status}
@@ -190,21 +190,21 @@ export interface MemoryListProps {
 }
 
 export function MemoryList({ memories, loading, selectedIds, onToggleMemory }: MemoryListProps) {
-  if (loading) return <div className="p-4 text-xs text-[var(--muted)]">Loading memories...</div>
+  if (loading) return <div className="p-4 text-xs text-(--muted)">Loading memories...</div>
   if (memories.length === 0) return <EmptyState className="h-full min-h-48" title="No memories yet" />
   return (
-    <div className="divide-y divide-[var(--border)]">
+    <div className="divide-y divide-(--border)">
       {memories.map((memory) => (
         <button
           key={memory.key}
           type="button"
           onClick={() => onToggleMemory?.(memory)}
           className={cn(
-            'block w-full px-4 py-3 text-left transition-colors hover:bg-[var(--surface-subtle)]',
-            selectedIds?.has(memory.memoryId) ? 'bg-[var(--surface-subtle)]' : '',
+            'block w-full px-4 py-3 text-left transition-colors hover:bg-(--surface-subtle)',
+            selectedIds?.has(memory.memoryId) ? 'bg-(--surface-subtle)' : '',
           )}
         >
-          <p className="text-sm leading-6 text-[var(--foreground)]">{memory.content}</p>
+          <p className="text-sm leading-6 text-(--foreground)">{memory.content}</p>
           <div className="mt-2 flex items-center gap-2">
             <Badge variant="muted">{memory.source}</Badge>
             {memory.status ? <Badge variant="muted">{memory.status}</Badge> : null}

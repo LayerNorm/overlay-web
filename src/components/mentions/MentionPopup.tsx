@@ -211,8 +211,8 @@ function useMentionPopupKeys({
 function optionClassName(active: boolean, compact = false) {
   return `flex w-full items-center gap-2.5 px-3 ${compact ? 'py-1.5' : 'py-2'} text-left text-xs transition-colors ${
     active
-      ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-      : 'text-[var(--muted)] hover:bg-[var(--surface-muted)]'
+      ? 'bg-(--surface-muted) text-(--foreground)'
+      : 'text-(--muted) hover:bg-(--surface-muted)'
   }`
 }
 
@@ -266,7 +266,7 @@ function CategoryRow({
 
 function UploadRow({ onUploadFile, ...base }: RowBaseProps & { onUploadFile: () => void }) {
   return (
-    <div className="border-t border-[var(--border)]">
+    <div className="border-t border-(--border)">
       <OptionButton {...base} onClick={onUploadFile}>
         <Upload size={12} strokeWidth={1.75} className="shrink-0 opacity-70" />
         <span className="font-medium">Upload a file...</span>
@@ -286,13 +286,13 @@ function ItemRow({
     <OptionButton {...base} compact onClick={() => onSelect(item)}>
       {item.logoUrl ? (
         /* eslint-disable-next-line @next/next/no-img-element */
-        <img src={item.logoUrl} alt="" className="h-4 w-4 shrink-0 rounded object-contain" />
+        <img src={item.logoUrl} alt="" className="h-4 w-4 shrink-0 rounded-sm object-contain" />
       ) : (
         <CategoryIcon icon={item.icon || fallbackIcon} className="shrink-0 opacity-70" />
       )}
       <span className="min-w-0 flex-1 truncate font-medium">{item.name}</span>
       {item.description && (
-        <span className="shrink-0 truncate text-[10px] text-[var(--muted-light)] max-w-[100px]">
+        <span className="shrink-0 truncate text-[10px] text-(--muted-light) max-w-[100px]">
           {item.description}
         </span>
       )}
@@ -337,11 +337,11 @@ function CategoryBreadcrumb({
   onBack: () => void
 }) {
   return (
-    <div className="flex items-center gap-1.5 border-b border-[var(--border)] bg-[var(--surface-muted)] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted-light)]">
+    <div className="flex items-center gap-1.5 border-b border-(--border) bg-(--surface-muted) px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-(--muted-light)">
       <button
         type="button"
         onClick={onBack}
-        className="hover:text-[var(--foreground)] transition-colors"
+        className="hover:text-(--foreground) transition-colors"
       >
         All
       </button>
@@ -355,8 +355,8 @@ function CategoryBreadcrumb({
 
 function LoadingMentions() {
   return (
-    <div className="flex items-center justify-center gap-2 py-6 text-xs text-[var(--muted-light)]" role="status" aria-live="polite">
-      <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--muted)] border-t-transparent" />
+    <div className="flex items-center justify-center gap-2 py-6 text-xs text-(--muted-light)" role="status" aria-live="polite">
+      <div className="h-4 w-4 animate-spin rounded-full border-2 border-(--muted) border-t-transparent" />
       <span>Loading mentions...</span>
     </div>
   )
@@ -381,7 +381,7 @@ function EmptyMentionResults({
 }) {
   return (
     <>
-      <div className="px-3 py-4 text-center text-xs text-[var(--muted-light)]">
+      <div className="px-3 py-4 text-center text-xs text-(--muted-light)">
         {query.trim() !== '' ? (
           <>No results for &ldquo;{query}&rdquo;</>
         ) : selectedCategoryMeta ? (
@@ -479,7 +479,7 @@ export function MentionPopup({
   return (
     <div
       ref={popupRef}
-      className="overlay-pop-in fixed z-50 w-72 max-h-80 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl flex flex-col"
+      className="overlay-pop-in fixed z-50 w-72 max-h-80 overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl flex flex-col"
       style={popupStyle(position, viewportWidth, viewportHeight)}
     >
       {/* Breadcrumb header when in category view */}

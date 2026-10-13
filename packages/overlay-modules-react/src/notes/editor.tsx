@@ -178,8 +178,8 @@ function NotebookModelPicker({
         type="button"
         onClick={() => !agentRunning && setShowModelPicker((v) => !v)}
         disabled={agentRunning}
-        className={`flex h-8 min-h-8 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:py-1 ${
-          agentRunning ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+        className={`flex h-8 min-h-8 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none md:py-1 ${
+          agentRunning ? 'cursor-not-allowed text-(--muted-light)' : 'text-(--muted) hover:bg-(--border)'
         }`}
       >
         <span className='min-w-0 truncate'>
@@ -189,7 +189,7 @@ function NotebookModelPicker({
         <ChevronDown size={11} className="shrink-0" />
       </button>
       {showModelPicker && (
-        <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+        <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
           <div className="max-h-72 overflow-y-auto">
             {models.map((m) => {
               const isSel = m.id === selectedModelId
@@ -202,8 +202,8 @@ function NotebookModelPicker({
                     onModelChange?.(m.id)
                     setShowModelPicker(false)
                   }}
-                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[var(--surface-muted)] ${
-                    isSel ? 'text-[var(--foreground)] font-medium' : 'text-[var(--muted)]'
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-(--surface-muted) ${
+                    isSel ? 'text-(--foreground) font-medium' : 'text-(--muted)'
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -332,7 +332,7 @@ function NotebookAgentComposerArea({
             onChange={(event) => agent.setAgentInput(event.target.value)}
             disabled={agent.agentRunning}
             placeholder="Ask about this note or describe edits..."
-            className="min-h-20 w-full resize-none bg-transparent text-sm outline-none"
+            className="min-h-20 w-full resize-none bg-transparent text-sm outline-hidden"
           />
         )
       }
