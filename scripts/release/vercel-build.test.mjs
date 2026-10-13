@@ -57,6 +57,7 @@ test('preview build isolates selectors and reuses only that PR backend', () => {
   assert.ok(plan.args.includes('--preview-name'))
   assert.ok(plan.args.includes('pr-123'))
   assert.ok(!plan.args.includes('--preview-create'))
+  assert.deepEqual(plan.after[0].args, ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
 })
 
 test('a preview cannot deploy with a production key, shared origin, or missing PR', () => {
@@ -155,4 +156,18 @@ test('ignored-build gate runs only provisioned PRs in the staging project', () =
   ]) assert.equal(exit(patch), 0)
   assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: 'staging' }), 1)
   assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: '' }), 0)
+})
+
+
+test('preview rebuild repairs missing fixtures after deploy and never seeds a failed build', () => {
+  for (const failAt of [0, 1, 2]) {
+    const calls = []
+    const status = runBuild(preview, (command, args) => {
+      calls.push({ command, args: [...args] })
+      return { status: calls.length - 1 === failAt ? 1 : 0 }
+    })
+    assert.equal(status, failAt === 2 ? 0 : 1)
+    assert.equal(calls.length, Math.min(failAt + 1, 2))
+    if (calls[1]) assert.deepEqual(calls[1].args.slice(0, 5), ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
+  }
 })

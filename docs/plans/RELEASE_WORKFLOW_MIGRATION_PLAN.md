@@ -608,3 +608,14 @@ The dedicated Stripe test endpoint delivered a real test PaymentIntent event to
 staging, recorded as processed. Checkout completion and canonical staging smoke,
 queue semantic verification and the production/rollback drill remain acceptance
 requirements. Code/document checkboxes do not imply those live gates passed.
+
+
+### Interrupted preview build recovery
+
+The installed Convex CLI executes `--preview-run` only for newly claimed preview
+backends. An interrupted first build can leave a reused backend without fixtures.
+After every successful preview deploy, the hosted build therefore explicitly runs
+`dev/seed:init` against `preview/pr-<number>` using the preview-scoped key. This
+idempotent repair preserves edited fixture data and reuses any existing personal
+workspace; it does not recreate the backend or deploy shared development/production.
+A failed deploy never runs the repair, and a failed repair fails the hosted build.

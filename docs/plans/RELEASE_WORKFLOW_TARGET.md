@@ -284,3 +284,14 @@ data on production-type deployments; that fix is in the cutover change. The
 optional canonical alias publication stays gated until complete smoke
 passes; unpublished native candidate evidence also qualifies for promotion. A real test Stripe event reached the dedicated backend and was processed;
 full checkout, queue semantic proof and production/rollback drill remain pending.
+
+
+### Interrupted preview build recovery
+
+The installed Convex CLI executes `--preview-run` only for newly claimed preview
+backends. An interrupted first build can leave a reused backend without fixtures.
+After every successful preview deploy, the hosted build therefore explicitly runs
+`dev/seed:init` against `preview/pr-<number>` using the preview-scoped key. This
+idempotent repair preserves edited fixture data and reuses any existing personal
+workspace; it does not recreate the backend or deploy shared development/production.
+A failed deploy never runs the repair, and a failed repair fails the hosted build.

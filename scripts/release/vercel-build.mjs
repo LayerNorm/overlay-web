@@ -50,6 +50,10 @@ export function buildPlan(env) {
       args: ['deploy', '--preview-name', 'pr-' + pr, '--typecheck', 'enable',
         '--cmd', 'node scripts/release/build-web.mjs', '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL',
         '--preview-run', 'dev/seed:init'],
+      // --preview-run only runs for a newly claimed backend. An interrupted
+      // first build can leave it empty, so repair missing fixtures after every push.
+      after: [{ command: './node_modules/.bin/convex',
+        args: ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-' + pr] }],
       env: childEnv,
       target: 'preview pr-' + pr,
     }

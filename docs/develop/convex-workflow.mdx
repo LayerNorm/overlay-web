@@ -220,3 +220,14 @@ Use `ConvexError` data for expected revision conflicts. Production-type Convex
 (including dedicated staging) redacts ordinary developer error messages. The
 server HTTP adapter preserves application `errorData`, so stale note edits return
 HTTP 409 in all lanes. Generic internal failures remain redacted and fail closed.
+
+
+### Interrupted preview build recovery
+
+The installed Convex CLI executes `--preview-run` only for newly claimed preview
+backends. An interrupted first build can leave a reused backend without fixtures.
+After every successful preview deploy, the hosted build therefore explicitly runs
+`dev/seed:init` against `preview/pr-<number>` using the preview-scoped key. This
+idempotent repair preserves edited fixture data and reuses any existing personal
+workspace; it does not recreate the backend or deploy shared development/production.
+A failed deploy never runs the repair, and a failed repair fails the hosted build.

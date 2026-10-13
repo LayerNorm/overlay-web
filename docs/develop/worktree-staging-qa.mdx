@@ -9,8 +9,8 @@ This guide covers hosted QA and release promotion only. Follow [Agentic Developm
 
 `bash scripts/release/promote.sh <40-character-main-sha> --check` performs
 preflight only. Omitting `--check` manually releases that exact current `main`.
-The command is prepared for the new staging lane; it cannot run successfully
-until staging cutover and its authenticated smoke are complete.
+The command requires a successful on-demand release candidate for current main.
+Merges trigger no staging deployment. Canonical staging publication is optional.
 
 Run it from clean canonical `main`, linked to Divyansh's production project.
 Provide `CONVEX_PRODUCTION_DEPLOY_KEY` scoped to `colorful-chickadee-419`, and
@@ -33,9 +33,9 @@ The native
 GitHub/Vercel CLI accounts must be `DevelopedByDev`/`developedbydev1`. Install the
 reviewed dependencies and Playwright Chromium before release.
 
-The command downloads the successful staging workflow's exact smoke artifact,
-checks all seven behavioral checks and its producer, and verifies the current
-staging alias still serves that SHA. Older proof without realtime authorization
+The command downloads the successful manually dispatched candidate workflow's
+exact smoke artifact, checks all eight behavioral checks and its producer, and
+verifies its native origin and ready deployment provenance (or published alias). Older proof without realtime authorization
 does not qualify. It then remotely builds production web without assigning
 domains, checks provenance, publishes and verifies the canonical web alias,
 pushes production Convex using a private key-only env file, and performs normal
