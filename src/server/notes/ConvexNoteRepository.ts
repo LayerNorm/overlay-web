@@ -1,4 +1,5 @@
 import 'server-only'
+import { ConvexError } from 'convex/values'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -131,7 +132,8 @@ export class ConvexNoteRepository implements NoteRepository {
         ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       }, { throwOnError: true })
     } catch (error) {
-      if (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT')) {
+      if ((error instanceof ConvexError && error.data === 'NOTE_REVISION_CONFLICT')
+        || (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT'))) {
         const current = await this.getNote({ noteId: args.noteId, userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}) })
         throw new NoteRevisionConflictError(args.expectedUpdatedAt, current?.updatedAt ?? existing.updatedAt)
       }

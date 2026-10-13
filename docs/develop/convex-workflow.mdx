@@ -17,7 +17,7 @@ For ordinary local web work against the development Convex backend, run Next.js 
 npm run dev
 ```
 
-`npm run dev:with-convex` pushes development Convex before starting Next.js. Use it only from the dedicated `staging` worktree, where the current revision is the shared staging release candidate.
+`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Manually dispatched main release-candidate CI owns dedicated staging; the frozen legacy staging branch/worktree is not a deploy lane.
 
 ## Isolated PR preview backends
 
@@ -67,7 +67,7 @@ calling its model. The Preview defaults now contain these four disabled flags,
 with readback and preservation of legacy Production settings verified. Dedicated
 staging web configuration must use the same pairing until its providers are ready.
 
-## Prepared dedicated staging backend
+## Dedicated staging backend
 
 The prepared dedicated staging backend is `doting-cuttlefish-819` in separate
 project `overlay-staging` (`3199896`). Convex classifies this persistent backend
@@ -75,10 +75,11 @@ as `prod`; it is not Overlay's customer production `colorful-chickadee-419`.
 The hosted staging build accepts only `prod:doting-cuttlefish-819|…` and requires
 the trusted controller's exact main SHA, internal repository and staging origin.
 Sandbox auth/internal configuration and shared test Stripe/Gateway credentials
-have been set and read back; no app functions or fixtures are deployed yet. Do not run
+have been set and read back; app functions and synthetic fixtures are deployed.
+Canonical staging still serves the previous deployment until full smoke passes. Do not run
 production scripts from feature worktrees to initialize it. The staging cutover
 must supply matching sandbox auth/internal secrets and dedicated test providers,
-plus authenticated staging smoke, before the activation variable is enabled.
+plus authenticated staging smoke, before any optional canonical publication. Candidates remain on demand.
 
 Internal `dev/seed:initStaging` prepares synthetic fixtures for the configured
 sandbox QA identity. It requires `OVERLAY_DEPLOYMENT_ENV=staging`, the sandbox
@@ -196,7 +197,7 @@ Maintenance jobs and user-facing lists must advance through indexed, bounded pag
 ## Chat-delta retirement migration
 
 Removing `conversationMessageDeltas` requires a two-revision Convex rollout.
-From the dedicated `staging` worktree, deploy the phase-5 migration revision and
+Through an accepted main staging build, deploy the phase-5 migration revision and
 run `internal.chat.conversations.collapseLegacyConversationPersistence` once.
 Its scheduled batches fold every remaining delta into its assistant message and
 mark generating messages without an active AgentRun as interrupted. Confirm the
@@ -211,4 +212,22 @@ main staging build therefore runs three commands sequentially with an explicit,
 private deployment-key env file: backend deploy, `dev/seed:initStaging`, then
 `build-web.mjs`. Any failure stops the remaining steps. The web build receives
 the pinned staging URL; production web builds still do not deploy Convex. This
-path remains inactive until the platform cutover and authenticated smoke gate.
+on-demand path requires an owner dispatch and complete authenticated smoke.
+
+### Expected errors on production-type deployments
+
+Use `ConvexError` data for expected revision conflicts. Production-type Convex
+(including dedicated staging) redacts ordinary developer error messages. The
+server HTTP adapter preserves application `errorData`, so stale note edits return
+HTTP 409 in all lanes. Generic internal failures remain redacted and fail closed.
+
+
+### Interrupted preview build recovery
+
+The installed Convex CLI executes `--preview-run` only for newly claimed preview
+backends. An interrupted first build can leave a reused backend without fixtures.
+After every successful preview deploy, the hosted build therefore explicitly runs
+`dev/seed:init` against `preview/pr-<number>` using the preview-scoped key. This
+idempotent repair preserves edited fixture data and reuses any existing personal
+workspace; it does not recreate the backend or deploy shared development/production.
+A failed deploy never runs the repair, and a failed repair fails the hosted build.

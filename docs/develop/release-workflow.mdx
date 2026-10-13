@@ -1,0 +1,76 @@
+---
+title: "Release Workflow"
+description: "PR previews, main integration, on-demand release candidates, and manual production."
+---
+
+## Operating contract
+
+| Environment | Source | Data and providers |
+| --- | --- | --- |
+| Local | Working tree | Engineer-owned dev backend and test credentials |
+| PR preview | Current internal main PR head | Per-PR Convex, synthetic Sandbox identity, shared test credentials |
+| Staging | Accepted main SHA | Dedicated `doting-cuttlefish-819`, Sandbox identity, staging test providers |
+| Customer production | Manually promoted current main SHA | `colorful-chickadee-419`, production identity/providers |
+
+Builder verifies a focused main PR on its isolated preview and stops when ready.
+Integration reviews it, resolves findings and enters the main merge queue once
+required checks and proportionate QA pass. Queue workflows verify the combined
+candidate against current main and earlier queued changes. Keep approving reviews
+at zero while the sole maintainer cannot approve his own PR; retain history
+protection and the explicit emergency-only owner bypass.
+
+The legacy staging branch is frozen. Main merges do not deploy staging. When
+preparing a production release, manually dispatch the exact current main candidate
+in the existing preview project, reusing its dedicated test backend. The serialized
+build seeds synthetic data and runs authenticated smoke before promotion. `needs-staging` requests stronger hosted QA without
+changing PR base.
+
+Production remains manual with root `git.deploymentEnabled.main=false`.
+With owner authorization, run `bash scripts/release/promote.sh <main-sha>` from
+clean current canonical main. It checks successful exact-main release-candidate proof, builds remotely,
+publishes/verifies web, pushes production Convex, then runs synthetic-account
+smoke. Preserve saved checkpoints and verify rollback through actual alias
+readback. Never pass `.env.local`, customer fixtures or feature-worktree source
+to production deployment commands.
+
+Shared Preview/staging test credentials are configured once per scope, with no
+scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
+calls. Convex's five-day preview retention is renewed while PRs are open and is
+independent of credential lifetime. Closure cleans owned aliases and stops renewal.
+Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
+Preview Deployment Suffix.
+
+## Activation checkpoint
+
+The owner authorized the migration and waived the calendar soak. Preview model,
+storage, auth, persistence, isolation and cleanup acceptance passed. Dedicated
+staging settings/functions/fixtures are deployed. Initial Sandbox sign-in passed,
+but stale-note conflicts required a structured error fix for production-type
+Convex. The on-demand candidate still requires a complete new smoke run. Optional
+publication to staging.getoverlay.io requires same-run smoke; native candidates
+can qualify directly without changing that alias. Queue semantic proof, full checkout and the live production/rollback
+drill remain acceptance tasks; source instructions are not proof of completion.
+
+The authoritative checkpoint is in the [migration plan](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md).
+See [Agentic Development](/develop/agentic-development),
+[Staging and Production Promotion](/develop/worktree-staging-qa), and
+[Convex Workflow](/develop/convex-workflow) for commands and guards.
+
+
+### Verified workspace and queue protections
+
+Release smoke resolves and activates the synthetic account's actual personal
+workspace through the authenticated app API. It uses that ID for chat, Files and
+realtime checks, including when seeding reuses an app-created workspace. It creates
+a fresh Auto-model smoke conversation, verifies its real reply and reload, then
+cleans that conversation; seed examples are not model-response evidence.
+
+Main protection is consolidated in ruleset `21959970`: PRs, conversation
+resolution, nine required GitHub Actions checks and the native merge queue.
+The duplicate classic owner-only push protection was retired; queue publication
+is governed by these rules. History ruleset `16007495` separately blocks force
+pushes and deletion for main/staging with no bypass. Legacy staging is frozen by
+`24986525`. Owner emergency bypass and zero sole-author approvals remain.
+Queue interaction probes #196/#197 passed individually but their combined tree
+was marked UNMERGEABLE; both closed without merging and the temporary check was
+removed. Live queue acceptance of the release PR remains pending.

@@ -57,6 +57,7 @@ test('preview build isolates selectors and reuses only that PR backend', () => {
   assert.ok(plan.args.includes('--preview-name'))
   assert.ok(plan.args.includes('pr-123'))
   assert.ok(!plan.args.includes('--preview-create'))
+  assert.deepEqual(plan.after[0].args, ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
 })
 
 test('a preview cannot deploy with a production key, shared origin, or missing PR', () => {
@@ -72,12 +73,15 @@ test('a preview cannot deploy with a production key, shared origin, or missing P
 
 test('staging refuses a production backend or mismatched key', () => {
   const staging = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
+    WORKOS_CLIENT_ID: 'client_01KJ9A19X317J7VWRWQ6XBME9Z', WORKOS_API_KEY: 'fixture-sandbox',
     OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: STAGING.backend,
     CONVEX_DEPLOY_KEY: 'prod:' + STAGING.backend + '|fixture',
     OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),
     VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40),
     VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web', NEXT_PUBLIC_APP_URL: STAGING.origin }
   assert.equal(buildPlan(staging).target, 'staging ' + STAGING.backend)
+  assert.throws(() => buildPlan({ ...staging, WORKOS_API_KEY: '' }), /sandbox WorkOS/)
+  assert.throws(() => buildPlan({ ...staging, WORKOS_CLIENT_ID: 'customer-production' }), /sandbox WorkOS/)
   assert.throws(() => buildPlan({ ...staging, CONVEX_DEPLOY_KEY: 'prod:wrong|key' }))
   assert.throws(() => buildPlan({ ...staging,
     OVERLAY_STAGING_CONVEX_DEPLOYMENT: 'colorful-chickadee-419',
@@ -93,6 +97,7 @@ test('staging refuses a production backend or mismatched key', () => {
 
 test('trusted staging deploys backend, then seed, then web; failure stops subsequent steps', () => {
   const env = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
+    WORKOS_CLIENT_ID: 'client_01KJ9A19X317J7VWRWQ6XBME9Z', WORKOS_API_KEY: 'fixture-sandbox',
     OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: STAGING.backend,
     CONVEX_DEPLOY_KEY: 'prod:' + STAGING.backend + '|fixture',
     OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),
@@ -151,4 +156,18 @@ test('ignored-build gate runs only provisioned PRs in the staging project', () =
   ]) assert.equal(exit(patch), 0)
   assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: 'staging' }), 1)
   assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: '' }), 0)
+})
+
+
+test('preview rebuild repairs missing fixtures after deploy and never seeds a failed build', () => {
+  for (const failAt of [0, 1, 2]) {
+    const calls = []
+    const status = runBuild(preview, (command, args) => {
+      calls.push({ command, args: [...args] })
+      return { status: calls.length - 1 === failAt ? 1 : 0 }
+    })
+    assert.equal(status, failAt === 2 ? 0 : 1)
+    assert.equal(calls.length, Math.min(failAt + 1, 2))
+    if (calls[1]) assert.deepEqual(calls[1].args.slice(0, 5), ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
+  }
 })

@@ -50,12 +50,20 @@ export function buildPlan(env) {
       args: ['deploy', '--preview-name', 'pr-' + pr, '--typecheck', 'enable',
         '--cmd', 'node scripts/release/build-web.mjs', '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL',
         '--preview-run', 'dev/seed:init'],
+      // --preview-run only runs for a newly claimed backend. An interrupted
+      // first build can leave it empty, so repair missing fixtures after every push.
+      after: [{ command: './node_modules/.bin/convex',
+        args: ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-' + pr] }],
       env: childEnv,
       target: 'preview pr-' + pr,
     }
   }
 
   if (env.VERCEL_ENV === 'production' && env.OVERLAY_DEPLOYMENT_ENV === 'staging') {
+    if (env.WORKOS_CLIENT_ID !== 'client_01KJ9A19X317J7VWRWQ6XBME9Z'
+      || !env.WORKOS_API_KEY?.trim()) {
+      throw new Error('Staging requires the sandbox WorkOS client and a nonempty API key')
+    }
     const name = env.OVERLAY_STAGING_CONVEX_DEPLOYMENT
     const keyTarget = (env.CONVEX_DEPLOY_KEY ?? '').split('|')[0]
     if (name !== STAGING.backend || keyTarget !== 'prod:' + STAGING.backend) {

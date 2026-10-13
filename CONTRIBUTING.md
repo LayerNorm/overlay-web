@@ -19,16 +19,16 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Use placeholders for local secrets. Feature worktrees must not deploy Convex. The dedicated staging worktree may run `npm run convex:push:dev`; only the clean canonical `main` worktree may run `npm run convex:push:prod` after the matching web deployment is live. See `docs/develop/worktree-staging-qa.mdx`.
+Use placeholders for local secrets. Feature worktrees use personal dev backends; hosted PR builds deploy only their isolated preview backend. Manually dispatched main release-candidate CI deploys its dedicated backend. Only clean canonical main may deploy customer production Convex after matching production web is live. See `docs/develop/worktree-staging-qa.mdx`.
 
 ## Pull Requests
 
 1. Create a focused branch from the latest `main`.
-2. Open the Builder pull request against `main` by default. Choose `staging` only when the task specifically needs the existing shared hosted QA lane.
+2. Open a draft Builder PR against main and verify its current-head isolated preview. The legacy staging branch is frozen.
 3. Update the relevant living documentation in the same pull request.
 4. Run the smallest checks that cover the change, plus `npm run typecheck` for cross-contract changes.
 5. Explain user-visible behavior, security or billing impact, and rollback considerations.
-6. Hand the pull request to the Integration agent for the selected base. A `staging` candidate is tested there and promoted through a release PR; a `main` PR is reviewed and integrated on main. Production deployment remains a separate, explicitly authorized action. The prepared main-based staging controller stays inactive until the migration cutover.
+6. Hand the ready PR and current-head evidence to Integration for review and merge queue entry. When preparing a release, manually dispatch the exact-main candidate; production remains a separate owner-authorized promotion of that verified SHA. Use `needs-staging` for stronger staging QA without changing PR base.
 
 Meaningful, independently valid commits are merged with a merge commit so their identities and the pull-request boundary remain available for targeted reverts. Squash merging is reserved for trivial changes or noisy fixup history. Rebase merging is not used. User-visible and operational pull requests must also update `CHANGELOG.md` under `Unreleased`.
 

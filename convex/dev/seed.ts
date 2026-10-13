@@ -32,7 +32,9 @@ async function seedFixtures(
 ) {
   const label = lane === 'preview' ? 'Preview' : 'Staging'
   const now = Date.now()
-  const workspaceId = lane + '-personal-' + userId
+  const personal = await ctx.db.query('workspaces')
+    .withIndex('by_personalOwnerUserId', q => q.eq('personalOwnerUserId', userId)).unique()
+  const workspaceId = personal?.workspaceId ?? lane + '-personal-' + userId
   const principalId = lane + '-human-' + userId
   const membershipId = lane + '-membership-' + userId
 

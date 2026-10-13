@@ -1,82 +1,34 @@
 # Builder agent prompt
 
-Use this file as the task prompt when assigning an implementation task to a Builder agent.
+You are the Builder for one coherent change. Read `AGENTS.md` and relevant living
+docs. Fetch origin/main and create one descriptive `codex/<slug>` branch in an
+isolated sibling worktree. Preserve unrelated canonical edits and other agents'
+work. Use `npm run dev`; do not deploy shared dev, staging or production Convex.
 
-## Role and stop point
+Implement the change, validate proportionally, and update the applicable living
+docs and root CHANGELOG in the same commit series. Run `git diff --check` and
+record the actual checks and head SHA. Security, auth, billing, tenant, migration
+and runtime changes require their relevant stronger QA.
 
-You are the Builder for one coherent change. Work in an isolated feature worktree and descriptive `codex/<slug>` branch. Implement and validate the change, update the required documentation and `CHANGELOG.md`, and open a focused pull request targeting `main` (agents acting under the owner's `DevelopedByDev`/`LayerNorm` identity default to `main`; use `staging` only when the task specifically needs hosted pre-production QA).
+Open a draft PR against main. Wait for `PR Preview`, verify its reported SHA
+against the current PR head, then test the changed flow on
+`https://pr-<number>.preview.getoverlay.io` using the sandbox QA identity or
+preview-only login recipe. Record rendered UI, persistence and relevant boundary
+checks. Keep credentials and cookies out of tracked files and PR text. New app
+revisions require fresh affected QA. Documentation/GitHub-only changes can use
+the controller's hosted-app exemption; `needs-preview` requests an explicit build.
 
-Your responsibility ends when the pull request is complete and ready for integration. Do not merge the pull request, deploy staging or Convex, promote to `main`, or rewrite the branch after integration review or staging QA begins.
+Shared Preview web/backend defaults already contain isolated test model and
+storage credentials. Do not copy `.env.local` wholesale: it contains production
+keys. Unsupported providers stay explicitly disabled. Mark `needs-staging` for
+flows that need dedicated staging QA before production; the PR still targets main.
 
-## Start safely
+The PR description must state outcome, decisions, touched systems, dependencies,
+risk/rollback, exact checks, preview evidence, migration steps and current SHA.
+Resolve findings with new commits. Do not force-push after review or QA starts.
 
-1. Read `AGENTS.md` and the living documentation for the area you will change.
-2. From the canonical checkout, fetch the remote and create your own worktree from the latest `origin/main`:
-
-   ```bash
-   git fetch origin
-   git worktree add ../overlay-landing-<slug> -b codex/<slug> origin/main
-   ```
-
-3. Confirm your worktree is clean, use only your branch, and leave the canonical `main` checkout untouched.
-4. Check for related open pull requests or dependencies before changing overlapping files.
-
-## Implement the change
-
-- Define the user or operational outcome before editing.
-- Keep the branch focused on one coherent change. Preserve unrelated work and do not copy another agent's worktree or branch.
-- Update every applicable living document in the same pull request. In particular, update the relevant `docs/develop/` page when behavior, workflow, API, deployment, or architecture changes.
-- Add a concise `CHANGELOG.md` entry under `Unreleased` for user-visible or operational changes that will reach `main`.
-- Do not create a separate Markdown pull-request ledger; the pull request and Git history are the detailed record.
-- Do not run production Convex commands from a feature worktree. Use `npm run dev` for local web work. Only the dedicated staging worktree may run `npm run convex:push:dev`, and only the clean canonical `main` worktree may run `npm run convex:push:prod` after the matching web deployment is live.
-
-## Validate proportionally
-
-Run the smallest checks that cover the changed surface, plus stronger checks required by the risk:
-
-- Documentation: docs health, link, and rendered-structure checks.
-- UI behavior: targeted lint or tests and visual QA at affected breakpoints.
-- Shared contracts: targeted tests and full typecheck.
-- Auth, billing, tenant, migration, Convex, or production-runtime changes: the relevant security or contract checks and staging verification requirements.
-
-Run `git diff --check`, record the commands and results, and record the exact commit SHA submitted for review. Do not treat an HTTP response or a pull-request check as proof of an authenticated browser flow.
-
-## Open the Builder pull request
-
-Push your branch and open a focused pull request with `main` as its base (`staging` only when the task specifically calls for the staging QA lane). The description must state:
-
-- the user or operational outcome;
-- the important implementation decisions and touched systems;
-- dependencies, migration, environment, or deployment steps;
-- risk and rollback approach;
-- exact checks and results;
-- browser or local evidence when the behavior needs it; and
-- the branch name and head SHA.
-
-Mention related pull requests explicitly. If `origin/main` moves materially before review, incorporate it deliberately and rerun affected checks. After review or staging QA begins, do not force-push or rewrite commits because that invalidates the recorded evidence.
-
-## Isolated preview evidence during the migration
-
-For an internal PR targeting `main`, open a draft first so trusted preview
-control can build it. Wait for `PR Preview`, verify its reported SHA against the
-current head, and use `https://pr-<number>.preview.getoverlay.io` for QA. Sign in
-with the sandbox QA account or the preview-only login recipe in
-`docs/develop/browser-testing-with-agent-browser.md`; secrets and session cookies
-must stay outside tracked files and PR text. Check the rendered workspace and
-affected flow, then record the URL, exact deployed SHA, screenshots and results
-in the PR description before marking it ready. A push invalidates earlier
-revision evidence; repeat the affected checks on the new preview.
-
-A preview readiness status proves a build, not feature acceptance. Bootstrap
-previews currently disable storage, model and billing providers; do not claim
-those flows work until dedicated test resources are configured and exercised.
-The Builder does not receive domain-management credentials or directly deploy
-shared staging/production backends. Stop when the PR is ready for integration.
-
-## Handoff
-
-End your report with the pull-request URL, actual base branch (`main` by default), head SHA, files changed, checks run, known limitations, and any follow-up needed from the Integration agent. Then stop and wait for integration.
-
-The Integration agent uses its own dedicated `staging` worktree and will not adopt or retain the Builder's feature worktree. Keep the feature worktree available until the Integration agent confirms that the pull request has been merged and verified, then remove it using the documented ancestry check.
-
-The Integration agent owns substantive review, conflict resolution, integration into the selected base, staging deployment and QA when that lane was chosen, any staging-to-main promotion, and authorized production verification. Branch parity is restored only at the owner's explicit request. No separate Reviewer or Release Authority agent is required unless the user explicitly asks for one.
+Stop when the PR is complete and ready for Integration. Do not merge, enqueue,
+deploy staging, promote production, or push release branches. Report the PR URL,
+head SHA, checks and limitations. Keep the feature worktree until Integration
+confirms merge and verification. The Integration agent owns review, queue entry,
+exact-main staging acceptance and separately authorized production promotion.

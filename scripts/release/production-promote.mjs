@@ -68,7 +68,7 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     assert.equal((await github('/user')).login, 'DevelopedByDev', 'Use Divyansh GitHub identity')
     assert.equal((await vercel('/v2/user')).user?.username, 'developedbydev1', 'Use Divyansh Vercel identity')
     await verifyProductionProject(vercel)
-    phase = 'accepted staging evidence'
+    phase = 'accepted release candidate evidence'
     const evidence = verifiedSmoke(await acceptStaging(sha), sha)
     await verifyStagingLive({ github, vercel, evidence, sha })
     const previous = await vercel(`/v4/aliases/${PRODUCTION.hostname}`)
@@ -127,7 +127,8 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   let locked = false
   const common = runCommand('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root })
   const lock = join(common, 'overlay-production-promotion.lock')
-  const cliEnv = { ...env, VERCEL_TOKEN: vercelToken }
+  // Scope the reviewed CLI exception to this child; retain repository dependency age policy.
+  const cliEnv = { ...env, VERCEL_TOKEN: vercelToken, npm_config_min_release_age: '0' }
   const cli = args => runCommand('npx', ['--yes', 'vercel@63.1.2', ...args,
     '--scope', PRODUCTION.teamSlug, '--non-interactive'], { cwd: root, env: cliEnv })
   try {
@@ -138,7 +139,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       acceptStaging: async () => {
         const list = await github(`${repo}/actions/workflows/staging-release.yml/runs`, {
           query: { head_sha: sha, status: 'success', per_page: 100 } })
-        const run = list.workflow_runs.find(r => r.head_sha === sha && r.head_branch === 'main')
+        const run = list.workflow_runs.find(r => r.head_sha === sha && r.head_branch === 'main' && r.event === 'workflow_dispatch')
         assert.ok(run, 'No successful staging smoke run for this SHA')
         const jobs = await github(`${repo}/actions/runs/${run.id}/jobs`, { query: { per_page: 100 } })
         const job = jobs.jobs.find(j => j.name === 'deploy')
