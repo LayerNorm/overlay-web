@@ -4,60 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-### Changed
-
-- **Tailwind CSS upgraded to v4.** The app now builds on `tailwindcss@4` via `@tailwindcss/postcss` with CSS-first configuration (`@theme`, `@custom-variant`, `@source`). `dark:` utilities now follow the app's `[data-theme]` attribute instead of the OS color scheme — previously 61 `dark:` classes ignored the in-app theme toggle. The base palette has a single canonical definition in `@overlay/ui` styles; `globals.css` keeps only app-specific variables. No visual changes intended. First step of the shadcn/ui migration (`docs/plans/SHADCN_MIGRATION_PLAN.md`).
-
-- Submit production builds asynchronously and poll owned readiness; bound other command output at 16 MiB so large build logs cannot terminate release orchestration.
-
-- Parse Vercel CLI 63 structured production output and wait for the owned exact-SHA remote build to become READY before publishing web or pushing production Convex.
-
-- Recognize the primary submodule checkout in production release validation while continuing to refuse linked feature worktrees.
-
-- Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit as holds settle or release, and disabling automatic top-ups.
-
-- Wait for chat transcript hydration in release smoke, explicitly select Chat, and clean fresh production QA conversations.
-
-- Resolve the actual synthetic workspace in release smoke and clean fresh test chats; consolidate main queue/check protection and restore universal history guards.
-
-- Repair missing PR preview fixtures after interrupted builds, preserving existing personal workspaces and test data.
-
-- Prepare exact-main release candidates only on demand; reuse PR preview infrastructure and accept verified native candidate proof before manual production promotion.
-
-- **Release cutover guards and note conflict correctness.** Dedicated staging rejects missing Sandbox credentials before deploying and stops immediately on a blocked Vercel build. Hosted backend selection no longer depends on the staging hostname. Expected stale-note conflicts use structured Convex application data, preserving HTTP 409 on production-type backends. Process docs now specify PR previews, main merge queue, dedicated main staging and manual web-first production; live staging/queue/drill acceptance remains gated.
-
-### Fixed
-
-- **Disabled preview providers also disable their capabilities.** Shared Preview settings and release build guards prevent chat from loading an integration provider configured as `none`. Legacy staging Production settings are preserved.
-
-- **Reactive Convex authentication uses its handler contract.** Browser HMAC tokens remain explicit query arguments; the client no longer sends them to an unconfigured platform identity verifier. Staging smoke now checks an authenticated subscription, denial for a different user and browser runtime errors.
-
-- **Edits to legacy notes stay visible.** Canonical text updates remove an older text field that could mask the saved content on subsequent reads.
-
-- **PR checks and previews spend less time on obsolete work.** New revisions cancel superseded code checks; maintenance-only diffs keep CI and docs checks without rebuilding the unchanged app. Hosted previews remain available through an explicit request. Dependency Review now performs its comparison, and paid canary deployment events no longer publish skipped required contract checks.
-
-- **Removed preview wildcard fallback.** Exact PR aliases serve previews; unknown or closed preview hostnames return 404. Trusted control checks the certificate-only wildcard, verifies cleanup, settles superseded builds before deploying newer backend code, and retries transient reads without blindly repeating mutations.
-- **Stale note saves report conflicts.** Convex rejection now reaches the existing HTTP `409` response instead of reporting a successful save with unchanged content. Found during isolated-preview CRUD QA.
-
 ### Added
 
-- **Prepared the separate production release QA identity.** WorkOS identity/password readback passed, and a deployment-scoped Convex credential is stored privately with a January 10 expiry. The promotion command loads its four settings from the owner's private release JSON after checkout validation, avoiding repeated exports. Production application smoke, deployment and rollback rehearsal remain pending.
-
-- **Prepared one-command production promotion.** Exact clean canonical main and successful staging proof gate a remote web build, verified web publication, production Convex push and authenticated smoke. Checkpoints preserve partial release state and previous web deployment IDs; the rollback runbook retains schema compatibility. Live activation and rollback rehearsal remain pending.
-
-- **Boolean release flags default off.** A request-scoped PostHog helper lets unfinished server behavior stay dark, evaluates each requested set once, and falls back to the existing behavior when configuration or the flag service is unavailable.
-
-- **Prepared authenticated staging cutover.** A candidate build can pass sandbox sign-in, note CRUD/conflict, real chat and Files checks before changing staging's canonical alias. Publication requires verified provider isolation and complete proof from the same serialized main workflow, followed by canonical smoke. Activation remains pending live checks; the owner waived the calendar soak.
-
-- **Shared preview provider defaults.** Existing LayerNorm sandbox Stripe credentials/prices and isolated Gateway/OpenRouter test keys are configured once for future Vercel builds and new Convex previews, with readback verified. Shared test credentials and release automation tokens have no scheduled expiry; OpenRouter lane keys retain $1 total limits with no reset. Shared Preview hosted-access flags permit fresh model QA; dedicated staging backend test settings are separate. Application reply and reload persistence passed; authenticated R2 upload/download, browser rendering and CORS isolation passed.
-
-- **Prepared dedicated staging deployments from main.** An inactive, serialized workflow pins Divyansh's staging project, exact accepted revision and separate Convex backend. It rejects manual or mismatched builds and records web/backend provenance. Activation awaits isolated providers and authenticated staging smoke; current staging and manual production releases remain in place.
-
-- **PR preview lifecycle automation and merge-queue checks.** Trusted main workflows provision per-PR custom origins, pin builds to the current head, verify alias assignment, and clean up on close or retarget; scheduled reconciliation covers missed events. Wildcard fallback hosts return 404. All required checks support merge groups, including explicit dependency comparisons and existing CLA-signature verification.
-  Management credentials are confined to a main-only GitHub environment, and the controller disables automatic domain assignment before provenance checks.
-  Open PR backends renew within Convex's retention limit; expired backends force a fresh web build and seed instead of reusing a broken READY frontend.
-
-- **Isolated PR preview foundations.** The staging project's opt-in PR build gate requires its canonical custom URL and a preview-scoped Convex key. Builds keep each PR's backend separate from shared development; internal seed fixtures and a sandbox-only QA login support browser checks. Preview crons, email delivery, and outbound webhooks are disabled. Production web builds continue to leave Convex deployment to the separate promotion step.
 - **Personal plans are gone from the code and the data (workspace pricing, phase 6).** A person's own entitlements are always the free allowance of the workspace they are working in; nothing is ever charged to a person's own account, and only a paid workspace has credit, top-ups and automatic top-ups. The personal subscription writers, the personal branches of the Stripe webhook, the personal balance mirror (`syncPersonalBillingShadows`), personal auto top-ups, the account checkout/portal services, the admin console's personal budget grant (the admin list is now just People), and the old personal billing scripts are deleted; `/api/checkout/verify`, `/api/topups/verify`, `/api/portal` and `POST /api/subscription/settings` answer `410 account_plans_retired`. The plan and credit fields are stripped from people's rows and dropped from the schema. Fixed: in a paid workspace, enabling or running an automation could be refused because the check read the person's (now always free) plan; it now checks the automation's workspace. Memory extraction uses the paid model only when a paid workspace pays for it.
 - **Workspace billing has no switch anymore (workspace pricing, phase 6, first part).** The `workspaceWallets` flag, `OVERLAY_FEATURE_WORKSPACE_WALLETS`, `OVERLAY_WORKSPACE_BILLING_ROLLOUT_STAGE` and the internal/selected workspace allowlists are deleted; a workspace with a paid plan always pays, and the Billing tab no longer shows a rollout notice. The plan-conversion tool and its runbook are deleted (the six plans were converted in phase 1); Stripe events for those subscriptions still reach the workspace by subscription id. Behavior in production is unchanged.
 - **Accounts are never free or paid; credit expires monthly; plans and top-ups take any amount from $8 to $500 (workspace pricing, phase 4).** Account-plan checkout and account top-ups are retired (`/api/checkout` and `/api/topups/checkout` answer 410); the old account pricing page is deleted; the chat's "add a top-up" opens Workspace → Billing. Usage recorded outside a billing hold (chat suggestions and similar) is now charged to the paid workspace instead of the person's own account. The usage list always adds up to what was charged, with an "Earlier usage" line for charges from before itemization. At each renewal the month's credit and any top-up balance reset; nothing carries over. Workspace → Billing accepts any whole-dollar plan or top-up from $8 to $500.
@@ -126,6 +74,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **`devalue` 5.9.4** is pinned past three advisories (GHSA-j22f-vq7h-c4qm, GHSA-mcm9-63f2-9j32, GHSA-x5rw-q4pp-hg5g) that failed the production audit.
 
 ### Changed
+
+- **Tailwind CSS upgraded to v4.** The app now builds on `tailwindcss@4` via `@tailwindcss/postcss` with CSS-first configuration (`@theme`, `@custom-variant`, `@source`). `dark:` utilities now follow the app's `[data-theme]` attribute instead of the OS color scheme — previously 61 `dark:` classes ignored the in-app theme toggle. The base palette has a single canonical definition in `@overlay/ui` styles; `globals.css` keeps only app-specific variables. No visual changes intended. First step of the shadcn/ui migration (`docs/plans/SHADCN_MIGRATION_PLAN.md`).
 
 - **Computers moved to Boat's API.** Box renamed itself Boat, and the legacy `ascii.dev/api/box/v1` endpoints advertise a 2026-10-31 sunset. The sandbox adapter now calls `https://boat.dev/api/v1` (`/sandboxes/*`, `sandbox` envelopes, `sandboxId` in named snapshots) and still reads legacy `box` envelopes. `BOAT_API_KEY` is preferred; the existing `BOX_API_KEY` keeps working, so no secret change is needed to deploy. `BOAT_API_BASE_URL` can override the base. The internal provider id stays `box`, so leases, prices, and stored references are unchanged. Verified with the live conformance and desktop suites against Boat.
 - **New agent is a short dialog.** "New agent" now opens one small dialog instead of creating an "Untitled agent" and opening the full editor: avatar (click to pick a shape and colour), name, description (the agent's instructions), type, a Computer toggle (off by default, provisions the machine on create), access (Only me by default), and a collapsed Advanced section with the model and tools (every tool on by default, with Everything / Standard / Read only presets). Nothing is created until **Create agent**, so cancelling no longer archives a draft. "Other agent" is shown but disabled until connected and hosted agents are rebuilt. The avatar palette grows to 11 colours and the editor uses the same avatar picker.
@@ -366,6 +316,62 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ### Operational
 
 - Production release 2026-09-16: `846d41f43` promoted on `overlay-landing` and production Convex synced. Managed harness agents enabled for every workspace (`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=1`, `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`, `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE=general`); the production `VERCEL_TOKEN` (rotated/dead) and empty `AI_GATEWAY_API_KEY` were replaced with valid values so sandbox provisioning and in-sandbox model brokering work.
+
+## 2026-10-13 — Release workflow migration
+
+- Complete the release workflow migration: isolated PR previews without a paid custom suffix, native main merge queue, on-demand exact-main candidates, manual web-first production promotion, and verified rollback/restoration. Production release `bee84a33a2d4` passed authenticated smoke; automatic staging Stripe checkout/cancellation and browser storage acceptance passed.
+
+- Submit production builds asynchronously and poll owned readiness; bound other command output at 16 MiB so large build logs cannot terminate release orchestration.
+
+- Parse Vercel CLI 63 structured production output and wait for the owned exact-SHA remote build to become READY before publishing web or pushing production Convex.
+
+- Recognize the primary submodule checkout in production release validation while continuing to refuse linked feature worktrees.
+
+- Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit as holds settle or release, and disabling automatic top-ups.
+
+- Wait for chat transcript hydration in release smoke, explicitly select Chat, and clean fresh production QA conversations.
+
+- Resolve the actual synthetic workspace in release smoke and clean fresh test chats; consolidate main queue/check protection and restore universal history guards.
+
+- Repair missing PR preview fixtures after interrupted builds, preserving existing personal workspaces and test data.
+
+- Prepare exact-main release candidates only on demand; reuse PR preview infrastructure and accept verified native candidate proof before manual production promotion.
+
+- **Release cutover guards and note conflict correctness.** Dedicated staging rejects missing Sandbox credentials before deploying and stops immediately on a blocked Vercel build. Hosted backend selection no longer depends on the staging hostname. Expected stale-note conflicts use structured Convex application data, preserving HTTP 409 on production-type backends. Process docs now specify PR previews, main merge queue, dedicated main staging and manual web-first production; live staging, queue, production and rollback acceptance passed on the recorded release.
+
+
+### Fixed
+
+- **Disabled preview providers also disable their capabilities.** Shared Preview settings and release build guards prevent chat from loading an integration provider configured as `none`. Legacy staging Production settings are preserved.
+
+- **Reactive Convex authentication uses its handler contract.** Browser HMAC tokens remain explicit query arguments; the client no longer sends them to an unconfigured platform identity verifier. Staging smoke now checks an authenticated subscription, denial for a different user and browser runtime errors.
+
+- **Edits to legacy notes stay visible.** Canonical text updates remove an older text field that could mask the saved content on subsequent reads.
+
+- **PR checks and previews spend less time on obsolete work.** New revisions cancel superseded code checks; maintenance-only diffs keep CI and docs checks without rebuilding the unchanged app. Hosted previews remain available through an explicit request. Dependency Review now performs its comparison, and paid canary deployment events no longer publish skipped required contract checks.
+
+- **Removed preview wildcard fallback.** Exact PR aliases serve previews; unknown or closed preview hostnames return 404. Trusted control checks the certificate-only wildcard, verifies cleanup, settles superseded builds before deploying newer backend code, and retries transient reads without blindly repeating mutations.
+- **Stale note saves report conflicts.** Convex rejection now reaches the existing HTTP `409` response instead of reporting a successful save with unchanged content. Found during isolated-preview CRUD QA.
+
+### Added
+
+- **Prepared the separate production release QA identity.** WorkOS identity/password readback passed, and a deployment-scoped Convex credential is stored privately with a January 10 expiry. The promotion command loads its four settings from the owner's private release JSON after checkout validation, avoiding repeated exports. Production application smoke, deployment, deliberate rollback and restoration passed on the recorded release.
+
+- **Prepared one-command production promotion.** Exact clean canonical main and successful staging proof gate a remote web build, verified web publication, production Convex push and authenticated smoke. Checkpoints preserve partial release state and previous web deployment IDs; the rollback runbook retains schema compatibility. Live activation, deliberate rollback and restoration passed.
+
+- **Boolean release flags default off.** A request-scoped PostHog helper lets unfinished server behavior stay dark, evaluates each requested set once, and falls back to the existing behavior when configuration or the flag service is unavailable.
+
+- **Prepared authenticated staging cutover.** A candidate build can pass sandbox sign-in, note CRUD/conflict, real chat and Files checks before changing staging's canonical alias. Publication requires verified provider isolation and complete proof from the same serialized main workflow, followed by canonical smoke. Live activation passed; the owner waived the calendar soak.
+
+- **Shared preview provider defaults.** Existing LayerNorm sandbox Stripe credentials/prices and isolated Gateway/OpenRouter test keys are configured once for future Vercel builds and new Convex previews, with readback verified. Shared test credentials and release automation tokens have no scheduled expiry; OpenRouter lane keys retain $1 total limits with no reset. Shared Preview hosted-access flags permit fresh model QA; dedicated staging backend test settings are separate. Application reply and reload persistence passed; authenticated R2 upload/download, browser rendering and CORS isolation passed.
+
+- **Dedicated staging candidates from main.** A manually dispatched, serialized workflow pins Divyansh's test project, exact accepted main revision and separate Convex backend. It rejects untrusted or mismatched builds and records web/backend provenance. Native and published staging smoke passed; main merges do not deploy staging or production.
+
+- **PR preview lifecycle automation and merge-queue checks.** Trusted main workflows provision per-PR custom origins, pin builds to the current head, verify alias assignment, and clean up on close or retarget; scheduled reconciliation covers missed events. Wildcard fallback hosts return 404. All required checks support merge groups, including explicit dependency comparisons and existing CLA-signature verification.
+  Management credentials are confined to a main-only GitHub environment, and the controller disables automatic domain assignment before provenance checks.
+  Open PR backends renew within Convex's retention limit; expired backends force a fresh web build and seed instead of reusing a broken READY frontend.
+
+- **Isolated PR preview foundations.** The staging project's opt-in PR build gate requires its canonical custom URL and a preview-scoped Convex key. Builds keep each PR's backend separate from shared development; internal seed fixtures and a sandbox-only QA login support browser checks. Preview crons, email delivery, and outbound webhooks are disabled. Production web builds continue to leave Convex deployment to the separate promotion step.
 
 ## 2026-08-30
 

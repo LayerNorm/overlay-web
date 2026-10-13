@@ -1,0 +1,19 @@
+{
+  "sha": "bee84a33a2d4b101bf85d3b179cd30984b556045",
+  "pr": 204,
+  "mergedAt": "2026-10-13T14:25:08Z",
+  "mergeQueueUsed": true,
+  "mergeGroupSha": "bee84a33a2d4b101bf85d3b179cd30984b556045",
+  "qualityRunId": 38411732139,
+  "automaticDeployments": [
+    {
+      "projectId": "prj_wucEZdZyA2xKUurHLXSuQNcS1YPy",
+      "count": 0
+    },
+    {
+      "projectId": "prj_IKvugqekF8qLP14p7Rg4ilWErXPr",
+      "count": 0
+    }
+  ],
+  "productionDeploymentUnchanged": "dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f"
+}
