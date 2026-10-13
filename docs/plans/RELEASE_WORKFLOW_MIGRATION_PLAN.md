@@ -102,6 +102,15 @@ reads only, and checks HTTPS `404` after close cleanup. Do not blindly retry
 mutations whose responses were lost; reconcile ownership and state first.
 
 The Convex preview key successfully renewed backend expiry with API readback.
+
+Live chat preparation found that provider `none` still left integration
+capabilities enabled, causing `500: Integrations are disabled` before the model
+call. The unscoped Vercel Preview defaults now explicitly disable integrations,
+browser use, sandboxes and web search with their corresponding feature flags;
+readback preserved every legacy Production variable. Release builds reject
+inconsistent disabled-provider flags. Existing deployments need rebuilding to
+receive these settings. Model reply/Auto and isolated storage acceptance remain
+pending; none of these preparation checks activate staging or production.
 Reconciliation renews validated open PR backends within Starter's five-day
 limit; closed PRs expire naturally. Missing or expired backends force a fresh
 same-SHA frontend build and seed. PR #190's unattended open event built accepted head

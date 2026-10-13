@@ -59,6 +59,14 @@ it also contains live Stripe, a production OpenRouter key, and shared-dev backen
 selectors. Keep per-lane session/internal secrets and the build-injected backend
 URL. Cloudflare bucket permissions and model budgets need separate verification.
 
+Pair a `none` integration, browser, sandbox or web-search provider with its
+`OVERLAY_FEATURE_*` flag set to `false`. Provider selection alone does not change
+capabilities. Release builds reject the mismatch before deploying functions;
+otherwise chat can try to load the disabled integration provider and fail before
+calling its model. The Preview defaults now contain these four disabled flags,
+with readback and preservation of legacy Production settings verified. Dedicated
+staging web configuration must use the same pairing until its providers are ready.
+
 ## Prepared dedicated staging backend
 
 The prepared dedicated staging backend is `doting-cuttlefish-819` in separate

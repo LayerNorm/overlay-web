@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Disabled preview providers also disable their capabilities.** Shared Preview settings and release build guards prevent chat from loading an integration provider configured as `none`. Legacy staging Production settings are preserved.
+
 - **Reactive Convex authentication uses its handler contract.** Browser HMAC tokens remain explicit query arguments; the client no longer sends them to an unconfigured platform identity verifier. Staging smoke now checks an authenticated subscription, denial for a different user and browser runtime errors.
 
 - **Edits to legacy notes stay visible.** Canonical text updates remove an older text field that could mask the saved content on subsequent reads.

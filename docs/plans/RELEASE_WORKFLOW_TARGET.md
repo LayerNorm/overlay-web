@@ -82,6 +82,9 @@ Rules that follow from this table:
   when rotating credentials; defaults affect newly created backends only.
 - Preview and staging secrets are **test-mode only**. Preview builds run whatever
   code a pull request contains, so they must never hold a production secret.
+- A disabled integration, browser, sandbox or web-search provider also disables
+  its feature flag. Release builds reject a `none` provider advertised as an
+  enabled capability; this prevents chat from loading unavailable connectors.
 - No environment shares a Convex backend with another, so one feature's schema
   change cannot break someone else's testing.
 
