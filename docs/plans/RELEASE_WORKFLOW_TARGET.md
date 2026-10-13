@@ -1,34 +1,16 @@
 # Target release workflow: previews, trunk, release candidates, production
 
-> **Status: target state, not the current process.** Until the migration in
-> [`RELEASE_WORKFLOW_MIGRATION_PLAN.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md) lands,
-> follow `docs/develop/agentic-development.mdx` and `docs/develop/worktree-staging-qa.mdx`.
+**Status: implemented and live verified.**
 
-Preparation status: preview foundations are merged. Dedicated staging backend
-`doting-cuttlefish-819` in project `overlay-staging` has isolated settings, app functions and synthetic fixtures.
-The release controller is manual-only: no automatic staging build follows a
-merge. The existing preview project and dedicated test backend are retained for
-on-demand exact-main release rehearsals; the legacy staging branch is frozen
-at cutover.
+Migration acceptance completed on 2026-10-13. The native main queue accepted the release; current-main candidate [run 38413217001](https://github.com/LayerNorm/overlay-web/actions/runs/38413217001) passed all ten authenticated checks before publication and again at canonical staging. Release `bee84a33a2d4b101bf85d3b179cd30984b556045` was promoted from clean canonical main: production web `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified live before pushing customer Convex `colorful-chickadee-419`. Normal production sign-in, note CRUD/stale-edit 409, fresh Auto reply and reload persistence, Files, realtime tenant authorization and exact synthetic cleanup passed.
 
-The prepared production command is `bash scripts/release/promote.sh <main-sha>`;
-append `--check` for preflight only. It requires clean canonical current `main`,
-Divyansh's identities and complete successful exact-main release-candidate smoke proof, including
-reactive authorization. It builds production remotely without assigning domains,
-verifies and publishes web, then pushes production Convex and runs authenticated
-smoke with a separate synthetic account. Live promotion and rollback rehearsal
-remain pending. See `docs/develop/worktree-staging-qa.mdx` for configuration,
-checkpoints and the rollback runbook.
+A deliberate web rollback to `dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f` passed normal sign-in, note create/read and Files against the retained compatible backend. The current release was restored, its canonical alias verified, and the complete production smoke passed again. Production is left on `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg`. The old baseline has no Git SHA metadata; its deployment ID is the rollback reference.
 
-The separate production QA identity and deployment-scoped Convex credential are
-prepared privately. WorkOS password authentication passed; production application
-smoke and deployment remain pending. Isolated test Gateway and OpenRouter keys
-are accepted by their native readback. Shared Preview hosted-access flags now
-passed a real Free Router reply and reload persistence on PR #194. Isolated
-R2 upload/download, browser image rendering, cross-lane denial and CORS checks
-also passed. Staging web settings now use the dedicated backend and test providers;
-the project production branch is `main` with automatic aliases disabled. Its
-canonical alias still serves the previous deployment. Customer production is unchanged.
+Dedicated staging `dpl_BvojtujMXadjjPjzGfp5F2quSXkt` uses isolated `doting-cuttlefish-819`. A real fake-card Stripe checkout, paid chat consumption and natural cancellation passed automatically: app Free/canceled, used credits preserved and unused paid allowance removed. This fresh acceptance needed no replay; the earlier failed synthetic event was repaired separately. Actual staging file-input upload, exact download, browser image rendering, metadata deletion and R2 HEAD 404 cleanup also passed.
+
+Main merges create neither staging nor production deployments. The legacy staging branch stays frozen. Shared test credentials have no scheduled expiry; existing model budgets and platform preview renewal limits still apply. An earlier candidate run `38399463218` at `fd137da306aab1ee80b1fc3402946752397bb57b` failed its real-chat assertion. A subsequent live diagnostic reproduced malformed Auto output routed to `poolside/laguna-xs-2.1:free`; the unchanged checks passed on retry `38400746171`. The failed run did not publish staging. The release gate correctly refused that failed attempt. CODEOWNERS approval and removal of the emergency owner bypass are conditional on a second eligible maintainer joining. No purchased Preview Deployment Suffix is required.
+
+The operating contract and commands are in `docs/develop/agentic-development.mdx` and `docs/develop/worktree-staging-qa.mdx`. Each later release still needs fresh evidence for its exact current-main SHA.
 
 ## Preview-domain decision — 2026-10-12
 
@@ -244,8 +226,8 @@ Enable the human approval gate when a second eligible reviewer joins.
 
 ## Known limits
 
-- Previews cannot receive third-party webhooks or finish third-party OAuth with
-  fixed callback URLs. Those flows are verified on staging.
+- Providers that require fixed webhook or OAuth callback URLs are verified on
+  staging. WorkOS accepts the configured wildcard preview callback.
 - Seed data does not reproduce every real data shape. Migrations are always
   checked on staging before production.
 - Preview count is bounded by Vercel concurrent builds and Convex preview
@@ -254,11 +236,13 @@ Enable the human approval gate when a second eligible reviewer joins.
   last successful alias in place; QA must check the deployed SHA before treating
   a preview as evidence for the current PR head.
 
-Prepared staging backend: `doting-cuttlefish-819` has separately generated
+Dedicated staging backend: `doting-cuttlefish-819` has separately generated
 internal secrets, its sandbox smoke identity and staging app URL configured, with
 readback verified. Application functions and synthetic fixtures are deployed. The gated build sequence deploys backend functions, seeds guarded fixtures,
 then builds web; Convex `deploy --cmd` alone runs the command before its push.
-Activation still requires provider isolation, authenticated smoke and the cutover.
+Provider isolation, complete authenticated smoke and cutover passed on the
+accepted application revision recorded below. Each future candidate requires
+fresh smoke evidence.
 
 Shared Vercel Preview settings and Convex preview defaults now contain the
 existing LayerNorm sandbox Stripe credentials/prices and the test Gateway key,
@@ -268,23 +252,19 @@ no expiry and a $1 total limit without reset. Shared Preview model keys and
 hosted-access flags are verified by readback; an actual Free Router reply and reload persistence passed. Authenticated R2 upload/finalization, exact byte download, browser image
 rendering and CORS isolation also passed. No provider credentials need copying per new PR.
 
-Initial staging cutover is prepared as a candidate build and authenticated smoke
-on its verified native hostname, leaving the current staging alias unchanged.
-Publication requires provider isolation plus complete smoke evidence from that
-same serialized workflow run; canonical staging is then smoked again. Main merges never deploy staging; this workflow remains manual-only.
+Each on-demand candidate is tested on its verified native hostname before any
+optional canonical publication. Publication requires provider isolation plus
+complete smoke evidence from the same serialized workflow run; canonical staging
+is then smoked again. Both gates passed for the accepted application revision
+`bee84a33a2d4b101bf85d3b179cd30984b556045`, now served by canonical staging.
+Main merges never deploy staging; this workflow remains manual-only.
 
 Owner decision (2026-10-12): cut over when live isolation and staging smoke
 checks pass; the planned one-to-two-week waiting period is waived.
 
 ### Cutover acceptance status (2026-10-13)
 
-Initial staging sign-in and fixture access passed after restoring the protected
-Sandbox key. Stale-note conflict handling must preserve structured Convex error
-data on production-type deployments; that fix is in the cutover change. The
-optional canonical alias publication stays gated until complete smoke
-passes; unpublished native candidate evidence also qualifies for promotion. A real test Stripe event reached the dedicated backend and was processed;
-full checkout, queue semantic proof and production/rollback drill remain pending.
-
+Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` verified exact main `bee84a33a2d4b101bf85d3b179cd30984b556045` before and after staging publication. Production `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified web-first, then customer Convex and full authenticated smoke passed. Deliberate web rollback, compatibility checks, restoration and full final smoke passed; the accepted release is live. Automatic test Stripe checkout/cancellation and actual browser storage acceptance passed. See the migration plan and `docs/plans/release-workflow-evidence/` for exact proof. Subsequent releases require fresh evidence.
 
 ### Interrupted preview build recovery
 
@@ -329,25 +309,18 @@ Both suites clean their own synthetic conversations after success or failure.
 
 ### Checkout cancellation acceptance
 
-The test-card checkout completed, and the dedicated backend processed checkout
-and subscription-created webhooks and exposed the paid plan through the app API.
-Cancellation then found the existing consumed-credit invariant rejecting the
-Free transition. The fix retains historical spend/holds, removes unused included
-credit, and disables automatic top-ups. Live cancellation replay and a new
-complete candidate run remain required before production acceptance.
+Fresh test-only acceptance passed at canonical staging: Stripe checkout completed/paid, both checkout and creation webhooks processed, and the app showed the $20 active paid plan. A real Auto chat consumed 100 micros. Natural cancellation processed its deleted event and the app became Free/canceled; used and included micros both remained 100, reserved micros were zero, and unused paid funding was removed. No manual replay was used for this fresh event. The earlier synthetic cancellation that failed before the fix was repaired separately after its accepted staging deployment. The Chrome return reached canonical staging with an expired/guest browser session; billing and ownership were verified using the existing normally authenticated synthetic Sandbox session.
 
-Cancellation removes unused paid funding again as existing holds are released or settled below their estimate. Synthetic release smoke closes pending navigation/response waits safely and cleans the exact temporary chat even when note cleanup fails.
+Cancellation also removes unused paid funding as pre-existing holds release or settle below their estimate. Both release smoke suites await actual transcript hydration and clean their exact synthetic chats on success or failure.
 
 ### Complete dedicated candidate (2026-10-13)
 
-Exact main `f863915508795c695d9778f33476eaaf4d14436e` passed the successful manual producer `38394669549`: all ten behavioral checks passed before and after publication to `staging.getoverlay.io`, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. Actual browser staging upload, exact-byte download, image rendering and metadata/object cleanup passed. The earlier failed synthetic cancellation was repaired through the reviewed deployed mutation, preserving 900 used micros and returning the app to Free/canceled. A fresh automatic checkout/cancellation cycle remains separate acceptance. Production preflight refused the valid primary submodule because the original guard assumed a root `.git` directory; the Git-directory comparison fix requires reviewed main and a new current-main candidate before the production drill. Customer production remains unchanged.
+The first complete candidate was `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`. Its recorded evidence remains historical. The final current-main candidate and production/rollback acceptance are recorded in the activation checkpoint above and `docs/plans/release-workflow-evidence/`.
 
 ### Production CLI output and readiness
 
-Vercel CLI 63 returns a structured deployment object in non-interactive mode. The production command accepts its native `deployment.url` (or the explicit JSON/plain-URL forms), then polls the owned production deployment until READY. Every poll retains the exact SHA, project, lane, backend and native-origin checks; error, cancellation, blocking, wrong provenance and a bounded timeout stop before publication.
-
-The first live attempt at main `fd137da306aab1ee80b1fc3402946752397bb57b` stopped during remote-build capture while its remote build continued; inspection also found the old plain-URL parser incompatible with CLI 63 structured output. Deployment `dpl_7gqjWG2n6J2yj2TZyx9EB8PiYpsv` became READY without changing the customer alias `dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f`; no production Convex push occurred. The corrected helper passed an actual structured CLI inspection/readiness check against that unpublished build. This inspection is not a production promotion. A new reviewed current-main candidate and full production command/drill are required after this fix merges.
+Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including native-hostname inspection output. The command polls the owned exact-SHA deployment until READY, rejecting changed provenance, terminal errors and a bounded timeout. Web publication/live verification precedes production Convex and authenticated smoke. Earlier remote-build capture attempts left unpublished READY builds and preserved the customer alias. Structured CLI parsing/readiness merged through PR #203; asynchronous submission and bounded command capture merged through PR #204. The complete corrected command, production smoke and rollback/restoration passed on the release recorded above.
 
 ### Asynchronous production build submission
 
-The live `7a3a682134fef623c859c8c89d75234c1c56728a` production attempt stopped with local `ENOBUFS` while Vercel continued its remote build; the customer alias and production Convex were unchanged. Submit with `vercel deploy --prod --skip-domain --no-wait`, parse its structured native URL, and use the existing owned exact-SHA READY poll. This keeps large remote build logs out of the synchronous CLI capture. Other release commands retain a bounded 16 MiB capture, verified with a harmless 2 MiB regression. Full promotion and rollback acceptance remain pending.
+Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.

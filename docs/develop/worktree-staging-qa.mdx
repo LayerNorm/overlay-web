@@ -19,7 +19,7 @@ for the separate `overlay-release-qa@getoverlay.io` synthetic production account
 The account must have a personal workspace; do not use the sandbox QA user or a
 customer account. The production QA identity is now provisioned separately in
 the production WorkOS environment. Identity readback and direct WorkOS password
-authentication passed; application sign-in and production smoke have not run.
+authentication, application sign-in and the complete live production smoke passed on the accepted release. Subsequent revisions require fresh proof.
 Its password and the deployment-scoped Convex key (expires 2027-01-10) are stored
 privately on the owner's machine, outside the checkout and preview configuration.
 The command loads those four settings from
@@ -59,7 +59,7 @@ Vercel Preview/default Convex settings now include
 `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` and
 `OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0`, inherited by new builds/backends. The
 dedicated staging backend and staging web use separate test credentials;
-the canonical alias stays on its previous deployment until smoke passes. Shared test model/storage credentials and the project-scoped Vercel controller
+canonical staging now serves the accepted exact-main candidate after both smoke gates passed. Shared test model/storage credentials and the project-scoped Vercel controller
 token have no scheduled expiry. Each OpenRouter lane key has a $1 total limit
 and no reset. PR #194 returned a real Free Router reply and retained it after reload. Rebuild
 before subsequent QA and confirm an actual application reply; a direct provider
@@ -76,9 +76,7 @@ do not rotate existing backends: update them separately before rebuilding. Nativ
 write/read, cross-lane/shared-dev denial and owned-object cleanup passed. CORS
 permits `https://pr-*.preview.getoverlay.io` for Preview and
 `https://staging.getoverlay.io` for staging. Authenticated presigned upload/finalization, byte-for-byte content proxy readback
-and browser image rendering passed on PR #194. The browser extension could not
-select a local file; API upload and the resulting browser viewer were checked
-separately, alongside native CORS preflights.
+and browser image rendering passed on PR #194. Initial PR #194 API upload and browser viewing were checked separately. The accepted staging revision also passed an actual browser file-input upload, exact-byte download, image rendering, metadata deletion and R2 HEAD 404 cleanup. Native CORS and cross-lane denial checks passed.
 
 ### Rollback runbook
 
@@ -98,19 +96,11 @@ separately, alongside native CORS preflights.
    feature checkout, force/reset `main`, or deploy an obsolete schema over data
    written since release. Record the previous-source revision and any retained
    compatibility fields.
-4. A deliberate live rollback drill remains required before migration completion.
-   Unit ordering tests and this prepared command do not substitute for that drill.
+4. The migration completed a deliberate live web rollback, authenticated compatibility smoke, restoration and full current-release smoke. Each later rollback still requires owned deployment/alias readback and relevant behavior checks.
 
 ## Cutover acceptance checkpoint
 
-The dedicated staging functions and fixtures are deployed. Sandbox sign-in
-passed; the first full smoke found that note revision conflicts were hidden as
-ordinary developer errors on a production-type Convex backend. The cutover source
-uses structured application errors and preserves their data across the HTTP
-adapter. Optional canonical publication remains gated on complete smoke. Main merges
-never trigger staging builds; prepare candidates only for an intended release. Stripe test endpoint `we_1UQ1FzPH7ssnO0LIvzG2T8VW` delivered
-an actual test PaymentIntent event to the dedicated backend, where it was
-recorded as processed. Billing checkout acceptance remains separate.
+Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` verified exact main `bee84a33a2d4b101bf85d3b179cd30984b556045` before and after staging publication. Production `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified web-first, then customer Convex and full authenticated smoke passed. Deliberate web rollback, compatibility checks, restoration and full final smoke passed; the accepted release is live. Automatic test Stripe checkout/cancellation and actual browser storage acceptance passed. See the migration plan and `docs/plans/release-workflow-evidence/` for exact proof. Subsequent releases require fresh evidence.
 
 ## Deployment lanes
 
@@ -227,14 +217,16 @@ Both suites clean their own synthetic conversations after success or failure.
 
 The primary Overlay checkout is a submodule: its Git directory is under the parent repository’s `.git/modules/overlay-landing`. Production validation compares the checkout’s actual Git directory with its common Git directory. Primary standalone and submodule checkouts pass; linked feature worktrees have distinct Git directories and remain rejected. Clean current main, the fixed production project and manual deployment rules still apply.
 
-The first complete exact-main candidate passed both native and published smoke at `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. Browser staging upload, exact-byte download, image rendering and metadata/object cleanup also passed. Production preflight found the earlier standalone-only Git-directory assumption; its correction must reach reviewed main before the production drill.
+The first complete exact-main candidate passed both native and published smoke at `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. Browser staging upload, exact-byte download, image rendering and metadata/object cleanup also passed. The canonical submodule guard correction merged through PR #201 and passed the actual clean-main production preflight, promotion and rollback drill.
 
 ### Production CLI output and readiness
 
-Vercel CLI 63 returns a structured deployment object in non-interactive mode. The production command accepts its native `deployment.url` (or the explicit JSON/plain-URL forms), then polls the owned production deployment until READY. Every poll retains the exact SHA, project, lane, backend and native-origin checks; error, cancellation, blocking, wrong provenance and a bounded timeout stop before publication.
-
-The first live attempt at main `fd137da306aab1ee80b1fc3402946752397bb57b` stopped during remote-build capture while its remote build continued; inspection also found the old plain-URL parser incompatible with CLI 63 structured output. Deployment `dpl_7gqjWG2n6J2yj2TZyx9EB8PiYpsv` became READY without changing the customer alias `dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f`; no production Convex push occurred. The corrected helper passed an actual structured CLI inspection/readiness check against that unpublished build. This inspection is not a production promotion. A new reviewed current-main candidate and full production command/drill are required after this fix merges.
+Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including native-hostname inspection output. The command polls the owned exact-SHA deployment until READY, rejecting changed provenance, terminal errors and a bounded timeout. Web publication/live verification precedes production Convex and authenticated smoke. Earlier remote-build capture attempts left unpublished READY builds and preserved the customer alias. Structured CLI parsing/readiness merged through PR #203; asynchronous submission and bounded command capture merged through PR #204. The complete corrected command, production smoke and rollback/restoration passed on the release recorded above.
 
 ### Asynchronous production build submission
 
-The live `7a3a682134fef623c859c8c89d75234c1c56728a` production attempt stopped with local `ENOBUFS` while Vercel continued its remote build; the customer alias and production Convex were unchanged. Submit with `vercel deploy --prod --skip-domain --no-wait`, parse its structured native URL, and use the existing owned exact-SHA READY poll. This keeps large remote build logs out of the synchronous CLI capture. Other release commands retain a bounded 16 MiB capture, verified with a harmless 2 MiB regression. Full promotion and rollback acceptance remain pending.
+Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
+
+### Generated type output after production deploy
+
+The Convex CLI may regenerate `convex/_generated/api.d.ts` during a production push. The accepted release added only type entries for existing preview/staging helper modules. Preserve that generated output in ignored release evidence, inspect its diff, and restore only the deploy-generated changes to the accepted tracked version before the clean-main rollback drill. Preserve all pre-existing edits separately. No second backend deployment is needed for that local type-file restoration.
