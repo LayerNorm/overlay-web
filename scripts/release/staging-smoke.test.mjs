@@ -52,10 +52,15 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
   }, newPage: async () => ({
     on: () => {},
     reload: async () => { calls.push({ reload: true }) },
+    waitForResponse: async predicate => {
+      assert.equal(predicate({ url: () => STAGING.origin + '/api/v1/conversations?conversationId=other&messages=true' }), false)
+      assert.equal(predicate({ url: () => STAGING.origin + '/api/v1/conversations?conversationId=chat_probe&messages=true' }), true)
+      return { status: () => 200, finished: async () => { calls.push({ transcriptReady: true }) } }
+    },
     goto: async url => { calls.push({ navigation: url }) },
     getByRole: role => role === 'main' ? { getByRole: () => ({ waitFor: async () => {} }) } : role === 'combobox'
       ? { waitFor: async () => {}, count: async () => 1, fill: async () => {} }
-      : { waitFor: async () => {}, click: async () => { calls.push({ sendMessage: true }) } },
+      : { waitFor: async () => {}, getAttribute: async () => 'true', click: async () => { calls.push({ sendMessage: role === 'button', chatMode: role === 'tab' }) } },
     getByText: text => ({ count: async () => 0, nth: () => ({ waitFor: async () => {
       if (text === 'RELEASE_SMOKE_OK' && chatFailure) throw new Error('Provider failed private-test-fixture')
     } }), waitFor: async () => {
@@ -92,6 +97,7 @@ test('authenticated smoke performs normal sign-in, note conflict/cleanup and cha
   assert.equal(f.calls.some(c => c.path?.includes('preview-login')), false)
   assert.ok(f.calls.some(c => c.method === 'DELETE'))
   assert.ok(f.calls.some(c => c.sendMessage))
+  assert.ok(f.calls.findIndex(c => c.transcriptReady) < f.calls.findIndex(c => c.sendMessage))
   assert.ok(f.calls.some(c => c.reload))
   assert.ok(f.calls.some(c => c.navigation === '/app/w/staging-personal-user_01M4R1EKTMDZ4E6BQ5DMZXD0F2/chat?id=chat_probe'))
   assert.equal(f.calls.at(-1).closed, true)

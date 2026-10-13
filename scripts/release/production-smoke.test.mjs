@@ -13,10 +13,13 @@ function fixture({ badLogin = false, badConflict = false, badChat = false, badCl
       overlayConvexBackend: PRODUCTION.backend, githubCommitSha: sha, githubCommitRef: 'main' } }
   const response = (status, body = {}) => ({ status: () => status, json: async () => body })
   let edited = false
-  const page = { on: () => {}, goto: async url => calls.push(url), reload: async () => calls.push('reload'),
+  const page = { on: () => {}, waitForResponse: async predicate => {
+    assert.equal(predicate({ url: () => PRODUCTION.origin + '/api/v1/conversations?conversationId=chat_probe&messages=true' }), true)
+    return { status: () => 200, finished: async () => calls.push('transcript-ready') }
+  }, goto: async url => calls.push(url), reload: async () => calls.push('reload'),
     getByRole: role => role === 'main' ? { getByRole: () => ({ waitFor: async () => {} }) } : role === 'combobox'
       ? { waitFor: async () => {}, count: async () => 1, fill: async () => {} }
-      : { waitFor: async () => {}, click: async () => calls.push('send') },
+      : { waitFor: async () => {}, getAttribute: async () => 'true', click: async () => calls.push(role === 'tab' ? 'chat-mode' : 'send') },
     getByText: text => ({ count: async () => 0, nth: () => ({ waitFor: async () => {
       if (text === 'RELEASE_SMOKE_OK' && badChat) throw new Error('private-fixture browser error')
     } }), waitFor: async () => {
@@ -25,7 +28,7 @@ function fixture({ badLogin = false, badConflict = false, badChat = false, badCl
   const context = { newPage: async () => page, request: {
     post: async path => { calls.push(path); return path === '/api/auth/sign-in'
       ? response(200, { user: { id: badLogin ? 'user_other' : env.PRODUCTION_SMOKE_USER_ID } })
-      : response(200, { id: 'note_probe' }) },
+      : response(200, { id: path === '/api/v1/conversations' ? 'chat_probe' : 'note_probe' }) },
     get: async path => {
       if (path.includes('noteId=')) return response(200, { updatedAt: 1, content: edited ? 'Accepted smoke edit' : 'Before smoke edit' })
       if (path === '/api/auth/convex-token') return response(200, { token: 'fixture.token.value' })
@@ -50,6 +53,7 @@ test('production smoke uses normal auth, checks persisted chat and cleans only i
   assert.ok(Object.values(result).every(value => value === true))
   for (const action of ['send', 'reload', 'realtime', 'cleanup']) assert.ok(f.calls.includes(action))
   assert.ok(f.calls.includes('/ignored/proof/production-smoke-files.png'))
+  assert.ok(f.calls.indexOf('transcript-ready') < f.calls.indexOf('send'))
   assert.equal(f.calls.at(-1), 'close')
   assert.ok(!JSON.stringify(f.reports).includes('private-fixture'))
 })

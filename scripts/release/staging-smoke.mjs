@@ -114,13 +114,28 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     const verifyRuntime = browserRuntimeErrors(page)
     const chat = await context.request.post('/api/v1/conversations', { data: {
       title: 'Release smoke ' + sha.slice(0, 12), askModelIds: ['openrouter/free'],
-      actModelId: 'openrouter/free', lastMode: 'ask',
+      actModelId: 'openrouter/free', lastMode: 'act',
     } })
     assert.equal(chat.status(), 200)
     probeChatId = (await chat.json()).id
     assert.ok(probeChatId)
+    const transcriptReady = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return url.pathname === '/api/v1/conversations'
+        && url.searchParams.get('conversationId') === probeChatId
+        && url.searchParams.get('messages') === 'true'
+    }, { timeout: 60_000 })
     await page.goto('/app/w/' + encodeURIComponent(workspaceId) + '/chat?id=' + encodeURIComponent(probeChatId),
       { waitUntil: 'domcontentloaded' })
+    const transcript = await transcriptReady
+    assert.equal(transcript.status(), 200)
+    await transcript.finished()
+    // The composer mounts before route hydration; wait for the requested chat.
+    await page.getByRole('heading', { name: 'Release smoke ' + sha.slice(0, 12), exact: true })
+      .waitFor({ state: 'visible', timeout: 60_000 })
+    const chatMode = page.getByRole('tab', { name: /^Chat:/ })
+    await chatMode.click()
+    assert.equal(await chatMode.getAttribute('aria-selected'), 'true')
     const composer = page.getByRole('combobox', { name: /Ask anything/ })
     await composer.waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await composer.count(), 1)

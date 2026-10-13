@@ -201,3 +201,12 @@ After every successful preview deploy, the hosted build therefore explicitly run
 idempotent repair preserves edited fixture data and reuses any existing personal
 workspace; it does not recreate the backend or deploy shared development/production.
 A failed deploy never runs the repair, and a failed repair fails the hosted build.
+
+### Chat smoke readiness
+
+Candidate and production smoke create a fresh Auto conversation, await its initial
+transcript response and requested heading, then explicitly select Chat before
+sending. A visible composer alone does not prove route hydration is complete.
+Live diagnostics reproduced an early send using default model/runtime state;
+waiting for the transcript fixed immediate reply rendering and reload persistence.
+Both suites clean their own synthetic conversations after success or failure.

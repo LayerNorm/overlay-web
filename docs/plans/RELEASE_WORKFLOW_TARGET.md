@@ -313,4 +313,15 @@ pushes and deletion for main/staging with no bypass. Legacy staging is frozen by
 `24986525`. Owner emergency bypass and zero sole-author approvals remain.
 Queue interaction probes #196/#197 passed individually but their combined tree
 was marked UNMERGEABLE; both closed without merging and the temporary check was
-removed. Live queue acceptance of the release PR remains pending.
+removed. PR #195 merged through the native queue at
+`6bb3e0d8294a955030e3c6b2f7ba7d353f6475d7`, with all nine combined checks
+passing and no automatic staging or customer deployment.
+
+### Chat smoke readiness
+
+Candidate and production smoke create a fresh Auto conversation, await its initial
+transcript response and requested heading, then explicitly select Chat before
+sending. A visible composer alone does not prove route hydration is complete.
+Live diagnostics reproduced an early send using default model/runtime state;
+waiting for the transcript fixed immediate reply rendering and reload persistence.
+Both suites clean their own synthetic conversations after success or failure.

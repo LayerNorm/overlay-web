@@ -1,0 +1,18 @@
+{
+  "sha": "6bb3e0d8294a955030e3c6b2f7ba7d353f6475d7",
+  "pr": 195,
+  "mergeQueueUsed": true,
+  "mergeGroupSha": "6bb3e0d8294a955030e3c6b2f7ba7d353f6475d7",
+  "qualityRunId": 38385032225,
+  "automaticDeployments": [
+    {
+      "projectId": "prj_wucEZdZyA2xKUurHLXSuQNcS1YPy",
+      "count": 0
+    },
+    {
+      "projectId": "prj_IKvugqekF8qLP14p7Rg4ilWErXPr",
+      "count": 0
+    }
+  ],
+  "productionDeploymentUnchanged": "dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f"
+}

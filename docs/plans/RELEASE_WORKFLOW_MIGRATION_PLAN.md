@@ -78,8 +78,8 @@ branch app URL; the former origin returned HTTPS `404`. This verifies access to
 the main-only control secrets and real lifecycle execution in GitHub Actions.
 The production deployment remained `dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f`; no
 production deployment was created for the merge SHA. Existing shared staging
-was preserved. Future PR open/update automation still needs a live open-event
-probe before declaring the unattended lane fully accepted.
+was preserved. Subsequent open/update probes verified unattended builds, isolated backends,
+current-head alias assignment, cancellation of superseded builds and cleanup.
 
 Temporary draft QA PRs #188 and #189 were simultaneously READY with distinct
 backends `laudable-lynx-602` and `accomplished-mallard-199`. Live internal queries
@@ -213,7 +213,7 @@ Answer these before writing code; several later choices depend on them.
 - [x] **WorkOS:** confirm the staging environment accepts a wildcard redirect URI
       such as `https://*.preview.getoverlay.io/api/auth/callback`. Accepted,
       registered, and verified; no relay is needed for this pattern.
-- [ ] **Vercel:** verify ordinary wildcard domains and custom alias permissions
+- [x] **Vercel:** verify ordinary wildcard domains and custom alias permissions
       in the staging project, and check concurrent-build and domain/alias limits.
       Do not enable the paid Preview Deployment Suffix add-on.
 - [x] **DNS:** confirm `getoverlay.io` already uses Vercel nameservers, which
@@ -245,8 +245,9 @@ Dashboard (owner):
 - [x] `overlay-web-staging` → deployment policy: enable Preview **REST API**
       sources for the trusted PR controller. Keep native Preview Git sources
       disabled so duplicate builds and automatic branch aliases cannot race
-      current-head validation. Keep the existing staging Production Git lane.
-- [ ] Keep `overlay-landing` previews disabled.
+      current-head validation. The final cutover also disables Production Git sources; both scopes use
+      trusted REST controllers.
+- [x] Keep `overlay-landing` previews disabled.
 
 Done when: opening a PR produces one preview in the staging project, none in the
 production project, and pushes to branches without a PR build nothing.
@@ -404,7 +405,7 @@ Do not deploy staging after every merge. The legacy staging branch is frozen.
       require provider isolation, complete first smoke and canonical second smoke.
 - [x] Configure preview project's Production branch as main, REST-only deployment
       policy, automatic aliases disabled and isolated dedicated test providers.
-- [ ] Freeze legacy staging through a no-bypass update rule and read it back.
+- [x] Freeze legacy staging through a no-bypass update rule and read it back.
 - [ ] Execute complete live exact-main candidate acceptance and production drill.
 
 Done when: an owner-dispatched current-main release candidate passes complete
@@ -426,7 +427,7 @@ Code:
       `needs-staging` checkbox, schema-change checkbox (expand/contract confirmed).
 
 Dashboard (owner):
-- [ ] `main` ruleset: require merge queue; keep required checks and history
+- [x] `main` ruleset: require merge queue; keep required checks and history
       protection. Configure main separately so legacy staging is not queued.
 - [ ] Require CODEOWNERS approval only after a second eligible maintainer joins.
       Standing owner instructions prohibit reinstating approving reviews while
@@ -511,7 +512,7 @@ longer exists.
 | 2 Convex previews | 1 | No | Medium (seed function is most of it) |
 | 3 Preview URLs + WorkOS | 1 | No | Medium (alias lifecycle automation and URL configuration) |
 | 4 Agent test login | 2, 3 | No | Small |
-| 5 Staging from `main` | 2 | **Yes (cutover)** | Small code, careful dashboard work |
+| 5 On-demand main candidates | 2 | **Yes (cutover)** | Small code, careful dashboard work |
 | 6 Merge queue + review | 5 | Yes | Small |
 | 7 Promotion + rails | 5 | No | Medium |
 | 8 Docs | 5, 6 | — | Medium |
@@ -546,7 +547,8 @@ checks pass; the planned one-to-two-week waiting period is waived.
 Additional preparation (2026-10-12): Stripe test account
 `acct_1SzOAWFmeUVgDzgI` now has a dedicated synthetic staging product, monthly
 $1 unit price, $1 top-up unit price and a test billing portal configuration.
-The app environment and webhook are not changed yet, so billing QA is pending.
+These earlier resources remain unused; the active LayerNorm test account,
+shared test configuration and dedicated webhook are described below.
 Following the owner's request to reuse `.env.local`, the shared Vercel Preview
 settings and Convex preview defaults instead use the existing **LayerNorm sandbox**
 credentials (`acct_1SyJ6jPH7ssnO0LI`) and its verified test prices. Corresponding
@@ -637,4 +639,16 @@ pushes and deletion for main/staging with no bypass. Legacy staging is frozen by
 `24986525`. Owner emergency bypass and zero sole-author approvals remain.
 Queue interaction probes #196/#197 passed individually but their combined tree
 was marked UNMERGEABLE; both closed without merging and the temporary check was
-removed. Live queue acceptance of the release PR remains pending.
+removed. PR #195 merged through the native queue at
+`6bb3e0d8294a955030e3c6b2f7ba7d353f6475d7`, after all nine combined checks
+passed. Readback confirmed that the merge created no staging or customer
+production deployment.
+
+### Chat smoke readiness
+
+Candidate and production smoke create a fresh Auto conversation, await its initial
+transcript response and requested heading, then explicitly select Chat before
+sending. A visible composer alone does not prove route hydration is complete.
+Live diagnostics reproduced an early send using default model/runtime state;
+waiting for the transcript fixed immediate reply rendering and reload persistence.
+Both suites clean their own synthetic conversations after success or failure.
