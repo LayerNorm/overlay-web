@@ -16,6 +16,7 @@ import {
 } from '@overlay/app-core'
 import { extendOverlayAppConfig } from '@overlay/extension-sdk'
 import { DEFAULT_OVERLAY_RUNTIME_CONFIG } from './shared/config/defaultOverlayRuntimeConfig'
+import { publicEnv } from './shared/env/public-env'
 import { overlayExtensions } from './extensions/app-registry'
 
 const baseOverlayAppConfig = defineOverlayAppConfig({
@@ -28,7 +29,7 @@ const baseOverlayAppConfig = defineOverlayAppConfig({
     flag.id === 'workspaces' || flag.id === 'collaborativeChats' || flag.id === 'channels'
       || flag.id === 'agents' || flag.id === 'resourceSharing'
       ? { ...flag, enabled: true }
-      : flag
+      : flag.id === 'work' ? { ...flag, enabled: publicEnv.workEnabled } : flag
   )),
   featureModules: [...DEFAULT_OVERLAY_FEATURE_MODULES],
   sidebarActions: [...DEFAULT_OVERLAY_SIDEBAR_ACTIONS],

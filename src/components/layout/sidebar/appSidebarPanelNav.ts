@@ -1,3 +1,4 @@
+import { buildWorkPanelNav } from './workPanelNav'
 import { Settings } from 'lucide-react'
 import type { OverlaySettingsSection } from '@overlay/app-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -416,6 +417,7 @@ export function resolveSecondaryPanelNav({
   /** The workspace is one person: no Personal/Workspace split (see `isSoloWorkspace`). */
   solo: boolean
 }): SecondaryPanelNav | undefined {
+  if (panelKind === 'work') return buildWorkPanelNav({ scope: routeState.scope, params: currentSearchParams, pendingId: effectivePendingSecondaryNavId, solo, href: activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/work') : '/app/work', push: router.push, close: closeMobileDrawer, begin: beginSecondaryNavigation })
   if (panelKind === 'chat') {
     const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
     const chatUnreadBadges: Record<(typeof chatsInlineItems)[number]['id'], number> = {

@@ -49,3 +49,13 @@ The Memories web container is workspace-aware: its single member filter contains
 ## Extending UI Primitives
 
 Prefer composition over editing existing primitives. Add a new primitive to `@overlay/ui` only when it is broadly reusable and can preserve the current visual language. Feature-specific surfaces belong in `@overlay/modules-react`.
+
+## Work
+
+The `work` shell flag controls the primary navigation item (before Agents), feature
+registry, page, and task HTTP exports. It is off by default during implementation;
+`NEXT_PUBLIC_OVERLAY_FEATURE_WORK=true` enables an isolated preview at build time.
+Work uses the shared scoped secondary navigation with List, Board and Timeline.
+Solo workspaces retain the existing flat navigation convention. Scope/view are
+URL state; changing scope drops the open task. Rail shortcuts follow visible
+positions: Work, Agents, Chats, Files, Extensions, Automations when enabled.

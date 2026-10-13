@@ -211,3 +211,11 @@ React's shell-time script (`$RT`) and the theme initializer (`THEME_INIT_SCRIPT`
 `csp-nonce.test.ts` recomputes both hashes (React's from the installed
 `next/dist/compiled/react-dom`) and fails when an upgrade or edit changes them. Any new inline script in a prerendered
 shell needs the same treatment.
+
+## Work route
+
+`/app/work` (also `/app/w/:workspaceId/work`) has no `instant = false` opt-out.
+The static shell and loading skeleton wrap session access inside Suspense; the
+client screen's URL reads have their own boundary. `loading.tsx` handles navigation
+and `error.tsx` supplies an explicit retry. The rollout flag returns not-found
+while Work is disabled.

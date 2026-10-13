@@ -55,3 +55,12 @@ test('Convex structured failures preserve HTTP 400/403/404/409 on hosted backend
     assert.equal((await response.json()).error, 'Expected failure')
   }
 })
+
+test('disabled rollout gate hides every Work HTTP export', async () => {
+  const { GET, POST, getWork, updateWork, actionWork, archiveWork } = await import('./route')
+  const { publicEnv } = await import('@/shared/env/public-env')
+  if (publicEnv.workEnabled) return
+  for (const handler of [GET, POST, getWork, updateWork, actionWork, archiveWork]) {
+    assert.equal((await handler(request(''), context)).status, 404)
+  }
+})

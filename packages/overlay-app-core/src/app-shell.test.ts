@@ -22,7 +22,7 @@ test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
       { id: 'security', sectionId: 'account', label: 'Security', componentKey: 'enterprise.security' },
     ],
     featureModules: [
-      { ...DEFAULT_OVERLAY_FEATURE_MODULES[0]!, componentKey: 'enterprise.filesKnowledge' },
+      { ...DEFAULT_OVERLAY_FEATURE_MODULES.find((module) => module.id === 'files-knowledge')!, componentKey: 'enterprise.filesKnowledge' },
     ],
     sidebarActions: [
       { ...DEFAULT_OVERLAY_SIDEBAR_ACTIONS[0]!, label: 'Start chat' },
@@ -39,12 +39,12 @@ test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
   assert.equal(shell.sidebarActions.find((item) => item.id === 'admin.invite')?.routePatterns[0], '/app/admin')
 })
 
-test('agents are the default home and lead the primary navigation', () => {
+test('agents remain the default home while Work occupies the first registry slot', () => {
   const shell = resolveOverlayAppShellConfig()
 
   assert.equal(shell.brand.homeHref, '/app/agents')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'agents')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'chat')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'work')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'agents')
 })
 
 test('resolveOverlayAppShellConfig filters disabled feature registries', () => {
@@ -66,4 +66,12 @@ test('sidebar registries resolve feature modules and actions from routes', () =>
   assert.equal(resolveSidebarActionForPath('/app/settings', shell.sidebarActions), null)
   assert.equal(DEFAULT_OVERLAY_SETTINGS_SECTIONS.find((item) => item.id === 'agent-environments')?.label, 'Environments')
   assert.equal(DEFAULT_OVERLAY_SETTINGS_PANELS.find((item) => item.id === 'agent-environments')?.label, 'Environments')
+})
+
+test('Work stays hidden by default and leads Agents only when explicitly enabled', () => {
+  const hidden = resolveOverlayAppShellConfig()
+  assert.equal(hidden.navigation.some((item) => item.id === 'work'), false)
+  assert.equal(hidden.featureModules.some((item) => item.id === 'work'), false)
+  const visible = resolveOverlayAppShellConfig({ featureFlags: [{ id: 'work', label: 'Work', enabled: true }, { id: 'agents', label: 'Agents', enabled: true }] })
+  assert.deepEqual(visible.navigation.slice(0, 2).map((item) => item.id), ['work', 'agents'])
 })

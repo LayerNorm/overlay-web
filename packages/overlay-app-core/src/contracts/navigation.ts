@@ -1,4 +1,5 @@
 export type AppDestinationId =
+  | 'work'
   | 'chat'
   | 'files'
   | 'notes'
@@ -25,6 +26,7 @@ export interface AppDestinationConfig {
 }
 
 export const CANONICAL_APP_DESTINATIONS: readonly AppDestinationConfig[] = [
+  { id: 'work', label: 'Work', href: '/app/work', subviews: ['list', 'board', 'timeline'] },
   { id: 'chat', label: 'Chat', href: '/app/chat' },
   {
     id: 'files',

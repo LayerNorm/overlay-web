@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 implemented and locally validated, hosted API QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
+Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 implemented and locally validated, hosted UI QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
 
 ## Goal
 
@@ -32,7 +32,7 @@ This is why the plan is mostly wiring and not invention.
 5. **Dependencies** (`blockedBy: string[]`) are in the schema from PR 1 but only used in the Timeline PR.
 6. **Statuses** are fixed: `backlog`, `todo`, `progress`, `review`, `done`, plus a `blocked` flag. No canceled in v1 (archive covers it).
 7. **Rollout gate.** A `work` feature flag, off by default, so each PR can merge to `main` without exposing half a feature. It is turned on after PR 5, when the List and the panel are usable.
-8. **Shortcut shift.** Alt+1 to Alt+6 map to rail position (`useSidebarEffects.ts`). Putting Work first moves Agents from Alt+2 to Alt+3, and so on. Acceptable, or pin Work to the end of the shortcut list? (Recommend: accept the shift.)
+8. **Shortcut shift.** Alt+1 to Alt+6 map to rail position (`useSidebarEffects.ts`). Current main starts with Agents at Alt+1. Putting Work first moves Agents to Alt+2, Chats to Alt+3, and so on. Acceptable, or pin Work to the end of the shortcut list? (Recommend: accept the shift.)
 9. **Refresh model.** Most panels fetch through the BFF and refresh on window events (for example `AUTOMATIONS_UPDATED_EVENT`); only chat uses live Convex subscriptions. We should do the same for List and Board (fetch + event + optimistic update) and consider live queries only if multi-person editing needs them. Realtime is therefore not free, which I overstated earlier.
 
 ## Data model (PR 1)

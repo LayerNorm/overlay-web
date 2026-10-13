@@ -38,6 +38,7 @@ export const DEFAULT_OVERLAY_BRAND_CONFIG: OverlayBrandConfig = {
 }
 
 export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
+  { id: 'work', label: 'Work', enabled: false, description: 'Human tasks in List, Board and Timeline.' },
   {
     id: 'voiceTranscription',
     label: 'Voice transcription',
@@ -93,6 +94,7 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
+  { id: 'work', href: '/app/work', label: 'Work', icon: 'list-checks', featureFlagId: 'work', subviews: ['list', 'board', 'timeline'] },
   {
     id: 'agents',
     href: '/app/agents',
@@ -147,6 +149,7 @@ export const DEFAULT_OVERLAY_SETTINGS_SECTIONS: readonly OverlaySettingsSection[
 ] as const
 
 export const DEFAULT_OVERLAY_FEATURE_MODULES: readonly OverlayFeatureModule[] = [
+  { id: 'work', label: 'Work', navigationItemId: 'work', routePatterns: ['/app/work'], componentKey: 'overlay.modules.work', featureFlagId: 'work', order: 5 },
   {
     id: 'files-knowledge',
     label: 'Files and knowledge',

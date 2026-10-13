@@ -1,5 +1,6 @@
 const FALLBACK_SURFACE = 'chat'
 const APP_SURFACES = new Set([
+  'work',
   'activity',
   'admin',
   // Missing here, buildWorkspaceHref falls back to 'chat', so selecting Archived

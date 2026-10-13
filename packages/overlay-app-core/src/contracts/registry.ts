@@ -8,6 +8,7 @@ import type { AppDestinationConfig, AppDestinationId, AppFeatureFlags, SettingsS
 import type { EventBus, RateLimiter } from './server-runtime'
 
 export type OverlayIconName =
+  | 'list-checks'
   | 'arrow-up'
   | 'book-open'
   | 'bot'

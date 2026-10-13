@@ -7,6 +7,7 @@ export type ClientAuthorizationRequirement = {
 }
 
 const NAVIGATION_REQUIREMENTS: Record<string, ClientAuthorizationRequirement> = {
+  work: { all: ['work.use'] },
   chat: { any: ['conversations.read', 'conversations.create'] },
   files: { any: ['files.read', 'notes.read', 'outputs.read'] },
   extensions: { any: ['integrations.use', 'skills.use', 'mcp.use', 'tools.use'] },
@@ -29,6 +30,7 @@ const ROUTE_REQUIREMENTS: Array<{
   prefix: string
   requirement: ClientAuthorizationRequirement
 }> = [
+  { prefix: '/app/work', requirement: { all: ['work.use'] } },
   { prefix: '/app/admin', requirement: { all: ['administration.access'] } },
   { prefix: '/app/automations', requirement: { all: ['automations.use'] } },
   { prefix: '/app/memories', requirement: { all: ['memory.use'] } },

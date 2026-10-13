@@ -6,6 +6,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkService, type WorkRepository } from '@/server/work/WorkService'
 import { repositoryProxy } from '@/server/app-data/errors'
 import { CreateWorkSchema, UpdateWorkSchema, WorkActionSchema, WorkQuerySchema } from '@/shared/work/schema'
+import { publicEnv } from '@/shared/env/public-env'
 import { logger } from '@/server/observability/logger'
 
 const backendError = z.object({ code: z.enum(['INVALID', 'FORBIDDEN', 'NOT_FOUND', 'CONFLICT']), message: z.string() })
@@ -59,9 +60,13 @@ export function createWorkHandlers(service: WorkService) {
   }
 }
 const handlers = createWorkHandlers(new WorkService(repositoryProxy<WorkRepository>(() => getOverlayServerContext().appData.repositories.work)))
-export const GET = handlers.list
-export const POST = handlers.create
-export const getWork = handlers.get
-export const updateWork = handlers.update
-export const actionWork = handlers.action
-export const archiveWork = handlers.archive
+function gated(handler: (request: NextRequest, context: AppApiRouteContext) => Promise<NextResponse>) {
+  return (request: NextRequest, context: AppApiRouteContext) => publicEnv.workEnabled
+    ? handler(request, context) : Promise.resolve(NextResponse.json({ error: 'Not found' }, { status: 404 }))
+}
+export const GET = gated(handlers.list)
+export const POST = gated(handlers.create)
+export const getWork = gated(handlers.get)
+export const updateWork = gated(handlers.update)
+export const actionWork = gated(handlers.action)
+export const archiveWork = gated(handlers.archive)

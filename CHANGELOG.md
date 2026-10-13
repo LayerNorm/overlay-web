@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Work phase 3 adds a gated Work destination above Agents, shared Personal/Workspace navigation with List, Board and Timeline, and a Suspense-wrapped empty screen with retry/loading states. It remains off by default.
+
 - Work phase 2 adds the authenticated `/api/v1/work` task API and typed client, with server-derived workspace identity, scoped reads, revision conflicts, comments and archive/restore actions.
 
 - Work phase 1 adds scoped human tasks, calendar dates, fractional ranks, revision-checked edits, and private activity/comments. No Work UI is exposed yet.

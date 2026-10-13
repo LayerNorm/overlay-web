@@ -78,6 +78,7 @@ function useSidebarNavConfig({ appShell, capabilities, allows, publicShowcase, u
   )
   const navItems = useMemo<SidebarNavItem[]>(
     () => appShell.navigation
+      .filter((item) => !(publicShowcase && item.id === 'work'))
       .filter((item) => publicShowcase || !user || allows(getNavigationAuthorizationRequirement(item.id)))
       .map((item) => ({
         ...item,
@@ -505,6 +506,7 @@ function useSidebarDerivedPanels(args: {
     searchParams: currentSearchParams,
     resolveWorkspaceSurface,
     automationsEnabled,
+    workEnabled: navItems.some((item) => item.id === 'work'),
     savedScope,
     solo,
   })

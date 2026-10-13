@@ -183,3 +183,11 @@ test('a solo page with no sub-rows gets one row named for the page', () => {
   assert.deepEqual(built.items.map((item) => [item.id, item.label]), [['personal', 'Agents']])
   assert.equal(built.activeId, 'personal')
 })
+
+test('Work routes select the Work panel only while enabled', () => {
+  const args = { pathname: '/app/w/ws-1/work', searchParams: new URLSearchParams('scope=workspace&view=board'), resolveWorkspaceSurface: () => 'work', automationsEnabled: true }
+  assert.equal(resolveSidebarRouteState({ ...args, workEnabled: false }).panelKind, null)
+  const visible = resolveSidebarRouteState({ ...args, workEnabled: true })
+  assert.equal(visible.panelKind, 'work')
+  assert.equal(visible.scope, 'workspace')
+})

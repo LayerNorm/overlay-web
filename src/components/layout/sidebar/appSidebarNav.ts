@@ -37,9 +37,10 @@ import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
 import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 
-export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'settings'
+export type SecondaryPanelKind = 'work' | 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'settings'
 
 export const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
+  work: 'work',
   chat: 'chats',
   files: 'files',
   notes: 'notes',
@@ -144,6 +145,7 @@ export function resolveSidebarRouteState({
   searchParams,
   resolveWorkspaceSurface,
   automationsEnabled,
+  workEnabled = false,
   savedScope = null,
   solo = false,
 }: {
@@ -151,6 +153,7 @@ export function resolveSidebarRouteState({
   searchParams: URLSearchParams
   resolveWorkspaceSurface: (path: string) => string | null
   automationsEnabled: boolean
+  workEnabled?: boolean
   /** The scope remembered from the last scoped page. */
   savedScope?: PanelScope | null
   /** The workspace is one person, so there is no Workspace scope to be in. */
@@ -183,7 +186,8 @@ export function resolveSidebarRouteState({
   const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
   const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo })
   const agentsView = scope
-  const panelKind: SecondaryPanelKind | null = chatOpen
+  const workOpen = workEnabled && (pathname.startsWith('/app/work') || (canonicalWorkspaceRoute && workspaceSurface === 'work'))
+  const panelKind: SecondaryPanelKind | null = workOpen ? 'work' : chatOpen
     ? 'chat'
     : filesOpen
       ? 'files'
@@ -283,6 +287,8 @@ export function panelKindForNavItem(
   automationsEnabled: boolean,
 ): SecondaryPanelKind | null {
   switch (item.href) {
+    case '/app/work':
+      return 'work'
     case '/app/chat':
       return 'chat'
     case '/app/files':

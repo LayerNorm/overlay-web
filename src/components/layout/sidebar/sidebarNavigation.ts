@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  ListChecks,
   ArrowUp,
   BookOpen,
   Bot,
@@ -27,6 +28,7 @@ import type { OverlayIconName, OverlaySidebarSearchCategory } from '@overlay/app
 import type { MentionType } from '@/shared/knowledge/mention-types'
 
 export const ICON_COMPONENTS: Partial<Record<OverlayIconName, LucideIcon>> = {
+  'list-checks': ListChecks,
   'arrow-up': ArrowUp,
   'book-open': BookOpen,
   bot: Bot,

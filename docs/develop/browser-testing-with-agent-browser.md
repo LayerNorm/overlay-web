@@ -268,3 +268,11 @@ model request, verify the visible reply and reload persistence, then clean the
 synthetic conversation. Keep failed diagnostics separate from trusted CI proof.
 
 Release smoke awaits chat navigation and its transcript response together so a failed navigation cannot leave an unhandled response wait during browser cleanup. Production regressions assert deletion of the exact temporary chat even when chat verification or note cleanup fails.
+
+## Work preview rollout gate
+
+While Work is under construction, set `NEXT_PUBLIC_OVERLAY_FEATURE_WORK=true`
+only in the feature branch's Preview settings before its build. The default
+hides the rail entry, route, feature module and HTTP exports. Test the off branch
+as well; do not change customer Production settings for Builder QA. Keep the
+branch override for the PR's lifetime and remove it when that PR is retired.
