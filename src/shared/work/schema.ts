@@ -9,10 +9,11 @@ const fields = {
   title: z.string().trim().min(1).max(200), description: z.string().max(20_000), status: z.enum(WORK_STATUSES), blocked: z.boolean(),
   priority: z.union([z.literal(1), z.literal(2), z.literal(3)]), rank: z.string().refine(isRank, 'Invalid rank'),
   assigneePrincipalId: id.optional(), reviewerUserId: id.optional(), startDate: date.optional(), dueDate: date.optional(), parentId: id.optional(),
+  blockedBy: z.array(id).max(50).optional(),
   doneWhen: z.array(z.object({ text: z.string().trim().min(1).max(1000), checked: z.boolean() }).strict()).max(100).optional(),
   context: z.array(z.object({ type: z.enum(['file', 'note', 'chat', 'link']), id: z.string().trim().min(1).max(2000), label: z.string().trim().min(1).max(200) }).strict()).max(50).optional(),
 }
-export const CreateWorkSchema = z.object({ ...fields, scope: scope.optional() }).omit({ rank: true }).partial().required({ title: true }).strict() satisfies z.ZodType<CreateWork>
+export const CreateWorkSchema = z.object({ ...fields, scope: scope.optional() }).omit({ rank: true, blockedBy: true }).partial().required({ title: true }).strict() satisfies z.ZodType<CreateWork>
 export const UpdateWorkSchema = z.object({ expectedUpdatedAt: z.number().finite().nonnegative(), patch: z.object({ ...fields, assigneePrincipalId: id.nullable().optional(), reviewerUserId: id.nullable().optional(), startDate: date.nullable().optional(), dueDate: date.nullable().optional(), parentId: id.nullable().optional() }).omit({ rank: true }).partial().strict() }).strict() satisfies z.ZodType<UpdateWork>
 export const WorkActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reorder'), expectedUpdatedAt: z.number().finite().nonnegative(), status: z.enum(WORK_STATUSES), beforeId: id.optional(), afterId: id.optional() }).strict(),

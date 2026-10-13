@@ -14,6 +14,9 @@ export default defineSchema({
     .index('by_workspaceId_status_rank', ['workspaceId', 'status', 'rank'])
     .index('by_workspaceId_scope_status_rank', ['workspaceId', 'scope', 'status', 'rank'])
     .index('by_workspaceId_userId_scope_status_rank', ['workspaceId', 'userId', 'scope', 'status', 'rank']),
+  workDependencies: defineTable({
+    workspaceId: v.string(), userId: v.string(), fromItemId: v.id('workItems'), toItemId: v.id('workItems'),
+  }).index('by_fromItemId', ['fromItemId']).index('by_toItemId', ['toItemId']),
   workItemEvents: defineTable({ ...eventRecord })
     .index('by_workItemId_createdAt', ['workItemId', 'createdAt']),
 

@@ -121,3 +121,20 @@ test('board ordering checks adjacent gaps, isolation, stale moves and rebalance 
   const moved = await t.mutation(m('workItems:reorder'), { ...auth, userId: 'alice', id: reordered._id, expectedUpdatedAt: reordered.updatedAt, status: 'done' }) as Task
   expect((await list(t, 'alice', 'personal')).find((row) => row._id === moved._id)?.status).toBe('done')
 })
+
+test('dependency cycles, cross-scope edges and inbound scope/delete transitions are refused', async () => {
+  const t = await fixture()
+  let a = await create(t, { title: 'a' }); let b = await create(t, { title: 'b' }); const c = await create(t, { title: 'c' })
+  const change = (task: Task, blockedBy: string[]) => t.mutation(m('workItems:update'), { ...auth, userId: 'alice', id: task._id, expectedUpdatedAt: task.updatedAt, patch: { blockedBy } }) as Promise<Task>
+  a = await change(a, [b._id]); b = await change(b, [c._id])
+  await expect(change(c, [a._id])).rejects.toThrow(/cycle/)
+  await expect(change(a, [a._id])).rejects.toThrow(/cycle/)
+  const shared = await create(t, { scope: 'workspace' })
+  await expect(change(a, [shared._id])).rejects.toThrow(/same scope/)
+  await expect(t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: c._id, action: 'scope', to: 'workspace' })).rejects.toThrow(/related/)
+  await t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: c._id, action: 'archived' })
+  await expect(t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: c._id, action: 'permanent' })).rejects.toThrow(/depending/)
+  b = await change(b, [])
+  await t.mutation(m('workItems:lifecycle'), { ...auth, userId: 'alice', id: c._id, action: 'permanent' })
+  expect(await t.run((ctx) => ctx.db.query('workDependencies').collect())).toHaveLength(1)
+})

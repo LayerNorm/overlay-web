@@ -1,8 +1,9 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useId } from 'react'
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 import type { WorkItem, WorkPatch } from '@overlay/app-core/work'
 import { addDays, barLayout, daysBetween, shiftedSpan, timelineRows, weekStart, workSpan, TIMELINE_DAY_WIDTH as DAY, TIMELINE_ROW_HEIGHT as ROW } from '../lib/timeline'
+import { dependencyPath } from '../lib/dependency-path'
 const PERIOD_DAYS = 126
 const LABEL_WIDTH = 184
 const HEADER_HEIGHT = 48
@@ -14,7 +15,17 @@ export function WorkTimeline({ items, allItems, pending, canEdit, onUpdate, onOp
   const [drag, setDrag] = useState<Drag | null>(null)
   const [error, setError] = useState('')
   const scroller = useRef<HTMLDivElement>(null)
+  const markerId = useId().replace(/:/g, '')
   const rows = timelineRows(items)
+  const projected = drag ? allItems.map((item) => item._id === drag.item._id ? { ...item, ...shiftedSpan(drag, drag.mode, drag.delta) } : item) : allItems
+  const positions = new Map(rows.flatMap((item, index) => {
+    const span = workSpan(item, projected); const bar = span ? barLayout(span, start, PERIOD_DAYS) : null
+    return bar ? [[item._id, { left: LABEL_WIDTH + bar.left, right: LABEL_WIDTH + bar.left + bar.width, y: index * ROW + ROW / 2 }] as const] : []
+  }))
+  const arrows = rows.flatMap((item) => (item.blockedBy ?? []).flatMap((id, lane) => {
+    const from = positions.get(id); const to = positions.get(item._id)
+    return from && to ? [{ key: `${id}:${item._id}`, path: dependencyPath({ x: from.right, y: from.y }, { x: to.left, y: to.y }, lane) }] : []
+  }))
   const hasRows = rows.length > 0
   useEffect(() => { if (scroller.current) scroller.current.scrollLeft = Math.max(0, daysBetween(start, today) * DAY - 40) }, [start, today, hasRows])
   useEffect(() => {
@@ -44,8 +55,12 @@ export function WorkTimeline({ items, allItems, pending, canEdit, onUpdate, onOp
       <div className="relative" style={{ width: LABEL_WIDTH + PERIOD_DAYS * DAY, minHeight: HEADER_HEIGHT + rows.length * ROW }}>
         <div className="sticky top-0 z-20 flex border-b border-(--border) bg-(--background)" style={{ height: HEADER_HEIGHT }}><div className="sticky left-0 z-30 flex shrink-0 items-center border-r border-(--border) bg-(--background) px-3 text-xs text-(--muted)" style={{ width: LABEL_WIDTH }}>Task / objective</div><div className="flex">{Array.from({ length: PERIOD_DAYS / 7 }, (_, week) => <div key={week} className="flex shrink-0 items-center border-r border-(--border) px-2 text-xs text-(--muted)" style={{ width: 7 * DAY }}>Week of {labelDay(addDays(start, week * 7))}</div>)}</div></div>
         {daysBetween(start, today) >= 0 && daysBetween(start, today) < PERIOD_DAYS ? <div aria-label={`Today ${today}`} className="pointer-events-none absolute bottom-0 top-12 z-10 border-l border-(--muted)" style={{ left: LABEL_WIDTH + daysBetween(start, today) * DAY + DAY / 2 }} /> : null}
+        <svg aria-label="Task dependencies" className="pointer-events-none absolute z-5 overflow-visible text-(--muted-light)" style={{ left: 0, top: HEADER_HEIGHT }} width={LABEL_WIDTH + PERIOD_DAYS * DAY} height={rows.length * ROW}>
+          <defs><marker id={markerId} markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="currentColor" /></marker></defs>
+          {arrows.map((arrow) => <path key={arrow.key} d={arrow.path} fill="none" stroke="currentColor" strokeWidth="1" markerEnd={`url(#${markerId})`} />)}
+        </svg>
         {rows.map((item) => {
-          const span = drag?.item._id === item._id ? { ...shiftedSpan(drag, drag.mode, drag.delta), objective: false } : workSpan(item, allItems)
+          const span = drag?.item._id === item._id ? { ...shiftedSpan(drag, drag.mode, drag.delta), objective: false } : workSpan(item, projected)
           const layout = span ? barLayout(span, start, PERIOD_DAYS) : null
           const editable = canEdit(item) && !pending.has(item._id) && !span?.objective
           return <div key={item._id} className="relative flex border-b border-(--border)" style={{ height: ROW }}>

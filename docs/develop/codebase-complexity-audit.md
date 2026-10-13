@@ -123,3 +123,5 @@ All items below were verified with repo-wide import greps (details: file + symbo
 3. **Then:** root reorg (§1) — moves only, no logic changes. Do it in one commit so `git log --follow` stays useful, and update the three docs that reference old paths (`traversing-agent-conversations.md` references `summaries/`; boundary scripts reference `src/` paths — unaffected by root moves except `workflows/`).
 4. **Harder, schedule explicitly:** `features/workspaces` kernel decision (landed), `act` route extraction (landed), file-route Convex leaks (landed), `ChatExperience` decomposition (open). Each is a design task, not cleanup.
 5. **Needs your decision:** `SearchClient` (wire or delete), Convex `outputs/*` (dashboard check), `PlatformAgentAccess` (roadmap check). ~~shared-vs-package `math-markdown-normalize` canonical direction~~ — decided: package copy is canonical.
+
+Work brief implementation (2026-10-13): properties, checklist, dependencies and activity are separate sections; the editing host owns drafts/revision-safe saves. The web complexity gate passes without increasing a baseline threshold.

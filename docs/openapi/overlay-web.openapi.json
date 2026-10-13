@@ -14467,6 +14467,15 @@
                         "maxLength": 200,
                         "nullable": true
                       },
+                      "blockedBy": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "maxItems": 50
+                      },
                       "doneWhen": {
                         "type": "array",
                         "items": {

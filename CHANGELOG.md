@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Work phase 7b: same-scope dependencies, cycle rejection, indexed incoming-link guards, and Timeline arrows that follow date edits. Brief sections now fit the existing complexity gate.
+
 - Work phase 7a: UTC Timeline bars, child-derived objective spans, date dragging and resizing, and a scrollable calendar starting at today.
 
 - Work phase 6: Board dragging, keyboard/touch status and ordering controls, optimistic rollback, and transactionally checked ranks with bounded rebalancing.

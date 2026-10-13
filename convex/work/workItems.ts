@@ -3,6 +3,7 @@ import { v } from 'convex/values'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internalMutation, mutation, query } from '../_generated/server'
 import { canEditResource, canCreateInScope } from '../../src/shared/workspaces/resource-scope'
+import { validateDependencies, syncDependencies, hasIncomingDependency } from './dependencies'
 import { appendRank, placementRank } from './ordering'
 import { listScopedRows, scopeContextLoader, planMove, planArchive, planRestore } from '../lib/resourceScope'
 import { workAuth, workDoc, workFields, workScope } from './validators'
@@ -47,7 +48,7 @@ const patchFields = {
   title: v.optional(v.string()), description: v.optional(v.string()), status: v.optional(workFields.status), blocked: v.optional(v.boolean()), priority: v.optional(workFields.priority),
   assigneePrincipalId: v.optional(v.union(v.string(), v.null())), reviewerUserId: v.optional(v.union(v.string(), v.null())),
   startDate: v.optional(v.union(v.string(), v.null())), dueDate: v.optional(v.union(v.string(), v.null())), parentId: v.optional(v.union(v.id('workItems'), v.null())),
-  doneWhen: workFields.doneWhen, context: workFields.context,
+  doneWhen: workFields.doneWhen, context: workFields.context, blockedBy: workFields.blockedBy,
 }
 export const update = mutation({
   args: { ...workAuth, id: v.id('workItems'), expectedUpdatedAt: v.number(), patch: v.object(patchFields) }, returns: workDoc,
@@ -68,6 +69,7 @@ export const update = mutation({
     if (parentId !== undefined) patch.parentId = parentId ?? undefined
     const merged = { ...row, ...patch }
     validateFields(merged); await validatePeople(ctx, merged); await validateContext(ctx, merged); await validateParent(ctx, args, merged, row._id)
+    if (p.blockedBy !== undefined) { await validateDependencies(ctx, args, row, p.blockedBy); await syncDependencies(ctx, row, p.blockedBy) }
     await ctx.db.patch(row._id, patch)
     for (const field of Object.keys(p)) {
       const kind = field === 'status' ? 'status' : field === 'assigneePrincipalId' ? 'assignee' : 'updated'
@@ -88,6 +90,8 @@ export const lifecycle = mutation({
       const access = await authorize(ctx, args)
       if (row.archivedAt === undefined || !canEditResource(row, access.viewer)) fail('FORBIDDEN', 'Only an archived task you can edit may be deleted')
       if (await ctx.db.query('workItems').withIndex('by_parentId', (q) => q.eq('parentId', row._id)).first()) fail('INVALID', 'Detach child tasks before deleting this objective')
+      if (await hasIncomingDependency(ctx, row._id)) fail('INVALID', 'Remove tasks depending on this task before deleting it')
+      await syncDependencies(ctx, row, [])
       await ctx.db.delete(row._id)
       await ctx.scheduler.runAfter(0, makeFunctionReference<'mutation', { id: Id<'workItems'> }, null>('work/workItems:purgeEvents'), { id: row._id })
       return null
@@ -95,7 +99,7 @@ export const lifecycle = mutation({
     if (args.action === 'scope') {
       if (!args.to) fail('INVALID', 'Target scope required')
       const children = await ctx.db.query('workItems').withIndex('by_parentId', (q) => q.eq('parentId', row._id)).first()
-      if (row.parentId || children || row.blockedBy?.length) fail('INVALID', 'Detach related tasks before moving scope')
+      if (row.parentId || children || row.blockedBy?.length || await hasIncomingDependency(ctx, row._id)) fail('INVALID', 'Detach related tasks before moving scope')
       const plan = await planMove(ctx, { kind: 'content', row, to: args.to, userId: args.userId })
       if (!plan.ok) fail('FORBIDDEN', plan.reason)
       const moved = { ...row, ...plan.patch }

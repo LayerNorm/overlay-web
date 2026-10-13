@@ -15,7 +15,7 @@ export type WorkItem = WorkFields & {
   archivedAt?: number; archivedBy?: string; archivedFromScope?: WorkScope; createdAt: number; updatedAt: number
 }
 export type CreateWork = Pick<WorkFields, 'title'> & Partial<Omit<WorkFields, 'title' | 'rank' | 'blockedBy'>> & { scope?: WorkScope }
-export type WorkPatch = Partial<Omit<WorkFields, 'assigneePrincipalId' | 'reviewerUserId' | 'startDate' | 'dueDate' | 'parentId' | 'blockedBy' | 'rank'>> & {
+export type WorkPatch = Partial<Omit<WorkFields, 'assigneePrincipalId' | 'reviewerUserId' | 'startDate' | 'dueDate' | 'parentId' | 'rank'>> & {
   assigneePrincipalId?: string | null; reviewerUserId?: string | null; startDate?: string | null; dueDate?: string | null; parentId?: string | null
 }
 export type UpdateWork = { expectedUpdatedAt: number; patch: WorkPatch }

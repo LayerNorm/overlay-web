@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 passed hosted brief/comment/archive/Settings restore QA at `0894e79e8`; phase 6 passed hosted Board drag, keyboard reorder and two-tab persistence QA at `a96131282`; phase 7a Timeline implemented with local date/layout checks, hosted QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
+Status: implementation in progress on `codex/work-plan`; phase 1 passed local and authenticated isolated-preview QA at `72110ba73`; phase 2 passed authenticated HTTP QA at `1190fbf4a`; phase 3 passed hosted navigation and reload QA at `0360ff299`; phase 4 passed hosted create/edit/filter QA at `9a3555277`; phase 5 passed hosted brief/comment/archive/Settings restore QA at `0894e79e8`; phase 6 passed hosted Board drag, keyboard reorder and two-tab persistence QA at `a96131282`; phase 7a passed hosted bar move/resize and objective-span QA at `4b7985e41`; phase 7b dependencies implemented and locally validated, hosted arrows/cycle QA pending. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
 
 ## Goal
 
