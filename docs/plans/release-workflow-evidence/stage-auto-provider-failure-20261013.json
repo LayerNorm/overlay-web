@@ -1,0 +1,10 @@
+{
+  "candidateRunId": 38399463218,
+  "sha": "fd137da306aab1ee80b1fc3402946752397bb57b",
+  "liveDiagnosticOnCanonicalStaging": true,
+  "routedModel": "poolside/laguna-xs-2.1:free",
+  "expectedMarkerPresent": false,
+  "providerErrorCount": 0,
+  "creditRejection": false,
+  "diagnosticChatCleanupVerified": true
+}

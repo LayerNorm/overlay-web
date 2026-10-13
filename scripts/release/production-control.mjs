@@ -10,10 +10,10 @@ export const PRODUCTION = Object.freeze({ ...CONFIG,
   backendUrl: 'https://colorful-chickadee-419.convex.cloud',
 })
 
-export function productionDeploymentMatches(d, sha) {
+export function productionDeploymentMatches(d, sha, { ready = true } = {}) {
   revision(sha)
   return d.projectId === PRODUCTION.projectId && d.target === 'production'
-    && (d.readyState ?? d.state) === 'READY'
+    && (!ready || (d.readyState ?? d.state) === 'READY')
     && d.meta?.overlayReleaseLane === 'production' && d.meta?.overlayReleaseSha === sha
     && d.meta?.overlayConvexBackend === PRODUCTION.backend
     && d.meta?.githubCommitSha === sha && d.meta?.githubCommitRef === 'main'
