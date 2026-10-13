@@ -14,7 +14,7 @@ function fixture({ badLogin = false, badConflict = false, badChat = false, badCl
   const response = (status, body = {}) => ({ status: () => status, json: async () => body })
   let edited = false
   const page = { on: () => {}, goto: async url => calls.push(url), reload: async () => calls.push('reload'),
-    getByRole: role => role === 'combobox'
+    getByRole: role => role === 'main' ? { getByRole: () => ({ waitFor: async () => {} }) } : role === 'combobox'
       ? { waitFor: async () => {}, count: async () => 1, fill: async () => {} }
       : { waitFor: async () => {}, click: async () => calls.push('send') },
     getByText: text => ({ count: async () => 0, nth: () => ({ waitFor: async () => {

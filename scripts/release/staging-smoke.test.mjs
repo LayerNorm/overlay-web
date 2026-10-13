@@ -37,6 +37,7 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
     },
     get: async path => {
       calls.push({ path, method: 'GET' })
+      if (path === '/api/v1/conversations') return response(200, [{ _id: 'seeded_chat', clientId: 'staging-seed-chat-v1' }])
       if (path.includes('noteId=')) return response(200, { updatedAt: 1,
         content: calls.some(c => c.method === 'PATCH') ? 'Accepted smoke edit' : 'Before smoke edit' })
       return response(200, { data: [{ _id: 'note_fixture', title: 'Staging note' }] })
@@ -48,8 +49,9 @@ function smokeFixture({ wrongIdentity = false, chatFailure = false, staleFailure
     delete: async path => { calls.push({ path, method: 'DELETE' }); return response(200) },
   }, newPage: async () => ({
     on: () => {},
+    reload: async () => { calls.push({ reload: true }) },
     goto: async url => { calls.push({ navigation: url }) },
-    getByRole: role => role === 'combobox'
+    getByRole: role => role === 'main' ? { getByRole: () => ({ waitFor: async () => {} }) } : role === 'combobox'
       ? { waitFor: async () => {}, count: async () => 1, fill: async () => {} }
       : { waitFor: async () => {}, click: async () => { calls.push({ sendMessage: true }) } },
     getByText: text => ({ count: async () => 0, nth: () => ({ waitFor: async () => {
@@ -88,6 +90,8 @@ test('authenticated smoke performs normal sign-in, note conflict/cleanup and cha
   assert.equal(f.calls.some(c => c.path?.includes('preview-login')), false)
   assert.ok(f.calls.some(c => c.method === 'DELETE'))
   assert.ok(f.calls.some(c => c.sendMessage))
+  assert.ok(f.calls.some(c => c.reload))
+  assert.ok(f.calls.some(c => c.navigation === '/app/chat?id=seeded_chat'))
   assert.equal(f.calls.at(-1).closed, true)
   assert.ok(!JSON.stringify(f.reports).includes(env.STAGING_SMOKE_PASSWORD))
 })

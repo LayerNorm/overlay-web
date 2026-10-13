@@ -101,7 +101,11 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     phase = 'real chat reply'
     const page = await context.newPage()
     const verifyRuntime = browserRuntimeErrors(page)
-    await page.goto('/app/chat', { waitUntil: 'domcontentloaded' })
+    const conversations = await context.request.get('/api/v1/conversations')
+    assert.equal(conversations.status(), 200)
+    const seededChat = (await conversations.json()).find(c => c.clientId === 'staging-seed-chat-v1')
+    assert.ok(seededChat?._id, 'Synthetic Auto-model conversation missing')
+    await page.goto('/app/chat?id=' + encodeURIComponent(seededChat._id), { waitUntil: 'domcontentloaded' })
     const composer = page.getByRole('combobox', { name: /Ask anything/ })
     await composer.waitFor({ state: 'visible', timeout: 60_000 })
     assert.equal(await composer.count(), 1)
@@ -110,10 +114,12 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     await composer.fill('Reply with exactly RELEASE_SMOKE_OK. Do not use tools.')
     await page.getByRole('button', { name: 'Send message', exact: true }).click()
     await replies.nth(previousReplies).waitFor({ state: 'visible', timeout: 90_000 })
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await replies.nth(previousReplies).waitFor({ state: 'visible', timeout: 60_000 })
     await page.screenshot({ path: 'staging-smoke-chat.png' })
     phase = 'files interface'
     await page.goto(`/app/w/staging-personal-${identity.user.id}/files`, { waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: 'Staging note', exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
+    await page.getByRole('main').getByRole('button', { name: 'Staging note', exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
     await page.screenshot({ path: 'staging-smoke-files.png' })
     phase = 'realtime authorization'
     const tokenResponse = await context.request.get('/api/auth/convex-token')
@@ -125,7 +131,7 @@ export async function runSmoke({ env = process.env, github, vercel, launch, repo
     await verify()
     const evidence = { ...candidate, smoke: 'passed', runId: env.GITHUB_RUN_ID,
       checks: { authenticatedSandboxIdentity: true, dedicatedFixture: true,
-        noteCrudAndStaleEdit: true, noteCleanup: true, realChatReply: true, filesUi: true,
+        noteCrudAndStaleEdit: true, noteCleanup: true, realChatReply: true, chatPersistence: true, filesUi: true,
         realtimeAuthorization: true } }
     saveEvidence(evidence)
     await status('success', `Authenticated smoke passed for ${sha.slice(0, 12)}`)

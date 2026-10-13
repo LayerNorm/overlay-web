@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { CONFIG } from './preview-control.mjs'
-import { STAGING, revision, stagingDeploymentMatches } from './staging-control.mjs'
+import { STAGING, candidateOrigin, revision, stagingDeploymentMatches } from './staging-control.mjs'
 import { verifiedSmoke } from './staging-publish.mjs'
 
 export const PRODUCTION = Object.freeze({ ...CONFIG,
@@ -38,11 +38,9 @@ export async function verifyProductionLive(vercel, deployment, sha) {
 
 export function promotionEvidence(evidence, sha, run, job) {
   verifiedSmoke(evidence, sha)
-  assert.ok(evidence.url === STAGING.origin && evidence.published !== false,
-    'An unpublished candidate is not staging promotion evidence')
   assert.ok(run.id === Number(evidence.runId) && run.head_sha === sha && run.head_branch === 'main'
     && run.repository?.id === PRODUCTION.repositoryId && run.status === 'completed'
-    && run.conclusion === 'success' && ['push', 'workflow_dispatch'].includes(run.event)
+    && run.conclusion === 'success' && run.event === 'workflow_dispatch'
     && run.path === '.github/workflows/staging-release.yml', 'Wrong staging evidence producer')
   assert.ok(job.name === 'deploy' && job.status === 'completed' && job.conclusion === 'success'
     && job.steps.some(s => s.name === 'Verify authenticated staging behavior' && s.conclusion === 'success'),
@@ -57,9 +55,14 @@ export async function verifyStagingLive({ github, vercel, evidence, sha }) {
   assert.equal(main.object?.sha, sha, 'Main changed since staging acceptance')
   const d = await vercel(`/v13/deployments/${evidence.deploymentId}`)
   assert.ok(stagingDeploymentMatches(d, sha, { ready: true }), 'Staging deployment no longer matches acceptance')
-  const alias = await vercel(`/v4/aliases/${STAGING.hostname}`)
-  assert.ok(alias.projectId === STAGING.projectId && alias.deployment?.id === d.id,
-    'Staging no longer serves the accepted revision')
+  if (evidence.published === false) {
+    assert.equal(evidence.url, candidateOrigin(d), 'Release candidate origin changed')
+  } else {
+    assert.equal(evidence.url, STAGING.origin, 'Wrong published release origin')
+    const alias = await vercel(`/v4/aliases/${STAGING.hostname}`)
+    assert.ok(alias.projectId === STAGING.projectId && alias.deployment?.id === d.id,
+      'Published release candidate no longer serves the accepted revision')
+  }
 }
 
 export function productionCredentials(env) {

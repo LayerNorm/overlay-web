@@ -1,14 +1,8 @@
-name: Staging Release
+name: Release Candidate
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
-      prepare_candidate:
-        description: Build and smoke a candidate without changing canonical staging
-        type: boolean
-        default: false
       publish_candidate:
         description: After smoke passes, cut over a candidate with verified isolated providers
         type: boolean
@@ -19,9 +13,8 @@ permissions:
 
 jobs:
   deploy:
-    # Activated only after live provider isolation and authenticated smoke pass.
-    # Changing the production branch alone cannot enable this migration.
-    if: github.ref == 'refs/heads/main' && (vars.RELEASE_STAGING_FROM_MAIN == 'enabled' || (github.event_name == 'workflow_dispatch' && inputs.prepare_candidate))
+    # Owner-dispatched exact-main check; merges never start a release build.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: release-control
     timeout-minutes: 40
@@ -41,7 +34,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
-          STAGING_PREPARE_ONLY: ${{ inputs.prepare_candidate && '1' || '0' }}
+          STAGING_PREPARE_ONLY: '1'
       - name: Set up Node for authenticated smoke
         if: steps.deploy.outputs.ready == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -64,7 +57,7 @@ jobs:
           STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
       - name: Publish verified initial candidate
         id: publish
-        if: steps.deploy.outputs.ready == 'true' && inputs.prepare_candidate && inputs.publish_candidate && vars.STAGING_ISOLATION_VERIFIED == 'enabled'
+        if: steps.deploy.outputs.ready == 'true' && inputs.publish_candidate && vars.STAGING_ISOLATION_VERIFIED == 'enabled'
         run: node scripts/release/staging-publish.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}

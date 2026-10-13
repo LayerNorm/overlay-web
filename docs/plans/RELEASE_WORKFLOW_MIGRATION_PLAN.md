@@ -3,7 +3,7 @@
 Moves Overlay from direct pushes to `main` plus an optional branch-based staging
 lane, using one shared dev Convex, to the target workflow in
 [`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
-merge queue on `main`, staging deployed from `main`, manual production promotion.
+merge queue on `main`, on-demand exact-main release candidates, manual production promotion.
 
 ## Approved preview-domain approach — 2026-10-12
 
@@ -138,7 +138,7 @@ The prepared `staging-control.mjs` and `staging-release.yml` require the exact
 Divyansh Vercel team/project, internal repository, `main` SHA, and dedicated
 backend. Builds are serialized, abandoned builds are settled, automatic aliases
 are disabled, and READY provenance is checked before assigning staging.
-`RELEASE_STAGING_FROM_MAIN` remains unset: the existing staging branch and web
+`RELEASE_STAGING_FROM_MAIN` remains unset and is obsolete in the manual-only workflow: the existing staging branch and web
 deployment still serve the current lane. This is preparation, not Phase 5
 acceptance. Authenticated staging smoke, provider isolation,
 platform cutover, and the process-doc rewrite must precede activation.
@@ -381,50 +381,35 @@ and posts screenshots to the PR.
 Cut over after live provider isolation and authenticated staging smoke pass.
 A calendar waiting period is not required; the acceptance checks still are.
 
-## Phase 5 — Staging deploys from `main`
+## Phase 5 — On-demand exact-main release candidates
 
-Goal: staging always equals `main`. This is the cutover.
+**Owner decision, 2026-10-13:** PR previews replace the routine staging lane.
+Keep `overlay-web-staging` because it hosts PR previews. Reuse its dedicated
+`doting-cuttlefish-819` test backend only for release rehearsals requiring
+production-like Convex behavior, stable webhook integrations or migrations.
+Do not deploy staging after every merge. The legacy staging branch is frozen.
 
-Code:
-- [ ] Add a GitHub Action on pushes to `main` that requests a remote build of
-      that exact SHA in `overlay-web-staging`, with scoped staging credentials
-      and serialized deployments. Retain root `git.deploymentEnabled.main = false`:
-      it applies to both connected projects, so changing the staging project's
-      production branch alone cannot enable automatic builds. Record the web
-      deployment, backend, and SHA together as promotion evidence.
-      Prepared in `staging-release.yml` behind
-      `vars.RELEASE_STAGING_FROM_MAIN == 'enabled'`; do not enable until the
-      smoke workflow, test providers and complete cutover docs are ready.
-      Controller/build guards pin `doting-cuttlefish-819` and the requested SHA.
-      A `Staging Deploy` success alone is not staging-smoke or promotion proof.
-- [ ] `scripts/vercel-build.sh`: in the staging project's production build,
-      deploy the staging Convex backend first
-      (separate `convex deploy`, guarded `dev/seed:initStaging`, then web build),
-      so staging web and Convex always come from the same commit. `--cmd` runs before
-      the Convex function push in the installed CLI and does not enforce this order.
-- [x] `convex-url.ts`: remove the `staging.getoverlay.io` host sniffing once
-      staging sets `OVERLAY_DEPLOYMENT_ENV=staging` explicitly.
-- [ ] Staging smoke tests: run Playwright steps in the same serialized
-      staging-release job instead of a separate `deployment_status` action, so an
-      unrelated deployment event cannot race publication. Prepared source uses
-      ordinary sandbox sign-in, synthetic fixture reads, note CRUD/conflict and
-      cleanup, a real chat reply, and Files UI screenshots. Initial candidate
-      smoke verifies the native deployment hostname before sending credentials;
-      the canonical alias stays unchanged until the same run's complete proof
-      and `STAGING_ISOLATION_VERIFIED=enabled` permit publication. Canonical smoke
-      runs afterward. Live execution remains pending.
+- [x] Prepare manual-only `staging-release.yml` on protected main; no push trigger
+      or `RELEASE_STAGING_FROM_MAIN` activation is required. Always build an
+      unpublished native candidate first, with exact SHA/project/backend guards.
+- [x] Deploy dedicated test functions, guarded synthetic fixtures, then web in a
+      serialized remote build. Preserve root `git.deploymentEnabled.main=false`.
+- [x] Select backend using explicit staging environment instead of host sniffing.
+- [x] Require normal Sandbox sign-in, note CRUD/stale conflict and cleanup, real
+      chat, Files UI and realtime authorization in same-run smoke evidence.
+- [x] Accept successful unpublished native candidate proof for manual production
+      promotion. Validate trusted manual producer, current main, ready deployment
+      and exact native hostname. Never accept a PR-head preview as merged-main proof.
+- [x] Prepare optional `publish_candidate=true` for stable staging integrations;
+      require provider isolation, complete first smoke and canonical second smoke.
+- [x] Configure preview project's Production branch as main, REST-only deployment
+      policy, automatic aliases disabled and isolated dedicated test providers.
+- [ ] Freeze legacy staging through a no-bypass update rule and read it back.
+- [ ] Execute complete live exact-main candidate acceptance and production drill.
 
-Dashboard (owner):
-- [x] `overlay-web-staging` → Git → Production Branch: `main`;
-      set `DEPLOY_BRANCH=main` and explicitly permit the authorized staging CI
-      remote-build path. Keep unrelated refs and manual sources blocked.
-- [x] Convex staging (decision from Phase 0): create the deploy key and set it
-      as `CONVEX_DEPLOY_KEY` in the staging project's **Production** scope.
-- [ ] Freeze the `staging` branch: leave it in place (branch deletion is blocked
-      by history rules) and restrict pushes, so nothing lands there by accident.
-
-Done when: a merge to `main` produces a staging deployment of that SHA within
-minutes, and the smoke suite reports on it.
+Done when: an owner-dispatched current-main release candidate passes complete
+behavioral checks, qualifies for promotion, and main merges create neither staging
+nor customer production deployments.
 
 ## Phase 6 — Merge queue and review rules
 

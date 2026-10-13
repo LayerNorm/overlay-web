@@ -1,6 +1,6 @@
 ---
 title: "Release Workflow"
-description: "PR previews, main integration, dedicated staging, and manual production."
+description: "PR previews, main integration, on-demand release candidates, and manual production."
 ---
 
 ## Operating contract
@@ -19,15 +19,15 @@ candidate against current main and earlier queued changes. Keep approving review
 at zero while the sole maintainer cannot approve his own PR; retain history
 protection and the explicit emergency-only owner bypass.
 
-Staging is a main deployment, not a branch. The legacy staging branch is frozen.
-The serialized staging build pushes its dedicated backend, seeds synthetic data,
-then builds web. Its authenticated smoke and exact deployment evidence are
-required before production. `needs-staging` requests stronger hosted QA without
+The legacy staging branch is frozen. Main merges do not deploy staging. When
+preparing a production release, manually dispatch the exact current main candidate
+in the existing preview project, reusing its dedicated test backend. The serialized
+build seeds synthetic data and runs authenticated smoke before promotion. `needs-staging` requests stronger hosted QA without
 changing PR base.
 
 Production remains manual with root `git.deploymentEnabled.main=false`.
 With owner authorization, run `bash scripts/release/promote.sh <main-sha>` from
-clean current canonical main. It checks canonical staging proof, builds remotely,
+clean current canonical main. It checks successful exact-main release-candidate proof, builds remotely,
 publishes/verifies web, pushes production Convex, then runs synthetic-account
 smoke. Preserve saved checkpoints and verify rollback through actual alias
 readback. Never pass `.env.local`, customer fixtures or feature-worktree source
@@ -46,8 +46,9 @@ The owner authorized the migration and waived the calendar soak. Preview model,
 storage, auth, persistence, isolation and cleanup acceptance passed. Dedicated
 staging settings/functions/fixtures are deployed. Initial Sandbox sign-in passed,
 but stale-note conflicts required a structured error fix for production-type
-Convex. Canonical staging and automatic main activation still require a complete
-new smoke run. Queue semantic proof, full checkout and the live production/rollback
+Convex. The on-demand candidate still requires a complete new smoke run. Optional
+publication to staging.getoverlay.io requires same-run smoke; native candidates
+can qualify directly without changing that alias. Queue semantic proof, full checkout and the live production/rollback
 drill remain acceptance tasks; source instructions are not proof of completion.
 
 The authoritative checkpoint is in the [migration plan](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md).

@@ -22,10 +22,10 @@ Ordinary work uses the main queue. The owner bypass requires explicit authorizat
 for the current emergency action, equivalent validation, diff/ancestry review,
 fast-forward only and post-push verification. Account access is not permission.
 
-After merge, verify exact origin/main and its serialized Staging Release run.
+After merge, verify exact origin/main. When preparing a release, manually dispatch its serialized Release Candidate run.
 The workflow deploys dedicated staging Convex, seeds synthetic fixtures, builds
 web and records authenticated smoke. Do not manually deploy shared dev or use a
-feature worktree for staging. Check the canonical staging alias and matching
+feature worktree for staging. Check the verified native candidate origin (or optionally published staging alias) and matching
 backend/SHA. Failed or superseded smoke is not production promotion evidence.
 For `needs-staging`, verify the affected flow there before promotion.
 

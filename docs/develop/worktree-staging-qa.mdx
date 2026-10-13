@@ -107,8 +107,8 @@ The dedicated staging functions and fixtures are deployed. Sandbox sign-in
 passed; the first full smoke found that note revision conflicts were hidden as
 ordinary developer errors on a production-type Convex backend. The cutover source
 uses structured application errors and preserves their data across the HTTP
-adapter. Canonical publication and automatic main staging remain gated on a new
-complete smoke run. Stripe test endpoint `we_1UQ1FzPH7ssnO0LIvzG2T8VW` delivered
+adapter. Optional canonical publication remains gated on complete smoke. Main merges
+never trigger staging builds; prepare candidates only for an intended release. Stripe test endpoint `we_1UQ1FzPH7ssnO0LIvzG2T8VW` delivered
 an actual test PaymentIntent event to the dedicated backend, where it was
 recorded as processed. Billing checkout acceptance remains separate.
 
@@ -136,10 +136,10 @@ reconciliation every six hours repairs missed events and renews open backends.
 Closed/unknown preview hosts return HTTPS 404. Backend retention is a platform
 limit, independent of the non-expiring shared credentials.
 
-### Main staging
+### On-demand release candidate
 
-`RELEASE_STAGING_FROM_MAIN=enabled` activates `staging-release.yml` on main pushes.
-All staging jobs share one serialized lock. The staging project's Production
+Dispatch `staging-release.yml` on main only when preparing a release. It has no
+push trigger. All candidates share one serialized lock. The staging project's Production
 branch is main; Production and Preview deployment sources permit controller REST
 API builds only. Root Git main deployments remain disabled. The ignore/build
 guards accept an exact trusted-main SHA override and reject unrelated refs,
@@ -153,20 +153,23 @@ chat reply, Files UI and realtime own-user/other-user authorization. Inspect
 `Staging Deploy`, `Staging Smoke`, artifacts and screenshots for that exact SHA.
 A ready web build or stale smoke result is insufficient for production.
 
-For initial cutover/rehearsal, dispatch `prepare_candidate=true` to keep the
-canonical alias unchanged while testing the verified native candidate hostname.
+Every dispatch keeps the canonical alias unchanged while testing the verified
+native candidate hostname.
 After isolated provider proof, `STAGING_ISOLATION_VERIFIED=enabled` plus
 `publish_candidate=true` permits same-run publication only after smoke passes.
-Canonical smoke runs again; unpublished candidate evidence cannot promote prod.
-Subsequent normal main jobs deploy canonical staging and retain smoke evidence.
+Canonical smoke runs again if publication is requested. A successful unpublished
+candidate also qualifies for promotion: the command verifies its native origin,
+ready deployment provenance, successful trusted manual producer and current main.
+The persistent staging project/backend are reused for these checks and PR previews;
+there is no staging branch workflow or mandatory deployment after each merge.
 
 ```bash
 gh run list --repo LayerNorm/overlay-web --workflow staging-release.yml
 gh run view <run-id> --repo LayerNorm/overlay-web
 ```
 
-Before promotion, verify current origin/main still equals the smoke SHA, the
-canonical alias serves its deployment and all required behavioral checks passed.
+Before promotion, verify current origin/main still equals the smoke SHA, its verified native origin (or optionally published
+canonical alias) serves its deployment and all required behavioral checks passed.
 The production command checks this automatically. If main advances or smoke
 fails, wait for and verify the new revision; do not promote older proof.
 
@@ -182,7 +185,7 @@ and retained web rollback against the expanded schema. See
 
 1. Review exact PR head, resolved findings, required checks and affected preview QA.
 2. Enqueue through main's merge queue; verify accepted main SHA after merge.
-3. Verify no automatic customer production build and inspect exact-main staging smoke.
+3. Verify no automatic customer production build. Dispatch exact-main candidate smoke when preparing a release.
 4. For `needs-staging`, verify the affected flow before production promotion.
 5. With explicit production authorization, use clean current canonical main and
    the guarded promotion command. Verify web live before production Convex.

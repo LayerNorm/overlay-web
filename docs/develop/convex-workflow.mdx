@@ -17,7 +17,7 @@ For ordinary local web work against the development Convex backend, run Next.js 
 npm run dev
 ```
 
-`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Main staging CI owns dedicated staging; the frozen legacy staging branch/worktree is not a deploy lane.
+`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Manually dispatched main release-candidate CI owns dedicated staging; the frozen legacy staging branch/worktree is not a deploy lane.
 
 ## Isolated PR preview backends
 
@@ -79,7 +79,7 @@ have been set and read back; app functions and synthetic fixtures are deployed.
 Canonical staging still serves the previous deployment until full smoke passes. Do not run
 production scripts from feature worktrees to initialize it. The staging cutover
 must supply matching sandbox auth/internal secrets and dedicated test providers,
-plus authenticated staging smoke, before the activation variable is enabled.
+plus authenticated staging smoke, before any optional canonical publication. Candidates remain on demand.
 
 Internal `dev/seed:initStaging` prepares synthetic fixtures for the configured
 sandbox QA identity. It requires `OVERLAY_DEPLOYMENT_ENV=staging`, the sandbox
@@ -212,7 +212,7 @@ main staging build therefore runs three commands sequentially with an explicit,
 private deployment-key env file: backend deploy, `dev/seed:initStaging`, then
 `build-web.mjs`. Any failure stops the remaining steps. The web build receives
 the pinned staging URL; production web builds still do not deploy Convex. This
-automatic path remains gated until the platform cutover and authenticated smoke pass.
+on-demand path requires an owner dispatch and complete authenticated smoke.
 
 ### Expected errors on production-type deployments
 

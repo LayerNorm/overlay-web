@@ -9,17 +9,17 @@ The owner authorized this cutover. Preview acceptance passed; the first dedicate
 staging candidate passed Sandbox sign-in and discovered a production-redacted
 note-conflict bug. Its fix is included in this cutover revision. Canonical staging
 still serves the previous deployment until the same-run smoke/publication checks
-pass. `RELEASE_STAGING_FROM_MAIN` remains unset until that acceptance; the current
-candidate is dispatched manually. Live queue verification and production drill
+pass. Release candidates are dispatched manually; no merge triggers a staging
+build and no activation variable is required. Live queue verification and production drill
 remain acceptance work, not proof supplied by this document.
 
 ## Release model
 
 Every feature reaches `main` through a focused pull request and the merge queue.
-Its isolated preview verifies the feature before integration. Each accepted main
-revision automatically deploys to staging with a dedicated Convex backend.
-Production is a separate, owner-authorized promotion of an exact main SHA that
-passed authenticated staging smoke. Root `git.deploymentEnabled.main=false`
+Its isolated preview verifies the feature before integration. When preparing a
+production release, dispatch an on-demand candidate of current main with the
+dedicated test Convex backend. Production is a separate, owner-authorized
+promotion of that exact main SHA after authenticated candidate smoke passes. Root `git.deploymentEnabled.main=false`
 keeps customer production manual.
 
 The legacy `staging` branch is frozen. Do not push, target PRs at, align or deploy
@@ -31,10 +31,10 @@ it. Staging is an environment built from main, not an integration branch. See
 | Role | Responsibility |
 | --- | --- |
 | Builder | Own one feature worktree, implement and validate a coherent change, update living docs and CHANGELOG, verify the current PR preview, and submit the PR to main. Stop at a ready PR. |
-| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, observe exact-main staging smoke, and handle an explicitly authorized production promotion and verification. |
+| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, verify the on-demand exact-main release candidate, and handle an explicitly authorized production promotion and verification. |
 
-Use [Builder Agent Prompt](/develop/BUILDER_AGENT_PROMPT) and
-[Integration Agent Prompt](/develop/INTEGRATION_AGENT_PROMPT). No additional
+Use [Builder Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/BUILDER_AGENT_PROMPT.md) and
+[Integration Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/INTEGRATION_AGENT_PROMPT.md). No additional
 review or release role is required. GitHub PRs, checks and history are the
 integration record; do not create a second Markdown PR ledger.
 
@@ -62,7 +62,7 @@ customer data and do not need domain-management secrets.
 Open a draft PR against `main`, then wait for `PR Preview`. Verify its SHA equals
 the current PR head before using `https://pr-<number>.preview.getoverlay.io`.
 Sign in with the sandbox QA identity or the preview-only login recipe in
-[Browser Testing](/develop/browser-testing-with-agent-browser). Keep secrets and
+[Browser Testing](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/browser-testing-with-agent-browser.md). Keep secrets and
 cookies outside tracked files and PR text.
 
 Verify the changed flow, rendered UI and persistence as applicable. Record the
@@ -166,7 +166,7 @@ fast-forward only and post-push verification. Credentials alone are not permissi
 
 ## Staging and production
 
-The serialized main staging job builds the dedicated backend, guarded synthetic
+The owner-dispatched, serialized release-candidate job builds the dedicated backend, guarded synthetic
 fixtures, then web; it verifies the deployment and authenticated smoke for that
 SHA. Superseded builds do not provide promotion evidence. Inspect `Staging Deploy`,
 `Staging Smoke`, screenshots and workflow artifacts for the exact accepted main.
@@ -175,7 +175,7 @@ Preview closure removes its aliases and stops backend renewal.
 Production authorization is separate from merging. Without it, verify no customer
 production build appeared and report merged but not deployed. With it, use
 `bash scripts/release/promote.sh <main-sha>` from clean current canonical main.
-The command requires canonical staging evidence, remotely builds and publishes
+The command requires successful same-run exact-main candidate evidence, remotely builds and publishes
 web, verifies it live, then pushes customer production Convex and runs smoke.
 Never pass `.env.local` to production Convex.
 
