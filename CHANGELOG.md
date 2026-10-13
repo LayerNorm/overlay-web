@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Recognize the primary submodule checkout in production release validation while continuing to refuse linked feature worktrees.
+
 - Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit as holds settle or release, and disabling automatic top-ups.
 
 - Wait for chat transcript hydration in release smoke, explicitly select Chat, and clean fresh production QA conversations.

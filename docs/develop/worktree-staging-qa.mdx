@@ -5,7 +5,7 @@ description: "Test a staging release candidate and promote the verified revision
 
 This guide covers hosted QA and release promotion only. Follow [Agentic Development](/develop/agentic-development) for feature branches, worktree creation, pull requests, commit history, and integration ownership.
 
-## Prepared production promotion command
+## Production promotion command
 
 `bash scripts/release/promote.sh <40-character-main-sha> --check` performs
 preflight only. Omitting `--check` manually releases that exact current `main`.
@@ -222,3 +222,9 @@ sending. A visible composer alone does not prove route hydration is complete.
 Live diagnostics reproduced an early send using default model/runtime state;
 waiting for the transcript fixed immediate reply rendering and reload persistence.
 Both suites clean their own synthetic conversations after success or failure.
+
+### Canonical submodule checkout
+
+The primary Overlay checkout is a submodule: its Git directory is under the parent repository’s `.git/modules/overlay-landing`. Production validation compares the checkout’s actual Git directory with its common Git directory. Primary standalone and submodule checkouts pass; linked feature worktrees have distinct Git directories and remain rejected. Clean current main, the fixed production project and manual deployment rules still apply.
+
+The first complete exact-main candidate passed both native and published smoke at `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. Browser staging upload, exact-byte download, image rendering and metadata/object cleanup also passed. Production preflight found the earlier standalone-only Git-directory assumption; its correction must reach reviewed main before the production drill.

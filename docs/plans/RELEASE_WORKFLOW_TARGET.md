@@ -337,3 +337,7 @@ credit, and disables automatic top-ups. Live cancellation replay and a new
 complete candidate run remain required before production acceptance.
 
 Cancellation removes unused paid funding again as existing holds are released or settled below their estimate. Synthetic release smoke closes pending navigation/response waits safely and cleans the exact temporary chat even when note cleanup fails.
+
+### Complete dedicated candidate (2026-10-13)
+
+Exact main `f863915508795c695d9778f33476eaaf4d14436e` passed the successful manual producer `38394669549`: all ten behavioral checks passed before and after publication to `staging.getoverlay.io`, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. Actual browser staging upload, exact-byte download, image rendering and metadata/object cleanup passed. The earlier failed synthetic cancellation was repaired through the reviewed deployed mutation, preserving 900 used micros and returning the app to Free/canceled. A fresh automatic checkout/cancellation cycle remains separate acceptance. Production preflight refused the valid primary submodule because the original guard assumed a root `.git` directory; the Git-directory comparison fix requires reviewed main and a new current-main candidate before the production drill. Customer production remains unchanged.
