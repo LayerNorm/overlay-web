@@ -37,6 +37,17 @@ closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
 in isolated Chromium (requires the Playwright Chromium browser).
 
+## Delayed tooltips
+
+`DelayedTooltip` preserves its layout wrapper and attaches Radix's trigger to
+its child. Container and Fragment children describe the actual focused control
+while open; existing `aria-describedby` tokens are preserved and the tooltip's
+ID is removed on blur, close or unmount. Wrappers add no Tab stop. Radix owns
+positioning, the portal and Escape dismissal. Fine-pointer hover opens after
+450 ms; touch/coarse input suppresses tooltips, including capability changes
+while mounted. Run `node scripts/qa/tooltip-interactions.mjs` for rendered
+association, cleanup, pointer and media-query checks in installed Chrome.
+
 ## Toggles are the only on/off control
 
 Nowhere in the web app do we render checkboxes (`<input type="checkbox">`).

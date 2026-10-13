@@ -10,6 +10,7 @@ _Dated 2026-10-13. Companion visual mockup:
 | 0a Tailwind v4 | Merged and live in production at `4698f8347caf0bc44b3a0fab29781ff744fc6629`; required CI, candidate acceptance and production smoke passed | [#198](https://github.com/LayerNorm/overlay-web/pull/198) (merged, base `main`) |
 | 0b shadcn foundation | Implemented, folded into the phase-1 PR (deps + `components.json` + real `cn()` land with the first component) | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
 | 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
+| 3 tooltip | Implemented: canonical `ui/tooltip.tsx`; `DelayedTooltip` reimplemented on Radix Tooltip with unchanged `{label, side}` API (all callsites upgraded untouched); 450 ms delay + hover-only gating preserved | [#202](https://github.com/LayerNorm/overlay-web/pull/202) (open, base `main`) |
 
 One scope note vs the original plan: phase 0b's semantic shadcn token
 aliasing (`--card`/`--primary`/…) is deferred — the components consume
