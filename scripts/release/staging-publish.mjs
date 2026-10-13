@@ -7,7 +7,7 @@ import { STAGING, StagingController, candidateOrigin, revision, stagingDeploymen
 import { smokeCandidate } from './staging-smoke.mjs'
 
 export const SMOKE_CHECKS = Object.freeze(['authenticatedSandboxIdentity', 'dedicatedFixture',
-  'noteCrudAndStaleEdit', 'noteCleanup', 'realChatReply', 'filesUi'])
+  'noteCrudAndStaleEdit', 'noteCleanup', 'realChatReply', 'filesUi', 'realtimeAuthorization'])
 
 export function verifiedSmoke(value, sha) {
   smokeCandidate(value, sha)

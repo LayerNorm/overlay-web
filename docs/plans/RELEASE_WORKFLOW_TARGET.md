@@ -10,6 +10,15 @@ The staging controller is being prepared behind an unset
 `RELEASE_STAGING_FROM_MAIN` repository variable. The current branch-based
 staging lane remains authoritative until the migration checkpoint and cutover.
 
+The prepared production command is `bash scripts/release/promote.sh <main-sha>`;
+append `--check` for preflight only. It requires clean canonical current `main`,
+Divyansh's identities and complete canonical staging smoke proof, including
+reactive authorization. It builds production remotely without assigning domains,
+verifies and publishes web, then pushes production Convex and runs authenticated
+smoke with a separate synthetic account. Live promotion and rollback rehearsal
+remain pending. See `docs/develop/worktree-staging-qa.mdx` for configuration,
+checkpoints and the rollback runbook.
+
 ## Preview-domain decision — 2026-10-12
 
 Implement stable `pr-<number>.preview.getoverlay.io` URLs with ordinary Vercel
@@ -73,6 +82,9 @@ Rules that follow from this table:
   when rotating credentials; defaults affect newly created backends only.
 - Preview and staging secrets are **test-mode only**. Preview builds run whatever
   code a pull request contains, so they must never hold a production secret.
+- A disabled integration, browser, sandbox or web-search provider also disables
+  its feature flag. Release builds reject a `none` provider advertised as an
+  enabled capability; this prevents chat from loading unavailable connectors.
 - No environment shares a Convex backend with another, so one feature's schema
   change cannot break someone else's testing.
 
@@ -186,10 +198,13 @@ capacity needed for feature QA.
 
 ## Ownership and review
 
-- `CODEOWNERS` requires human review for `convex/schema.ts`, migrations, auth
+- `CODEOWNERS` identifies the review owner for `convex/schema.ts`, migrations, auth
   (`src/server/auth/`, `src/app/api/auth/`), billing (`src/server/billing/`,
   Stripe webhooks), tenant boundaries, and release configuration (`vercel.json`,
   build scripts, `.github/`).
+- Mandatory approving/code-owner reviews wait until a second eligible maintainer
+  joins. With one owner, required approval remains zero under the standing owner
+  instructions; Integration review and the stronger relevant QA still apply.
 - Everything else may merge once checks pass and the preview has been verified.
 - Agents may open and update PRs, verify previews, and enqueue merges for
   low-risk changes. Production promotion is always a human decision.

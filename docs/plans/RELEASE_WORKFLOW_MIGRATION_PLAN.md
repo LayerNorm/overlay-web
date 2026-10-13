@@ -102,6 +102,15 @@ reads only, and checks HTTPS `404` after close cleanup. Do not blindly retry
 mutations whose responses were lost; reconcile ownership and state first.
 
 The Convex preview key successfully renewed backend expiry with API readback.
+
+Live chat preparation found that provider `none` still left integration
+capabilities enabled, causing `500: Integrations are disabled` before the model
+call. The unscoped Vercel Preview defaults now explicitly disable integrations,
+browser use, sandboxes and web search with their corresponding feature flags;
+readback preserved every legacy Production variable. Release builds reject
+inconsistent disabled-provider flags. Existing deployments need rebuilding to
+receive these settings. Model reply/Auto and isolated storage acceptance remain
+pending; none of these preparation checks activate staging or production.
 Reconciliation renews validated open PR backends within Starter's five-day
 limit; closed PRs expire naturally. Missing or expired backends force a fresh
 same-SHA frontend build and seed. PR #190's unattended open event built accepted head
@@ -415,21 +424,25 @@ minutes, and the smoke suite reports on it.
 Goal: parallel merges cannot break `main`.
 
 Code:
-- [ ] `.github/workflows/security.yml`: add `merge_group:` to `on:` (required —
-      without it, queued PRs wait forever for checks). Drop `staging` from the
-      push branches once Phase 5 is done.
-- [ ] `.github/CODEOWNERS`: owners for `convex/schema.ts`, `convex/migrations/`,
+- [x] All required check workflows, including security, support `merge_group:`.
+      Without it, queued PRs wait forever for checks.
+- [ ] Drop `staging` from security push branches once Phase 5 is done.
+- [x] `.github/CODEOWNERS`: owners for `convex/schema.ts`, `convex/migrations/`,
       `src/server/auth/`, `src/app/api/auth/`, `src/server/billing/`,
       `src/app/api/webhooks/`, `vercel.json`, `scripts/vercel-*.sh`, `.github/`.
-- [ ] `.github/pull_request_template.md`: change summary, preview evidence,
+- [x] `.github/pull_request_template.md`: change summary, preview evidence,
       `needs-staging` checkbox, schema-change checkbox (expand/contract confirmed).
 
 Dashboard (owner):
-- [ ] `main` ruleset: require merge queue; require CODEOWNERS review; keep
-      required checks; keep force-push and deletion blocks.
+- [ ] `main` ruleset: require merge queue; keep required checks and history
+      protection. Configure main separately so legacy staging is not queued.
+- [ ] Require CODEOWNERS approval only after a second eligible maintainer joins.
+      Standing owner instructions prohibit reinstating approving reviews while
+      the sole author cannot approve their own PR. The current requirement stays
+      zero; owner-authorized Integration review and protected-area QA still apply.
 - [ ] Remove the `DevelopedByDev` bypass once a second engineer joins (keep it
       only as an emergency break-glass, documented).
-- [ ] Create the `needs-staging` label.
+- [x] Create the `needs-staging` label.
 
 Done when: two PRs that conflict semantically (each green alone) cannot both
 land; the second fails in the queue.
@@ -438,8 +451,18 @@ land; the second fails in the queue.
 
 Goal: promotion is boring and reversible.
 
+Preparation on 2026-10-12: `promote.sh` and its guarded remote-build/web-first
+orchestrator are implemented with ordering and refusal tests. Production smoke
+uses a separate synthetic account and verifies normal auth, note CRUD/conflict
+and cleanup, a newly generated chat reply after reload, Files and reactive
+authorization. Checkpoints preserve partial state and previous deployment IDs.
+This is source preparation: dedicated staging acceptance, production QA identity,
+the live promotion and rollback drill are still pending. PR #191 browser QA
+exposed an invalid native Convex `setAuth` call; its handler-token fix and a new
+mandatory realtime staging check are prepared before activation.
+
 Code:
-- [ ] `scripts/release/promote.sh <sha>`: checks the SHA is on `main` and has a
+- [x] Prepare `scripts/release/promote.sh <sha>`: checks the SHA is on `main` and has a
       green staging smoke run, deploys prod web (`vercel deploy --prod` at that
       SHA, remote build), waits for it to be live, then runs `convex:push:prod`
       from a clean checkout of that SHA, then runs the production smoke suite.
@@ -448,10 +471,14 @@ Code:
       PostHog keys once per authenticated request, bounded to 300ms with an off
       fallback. No product feature is enabled automatically; callsites still
       need both-path QA before rollout.
-- [ ] Document expand/contract for Convex schema changes in
+- [x] Document expand/contract for Convex schema changes in
       `docs/develop/convex-workflow.mdx`, with a worked example.
-- [ ] Rollback runbook: Vercel instant rollback for web; Convex rollback is
-      "deploy the previous SHA's functions", safe because of expand/contract.
+- [x] Prepare the rollback runbook in `worktree-staging-qa.mdx`: verify the
+      previous web deployment before instant rollback; restore previous function
+      source through reviewed main history while retaining expanded schema.
+      A feature checkout or obsolete schema is not a production rollback lane.
+- [ ] Provision the separate production QA identity, perform the live promotion
+      and deliberately exercise rollback with recorded deployment/alias readback.
 
 Done when: the owner promotes a SHA with one command and has rolled back once
 on purpose as a drill.

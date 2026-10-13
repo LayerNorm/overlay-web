@@ -36,6 +36,16 @@ test('production builds never push Convex as part of the web build', () => {
   assert.deepEqual(plan.args, ['run', 'build'])
 })
 
+test('release builds cannot advertise a disabled provider as an enabled capability', () => {
+  for (const [provider, feature] of [['INTEGRATIONS', 'INTEGRATIONS'],
+    ['BROWSER', 'BROWSER_USE'], ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
+    const disabled = { ...preview, ['OVERLAY_PROVIDER_' + provider]: 'none' }
+    assert.throws(() => buildPlan(disabled), /requires its feature flag/)
+    assert.throws(() => buildPlan({ ...disabled, ['OVERLAY_FEATURE_' + feature]: 'true' }))
+    assert.equal(buildPlan({ ...disabled, ['OVERLAY_FEATURE_' + feature]: 'false' }).target, 'preview pr-123')
+  }
+})
+
 test('preview build isolates selectors and reuses only that PR backend', () => {
   const plan = buildPlan({ ...preview, CONVEX_DEPLOYMENT: 'prod:wrong',
     DEV_NEXT_PUBLIC_CONVEX_URL: 'https://shared.convex.cloud',

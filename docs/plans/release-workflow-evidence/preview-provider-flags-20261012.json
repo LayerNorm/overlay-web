@@ -1,0 +1,15 @@
+{
+  "projectId": "prj_IKvugqekF8qLP14p7Rg4ilWErXPr",
+  "scope": "preview",
+  "branchScope": null,
+  "keys": [
+    "OVERLAY_FEATURE_INTEGRATIONS",
+    "OVERLAY_FEATURE_BROWSER_USE",
+    "OVERLAY_FEATURE_SANDBOXES",
+    "OVERLAY_FEATURE_WEB_SEARCH"
+  ],
+  "value": "false",
+  "readbackVerified": true,
+  "legacyProductionVariablesPreserved": true,
+  "existingDeploymentsChanged": false
+}

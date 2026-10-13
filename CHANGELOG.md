@@ -6,6 +6,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- **Disabled preview providers also disable their capabilities.** Shared Preview settings and release build guards prevent chat from loading an integration provider configured as `none`. Legacy staging Production settings are preserved.
+
+- **Reactive Convex authentication uses its handler contract.** Browser HMAC tokens remain explicit query arguments; the client no longer sends them to an unconfigured platform identity verifier. Staging smoke now checks an authenticated subscription, denial for a different user and browser runtime errors.
+
 - **Edits to legacy notes stay visible.** Canonical text updates remove an older text field that could mask the saved content on subsequent reads.
 
 - **PR checks and previews spend less time on obsolete work.** New revisions cancel superseded code checks; maintenance-only diffs keep CI and docs checks without rebuilding the unchanged app. Hosted previews remain available through an explicit request. Dependency Review now performs its comparison, and paid canary deployment events no longer publish skipped required contract checks.
@@ -14,6 +18,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **Stale note saves report conflicts.** Convex rejection now reaches the existing HTTP `409` response instead of reporting a successful save with unchanged content. Found during isolated-preview CRUD QA.
 
 ### Added
+
+- **Prepared one-command production promotion.** Exact clean canonical main and successful staging proof gate a remote web build, verified web publication, production Convex push and authenticated smoke. Checkpoints preserve partial release state and previous web deployment IDs; the rollback runbook retains schema compatibility. Live activation and rollback rehearsal remain pending.
 
 - **Boolean release flags default off.** A request-scoped PostHog helper lets unfinished server behavior stay dark, evaluates each requested set once, and falls back to the existing behavior when configuration or the flag service is unavailable.
 

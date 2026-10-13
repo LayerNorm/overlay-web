@@ -5,7 +5,63 @@ description: "Test a staging release candidate and promote the verified revision
 
 This guide covers hosted QA and release promotion only. Follow [Agentic Development](/develop/agentic-development) for feature branches, worktree creation, pull requests, commit history, and integration ownership.
 
-## Deployment lanes
+## Prepared production promotion command
+
+`bash scripts/release/promote.sh <40-character-main-sha> --check` performs
+preflight only. Omitting `--check` manually releases that exact current `main`.
+The command is prepared for the new staging lane; it cannot run successfully
+until staging cutover and its authenticated smoke are complete.
+
+Run it from clean canonical `main`, linked to Divyansh's production project.
+Provide `CONVEX_PRODUCTION_DEPLOY_KEY` scoped to `colorful-chickadee-419`, and
+`PRODUCTION_SMOKE_EMAIL`, `PRODUCTION_SMOKE_PASSWORD`, `PRODUCTION_SMOKE_USER_ID`
+for the separate `overlay-release-qa@getoverlay.io` synthetic production account.
+The account must have a personal workspace; do not use the sandbox QA user or a
+customer account. It has not been provisioned by this migration yet. The native
+GitHub/Vercel CLI accounts must be `DevelopedByDev`/`developedbydev1`. Install the
+reviewed dependencies and Playwright Chromium before release.
+
+The command downloads the successful staging workflow's exact smoke artifact,
+checks all seven behavioral checks and its producer, and verifies the current
+staging alias still serves that SHA. Older proof without realtime authorization
+does not qualify. It then remotely builds production web without assigning
+domains, checks provenance, publishes and verifies the canonical web alias,
+pushes production Convex using a private key-only env file, and performs normal
+sign-in, note CRUD/conflict/cleanup, persisted chat, Files and realtime QA.
+Files checks target the accessible named file button: hidden alternate layouts
+also contain the title text and must not create a strict-locator failure.
+The chat composer is the accessible `Ask anything` combobox, not a textarea.
+No production seed runs. Root `git.deploymentEnabled.main=false` remains required.
+
+The production Convex target is announced before its push. Neither `.env.local`
+nor conflicting development selectors authorize that push. Failure stops later
+steps; checkpoints and screenshots are saved under ignored
+`artifacts/release-workflow/promotions/`. A local Git-directory lock prevents
+simultaneous invocations in this checkout. A failed command may have already
+published web or backend: read `lastCompletedState` and the previous deployment ID.
+
+### Rollback runbook
+
+1. Inspect the saved production checkpoint and verify the previous deployment
+   belongs to `overlay-landing`, its revision and compatibility with the current
+   backend. Use `vercel inspect <deployment-id> --format json` with the verified
+   Divyansh scope. Keep that exact previous web ID in the release evidence.
+2. With rollback authorization, run `vercel rollback <verified-deployment-id>
+   --yes --scope divyansh-lalwanis-projects`. Verify the production project,
+   canonical alias and authenticated application behavior afterward. Record the
+   actual returned deployment/alias IDs; an attempted CLI call is not proof.
+3. Retain the current backward-compatible Convex functions for the immediate
+   web rollback. If functions must also be restored, review a revert on `main`
+   that restores the previous function source while preserving expanded schema
+   and customer data. Test that revision on staging, then promote its web first
+   and push its production functions from clean canonical `main`. Never use a
+   feature checkout, force/reset `main`, or deploy an obsolete schema over data
+   written since release. Record the previous-source revision and any retained
+   compatibility fields.
+4. A deliberate live rollback drill remains required before migration completion.
+   Unit ordering tests and this prepared command do not substitute for that drill.
+
+## Existing and prepared deployment lanes
 
 The migration in `docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md` authorizes an
 isolated PR preview lane alongside the existing shared staging lane. The

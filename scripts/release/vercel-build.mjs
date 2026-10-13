@@ -12,6 +12,13 @@ export function buildPlan(env) {
   }
 
   const childEnv = { ...env }
+  for (const [provider, feature] of [['INTEGRATIONS', 'INTEGRATIONS'],
+    ['BROWSER', 'BROWSER_USE'], ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
+    if (env['OVERLAY_PROVIDER_' + provider] === 'none'
+      && env['OVERLAY_FEATURE_' + feature] !== 'false') {
+      throw new Error('Disabled ' + provider + ' provider requires its feature flag to be false')
+    }
+  }
   // A deploy key must be the only deployment selector in a hosted build.
   delete childEnv.CONVEX_DEPLOYMENT
   delete childEnv.CONVEX_DEPLOYMENT_TOKEN
