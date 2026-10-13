@@ -85,3 +85,12 @@ sending. A visible composer alone does not prove route hydration is complete.
 Live diagnostics reproduced an early send using default model/runtime state;
 waiting for the transcript fixed immediate reply rendering and reload persistence.
 Both suites clean their own synthetic conversations after success or failure.
+
+### Checkout cancellation acceptance
+
+The test-card checkout completed, and the dedicated backend processed checkout
+and subscription-created webhooks and exposed the paid plan through the app API.
+Cancellation then found the existing consumed-credit invariant rejecting the
+Free transition. The fix retains historical spend/holds, removes unused included
+credit, and disables automatic top-ups. Live cancellation replay and a new
+complete candidate run remain required before production acceptance.
