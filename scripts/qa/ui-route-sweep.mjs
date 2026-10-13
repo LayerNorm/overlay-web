@@ -1,8 +1,8 @@
 // QA route sweep for the Tailwind v4 upgrade. Connects to the running Chrome
 // over CDP, visits each route, records HTTP status + console errors + style
 // probes, and saves a screenshot per route to /tmp/qa-tw4/.
-const { chromium } = require('playwright');
-const fs = require('fs');
+import { chromium } from 'playwright';
+import fs from 'node:fs';
 
 const BASE = 'http://localhost:3100';
 const OUT = '/tmp/qa-tw4';
@@ -67,7 +67,7 @@ const NOISE = [
     page.on('console', onConsole);
     const resp = await page
       .goto(BASE + route, { waitUntil: 'domcontentloaded', timeout: 60000 })
-      .catch((e) => null);
+      .catch(() => null);
     await page.waitForTimeout(3500);
     const probe = await page
       .evaluate(() => {
@@ -93,7 +93,7 @@ const NOISE = [
           ...probe,
         };
       })
-      .catch((e) => ({ evalError: e.message.slice(0, 120) }));
+      .catch((e) => ({ evalError: String(e?.message || e).slice(0, 120) }));
     const shot = `${OUT}/${route.replace(/\//g, '_') || 'root'}.png`;
     await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
     page.off('console', onConsole);
