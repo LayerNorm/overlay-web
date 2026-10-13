@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { cn } from '../../utils/cn'
+import { useDialogReturnFocus } from '../../hooks/useDialogReturnFocus'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,18 +35,19 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const returnFocus = useDialogReturnFocus()
   // Preserve the pre-Radix contract: Escape cancels, Enter confirms.
   useEffect(() => {
     if (!isOpen) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Enter') {
         e.preventDefault()
-        onConfirm()
+        if (!busy) onConfirm()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, onConfirm])
+  }, [isOpen, busy, onConfirm])
 
   const confirmClass = destructive
     ? 'rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40'
@@ -58,16 +60,24 @@ export function ConfirmDialog({
         if (!open && !busy) onCancel()
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent {...returnFocus} onEscapeKeyDown={(event) => {
+        if (busy) event.preventDefault()
+      }}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description ? <AlertDialogDescription>{description}</AlertDialogDescription> : null}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel} disabled={busy}>
+          <AlertDialogCancel onClick={(event) => {
+            event.preventDefault()
+            if (!busy) onCancel()
+          }} disabled={busy}>
             {cancelLabel}
           </AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={busy} className={cn(confirmClass)}>
+          <AlertDialogAction onClick={(event) => {
+            event.preventDefault()
+            if (!busy) onConfirm()
+          }} disabled={busy} className={cn(confirmClass)}>
             {busy ? 'Deleting…' : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>

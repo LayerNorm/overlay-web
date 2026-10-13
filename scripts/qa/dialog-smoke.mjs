@@ -58,7 +58,7 @@ try {
   await page.screenshot({ path: '/tmp/qa-dialog-dark.png' })
   await page.keyboard.press('Escape')
 } catch (e) {
-  console.log('ERROR', e.message)
+  ok('browser smoke completed without an exception', false, e.message)
 } finally {
   await page.close()
   const fails = results.filter((r) => !r.pass)

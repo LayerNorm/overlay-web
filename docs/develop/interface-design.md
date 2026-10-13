@@ -24,6 +24,19 @@ border color for new controls.
 Tailwind utility names apply to class names. Literal CSS, including injected
 note-editor styles, uses standard properties such as `flex-shrink: 0`.
 
+## Shared modal dialogs
+
+`DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
+shadcn/Radix primitives. Their consumers open them from ordinary buttons without
+a Radix Trigger, so the wrappers remember the focused opener and restore it on
+close. Radix owns focus trapping and scroll locking while open.
+
+`ConfirmDialog` delegates dismissal to its callbacks. Confirming must not invoke
+Cancel or close an asynchronous operation early; native Radix Action/Cancel
+closure is prevented. While `busy`, confirmation, cancellation and Escape are
+blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
+in isolated Chromium (requires the Playwright Chromium browser).
+
 ## Toggles are the only on/off control
 
 Nowhere in the web app do we render checkboxes (`<input type="checkbox">`).
