@@ -200,3 +200,5 @@ The Work brief uses a focus-trapped right drawer with explicit Save changes / Ca
 Work on narrow screens stacks the List title and controls; Board columns snap-scroll and the Timeline scrolls inside its own frame. C focuses quick-add, Escape clears it or closes the brief, and dirty dismissal uses the shared ConfirmDialog. Work usage metrics include only action/scope/status/view enums, never task text, comments, links, or IDs.
 
 Work briefs use the shared confirmation dialog for unsaved changes. A parent Escape handler must honor `defaultPrevented` so dismissing a nested dialog keeps the brief open. Timeline pointer movement suppresses its trailing click while keyboard activation still opens the brief.
+
+For nested confirmation over a hand-built drawer, pause `useDialogFocus` with `restoreFocus: false`; preserve the drawer opener until its actual unmount. This lets the shared confirmation return focus to the edited field instead of the page behind it. Other callers retain the default focus restoration.

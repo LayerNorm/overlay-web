@@ -57,7 +57,13 @@ export function WorkPeek({
   const [attempt, setAttempt] = useState(0)
   const [dirty, setDirty] = useState(false)
   const [discard, setDiscard] = useState<'close' | 'reload' | null>(null)
-  const dialog = useDialogFocus<HTMLElement>(discard === null)
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    return () => {
+      if (opener?.isConnected) opener.focus()
+    }
+  }, [])
+  const dialog = useDialogFocus<HTMLElement>(discard === null, { restoreFocus: false })
   const reload = () => {
     setDirty(false)
     setResult(null)

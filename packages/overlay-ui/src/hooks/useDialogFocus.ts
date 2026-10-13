@@ -12,7 +12,10 @@ const FOCUSABLE_SELECTOR =
  * Call unconditionally (before any early return) and attach the returned ref to
  * the dialog container, e.g. `const dialogRef = useDialogFocus(mounted)`.
  */
-export function useDialogFocus<T extends HTMLElement = HTMLDivElement>(active: boolean) {
+export function useDialogFocus<T extends HTMLElement = HTMLDivElement>(
+  active: boolean,
+  { restoreFocus = true }: { restoreFocus?: boolean } = {},
+) {
   const ref = useRef<T | null>(null)
 
   useEffect(() => {
@@ -45,9 +48,9 @@ export function useDialogFocus<T extends HTMLElement = HTMLDivElement>(active: b
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
-      previous?.focus()
+      if (restoreFocus) previous?.focus()
     }
-  }, [active])
+  }, [active, restoreFocus])
 
   return ref
 }
