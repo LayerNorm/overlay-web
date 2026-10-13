@@ -1,20 +1,20 @@
 {
   "stepFiles": [
-    "/home/ubuntu/repos/overlay-web-tw4/node_modules/@ai-sdk/workflow/dist/index.js",
-    "/home/ubuntu/repos/overlay-web-tw4/node_modules/workflow/dist/stdlib.js",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/agents/workspace-agent-turn-lifecycle.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/conversations/personal-chat-work-lifecycle.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/conversations/personal-chat-work-tools.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/automation-agent-turn.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/automation-schedule.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/personal-chat-work.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/surface-agent-turn.ts"
+    "/home/ubuntu/repos/overlay-web-dialogs/node_modules/@ai-sdk/workflow/dist/index.js",
+    "/home/ubuntu/repos/overlay-web-dialogs/node_modules/workflow/dist/stdlib.js",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/agents/workspace-agent-turn-lifecycle.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/conversations/personal-chat-work-lifecycle.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/conversations/personal-chat-work-tools.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/automation-agent-turn.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/automation-schedule.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/personal-chat-work.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/surface-agent-turn.ts"
   ],
   "workflowFiles": [
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/automation-schedule.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/personal-chat-work.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/surface-agent-turn.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/workspace-agent-turn.ts"
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/automation-schedule.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/personal-chat-work.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/surface-agent-turn.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/workspace-agent-turn.ts"
   ],
   "serdeOnlyFiles": []
 }

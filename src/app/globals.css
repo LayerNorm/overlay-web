@@ -4,6 +4,7 @@
 @import '@overlay/modules-react/notebook-editor.css' layer(base);
 
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 /* Workspace packages ship components consumed by the app; scan them for
    utilities in addition to ./src (auto-detected via .gitignore-aware source

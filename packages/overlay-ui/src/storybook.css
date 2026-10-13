@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 /* Stories also render @overlay/modules-react components. */
 @source './**/*.{ts,tsx,mdx}';
