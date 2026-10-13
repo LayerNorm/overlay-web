@@ -111,15 +111,17 @@ call. The unscoped Vercel Preview defaults now explicitly disable integrations,
 browser use, sandboxes and web search with their corresponding feature flags;
 readback preserved every legacy Production variable. Release builds reject
 inconsistent disabled-provider flags. Existing deployments need rebuilding to
-receive these settings. Model reply/Auto and isolated storage acceptance remain
-pending; none of these preparation checks activate staging or production.
+receive these settings. PR #194 subsequently passed a real Free Router reply,
+reload persistence, isolated R2 upload/download, image rendering and CORS denial.
+These provider checks do not activate staging or production.
 Reconciliation renews validated open PR backends within Starter's five-day
 limit; closed PRs expire naturally. Missing or expired backends force a fresh
 same-SHA frontend build and seed. PR #190's unattended open event built accepted head
 `2675e4a700725ace91dcc30cc40e3347235856ce` and assigned its canonical URL.
 Authenticated note create/read/update/delete and stale-edit `409` checks passed;
-the normal browser sign-in opened Files with both synthetic fixtures. Provider QA,
-merge queue enablement, staging cutover and production promotion remain open.
+the normal browser sign-in opened Files with both synthetic fixtures. Provider QA
+was subsequently accepted on PR #194; merge queue enablement, staging cutover
+and production promotion remain open.
 These results apply to that revision; subsequent commits require fresh checks.
 
 Staging preparation: Divyansh's Convex team now has project `overlay-staging`
@@ -127,7 +129,9 @@ Staging preparation: Divyansh's Convex team now has project `overlay-staging`
 key is stored privately with no expiry; it is not a team credential.
 Staging core and test Stripe/Gateway variables are configured and verified by readback, including
 fresh internal API/service secrets and the sandbox smoke identity. The web secrets
-are prepared privately. No app functions or customer data have been deployed to it.
+are installed in staging Vercel Production scope, preserving Preview defaults.
+The staging project production branch is `main`, with automatic domain assignment
+disabled; its canonical alias still serves the previous staging deployment. No app functions or customer data have been deployed to it.
 Original Overlay production/development deployments were preserved by readback.
 The prepared `staging-control.mjs` and `staging-release.yml` require the exact
 Divyansh Vercel team/project, internal repository, `main` SHA, and dedicated
@@ -573,9 +577,11 @@ without a reset. Native key limits and shared environment readback
 passed; Preview hosted-access settings are enabled for a fresh application QA
 build. The customer production gate and legacy staging web scope are preserved.
 Cloudflare browser and existing CLI login are refreshed under Divyansh. The
-existing development S3 key remains restricted to `overlay-dev`; separate bucket
-credentials and cross-environment upload proof remain pending. Do not mark provider isolation
-complete or enable staging publication on the strength of these credentials alone.
+existing development S3 key remains restricted to `overlay-dev`. Separate lane
+buckets and non-expiring Object Read & Write credentials are configured. Own-lane
+write/read, cross-lane/shared-dev denial, browser image rendering, CORS isolation
+and object cleanup passed on PR #194. Provider isolation is accepted; staging
+publication still requires its own exact-revision authenticated smoke.
 
 The PR rebuild probe found a legacy note `textContent` field masking accepted
 `content` edits; the canonical text-update fix and regression coverage are

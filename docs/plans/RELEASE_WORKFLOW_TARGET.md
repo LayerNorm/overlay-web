@@ -23,8 +23,11 @@ The separate production QA identity and deployment-scoped Convex credential are
 prepared privately. WorkOS password authentication passed; production application
 smoke and deployment remain pending. Isolated test Gateway and OpenRouter keys
 are accepted by their native readback. Shared Preview hosted-access flags now
-permit a fresh model QA build; a real application reply is still required.
-Legacy staging web and customer production settings remain unchanged.
+passed a real Free Router reply and reload persistence on PR #194. Isolated
+R2 upload/download, browser image rendering, cross-lane denial and CORS checks
+also passed. Staging web settings now use the dedicated backend and test providers;
+the project production branch is `main` with automatic aliases disabled. Its
+canonical alias still serves the previous deployment. Customer production is unchanged.
 
 ## Preview-domain decision — 2026-10-12
 
