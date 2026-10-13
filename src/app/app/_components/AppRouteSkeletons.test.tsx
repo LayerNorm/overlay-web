@@ -10,7 +10,7 @@ test('ProjectsRouteSkeleton renders only page content, not a nested sidebar', ()
 
   assert.equal(markup.includes('border-r'), false)
   assert.equal(markup.includes('w-56'), false)
-  assert.equal(markup.match(/bg-\[var\(--surface-elevated\)\]/g)?.length, 6)
+  assert.equal(markup.match(/bg-\(--surface-elevated\)/g)?.length, 6)
 })
 
 test('AppShellLoadingFallback renders only the animated app brand', () => {

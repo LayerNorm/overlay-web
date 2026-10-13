@@ -40,7 +40,7 @@ test('opening a section from elsewhere selects nothing on the person behalf', ()
   )
   // Only the selected row carries the surface class unprefixed; every row has a
   // hover: variant of it, so the assertion has to exclude the hover form.
-  const selected = /transition-colors bg-\[var\(--surface-subtle\)\]/
+  const selected = /transition-colors bg-\(--surface-subtle\)/
   assert.doesNotMatch(html, selected)
 
   const onRoute = renderToStaticMarkup(
