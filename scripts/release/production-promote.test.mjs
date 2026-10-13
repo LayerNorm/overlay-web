@@ -3,7 +3,7 @@ import test from 'node:test'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { canonicalMain, promote, productionEnvironment } from './production-promote.mjs'
+import { canonicalMain, promote, productionEnvironment, productionCliOrigin, waitForProductionBuild } from './production-promote.mjs'
 import { PRODUCTION, promotionEvidence, productionCredentials, productionDeploymentMatches, verifyStagingLive } from './production-control.mjs'
 import { STAGING } from './staging-control.mjs'
 import { SMOKE_CHECKS } from './staging-publish.mjs'
@@ -21,6 +21,38 @@ const job = { name: 'deploy', status: 'completed', conclusion: 'success',
 const deployment = { id: 'dpl_prod', projectId: PRODUCTION.projectId, target: 'production', readyState: 'READY',
   url: 'release-proof.vercel.app', meta: { overlayReleaseLane: 'production', overlayReleaseSha: sha,
     overlayConvexBackend: PRODUCTION.backend, githubCommitSha: sha, githubCommitRef: 'main' } }
+
+test('production CLI accepts structured non-interactive and plain native origins only', () => {
+  const url = 'https://release-proof.vercel.app'
+  assert.equal(productionCliOrigin(JSON.stringify({ status: 'ok', deployment: { url }, next: [] })), url)
+  assert.equal(productionCliOrigin(JSON.stringify({ url })), url)
+  assert.equal(productionCliOrigin(JSON.stringify({ url: 'release-proof.vercel.app', readyState: 'READY' })), url)
+  assert.equal(productionCliOrigin(url + '\n'), url)
+  for (const output of [JSON.stringify({ status: 'error', deployment: { url } }),
+    JSON.stringify({ deployment: { url: 'https://outside.example' } }), JSON.stringify({ next: [{ url }] }),
+    JSON.stringify({ deployment: { url: url + '/path' } }), url + '\nhttps://another.vercel.app']) {
+    assert.throws(() => productionCliOrigin(output))
+  }
+})
+
+test('production waits for READY while verifying every remote build revision and owner', async () => {
+  const states = ['QUEUED', 'BUILDING', 'READY'], waits = []
+  const vercel = async path => {
+    assert.equal(path, '/v13/deployments/release-proof.vercel.app')
+    return { ...deployment, readyState: states.shift() }
+  }
+  assert.equal((await waitForProductionBuild({ vercel, origin: 'https://release-proof.vercel.app', sha,
+    sleep: async ms => waits.push(ms) })).id, deployment.id)
+  assert.deepEqual(waits, [15_000, 15_000])
+  for (const patch of [{ readyState: 'ERROR' }, { readyState: 'CANCELED' }, { readyState: 'BLOCKED' },
+    { projectId: STAGING.projectId }, { url: 'different.vercel.app' },
+    { meta: { ...deployment.meta, githubCommitSha: 'b'.repeat(40) } }]) {
+    await assert.rejects(waitForProductionBuild({ vercel: async () => ({ ...deployment, ...patch }),
+      origin: 'https://release-proof.vercel.app', sha, sleep: async () => {} }))
+  }
+  await assert.rejects(waitForProductionBuild({ vercel: async () => ({ ...deployment, readyState: 'BUILDING' }),
+    origin: 'https://release-proof.vercel.app', sha, attempts: 2, sleep: async () => {} }), /timeout/)
+})
 
 test('private release configuration loads only its four settings and preserves explicit overrides', () => {
   const directory = mkdtempSync(join(tmpdir(), 'release-env-test-'))
