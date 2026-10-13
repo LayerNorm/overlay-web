@@ -285,33 +285,26 @@
   }
   .rail.live .rail-box { opacity: 1; }
 
-  /* ---------- sections 2-6: title + graphic + optional right sidebar ---------- */
-  .view {
-    position: absolute; inset: 64px 0 0 0; z-index: 6;
-    display: grid; grid-template-columns: 240px minmax(0, 1fr) 240px; grid-template-rows: auto minmax(0, 1fr);
-    padding: 0 24px 24px; opacity: var(--vo, 0); transform: translateY(var(--vy, 0px)); pointer-events: none;
-    transition: grid-template-columns .5s var(--ease-out), padding .5s var(--ease-out);
+  /* ---------- sections 2-6: a continuous flow of panels (title + graphic), rail on the left, sidebar on the right ---------- */
+  /* Every scene is a panel. Panels are stacked one after another and moved by the scroll at 1:1, so the page reads like a
+     normal scrolling page; the rail and the sidebar stay put. */
+  .view { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+  .flow {
+    position: absolute; inset: 0; overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 48px, #000 100px, #000 calc(100% - 34px), transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0, transparent 48px, #000 100px, #000 calc(100% - 34px), transparent 100%);
   }
-  .view.live { pointer-events: auto; }
+  .panel { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; padding: 0 252px 56px; visibility: hidden; will-change: transform; }
   .title {
-    grid-column: 1 / -1; grid-row: 1; text-align: center; font: 400 clamp(24px, 3vw, 40px) / 1.25 var(--serif); letter-spacing: -0.015em;
-    margin: clamp(8px, 3vh, 30px) 0 clamp(14px, 3vh, 26px);
+    align-self: center; flex: none; text-align: center; white-space: nowrap; font: 400 clamp(24px, 3vw, 40px) / 1.25 var(--serif); letter-spacing: -0.015em;
+    margin: clamp(10px, 2.4vh, 24px) 0 clamp(10px, 2vh, 20px);
   }
-  .roll { display: inline-grid; overflow: hidden; padding-bottom: .22em; margin-bottom: -.22em; transition: width .45s var(--ease-out); }
-  .roll .w { grid-area: 1 / 1; white-space: pre; width: max-content; }
-
-  .body { display: contents; }
-
-  .graphic {
-    grid-column: 2; grid-row: 2; position: relative; min-height: 0; transition: opacity .4s; overflow: hidden; border: var(--hairline); border-radius: 22px; background: var(--surface-elevated);
-    box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 18px 50px -22px rgba(0,0,0,.16);
-  }
-  .graphic.has-gfx { background: none; border-color: transparent; box-shadow: none; }
+  .graphic { flex: 1; min-height: 0; position: relative; }
   /* ---- section 2 graphics: drawn on a fixed 640x440 stage and scaled to the panel ---- */
   .gfx { position: absolute; inset: 0; display: none; place-items: center; pointer-events: none; overflow: hidden; }
   .graphic.has-gfx .gfx { display: grid; }
   .graphic.has-gfx .g-chip, .graphic.has-gfx .g-inner, .graphic.has-gfx .g-meter { display: none; }
-  .gfx .stage { position: relative; width: 640px; height: 440px; flex: none; transform: scale(var(--gs, 1)); font-family: var(--sans); color: var(--foreground); }
+  .gfx .stage { position: absolute; left: 50%; top: 50%; margin: -220px 0 0 -320px; width: 640px; height: 440px; flex: none; transform: scale(var(--gs, 1)); font-family: var(--sans); color: var(--foreground); }
   .gfx .abs { position: absolute; }
   .gfx .card { background: var(--surface-elevated); border: var(--hairline); border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 14px 32px -20px rgba(0,0,0,.45); }
   .gfx .cr { display: block; --r: 0deg; }
@@ -499,8 +492,9 @@
   .g-meter .bar { flex: 1; height: 2px; border-radius: 2px; background: var(--border); overflow: hidden; }
   .g-meter .bar i { display: block; height: 100%; width: calc(var(--p, 0) * 100%); background: var(--foreground); }
 
-  .side { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; text-align: right; overflow: hidden; transition: opacity .3s; }
-  .body.no-side .side { opacity: 0; pointer-events: none; }
+  .side { position: absolute; right: 24px; top: 64px; bottom: 0; width: 216px; z-index: 7; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; text-align: right; overflow: hidden; transition: opacity .3s; pointer-events: none; opacity: var(--vo, 0); }
+  .view.live .side, .view.live .cta { pointer-events: auto; }
+  .side.empty { opacity: 0 !important; pointer-events: none !important; }
   .side > * { animation: rise .55s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 70ms); }
   .side-item .lbl { position: relative; display: block; height: 1.3em; overflow: hidden; transition: width .45s var(--ease-out); }
   .side-item .lbl > span { position: absolute; top: 0; right: 0; line-height: 1.3; white-space: nowrap; transition: opacity .3s; }
@@ -524,9 +518,8 @@
 
   /* ---------- section 7: get started ---------- */
   .cta {
-    grid-column: 2; grid-row: 2; align-self: start; justify-self: center; width: min(1040px, 100%); margin-top: clamp(32px, 9vh, 92px);
+    align-self: center; width: min(1040px, 100%); margin-top: clamp(24px, 6vh, 64px);
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: clamp(24px, 4vw, 56px);
-    opacity: 0; pointer-events: none; transition: opacity .4s var(--ease-out);
   }
   .col { display: flex; flex-direction: column; }
   .col h3 {
@@ -565,11 +558,9 @@
 
   [data-sec="start"] .rail { opacity: 0; pointer-events: none; }
   [data-sec="start"] .rail-item { pointer-events: none; }
-  [data-sec="start"] .view { grid-template-columns: 0 minmax(0, 1fr) 0; padding-bottom: 84px; }
-  [data-sec="start"] .title { margin-top: clamp(40px, 14vh, 140px); font-size: clamp(28px, 3.6vw, 48px); }
-  [data-sec="start"] .graphic, [data-sec="start"] .side { opacity: 0; pointer-events: none; }
-  [data-sec="start"] .cta { opacity: 1; pointer-events: auto; }
-  [data-sec="start"] .col { animation: rise .6s var(--ease-out) both; animation-delay: calc(var(--i) * 80ms + 120ms); }
+  .panel[data-sec="start"] { padding: 0 24px 84px; }
+  .panel[data-sec="start"] .title { font-size: clamp(28px, 3.6vw, 48px); margin-top: clamp(24px, 8vh, 80px); }
+  [data-sec="start"] .side { opacity: 0; pointer-events: none; }
   [data-sec="start"] .foot { transform: none; }
 
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -627,13 +618,13 @@
     .nav-links { display: none; }
     .rail { left: 0; right: 0; top: 64px; bottom: auto; width: auto; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 2px; padding: 0 8px; }
     .rail-item { font-size: 12.5px; padding: 6px 8px; }
-    .view { inset: 124px 0 0 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; padding: 0 16px 16px; }
-    [data-sec="start"] .view { grid-template-columns: minmax(0, 1fr); padding-bottom: 130px; }
-    .title, .graphic, .cta { grid-column: 1; }
+    .flow { -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 100px, #000 150px, #000 calc(100% - 60px), transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, transparent 100px, #000 150px, #000 calc(100% - 60px), transparent 100%); }
+    .panel { padding: 0 16px 16px; }
+    .panel[data-sec="start"] { padding-bottom: 130px; }
+    .title { white-space: normal; max-width: 22em; }
     .cta { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 22px; }
     .col .row { font-size: 17px; padding: 13px 0; }
-    .side { grid-column: 1; grid-row: 3; margin-top: 14px; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; text-align: center; }
-    .body.no-side .side { display: none; }
+    .side { top: auto; bottom: 10px; left: 0; right: 0; width: auto; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; text-align: center; }
       .foot { padding: 12px 16px; }
     .devlabel { display: none; }
   }
@@ -682,22 +673,11 @@
   <nav class="rail" id="rail" aria-label="Sections"><span class="rail-box" id="railBox"></span></nav>
 
   <!-- SECTIONS 2–7 -->
-  <main class="view" id="view">
-    <h2 class="title" id="title"></h2>
-
-    <div class="body" id="bodyGrid">
-      <div class="graphic" id="graphic">
-        <div class="gfx" id="gfx"><div class="stage" id="gfxStage"></div></div>
-        <span class="g-chip">Graphic placeholder</span>
-        <div class="g-inner" id="gInner">
-          <div class="g-name" id="gName"></div>
-          <div class="g-brief" id="gBrief"></div>
-        </div>
-        <div class="g-meter"><span>scroll</span><span class="bar"><i></i></span><span id="gP">0.00</span></div>
-      </div>
-      <aside class="side" id="side"></aside>
-    </div>
-
+  <div class="view" id="view">
+    <div class="flow" id="flow"></div>
+    <aside class="side" id="side"></aside>
+  </div>
+  <div id="ctaHolder" hidden>
     <div class="cta" id="cta">
       <div class="col" style="--i:0; --c: var(--c-ai)">
         <h3><span>Web</span></h3>
@@ -720,7 +700,7 @@
         <a class="row" href="#"><svg class="i plat" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg><span class="nm">API</span><svg class="i go" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
       </div>
     </div>
-  </main>
+  </div>
 
   <footer class="foot">
     <a class="lockup" href="#"><span class="orb"></span>overlay</a>
@@ -739,8 +719,7 @@
   const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)'
 
   const stage = $('#stage'), nav = $('#nav'), rail = $('#rail'), railBox = $('#railBox')
-  const view = $('#view'), titleEl = $('#title'), bodyGrid = $('#bodyGrid'), side = $('#side')
-  const graphic = $('#graphic'), gInner = $('#gInner'), gName = $('#gName'), gBrief = $('#gBrief'), gP = $('#gP')
+  const view = $('#view'), flow = $('#flow'), side = $('#side')
   const dev = $('#dev')
   const heroLockup = $('#heroLockup'), demo = $('#demo'), hero = $('#hero')
 
@@ -1141,32 +1120,7 @@
     const cnt = root.querySelector('[data-count]'); if (cnt) cnt.textContent = Math.min(4, Math.floor(gp / 0.1 + 0.2)) + ' notes'
   }
 
-  let gfxRoot = null, gfxT0 = 0, gfxRaf = 0, lastP = 0, gfxAuto = false   // gfxAuto: arrived by a jump, so the graphic plays itself
-  const gfxStage = $('#gfxStage')
-  function mountGfx(i) {
-    const build = GFX[i]
-    graphic.classList.toggle('has-gfx', !!build)
-    gfxRoot = build ? gfxStage : null
-    if (!build) return
-    gfxStage.innerHTML = build()
-    gfxT0 = performance.now()
-    gfxAuto = document.body.classList.contains('jumping')
-    gfxStage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 380, easing: EASE_OUT })
-    gfxFrame(); gfxLoop()
-  }
-  function gfxFrame() {                              // scroll progress, or a short autoplay so a jump still shows the finished picture
-    if (!gfxRoot) return false
-    const t = gfxAuto ? clamp((performance.now() - gfxT0 - 250) / 2400) : 1
-    const gp = gfxAuto ? Math.max(lastP, ease(t)) : lastP
-    graphic.style.setProperty('--p', gp.toFixed(3))
-    runGfx(gfxRoot, gp)
-    return gfxAuto && t < 1
-  }
-  function gfxLoop() { if (gfxRaf) return; const step = () => { gfxRaf = 0; if (gfxFrame()) gfxRaf = requestAnimationFrame(step) }; gfxRaf = requestAnimationFrame(step) }
-  const fitGfx = () => graphic.style.setProperty('--gs', Math.min(graphic.clientWidth / 660, graphic.clientHeight / 456, 1.3))
-  new ResizeObserver(fitGfx).observe(graphic)
-
-  /* ---------- layout / measurement ---------- */
+  /* ---------- rail ---------- */
   const railItems = {}
   RAIL_ORDER.forEach((k, i) => {
     const b = document.createElement('button')
@@ -1180,20 +1134,45 @@
     railItems[k] = b
   })
 
+  /* ---------- panels ----------
+     One panel per scene, built once. A panel is a title (shown once per section, except "AI employees" where the title changes
+     with every scene) and its graphic. The scroll moves every panel at 1:1, like a normal page, and each graphic plays as its
+     panel travels up to the middle of the screen. */
+  let panels = [], stages = [], graphics = []
+  function buildPanels() {          // called once at the bottom, after the logo data is defined
+  panels = SCENES.map((s, i) => {
+    const el = document.createElement('section')
+    el.className = 'panel'
+    el.dataset.sec = s.sec
+    const showTitle = s.sec === 'ai' || !SCENES[i - 1] || SCENES[i - 1].sec !== s.sec
+    const title = s.pre + (s.word ? s.word + (s.tail ? ' ' + s.tail : '') : '')
+    el.innerHTML = (showTitle ? `<h2 class="title">${title}</h2>` : '') +
+      (GFX[i] ? `<div class="graphic has-gfx"><div class="gfx"><div class="stage">${GFX[i]()}</div></div></div>` : '')
+    flow.appendChild(el)
+    if (s.sec === 'start') el.appendChild($('#cta'))
+    return el
+  })
+  stages = panels.map((el) => $('.stage', el))
+  graphics = panels.map((el) => $('.graphic', el))
+  }
+
   let V = innerHeight, PRE = 0, INTRO = V, starts = [], secRange = {}, M = {}, LK = { s: 1, tx: 0, ty: 0 }, cur = -1
+  const SHIFT = 0.45                        // the first panel is centered about when the hero hand-off ends
 
   function layout() {
     V = innerHeight
-    PRE = 0.3 * V                     // scroll lag: the "open source" insertion appears first, the hand-off starts after this
+    PRE = 0.3 * V                           // scroll lag: the "open source" insertion appears first, the hand-off starts after this
     INTRO = V + PRE
-    let y = INTRO
+    let y = INTRO - SHIFT * V
     starts = SCENES.map((s) => { const at = y; y += s.len * V; return at })
-    $('#scroller').style.height = y + V + 'px'
-    // scroll span of each section (first scene start -> next section's first scene start)
+    const last = SCENES.length - 1
+    $('#scroller').style.height = starts[last] + (SCENES[last].len * V) / 2 + V + 'px'   // ends with the last panel centered
     secRange = {}
     SCENES.forEach((sc, i) => { if (!secRange[sc.sec]) secRange[sc.sec] = { S: starts[i], E: Infinity } })
     const keys = Object.keys(secRange)
     keys.forEach((k, i) => { if (keys[i + 1]) secRange[k].E = secRange[keys[i + 1]].S })
+    panels.forEach((el, i) => { el.style.height = SCENES[i].len * V + 'px' })
+    graphics.forEach((g) => { if (g) g.style.setProperty('--gs', Math.min(g.clientWidth / 660, g.clientHeight / 456, 1.3)) })
   }
 
   function measure() {
@@ -1226,48 +1205,10 @@
     railBox.style.height = b.offsetHeight + 'px'
   }
 
-  /* ---------- scene content ---------- */
-  let tPre = null
-  function fitRoll() {
-    titleEl.querySelectorAll('.roll').forEach((r) => { const w = r.lastElementChild; if (w) r.style.width = w.offsetWidth + 'px' })
-  }
-
-  const rollWord = (text) => { const w = document.createElement('span'); w.className = 'w'; w.textContent = text; return w }
-  function rollTo(roll, text) {                    // slide the old text out upward and the new text in from below
-    const cur = roll.lastElementChild
-    if (cur && cur.textContent === text) return
-    const old = [...roll.children], w = rollWord(text)
-    roll.appendChild(w)
-    roll.style.width = w.offsetWidth + 'px'
-    old.forEach((o) => {
-      o.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-80%)', opacity: 0 }], { duration: 380, easing: EASE_OUT, fill: 'forwards' }).onfinish = () => o.remove()
-    })
-    w.animate([{ transform: 'translateY(80%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 420, easing: EASE_OUT })
-  }
-
-  /* Title = fixed start + ONE changing piece (word + tail together), all on one line,
-     e.g. "AI agents with" [memory remember everything]. */
-  function setTitle(pre, word, tail, animate) {
-    const piece = word ? word + (tail ? ' ' + tail : '') : ''
-    const roll = $('.roll', titleEl)
-    if (animate && pre === tPre) {
-      if (roll) rollTo(roll, piece)
-      return                                       // same plain title (e.g. control plane sub-scenes): nothing to change
-    }
-    titleEl.innerHTML = ''
-    titleEl.append(document.createTextNode(pre))
-    if (piece) {
-      const r = document.createElement('span'); r.className = 'roll'
-      r.appendChild(rollWord(piece)); titleEl.appendChild(r)
-      r.style.transition = 'none'; r.style.width = r.firstChild.offsetWidth + 'px'; void r.offsetWidth; r.style.transition = ''
-    }
-    if (animate) titleEl.animate([{ opacity: 0, transform: 'translateY(10px)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0)' }], { duration: 520, easing: EASE_OUT })
-    tPre = pre
-  }
-
+  /* ---------- right sidebar (follows whichever panel is active) ---------- */
   function buildSide(sec) {
     const d = SIDE[sec]
-    bodyGrid.classList.toggle('no-side', !d)
+    side.classList.toggle('empty', !d)
     if (!d) return
     side.innerHTML = ''
     let n = 0
@@ -1294,59 +1235,30 @@
   }
 
   function applyScene(i) {
-    const s = SCENES[i], prev = cur < 0 ? null : SCENES[cur], first = !prev
-    const secChanged = first || prev.sec !== s.sec
+    const s = SCENES[i], prev = cur < 0 ? null : SCENES[cur]
+    const secChanged = !prev || prev.sec !== s.sec
     stage.dataset.sec = s.sec
-
     Object.entries(railItems).forEach(([k, b]) => b.classList.toggle('on', k === s.sec))
     cur = i
     placeBox()
-
-    if (secChanged) {
-      buildSide(s.sec)
-      if (!first && s.sec !== 'start') graphic.animate([{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 520, easing: EASE_OUT })
-    }
+    if (secChanged) buildSide(s.sec)
     side.querySelectorAll('.side-item').forEach((b, j) => b.classList.toggle('on', s.item === 'all' || s.item === j))
     fitSide(!secChanged)
-
-    setTitle(s.pre, s.word, s.tail, !first)
-
-    mountGfx(i)
-    if (gName.textContent !== s.name && s.sec !== 'start') {
-      gName.textContent = s.name; gBrief.textContent = s.brief
-      if (!first) gInner.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: EASE_OUT })
-    }
   }
 
-  /* Jump straight to a scene. The stage is fixed, so an instant scroll jump just plays the scene's own
-     fade-in. From the hero we first play the hand-off (phrases dock into the rail), then land on the scene. */
-  let forced = null, tween = 0, jumpT = 0
-  function jump(top) {                              // instant scroll jump; agents get a short animated cross-over instead of a snap
-    document.body.classList.add('jumping')
-    if (gfxRoot) { gfxAuto = true; gfxT0 = performance.now(); gfxLoop() }   // landing on a scene by jump: let its graphic play
-    clearTimeout(jumpT); jumpT = setTimeout(() => document.body.classList.remove('jumping'), 1300)
-    scrollTo({ top, behavior: 'instant' })
-  }
-  function stopTween() {
-    if (tween) { cancelAnimationFrame(tween); tween = 0 }
-    forced = null
-    clearTimeout(jumpT); document.body.classList.remove('jumping')
-  }
+  /* Jumping (rail, sidebar, underline click) is just a quick eased scroll: the panels fly past like a scroll would. */
+  let tween = 0
+  function stopTween() { if (tween) { cancelAnimationFrame(tween); tween = 0 } }
   function go(i) {
     if (i < 0) return
     stopTween()
-    const target = starts[i] + 2
-    if (scrollY >= INTRO - 2) { jump(target); return }
-    forced = i
-    applyScene(i)                                   // content is ready under the still-hidden view
-    const from = scrollY, to = INTRO, dur = 350 + 650 * ((to - from) / V), t0 = performance.now()
+    const to = Math.round(starts[i] + (SCENES[i].len * V) / 2), from = scrollY
+    if (Math.abs(to - from) < 2) return
+    const dur = Math.min(2200, 650 + 420 * (Math.abs(to - from) / V)), t0 = performance.now()
     const step = (now) => {
       const t = clamp((now - t0) / dur)
-      scrollTo(0, from + (to - from) * (1 - Math.pow(1 - t, 3)))
-      if (t < 1) { tween = requestAnimationFrame(step); return }
-      tween = 0; forced = null
-      jump(target)
-      update()
+      scrollTo(0, from + (to - from) * ease(t))
+      tween = t < 1 ? requestAnimationFrame(step) : 0
     }
     tween = requestAnimationFrame(step)
   }
@@ -1370,17 +1282,16 @@
     const r = clamp((y - PRE) / (V * 0.9))      // hero → rail hand-off progress (starts after the PRE pause)
     const done = r >= 1
 
-    // hero fades + rises
-    const f = clamp(r * 1.8)
-    demo.style.opacity = 1 - f
+    // the demo is part of the page: it scrolls up and away with it (no fade)
+    demo.style.willChange = 'transform'
+    demo.style.transform = `translateY(${-y}px)`
+    hero.style.pointerEvents = y > 0.5 * V ? 'none' : ''
     // logo + wordmark travel up into the nav, then hand over to the real nav lockup
     const le = ease(clamp(r / 0.9)), docked = le >= 1
     heroLockup.style.transform = docked ? '' : `translate(${LK.tx * le}px, ${LK.ty * le}px) scale(${1 + (LK.s - 1) * le})`
     heroLockup.style.opacity = docked ? 0 : 1
     nav.style.setProperty('--lk', docked ? 1 : 0)
-    demo.style.transform = `translateY(${-f * 36}px) scale(${1 - f * 0.05})`
     $('#sub').querySelectorAll('.w').forEach((w) => { w.style.opacity = 1 - clamp(r * 2.2) })
-    hero.style.pointerEvents = r > 0.3 ? 'none' : ''
 
     // phrases fly from the subtitle into the rail (staggered)
     rail.style.setProperty('--e', ease(r))
@@ -1395,19 +1306,14 @@
       b.style.transform = e >= 1 ? '' : `translate(${m.tx * (1 - e)}px, ${m.ty * (1 - e)}px) scale(${m.s + (1 - m.s) * e})`
     })
     rail.classList.toggle('live', done)
-
-    // chrome + first view fade in at the end of the hand-off
     nav.style.setProperty('--nav', clamp((r - 0.6) / 0.4))
     nav.classList.toggle('on', r > 0.6)
-    const vo = clamp((r - 0.7) / 0.3)
-    view.style.setProperty('--vo', vo)
-    view.style.setProperty('--vy', `${(1 - vo) * 24}px`)
+    view.style.setProperty('--vo', clamp((r - 0.7) / 0.3))   // the sidebar appears with the end of the hand-off
     view.classList.toggle('live', done)
 
-    // which scene are we in?
+    // which scene is active? (drives the rail highlight and the sidebar)
     let idx = 0
     for (let i = 0; i < SCENES.length; i++) if (y >= starts[i]) idx = i
-    if (forced !== null) idx = forced
     if (idx !== cur) applyScene(idx)
     const s = SCENES[idx]
 
@@ -1422,27 +1328,28 @@
     agentEls.hero.forEach((el, i) => place(el, Math.max(heroIntro, ease(clamp((r - i * 0.04) / 0.8)))))
     Object.keys(agentEls).forEach((k) => {
       if (k === 'hero') return
-      const { S, E } = secRange[k], W = 0.6 * V
+      const { S, E } = secRange[k], W = 0.6 * V, Wd = W - 0.08 * V
       agentEls[k].forEach((el, i) => {
         const lag = i * 0.08 * V
-        let d
-        if (forced !== null) {                        // jump from the hero in progress: only the target's pair enters, in step with the hand-off
-          d = SCENES[forced].sec === k ? 1 - ease(clamp((r - 0.35 - i * 0.08) / 0.65)) : 1
-        } else {
-          const Wd = W - 0.08 * V                       // stagger without overrunning the boundary: both agents are done by S (enter) / E (exit)
-          const enter = ease(clamp((y - (S - W) - lag) / Wd))
-          const exit = E === Infinity ? 0 : ease(clamp((y - (E - W) - lag) / Wd))
-          d = Math.max(1 - enter, exit)
-        }
-        place(el, d)
+        const enter = ease(clamp((y - (S - W) - lag) / Wd))
+        const exit = E === Infinity ? 0 : ease(clamp((y - (E - W) - lag) / Wd))
+        place(el, Math.max(1 - enter, exit))
       })
     })
 
-    const p = clamp((y - starts[idx]) / (s.len * V))
-    lastP = p
-    graphic.style.setProperty('--p', p.toFixed(3))
-    gfxFrame()
-    gP.textContent = p.toFixed(2)
+    // panels: stacked like a page and moved by the scroll; a graphic plays while its panel rises into the middle of the screen
+    const navOff = innerWidth <= 860 ? 74 : 30
+    panels.forEach((el, i) => {
+      const h = SCENES[i].len * V, top = V / 2 + starts[i] - y + navOff
+      const vis = top < V + 40 && top + h > -40
+      if (vis !== el._vis) { el._vis = vis; el.style.visibility = vis ? 'visible' : 'hidden' }
+      if (!vis) return
+      el.style.transform = `translate3d(0, ${top.toFixed(1)}px, 0)`
+      if (stages[i]) {
+        const c = starts[i] + h / 2, p0 = c - h / 2 - V / 2 + 0.1 * V, p1 = c - 0.1 * V
+        runGfx(stages[i], clamp((y - p0) / (p1 - p0)))
+      }
+    })
     dev.textContent = `mockup · scene ${idx + 1}/${SCENES.length} · ${s.sec === 'start' ? 'Get started' : s.sec}${s.name && SECTIONS[s.sec] ? ' / ' + s.name : ''}`
   }
 
@@ -1462,8 +1369,8 @@
       w = want
     }
   }
-  function init() { sizeAgents(); fitHero(); layout(); measure(); update(); fitRoll(); fitSide(false) }
-  addEventListener('resize', () => { sizeAgents(); fitHero(); layout(); measure(); update(); fitRoll() })
+  function init() { sizeAgents(); fitHero(); layout(); measure(); update(); fitSide(false) }
+  addEventListener('resize', () => { sizeAgents(); fitHero(); layout(); measure(); update() })
 
   $('#themeBtn').addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
@@ -1882,6 +1789,7 @@
   buildDemo()
 
   try { history.scrollRestoration = 'manual' } catch (_) {}
+  buildPanels()
   applyScene(0)
   init()
   document.fonts.ready.then(() => { init(); document.body.classList.add('ready') })

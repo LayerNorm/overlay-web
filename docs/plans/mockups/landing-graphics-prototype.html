@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overlay — Graphics prototype (memory, tools, computer)</title>
+<script>
+  (function () {
+    var t = null
+    try { t = localStorage.getItem('overlay-mockup-theme') } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    document.documentElement.dataset.theme = t
+  })()
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+  /* Prototype of the redesigned scene graphics. Rules for this pass:
+     real product moments (not diagrams), flat surfaces, 1px hairlines, NO shadows, one framed object per scene,
+     one idea and one motion per scene, driven by scroll. */
+  :root {
+    --background: #fafafa; --foreground: #0a0a0a; --muted: #71717a; --muted-light: #a1a1aa; --border: #e4e4e7;
+    --surface-elevated: #ffffff; --surface-muted: #f5f5f5;
+    --serif: 'Libre Baskerville', Georgia, serif;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --hairline: 1px solid var(--border);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --c: #ea580c;            /* this section's color (AI employees) */
+    --ok: #16a34a;
+  }
+  :root[data-theme="dark"] {
+    --background: #09090b; --foreground: #f5f5f5; --muted: #a1a1aa; --muted-light: #71717a; --border: #27272a;
+    --surface-elevated: #111113; --surface-muted: #151518;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--background); color: var(--foreground); font-family: var(--serif); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  svg.i { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  .stage { position: fixed; inset: 0; overflow: hidden; }
+  .nav { position: absolute; top: 0; left: 0; right: 0; height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 5; }
+  .lockup { display: inline-flex; align-items: center; gap: .4em; font: 500 20px/1 var(--serif); letter-spacing: -0.025em; }
+  .orb { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff 0 8%, #9aa0a6 38%, #2b2f33 100%); }
+  .nav .right { display: flex; align-items: center; gap: 14px; font: 400 12px var(--mono); color: var(--muted-light); }
+  .theme { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+  .theme:hover { background: var(--surface-muted); color: var(--foreground); }
+
+  .title { position: absolute; left: 0; right: 0; top: 76px; text-align: center; font: 400 clamp(24px, 3vw, 40px)/1.25 var(--serif); letter-spacing: -0.015em; white-space: nowrap; padding: 0 260px 0 24px; }
+  .title .piece { display: inline-block; transition: opacity .18s, transform .18s var(--ease-out); }
+  .title .piece.out { opacity: 0; transform: translateY(-8px); }
+
+  .side { position: absolute; right: 24px; top: 150px; bottom: 40px; width: 216px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 8px; }
+  .side button { position: relative; padding: 7px 12px; border: 1px solid transparent; border-radius: 9px; font: 400 14.5px/1.3 var(--serif); letter-spacing: -0.01em; opacity: .55; transition: opacity .25s, border-color .35s var(--ease-out); }
+  .side button:hover { opacity: .85; }
+  .side button.on { opacity: 1; border-color: var(--foreground); }
+  .side button span { position: relative; isolation: isolate; }
+  .side button span::after { content: ""; position: absolute; left: -.1em; right: -.1em; bottom: -.04em; height: .23em; z-index: -1; background: linear-gradient(var(--c), var(--c)) left bottom / 100% .075em no-repeat, color-mix(in srgb, var(--c) 17%, transparent); border-radius: .06em; }
+
+  .scene { position: absolute; left: 0; right: 0; top: 150px; bottom: 40px; padding: 0 260px 0 24px; display: grid; place-items: center; pointer-events: none; opacity: 0; }
+  .cv { position: relative; width: 960px; height: 460px; flex: none; transform: scale(var(--gs, 1)); font-family: var(--sans); color: var(--foreground); }
+  .abs { position: absolute; }
+  .dev { position: absolute; left: 24px; bottom: 14px; font: 400 11px var(--mono); color: var(--muted-light); }
+
+  /* shared atoms ------------------------------------------------------------------------------------------------ */
+  .mono { font-family: var(--mono); }
+  .cap { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .av { width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center; color: #fff; font: 600 12px var(--sans); }
+  .cr { width: 30px; height: 30px; flex: none; display: block; }
+  .cr svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .msg { display: flex; gap: 12px; align-items: flex-start; }
+  .msg .by { font: 600 13.5px var(--sans); }
+  .msg .by small { font: 400 11.5px var(--sans); color: var(--muted-light); margin-left: 7px; }
+  .msg p { font: 400 16.5px/1.5 var(--sans); margin-top: 3px; }
+  .tool { display: flex; align-items: center; gap: 8px; font: 400 13px var(--sans); color: var(--muted); margin-top: 6px; }
+  .tool .orb { width: 8px; height: 8px; }
+  mark { background: none; color: inherit; position: relative; isolation: isolate; }
+  mark::after { content: ""; position: absolute; left: -.12em; right: -.12em; bottom: -.04em; height: .5em; z-index: -1; background: color-mix(in srgb, var(--c) 22%, transparent); border-bottom: 1.5px solid var(--c); transform-origin: left; transform: scaleX(var(--m, 0)); }
+  .ic { width: 28px; height: 28px; border-radius: 7px; flex: none; display: grid; place-items: center; background: #fff; border: 1px solid rgba(0,0,0,.1); }
+  .ic img { width: 16px; height: 16px; display: block; }
+  img.dk { display: none; }
+  :root[data-theme="dark"] img.lt { display: none; }
+  :root[data-theme="dark"] img.dk { display: block; }
+
+  /* 1 · MEMORY ---------------------------------------------------------------------------------------------------
+     Two chats four months apart. The same note appears in both; a line connects them. */
+  .axis { left: 0; right: 0; top: 40px; height: 1px; background: var(--border); }
+  .axis i { position: absolute; left: 0; top: 0; height: 1px; width: 100%; background: var(--c); transform-origin: left; transform: scaleX(0); }
+  .axis b { position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--background); border: 1px solid var(--muted-light); }
+  .axis b.l { left: 0; } .axis b.r { right: 0; }
+  .date { top: 8px; }
+  .gap { left: 0; right: 0; top: 8px; text-align: center; font: 400 14px var(--serif); font-style: italic; color: var(--muted); }
+  .mem { display: grid; grid-template-columns: 1fr 140px 1fr; grid-template-rows: auto auto auto; column-gap: 0; position: absolute; left: 0; right: 0; top: 78px; }
+  .mem .l { grid-column: 1; } .mem .r { grid-column: 3; }
+  .mem .row1 { grid-row: 1; margin-bottom: 26px; } .mem .row2 { grid-row: 2; } .mem .row3 { grid-row: 3; margin-top: 16px; }
+  .chip { display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 14px; border: 1px solid var(--border); border-radius: 10px; font: 500 14.5px var(--sans); }
+  .chip .ico { color: var(--c); display: grid; }
+  .chip small { margin-left: auto; font: 400 11px var(--mono); color: var(--muted-light); }
+  .chip.hot { border-color: color-mix(in srgb, var(--c) 70%, var(--border)); background: color-mix(in srgb, var(--c) 7%, transparent); }
+  .link { grid-column: 2; grid-row: 3; align-self: end; margin-bottom: 25px; position: relative; height: 1px; }
+  .link i { position: absolute; left: 0; right: 0; top: 0; height: 1.5px; background: var(--c); transform-origin: left; transform: scaleX(0); }
+  .link b { position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--c); opacity: 0; }
+  .link b.l { left: -3px; } .link b.r { right: -3px; }
+
+  /* 2 · TOOLS ----------------------------------------------------------------------------------------------------
+     One run, line by line, with the thing each tool actually produced. */
+  .tools { position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 380px; column-gap: 56px; }
+  .tools .task { margin-bottom: 18px; }
+  .runs { border-top: 1px solid var(--border); }
+  .run { display: grid; grid-template-columns: 28px 1fr auto; column-gap: 14px; align-items: center; height: 54px; border-bottom: 1px solid var(--border); }
+  .run .a { font: 500 15.5px var(--sans); line-height: 1.2; }
+  .run .a small { display: block; font: 400 12px var(--mono); color: var(--muted); margin-top: 3px; }
+  .run .s { display: flex; align-items: center; gap: 9px; font: 400 12px var(--mono); color: var(--muted-light); }
+  .run .st { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--border); position: relative; flex: none; }
+  .run.work .st { border-color: var(--border); border-top-color: var(--c); animation: spin .8s linear infinite; }
+  .run.done .st { background: var(--ok); border-color: var(--ok); animation: none; }
+  .run.done .st::after { content: ""; position: absolute; left: 4.5px; top: 2px; width: 4px; height: 7px; border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
+  .run.done .a { color: var(--muted); }
+  .run.work .a { color: var(--foreground); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sum { margin-top: 18px; font: 400 14.5px var(--serif); color: var(--muted); }
+  .sum b { font-weight: 400; color: var(--foreground); }
+  .out { position: relative; border: 1px solid var(--border); border-radius: 12px; height: 268px; margin-top: 52px; overflow: hidden; }
+  .out .cap { position: absolute; left: 16px; top: 13px; }
+  .art { position: absolute; left: 20px; right: 20px; top: 46px; opacity: 0; }
+  .art h5 { font: 600 16px/1.3 var(--sans); }
+  .art .meta { font: 400 12.5px/1.5 var(--sans); color: var(--muted); margin-top: 6px; }
+  .art .stat { display: flex; gap: 14px; margin-top: 16px; font: 500 13px var(--mono); }
+  .art .stat .p { color: var(--ok); } .art .stat .m { color: #dc2626; }
+  .art .line { display: flex; align-items: center; gap: 9px; margin-top: 12px; font: 400 13.5px var(--sans); }
+  .art .pillx { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); font: 500 12px var(--sans); }
+  .art .pillx i { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; }
+  .art .body { font: 400 14.5px/1.55 var(--sans); margin-top: 12px; }
+  .art .rowk { display: flex; gap: 12px; font: 400 13px var(--sans); padding: 9px 0; border-top: 1px solid var(--border); }
+  .art .rowk span:first-child { width: 58px; color: var(--muted); flex: none; }
+  .art .big { font: 400 26px/1.1 var(--serif); letter-spacing: -0.01em; margin-top: 4px; }
+
+  /* 3 · COMPUTER -------------------------------------------------------------------------------------------------
+     Its own machine: one flat window, a running clock, and the hand-off to you. */
+  .win { position: absolute; left: 0; right: 0; top: 0; height: 400px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-elevated); }
+  .wbar { height: 46px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border); }
+  .wbar .dots { display: flex; gap: 7px; } .wbar .dots i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border); }
+  .wbar .ttl { font: 500 13px var(--sans); display: flex; align-items: center; gap: 9px; }
+  .wbar .live { display: inline-flex; align-items: center; gap: 7px; font: 500 12.5px var(--mono); color: var(--muted); }
+  .wbar .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .wbar .ctl { padding: 5px 12px; border: 1px solid var(--border); border-radius: 8px; font: 500 12.5px var(--sans); }
+  .wtabs { height: 40px; display: flex; gap: 22px; padding: 0 18px; border-bottom: 1px solid var(--border); align-items: stretch; }
+  .wtabs span { display: flex; align-items: center; font: 500 13px var(--sans); color: var(--muted); position: relative; transition: color .25s; }
+  .wtabs span.on { color: var(--foreground); }
+  .wtabs span.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1.5px; background: var(--c); }
+  .wbody { position: absolute; left: 0; right: 0; top: 86px; bottom: 0; }
+  .lyr { position: absolute; inset: 0; opacity: 0; transition: opacity .3s; }
+  .lyr.on { opacity: 1; }
+  .term { padding: 22px 26px; font: 400 14px/1.85 var(--mono); }
+  .term .ln { height: 26px; white-space: pre; color: var(--muted); }
+  .term .cmd { color: var(--foreground); }
+  .term .pr { color: var(--muted-light); }
+  .term .ok { color: var(--ok); }
+  .caret { display: inline-block; width: 8px; height: 16px; background: var(--foreground); vertical-align: -3px; animation: pulse 1s steps(2) infinite; }
+  .url { position: absolute; left: 18px; right: 18px; top: 14px; height: 30px; border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font: 400 12.5px var(--sans); color: var(--muted); }
+  .form { position: absolute; left: 50%; top: 66px; width: 330px; margin-left: -165px; }
+  .form h4 { font: 400 22px var(--serif); margin-bottom: 18px; }
+  .form label { display: block; font: 400 11.5px var(--sans); color: var(--muted); margin: 0 0 5px; }
+  .form .f { height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; font: 400 14px/34px var(--sans); margin-bottom: 14px; }
+  .form .pay { height: 40px; border-radius: 9px; background: var(--foreground); color: var(--background); display: grid; place-items: center; font: 500 14px var(--sans); transition: transform .15s, background .2s; }
+  .form .pay.on { background: var(--ok); color: #fff; transform: scale(.97); }
+  .confirm { position: absolute; left: 50%; top: 66px; width: 330px; margin-left: -165px; text-align: center; padding-top: 38px; }
+  .confirm .ck { width: 44px; height: 44px; border-radius: 50%; background: var(--ok); color: #fff; display: grid; place-items: center; margin: 0 auto 16px; }
+  .confirm h4 { font: 400 22px var(--serif); } .confirm p { font: 400 13.5px var(--sans); color: var(--muted); margin-top: 6px; }
+  .agentcur { position: absolute; left: 0; top: 0; display: flex; align-items: flex-start; gap: 2px; }
+  .agentcur .tag { margin-top: 15px; padding: 2px 8px; border-radius: 6px; background: var(--c); color: #fff; font: 500 11px var(--sans); white-space: nowrap; }
+  .files { padding: 8px 0; }
+  .frow { display: grid; grid-template-columns: 26px 1fr 150px 190px; align-items: center; height: 48px; padding: 0 26px; border-bottom: 1px solid var(--border); font: 400 14px var(--sans); gap: 10px; color: var(--foreground); }
+  .frow.h { height: 36px; color: var(--muted-light); font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .frow small { color: var(--muted); font-size: 12.5px; }
+  .frow .by { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12.5px; }
+  .frow .by .cr { width: 16px; height: 16px; }
+  .frow.new { background: color-mix(in srgb, var(--c) 7%, transparent); }
+  .frow.new .nm { font-weight: 600; }
+  .status { position: absolute; left: 0; right: 0; top: 420px; display: flex; justify-content: space-between; font: 400 14px var(--serif); color: var(--muted); }
+  .status b { font-weight: 400; color: var(--foreground); }
+</style>
+</head>
+<body>
+<div id="track"></div>
+<div class="stage" id="stage">
+  <header class="nav">
+    <span class="lockup"><span class="orb"></span>overlay</span>
+    <div class="right"><span id="dev">prototype</span>
+      <button class="theme" id="theme" aria-label="Toggle theme"><svg class="i" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button></div>
+  </header>
+
+  <h2 class="title" id="title">AI agents with <span class="piece" id="piece"></span></h2>
+
+  <!-- 1 · MEMORY -->
+  <section class="scene" id="s0"><div class="cv">
+    <div class="abs axis" id="axis"><i id="axisFill"></i><b class="l"></b><b class="r"></b></div>
+    <div class="abs cap date" id="d0" style="left:0">Apr 3 · 9:41 AM</div>
+    <div class="abs gap" id="gap">four months later</div>
+    <div class="abs cap date" id="d1" style="right:0">Aug 14 · 2:07 PM</div>
+
+    <div class="mem">
+      <div class="l row1" id="a1"><div class="msg"><span class="av" style="background:#db2777">P</span><div><div class="by">Priya<small>9:41 AM</small></div><p>Sam owns billing from now on. Send anything that touches it to him.</p></div></div></div>
+      <div class="r row1" id="b1"><div class="msg"><span class="av" style="background:#db2777">P</span><div><div class="by">Priya<small>2:07 PM</small></div><p>Who should review the billing PR?</p></div></div></div>
+
+      <div class="l row2" id="a2"><div class="msg"><span class="cr" data-cr="hexagon,#f59e0b"></span><div><div class="by">Claude Code<small>9:41 AM</small></div><p>Understood. I’ll route billing reviews to Sam.</p></div></div></div>
+      <div class="r row2" id="b2"><div class="msg"><span class="cr" data-cr="hexagon,#f59e0b"></span><div><div class="by">Claude Code<small>2:07 PM</small></div><div class="tool"><span class="orb"></span>Searched memory · 1 note</div></div></div></div>
+
+      <div class="l row3" id="a3"><div class="chip" id="chipA"><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span><span>Sam owns billing and reviews its PRs</span><small>SAVED · APR 3</small></div></div>
+      <div class="link" id="link"><b class="l"></b><i></i><b class="r"></b></div>
+      <div class="r row3" id="b3"><div class="chip" id="chipB"><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span><span>Sam owns billing and reviews its PRs</span><small>RECALLED</small></div></div>
+      <div class="r" id="b4" style="grid-row:4; grid-column:3; margin-top:20px"><div class="msg"><span style="width:30px;flex:none"></span><div><p style="margin-top:0">Sam. He <mark id="mk">owns billing</mark>, so I’ve asked him to review #482.</p></div></div></div>
+    </div>
+  </div></section>
+
+  <!-- 2 · TOOLS -->
+  <section class="scene" id="s1"><div class="cv"><div class="tools">
+    <div>
+      <div class="msg task" id="t0"><span class="av" style="background:#db2777">P</span><div><div class="by">Priya<small>2:38 PM</small></div><p>Ship the checkout fix and tell the team.</p></div></div>
+      <div class="runs" id="runs"></div>
+      <div class="sum" id="sum"><b>6 apps</b> · 1 minute 12 seconds · nobody clicked anything</div>
+    </div>
+    <div class="out"><span class="cap" id="outcap">Output</span><div id="arts"></div></div>
+  </div></div></section>
+
+  <!-- 3 · COMPUTER -->
+  <section class="scene" id="s2"><div class="cv">
+    <div class="win">
+      <div class="wbar"><div class="dots"><i></i><i></i><i></i></div>
+        <div class="ttl"><span class="cr" style="width:18px;height:18px" data-cr="hexagon,#f59e0b"></span>Claude Code’s computer</div>
+        <div style="display:flex;gap:12px;align-items:center"><span class="live"><i></i><span id="clock">00:00</span></span><span class="ctl">Take control</span></div></div>
+      <div class="wtabs" id="wtabs"><span>Terminal</span><span>Browser</span><span>Files</span></div>
+      <div class="wbody">
+        <div class="lyr term" id="L0">
+          <div class="ln"><span class="pr">$ </span><span class="cmd" id="c1"></span></div>
+          <div class="ln" id="o1">Already up to date.</div>
+          <div class="ln"><span class="pr">$ </span><span class="cmd" id="c2"></span></div>
+          <div class="ln" id="o2">PASS  src/checkout.test.ts</div>
+          <div class="ln" id="o3">PASS  src/billing.test.ts</div>
+          <div class="ln ok" id="o4">✓ 214 tests passed in 8.2s</div>
+          <div class="ln" id="o5"><span class="pr">$ </span><i class="caret"></i></div>
+        </div>
+        <div class="lyr" id="L1">
+          <div class="url"><svg class="i" viewBox="0 0 24 24" style="width:12px;height:12px"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>app.acme.co/checkout</div>
+          <div class="form" id="form"><h4>Checkout</h4>
+            <label>Email</label><div class="f" id="f1"></div>
+            <label>Card number</label><div class="f" id="f2"></div>
+            <div class="pay" id="pay">Pay $240.00</div></div>
+          <div class="confirm" id="done"><div class="ck"><svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px;stroke-width:2.2"><path d="M20 6 9 17l-5-5"/></svg></div><h4>Order confirmed</h4><p>Receipt sent to ada@acme.co</p></div>
+          <div class="agentcur" id="cur"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M4 3l16 7.5-6.8 2.2L10.5 20 4 3z" fill="var(--c)" stroke="var(--background)" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="tag">Claude Code</span></div>
+        </div>
+        <div class="lyr files" id="L2">
+          <div class="frow h"><span></span><span>Name</span><span>Modified</span><span>Created by</span></div>
+          <div class="frow new" id="fr0"><svg class="i" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg><span class="nm">Revenue report.md</span><small>Just now</small><span class="by"><span class="cr" data-cr="hexagon,#f59e0b"></span>Claude Code</span></div>
+          <div class="frow"><svg class="i" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg><span>Board follow-ups.md</span><small>Yesterday</small><span class="by">Priya</span></div>
+          <div class="frow"><svg class="i" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg><span>Launch plan.md</span><small>Mon</small><span class="by">Sam</span></div>
+          <div class="frow"><svg class="i" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg><span>Pricing research.csv</span><small>Oct 2</small><span class="by">Priya</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="status"><span id="step"></span><span>Working on its own machine. <b>Your laptop can be closed.</b></span></div>
+  </div></section>
+
+  <aside class="side" id="side"><button data-i="0"><span>Memory</span></button><button data-i="1"><span>Tools</span></button><button data-i="2"><span>Computer</span></button></aside>
+  <div class="dev" id="devl"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s)
+  const clamp = (n, a = 0, b = 1) => Math.min(b, Math.max(a, n))
+  const ease = (r) => (r < 0.5 ? 2 * r * r : 1 - Math.pow(-2 * r + 2, 2) / 2)
+  const seg = (p, a, b) => ease(clamp((p - a) / (b - a)))
+  const show = (el, t, dy = 10) => { el.style.opacity = t; el.style.transform = `translateY(${(1 - t) * dy}px)` }
+  const typed = (el, text, t) => { el.textContent = text.slice(0, Math.round(text.length * t)) }
+
+  /* creatures: same bodies and eyes as the real Creature component */
+  const BODY = {
+    hexagon: '<path d="M50 12 L84 31 L84 71 L50 90 L16 71 L16 31 Z" stroke="CC" stroke-width="7" stroke-linejoin="round"/>',
+    blob: '<path d="M50 12 C70 12 90 28 89 55 C88 80 70 93 50 93 C30 93 11 80 12 54 C13 29 30 12 50 12 Z"/>',
+  }
+  document.querySelectorAll('[data-cr]').forEach((el) => {
+    const [shape, color] = el.dataset.cr.split(',')
+    el.innerHTML = `<svg viewBox="0 0 100 100"><g fill="${color}">${BODY[shape].replace(/CC/g, color)}</g><g fill="#1c1917"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></svg>`
+  })
+
+  /* ---------- scenes ---------- */
+  const LOGO = '../../../public/assets/svg/landing/'
+  const img = (a, b) => b ? `<img class="lt" alt="" src="${LOGO}${a}.svg"><img class="dk" alt="" src="${LOGO}${b}.svg">` : `<img alt="" src="${LOGO}${a}.svg">`
+  const RUNS = [
+    { logo: img('github', 'github_dark'), a: 'Opened a pull request', d: '#482 · Fix checkout rounding', t: '0:09', art: `<h5>Fix checkout rounding</h5><div class="meta">#482 · claude-code wants to merge 1 commit into <span class="mono">main</span></div><div class="stat"><span class="p">+42</span><span class="m">−18</span><span style="color:var(--muted);font-weight:400">6 files</span></div><div class="line"><span class="pillx"><i style="background:var(--ok)"></i>All checks passed</span></div>`, cap: 'GitHub' },
+    { logo: img('linear'), a: 'Moved the ticket to review', d: 'SEARCH-341', t: '0:21', art: `<div class="cap" style="position:static;margin-bottom:10px">SEARCH-341</div><h5>Checkout total is off by 1¢</h5><div class="line" style="margin-top:14px"><span class="pillx"><i></i>In review</span><span style="color:var(--muted)">Assigned to Sam</span></div>`, cap: 'Linear' },
+    { logo: img('slack'), a: 'Posted in #eng', d: 'PR #482 is up for review', t: '0:33', art: `<div class="msg" style="margin-top:2px"><span class="cr" data-cr="hexagon,#f59e0b"></span><div><div class="by">Claude Code<small>2:41 PM</small></div><p style="font-size:14.5px">PR #482 is up for review. It fixes the 1¢ rounding in checkout totals. @Sam, billing is yours.</p></div></div>`, cap: 'Slack · #eng' },
+    { logo: img('notion'), a: 'Updated the launch plan', d: 'Launch plan · Checkout', t: '0:44', art: `<div class="big">Launch plan</div><div class="rowk" style="margin-top:14px"><span>Done</span><span>Checkout rounding fix shipped in #482</span></div><div class="rowk"><span>Next</span><span>Announce to customers on Thursday</span></div>`, cap: 'Notion' },
+    { logo: img('gmail'), a: 'Drafted customer replies', d: '3 drafts in your inbox', t: '0:58', art: `<div class="rowk" style="border:0;padding-top:0"><span>To</span><span>Ada, Grace, Linus</span></div><div class="rowk"><span>Subject</span><span>The checkout total issue is fixed</span></div><div class="body">Thanks for flagging this. We found a rounding bug in the checkout total and it’s fixed as of today.</div>`, cap: 'Gmail' },
+    { logo: img('google-calendar'), a: 'Booked a design review', d: 'Thu 2:00 PM · 30 min', t: '1:12', art: `<div class="cap" style="position:static;margin-bottom:10px">Thu, Oct 16</div><div class="big">Design review</div><div class="meta" style="margin-top:10px">2:00 – 2:30 PM · Priya, Sam, Claude Code</div>`, cap: 'Google Calendar' },
+  ]
+  $('#runs').innerHTML = RUNS.map((r) => `<div class="run"><span class="ic">${r.logo}</span><div class="a">${r.a}<small>${r.d}</small></div><div class="s"><span class="tm">${r.t}</span><span class="st"></span></div></div>`).join('')
+  $('#arts').innerHTML = RUNS.map((r) => `<div class="art">${r.art}</div>`).join('')
+  document.querySelectorAll('#arts [data-cr]').forEach((el) => { const [s, c] = el.dataset.cr.split(','); el.innerHTML = `<svg viewBox="0 0 100 100"><g fill="${c}">${BODY[s].replace(/CC/g, c)}</g><g fill="#1c1917"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></svg>` })
+
+  const SCENES = [
+    { piece: 'memory remember everything', len: 2.0 },
+    { piece: 'tools work where you work', len: 2.2 },
+    { piece: 'a computer can do anything', len: 2.2 },
+  ]
+
+  function memory(p) {
+    show($('#axis'), seg(p, 0, .06), 0); $('#axis').style.transform = ''
+    show($('#d0'), seg(p, .0, .08), 6)
+    show($('#a1'), seg(p, .06, .16)); show($('#a2'), seg(p, .18, .28)); show($('#a3'), seg(p, .30, .40))
+    // saving the note: the chip lights up for a moment
+    $('#chipA').classList.toggle('hot', p > .33 && p < .46)
+    // time passes
+    const tp = seg(p, .44, .62)
+    $('#axisFill').style.transform = `scaleX(${tp})`
+    show($('#gap'), seg(p, .5, .6) * (1 - seg(p, .66, .72)), 4)
+    show($('#d1'), seg(p, .58, .66), 6)
+    show($('#b1'), seg(p, .62, .70)); show($('#b2'), seg(p, .72, .78)); show($('#b3'), seg(p, .78, .84))
+    $('#chipB').classList.toggle('hot', p > .8)
+    // the two notes are the same note
+    const lk = seg(p, .82, .92)
+    $('#link i').style.transform = `scaleX(${lk})`
+    $('#link b.l').style.opacity = lk > .02 ? 1 : 0; $('#link b.r').style.opacity = lk > .98 ? 1 : 0
+    show($('#b4'), seg(p, .88, .96), 8)
+    $('#mk').style.setProperty('--m', seg(p, .95, 1))
+  }
+
+  const runStart = (i) => 0.12 + i * 0.125, RUN_W = 0.11
+  function tools(p) {
+    show($('#t0'), seg(p, .02, .10))
+    let active = -1
+    document.querySelectorAll('.run').forEach((el, i) => {
+      const s = runStart(i), t = seg(p, s, s + .04)
+      show(el, t, 8)
+      const working = p >= s && p < s + RUN_W * .6, done = p >= s + RUN_W * .6
+      el.classList.toggle('work', working); el.classList.toggle('done', done)
+      el.querySelector('.tm').style.opacity = p >= s ? 1 : 0
+      if (p >= s) active = i
+    })
+    document.querySelectorAll('.art').forEach((el, i) => {
+      const on = i === active
+      const t = on ? seg(p, runStart(i) + .03, runStart(i) + .08) : 0
+      el.style.opacity = t; el.style.transform = `translateY(${(1 - t) * 8}px)`
+    })
+    $('#outcap').textContent = active >= 0 ? RUNS[active].cap : 'Output'
+    show($('#sum'), seg(p, .9, .98), 6)
+  }
+
+  function computer(p) {
+    const tab = p < .34 ? 0 : p < .70 ? 1 : 2
+    document.querySelectorAll('#wtabs span').forEach((el, i) => el.classList.toggle('on', i === tab))
+    document.querySelectorAll('.lyr').forEach((el, i) => el.classList.toggle('on', i === tab))
+    const secs = Math.round(p * 108)
+    $('#clock').textContent = String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0')
+    $('#step').innerHTML = ['<b>Step 1 of 3</b> · Running the test suite', '<b>Step 2 of 3</b> · Trying the checkout flow', '<b>Step 3 of 3</b> · Saving the report'][tab]
+    // terminal
+    typed($('#c1'), 'git pull origin main', seg(p, .02, .08))
+    $('#o1').style.opacity = p > .09 ? 1 : 0
+    typed($('#c2'), 'npm test', seg(p, .12, .17))
+    ;['#o2', '#o3'].forEach((s, i) => { $(s).style.opacity = p > .20 + i * .03 ? 1 : 0 })
+    $('#o4').style.opacity = p > .28 ? 1 : 0; $('#o5').style.opacity = p > .30 ? 1 : 0
+    // browser
+    typed($('#f1'), 'ada@acme.co', seg(p, .38, .46)); typed($('#f2'), '4242 4242 4242 4242', seg(p, .46, .54))
+    const paying = p > .62
+    $('#pay').classList.toggle('on', paying)
+    const confirmed = p > .655
+    $('#form').style.opacity = confirmed ? 0 : 1; $('#done').style.opacity = confirmed ? 1 : 0
+    // agent cursor: email field -> card field -> pay button
+    const pts = [[330, 150], [330, 206], [380, 280]]
+    const c = p < .46 ? pts[0] : p < .56 ? [pts[0][0] + (pts[1][0] - pts[0][0]) * seg(p, .46, .5), pts[0][1] + (pts[1][1] - pts[0][1]) * seg(p, .46, .5)] : [pts[1][0] + (pts[2][0] - pts[1][0]) * seg(p, .56, .61), pts[1][1] + (pts[2][1] - pts[1][1]) * seg(p, .56, .61)]
+    const cur = $('#cur'); cur.style.transform = `translate(${c[0] + 250}px, ${c[1]}px)`; cur.style.opacity = (p > .35 && p < .68) ? 1 : 0
+    // files
+    $('#fr0').style.opacity = seg(p, .74, .82); $('#fr0').style.transform = `translateY(${(1 - seg(p, .74, .82)) * -10}px)`
+  }
+
+  /* ---------- scroll engine ---------- */
+  const track = $('#track'), V0 = () => innerHeight
+  let starts = [], total = 0, V = innerHeight, cur = -1
+  function layout() {
+    V = innerHeight
+    let y = 0
+    starts = SCENES.map((s) => { const at = y; y += s.len * V; return at })
+    total = y
+    track.style.height = total + V + 'px'
+    const area = $('.scene'), w = area.clientWidth - 24 - 260, h = area.clientHeight
+    document.querySelectorAll('.cv').forEach((cv) => cv.style.setProperty('--gs', Math.min(w / 960, h / 470, 1.3)))
+  }
+  function setScene(i) {
+    cur = i
+    document.querySelectorAll('#side button').forEach((b, j) => b.classList.toggle('on', j === i))
+    const piece = $('#piece')
+    if (!piece.textContent) { piece.textContent = SCENES[i].piece; return }
+    piece.classList.add('out')
+    setTimeout(() => { piece.textContent = SCENES[i].piece; piece.classList.remove('out') }, 180)
+  }
+  function update() {
+    const y = clamp(scrollY, 0, total - 1)
+    let i = 0
+    for (let k = 0; k < SCENES.length; k++) if (y >= starts[k]) i = k
+    if (i !== cur) setScene(i)
+    const p = clamp((y - starts[i]) / (SCENES[i].len * V))
+    document.querySelectorAll('.scene').forEach((el, k) => {
+      el.style.opacity = k === i ? Math.min(1, p / .04, (1 - p) / .03 + (k === SCENES.length - 1 ? 9 : 0)) : 0
+    })
+    ;[memory, tools, computer][i](p)
+    $('#devl').textContent = `scene ${i + 1}/3 · ${p.toFixed(2)}`
+  }
+  let raf = 0
+  addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update() }) }, { passive: true })
+  addEventListener('resize', () => { layout(); update() })
+  document.querySelectorAll('#side button').forEach((b) => b.addEventListener('click', () => scrollTo({ top: starts[+b.dataset.i] + 2 * V * 0 + 1, behavior: 'instant' })))
+  $('#theme').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('overlay-mockup-theme', next) } catch (e) {}
+  })
+  layout(); update()
+  document.fonts.ready.then(() => { layout(); update() })
+  const h = location.hash.replace('#', ''), idx = { memory: 0, tools: 1, computer: 2 }[h]
+  if (idx !== undefined) { const m = +(new URLSearchParams(location.search).get('p') || 0.98); scrollTo({ top: starts[idx] + m * SCENES[idx].len * V, behavior: 'instant' }); update() }
+})()
+</script>
+</body>
+</html>

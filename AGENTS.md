@@ -59,6 +59,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 
 | Doc | When to update |
 | --- | --- |
+| `docs/develop/Development Workflow.md` | Any change to the shared Builder/Integration instructions, preview QA handoff, or integration order. |
 | `docs/develop/release-workflow.mdx` | Any change to the preview/main queue/staging/manual production contract or activation checkpoint. |
 | `docs/develop/agentic-development.mdx` | Any change to feature worktrees, branch ownership, pull request contracts, integration roles, merge methods, changelog policy, or main-branch workflow. |
 | `docs/develop/cache-components-design-decisions.md` | Any change to `instant = false` opt-outs, `<Suspense>` boundaries in routes, `cacheComponents`/`partialPrefetching` config, or route-level PPR status. Add the route to the converted list or update its opt-out reason. |
