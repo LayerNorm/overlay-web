@@ -7,7 +7,7 @@ import { STAGING, StagingController, revision, stagingBuildSettings, stagingDepl
 const sha = 'a'.repeat(40)
 const nextSha = 'b'.repeat(40)
 const deployment = (patch = {}) => ({ id: 'dpl_stage', projectId: STAGING.projectId,
-  target: 'production', readyState: 'READY',
+  target: 'production', readyState: 'READY', url: 'staging-fixture.vercel.app',
   gitSource: { type: 'github', repoId: STAGING.repositoryId, ref: 'main', sha },
   meta: { overlayReleaseLane: 'staging', overlayStagingSha: sha, overlayStagingBackend: STAGING.backend }, ...patch })
 
@@ -17,6 +17,7 @@ function fixture({ mainSha = sha, advanceAt = Infinity, buildState = 'READY',
   const calls = []
   let mainReads = 0
   let state = buildState
+  let aliasId = 'dpl_previous'
   const github = async (path, options = {}) => {
     calls.push({ service: 'github', path, ...options })
     if (path === `/repos/${STAGING.repository}`) return { id: STAGING.repositoryId, full_name: STAGING.repository }
@@ -46,9 +47,9 @@ function fixture({ mainSha = sha, advanceAt = Infinity, buildState = 'READY',
       if (lostCancel) throw new Error('Lost cancellation response')
       return {}
     }
-    if (path === '/v2/deployments/dpl_stage/aliases') return {}
+    if (path === '/v2/deployments/dpl_stage/aliases') { aliasId = 'dpl_stage'; return {} }
     if (path === '/v4/aliases/' + STAGING.hostname) return {
-      projectId: STAGING.projectId, deployment: { id: aliasMismatch ? 'wrong' : 'dpl_stage' },
+      projectId: STAGING.projectId, deployment: { id: aliasMismatch ? 'wrong' : aliasId },
     }
     throw new Error('Unexpected Vercel request ' + path)
   }
@@ -113,6 +114,19 @@ test('remote build and alias assignment use only the exact accepted SHA and veri
   assert.equal(f.calls.filter(c => c.body?.state === 'success').length, 1)
 })
 
+test('candidate preparation proves native deployment provenance without changing canonical staging', async () => {
+  const f = fixture()
+  const result = await f.controller.run(sha, { prepareOnly: true })
+  assert.equal(result.published, false)
+  assert.equal(result.url, 'https://staging-fixture.vercel.app')
+  assert.equal(result.previousDeploymentId, 'dpl_previous')
+  assert.equal(f.calls.some(c => c.path.endsWith('/aliases') && c.method === 'POST'), false)
+  assert.equal(f.calls.filter(c => c.body?.state === 'success').length, 1)
+  const invalid = fixture({ deploymentPatch: { url: 'outside.example' } })
+  await assert.rejects(invalid.controller.run(sha, { prepareOnly: true }), /native hostname/)
+  assert.equal(invalid.calls.some(c => c.path.endsWith('/aliases') && c.method === 'POST'), false)
+})
+
 test('an abandoned build is confirmed terminal before the new persistent-backend build starts', async () => {
   const f = fixture({ abandoned: true, buildState: 'BUILDING', advanceAt: 4 })
   await f.controller.run(sha)
@@ -169,12 +183,30 @@ test('staging workflow remains gated, serialized and main-only with no package i
   assert.match(job.if, /vars.RELEASE_STAGING_FROM_MAIN == 'enabled'/)
   assert.equal(job.environment, 'release-control')
   assert.equal(job.concurrency['cancel-in-progress'], false)
+  assert.match(job.if, /github.event_name == 'workflow_dispatch' && inputs.prepare_candidate/)
+  assert.equal(workflow.on.workflow_dispatch.inputs.prepare_candidate.default, false)
+  assert.equal(workflow.on.workflow_dispatch.inputs.publish_candidate.default, false)
+  const initialSmoke = job.steps.findIndex(s => s.name === 'Verify authenticated staging behavior')
+  const publish = job.steps.findIndex(s => s.id === 'publish')
+  const canonicalSmoke = job.steps.findIndex(s => s.name === 'Verify canonical staging after cutover')
+  assert.ok(initialSmoke >= 0 && initialSmoke < publish && publish < canonicalSmoke)
+  assert.match(job.steps[publish].if, /steps.deploy.outputs.ready == 'true'/)
+  assert.match(job.steps[publish].if, /inputs.prepare_candidate && inputs.publish_candidate/)
+  assert.match(job.steps[publish].if, /vars.STAGING_ISOLATION_VERIFIED == 'enabled'/)
+  assert.match(job.steps[canonicalSmoke].if, /steps.publish.outputs.published == 'true'/)
+  const proof = job.steps.find(s => s.name === 'Save promotion evidence')
+  assert.equal(proof.with.path, 'staging-smoke.json')
+  assert.equal(proof.with['if-no-files-found'], 'error')
   for (const step of job.steps) {
     if (step.uses?.startsWith('actions/checkout@')) {
       assert.equal(step.with.ref, '${{ github.sha }}')
       assert.equal(step.with['persist-credentials'], false)
     }
-    if (step.run) assert.equal(step.run, 'node scripts/release/staging-control.mjs')
+    if (step.run && /npm ci|playwright install/.test(step.run)) {
+      assert.equal(step.env, undefined, 'dependency installation must not receive control credentials')
+    }
+    if (step.env?.VERCEL_STAGING_TOKEN) assert.match(step.run, /^node scripts\/release\/staging-(control|smoke|publish)\.mjs$/)
+    if (step.env?.STAGING_SMOKE_PASSWORD) assert.equal(step.run, 'node scripts/release/staging-smoke.mjs')
     if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/)
   }
   const vercel = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url)))

@@ -21,6 +21,13 @@ export function revision(value) {
   return value
 }
 
+export function candidateOrigin(deployment) {
+  if (!/^[a-z0-9-]+\.vercel\.app$/.test(deployment.url ?? '')) {
+    throw new Error('Expected the verified staging deployment native hostname')
+  }
+  return 'https://' + deployment.url
+}
+
 export function stagingDeploymentMatches(d, sha, { ready = false } = {}) {
   const source = d.gitSource
   const meta = d.meta ?? {}
@@ -135,10 +142,18 @@ export class StagingController {
       meta: { overlayReleaseLane: 'staging', overlayStagingSha: sha, overlayStagingBackend: STAGING.backend },
     } })
   }
-  async run(sha) {
+  async run(sha, { prepareOnly = false } = {}) {
     revision(sha)
     await this.verifyProject()
     if (await this.currentMain() !== sha) return { state: 'superseded', sha }
+    let previousDeploymentId
+    if (prepareOnly) {
+      const current = await this.vercel(`/v4/aliases/${segment(STAGING.hostname)}`)
+      if (current.projectId !== STAGING.projectId || !current.deployment?.id) {
+        throw new Error('Candidate preparation requires the existing canonical staging alias')
+      }
+      previousDeploymentId = current.deployment.id
+    }
     await this.status(sha, 'pending', `Building dedicated staging for ${sha.slice(0, 12)}`)
     let deployment
     try {
@@ -161,6 +176,17 @@ export class StagingController {
       }
       if (!stagingDeploymentMatches(deployment, sha, { ready: true })) throw new Error('Staging build readiness timeout')
       if (await this.currentMain() !== sha) return this.superseded(sha)
+      if (prepareOnly) {
+        const current = await this.vercel(`/v4/aliases/${segment(STAGING.hostname)}`)
+        if (current.projectId !== STAGING.projectId || current.deployment?.id !== previousDeploymentId) {
+          throw new Error('Canonical staging changed while preparing its candidate')
+        }
+        const evidence = { state: 'ready', sha, projectId: STAGING.projectId,
+          deploymentId: deployment.id, backend: STAGING.backend, backendUrl: STAGING.backendUrl,
+          url: candidateOrigin(deployment), published: false, previousDeploymentId, smoke: 'pending' }
+        await this.status(sha, 'success', `Candidate READY ${sha.slice(0, 12)}; canonical staging unchanged`, evidence.url)
+        return evidence
+      }
       await this.vercel(`/v2/deployments/${segment(deployment.id)}/aliases`, { method: 'POST',
         body: { alias: STAGING.hostname } })
       const alias = await this.vercel(`/v4/aliases/${segment(STAGING.hostname)}`)
@@ -199,7 +225,7 @@ export async function main(env = process.env) {
     vercel: apiClient({ token: env.VERCEL_STAGING_TOKEN, service: 'Vercel',
       base: 'https://api.vercel.com', teamId: STAGING.teamId }),
   })
-  const result = await controller.run(sha)
+  const result = await controller.run(sha, { prepareOnly: env.STAGING_PREPARE_ONLY === '1' })
   if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT,
     `ready=${result.state === 'ready'}\nsha=${sha}\ndeployment_id=${result.deploymentId ?? ''}\n`)
   writeFileSync('staging-deployment.json', JSON.stringify(result, null, 2))

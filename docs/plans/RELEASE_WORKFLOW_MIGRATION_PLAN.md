@@ -60,10 +60,11 @@ complete the release-lane migration.
 The owner-approved 90-day `VERCEL_STAGING_TOKEN` is stored in GitHub's
 `release-control` environment, whose branch policy permits only `main`.
 It is restricted to `overlay-web-staging` and expires 2027-01-10. API scope
-checks succeeded for staging and denied production access. Preview configuration
-contains 46 isolated sandbox variables; all 71 existing Production variables
-were preserved. Storage, model and billing providers are temporarily disabled
-until dedicated test resources are wired. Preview deployment policy permits
+checks succeeded for staging and denied production access. Initial Preview
+configuration contained 46 isolated sandbox variables; all 71 existing Production
+variables were preserved. Shared test Stripe/Gateway settings are now configured
+and readback verified. Storage and Auto-model OpenRouter access remain pending
+isolated test resources. Preview deployment policy permits
 REST API sources only; native Preview Git builds remain disabled.
 
 PR #187's accepted Preview was READY at
@@ -113,7 +114,7 @@ These results apply to that revision; subsequent commits require fresh checks.
 Staging preparation: Divyansh's Convex team now has project `overlay-staging`
 (`3199896`) and persistent backend `doting-cuttlefish-819`. Its deployment-scoped
 key is stored privately and expires 2027-01-10; it is not a team credential.
-Nine staging environment variables are configured and verified by readback, including
+Staging core and test Stripe/Gateway variables are configured and verified by readback, including
 fresh internal API/service secrets and the sandbox smoke identity. The web secrets
 are prepared privately. No app functions or customer data have been deployed to it.
 Original Overlay production/development deployments were preserved by readback.
@@ -387,9 +388,15 @@ Code:
       the Convex function push in the installed CLI and does not enforce this order.
 - [ ] `convex-url.ts`: remove the `staging.getoverlay.io` host sniffing once
       staging sets `OVERLAY_DEPLOYMENT_ENV=staging` explicitly.
-- [ ] Staging smoke tests: a GitHub Action on `deployment_status` for staging
-      that runs a short Playwright suite (sign in, open chat, send a message,
-      open notes) against `staging.getoverlay.io`.
+- [ ] Staging smoke tests: run Playwright steps in the same serialized
+      staging-release job instead of a separate `deployment_status` action, so an
+      unrelated deployment event cannot race publication. Prepared source uses
+      ordinary sandbox sign-in, synthetic fixture reads, note CRUD/conflict and
+      cleanup, a real chat reply, and Files UI screenshots. Initial candidate
+      smoke verifies the native deployment hostname before sending credentials;
+      the canonical alias stays unchanged until the same run's complete proof
+      and `STAGING_ISOLATION_VERIFIED=enabled` permit publication. Canonical smoke
+      runs afterward. Live execution remains pending.
 
 Dashboard (owner):
 - [ ] `overlay-web-staging` → Git → Production Branch: `main`;
@@ -515,6 +522,23 @@ Additional preparation (2026-10-12): Stripe test account
 `acct_1SzOAWFmeUVgDzgI` now has a dedicated synthetic staging product, monthly
 $1 unit price, $1 top-up unit price and a test billing portal configuration.
 The app environment and webhook are not changed yet, so billing QA is pending.
+Following the owner's request to reuse `.env.local`, the shared Vercel Preview
+settings and Convex preview defaults instead use the existing **LayerNorm sandbox**
+credentials (`acct_1SyJ6jPH7ssnO0LI`) and its verified test prices. Corresponding
+settings are configured on the dedicated staging Convex backend. All are readback
+verified; the newly prepared resources in the other test account are unused.
+Future PRs inherit these shared defaults; no per-PR provider-key setup is needed.
+Only the canonical app URL and injected Convex identity vary per PR.
+
+The file is a mixed configuration, not an importable dev-only bundle: its primary
+Stripe key is live, its OpenRouter key matches production and its Convex URLs
+point to shared development. Those values are excluded from the new defaults.
+Separate test Gateway keys are configured per preview/staging lane. OpenRouter
+test access remains pending. Existing R2 credentials can access `overlay-dev`,
+but bucket inventory returns `403 AccessDenied`; isolated bucket provisioning
+and cross-environment upload proof remain pending. Do not mark provider isolation
+complete or enable staging publication on the strength of these credentials alone.
+
 The PR rebuild probe found a legacy note `textContent` field masking accepted
 `content` edits; the canonical text-update fix and regression coverage are
 included before accepting the updated revision.

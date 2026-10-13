@@ -65,6 +65,12 @@ Rules that follow from this table:
   every preview. Automation supplies the per-PR app URL through a branch-scoped
   Preview variable, and the Convex build injects that preview's backend URL.
   Neither requires copying secrets or configuring each PR by hand.
+- Reuse existing development credentials through an explicit mapping. This
+  repository's `.env.local` contains both dev and production settings: verified
+  `DEV_STRIPE_*` values supply test billing, while shared-dev Convex selectors,
+  live Stripe and the production OpenRouter key are excluded. Preserve separate
+  preview/staging internal secrets. Update existing Convex previews separately
+  when rotating credentials; defaults affect newly created backends only.
 - Preview and staging secrets are **test-mode only**. Preview builds run whatever
   code a pull request contains, so they must never hold a production secret.
 - No environment shares a Convex backend with another, so one feature's schema
@@ -220,6 +226,18 @@ readback verified. Application functions and synthetic fixtures are not deployed
 yet. The gated build sequence deploys backend functions, seeds guarded fixtures,
 then builds web; Convex `deploy --cmd` alone runs the command before its push.
 Activation still requires provider isolation, authenticated smoke and the cutover.
+
+Shared Vercel Preview settings and Convex preview defaults now contain the
+existing LayerNorm sandbox Stripe credentials/prices and the test Gateway key,
+verified by readback. The dedicated staging Convex backend has corresponding
+test settings with its own Gateway key. OpenRouter test access and isolated R2
+storage remain pending. No provider credentials need copying per new PR.
+
+Initial staging cutover is prepared as a candidate build and authenticated smoke
+on its verified native hostname, leaving the current staging alias unchanged.
+Publication requires provider isolation plus complete smoke evidence from that
+same serialized workflow run; canonical staging is then smoked again. Automatic
+main-based staging stays disabled until this live cutover succeeds.
 
 Owner decision (2026-10-12): cut over when live isolation and staging smoke
 checks pass; the planned one-to-two-week waiting period is waived.
