@@ -3,7 +3,7 @@ import test from 'node:test'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { canonicalMain, promote } from './production-promote.mjs'
+import { canonicalMain, promote, productionEnvironment } from './production-promote.mjs'
 import { PRODUCTION, promotionEvidence, productionCredentials, productionDeploymentMatches } from './production-control.mjs'
 import { STAGING } from './staging-control.mjs'
 import { SMOKE_CHECKS } from './staging-publish.mjs'
@@ -21,6 +21,23 @@ const job = { name: 'deploy', status: 'completed', conclusion: 'success',
 const deployment = { id: 'dpl_prod', projectId: PRODUCTION.projectId, target: 'production', readyState: 'READY',
   url: 'release-proof.vercel.app', meta: { overlayReleaseLane: 'production', overlayReleaseSha: sha,
     overlayConvexBackend: PRODUCTION.backend, githubCommitSha: sha, githubCommitRef: 'main' } }
+
+test('private release configuration loads only its four settings and preserves explicit overrides', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'release-env-test-'))
+  try {
+    const file = join(directory, 'production.json')
+    writeFileSync(file, JSON.stringify({ ...env, WORKOS_API_KEY: 'must-not-import', extra: 'must-not-import' }), { mode: 0o600 })
+    const loaded = productionEnvironment({ PRODUCTION_SMOKE_PASSWORD: 'explicit-override', PATH: '/fixture' }, file)
+    assert.equal(loaded.PRODUCTION_SMOKE_EMAIL, env.PRODUCTION_SMOKE_EMAIL)
+    assert.equal(loaded.PRODUCTION_SMOKE_PASSWORD, 'explicit-override')
+    assert.equal(loaded.PATH, '/fixture')
+    assert.equal(loaded.WORKOS_API_KEY, undefined)
+    assert.equal(loaded.extra, undefined)
+    assert.equal(productionEnvironment(env, '/missing/file'), env)
+    writeFileSync(file, '{}')
+    assert.throws(() => productionEnvironment({}, file))
+  } finally { rmSync(directory, { recursive: true, force: true }) }
+})
 
 test('promotion requires every smoke check and its successful trusted producer', () => {
   assert.equal(promotionEvidence(evidence, sha, run, job), evidence)

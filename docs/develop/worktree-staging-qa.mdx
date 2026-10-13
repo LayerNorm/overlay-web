@@ -17,7 +17,19 @@ Provide `CONVEX_PRODUCTION_DEPLOY_KEY` scoped to `colorful-chickadee-419`, and
 `PRODUCTION_SMOKE_EMAIL`, `PRODUCTION_SMOKE_PASSWORD`, `PRODUCTION_SMOKE_USER_ID`
 for the separate `overlay-release-qa@getoverlay.io` synthetic production account.
 The account must have a personal workspace; do not use the sandbox QA user or a
-customer account. It has not been provisioned by this migration yet. The native
+customer account. The production QA identity is now provisioned separately in
+the production WorkOS environment. Identity readback and direct WorkOS password
+authentication passed; application sign-in and production smoke have not run.
+Its password and the deployment-scoped Convex key (expires 2027-01-10) are stored
+privately on the owner's machine, outside the checkout and preview configuration.
+The command loads those four settings from
+`~/.config/overlay/release/production.json` after validating canonical main.
+The prepared file uses mode `0600` in a private directory. Set
+`OVERLAY_PRODUCTION_RELEASE_CONFIG` to use another private JSON file, or supply
+the four environment variables explicitly. Unknown JSON fields are ignored;
+explicit environment values take precedence. This file is never part of a web
+deployment upload and does not replace production provider settings on Vercel.
+The native
 GitHub/Vercel CLI accounts must be `DevelopedByDev`/`developedbydev1`. Install the
 reviewed dependencies and Playwright Chromium before release.
 
@@ -39,6 +51,18 @@ steps; checkpoints and screenshots are saved under ignored
 `artifacts/release-workflow/promotions/`. A local Git-directory lock prevents
 simultaneous invocations in this checkout. A failed command may have already
 published web or backend: read `lastCompletedState` and the previous deployment ID.
+
+### Hosted model acceptance
+
+The bootstrap hosted-provider gate is still closed. Configured test credentials
+alone do not enable application inference. After all selected model credentials
+are verified as isolated test keys, explicitly set
+`OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` and
+`OVERLAY_HOSTED_PROVIDER_KILL_SWITCH=0` in the matching test web scope and rebuild.
+Store these shared settings once per scope. Confirm an actual application reply;
+a direct provider API response is insufficient. OpenRouter Auto setup still
+requires the pending separate test keys. Preserve the customer production gate
+while preparing test environments.
 
 ### Rollback runbook
 

@@ -456,8 +456,11 @@ orchestrator are implemented with ordering and refusal tests. Production smoke
 uses a separate synthetic account and verifies normal auth, note CRUD/conflict
 and cleanup, a newly generated chat reply after reload, Files and reactive
 authorization. Checkpoints preserve partial state and previous deployment IDs.
-This is source preparation: dedicated staging acceptance, production QA identity,
-the live promotion and rollback drill are still pending. PR #191 browser QA
+This is source preparation: dedicated staging acceptance,
+the live promotion and rollback drill are still pending. The separate production
+QA identity and single-deployment production Convex key are provisioned privately;
+WorkOS identity readback/password authentication passed. App sign-in and smoke
+have not run, and no production web or function deployment changed. PR #191 browser QA
 exposed an invalid native Convex `setAuth` call; its handler-token fix and a new
 mandatory realtime staging check are prepared before activation.
 
@@ -477,8 +480,10 @@ Code:
       previous web deployment before instant rollback; restore previous function
       source through reviewed main history while retaining expanded schema.
       A feature checkout or obsolete schema is not a production rollback lane.
-- [ ] Provision the separate production QA identity, perform the live promotion
-      and deliberately exercise rollback with recorded deployment/alias readback.
+- [x] Provision the separate production QA identity and single-deployment
+      Convex credential (expires 2027-01-10); store privately outside previews.
+- [ ] Perform application production smoke, live promotion and deliberate
+      rollback with recorded deployment/alias readback.
 
 Done when: the owner promotes a SHA with one command and has rolled back once
 on purpose as a drill.
