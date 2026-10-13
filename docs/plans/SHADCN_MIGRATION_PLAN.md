@@ -7,9 +7,9 @@ _Dated 2026-10-13. Companion visual mockup:
 
 | Phase | Status | PR |
 |---|---|---|
-| 0a Tailwind v4 | Implemented, all 14 CI checks green, preview verified | [#198](https://github.com/LayerNorm/overlay-web/pull/198) (open, base `main`) |
-| 0b shadcn foundation | Implemented, folded into the phase-1 PR (deps + `components.json` + real `cn()` land with the first component) | `codex/shadcn-dialogs` (stacked on 0a) |
-| 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | same PR |
+| 0a Tailwind v4 | Merged and live in production at `4698f8347caf0bc44b3a0fab29781ff744fc6629`; required CI, candidate acceptance and production smoke passed | [#198](https://github.com/LayerNorm/overlay-web/pull/198) (merged, base `main`) |
+| 0b shadcn foundation | Implemented, folded into the phase-1 PR (deps + `components.json` + real `cn()` land with the first component) | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
+| 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
 
 One scope note vs the original plan: phase 0b's semantic shadcn token
 aliasing (`--card`/`--primary`/…) is deferred — the components consume
@@ -27,7 +27,7 @@ the same primitives.
 Scope is the **web app only**. `overlay-desktop` (submodule, forked `overlay-ui`
 copy) and mobile are explicitly deferred to a later project — no coupling.
 
-## Current state on `main` (audit, 2026-10-13)
+## Baseline before migration (audit, 2026-10-13)
 
 | Layer | Reality |
 |---|---|
