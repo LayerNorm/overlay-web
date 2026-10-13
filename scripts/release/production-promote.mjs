@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, realpathSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { apiClient } from './preview-control.mjs'
@@ -38,8 +38,11 @@ export function canonicalMain(sha, { cwd = process.cwd(), run = runCommand } = {
   revision(sha)
   const git = args => run('git', args, { cwd })
   const root = realpathSync(git(['rev-parse', '--show-toplevel']))
-  const common = git(['rev-parse', '--path-format=absolute', '--git-common-dir'])
-  assert.equal(root, realpathSync(dirname(common)), 'Use the canonical checkout')
+  const common = realpathSync(git(['rev-parse', '--path-format=absolute', '--git-common-dir']))
+  const checkoutGitDir = realpathSync(git(['rev-parse', '--path-format=absolute', '--git-dir']))
+  // Primary submodules store Git metadata outside their working directory.
+  // Linked feature worktrees have a separate per-worktree Git directory.
+  assert.equal(checkoutGitDir, common, 'Use the canonical checkout')
   assert.equal(git(['branch', '--show-current']), 'main', 'Use the main branch')
   assert.equal(git(['status', '--porcelain']), '', 'Canonical main must be clean')
   assert.equal(git(['rev-parse', 'HEAD']), sha, 'Main checkout must be the requested SHA')
