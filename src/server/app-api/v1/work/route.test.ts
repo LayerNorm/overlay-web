@@ -174,4 +174,5 @@ test('malformed Convex references/cursors are client errors without exposing val
     400,
   )
   assert.equal(workError(new Error('InvalidCursor: bad cursor')).status, 400)
+  assert.equal(workError(new Error('Failed to parse cursor')).status, 400)
 })

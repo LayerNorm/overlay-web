@@ -1,9 +1,9 @@
 {
   "workflowFiles": [
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/automation-schedule.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/personal-chat-work.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/surface-agent-turn.ts",
-    "/home/ubuntu/repos/overlay-web-tw4/src/server/workflows/workspace-agent-turn.ts"
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/automation-schedule.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/personal-chat-work.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/surface-agent-turn.ts",
+    "/home/ubuntu/repos/overlay-web-dialogs/src/server/workflows/workspace-agent-turn.ts"
   ],
   "serdeOnlyFiles": []
 }
