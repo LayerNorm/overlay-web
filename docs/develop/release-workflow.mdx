@@ -99,3 +99,9 @@ complete candidate run remain required before production acceptance.
 ### First complete candidate acceptance
 
 Workflow `38394669549` passed all ten checks before and after publishing exact main `f863915508795c695d9778f33476eaaf4d14436e` to staging, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. The native/published producer artifacts are recorded in `docs/plans/release-workflow-evidence/`. Browser staging upload and image rendering, byte download and object/metadata cleanup passed. Production remains unchanged while its canonical-checkout guard is corrected to recognize the primary submodule without accepting linked feature worktrees.
+
+### Production CLI output and readiness
+
+Vercel CLI 63 returns a structured deployment object in non-interactive mode. The production command accepts its native `deployment.url` (or the explicit JSON/plain-URL forms), then polls the owned production deployment until READY. Every poll retains the exact SHA, project, lane, backend and native-origin checks; error, cancellation, blocking, wrong provenance and a bounded timeout stop before publication.
+
+The first live attempt at main `fd137da306aab1ee80b1fc3402946752397bb57b` stopped at the old plain-URL parser while its remote build continued. Deployment `dpl_7gqjWG2n6J2yj2TZyx9EB8PiYpsv` became READY without changing the customer alias `dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f`; no production Convex push occurred. The corrected helper passed an actual structured CLI inspection/readiness check against that unpublished build. This inspection is not a production promotion. A new reviewed current-main candidate and full production command/drill are required after this fix merges.

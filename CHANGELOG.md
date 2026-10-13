@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Parse Vercel CLI 63 structured production output and wait for the owned exact-SHA remote build to become READY before publishing web or pushing production Convex.
+
 - Recognize the primary submodule checkout in production release validation while continuing to refuse linked feature worktrees.
 
 - Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit as holds settle or release, and disabling automatic top-ups.

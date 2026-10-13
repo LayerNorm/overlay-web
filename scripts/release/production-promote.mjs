@@ -33,6 +33,42 @@ const runCommand = (command, args, options = {}) => execFileSync(command, args, 
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options,
 }).trim()
 
+/** CLI 63 non-interactive output wraps the native URL in a deployment object. */
+export function productionCliOrigin(stdout) {
+  let value
+  try { value = JSON.parse(stdout) } catch { /* Human CLI output is one native URL. */ }
+  let origin
+  if (value) {
+    assert.notEqual(value.status, 'error', 'The production CLI reported an error')
+    origin = value.deployment?.url ?? value.url
+    if (typeof origin === 'string' && /^[a-z0-9-]+\.vercel\.app$/.test(origin)) origin = 'https://' + origin
+  } else {
+    const urls = stdout.split(/\s+/).filter(s => /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(s))
+    assert.equal(urls.length, 1, 'Expected one native production deployment URL')
+    origin = urls[0]
+  }
+  assert.ok(typeof origin === 'string' && /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin),
+    'Expected a native production deployment origin')
+  return origin
+}
+
+/** Async CLI completion never substitutes for an owned, READY remote build. */
+export async function waitForProductionBuild({ vercel, origin, sha,
+  attempts = 120, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+  revision(sha)
+  assert.ok(/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin))
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const deployment = await vercel('/v13/deployments/' + new URL(origin).hostname)
+    assert.ok(productionDeploymentMatches(deployment, sha, { ready: false }), 'Production build provenance mismatch')
+    assert.equal(deployment.url, new URL(origin).hostname, 'Production build origin mismatch')
+    const state = deployment.readyState ?? deployment.state
+    if (state === 'READY') return deployment
+    assert.ok(['QUEUED', 'INITIALIZING', 'BUILDING'].includes(state), 'Production build stopped before READY')
+    if (attempt + 1 < attempts) await sleep(15_000)
+  }
+  throw new Error('Production build readiness timeout')
+}
+
 /** Reject a feature checkout before reading credentials or making API calls. */
 export function canonicalMain(sha, { cwd = process.cwd(), run = runCommand } = {}) {
   revision(sha)
@@ -160,9 +196,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
           '--meta', 'overlayReleaseLane=production', '--meta', 'overlayReleaseSha=' + sha,
           '--meta', 'overlayConvexBackend=' + PRODUCTION.backend,
           '--meta', 'githubCommitSha=' + sha, '--meta', 'githubCommitRef=main'])
-        const urls = stdout.split(/\s+/).filter(s => /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(s))
-        assert.equal(urls.length, 1, 'Expected one native deployment URL on stdout')
-        return vercel('/v13/deployments/' + new URL(urls[0]).hostname)
+        return waitForProductionBuild({ vercel, origin: productionCliOrigin(stdout), sha })
       },
       publishWeb: async d => { cli(['promote', 'https://' + d.url, '--yes']) },
       pushBackend: async () => {
