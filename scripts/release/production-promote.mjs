@@ -29,9 +29,17 @@ export function productionEnvironment(env, file = env.OVERLAY_PRODUCTION_RELEASE
   }))
   return { ...env, ...values }
 }
-const runCommand = (command, args, options = {}) => execFileSync(command, args, {
-  encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options,
+export const runCommand = (command, args, options = {}) => execFileSync(command, args, {
+  encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024, ...options,
 }).trim()
+
+export function productionBuildArguments(sha) {
+  revision(sha)
+  return ['deploy', '--prod', '--skip-domain', '--no-wait', '--yes',
+    '--meta', 'overlayReleaseLane=production', '--meta', 'overlayReleaseSha=' + sha,
+    '--meta', 'overlayConvexBackend=' + PRODUCTION.backend,
+    '--meta', 'githubCommitSha=' + sha, '--meta', 'githubCommitRef=main']
+}
 
 /** CLI 63 non-interactive output wraps the native URL in a deployment object. */
 export function productionCliOrigin(stdout) {
@@ -192,10 +200,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
       buildWeb: async () => {
         const inspected = JSON.parse(cli(['project', 'inspect', '--format', 'json']))
         assert.equal(inspected.id, PRODUCTION.projectId, 'CLI project mismatch')
-        const stdout = cli(['deploy', '--prod', '--skip-domain', '--yes',
-          '--meta', 'overlayReleaseLane=production', '--meta', 'overlayReleaseSha=' + sha,
-          '--meta', 'overlayConvexBackend=' + PRODUCTION.backend,
-          '--meta', 'githubCommitSha=' + sha, '--meta', 'githubCommitRef=main'])
+        const stdout = cli(productionBuildArguments(sha))
         return waitForProductionBuild({ vercel, origin: productionCliOrigin(stdout), sha })
       },
       publishWeb: async d => { cli(['promote', 'https://' + d.url, '--yes']) },
