@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve consumed credit and existing holds when Stripe cancels a workspace plan, removing unused plan credit as holds settle or release, and disabling automatic top-ups.
+
+- Wait for chat transcript hydration in release smoke, explicitly select Chat, and clean fresh production QA conversations.
+
 - Resolve the actual synthetic workspace in release smoke and clean fresh test chats; consolidate main queue/check protection and restore universal history guards.
 
 - Repair missing PR preview fixtures after interrupted builds, preserving existing personal workspaces and test data.

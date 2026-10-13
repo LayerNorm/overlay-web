@@ -8,6 +8,21 @@ import {
   type BillingAccountRecord,
 } from '../../src/shared/billing/billing-account'
 
+/** Retained canceled-plan funding follows only spent credit and live holds. */
+export async function canceledPlanCreditPatch(
+  ctx: MutationCtx,
+  balance: Doc<'billingAccountBalances'>,
+  usedMicros: number,
+  reservedMicros: number,
+): Promise<{ includedMicros?: number }> {
+  const subscription = await ctx.db.query('billingAccountSubscriptions')
+    .withIndex('by_billingAccountId', q => q.eq('billingAccountId', balance.billingAccountId))
+    .unique()
+  if (subscription?.status !== 'canceled' || subscription.planKind !== 'free' || subscription.planAmountCents !== 0) return {}
+  return { includedMicros: Math.min(balance.includedMicros,
+    Math.max(0, usedMicros + reservedMicros - balance.institutionalGrantMicros - balance.topUpPurchasedMicros)) }
+}
+
 export const billingAccountValidator = v.object({
   billingAccountId: v.string(),
   closedAt: v.optional(v.number()),

@@ -29,6 +29,8 @@ export function buildChatExperienceViewProps(
       onRightPanelResize: shell.shellRightPanelResize,
     },
     main: {
+      activeChatId: c.activeChatId,
+      activeChatHydrated: c.activeChatHydrated,
       activeChatDeleting: c.activeChatDeleting,
       isDragging: c.isDragging,
       dragHandlers: {
