@@ -19,7 +19,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
-- **Prepared the separate production release QA identity.** WorkOS identity/password readback passed, and a deployment-scoped Convex credential is stored privately with a January 10 expiry. Production application smoke, deployment and rollback rehearsal remain pending.
+- **Prepared the separate production release QA identity.** WorkOS identity/password readback passed, and a deployment-scoped Convex credential is stored privately with a January 10 expiry. The promotion command loads its four settings from the owner's private release JSON after checkout validation, avoiding repeated exports. Production application smoke, deployment and rollback rehearsal remain pending.
 
 - **Prepared one-command production promotion.** Exact clean canonical main and successful staging proof gate a remote web build, verified web publication, production Convex push and authenticated smoke. Checkpoints preserve partial release state and previous web deployment IDs; the rollback runbook retains schema compatibility. Live activation and rollback rehearsal remain pending.
 

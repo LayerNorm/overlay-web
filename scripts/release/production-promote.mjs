@@ -14,6 +14,21 @@ import { productionSmoke } from './production-smoke.mjs'
 import { verifiedSmoke } from './staging-publish.mjs'
 
 const repo = `/repos/${PRODUCTION.repository}`
+export const RELEASE_CREDENTIAL_NAMES = Object.freeze(['PRODUCTION_SMOKE_EMAIL',
+  'PRODUCTION_SMOKE_PASSWORD', 'PRODUCTION_SMOKE_USER_ID', 'CONVEX_PRODUCTION_DEPLOY_KEY'])
+
+/** Called only after canonical checkout validation. Never loads .env.local. */
+export function productionEnvironment(env, file = env.OVERLAY_PRODUCTION_RELEASE_CONFIG
+  || join(homedir(), '.config/overlay/release/production.json')) {
+  if (RELEASE_CREDENTIAL_NAMES.every(name => env[name])) return env
+  const saved = JSON.parse(readFileSync(file, 'utf8'))
+  const values = Object.fromEntries(RELEASE_CREDENTIAL_NAMES.map(name => {
+    const value = env[name] || saved[name]
+    assert.equal(typeof value, 'string', 'Missing private production release setting')
+    return [name, value]
+  }))
+  return { ...env, ...values }
+}
 const runCommand = (command, args, options = {}) => execFileSync(command, args, {
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...options,
 }).trim()
@@ -97,6 +112,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     'Usage: bash scripts/release/promote.sh <40-character main SHA> [--check]')
   const sha = revision(args[0]), checkOnly = args[1] === '--check'
   const root = canonicalMain(sha)
+  env = productionEnvironment(env)
   productionCredentials(env)
   const githubToken = env.GH_TOKEN || env.GITHUB_TOKEN || runCommand('gh', ['auth', 'token'])
   const vercelToken = env.VERCEL_TOKEN || JSON.parse(readFileSync(
