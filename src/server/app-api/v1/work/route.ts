@@ -23,6 +23,9 @@ export function createWorkHandlers(service: WorkService) {
   const actor = (context: AppApiRouteContext) => ({ userId: context.auth.userId, workspaceId: context.workspace.workspace.id })
   const id = async (context: AppApiRouteContext) => z.string().min(1).max(200).parse((await context.params).id)
   return {
+    async people(_request: NextRequest, context: AppApiRouteContext) {
+      try { return NextResponse.json(await service.people(actor(context))) } catch (error) { return workError(error) }
+    },
     async list(request: NextRequest, context: AppApiRouteContext) {
       try {
         const query = WorkQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams))
@@ -70,3 +73,5 @@ export const getWork = gated(handlers.get)
 export const updateWork = gated(handlers.update)
 export const actionWork = gated(handlers.action)
 export const archiveWork = gated(handlers.archive)
+
+export const peopleWork = gated(handlers.people)

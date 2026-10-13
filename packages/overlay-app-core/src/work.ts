@@ -25,3 +25,5 @@ export type WorkEvent = {
   kind: 'created' | 'updated' | 'status' | 'assignee' | 'comment' | 'scope' | 'archived' | 'restored'
   data: { text?: string; field?: string; before?: string; after?: string }; createdAt: number
 }
+
+export type WorkPerson = { principalId: string; userId: string; name: string }

@@ -296,3 +296,7 @@ in `@overlay/app-core/work`, validation in `src/shared/work/schema.ts`, and
 transport in `WorkClient`. Dates are calendar strings. DELETE archives; restore
 and scope moves are explicit POST actions. Expected backend failures use
 `ConvexError` data to retain 400/403/404/409 behavior on hosted backends.
+
+Task pickers use `GET /api/v1/work/people`: a scoped, active-human directory.
+It returns principal and user IDs explicitly rather than inferring one from the
+other. Agents are deliberately excluded until the agent-execution follow-up.

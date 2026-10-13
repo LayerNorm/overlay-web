@@ -14,6 +14,7 @@ const request = (path: string, method = 'GET', body?: unknown) => new NextReques
 function fixture() {
   const calls: unknown[] = []
   const repository: WorkRepository = {
+    people: async () => [],
     list: async (...args) => { calls.push(args); return [task] },
     get: async (...args) => { calls.push(args); return task },
     create: async (...args) => { calls.push(args); return task },

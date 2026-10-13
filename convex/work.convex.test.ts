@@ -77,3 +77,13 @@ describe('Work scope and identity boundaries', () => {
     await expect(create(t, { scope: 'workspace', parentId: parent._id })).rejects.toThrow(/same scope/)
   })
 })
+
+test('Work directory contains active humans who may receive workspace tasks, excluding guests and agents', async () => {
+  const t = await fixture()
+  await t.run(async (ctx) => {
+    await ctx.db.insert('workspacePrincipals', { workspaceId: auth.workspaceId, principalId: 'p-agent', agentId: 'a-fixture', type: 'agent', displayName: 'Agent', createdAt: 1, updatedAt: 1 })
+  })
+  const people = await t.query(q('people:list'), { ...auth, userId: 'alice' }) as { principalId: string }[]
+  expect(people.map((p) => p.principalId).sort()).toEqual(['p-alice', 'p-bob', 'p-owner'])
+  await expect(t.query(q('people:list'), { ...auth, userId: 'guest' })).rejects.toThrow(/membership/)
+})

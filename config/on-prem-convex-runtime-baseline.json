@@ -193,6 +193,7 @@
     "src/app/api/v1/webhooks/route.ts",
     "src/app/api/v1/webhooks/slack/route.ts",
     "src/app/api/v1/work/[id]/route.ts",
+    "src/app/api/v1/work/people/route.ts",
     "src/app/api/v1/work/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",

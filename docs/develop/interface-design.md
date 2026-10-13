@@ -161,3 +161,12 @@ The agent settings (`AgentEditorPage`) have several independent loaders (the age
 ## Avatar colors
 
 The avatar picker offers the preset swatches plus a rainbow swatch that opens `AvatarColorPicker` (saturation/brightness square, hue strip, hex field; no opacity; helpers in `features/agents/lib/color-utils.ts`). Colors are stored as six-digit lowercase hex; the server accepts any such value.
+
+## Work lists
+
+Work uses the shared `ListRow` and collapsible `HeaderSearch` primitives. The
+quick-add creates on Enter or Add; renaming saves on Enter and cancels on Escape.
+Status and owner choices save immediately, with row controls disabled during the
+request, optimistic feedback and rollback on failure. Personal tasks offer only
+their creator as owner; workspace tasks offer active human members. Filters and
+search apply together; groups keep the fixed workflow order.

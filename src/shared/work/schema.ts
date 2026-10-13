@@ -22,3 +22,5 @@ export const WorkActionSchema = z.discriminatedUnion('action', [
 export const WorkQuerySchema = z.object({ view: z.enum(['personal', 'workspace', 'archived']).optional() }).strict()
 export const WorkItemSchema = z.object({ ...fields, blockedBy: z.array(id).max(50).optional(), _id: id, _creationTime: z.number(), userId: id, workspaceId: id, scope, archivedAt: z.number().optional(), archivedBy: id.optional(), archivedFromScope: scope.optional(), createdAt: z.number(), updatedAt: z.number() }) satisfies z.ZodType<WorkItem>
 export const WorkEventSchema = z.object({ _id: id, _creationTime: z.number(), workItemId: id, workspaceId: id, actorPrincipalId: id, kind: z.enum(['created', 'updated', 'status', 'assignee', 'comment', 'scope', 'archived', 'restored']), data: z.object({ text: z.string().optional(), field: z.string().optional(), before: z.string().optional(), after: z.string().optional() }), createdAt: z.number() }) satisfies z.ZodType<WorkEvent>
+
+export const WorkPersonSchema = z.object({ principalId: id, userId: id, name: z.string() })

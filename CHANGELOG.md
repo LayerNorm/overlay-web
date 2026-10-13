@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Added
 
+- Work phase 4 adds the task List: quick-add, rename, status/owner edits, workflow groups, Needs you/Assigned to me filters, search, and optimistic updates with scope-safe refresh. Task pickers use an active-human workspace directory.
+
 - Work phase 3 adds a gated Work destination above Agents, shared Personal/Workspace navigation with List, Board and Timeline, and a Suspense-wrapped empty screen with retry/loading states. It remains off by default.
 
 - Work phase 2 adds the authenticated `/api/v1/work` task API and typed client, with server-derived workspace identity, scoped reads, revision conflicts, comments and archive/restore actions.
