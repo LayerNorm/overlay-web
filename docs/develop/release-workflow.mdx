@@ -95,3 +95,7 @@ Cancellation then found the existing consumed-credit invariant rejecting the
 Free transition. The fix retains historical spend/holds, removes unused included
 credit, and disables automatic top-ups. Live cancellation replay and a new
 complete candidate run remain required before production acceptance.
+
+### First complete candidate acceptance
+
+Workflow `38394669549` passed all ten checks before and after publishing exact main `f863915508795c695d9778f33476eaaf4d14436e` to staging, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. The native/published producer artifacts are recorded in `docs/plans/release-workflow-evidence/`. Browser staging upload and image rendering, byte download and object/metadata cleanup passed. Production remains unchanged while its canonical-checkout guard is corrected to recognize the primary submodule without accepting linked feature worktrees.

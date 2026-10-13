@@ -134,10 +134,18 @@ test('canonical checkout guard requires clean current main and the fixed product
     writeFileSync(join(root, '.vercel/project.json'), JSON.stringify({ projectId: PRODUCTION.projectId, orgId: PRODUCTION.teamId }))
     writeFileSync(join(root, 'vercel.json'), JSON.stringify({ git: { deploymentEnabled: { main: false } } }))
     const answers = { 'rev-parse --show-toplevel': root, 'rev-parse --path-format=absolute --git-common-dir': join(root, '.git'),
+      'rev-parse --path-format=absolute --git-dir': join(root, '.git'),
       'branch --show-current': 'main', 'status --porcelain': '', 'rev-parse HEAD': sha,
       'remote get-url origin': 'https://github.com/LayerNorm/overlay-web.git', 'fetch origin main': '', 'rev-parse origin/main': sha }
     const invoke = patch => canonicalMain(sha, { cwd: root, run: (_, args) => ({ ...answers, ...patch })[args.join(' ')] })
     assert.equal(invoke({}), realpathSync(root))
+    const submoduleGit = join(root, 'parent-git', 'modules', 'app')
+    const featureGit = join(submoduleGit, 'worktrees', 'feature')
+    mkdirSync(featureGit, { recursive: true })
+    const primarySubmodule = { 'rev-parse --path-format=absolute --git-common-dir': submoduleGit,
+      'rev-parse --path-format=absolute --git-dir': submoduleGit }
+    assert.equal(invoke(primarySubmodule), realpathSync(root))
+    assert.throws(() => invoke({ ...primarySubmodule, 'rev-parse --path-format=absolute --git-dir': featureGit }), /canonical checkout/)
     for (const patch of [{ 'branch --show-current': 'codex/feature' }, { 'status --porcelain': ' M user.txt' },
       { 'rev-parse origin/main': 'b'.repeat(40) }, { 'remote get-url origin': 'https://github.com/other/repo.git' }]) {
       assert.throws(() => invoke(patch))
