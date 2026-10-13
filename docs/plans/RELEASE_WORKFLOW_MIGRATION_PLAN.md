@@ -3,7 +3,7 @@
 Moves Overlay from direct pushes to `main` plus an optional branch-based staging
 lane, using one shared dev Convex, to the target workflow in
 [`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
-merge queue on `main`, staging deployed from `main`, manual production promotion.
+merge queue on `main`, on-demand exact-main release candidates, manual production promotion.
 
 ## Approved preview-domain approach — 2026-10-12
 
@@ -131,13 +131,14 @@ Staging core and test Stripe/Gateway variables are configured and verified by re
 fresh internal API/service secrets and the sandbox smoke identity. The web secrets
 are installed in staging Vercel Production scope, preserving Preview defaults.
 The staging project production branch is `main`, with automatic domain assignment
-disabled; its canonical alias still serves the previous staging deployment. No app functions or customer data have been deployed to it.
+disabled; its canonical alias still serves the previous staging deployment. App functions and guarded synthetic fixtures have been deployed; no customer
+data was copied.
 Original Overlay production/development deployments were preserved by readback.
 The prepared `staging-control.mjs` and `staging-release.yml` require the exact
 Divyansh Vercel team/project, internal repository, `main` SHA, and dedicated
 backend. Builds are serialized, abandoned builds are settled, automatic aliases
 are disabled, and READY provenance is checked before assigning staging.
-`RELEASE_STAGING_FROM_MAIN` remains unset: the existing staging branch and web
+`RELEASE_STAGING_FROM_MAIN` remains unset and is obsolete in the manual-only workflow: the existing staging branch and web
 deployment still serve the current lane. This is preparation, not Phase 5
 acceptance. Authenticated staging smoke, provider isolation,
 platform cutover, and the process-doc rewrite must precede activation.
@@ -207,8 +208,8 @@ Answer these before writing code; several later choices depend on them.
       through the project preview key, not by assuming a push resets expiration.
 - [x] **Convex:** use a separate `overlay-staging` project with its own staging
       deployment/key. Project `3199896`, backend `doting-cuttlefish-819`, and a
-      deployment-scoped key are provisioned. The backend is empty and has no
-      application configuration. Configure the web project only at cutover.
+      deployment-scoped key are provisioned. Its isolated configuration, functions and synthetic fixtures are now deployed.
+      Canonical staging publication remains gated on complete smoke.
 - [x] **WorkOS:** confirm the staging environment accepts a wildcard redirect URI
       such as `https://*.preview.getoverlay.io/api/auth/callback`. Accepted,
       registered, and verified; no relay is needed for this pattern.
@@ -380,50 +381,35 @@ and posts screenshots to the PR.
 Cut over after live provider isolation and authenticated staging smoke pass.
 A calendar waiting period is not required; the acceptance checks still are.
 
-## Phase 5 — Staging deploys from `main`
+## Phase 5 — On-demand exact-main release candidates
 
-Goal: staging always equals `main`. This is the cutover.
+**Owner decision, 2026-10-13:** PR previews replace the routine staging lane.
+Keep `overlay-web-staging` because it hosts PR previews. Reuse its dedicated
+`doting-cuttlefish-819` test backend only for release rehearsals requiring
+production-like Convex behavior, stable webhook integrations or migrations.
+Do not deploy staging after every merge. The legacy staging branch is frozen.
 
-Code:
-- [ ] Add a GitHub Action on pushes to `main` that requests a remote build of
-      that exact SHA in `overlay-web-staging`, with scoped staging credentials
-      and serialized deployments. Retain root `git.deploymentEnabled.main = false`:
-      it applies to both connected projects, so changing the staging project's
-      production branch alone cannot enable automatic builds. Record the web
-      deployment, backend, and SHA together as promotion evidence.
-      Prepared in `staging-release.yml` behind
-      `vars.RELEASE_STAGING_FROM_MAIN == 'enabled'`; do not enable until the
-      smoke workflow, test providers and complete cutover docs are ready.
-      Controller/build guards pin `doting-cuttlefish-819` and the requested SHA.
-      A `Staging Deploy` success alone is not staging-smoke or promotion proof.
-- [ ] `scripts/vercel-build.sh`: in the staging project's production build,
-      deploy the staging Convex backend first
-      (separate `convex deploy`, guarded `dev/seed:initStaging`, then web build),
-      so staging web and Convex always come from the same commit. `--cmd` runs before
-      the Convex function push in the installed CLI and does not enforce this order.
-- [ ] `convex-url.ts`: remove the `staging.getoverlay.io` host sniffing once
-      staging sets `OVERLAY_DEPLOYMENT_ENV=staging` explicitly.
-- [ ] Staging smoke tests: run Playwright steps in the same serialized
-      staging-release job instead of a separate `deployment_status` action, so an
-      unrelated deployment event cannot race publication. Prepared source uses
-      ordinary sandbox sign-in, synthetic fixture reads, note CRUD/conflict and
-      cleanup, a real chat reply, and Files UI screenshots. Initial candidate
-      smoke verifies the native deployment hostname before sending credentials;
-      the canonical alias stays unchanged until the same run's complete proof
-      and `STAGING_ISOLATION_VERIFIED=enabled` permit publication. Canonical smoke
-      runs afterward. Live execution remains pending.
+- [x] Prepare manual-only `staging-release.yml` on protected main; no push trigger
+      or `RELEASE_STAGING_FROM_MAIN` activation is required. Always build an
+      unpublished native candidate first, with exact SHA/project/backend guards.
+- [x] Deploy dedicated test functions, guarded synthetic fixtures, then web in a
+      serialized remote build. Preserve root `git.deploymentEnabled.main=false`.
+- [x] Select backend using explicit staging environment instead of host sniffing.
+- [x] Require normal Sandbox sign-in, note CRUD/stale conflict and cleanup, real
+      chat, Files UI and realtime authorization in same-run smoke evidence.
+- [x] Accept successful unpublished native candidate proof for manual production
+      promotion. Validate trusted manual producer, current main, ready deployment
+      and exact native hostname. Never accept a PR-head preview as merged-main proof.
+- [x] Prepare optional `publish_candidate=true` for stable staging integrations;
+      require provider isolation, complete first smoke and canonical second smoke.
+- [x] Configure preview project's Production branch as main, REST-only deployment
+      policy, automatic aliases disabled and isolated dedicated test providers.
+- [ ] Freeze legacy staging through a no-bypass update rule and read it back.
+- [ ] Execute complete live exact-main candidate acceptance and production drill.
 
-Dashboard (owner):
-- [ ] `overlay-web-staging` → Git → Production Branch: `main`;
-      set `DEPLOY_BRANCH=main` and explicitly permit the authorized staging CI
-      remote-build path. Keep unrelated refs and manual sources blocked.
-- [ ] Convex staging (decision from Phase 0): create the deploy key and set it
-      as `CONVEX_DEPLOY_KEY` in the staging project's **Production** scope.
-- [ ] Freeze the `staging` branch: leave it in place (branch deletion is blocked
-      by history rules) and restrict pushes, so nothing lands there by accident.
-
-Done when: a merge to `main` produces a staging deployment of that SHA within
-minutes, and the smoke suite reports on it.
+Done when: an owner-dispatched current-main release candidate passes complete
+behavioral checks, qualifies for promotion, and main merges create neither staging
+nor customer production deployments.
 
 ## Phase 6 — Merge queue and review rules
 
@@ -432,7 +418,7 @@ Goal: parallel merges cannot break `main`.
 Code:
 - [x] All required check workflows, including security, support `merge_group:`.
       Without it, queued PRs wait forever for checks.
-- [ ] Drop `staging` from security push branches once Phase 5 is done.
+- [x] Drop `staging` from security push branches once Phase 5 is done.
 - [x] `.github/CODEOWNERS`: owners for `convex/schema.ts`, `convex/migrations/`,
       `src/server/auth/`, `src/app/api/auth/`, `src/server/billing/`,
       `src/app/api/webhooks/`, `vercel.json`, `scripts/vercel-*.sh`, `.github/`.
@@ -499,21 +485,22 @@ on purpose as a drill.
 Do this in the same PR as Phase 5/6 so docs never describe a lane that no
 longer exists.
 
-- [ ] `AGENTS.md`: replace the Convex worktree-safety rule, staging direct-push
+- [x] `AGENTS.md`: replace the Convex worktree-safety rule, staging direct-push
       authorisation, `main` direct-push authorisation, "main and staging may
       diverge", Integration agent, `dev:with-convex` and staging worktree rules
       with the target model. Keep the Vercel manual-production rule.
-- [ ] `docs/develop/agentic-development.mdx`: Builder-only model, preview
+- [x] `docs/develop/agentic-development.mdx`: Builder-only model, preview
       verification, merge queue, `needs-staging`.
-- [ ] `docs/develop/worktree-staging-qa.mdx`: becomes "staging and production
+- [x] `docs/develop/worktree-staging-qa.mdx`: becomes "staging and production
       promotion" (staging-only checks, promotion script, rollback).
-- [ ] `docs/develop/convex-workflow.mdx`: preview / staging / prod deployments,
+- [x] `docs/develop/convex-workflow.mdx`: preview / staging / prod deployments,
       deploy keys, seed function, expand/contract.
-- [ ] `docs/develop/BUILDER_AGENT_PROMPT.md`: preview evidence required.
+- [x] `docs/develop/BUILDER_AGENT_PROMPT.md`: preview evidence required.
       Retire or repurpose `INTEGRATION_AGENT_PROMPT.md` as a release-owner checklist.
-- [ ] Move `RELEASE_WORKFLOW_TARGET.md` into `docs/develop/` as the live process
-      doc and add it to the `AGENTS.md` living-docs table.
-- [ ] `CHANGELOG.md`: operational entry for the new release process.
+- [x] Retain both owner-requested plan files and add
+      `docs/develop/release-workflow.mdx` as the living operating contract, linked
+      from the target plan and registered in the `AGENTS.md` documentation table.
+- [x] `CHANGELOG.md`: operational entry for the new release process.
 
 ## Order and effort
 
@@ -605,3 +592,49 @@ for future PRs. Remove owned PR aliases/resources when closed or merged. Convex
 Starter managed previews still have its service-imposed five-day retention;
 trusted reconciliation renews open PRs automatically and rebuilds expired backends.
 Session JWT and presigned upload URL lifetimes remain short.
+
+### Initial dedicated staging execution (2026-10-13)
+
+PR #194 merged at `896b3803b0689d82a32cb5ea01a3f2dc25e5cc38`. The staging
+project now permits controller REST sources in both scopes, with native Git
+deployments blocked. A protected WorkOS API-key export was empty; it was restored
+from the verified private Sandbox configuration. The latest candidate passed
+Sandbox sign-in and fixture CRUD but exposed stale-note PATCH returning 500
+because ordinary developer errors are redacted on a production-type Convex
+backend. Structured application-error transport and regression checks are in
+the cutover change. No candidate has replaced canonical staging yet.
+
+The dedicated Stripe test endpoint delivered a real test PaymentIntent event to
+staging, recorded as processed. Checkout completion and canonical staging smoke,
+queue semantic verification and the production/rollback drill remain acceptance
+requirements. Code/document checkboxes do not imply those live gates passed.
+
+
+### Interrupted preview build recovery
+
+The installed Convex CLI executes `--preview-run` only for newly claimed preview
+backends. An interrupted first build can leave a reused backend without fixtures.
+After every successful preview deploy, the hosted build therefore explicitly runs
+`dev/seed:init` against `preview/pr-<number>` using the preview-scoped key. This
+idempotent repair preserves edited fixture data and reuses any existing personal
+workspace; it does not recreate the backend or deploy shared development/production.
+A failed deploy never runs the repair, and a failed repair fails the hosted build.
+
+
+### Verified workspace and queue protections
+
+Release smoke resolves and activates the synthetic account's actual personal
+workspace through the authenticated app API. It uses that ID for chat, Files and
+realtime checks, including when seeding reuses an app-created workspace. It creates
+a fresh Auto-model smoke conversation, verifies its real reply and reload, then
+cleans that conversation; seed examples are not model-response evidence.
+
+Main protection is consolidated in ruleset `21959970`: PRs, conversation
+resolution, nine required GitHub Actions checks and the native merge queue.
+The duplicate classic owner-only push protection was retired; queue publication
+is governed by these rules. History ruleset `16007495` separately blocks force
+pushes and deletion for main/staging with no bypass. Legacy staging is frozen by
+`24986525`. Owner emergency bypass and zero sole-author approvals remain.
+Queue interaction probes #196/#197 passed individually but their combined tree
+was marked UNMERGEABLE; both closed without merging and the temporary check was
+removed. Live queue acceptance of the release PR remains pending.

@@ -4,6 +4,15 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resolve the actual synthetic workspace in release smoke and clean fresh test chats; consolidate main queue/check protection and restore universal history guards.
+
+- Repair missing PR preview fixtures after interrupted builds, preserving existing personal workspaces and test data.
+
+- Prepare exact-main release candidates only on demand; reuse PR preview infrastructure and accept verified native candidate proof before manual production promotion.
+
+- **Release cutover guards and note conflict correctness.** Dedicated staging rejects missing Sandbox credentials before deploying and stops immediately on a blocked Vercel build. Hosted backend selection no longer depends on the staging hostname. Expected stale-note conflicts use structured Convex application data, preserving HTTP 409 on production-type backends. Process docs now specify PR previews, main merge queue, dedicated main staging and manual web-first production; live staging/queue/drill acceptance remains gated.
+
+
 ### Fixed
 
 - **Disabled preview providers also disable their capabilities.** Shared Preview settings and release build guards prevent chat from loading an integration provider configured as `none`. Legacy staging Production settings are preserved.

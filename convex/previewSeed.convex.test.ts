@@ -78,3 +78,29 @@ test('synthetic staging fixtures refuse customer production and preserve edits w
   expect(await t.run(async ctx => (await ctx.db.get(note))?.content)).toBe('Preserved QA edit')
   expect(await t.run(ctx => ctx.db.query('files').take(5))).toHaveLength(2)
 })
+
+
+test('preview repair reuses an existing personal workspace and preserves unrelated data', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
+  vi.stubEnv('PREVIEW_LOGIN_USER_ID', 'user_preview_fixture')
+  vi.stubEnv('PREVIEW_LOGIN_EMAIL', 'preview@example.test')
+  const t = convexTest(schema, modules)
+  await t.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId: 'existing-personal', kind: 'personal', name: 'Preserved name',
+      slug: 'existing-personal', status: 'active', personalOwnerUserId: 'user_preview_fixture',
+      createdByPrincipalId: 'existing-human', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'existing-human', workspaceId: 'existing-personal',
+      type: 'human', userId: 'user_preview_fixture', displayName: 'Preserved owner', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspaceMemberships', { membershipId: 'existing-member', workspaceId: 'existing-personal',
+      principalId: 'existing-human', role: 'owner', status: 'active', joinedAt: 1, updatedAt: 1 })
+  })
+  expect((await t.mutation(seed, {})).workspaceId).toBe('existing-personal')
+  expect((await t.mutation(seed, {})).workspaceId).toBe('existing-personal')
+  const rows = await t.run(async ctx => ({ workspaces: await ctx.db.query('workspaces').take(5),
+    files: await ctx.db.query('files').take(5), members: await ctx.db.query('workspaceMemberships').take(5) }))
+  expect(rows.workspaces).toHaveLength(1)
+  expect(rows.workspaces[0].name).toBe('Preserved name')
+  expect(rows.members).toHaveLength(1)
+  expect(rows.files).toHaveLength(2)
+  expect(rows.files.every(f => f.workspaceId === 'existing-personal')).toBe(true)
+})

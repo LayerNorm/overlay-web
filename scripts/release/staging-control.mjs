@@ -14,7 +14,7 @@ export const STAGING = Object.freeze({
 })
 const segment = encodeURIComponent
 const stateOf = d => d.readyState ?? d.state
-const terminal = d => ['READY', 'ERROR', 'CANCELED'].includes(stateOf(d))
+const terminal = d => ['READY', 'ERROR', 'CANCELED', 'BLOCKED'].includes(stateOf(d))
 
 export function revision(value) {
   if (!/^[a-f0-9]{40}$/.test(value ?? '')) throw new Error('An exact main SHA is required')
@@ -171,7 +171,7 @@ export class StagingController {
         const state = stateOf(deployment)
         if (state !== lastState) { this.report(`Staging ${sha.slice(0, 12)}: ${state}`); lastState = state }
         if (state === 'READY') break
-        if (['ERROR', 'CANCELED'].includes(state)) throw new Error(`Staging deployment ${state}`)
+        if (['ERROR', 'CANCELED', 'BLOCKED'].includes(state)) throw new Error(`Staging deployment ${state}`)
         await this.sleep(10_000)
       }
       if (!stagingDeploymentMatches(deployment, sha, { ready: true })) throw new Error('Staging build readiness timeout')

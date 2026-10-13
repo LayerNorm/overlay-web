@@ -24,6 +24,15 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
 - Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
+## Expected backend errors
+
+Carry expected Convex failures as `ConvexError` data and preserve `errorData` in
+the server HTTP adapter when `throwOnError` is requested. Production Convex hides
+developer error messages; string matching alone cannot enforce an HTTP contract.
+Note revision conflicts carry `NOTE_REVISION_CONFLICT`, mapped to the existing
+`409` response without exposing internal failures. Legacy message matching remains
+for web-first deployment overlap with older backends.
+
 ## Bootstrap
 
 `/api/v1/bootstrap` returns the canonical serializable frontend registry:

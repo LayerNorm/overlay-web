@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'nod
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { canonicalMain, promote, productionEnvironment } from './production-promote.mjs'
-import { PRODUCTION, promotionEvidence, productionCredentials, productionDeploymentMatches } from './production-control.mjs'
+import { PRODUCTION, promotionEvidence, productionCredentials, productionDeploymentMatches, verifyStagingLive } from './production-control.mjs'
 import { STAGING } from './staging-control.mjs'
 import { SMOKE_CHECKS } from './staging-publish.mjs'
 
@@ -15,7 +15,7 @@ const evidence = { state: 'ready', sha, projectId: STAGING.projectId, backend: S
   backendUrl: STAGING.backendUrl, url: STAGING.origin, deploymentId: 'dpl_stage', smoke: 'passed', runId: '123',
   checks: Object.fromEntries(SMOKE_CHECKS.map(name => [name, true])) }
 const run = { id: 123, head_sha: sha, head_branch: 'main', repository: { id: PRODUCTION.repositoryId },
-  status: 'completed', conclusion: 'success', event: 'push', path: '.github/workflows/staging-release.yml' }
+  status: 'completed', conclusion: 'success', event: 'workflow_dispatch', path: '.github/workflows/staging-release.yml' }
 const job = { name: 'deploy', status: 'completed', conclusion: 'success',
   steps: [{ name: 'Verify authenticated staging behavior', conclusion: 'success' }] }
 const deployment = { id: 'dpl_prod', projectId: PRODUCTION.projectId, target: 'production', readyState: 'READY',
@@ -47,7 +47,10 @@ test('promotion requires every smoke check and its successful trusted producer',
     { path: 'other.yml' }, { repository: { id: 0 } }, { conclusion: 'failure' }, { id: 999 }]) {
     assert.throws(() => promotionEvidence(evidence, sha, { ...run, ...patch }, job))
   }
-  assert.throws(() => promotionEvidence({ ...evidence, published: false }, sha, run, job))
+  const native = { ...evidence, published: false, url: 'https://candidate.vercel.app', previousDeploymentId: 'dpl_previous' }
+  assert.equal(promotionEvidence(native, sha, run, job), native)
+  assert.throws(() => promotionEvidence(native, sha, { ...run, event: 'push' }, job))
+  assert.throws(() => promotionEvidence({ ...native, url: 'https://outside.example' }, sha, run, job))
   assert.throws(() => promotionEvidence({ ...evidence, published: true }, sha, run, job))
   assert.equal(promotionEvidence({ ...evidence, published: true }, sha, run, { ...job,
     steps: [...job.steps, { name: 'Verify canonical staging after cutover', conclusion: 'success' }] }).published, true)
@@ -142,4 +145,19 @@ test('canonical checkout guard requires clean current main and the fixed product
     writeFileSync(join(root, '.vercel/project.json'), JSON.stringify({ projectId: STAGING.projectId, orgId: PRODUCTION.teamId }))
     assert.throws(() => invoke({}))
   } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+
+test('native release acceptance checks live origin and ready provenance without requiring alias publication', async () => {
+  const f = fixture()
+  const native = { ...evidence, published: false, url: 'https://candidate.vercel.app', previousDeploymentId: 'dpl_previous' }
+  const vercel = async path => {
+    assert.ok(!path.startsWith('/v4/'), 'An unpublished candidate does not require alias publication')
+    return { ...(await f.vercel(path)), url: 'candidate.vercel.app' }
+  }
+  await verifyStagingLive({ ...f, vercel, evidence: native })
+  for (const patch of [{ url: 'https://wrong.vercel.app' }, { sha: 'b'.repeat(40) }]) {
+    await assert.rejects(verifyStagingLive({ ...f, vercel, evidence: { ...native, ...patch }, sha: patch.sha || sha }))
+  }
+  await assert.rejects(verifyStagingLive({ ...f, evidence: native, vercel: async path => ({ ...(await vercel(path)), readyState: 'ERROR' }) }))
 })

@@ -161,7 +161,7 @@ test('main advancing before or during alias assignment cannot produce promotion 
 
 test('failed, untrusted, or wrongly assigned deployments never publish success', async () => {
   for (const options of [
-    { buildState: 'ERROR' }, { aliasMismatch: true },
+    { buildState: 'ERROR' }, { buildState: 'BLOCKED' }, { aliasMismatch: true },
     { deploymentPatch: { projectId: 'another-project' } }, { lostRead: true },
   ]) {
     const f = fixture(options)
@@ -177,21 +177,22 @@ test('controller entry point refuses execution from other repositories or featur
 
 test('staging workflow remains gated, serialized and main-only with no package install around control secrets', () => {
   const workflow = parse(readFileSync(new URL('../../.github/workflows/staging-release.yml', import.meta.url), 'utf8'))
-  assert.deepEqual(workflow.on.push.branches, ['main'])
+  assert.equal(workflow.on.push, undefined)
   const job = workflow.jobs.deploy
   assert.match(job.if, /github.ref == 'refs\/heads\/main'/)
-  assert.match(job.if, /vars.RELEASE_STAGING_FROM_MAIN == 'enabled'/)
+  assert.equal(workflow.on.push, undefined)
   assert.equal(job.environment, 'release-control')
   assert.equal(job.concurrency['cancel-in-progress'], false)
-  assert.match(job.if, /github.event_name == 'workflow_dispatch' && inputs.prepare_candidate/)
-  assert.equal(workflow.on.workflow_dispatch.inputs.prepare_candidate.default, false)
+  assert.match(job.if, /github.event_name == 'workflow_dispatch'/)
+  assert.equal(workflow.on.workflow_dispatch.inputs.prepare_candidate, undefined)
+  assert.equal(job.steps.find(s => s.id === 'deploy').env.STAGING_PREPARE_ONLY, '1')
   assert.equal(workflow.on.workflow_dispatch.inputs.publish_candidate.default, false)
   const initialSmoke = job.steps.findIndex(s => s.name === 'Verify authenticated staging behavior')
   const publish = job.steps.findIndex(s => s.id === 'publish')
   const canonicalSmoke = job.steps.findIndex(s => s.name === 'Verify canonical staging after cutover')
   assert.ok(initialSmoke >= 0 && initialSmoke < publish && publish < canonicalSmoke)
   assert.match(job.steps[publish].if, /steps.deploy.outputs.ready == 'true'/)
-  assert.match(job.steps[publish].if, /inputs.prepare_candidate && inputs.publish_candidate/)
+  assert.match(job.steps[publish].if, /inputs.publish_candidate/)
   assert.match(job.steps[publish].if, /vars.STAGING_ISOLATION_VERIFIED == 'enabled'/)
   assert.match(job.steps[canonicalSmoke].if, /steps.publish.outputs.published == 'true'/)
   const proof = job.steps.find(s => s.name === 'Save promotion evidence')
