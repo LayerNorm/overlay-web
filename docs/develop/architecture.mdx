@@ -74,6 +74,18 @@ explicit showcase mode so public routes do not depend on hidden rewrite query
 parameters. Protocol callbacks, integration popups, public share links, and
 visual fixtures remain standalone by contract.
 
+## Work tracking
+
+`convex/work/` owns human task records and append-only activity. `src/shared/work/`
+provides fixed statuses and fractional lexical ranks. Calendar dates stay as
+`YYYY-MM-DD` strings. Work is scoped content: private tasks remain creator-only;
+shared tasks follow active workspace membership and existing scope policies.
+Assignments and reviewers are active humans in v1; agent execution is deferred.
+Task mutations validate one-level parent relationships and optimistic revisions.
+Work lifecycle uses the shared scope planners directly so relation guards and
+activity writes execute in the same transaction. Detach related tasks before a
+scope move; it must not expose private relationships.
+
 ## Domain Decomposition
 
 Web file upload transport and error parsing live in

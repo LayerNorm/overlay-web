@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: planned, not started. Mockup approved: [`mockups/work-mockup.html`](mockups/work-mockup.html).
+Status: implementation in progress on `codex/work-plan`; phase 1 implemented and locally validated; hosted preview QA pending. Mockup approved: [`mockups/work-mockup.html`](mockups/work-mockup.html).
 
 ## Goal
 
@@ -50,12 +50,12 @@ Indexes: `by_workspaceId_scope_archivedAt`, `by_workspaceId_userId_archivedAt`, 
 
 ## PR plan
 
-One PR per row, against `main`, merge commit, no production deploy unless authorized. Each PR lands with its tests, docs and a `CHANGELOG.md` line. Branch names `codex/work-<slug>` from the latest `origin/main`.
+This implementation uses one Builder PR against `main`, with a `WORK PHASE {#} : {message}` commit per phase and isolated preview QA after each phase, as requested on 2026-10-13. No production deploy unless authorized. Each PR lands with its tests, docs and a `CHANGELOG.md` line. Branch names `codex/work-<slug>` from the latest `origin/main`.
 
 | PR | Branch | Delivers | Main files | Tests | Docs | Done when |
 | --- | --- | --- | --- | --- | --- | --- |
 | **0** | `work-plan` | This plan and the mockup | `docs/plans/WORK_PLAN.md`, `docs/plans/mockups/work-mockup.html` | none | add plan to the docs table if wanted | merged |
-| **1** | `work-data-model` | Schema, scope wiring, Convex functions, rank helper. No UI, no API. | `convex/schema.ts`, `convex/work/workItems.ts`, `convex/work/workItemEvents.ts`, `convex/lib/resourceScope.ts` (add `'workItems'` to `ScopedTable`), `src/shared/work/{status,rank}.ts` | `convex/work.convex.test.ts`: personal rows private, workspace rows shared, policy respected, move/archive/restore, parent cannot be itself or a descendant, events written; `rank.test.ts` | `convex-workflow.mdx` if deploy notes change; `architecture.mdx` (new `work` domain) | tests green; schema reviewed; dev Convex push done by Integration from the `staging` worktree |
+| **1** | `work-data-model` | Schema, scope wiring, Convex functions, rank helper. No UI, no API. | `convex/schema.ts`, `convex/work/workItems.ts`, `convex/work/workItemEvents.ts`, `convex/lib/resourceScope.ts` (add `'workItems'` to `ScopedTable`), `src/shared/work/{status,rank}.ts` | `convex/work.convex.test.ts`: personal rows private, workspace rows shared, policy respected, move/archive/restore, parent cannot be itself or a descendant, events written; `rank.test.ts` | `convex-workflow.mdx` if deploy notes change; `architecture.mdx` (new `work` domain) | tests green; schema reviewed; isolated PR preview backend deployed by hosted CI |
 | **2** | `work-api` | HTTP API and typed client | `src/app/api/v1/work/route.ts` and `[id]/route.ts` (thin), `src/server/app-api/v1/work/*`, `src/server/work/WorkService.ts`, `packages/overlay-api-client/src/work/{client,types}.ts` wired in `create-overlay-app-client.ts`, contracts in `@overlay/app-core`, capability `work.use` in `@overlay/authz-contracts`, entries in `authorization-route-policy.ts` | route tests per method, route-policy suite, client tests | `api-route-catalog.mdx`, `compact-api-route-catalog.mdx`, `api-source-of-truth.mdx` | every method reachable with a session and refused without one; scope view filter works over HTTP |
 | **3** | `work-shell` | Nav entry, secondary panel, empty route | `packages/overlay-app-core/src/app-shell.ts` (nav item before Agents, `work` flag), `appSidebarNav.ts` (`SecondaryPanelKind`, titles), `appSidebarPanelNav.ts` (scoped nav with List / Board / Timeline), `src/shared/workspaces/routing.ts` (`APP_SURFACES`), `src/app/app/work/page.tsx` + `loading.tsx` + `error.tsx` with a Suspense boundary, mobile drawer, `useSidebarEffects.ts` shortcuts | sidebar nav tests (extend `scopedPanelNav.test.tsx`), routing tests | `cache-components-design-decisions.md` (route and its Suspense), `feature-modules.mdx` | with the flag on, Work appears above Agents, scope and view survive reload and workspace switch, page renders an empty state; flag off hides it everywhere |
 | **4** | `work-list` | The List view | `src/features/work/components/{WorkList,WorkRow,QuickAdd,StatusPicker,OwnerPicker}.tsx`, `src/features/work/lib/*` (data hook, optimistic updates, grouping) | grouping and filter unit tests, component tests for quick-add and status change | `interface-design.md` if a shared control is added | create, rename, change status and owner from the list; filters (Everything, Needs you, Assigned to me) and search work; survives refresh |
@@ -69,15 +69,15 @@ PR 7a and 7b split because the Timeline is the costliest view and dependencies a
 
 ### Sequencing notes
 
-- PRs 1 to 3 are invisible to users and can merge back to back. From PR 4 on, the flag keeps work hidden.
+- Phases 1 to 3 are invisible to users. From phase 4 on, the flag keeps work hidden.
 - PR 4 and PR 6 only need PR 3 and PR 2; with two builders they can run in parallel on separate worktrees. PR 5 needs PR 4.
-- Never put the schema and a UI in one PR: a Convex schema push is shared across worktrees, so it is the part that most needs a clean, small review.
+- Keep schema and UI in separate phase commits. This PR owns an isolated preview backend; no shared backend is deployed from the feature worktree.
 
 ## Convex and release rules (from AGENTS.md)
 
-- New tables and indexes are additive. Push dev Convex only from the dedicated `staging` worktree; push production Convex only from the clean canonical `main` worktree after the web deployment is live. Never from a feature worktree.
+- New tables and indexes are additive. Hosted PR CI deploys only the scoped preview backend. Dedicated staging is an on-demand main release candidate; legacy `staging` is frozen. Customer production Convex deploys only from clean canonical `main` after matching web is live.
 - `convex/` imports `@/shared/*`, never `@/server/*`. Rank, status constants and scope rules therefore live in `src/shared/work/`.
-- Production web deployment is manual (`vercel deploy --prod`); merging does not deploy. Stop at "merged, not deployed" unless the owner authorizes.
+- Production web deployment is manual (`bash scripts/release/promote.sh <sha>` from clean canonical main); merging does not deploy. Stop at "merged, not deployed" unless the owner authorizes.
 - New untracked test files are skipped by `scripts/ci/run-all-tests.mjs` until `git add -N <file>`; do that before running the suite.
 
 ## QA checklist per PR

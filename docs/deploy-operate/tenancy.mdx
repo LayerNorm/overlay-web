@@ -74,6 +74,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 
 | Table | Current owner | Tenant decision | Shared multi-tenant requirement |
 | --- | --- | --- | --- |
+| `workItems` | Creator and workspace | Personal tasks are creator-only; workspace tasks require active non-guest membership. Mutations enforce creator/admin editing, content creation policy and same-scope parents. | Preserve workspace and private-scope enforcement in any future tenant layer. |
 | `userUiSettings` | `userId` | Deployment boundary | Add `tenantId` to row and `by_tenantId_userId` indexes. |
 | `subscriptions` | `userId` | Deployment boundary | Add `tenantId`; Stripe customer/subscription indexes must include tenant ownership. |
 | `budgetTopUps` | `userId` | Deployment boundary | Add `tenantId`; payment/session indexes must validate tenant ownership. |

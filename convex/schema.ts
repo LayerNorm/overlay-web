@@ -1,7 +1,22 @@
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
+import { workRecord, eventRecord } from './work/validators'
 
 export default defineSchema({
+  workItems: defineTable({
+    ...workRecord,
+    userId: v.string(),
+  })
+    .index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt'])
+    .index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
+    .index('by_parentId', ['parentId'])
+    .index('by_workspaceId_assignee', ['workspaceId', 'assigneePrincipalId'])
+    .index('by_workspaceId_status_rank', ['workspaceId', 'status', 'rank'])
+    .index('by_workspaceId_scope_status_rank', ['workspaceId', 'scope', 'status', 'rank'])
+    .index('by_workspaceId_userId_scope_status_rank', ['workspaceId', 'userId', 'scope', 'status', 'rank']),
+  workItemEvents: defineTable({ ...eventRecord })
+    .index('by_workItemId_createdAt', ['workItemId', 'createdAt']),
+
   userUiSettings: defineTable({
     userId: v.string(),
     theme: v.union(v.literal('light'), v.literal('dark')),
