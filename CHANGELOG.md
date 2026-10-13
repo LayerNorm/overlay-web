@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Submit production builds asynchronously and poll owned readiness; bound other command output at 16 MiB so large build logs cannot terminate release orchestration.
+
 - Parse Vercel CLI 63 structured production output and wait for the owned exact-SHA remote build to become READY before publishing web or pushing production Convex.
 
 - Recognize the primary submodule checkout in production release validation while continuing to refuse linked feature worktrees.
