@@ -30,14 +30,14 @@ function SampleBody() {
       {rows.map(([title, updated, status]) => (
         <article
           key={title}
-          className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4"
+          className="rounded-lg border border-(--border) bg-(--surface-elevated) p-4"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-medium text-[var(--foreground)]">{title}</h2>
-              <p className="mt-1 text-xs text-[var(--muted)]">{updated}</p>
+              <h2 className="truncate text-sm font-medium text-(--foreground)">{title}</h2>
+              <p className="mt-1 text-xs text-(--muted)">{updated}</p>
             </div>
-            <span className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--muted)]">
+            <span className="rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-xs text-(--muted)">
               {status}
             </span>
           </div>
@@ -60,12 +60,12 @@ function SampleSidePanel({ onClose }: { onClose?: () => void }) {
       }
     >
       <div className="grid gap-4 p-4 text-sm">
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-[var(--muted)]">
+        <div className="rounded-lg border border-(--border) bg-(--surface-subtle) p-3 text-(--muted)">
           Ask about files, project status, or recent changes without leaving the screen.
         </div>
-        <div className="rounded-lg border border-[var(--border)] p-3">
-          <p className="font-medium text-[var(--foreground)]">Suggested prompt</p>
-          <p className="mt-1 text-[var(--muted)]">Summarize open risks for this workspace.</p>
+        <div className="rounded-lg border border-(--border) p-3">
+          <p className="font-medium text-(--foreground)">Suggested prompt</p>
+          <p className="mt-1 text-(--muted)">Summarize open risks for this workspace.</p>
         </div>
       </div>
     </AppScreenSidePanel>
@@ -74,7 +74,7 @@ function SampleSidePanel({ onClose }: { onClose?: () => void }) {
 
 export function PlainScreen() {
   return (
-    <div className="h-[620px] bg-[var(--background)]">
+    <div className="h-[620px] bg-(--background)">
       <AppScreenShell
         header={<AppScreenHeader title="Projects" subtitle="All workspaces" />}
       >
@@ -88,7 +88,7 @@ export function PlainScreen() {
 
 export function HeaderActions() {
   return (
-    <div className="h-[620px] bg-[var(--background)]">
+    <div className="h-[620px] bg-(--background)">
       <AppScreenShell
         header={
           <AppScreenHeader
@@ -126,7 +126,7 @@ export function RightPanelOpen() {
   const [open, setOpen] = useState(true)
 
   return (
-    <div className="h-[620px] bg-[var(--background)]">
+    <div className="h-[620px] bg-(--background)">
       <AppScreenShell
         header={
           <AppScreenHeader
@@ -162,8 +162,8 @@ export function MobileLayout() {
   const [open, setOpen] = useState(true)
 
   return (
-    <div className="flex min-h-screen items-start justify-center bg-[var(--surface-subtle)] p-4">
-      <div className="h-[720px] w-full max-w-[390px] overflow-hidden border border-[var(--border)] bg-[var(--background)] shadow-xl">
+    <div className="flex min-h-screen items-start justify-center bg-(--surface-subtle) p-4">
+      <div className="h-[720px] w-full max-w-[390px] overflow-hidden border border-(--border) bg-(--background) shadow-xl">
         <AppScreenShell
           header={
             <AppScreenHeader

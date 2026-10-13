@@ -57,7 +57,7 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
     >
       {created ? (
         <div className="mt-4 space-y-3">
-          <p className="text-xs leading-5 text-[var(--muted)]">Copy it now. It is not shown again. Send it as an <code>Authorization: Bearer</code> header to the Overlay address.</p>
+          <p className="text-xs leading-5 text-(--muted)">Copy it now. It is not shown again. Send it as an <code>Authorization: Bearer</code> header to the Overlay address.</p>
           <McpCopyField value={created.token} label="token" />
           <McpCopyField value={`Authorization: Bearer ${created.token}`} label="header" />
           <div className="flex justify-end pt-2"><Button variant="primary" size="sm" onClick={onClose}>Done</Button></div>
@@ -65,11 +65,11 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
       ) : (
         <div className="mt-4 space-y-4">
           <div>
-            <label htmlFor="mcp-token-name" className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">Name <span className="font-normal text-[var(--muted-light)]">optional</span></label>
+            <label htmlFor="mcp-token-name" className="mb-1.5 block text-xs font-medium text-(--foreground)">Name <span className="font-normal text-(--muted-light)">optional</span></label>
             <Input id="mcp-token-name" value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="My local agent" />
           </div>
           <div>
-            <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">Workspace</p>
+            <p className="mb-1.5 text-xs font-medium text-(--foreground)">Workspace</p>
             <ListboxSelect
               aria-label="Workspace"
               value={workspaceId}
@@ -79,7 +79,7 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
             />
           </div>
           <div>
-            <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">Access</p>
+            <p className="mb-1.5 text-xs font-medium text-(--foreground)">Access</p>
             <SegmentedControl
               ariaLabel="Access"
               layout="stretch"
@@ -87,10 +87,10 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
               options={MCP_ACCESS_LEVELS.map((level) => ({ value: level, label: MCP_ACCESS_LABEL[level] }))}
               onChange={setAccess}
             />
-            <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">{MCP_ACCESS_DESCRIPTION[access]}</p>
+            <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">{MCP_ACCESS_DESCRIPTION[access]}</p>
           </div>
           <div>
-            <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">Expires</p>
+            <p className="mb-1.5 text-xs font-medium text-(--foreground)">Expires</p>
             <ListboxSelect aria-label="Expires" value={days} options={[...EXPIRY_OPTIONS]} onChange={setDays} portal />
           </div>
           {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}

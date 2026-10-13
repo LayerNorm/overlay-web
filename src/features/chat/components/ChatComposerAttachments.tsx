@@ -13,7 +13,7 @@ function CircularProgressRing({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 20 20"
-      className={`h-5 w-5 shrink-0 animate-spin text-[var(--foreground)] ${className ?? ''}`}
+      className={`h-5 w-5 shrink-0 animate-spin text-(--foreground) ${className ?? ''}`}
       aria-hidden
     >
       <circle
@@ -62,12 +62,12 @@ export function AttachmentPreviewTray({
       {attachedImages.map((img, index) => (
         <div
           key={img.dataUrl}
-          className="group relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] py-1.5 pl-1.5 pr-2 sm:max-w-[min(100%,240px)]"
+          className="group relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-(--border) bg-(--surface-subtle) py-1.5 pl-1.5 pr-2 sm:max-w-[min(100%,240px)]"
         >
           <button
             type="button"
             onClick={() => onOpenAttachmentPreview({ name: img.name, content: img.dataUrl, url: img.dataUrl })}
-            className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-elevated)]"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left outline-hidden transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-elevated)"
             title="Open attachment"
           >
             <Image
@@ -76,17 +76,17 @@ export function AttachmentPreviewTray({
               width={32}
               height={32}
               unoptimized
-              className="h-8 w-8 shrink-0 rounded-md border border-[var(--border)] object-cover"
+              className="h-8 w-8 shrink-0 rounded-md border border-(--border) object-cover"
             />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium text-[var(--foreground)]">{img.name}</p>
-              <p className="text-[10px] text-[var(--muted-light)]">Image</p>
+              <p className="truncate text-xs font-medium text-(--foreground)">{img.name}</p>
+              <p className="text-[10px] text-(--muted-light)">Image</p>
             </div>
           </button>
           <button
             type="button"
             onClick={() => setAttachedImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label={`Remove ${img.name}`}
           >
             <X size={10} strokeWidth={2} />
@@ -96,7 +96,7 @@ export function AttachmentPreviewTray({
       {pendingChatDocuments.map((doc) => (
         <div
           key={doc.clientId}
-          className="group relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] py-1.5 pl-2 pr-2 sm:max-w-[min(100%,260px)]"
+          className="group relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-(--border) bg-(--surface-subtle) py-1.5 pl-2 pr-2 sm:max-w-[min(100%,260px)]"
         >
           <button
             type="button"
@@ -108,25 +108,25 @@ export function AttachmentPreviewTray({
             {doc.status === 'uploading' ? (
               <CircularProgressRing />
             ) : (
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--muted)]">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center text-(--muted)">
                 <FileText size={16} strokeWidth={1.75} />
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium text-[var(--foreground)]">{doc.name}</p>
+              <p className="truncate text-xs font-medium text-(--foreground)">{doc.name}</p>
               {doc.status === 'error' ? (
                 <p className="truncate text-[10px] text-red-500" title={doc.error}>
                   {doc.error ?? 'Failed'}
                 </p>
               ) : (
-                <p className="text-[10px] text-[var(--muted-light)]">{fileTypeLabel(doc.name)}</p>
+                <p className="text-[10px] text-(--muted-light)">{fileTypeLabel(doc.name)}</p>
               )}
             </div>
           </button>
           <button
             type="button"
             onClick={() => removePendingDocument(doc.clientId)}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label={`Remove ${doc.name}`}
           >
             <X size={10} strokeWidth={2} />

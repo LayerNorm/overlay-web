@@ -57,7 +57,7 @@ export function ArchiveToastHost() {
   return (
     <div
       role="status"
-      className="fixed bottom-4 left-1/2 z-[80] flex max-w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3.5 py-2 text-xs text-[var(--foreground)] shadow-lg"
+      className="fixed bottom-4 left-1/2 z-80 flex max-w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-(--border) bg-(--surface-elevated) px-3.5 py-2 text-xs text-(--foreground) shadow-lg"
     >
       <span className="min-w-0 truncate">
         {failed ? 'Could not undo that.' : (toast.summary ?? `Archived “${toast.name}”`)}
@@ -67,7 +67,7 @@ export function ArchiveToastHost() {
           Undo
         </button>
       ) : null}
-      <Link href={ARCHIVED_SETTINGS_HREF} onClick={dismiss} className="shrink-0 text-[var(--muted)] underline-offset-2 hover:text-[var(--foreground)] hover:underline">
+      <Link href={ARCHIVED_SETTINGS_HREF} onClick={dismiss} className="shrink-0 text-(--muted) underline-offset-2 hover:text-(--foreground) hover:underline">
         View archived
       </Link>
     </div>

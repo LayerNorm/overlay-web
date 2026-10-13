@@ -242,7 +242,7 @@ function FilePreviewButton({
     <button
       type="button"
       onClick={onOpen}
-      className="rounded-xl outline-none transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+      className="rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
       title="Open attachment"
     >
       {children}
@@ -265,7 +265,7 @@ function FileSegmentItem({ seg, ctx }: SegmentItemProps<'file'>) {
           <img
             src={block.url}
             alt="Generated"
-            className="max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+            className="max-h-[320px] max-w-full rounded-xl border border-(--border) object-contain"
           />
         </FilePreviewButton>
       ) : (
@@ -275,7 +275,7 @@ function FileSegmentItem({ seg, ctx }: SegmentItemProps<'file'>) {
             preload="metadata"
             playsInline
             aria-hidden="true"
-            className="pointer-events-none max-h-[320px] max-w-full rounded-xl border border-[var(--border)] object-contain"
+            className="pointer-events-none max-h-[320px] max-w-full rounded-xl border border-(--border) object-contain"
           />
         </FilePreviewButton>
       )}
@@ -302,7 +302,7 @@ function TextSegmentItem({ seg, ctx }: SegmentItemProps<'text'>) {
   const isLastText = seg.originIndex === ctx.lastTextBlockIndex
   return (
     <div
-      className="w-full px-1 py-1 text-sm leading-relaxed text-[var(--foreground)]"
+      className="w-full px-1 py-1 text-sm leading-relaxed text-(--foreground)"
     >
       <MarkdownMessage
         key={`md-${ctx.markdownKeyPrefix}-${seg.originIndex}`}

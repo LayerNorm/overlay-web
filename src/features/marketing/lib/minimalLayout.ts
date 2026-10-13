@@ -30,12 +30,12 @@ export function minimalSerif(): { fontFamily: string } {
 
 /** Reading body copy. */
 export function minimalBody(): string {
-  return "text-base leading-8 text-[var(--muted)] md:text-lg";
+  return "text-base leading-8 text-(--muted) md:text-lg";
 }
 
 /** The single small label allowed per page. */
 export function minimalLabel(): string {
-  return "text-xs font-medium uppercase tracking-[0.28em] text-[var(--muted-light)]";
+  return "text-xs font-medium uppercase tracking-[0.28em] text-(--muted-light)";
 }
 
 /** Section vertical rhythm — whitespace does the separating, not borders. */
@@ -60,10 +60,10 @@ export function minimalContainer(): string {
 
 /** The only card treatment allowed: flat, bordered, no shadow. */
 export function minimalPanel(): string {
-  return "rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]";
+  return "rounded-2xl border border-(--border) bg-(--surface-elevated)";
 }
 
 /** Quiet inline text link with underline offset. */
 export function minimalTextLink(): string {
-  return "inline-flex items-center gap-1.5 text-sm font-medium text-[var(--foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:decoration-[var(--foreground)]";
+  return "inline-flex items-center gap-1.5 text-sm font-medium text-(--foreground) underline decoration-(--border) underline-offset-4 transition-colors hover:decoration-(--foreground)";
 }

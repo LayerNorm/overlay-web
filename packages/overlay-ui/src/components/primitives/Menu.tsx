@@ -19,7 +19,7 @@ export const MenuSurface = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElem
     <div
       ref={ref}
       className={cn(
-        'rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg',
+        'rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg',
         className,
       )}
       {...props}
@@ -123,7 +123,7 @@ export function FloatingMenu({
   return createPortal(
     <MenuSurface
       ref={menuRef}
-      className={cn('overlay-pop-in fixed z-[10090]', className)}
+      className={cn('overlay-pop-in fixed z-10090', className)}
       style={{
         left: position?.left ?? -10_000,
         top: position?.top ?? -10_000,
@@ -146,7 +146,7 @@ export function MenuItem({
     <button
       type={type}
       className={cn(
-        'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:text-[var(--muted-light)]',
+        'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) disabled:cursor-not-allowed disabled:text-(--muted-light)',
         className,
       )}
       {...props}

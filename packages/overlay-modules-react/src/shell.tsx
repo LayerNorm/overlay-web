@@ -32,11 +32,11 @@ export interface AppScreenShellProps extends HTMLAttributes<HTMLDivElement> {
 const panelWidthClasses: Record<Exclude<AppScreenPanelWidth, number>, string> = {
   sm: 'lg:w-80',
   md: 'lg:w-96',
-  lg: 'lg:w-[28rem]',
+  lg: 'lg:w-md',
 }
 
 function panelWidthClass(width: AppScreenPanelWidth) {
-  return typeof width === 'number' ? 'lg:w-[var(--app-screen-panel-width)]' : panelWidthClasses[width]
+  return typeof width === 'number' ? 'lg:w-(--app-screen-panel-width)' : panelWidthClasses[width]
 }
 
 function panelWidthStyle(width: AppScreenPanelWidth): CSSProperties | undefined {
@@ -83,7 +83,7 @@ function RightPanelOverlay({
   onClose?: () => void
 }) {
   const className = cn(
-    'absolute inset-0 z-20 bg-[var(--background)]/80 backdrop-blur-sm transition-opacity duration-300 ease-[var(--overlay-ease)] lg:hidden',
+    'absolute inset-0 z-20 bg-(--background)/80 backdrop-blur-xs transition-opacity duration-300 ease-(--overlay-ease) lg:hidden',
     visible ? 'opacity-100' : 'pointer-events-none opacity-0',
   )
   return onClose ? (
@@ -142,11 +142,11 @@ function ScreenRightPanel({
       <RightPanelOverlay visible={visible} onClose={onClose} />
       <aside
         className={cn(
-          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-[var(--surface-elevated)] transition-[transform,width,opacity] duration-300 ease-[var(--overlay-ease)]',
+          'absolute right-0 z-30 flex min-h-0 w-full max-w-[min(24rem,100vw)] shrink-0 overflow-hidden bg-(--surface-elevated) transition-[transform,width,opacity] duration-300 ease-(--overlay-ease)',
           resizing ? 'transition-none' : null,
           floating
-            ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-[var(--border)] bg-[var(--sidebar-surface)] shadow-xl lg:max-w-none'
-            : 'inset-y-0 border-l border-[var(--border)] shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
+            ? 'inset-y-2 right-2 max-w-[calc(100vw-1rem)] rounded-xl border border-(--border) bg-(--sidebar-surface) shadow-xl lg:max-w-none'
+            : 'inset-y-0 border-l border-(--border) shadow-2xl lg:static lg:z-auto lg:max-w-none lg:shadow-none',
           rightPanelVisibilityClasses(visible, floating, widthClassName),
         )}
         style={widthStyle}
@@ -195,7 +195,7 @@ export function AppScreenShell({
   return (
     <div
       className={cn(
-        'flex h-full min-h-0 w-full bg-[var(--background)] text-[var(--foreground)]',
+        'flex h-full min-h-0 w-full bg-(--background) text-(--foreground)',
         className,
       )}
       {...props}
@@ -203,7 +203,7 @@ export function AppScreenShell({
       {sidebar ? (
         <aside
           className={cn(
-            'min-h-0 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-surface)]',
+            'min-h-0 shrink-0 flex-col border-r border-(--border) bg-(--sidebar-surface)',
             sidebarBehavior === 'always' ? 'flex' : 'hidden lg:flex',
             sidebarClassName,
           )}
@@ -281,7 +281,7 @@ function PanelResizeHandle({
         onResizingChange(false)
       }}
     >
-      <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-[var(--muted-light)]" />
+      <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-(--muted-light)" />
     </div>
   )
 }
@@ -310,17 +310,17 @@ function AppScreenHeaderTitle({
       {leading ? <div className="mr-2 shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center">
-          {title ? <h1 className="truncate text-sm font-medium text-[var(--foreground)]">{title}</h1> : null}
+          {title ? <h1 className="truncate text-sm font-medium text-(--foreground)">{title}</h1> : null}
           {subtitle ? (
             <>
-              <span className="mx-2 shrink-0 text-[var(--muted-light)]">·</span>
-              <span className="truncate text-sm text-[var(--muted)]">{subtitle}</span>
+              <span className="mx-2 shrink-0 text-(--muted-light)">·</span>
+              <span className="truncate text-sm text-(--muted)">{subtitle}</span>
             </>
           ) : null}
           {metadata ? <span className="ml-2 shrink-0">{metadata}</span> : null}
         </div>
         {description ? (
-          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">{description}</p>
+          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-(--muted)">{description}</p>
         ) : null}
       </div>
     </div>
@@ -345,7 +345,7 @@ export function AppScreenHeader({
     <header
       className={cn(
         'flex min-h-14 shrink-0 flex-col justify-center gap-2 px-3 py-2.5 sm:px-6 md:min-h-16 md:gap-3 md:py-3',
-        border ? 'border-b border-[var(--border)]' : null,
+        border ? 'border-b border-(--border)' : null,
         className,
       )}
       {...props}
@@ -362,7 +362,7 @@ export function AppScreenHeader({
             metadata={metadata}
           />
           {(search || actions) ? (
-            <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] md:overflow-visible [&::-webkit-scrollbar]:hidden">
+            <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto scrollbar-none md:overflow-visible [&::-webkit-scrollbar]:hidden">
               {search}
               {actions}
             </div>
@@ -412,7 +412,7 @@ export function AppScreenBody({
   return (
     <main
       className={cn(
-        'h-full min-h-0 bg-[var(--background)]',
+        'h-full min-h-0 bg-(--background)',
         bodyScrollClasses[scroll],
         bodyPaddingClasses[padding],
         className,
@@ -454,15 +454,15 @@ function AppScreenSidePanelDefaultHeader({
   return (
     <div
       className={cn(
-        'flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)]',
+        'flex shrink-0 items-center justify-between gap-3 border-b border-(--border)',
         // Non-compact matches AppScreenHeader's height so the two borders
         // read as one continuous divider across the screen and the panel.
         compact ? 'h-11 min-h-11 px-3' : 'min-h-14 px-4 md:min-h-16',
       )}
     >
       <div className="min-w-0">
-        {title ? <h2 className="truncate text-sm font-medium text-[var(--foreground)]">{title}</h2> : null}
-        {description ? <p className="truncate text-xs text-[var(--muted)]">{description}</p> : null}
+        {title ? <h2 className="truncate text-sm font-medium text-(--foreground)">{title}</h2> : null}
+        {description ? <p className="truncate text-xs text-(--muted)">{description}</p> : null}
       </div>
       {(actions || onClose) ? (
         <div className="flex shrink-0 items-center gap-1.5">
@@ -472,7 +472,7 @@ function AppScreenSidePanelDefaultHeader({
               type="button"
               aria-label={closeLabel}
               className={cn(
-                'inline-flex items-center justify-center text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+                'inline-flex items-center justify-center text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)',
                 compact ? 'h-7 w-7 rounded-md' : 'h-8 w-8 rounded-lg',
               )}
               onClick={onClose}
@@ -502,7 +502,7 @@ export function AppScreenSidePanel({
   return (
     <section
       className={cn(
-        'flex h-full min-h-0 w-full flex-col bg-[var(--surface-elevated)] text-[var(--foreground)]',
+        'flex h-full min-h-0 w-full flex-col bg-(--surface-elevated) text-(--foreground)',
         className,
       )}
       {...props}
@@ -532,7 +532,7 @@ export function AppScreenSidePanelHeader({ className, children, ...props }: AppS
   return (
     <header
       className={cn(
-        'flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2.5 md:min-h-16 md:py-3',
+        'flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-(--border) px-3 py-2.5 md:min-h-16 md:py-3',
         className,
       )}
       {...props}

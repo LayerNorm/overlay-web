@@ -119,18 +119,18 @@ function AdvancedSection({ draft, onChange, modelOptions }: {
     onChange({ toolGroups: next })
   }
   return (
-    <div className="rounded-xl border border-[var(--border)]">
+    <div className="rounded-xl border border-(--border)">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left hover:bg-[var(--surface-muted)]"
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left hover:bg-(--surface-muted)"
       >
         <span className="text-xs font-medium">Advanced</span>
-        <span className={`min-w-0 flex-1 truncate text-right text-[11px] text-[var(--muted)] ${open ? 'invisible' : ''}`}>
+        <span className={`min-w-0 flex-1 truncate text-right text-[11px] text-(--muted) ${open ? 'invisible' : ''}`}>
           {modelLabel} · {toolsLabel}
         </span>
-        <ChevronDown size={14} className={`shrink-0 text-[var(--muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`shrink-0 text-(--muted) transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
         <div className="space-y-4 px-3 pb-3 pt-0.5">
@@ -177,7 +177,7 @@ function ComputerSection({ draft, onChange }: {
   onChange(patch: Partial<NewAgentDraft>): void
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border)]">
+    <div className="rounded-xl border border-(--border)">
       <div className="flex items-center gap-2 px-3 py-2.5">
         <div className="flex-1 [&>div]:mb-0">
           <FieldLabel info="A machine of its own with a desktop. Created when you save; billed while it runs.">Computer</FieldLabel>
@@ -241,7 +241,7 @@ export function NewAgentFields({ draft, onChange, modelOptions, computersAvailab
           value={draft.instructions}
           onChange={(event) => onChange({ instructions: event.target.value })}
           placeholder="Finds evidence and challenges assumptions."
-          className="min-h-20 !resize-none"
+          className="min-h-20 resize-none!"
         />
       </div>
       <div>
@@ -406,13 +406,13 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       onOpenChange={(next) => { if (!next) close() }}
       title={cloud.view ? `Starting ${cloud.view.agent.name}` : 'New agent'}
       aria-label="New agent"
-      className="flex max-h-[min(860px,calc(100vh-32px))] !w-[min(440px,94vw)] flex-col !rounded-[20px] !p-0 [&>div:first-child]:px-5 [&>div:first-child]:pt-4"
+      className="flex max-h-[min(860px,calc(100vh-32px))] w-[min(440px,94vw)]! flex-col rounded-[20px]! p-0! [&>div:first-child]:px-5 [&>div:first-child]:pt-4"
       actions={(
         <button
           type="button"
           aria-label="Close"
           onClick={close}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <X size={16} strokeWidth={1.75} />
         </button>
@@ -423,7 +423,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
           <>
             <CloudAgentProgress phase={cloud.view.phase} />
             {failed ? <p role="alert" className="mt-2 text-xs text-red-500">{cloud.view.error}</p> : (
-              <p className="mt-2 text-xs text-[var(--muted)]">This takes about a minute. You can close this; the agent keeps starting.</p>
+              <p className="mt-2 text-xs text-(--muted)">This takes about a minute. You can close this; the agent keeps starting.</p>
             )}
           </>
         ) : (
@@ -439,7 +439,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
         )}
         {shownError && !failed ? <p role="alert" className="mt-3 text-xs text-red-500">{shownError}</p> : null}
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
+      <div className="flex shrink-0 justify-end gap-2 border-t border-(--border) px-5 py-3">
         {cloud.view ? (
           <>
             <Button variant="secondary" size="sm" onClick={close}>{failed ? 'Close' : 'Continue in background'}</Button>

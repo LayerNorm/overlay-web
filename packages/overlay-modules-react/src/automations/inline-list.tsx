@@ -54,7 +54,7 @@ export function AutomationsInlineList({
   renderRowActions,
 }: AutomationsInlineListProps) {
   if (automations.length === 0) {
-    return <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">No automations yet</p>
+    return <p className="px-2.5 py-2 text-xs text-(--muted-light)">No automations yet</p>
   }
   const deletingAutomationIdSet = new Set(deletingAutomationIds)
 
@@ -66,7 +66,7 @@ export function AutomationsInlineList({
           ? 'text-red-500'
           : status.tone === 'enabled'
             ? 'text-green-500'
-            : 'text-[var(--muted-light)]'
+            : 'text-(--muted-light)'
         const conversationId = getAutomationConversationId(automation)
         const automationLabel = getAutomationDisplayName(automation)
         const isActive = activeAutomationId === automation._id || activeId === automation._id || activeId === conversationId
@@ -83,14 +83,14 @@ export function AutomationsInlineList({
             }}
             className={`group/automation-row flex h-7 w-full items-center gap-1 rounded-md px-2 py-0 text-xs transition-colors ${
               isActive
-                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                ? 'bg-(--surface-subtle) text-(--foreground)'
+                : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
             }`}
           >
             {isEditing ? (
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-0.5">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xs px-0.5">
                 {pendingNavId === automation._id ? (
-                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--muted)]" />
+                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-(--muted)" />
                 ) : (
                   <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
                 )}
@@ -110,7 +110,7 @@ export function AutomationsInlineList({
                     }
                   }}
                   onBlur={() => onCommitRename(automation)}
-                  className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
+                  className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
                 />
               </div>
             ) : (
@@ -118,10 +118,10 @@ export function AutomationsInlineList({
                 type="button"
                 disabled={isDeleting || pendingNavId === automation._id}
                 onClick={() => onNavigateAutomation(automation, href)}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-sm px-0.5 text-left disabled:cursor-default disabled:opacity-50"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-xs px-0.5 text-left disabled:cursor-default disabled:opacity-50"
               >
                 {pendingNavId === automation._id ? (
-                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-[var(--muted)]" />
+                  <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-(--muted)" />
                 ) : (
                   <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
                 )}
@@ -151,7 +151,7 @@ export function AutomationsInlineList({
                       type="button"
                       onClick={(event) => onBeginRename(automation, event)}
                       disabled={isDeleting}
-                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
+                      className="shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
                       aria-label="Rename automation"
                     >
                       <Pencil size={11} />
@@ -160,7 +160,7 @@ export function AutomationsInlineList({
                       type="button"
                       onClick={(event) => onRequestDelete(automation, event)}
                       disabled={isDeleting}
-                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
+                      className="shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
                       aria-label="Delete automation"
                     >
                       <Trash2 size={11} />

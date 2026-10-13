@@ -6,11 +6,11 @@ export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon'
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'bg-[var(--foreground)] text-[var(--background)] hover:opacity-90 disabled:opacity-50',
+    'bg-(--foreground) text-(--background) hover:opacity-90 disabled:opacity-50',
   secondary:
-    'border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] hover:bg-[var(--border)] disabled:opacity-50',
+    'border border-(--border) bg-(--surface-subtle) text-(--foreground) hover:bg-(--border) disabled:opacity-50',
   ghost:
-    'bg-transparent text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-50',
+    'bg-transparent text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50',
   danger:
     'bg-red-500 text-white hover:opacity-90 disabled:opacity-50',
 }

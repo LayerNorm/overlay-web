@@ -25,7 +25,7 @@ export function WorkspaceAvatar({
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center border border-[var(--border)] bg-[var(--surface-subtle)] font-semibold text-[var(--foreground)] ${sizeClass}`}
+      className={`inline-flex shrink-0 items-center justify-center border border-(--border) bg-(--surface-subtle) font-semibold text-(--foreground) ${sizeClass}`}
       aria-hidden
     >
       {initials(workspace.name)}

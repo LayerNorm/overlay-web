@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react'
  *   if (!mounted) return null
  *   return (
  *     <div className={cn(
- *       'transition-opacity duration-200 ease-[var(--overlay-ease)]',
+ *       'transition-opacity duration-200 ease-(--overlay-ease)',
  *       visible ? 'opacity-100' : 'opacity-0',
  *     )} />
  *   )

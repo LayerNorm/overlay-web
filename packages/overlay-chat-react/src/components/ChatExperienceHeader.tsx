@@ -69,8 +69,8 @@ function TemporaryChatButton({
         onClick={onClick}
         className={`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-[background-color,border-color,box-shadow,color] duration-300 ${
           active
-            ? 'temporary-chat-inverse-surface border-dashed border-[var(--temporary-chat-border)] shadow-sm'
-            : 'border-transparent bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]'
+            ? 'temporary-chat-inverse-surface border-dashed border-(--temporary-chat-border) shadow-xs'
+            : 'border-transparent bg-(--surface-subtle) text-(--muted) hover:bg-(--border) hover:text-(--foreground)'
         } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
       >
         <span
@@ -89,18 +89,18 @@ function TemporaryChatButton({
 function PremiumModelsLoadingRows({ divider = false }: { divider?: boolean }) {
   return (
     <div
-      className={divider ? 'mt-1 border-t border-[var(--border)]' : ''}
+      className={divider ? 'mt-1 border-t border-(--border)' : ''}
       role="status"
       aria-label="Loading premium models"
     >
-      <div className="px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
+      <div className="px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-(--muted-light)">
         Premium
       </div>
       <div className="space-y-1 px-3 pb-2 pt-1" aria-hidden>
         {[72, 58, 66].map((width) => (
           <div key={width} className="flex h-7 items-center gap-2">
-            <span className="ui-skeleton-line h-2.5 w-[10px] rounded" />
-            <span className="ui-skeleton-line h-3 rounded" style={{ width: `${width}%` }} />
+            <span className="ui-skeleton-line h-2.5 w-[10px] rounded-sm" />
+            <span className="ui-skeleton-line h-3 rounded-sm" style={{ width: `${width}%` }} />
           </div>
         ))}
       </div>
@@ -219,7 +219,7 @@ function HeaderTitleSection({
         <input
           ref={headerTitleInputRef}
           aria-label="Conversation title"
-          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)] md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-2 py-1 text-sm font-medium text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground) md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
           value={editingChatTitle}
           onChange={(e) => onEditingChatTitleChange(e.target.value)}
           onKeyDown={(e) => {
@@ -237,7 +237,7 @@ function HeaderTitleSection({
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <h2
-            className="min-w-0 flex-1 text-sm font-medium leading-snug text-[var(--foreground)] md:max-w-[20rem] md:truncate lg:max-w-[24rem]"
+            className="min-w-0 flex-1 text-sm font-medium leading-snug text-(--foreground) md:max-w-[20rem] md:truncate lg:max-w-[24rem]"
             title={titleLabel}
           >
             <CrossfadeText text={titleLabel} className="line-clamp-2 md:line-clamp-1 md:truncate" />
@@ -246,7 +246,7 @@ function HeaderTitleSection({
             <button
               type="button"
               onClick={onBeginHeaderChatRename}
-              className="shrink-0 rounded p-1 text-[var(--muted)] opacity-0 transition-opacity hover:bg-[var(--border)] hover:text-[var(--foreground)] group-hover/header-title:opacity-100 focus-visible:opacity-100"
+              className="shrink-0 rounded-sm p-1 text-(--muted) opacity-0 transition-opacity hover:bg-(--border) hover:text-(--foreground) group-hover/header-title:opacity-100 focus-visible:opacity-100"
               aria-label="Rename chat"
             >
               <Pencil size={14} />
@@ -255,9 +255,9 @@ function HeaderTitleSection({
         </div>
       )}
       {projectName ? (
-        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-(--border) bg-(--surface-subtle) px-2 py-0.5 text-[10px] text-(--muted)">
           <FolderOpen size={9} />
-          <span className="max-w-[6rem] truncate sm:max-w-none">{projectName}</span>
+          <span className="max-w-24 truncate sm:max-w-none">{projectName}</span>
         </span>
       ) : null}
     </div>
@@ -281,7 +281,7 @@ function ModelQualitiesHoverCard({
 }) {
   return (
     <div
-      className="fixed z-[100] hidden w-56 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 shadow-md md:block"
+      className="fixed z-100 hidden w-56 rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2 shadow-md md:block"
       style={{
         left: position.x,
         top: position.y,
@@ -303,7 +303,7 @@ function ModelQualitiesHoverCard({
 
 function ModelGroupDivider({ label }: { label: string }) {
   return (
-    <div className="mt-1 border-t border-[var(--border)] px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--muted-light)]">
+    <div className="mt-1 border-t border-(--border) px-3 pb-1 pt-2 text-[9px] font-medium uppercase tracking-[0.08em] text-(--muted-light)">
       {label}
     </div>
   )
@@ -357,8 +357,8 @@ function ModelPickerRow({
       onClick={onSelect}
       onMouseEnter={onHoverStart}
       className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
-        disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-[var(--surface-muted)]'
-      } ${selected ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
+        disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-(--surface-muted)'
+      } ${selected ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`}
     >
       <span className="flex items-center gap-2">
         {selected ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
@@ -464,7 +464,7 @@ function ModelSelectionModeButtons({
   isModeDisabled: (mode: AskModelSelectionMode) => boolean
 }) {
   return (
-    <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-0.5">
+    <div className="grid grid-cols-2 gap-1 rounded-lg bg-(--surface-subtle) p-0.5">
       {(['single', 'multiple'] as const).map((selMode) => {
         const isActive = selectionMode === selMode
         const disabled = isModeDisabled(selMode)
@@ -476,8 +476,8 @@ function ModelSelectionModeButtons({
             disabled={disabled}
             className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
               isActive
-                ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs'
+                : 'text-(--muted) hover:text-(--foreground)'
             } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
           >
             {selMode}
@@ -533,7 +533,7 @@ function AutomationModelPicker({
         <button
           type="button"
           onClick={onToggleModelPicker}
-          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-[13rem]"
+          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-52"
           aria-label="Automation model"
         >
           <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
@@ -554,7 +554,7 @@ function AutomationModelPicker({
           ) : null}
           <div
             data-tour="model-picker"
-            className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+            className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
           >
             <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
               {textModelsLoading && !isFreeTier ? <PremiumModelsLoadingRows /> : null}
@@ -585,7 +585,7 @@ function AutomationDetailTabButtons({
   onSelectAutomationDetailTab,
 }: Pick<ChatExperienceHeaderProps, 'automationDetailTab' | 'onSelectAutomationDetailTab'>) {
   return (
-    <div className="flex h-8 shrink-0 items-center rounded-lg bg-[var(--surface-subtle)] p-0.5">
+    <div className="flex h-8 shrink-0 items-center rounded-lg bg-(--surface-subtle) p-0.5">
       {AUTOMATION_DETAIL_TABS.map((tab) => {
         const active = automationDetailTab === tab.id
         const TabIcon = tab.icon
@@ -596,8 +596,8 @@ function AutomationDetailTabButtons({
             onClick={() => onSelectAutomationDetailTab(tab.id)}
             className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
               active
-                ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-                : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
+                : 'text-(--muted) hover:text-(--foreground)'
             }`}
           >
             <TabIcon size={12} strokeWidth={1.75} />
@@ -665,15 +665,15 @@ function VideoSubModePicker({
         type="button"
         onClick={onToggleVideoSubModePicker}
         disabled={isActiveLoading}
-        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-[13rem] ${
-          isActiveLoading ? 'cursor-not-allowed text-[var(--muted-light)]' : 'text-[var(--muted)] hover:bg-[var(--border)]'
+        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-52 ${
+          isActiveLoading ? 'cursor-not-allowed text-(--muted-light)' : 'text-(--muted) hover:bg-(--border)'
         }`}
       >
         <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
         <ChevronDown size={11} className="shrink-0" />
       </button>
       {showVideoSubModePicker ? (
-        <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-52">
+        <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg md:left-auto md:right-0 md:w-52">
           {VIDEO_SUB_MODES.map(({ value, label }) => (
             <button
               key={value}
@@ -682,7 +682,7 @@ function VideoSubModePicker({
                 onVideoSubModeChange(value)
                 onSetShowVideoSubModePicker(false)
               }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--surface-muted)] ${videoSubMode === value ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'}`}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${videoSubMode === value ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`}
             >
               {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
               {label}
@@ -751,9 +751,9 @@ function ChatModelPickerDropdown({
   return (
     <div
       data-tour="model-picker"
-      className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
+      className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
     >
-      <div className="border-b border-[var(--border)] px-2 pb-2 pt-1">
+      <div className="border-b border-(--border) px-2 pb-2 pt-1">
         <DelayedTooltip
           label="Cycle text / image / video (⇧⌘.)"
           side="left"
@@ -810,7 +810,7 @@ function ChatModelPickerDropdown({
         ) : null}
       </div>
       {generationMode === 'image' ? (
-        <div className="border-t border-[var(--border)] px-2 py-2">
+        <div className="border-t border-(--border) px-2 py-2">
           <ModelSelectionModeButtons
             selectionMode={imageModelSelectionMode}
             onSelectionModeChange={onImageModelSelectionModeChange}
@@ -819,7 +819,7 @@ function ChatModelPickerDropdown({
         </div>
       ) : null}
       {generationMode === 'video' ? (
-        <div className="border-t border-[var(--border)] px-2 py-2">
+        <div className="border-t border-(--border) px-2 py-2">
           <ModelSelectionModeButtons
             selectionMode={videoModelSelectionMode}
             onSelectionModeChange={onVideoModelSelectionModeChange}
@@ -828,7 +828,7 @@ function ChatModelPickerDropdown({
         </div>
       ) : null}
       {generationMode === 'text' && !hasAutomationContext ? (
-        <div className="border-t border-[var(--border)] px-2 py-2">
+        <div className="border-t border-(--border) px-2 py-2">
           <ModelSelectionModeButtons
             selectionMode={askModelSelectionMode}
             onSelectionModeChange={onTextModelSelectionModeChange}
@@ -918,7 +918,7 @@ function ChatModelPicker({
         <button
           type="button"
           onClick={onToggleModelPicker}
-          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--muted)] hover:bg-[var(--border)] md:w-auto md:max-w-[13rem]"
+          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) md:w-auto md:max-w-52"
         >
           <span className="min-w-0 truncate">{modelPickerLabel}</span>
           <ChevronDown size={11} className="shrink-0" />

@@ -50,7 +50,7 @@ export function Controls() {
   const [mode, setMode] = useState<GenerationMode>('text')
 
   return (
-    <div className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
+    <div className="min-h-screen bg-(--background) p-6 text-(--foreground)">
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
         <Toolbar className="rounded-lg border">
           <span className="text-sm font-medium">Toolbar</span>
@@ -65,7 +65,7 @@ export function Controls() {
           </DelayedTooltip>
         </Toolbar>
 
-        <section className="grid gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+        <section className="grid gap-4 rounded-lg border border-(--border) bg-(--surface-elevated) p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary">
               <Plus size={14} />
@@ -130,7 +130,7 @@ export function Controls() {
             title="No items"
             description="Reusable empty states use app tokens and compact spacing."
             action={<Button size="sm">Create item</Button>}
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-6"
+            className="rounded-lg border border-(--border) bg-(--surface-elevated) p-6"
           />
         </section>
       </div>
@@ -140,9 +140,9 @@ export function Controls() {
 
 export function Layout() {
   return (
-    <div className="flex h-[520px] bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex h-[520px] bg-(--background) text-(--foreground)">
       <SidebarShell className="w-64">
-        <div className="flex h-14 items-center border-b border-[var(--border)] px-4 text-sm font-medium">
+        <div className="flex h-14 items-center border-b border-(--border) px-4 text-sm font-medium">
           Sidebar
         </div>
         <SidebarNav>
@@ -166,7 +166,7 @@ export function Layout() {
 
 export function Feedback() {
   return (
-    <div className="grid min-h-screen gap-6 bg-[var(--background)] p-6 text-[var(--foreground)] lg:grid-cols-2">
+    <div className="grid min-h-screen gap-6 bg-(--background) p-6 text-(--foreground) lg:grid-cols-2">
       <section className="space-y-4">
         <OutputCardSkeleton />
         <IntegrationListSkeleton rows={4} />
@@ -184,7 +184,7 @@ export function Dialogs() {
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   return (
-    <div className="flex min-h-screen items-center justify-center gap-3 bg-[var(--background)] p-6 text-[var(--foreground)]">
+    <div className="flex min-h-screen items-center justify-center gap-3 bg-(--background) p-6 text-(--foreground)">
       <Button variant="primary" onClick={() => setDialogOpen(true)}>
         Open dialog
       </Button>
@@ -221,15 +221,15 @@ export function Tokens() {
   const spaceEntries = Object.entries(overlayDesignTokens.spacing).filter(([key]) => key !== '0')
 
   return (
-    <div className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
+    <div className="min-h-screen bg-(--background) p-6 text-(--foreground)">
       <div className="mx-auto grid max-w-4xl gap-6">
         <section className="grid gap-3">
           <h2 className="text-sm font-semibold">Colors</h2>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {colorEntries.map(([name, value]) => (
-              <div key={name} className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-3">
-                <span className="h-8 w-8 rounded-md border border-[var(--border)]" style={{ background: value }} />
-                <span className="text-xs text-[var(--muted)]">{name}</span>
+              <div key={name} className="flex items-center gap-3 rounded-lg border border-(--border) bg-(--surface-elevated) p-3">
+                <span className="h-8 w-8 rounded-md border border-(--border)" style={{ background: value }} />
+                <span className="text-xs text-(--muted)">{name}</span>
               </div>
             ))}
           </div>
@@ -239,21 +239,21 @@ export function Tokens() {
           <h2 className="text-sm font-semibold">Spacing</h2>
           <div className="space-y-2">
             {spaceEntries.map(([name, value]) => (
-              <div key={name} className="flex items-center gap-3 text-xs text-[var(--muted)]">
+              <div key={name} className="flex items-center gap-3 text-xs text-(--muted)">
                 <span className="w-6">{name}</span>
-                <span className="h-3 rounded bg-[var(--foreground)]" style={{ width: value }} />
+                <span className="h-3 rounded-sm bg-(--foreground)" style={{ width: value }} />
                 <span>{value}</span>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="grid gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+        <section className="grid gap-2 rounded-lg border border-(--border) bg-(--surface-elevated) p-4">
           <p className="font-serif text-xl">Serif display text</p>
-          <p className="text-sm leading-relaxed text-[var(--muted)]">
+          <p className="text-sm leading-relaxed text-(--muted)">
             Sans body text uses the shared typography variables with stable line height.
           </p>
-          <code className="font-mono text-xs text-[var(--muted)]">font-mono token</code>
+          <code className="font-mono text-xs text-(--muted)">font-mono token</code>
         </section>
       </div>
     </div>
@@ -264,9 +264,9 @@ export function PromotedPrimitives() {
   const [listboxValue, setListboxValue] = useState<'a' | 'b' | 'c'>('a')
 
   return (
-    <div className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
+    <div className="min-h-screen bg-(--background) p-6 text-(--foreground)">
       <div className="mx-auto grid max-w-lg gap-6">
-        <section className="grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+        <section className="grid gap-3 rounded-lg border border-(--border) bg-(--surface-elevated) p-4">
           <h2 className="text-sm font-semibold">ListboxSelect</h2>
           <ListboxSelect
             value={listboxValue}
@@ -280,23 +280,23 @@ export function PromotedPrimitives() {
           />
         </section>
 
-        <section className="grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+        <section className="grid gap-3 rounded-lg border border-(--border) bg-(--surface-elevated) p-4">
           <h2 className="text-sm font-semibold">UsageMeterBar</h2>
           <UsageMeterBar primaryLabel="42 / 100 messages" secondaryLabel="42%" percent={42} />
           <UsageMeterBar primaryLabel="85 / 100 messages" secondaryLabel="85%" percent={85} tone="warning" />
           <UsageMeterBar primaryLabel="100 / 100 messages" secondaryLabel="100%" percent={100} tone="exhausted" />
         </section>
 
-        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+        <section className="rounded-lg border border-(--border) bg-(--surface-elevated)">
           <SidebarResourceSection
             action={{ label: 'New chat', onClick: () => undefined }}
             search={{ title: 'Search chats', onClick: () => undefined }}
           >
             <SidebarResourceList>
-              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--surface-muted)]">
+              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-(--surface-muted)">
                 Weekly planning
               </button>
-              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--surface-muted)]">
+              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-(--surface-muted)">
                 API design notes
               </button>
             </SidebarResourceList>
@@ -335,7 +335,7 @@ export function CommandPaletteStory() {
       ]
 
   return (
-    <div className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">
+    <div className="min-h-screen bg-(--background) p-6 text-(--foreground)">
       <Button variant="primary" onClick={() => setOpen(true)}>
         Open command palette
       </Button>

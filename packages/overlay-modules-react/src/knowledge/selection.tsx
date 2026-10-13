@@ -6,13 +6,13 @@ export function BulkSelectMarker({ selected, className }: { selected: boolean; c
   return (
     <span
       className={cn(
-        'flex h-4 w-4 items-center justify-center rounded border border-[var(--border)]',
-        selected ? 'border-[var(--foreground)] bg-[var(--foreground)]' : 'bg-[var(--surface-elevated)]',
+        'flex h-4 w-4 items-center justify-center rounded-sm border border-(--border)',
+        selected ? 'border-(--foreground) bg-(--foreground)' : 'bg-(--surface-elevated)',
         className,
       )}
       aria-hidden
     >
-      {selected ? <span className="text-[10px] leading-none text-[var(--background)]">✓</span> : null}
+      {selected ? <span className="text-[10px] leading-none text-(--background)">✓</span> : null}
     </span>
   )
 }

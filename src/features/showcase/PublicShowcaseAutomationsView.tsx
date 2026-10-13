@@ -26,7 +26,7 @@ export function PublicShowcaseAutomationsView() {
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold">{selected.name}</h1>
-              <p className="mt-0.5 text-xs text-[var(--muted)]">{selected.schedule}</p>
+              <p className="mt-0.5 text-xs text-(--muted)">{selected.schedule}</p>
             </div>
             <Button size="sm" onClick={() => requireAuth('nav')}>Use automation</Button>
           </div>
@@ -35,7 +35,7 @@ export function PublicShowcaseAutomationsView() {
     >
       <AppScreenBody className="overflow-auto" maxWidth="lg">
         <div className="mx-auto w-full max-w-4xl py-6">
-          <p className="mb-6 max-w-2xl text-sm leading-6 text-[var(--muted)]">{selected.description}</p>
+          <p className="mb-6 max-w-2xl text-sm leading-6 text-(--muted)">{selected.description}</p>
           <AutomationGraphPreview source={flows[selected.id] ?? ''} />
         </div>
       </AppScreenBody>

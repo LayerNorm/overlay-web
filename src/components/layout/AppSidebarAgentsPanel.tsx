@@ -445,7 +445,7 @@ function AgentListRow({
         <button
           type="button"
           disabled={anyOpening}
-          className={`${resourceRowClass} pr-7 ${isActive ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+          className={`${resourceRowClass} pr-7 ${isActive ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)
@@ -465,7 +465,7 @@ function AgentListRow({
               event.stopPropagation()
               onToggleExpanded(agent.id)
             }}
-            className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-(--muted-light) hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
             <ChevronRight
               size={12}
@@ -609,7 +609,7 @@ export function AgentsInlinePanel({
   return (
     <SidebarResourceList>
       {loading ? (
-        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
+        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-(--muted-light)">
           <Loader2 size={13} className="animate-spin" /> Loading agents...
         </div>
       ) : sortedAgents.length ? (
@@ -640,7 +640,7 @@ export function AgentsInlinePanel({
           )
         })
       ) : (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
+        <p className="px-2.5 py-2 text-xs text-(--muted-light)">
           {solo ? 'No agents yet' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
         </p>
       )}
@@ -650,7 +650,7 @@ export function AgentsInlinePanel({
           <button
             type="button"
             onClick={retryOpen}
-            className="mt-1.5 rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+            className="mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)"
           >
             Retry
           </button>

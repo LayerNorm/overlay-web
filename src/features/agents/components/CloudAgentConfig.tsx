@@ -12,7 +12,7 @@ import { FieldLabel } from './InfoTip'
 
 const POLL_WAITING_MS = 2_500
 const POLL_IDLE_MS = 20_000
-const INPUT = 'w-full rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-xs outline-none focus:border-[var(--foreground)]'
+const INPUT = 'w-full rounded-lg border border-(--border) bg-transparent px-2.5 py-1.5 text-xs outline-hidden focus:border-(--foreground)'
 
 type Harness = 'claude-code' | 'codex'
 
@@ -141,23 +141,23 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
       <FieldLabel info="Your Claude Code or Codex setup: instructions, skills, commands, subagents, and MCP servers. Passwords, tokens, and chat history are never copied.">
         Config
       </FieldLabel>
-      <div className="space-y-2.5 rounded-xl border border-[var(--border)] p-3">
+      <div className="space-y-2.5 rounded-xl border border-(--border) p-3">
         {active ? (
-          <p className="text-xs text-[var(--muted)]">
-            <span className="font-medium text-[var(--foreground)]">Version {active.version}</span> is on the machine — {describe(active)}
+          <p className="text-xs text-(--muted)">
+            <span className="font-medium text-(--foreground)">Version {active.version}</span> is on the machine — {describe(active)}
           </p>
-        ) : !staged ? <p className="text-xs text-[var(--muted)]">Nothing imported yet. This agent uses a clean setup.</p> : null}
+        ) : !staged ? <p className="text-xs text-(--muted)">Nothing imported yet. This agent uses a clean setup.</p> : null}
 
         {!staged ? (
           <>
             {code ? (
               <div className="space-y-1.5">
-                <p className="text-[11px] leading-4 text-[var(--muted)]">Run this in a terminal on the computer that has your setup. It lists what it found before sending anything. Expires in 15 minutes.</p>
+                <p className="text-[11px] leading-4 text-(--muted)">Run this in a terminal on the computer that has your setup. It lists what it found before sending anything. Expires in 15 minutes.</p>
                 <div className="flex items-start gap-1.5">
-                  <code className="min-w-0 flex-1 break-all rounded-lg bg-[var(--surface-subtle)] px-2 py-1.5 text-[11px] leading-4">{code.command}</code>
+                  <code className="min-w-0 flex-1 break-all rounded-lg bg-(--surface-subtle) px-2 py-1.5 text-[11px] leading-4">{code.command}</code>
                   <Button variant="secondary" size="sm" onClick={() => void copy()} aria-label="Copy command"><Copy size={13} />{copied ? 'Copied' : 'Copy'}</Button>
                 </div>
-                <p className="text-[11px] text-[var(--muted)]" role="status">Waiting for your computer…</p>
+                <p className="text-[11px] text-(--muted)" role="status">Waiting for your computer…</p>
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-2">
@@ -178,8 +178,8 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
           <div className="space-y-2.5">
             <div>
               <p className="text-xs font-medium">Ready to review</p>
-              <p className="mt-0.5 text-xs text-[var(--muted)]">{describe(staged)}</p>
-              {staged.meta?.mcpServers.length ? <p className="mt-0.5 text-[11px] text-[var(--muted)]">MCP servers: {staged.meta.mcpServers.join(', ')}</p> : null}
+              <p className="mt-0.5 text-xs text-(--muted)">{describe(staged)}</p>
+              {staged.meta?.mcpServers.length ? <p className="mt-0.5 text-[11px] text-(--muted)">MCP servers: {staged.meta.mcpServers.join(', ')}</p> : null}
             </div>
 
             {staged.meta?.warnings.length ? (
@@ -190,7 +190,7 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
 
             {wantsSecrets ? (
               <div className="space-y-1.5">
-                <p className="text-[11px] leading-4 text-[var(--muted)]">These servers need values we did not copy. Add them here; they are stored encrypted and given to the agent only while it runs.</p>
+                <p className="text-[11px] leading-4 text-(--muted)">These servers need values we did not copy. Add them here; they are stored encrypted and given to the agent only while it runs.</p>
                 {state?.secrets.map((secret) => (
                   <div key={secret.name} className="flex items-center gap-1.5">
                     <span className="w-40 shrink-0 truncate text-[11px] font-mono" title={secret.usedBy}>{secret.name}</span>
@@ -227,18 +227,18 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
                 />
                 <span>
                   Also turn on {staged.meta.hooks.length} command{staged.meta.hooks.length === 1 ? '' : 's'} that run automatically
-                  <span className="block text-[var(--muted)]">{staged.meta.hooks.slice(0, 4).map((hook) => `${hook.event}: ${hook.command}`).join(' · ')}</span>
+                  <span className="block text-(--muted)">{staged.meta.hooks.slice(0, 4).map((hook) => `${hook.event}: ${hook.command}`).join(' · ')}</span>
                 </span>
               </label>
             ) : null}
 
             {staged.summary?.dropped ? (
               <div>
-                <button type="button" className="text-[11px] text-[var(--muted)] underline-offset-2 hover:underline" onClick={() => setShowDropped((value) => !value)}>
+                <button type="button" className="text-[11px] text-(--muted) underline-offset-2 hover:underline" onClick={() => setShowDropped((value) => !value)}>
                   {staged.summary.dropped} item{staged.summary.dropped === 1 ? '' : 's'} left out {showDropped ? '(hide)' : '(show)'}
                 </button>
                 {showDropped ? (
-                  <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto text-[11px] leading-4 text-[var(--muted)]">
+                  <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto text-[11px] leading-4 text-(--muted)">
                     {staged.meta?.dropped.map((drop) => <li key={`${drop.path}:${drop.reason}`}><span className="font-mono">{drop.path}</span> — {drop.reason}</li>)}
                   </ul>
                 ) : null}
@@ -268,7 +268,7 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
         ) : null}
 
         {history.length > 0 && !staged ? (
-          <details className="text-[11px] text-[var(--muted)]">
+          <details className="text-[11px] text-(--muted)">
             <summary className="cursor-pointer">Earlier versions</summary>
             <ul className="mt-1 space-y-1">
               {history.map((profile) => (

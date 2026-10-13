@@ -11,10 +11,10 @@ const GateContext = createContext<Gate | null>(null)
 export function AgentEditorSkeleton() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4" aria-label="Loading agent" aria-busy="true">
-      <div className="h-9 w-48 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
-      <div className="h-28 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
-      <div className="h-36 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
-      <div className="h-20 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
+      <div className="h-9 w-48 animate-pulse rounded-lg bg-(--surface-subtle)" />
+      <div className="h-28 animate-pulse rounded-xl bg-(--surface-subtle)" />
+      <div className="h-36 animate-pulse rounded-xl bg-(--surface-subtle)" />
+      <div className="h-20 animate-pulse rounded-xl bg-(--surface-subtle)" />
     </div>
   )
 }

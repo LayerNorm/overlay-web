@@ -26,13 +26,13 @@ export function AgentThreadRows({
 }) {
   if (bundle === 'loading') {
     return (
-      <div className="flex items-center gap-2 py-1.5 pl-2.5 text-xs text-[var(--muted-light)]">
+      <div className="flex items-center gap-2 py-1.5 pl-2.5 text-xs text-(--muted-light)">
         <span className="inline-flex w-4 shrink-0 justify-center"><Loader2 size={12} className="animate-spin" /></span> Loading threads...
       </div>
     )
   }
   if (bundle === 'error') {
-    return <p className="py-1.5 pl-[34px] text-xs text-[var(--muted-light)]">Could not load threads</p>
+    return <p className="py-1.5 pl-[34px] text-xs text-(--muted-light)">Could not load threads</p>
   }
   // Archived threads are in Settings → Archived, not under the agent.
   const threads = bundle.threads.filter((thread) => !thread.archivedAt)
@@ -46,15 +46,15 @@ export function AgentThreadRows({
             <button
               type="button"
               onClick={() => onOpenThread(agent, thread.conversationId)}
-              className={`${resourceRowClass} ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+              className={`${resourceRowClass} ${active ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
             >
               <span className="inline-flex w-4 shrink-0 justify-center"><MessageSquare size={13} /></span>
               <span className="flex-1 truncate group-hover/thread:pr-14">{thread.title}</span>
               {thread.isMain ? (
-                <span className="text-[10px] text-[var(--muted-light)] group-hover/thread:hidden">Main</span>
+                <span className="text-[10px] text-(--muted-light) group-hover/thread:hidden">Main</span>
               ) : null}
             </button>
-            <span className="absolute inset-y-1 right-1 hidden items-center gap-0.5 rounded-md bg-[var(--surface-subtle)] px-0.5 group-hover/thread:flex">
+            <span className="absolute inset-y-1 right-1 hidden items-center gap-0.5 rounded-md bg-(--surface-subtle) px-0.5 group-hover/thread:flex">
               <button
                 type="button"
                 aria-label="Archive thread"
@@ -63,7 +63,7 @@ export function AgentThreadRows({
                   event.stopPropagation()
                   onArchiveThread(agent, thread.conversationId, true)
                 }}
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--muted)] transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-(--muted) transition-colors hover:bg-(--surface-elevated) hover:text-(--foreground)"
               >
                 <Archive size={13} />
               </button>
@@ -75,7 +75,7 @@ export function AgentThreadRows({
                   event.stopPropagation()
                   onDeleteThread(agent, thread.conversationId)
                 }}
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--muted)] transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-(--muted) transition-colors hover:bg-(--surface-elevated) hover:text-(--foreground)"
               >
                 <Trash2 size={13} />
               </button>
@@ -92,12 +92,12 @@ export function AgentThreadRows({
             type="button"
             disabled={!target}
             onClick={() => { if (target) onOpenThread(agent, target) }}
-            className={`${resourceRowClass} ${active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''} ${!target ? 'cursor-default opacity-70' : ''}`}
+            className={`${resourceRowClass} ${active ? 'bg-(--surface-subtle) text-(--foreground)' : ''} ${!target ? 'cursor-default opacity-70' : ''}`}
           >
             <span className="inline-flex w-4 shrink-0 justify-center"><Workflow size={13} /></span>
             <span className="flex-1 truncate">{automation.name}</span>
             {!automation.enabled ? (
-              <span className="text-[10px] text-[var(--muted-light)]">Paused</span>
+              <span className="text-[10px] text-(--muted-light)">Paused</span>
             ) : null}
           </button>
         )
@@ -107,7 +107,7 @@ export function AgentThreadRows({
           type="button"
           disabled={creatingThread}
           onClick={() => onCreateThread(agent)}
-          className={`${resourceRowClass} text-[var(--muted-light)]`}
+          className={`${resourceRowClass} text-(--muted-light)`}
         >
           <span className="inline-flex w-4 shrink-0 justify-center">
             {creatingThread ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}

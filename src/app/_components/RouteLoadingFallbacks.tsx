@@ -7,7 +7,7 @@ function SkeletonBlock({ className = '' }: { className?: string }) {
 
 export function MarketingRouteLoading() {
   return (
-    <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+    <main className="min-h-screen bg-(--background) text-(--foreground)">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8">
         <div className="mb-16 flex items-center justify-between">
           <SkeletonBlock className="h-5 w-28" />
@@ -41,11 +41,11 @@ export function MarketingRouteLoading() {
 export function AuthPageSkeleton() {
   return (
     <div
-      className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]"
+      className="flex min-h-screen bg-(--background) text-(--foreground)"
       role="status"
       aria-label="Loading"
     >
-      <aside className="hidden w-[45%] flex-col justify-between border-r border-[var(--border)] bg-[var(--surface-subtle)] px-12 py-12 lg:flex xl:px-16">
+      <aside className="hidden w-[45%] flex-col justify-between border-r border-(--border) bg-(--surface-subtle) px-12 py-12 lg:flex xl:px-16">
         <div className="flex items-center gap-2.5">
           <OverlayMark size={MARKETING_LOGO_SIZE} label="" />
           <span className="font-serif text-xl font-medium tracking-tight">overlay</span>
@@ -93,10 +93,10 @@ export function AuthRouteLoading() {
 
 export function ShareRouteLoading() {
   return (
-    <main className="min-h-screen bg-[var(--background)] px-5 py-6 text-[var(--foreground)]">
+    <main className="min-h-screen bg-(--background) px-5 py-6 text-(--foreground)">
       <div className="mx-auto w-full max-w-4xl space-y-4">
         <SkeletonBlock className="h-5 w-40" />
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5">
+        <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-5">
           <SkeletonBlock className="mb-4 h-4 w-48" />
           <div className="space-y-2">
             <SkeletonBlock className="h-3 w-full" />

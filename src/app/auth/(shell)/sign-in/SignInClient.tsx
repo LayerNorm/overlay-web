@@ -214,10 +214,10 @@ function SsoEmailDivider() {
   return (
     <div className="relative my-6">
       <div className="absolute inset-0 flex items-center">
-        <div className="w-full border-t border-[var(--border)]" />
+        <div className="w-full border-t border-(--border)" />
       </div>
       <div className="relative flex justify-center text-xs">
-        <span className="bg-[var(--background)] px-4 text-[var(--muted)]">
+        <span className="bg-(--background) px-4 text-(--muted)">
           or continue with email
         </span>
       </div>
@@ -325,9 +325,9 @@ export function SignInClient({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const labelText = "text-[var(--foreground)]";
-  const linkMuted = "text-[var(--muted)] hover:text-[var(--foreground)]";
-  const createLink = "text-[var(--foreground)] hover:underline font-medium";
+  const labelText = "text-(--foreground)";
+  const linkMuted = "text-(--muted) hover:text-(--foreground)";
+  const createLink = "text-(--foreground) hover:underline font-medium";
 
   // Auth params intentionally gate first paint; page is client-gated by (shell).
   // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
@@ -394,7 +394,7 @@ export function SignInClient({
     return (
       <LandingAuthPageChrome>
         <div className="flex min-h-40 items-center justify-center">
-          <p className="text-sm text-[var(--muted)]">Continuing to Overlay…</p>
+          <p className="text-sm text-(--muted)">Continuing to Overlay…</p>
         </div>
       </LandingAuthPageChrome>
     );

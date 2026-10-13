@@ -231,10 +231,10 @@ export function InlineNavChildren({
   function renderRow(item: InlineNavItem, active: boolean, nested: boolean) {
     const itemClass = `flex ${nested ? 'h-8' : 'h-9'} w-full items-center gap-2.5 rounded-md px-3 ${nested ? 'text-[13px]' : 'text-sm'} transition-colors ${
       item.locked
-        ? 'cursor-default text-[var(--muted-light)]'
+        ? 'cursor-default text-(--muted-light)'
         : active
-          ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+          ? 'bg-(--surface-subtle) text-(--foreground)'
+          : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
     }`
     const content = (
       <>
@@ -244,15 +244,15 @@ export function InlineNavChildren({
         <span className="flex-1 text-left">{item.label}</span>
         {item.badgeCount ? (
           <span
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium leading-none text-[var(--foreground)]"
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--border) text-[9px] font-medium leading-none text-(--foreground)"
             aria-label={`${item.badgeCount} unread`}
           >
             {item.badgeCount > 9 ? '9+' : item.badgeCount}
           </span>
         ) : null}
-        {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
+        {item.locked ? <span className="text-[10px] text-(--muted-light)">Soon</span> : null}
         {item.expanded && item.children?.length ? (
-          <ChevronRight size={13} className="shrink-0 rotate-90 text-[var(--muted-light)]" aria-hidden />
+          <ChevronRight size={13} className="shrink-0 rotate-90 text-(--muted-light)" aria-hidden />
         ) : null}
       </>
     )

@@ -88,10 +88,10 @@ export function ListboxSelect<T extends string>({
           setOpen((current) => !current)
         }}
         className={cn(
-          'flex min-h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-left text-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--foreground)]',
+          'flex min-h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-left text-sm outline-hidden transition-colors focus-visible:ring-1 focus-visible:ring-(--foreground)',
           disabled
-            ? 'cursor-not-allowed text-[var(--muted-light)]'
-            : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]',
+            ? 'cursor-not-allowed text-(--muted-light)'
+            : 'text-(--foreground) hover:bg-(--surface-muted)',
           buttonClassName,
         )}
       >
@@ -216,8 +216,8 @@ function ListboxMenu<T extends string>({
     <div
       ref={menuRef}
       className={cn(
-        'overlay-pop-in max-h-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg',
-        portal ? 'fixed z-[10090]' : 'absolute left-0 right-0 top-full z-50 mt-1',
+        'overlay-pop-in max-h-60 overflow-y-auto rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg',
+        portal ? 'fixed z-10090' : 'absolute left-0 right-0 top-full z-50 mt-1',
         menuClassName,
       )}
       style={portal ? {
@@ -232,7 +232,7 @@ function ListboxMenu<T extends string>({
       {groupedOptions.map(({ group, options: optionsInGroup }) => (
         <div key={group ?? '__ungrouped'}>
           {group ? (
-            <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">
+            <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">
               {group}
             </p>
           ) : null}
@@ -247,8 +247,8 @@ function ListboxMenu<T extends string>({
                 className={cn(
                   'flex w-full items-center px-3 py-2 text-left text-sm transition-colors',
                   active
-                    ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]'
-                    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]',
+                    ? 'bg-(--surface-muted) font-medium text-(--foreground)'
+                    : 'text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)',
                 )}
                 onClick={() => onSelect(option.value)}
               >

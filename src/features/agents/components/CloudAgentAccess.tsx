@@ -63,7 +63,7 @@ export function CloudAgentAccess({ agentId, allowedToolIds }: { agentId: string;
         options={[...OPTIONS]}
         onChange={(value) => void choose(value)}
       />
-      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+      <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
         {current === 'custom' ? 'A custom set of tools. Choose a level to replace it.' : current === 'none' ? NONE_DESCRIPTION : MCP_ACCESS_DESCRIPTION[current]}
       </p>
       {error ? <p role="alert" className="mt-1.5 text-xs text-red-500">{error}</p> : null}

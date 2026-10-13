@@ -38,7 +38,7 @@ export function CloudAgentModel({ agentId, modelId }: { agentId: string; modelId
   return (
     <div className="space-y-4">
       <AgentModelField adapterId={current.adapterId} model={current.model} onChange={(model) => void choose(model)} disabled={busy} />
-      <p className="-mt-2 text-[11px] leading-4 text-[var(--muted)]">Applies from the agent&apos;s next message.</p>
+      <p className="-mt-2 text-[11px] leading-4 text-(--muted)">Applies from the agent&apos;s next message.</p>
       {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
     </div>
   )

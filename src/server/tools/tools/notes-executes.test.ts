@@ -39,7 +39,7 @@ function mockNotesApi(note: Stored, hooks: { beforeWrite?: () => void } = {}) {
   return { writes, restore: () => { globalThis.fetch = originalFetch } }
 }
 
-test('get_note returns Markdown, a revision, and the outline', async () => {
+test('get_note returns Markdown, a revision, and the outline-solid', async () => {
   const api = mockNotesApi({ content: '# Doc\n\n## Tasks\n\n- a\n', updatedAt: 10 })
   try {
     const result = await executeGetNote(options, { noteId: 'note_1' })

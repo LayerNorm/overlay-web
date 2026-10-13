@@ -12,8 +12,8 @@ function DisabledAutomationsRoute() {
     <AppScreenShell>
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <h1 className="text-xl font-semibold text-[var(--foreground)]">Automations unavailable</h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          <h1 className="text-xl font-semibold text-(--foreground)">Automations unavailable</h1>
+          <p className="mt-2 text-sm leading-6 text-(--muted)">
             Automations are disabled for this deployment.
           </p>
         </div>

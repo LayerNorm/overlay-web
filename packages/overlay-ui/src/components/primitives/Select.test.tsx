@@ -43,7 +43,7 @@ test('nested elements inside an option still resolve to text', () => {
 
 test('caller classes style the control once, not the wrapper and the button', () => {
   const markup = renderToStaticMarkup(
-    <Select aria-label="Frequency" value="interval" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2">
+    <Select aria-label="Frequency" value="interval" className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2">
       <option value="interval">Interval</option>
     </Select>,
   )
@@ -53,7 +53,7 @@ test('caller classes style the control once, not the wrapper and the button', ()
   // Applying className to the wrapper as well put the box on two elements — a
   // visible box inside a box on every migrated select.
   const classAttrs = [...markup.matchAll(/class="([^"]*)"/g)].map((m) => m[1] ?? '')
-  const boxed = classAttrs.filter((c) => c.includes('bg-[var(--background)]'))
+  const boxed = classAttrs.filter((c) => c.includes('bg-(--background)'))
   assert.equal(boxed.length, 1, `expected the caller box on one element, saw ${boxed.length}`)
   assert.equal(markup.includes('<button'), true)
 })

@@ -74,7 +74,7 @@ test('a member’s own message is just the personal gray bubble', () => {
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
   assert.doesNotMatch(html, /aria-label="Report message"/)
-  assert.doesNotMatch(html, /rounded-lg bg-\[var\(--surface-muted\)\]/)
+  assert.doesNotMatch(html, /rounded-lg bg-\(--surface-muted\)/)
 })
 
 test('another member’s message is flat Slack-style (no bubble) with avatar and hover row', () => {
@@ -87,7 +87,7 @@ test('another member’s message is flat Slack-style (no bubble) with avatar and
   assert.doesNotMatch(html, />You</)
   assert.doesNotMatch(html, /room-message-self-bubble/)
   assert.doesNotMatch(html, /chat-user-bubble/)
-  assert.match(html, /hover:bg-\[var\(--surface-subtle\)\]/)
+  assert.match(html, /hover:bg-\(--surface-subtle\)/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
   assert.match(html, /data-testid="thread-teaser"/)

@@ -122,9 +122,9 @@ function InviteLinkPanel({ inviteUrl }: { inviteUrl?: string | null }) {
   const [copied, setCopied] = useState(false)
 
   return (
-    <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-      <p className="text-xs font-medium text-[var(--foreground)]">Invitation created</p>
-      <p className="mt-1 text-[11px] leading-relaxed text-[var(--muted)]">
+    <div className="mt-5 rounded-xl border border-(--border) bg-(--surface-subtle) p-3">
+      <p className="text-xs font-medium text-(--foreground)">Invitation created</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-(--muted)">
         Email delivery is not configured for this deployment. Share this secure link directly.
       </p>
       <div className="mt-3 flex items-center gap-2">
@@ -178,7 +178,7 @@ function InviteRequestForm({
       }}
     >
       <div>
-        <label htmlFor="workspace-invite-email" className="text-xs font-medium text-[var(--foreground)]">
+        <label htmlFor="workspace-invite-email" className="text-xs font-medium text-(--foreground)">
           Email address
         </label>
         <Input
@@ -195,7 +195,7 @@ function InviteRequestForm({
       </div>
       {!guest ? (
         <div>
-          <label htmlFor="workspace-invite-role" className="text-xs font-medium text-[var(--foreground)]">
+          <label htmlFor="workspace-invite-role" className="text-xs font-medium text-(--foreground)">
             Workspace role
           </label>
           <Select
@@ -267,7 +267,7 @@ export function CreateTeamDialog({
         }}
       >
         <div>
-          <label htmlFor="workspace-team-name" className="text-xs font-medium text-[var(--foreground)]">
+          <label htmlFor="workspace-team-name" className="text-xs font-medium text-(--foreground)">
             Team name
           </label>
           <Input
@@ -281,8 +281,8 @@ export function CreateTeamDialog({
           />
         </div>
         <div>
-          <label htmlFor="workspace-team-description" className="text-xs font-medium text-[var(--foreground)]">
-            Description <span className="font-normal text-[var(--muted-light)]">optional</span>
+          <label htmlFor="workspace-team-description" className="text-xs font-medium text-(--foreground)">
+            Description <span className="font-normal text-(--muted-light)">optional</span>
           </label>
           <Textarea
             id="workspace-team-description"
@@ -326,9 +326,9 @@ export function TeamMembersDialog({
       description="People and named agents can belong to a team. Services and nested teams cannot."
       footer={<Button variant="primary" onClick={() => onOpenChange(false)}>Done</Button>}
     >
-      <div className="mt-5 max-h-72 divide-y divide-[var(--border)] overflow-y-auto rounded-xl border border-[var(--border)]">
+      <div className="mt-5 max-h-72 divide-y divide-(--border) overflow-y-auto rounded-xl border border-(--border)">
         {candidates.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-[var(--muted)]">
+          <p className="px-4 py-8 text-center text-xs text-(--muted)">
             Invite a person or create a named agent first.
           </p>
         ) : candidates.map((candidate) => {
@@ -339,17 +339,17 @@ export function TeamMembersDialog({
           return (
             <div
               key={candidate.id}
-              className="flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--surface-subtle)]"
+              className="flex items-center gap-3 px-3 py-2.5 hover:bg-(--surface-subtle)"
             >
               <div className="min-w-0 flex-1">
-                <p className="block truncate text-xs font-medium text-[var(--foreground)]">
+                <p className="block truncate text-xs font-medium text-(--foreground)">
                   {candidate.name}
                 </p>
-                <p className="block truncate text-[10px] capitalize text-[var(--muted-light)]">
+                <p className="block truncate text-[10px] capitalize text-(--muted-light)">
                   {candidate.principalType}
                 </p>
               </div>
-              {busy ? <Loader2 size={13} className="animate-spin text-[var(--muted)]" /> : null}
+              {busy ? <Loader2 size={13} className="animate-spin text-(--muted)" /> : null}
               <Toggle
                 checked={checked}
                 onCheckedChange={() => void onToggle(principalId, !checked)}

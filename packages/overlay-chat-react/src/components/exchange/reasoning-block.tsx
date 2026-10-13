@@ -18,7 +18,7 @@ function ReasoningExpandButton({
     <button
       type="button"
       onClick={onToggle}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
       aria-label={expanded ? 'Collapse reasoning' : 'Expand reasoning'}
     >
       <ChevronDown
@@ -53,7 +53,7 @@ function ReasoningDetails({
       {show ? (
         <div
           ref={scrollRef}
-          className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)] ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'}`}
+          className={`message-appear reasoning-markdown text-[12px] leading-relaxed text-(--muted) ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${streaming ? 'scrollbar-none' : 'scrollbar-thin'}`}
         >
           <MarkdownMessage
             text={text}
@@ -95,7 +95,7 @@ export function ReasoningBlock({
           <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className={streaming ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
+              <span className={streaming ? 'tool-line-shimmer' : 'text-(--tool-line-label)'}>
                 {label}
               </span>
               {!streaming && hasContent ? (

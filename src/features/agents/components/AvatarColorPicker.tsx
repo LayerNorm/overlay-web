@@ -69,7 +69,7 @@ export function AvatarColorPicker({ color, onChange }: { color: string; onChange
 
   const hueColor = hsvToHex({ h: hsv.h, s: 1, v: 1 })
   return (
-    <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+    <div className="mt-3 space-y-3 border-t border-(--border) pt-3">
       <div
         role="slider"
         tabIndex={0}
@@ -78,7 +78,7 @@ export function AvatarColorPicker({ color, onChange }: { color: string; onChange
         aria-valuenow={Math.round(hsv.s * 100)}
         onKeyDown={areaKeys}
         {...dragHandlers((x, y) => commit({ ...hsv, s: x, v: 1 - y }))}
-        className="relative h-[120px] w-full cursor-crosshair touch-none rounded-lg outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+        className="relative h-[120px] w-full cursor-crosshair touch-none rounded-lg outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
         style={{ backgroundColor: hueColor, backgroundImage: 'linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent)' }}
       >
         <span
@@ -96,7 +96,7 @@ export function AvatarColorPicker({ color, onChange }: { color: string; onChange
           aria-valuenow={Math.round(hsv.h)}
           onKeyDown={hueKeys}
           {...dragHandlers((x) => commit({ ...hsv, h: Math.min(359.99, x * 360) }))}
-          className="relative h-3 flex-1 cursor-pointer touch-none rounded-full outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+          className="relative h-3 flex-1 cursor-pointer touch-none rounded-full outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
           style={{ backgroundImage: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
         >
           <span
@@ -119,7 +119,7 @@ export function AvatarColorPicker({ color, onChange }: { color: string; onChange
           spellCheck={false}
           autoComplete="off"
           aria-label="Hex color"
-          className="h-8 w-[5.5rem] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-center font-mono text-xs uppercase text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+          className="h-8 w-22 rounded-lg border border-(--border) bg-(--surface-subtle) px-2 text-center font-mono text-xs uppercase text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
         />
       </div>
     </div>

@@ -472,13 +472,13 @@ function ExchangeUserMessage({
           <button
             type="button"
             onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
-            className="mb-1 max-w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-[11px] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+            className="mb-1 max-w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
           >
-            <span className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
-              <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+            <span className="flex items-center gap-1.5 font-medium text-(--foreground)">
+              <Reply size={12} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
               Replying to
             </span>
-            <span className="mt-0.5 line-clamp-2 block text-[var(--muted)]">{replyThreadMeta.replySnippet}</span>
+            <span className="mt-0.5 line-clamp-2 block text-(--muted)">{replyThreadMeta.replySnippet}</span>
           </button>
         )}
         {userImages.length > 0 && (
@@ -492,13 +492,13 @@ function ExchangeUserMessage({
                   content: attachment.url,
                   url: attachment.url,
                 })}
-                className="group rounded-xl outline-none transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                className="group rounded-xl outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
                 title="Open attachment"
               >
                 <img
                   src={attachment.url}
                   alt={attachment.name}
-                  className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-[var(--border)]"
+                  className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-(--border)"
                 />
               </button>
             ))}
@@ -514,7 +514,7 @@ function ExchangeUserMessage({
                   key={name}
                   role={clickable ? 'button' : undefined}
                   tabIndex={clickable ? 0 : undefined}
-                  className={`flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm ${clickable ? 'cursor-pointer hover:bg-[var(--surface-subtle)] transition-colors' : ''}`}
+                  className={`flex max-w-[220px] items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs text-(--muted) shadow-xs ${clickable ? 'cursor-pointer hover:bg-(--surface-subtle) transition-colors' : ''}`}
                   onClick={() => {
                     if (clickable) onOpenFilePreview!(name, attachment.fileIds)
                   }}
@@ -526,8 +526,8 @@ function ExchangeUserMessage({
                   } : undefined}
                   title={clickable ? 'Click to preview' : undefined}
                 >
-                  <FileText size={13} className="shrink-0 text-[var(--muted)]" />
-                  <span className="truncate font-medium text-[var(--foreground)]">{name}</span>
+                  <FileText size={13} className="shrink-0 text-(--muted)" />
+                  <span className="truncate font-medium text-(--foreground)">{name}</span>
                 </div>
               )
             })}
@@ -574,7 +574,7 @@ function ExchangeModelTabs({
             className={`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
               isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
             } ${
-              isActive ? 'bg-[var(--foreground)] text-[var(--background)]' : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)]'
+              isActive ? 'bg-(--foreground) text-(--background)' : 'bg-(--surface-subtle) text-(--muted) hover:bg-(--border)'
             }`}
           >
             {mName}
@@ -622,7 +622,7 @@ function ExchangeSettledNotices({
     <>
       {interrupted && responseSettled && !errorMessage && (
         <div className="flex justify-start px-1 py-1">
-          <p className="text-sm text-[var(--muted)]">Response was interrupted.</p>
+          <p className="text-sm text-(--muted)">Response was interrupted.</p>
         </div>
       )}
 
@@ -631,7 +631,7 @@ function ExchangeSettledNotices({
           <button
             type="button"
             onClick={onContinue}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)"
           >
             <Play size={13} strokeWidth={1.75} />
             Continue

@@ -367,23 +367,23 @@ function ProviderConnectionHeader({
             ? 'bg-red-500'
             : connection.status === 'active'
               ? 'bg-green-500'
-              : 'bg-[var(--muted-light)]'
+              : 'bg-(--muted-light)'
         }`}
       />
 
       {/* Connection info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-[var(--foreground)]">
+          <span className="truncate text-sm font-medium text-(--foreground)">
             {connection.displayName}
           </span>
           {connection.isDefault ? (
-            <span className="shrink-0 rounded-full bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--muted)]">
+            <span className="shrink-0 rounded-full bg-(--surface-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--muted)">
               DEFAULT
             </span>
           ) : null}
         </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-[var(--muted)]">
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-(--muted)">
           <span className="truncate">{providerLabel}</span>
           <span>·</span>
           <span className="shrink-0">
@@ -411,7 +411,7 @@ function ProviderConnectionHeader({
           type="button"
           onClick={onDiscover}
           disabled={discoverDisabled}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50"
           aria-label="Search provider models"
         >
           {discovering ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} strokeWidth={1.8} />}
@@ -419,7 +419,7 @@ function ProviderConnectionHeader({
         <button
           type="button"
           onClick={onToggleExpanded}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)"
           aria-label={expanded ? 'Hide provider models' : 'Show provider models'}
         >
           <ChevronRight
@@ -431,7 +431,7 @@ function ProviderConnectionHeader({
         <button
           type="button"
           onClick={onEdit}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)"
           aria-label="Edit provider"
         >
           <Pencil size={14} strokeWidth={1.8} />
@@ -440,7 +440,7 @@ function ProviderConnectionHeader({
           <button
             type="button"
             onClick={onDelete}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-red-500"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-red-500"
             aria-label="Delete provider"
           >
             <Trash2 size={14} strokeWidth={1.8} />
@@ -479,22 +479,22 @@ function ProviderModelsPanel({
   onToggleModel: (model: ProviderModelOption) => void
 }) {
   return (
-    <div className="border-t border-[var(--border)] bg-[var(--background)]/30 px-4 py-3">
+    <div className="border-t border-(--border) bg-(--background)/30 px-4 py-3">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
           <input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={`Search ${connectionDisplayName} models`}
-            className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] pl-9 pr-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+            className="h-9 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
           />
         </div>
         <button
           type="button"
           onClick={onDiscover}
           disabled={discoverDisabled}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground) hover:bg-(--surface-elevated) disabled:opacity-50"
         >
           {discovering ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           Search
@@ -508,9 +508,9 @@ function ProviderModelsPanel({
         </div>
       ) : null}
 
-      <div className="mt-3 max-h-[26rem] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+      <div className="mt-3 max-h-104 overflow-y-auto rounded-lg border border-(--border) bg-(--surface-elevated)">
         {models.length > 0 ? (
-          <div className="divide-y divide-[var(--border)]">
+          <div className="divide-y divide-(--border)">
             {models.map((model) => (
               <ProviderModelRow
                 key={model.appModelId}
@@ -524,7 +524,7 @@ function ProviderModelsPanel({
             ))}
           </div>
         ) : (
-          <div className="px-4 py-10 text-center text-sm text-[var(--muted)]">
+          <div className="px-4 py-10 text-center text-sm text-(--muted)">
             {query.trim()
               ? 'No models match your search.'
               : 'No models discovered yet. Search this provider to load its model list.'}
@@ -551,22 +551,22 @@ function ProviderModelRow({
   onToggle: (model: ProviderModelOption) => void
 }) {
   return (
-    <div className="flex items-center gap-4 px-3 py-3 transition-colors hover:bg-[var(--surface-muted)]">
+    <div className="flex items-center gap-4 px-3 py-3 transition-colors hover:bg-(--surface-muted)">
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium text-[var(--foreground)]">{model.name}</span>
+          <span className="truncate text-sm font-medium text-(--foreground)">{model.name}</span>
           {model.supportsVision ? (
-            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-[#f0f0f0] text-zinc-700">
               <ScanEye size={11} strokeWidth={1.6} />
             </span>
           ) : null}
           {model.supportsReasoning ? (
-            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-[#f0f0f0] text-zinc-700">
               <Sparkles size={11} strokeWidth={1.6} />
             </span>
           ) : null}
         </div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-(--muted)">
           <span className="truncate">{model.provider ?? connectionDisplayName}</span>
           <span>·</span>
           <span className="truncate">{model.rawId}</span>

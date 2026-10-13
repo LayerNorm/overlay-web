@@ -521,7 +521,7 @@ export function createMentionChip(item: MentionItem): HTMLSpanElement {
   chip.setAttribute(MENTION_TYPE_ATTR, item.type)
   chip.setAttribute(MENTION_ID_ATTR, item.id)
   chip.className =
-    'inline-flex items-center gap-1 mx-0.5 px-1.5 py-0.5 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-medium text-[var(--foreground)] select-none align-baseline'
+    'inline-flex items-center gap-1 mx-0.5 px-1.5 py-0.5 rounded-md bg-(--surface-muted) border border-(--border) text-xs font-medium text-(--foreground) select-none align-baseline'
   const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   symbol.setAttribute('aria-hidden', 'true')
   symbol.setAttribute('viewBox', '0 0 24 24')
@@ -530,7 +530,7 @@ export function createMentionChip(item: MentionItem): HTMLSpanElement {
   symbol.setAttribute('stroke-width', '1.75')
   symbol.setAttribute('stroke-linecap', 'round')
   symbol.setAttribute('stroke-linejoin', 'round')
-  symbol.setAttribute('class', 'h-3.5 w-3.5 shrink-0 text-[var(--muted)]')
+  symbol.setAttribute('class', 'h-3.5 w-3.5 shrink-0 text-(--muted)')
   for (const pathData of MENTION_ICON_PATHS[item.type]) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
     path.setAttribute('d', pathData)

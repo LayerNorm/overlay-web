@@ -43,13 +43,13 @@ function tileClassName(interactive: boolean, selected: boolean, className?: stri
   return cn(
     'group relative flex min-h-32 w-full flex-col rounded-lg border p-4 text-left transition-colors',
     interactive
-      ? 'cursor-pointer border-[var(--border)] bg-[var(--surface-elevated)] hover:border-[var(--muted-light)] hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)] disabled:pointer-events-none disabled:opacity-60'
+      ? 'cursor-pointer border-(--border) bg-(--surface-elevated) hover:border-(--muted-light) hover:bg-(--surface-subtle) focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground) disabled:pointer-events-none disabled:opacity-60'
       : null,
     selected
-      ? 'border-[var(--muted-light)] bg-[var(--surface-subtle)]'
+      ? 'border-(--muted-light) bg-(--surface-subtle)'
       : null,
     !interactive && !selected
-      ? 'border-[var(--border)] bg-[var(--surface-elevated)]'
+      ? 'border-(--border) bg-(--surface-elevated)'
       : null,
     className,
   )
@@ -66,16 +66,16 @@ function TileBody({ leading, title, description, topRight, footer, children }: T
       <div className="flex min-w-0 items-start gap-3">
         {leading ? <div className="shrink-0">{leading}</div> : null}
         <div className="min-w-0 flex-1">
-          {title ? <div className="truncate text-sm font-medium text-[var(--foreground)]">{title}</div> : null}
+          {title ? <div className="truncate text-sm font-medium text-(--foreground)">{title}</div> : null}
           {description ? (
-            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">{description}</div>
+            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-(--muted)">{description}</div>
           ) : null}
           {children}
         </div>
         {topRight ? <div className="flex shrink-0 items-center gap-1.5">{topRight}</div> : null}
       </div>
       {footer ? (
-        <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-[11px] text-[var(--muted-light)]">
+        <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-[11px] text-(--muted-light)">
           {footer}
         </div>
       ) : null}
@@ -132,7 +132,7 @@ export function TileIcon({ className, ...props }: TileIconProps) {
   return (
     <span
       className={cn(
-        'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)] transition-colors group-hover:text-[var(--foreground)]',
+        'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-(--border) bg-(--surface-muted) text-(--muted) transition-colors group-hover:text-(--foreground)',
         className,
       )}
       {...props}
@@ -183,7 +183,7 @@ export function ListRow({
       className={cn(
         'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
         interactive
-          ? 'cursor-pointer hover:bg-[var(--surface-subtle)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)] disabled:pointer-events-none disabled:opacity-60'
+          ? 'cursor-pointer hover:bg-(--surface-subtle) focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground) disabled:pointer-events-none disabled:opacity-60'
           : null,
         className,
       )}
@@ -191,8 +191,8 @@ export function ListRow({
     >
       {leading ? <div className="shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-[var(--foreground)]">{title}</div>
-        {description ? <div className="mt-0.5 truncate text-xs text-[var(--muted)]">{description}</div> : null}
+        <div className="truncate text-sm font-medium text-(--foreground)">{title}</div>
+        {description ? <div className="mt-0.5 truncate text-xs text-(--muted)">{description}</div> : null}
         {children}
       </div>
       {trailing ? <div className="flex shrink-0 items-center gap-2">{trailing}</div> : null}
@@ -203,17 +203,17 @@ export function ListRow({
 export function TileSkeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-4', className)}
+      className={cn('rounded-lg border border-(--border) bg-(--surface-elevated) p-4', className)}
       {...props}
     >
       <div className="flex items-start gap-3">
         <div className="ui-skeleton-line h-9 w-9 shrink-0 rounded-md" />
         <div className="flex-1 space-y-2 pt-1">
-          <div className="ui-skeleton-line h-3.5 w-1/3 rounded" />
-          <div className="ui-skeleton-line h-3 w-2/3 rounded opacity-75" />
+          <div className="ui-skeleton-line h-3.5 w-1/3 rounded-sm" />
+          <div className="ui-skeleton-line h-3 w-2/3 rounded-sm opacity-75" />
         </div>
       </div>
-      <div className="ui-skeleton-line mt-6 h-3 w-24 rounded opacity-75" />
+      <div className="ui-skeleton-line mt-6 h-3 w-24 rounded-sm opacity-75" />
     </div>
   )
 }
@@ -228,7 +228,7 @@ export function CreateTile({ label, icon, className, ...props }: CreateTileProps
     <button
       type="button"
       className={cn(
-        'flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border)] text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]',
+        'flex min-h-32 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-(--border) text-sm text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)',
         className,
       )}
       {...props}

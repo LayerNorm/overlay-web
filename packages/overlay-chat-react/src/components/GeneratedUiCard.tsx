@@ -105,7 +105,7 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-40"
       aria-label={label}
       title={label}
     >
@@ -147,7 +147,7 @@ function AutoTextarea({
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
       rows={minRows}
-      className="w-full resize-none overscroll-contain border-0 bg-transparent p-0 text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+      className="w-full resize-none overscroll-contain border-0 bg-transparent p-0 text-sm leading-6 text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
     />
   )
 }
@@ -182,7 +182,7 @@ function ScrollableDraftBody({
       }}
       className={classNames(
         'overscroll-contain',
-        expanded ? 'max-h-[70vh] overflow-y-auto' : 'max-h-[28rem] overflow-y-auto',
+        expanded ? 'max-h-[70vh] overflow-y-auto' : 'max-h-112 overflow-y-auto',
         className,
       )}
     >
@@ -215,7 +215,7 @@ function ConnectorLogo({
     )
   }
   const letter = (serviceName || slug || 'C').trim().charAt(0).toUpperCase()
-  return <span className="text-xs font-semibold text-[var(--foreground)]">{letter}</span>
+  return <span className="text-xs font-semibold text-(--foreground)">{letter}</span>
 }
 
 function ActionButton({
@@ -240,8 +240,8 @@ function ActionButton({
       className={classNames(
         'inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45',
         variant === 'primary'
-          ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)] hover:opacity-85'
-          : 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)] hover:bg-[var(--border)]',
+          ? 'border-(--foreground) bg-(--foreground) text-(--background) hover:opacity-85'
+          : 'border-(--border) bg-(--surface-subtle) text-(--foreground) hover:bg-(--border)',
       )}
     >
       {children}
@@ -321,8 +321,8 @@ export function GeneratedUiCard({
 
   return (
     <div className="message-appear w-full max-w-[min(100%,46rem)] px-1 py-1" aria-busy={streaming}>
-      <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-sm">
-        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
+      <div className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xs">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-(--border) px-3 py-2">
           <GeneratedUiHeader
             data={data}
             connectorActions={connectorActions}
@@ -353,7 +353,7 @@ export function GeneratedUiCard({
             </ToolbarButton>
           </div>
         </div>
-        <div className="bg-[var(--surface-elevated)]">
+        <div className="bg-(--surface-elevated)">
           {data.kind === 'draft.text' ? (
             <TextDraftCardBody
               data={data}
@@ -400,12 +400,12 @@ function GeneratedUiHeader({
     const logoUrl = connectorActions?.getLogoUrl?.(data.serviceName, data.slug)
     return (
       <div className="flex min-w-0 items-center gap-2.5">
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border) bg-(--surface-subtle)">
           <ConnectorLogo serviceName={data.serviceName} slug={data.slug} logoUrl={logoUrl} />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[var(--foreground)]">{data.serviceName}</p>
-          <p className="truncate text-xs text-[var(--muted)]">Connector</p>
+          <p className="truncate text-sm font-medium text-(--foreground)">{data.serviceName}</p>
+          <p className="truncate text-xs text-(--muted)">Connector</p>
         </div>
       </div>
     )
@@ -414,20 +414,20 @@ function GeneratedUiHeader({
     const logoUrl = data.provider === 'gmail' ? connectorActions?.getLogoUrl?.('Gmail', 'gmail') : null
     return (
       <div className="flex min-w-0 items-center gap-2.5">
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border) bg-(--surface-subtle)">
           {logoUrl ? <ConnectorLogo serviceName="Gmail" slug="gmail" logoUrl={logoUrl} /> : <Mail size={16} strokeWidth={1.75} />}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[var(--foreground)]">{data.subject || 'Email draft'}</p>
-          <p className="truncate text-xs text-[var(--muted)]">{streaming ? 'Drafting...' : 'Email draft'}</p>
+          <p className="truncate text-sm font-medium text-(--foreground)">{data.subject || 'Email draft'}</p>
+          <p className="truncate text-xs text-(--muted)">{streaming ? 'Drafting...' : 'Email draft'}</p>
         </div>
       </div>
     )
   }
   return (
     <div className="min-w-0">
-      <p className="truncate text-sm font-medium text-[var(--foreground)]">{data.title || 'Text draft'}</p>
-      <p className="truncate text-xs text-[var(--muted)]">{streaming ? 'Drafting...' : 'Editable draft'}</p>
+      <p className="truncate text-sm font-medium text-(--foreground)">{data.title || 'Text draft'}</p>
+      <p className="truncate text-xs text-(--muted)">{streaming ? 'Drafting...' : 'Editable draft'}</p>
     </div>
   )
 }
@@ -456,7 +456,7 @@ function TextDraftCardBody({
           onChange={(event) => onChange({ ...data, title: event.target.value || undefined })}
           onBlur={onBlur}
           placeholder="Title"
-          className="w-full border-0 bg-transparent text-sm font-medium text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+          className="w-full border-0 bg-transparent text-sm font-medium text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
         />
         <AutoTextarea
           value={data.body}
@@ -490,13 +490,13 @@ function EmailField({
   onBlur: () => void
 }) {
   return (
-    <label className="grid grid-cols-[4rem_1fr] items-center border-b border-[var(--border)] px-4 py-2 text-sm">
-      <span className="text-xs text-[var(--muted)]">{label}</span>
+    <label className="grid grid-cols-[4rem_1fr] items-center border-b border-(--border) px-4 py-2 text-sm">
+      <span className="text-xs text-(--muted)">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        className="min-w-0 border-0 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+        className="min-w-0 border-0 bg-transparent text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
       />
     </label>
   )
@@ -514,7 +514,7 @@ function EmailVariantPicker({
   onSelect: (variant: GeneratedUiVariant) => void
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 border-b border-[var(--border)] px-3 py-2">
+    <div className="flex flex-wrap gap-1.5 border-b border-(--border) px-3 py-2">
       {variants.map((variant) => (
         <button
           key={variant.id}
@@ -524,10 +524,10 @@ function EmailVariantPicker({
           className={classNames(
             'inline-flex h-8 items-center rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-default',
             activeVariantId === variant.id
-              ? 'bg-[var(--foreground)] text-[var(--background)]'
+              ? 'bg-(--foreground) text-(--background)'
               : readOnly
-                ? 'bg-[var(--surface-subtle)] text-[var(--muted)]'
-                : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]',
+                ? 'bg-(--surface-subtle) text-(--muted)'
+                : 'bg-(--surface-subtle) text-(--muted) hover:bg-(--border) hover:text-(--foreground)',
           )}
         >
           {variant.label}
@@ -598,10 +598,10 @@ function EmailDraftPreview({
 }) {
   return (
     <div>
-      <div className="space-y-1 border-b border-[var(--border)] px-4 py-3 text-sm">
-        {data.to?.length ? <p><span className="text-[var(--muted)]">To:</span> {data.to.join(', ')}</p> : null}
-        {data.cc?.length ? <p><span className="text-[var(--muted)]">Cc:</span> {data.cc.join(', ')}</p> : null}
-        <p><span className="text-[var(--muted)]">Subject:</span> {data.subject}</p>
+      <div className="space-y-1 border-b border-(--border) px-4 py-3 text-sm">
+        {data.to?.length ? <p><span className="text-(--muted)">To:</span> {data.to.join(', ')}</p> : null}
+        {data.cc?.length ? <p><span className="text-(--muted)">Cc:</span> {data.cc.join(', ')}</p> : null}
+        <p><span className="text-(--muted)">Subject:</span> {data.subject}</p>
       </div>
       <ScrollableDraftBody
         value={data.body}
@@ -623,7 +623,7 @@ function EmailGmailActions({
   const gmailConnected = connectorActions?.isConnected?.('Gmail', 'gmail') ?? false
   const gmailLogo = connectorActions?.getLogoUrl?.('Gmail', 'gmail')
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] px-3 py-3">
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-(--border) px-3 py-3">
       {gmailConnected && connectorActions?.openEmailDraft ? (
         <ActionButton
           onClick={() => connectorActions.openEmailDraft?.(data)}
@@ -719,18 +719,18 @@ function ConnectorCardBody({
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-start gap-3">
-        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border) bg-(--surface-subtle)">
           <ConnectorLogo serviceName={data.serviceName} slug={data.slug} logoUrl={logoUrl} />
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--foreground)]">{data.serviceName}</p>
-          <p className="mt-1 max-w-xl text-sm leading-5 text-[var(--muted)]">
+          <p className="text-sm font-medium text-(--foreground)">{data.serviceName}</p>
+          <p className="mt-1 max-w-xl text-sm leading-5 text-(--muted)">
             {data.description || 'Connect this integration to use it in Overlay.'}
           </p>
         </div>
       </div>
       {readOnly ? null : isConnected ? (
-        <span className="inline-flex h-9 w-fit shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--muted)]">
+        <span className="inline-flex h-9 w-fit shrink-0 items-center gap-2 rounded-md border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--muted)">
           <Check size={14} strokeWidth={1.75} />
           Connected
         </span>

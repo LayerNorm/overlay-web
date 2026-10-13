@@ -110,7 +110,7 @@ export function ChatExperienceView({
               !automationEditorProps &&
               !body.showAutomationChatTab && (
                 <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
-                  <p className="text-sm text-[var(--muted)]">Automation not found.</p>
+                  <p className="text-sm text-(--muted)">Automation not found.</p>
                 </div>
               )}
 

@@ -36,8 +36,8 @@ function AgentSettingsButton({ hasAgent, active, onClick }: {
       aria-label={hasAgent ? 'Agent settings' : 'Create agent'}
       title={hasAgent ? 'Agent settings' : 'Create agent'}
       onClick={onClick}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
-        active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : 'text-[var(--muted)]'
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+        active ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
       }`}
     >
       <Settings size={15} />
@@ -399,20 +399,20 @@ function AgentDirectoryScreen({
           {[0, 1, 2].map((dot) => (
             <span
               key={dot}
-              className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted)]"
+              className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--muted)"
               style={{ animationDelay: `${dot * 150}ms` }}
             />
           ))}
         </div>
       ) : (
         <div className="max-w-sm text-center">
-          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
+          <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-subtle) text-(--muted)">
             <Bot size={18} />
           </span>
-          <h1 className="mt-4 text-sm font-medium text-[var(--foreground)]">
+          <h1 className="mt-4 text-sm font-medium text-(--foreground)">
             {displayError ? 'Could not open your agent' : 'Your agents work from here'}
           </h1>
-          <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
+          <p className="mt-1.5 text-xs leading-5 text-(--muted)">
             {displayError ?? (empty
               ? 'Create one for a new outcome.'
               : 'Select an agent to open its conversation, or create one for a new outcome.')}

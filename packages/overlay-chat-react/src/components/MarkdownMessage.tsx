@@ -103,7 +103,7 @@ function MarkdownMessageImpl({
     () => {
       const baseComponents = createBaseMdComponents({ onOpenAttachmentPreview })
       const chipClass =
-        'overlay-webcite-chip mx-0.5 inline-flex max-w-full cursor-pointer items-baseline rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-0.5 align-baseline text-[11px] font-normal leading-none text-[var(--muted)] no-underline! transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--foreground)]'
+        'overlay-webcite-chip mx-0.5 inline-flex max-w-full cursor-pointer items-baseline rounded-full border border-(--border) bg-(--surface-subtle) px-2 py-0.5 align-baseline text-[11px] font-normal leading-none text-(--muted) no-underline! transition-colors hover:bg-(--surface-elevated) hover:text-(--foreground)'
 
       const renderChip = (href: string, label: string, tooltipSources: WebSourceItem[]) => (
         <WebSourceTooltip sources={tooltipSources}>
@@ -153,7 +153,7 @@ function MarkdownMessageImpl({
               const label = linkText || (citation ? knowledgeChipLabel(citation) : source.title)
               return renderInternalChip(source.internalHref, label, [source])
             }
-            return <span className="mx-0.5 text-[11px] text-[var(--muted)] tabular-nums">[{n}]</span>
+            return <span className="mx-0.5 text-[11px] text-(--muted) tabular-nums">[{n}]</span>
           }
 
           // Multi-citation chip: `#overlay-webcite-multi-1-2-3`
@@ -168,7 +168,7 @@ function MarkdownMessageImpl({
               // Multi-chip opens the first source on click; tooltip surfaces the rest.
               return renderChip(picked[0]!.url, linkText || webSourceDisplayKey(picked[0]!.url), picked)
             }
-            return <span className="mx-0.5 text-[11px] text-[var(--muted)] tabular-nums">[{raw}]</span>
+            return <span className="mx-0.5 text-[11px] text-(--muted) tabular-nums">[{raw}]</span>
           }
 
           // Single citation chip: `#overlay-webcite-N`
@@ -179,7 +179,7 @@ function MarkdownMessageImpl({
             if (src) {
               return renderChip(src.url, linkText || webSourceDisplayKey(src.url), [src])
             }
-            return <span className="mx-0.5 text-[11px] text-[var(--muted)] tabular-nums">[{raw}]</span>
+            return <span className="mx-0.5 text-[11px] text-(--muted) tabular-nums">[{raw}]</span>
           }
 
           // Generic external URL → also render as chip with a tooltip. Skip Connect-service
@@ -210,7 +210,7 @@ function MarkdownMessageImpl({
             (href.length > 96 || href.includes('%7C') || href.includes('|'))
           ) {
             return (
-              <span className="whitespace-pre-wrap wrap-break-word text-[var(--foreground)]">
+              <span className="whitespace-pre-wrap wrap-break-word text-(--foreground)">
                 {props.children}
               </span>
             )

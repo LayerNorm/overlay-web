@@ -66,9 +66,9 @@ const ONBOARDING_CONNECTOR_CARDS: ReadonlyArray<{
 ]
 
 const DIALOG_SECONDARY_CLASS =
-  'rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]'
+  'rounded-lg border border-(--border) bg-transparent px-3 py-1.5 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle)'
 const DIALOG_PRIMARY_CLASS =
-  'rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-40'
+  'rounded-lg bg-(--foreground) px-4 py-1.5 text-sm font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-40'
 
 /** Logos from the configured integration provider catalog, with emoji fallback. */
 function OnboardingConnectorCardLogo({
@@ -84,7 +84,7 @@ function OnboardingConnectorCardLogo({
   const showImage = Boolean(logoUrl) && !imgFailed
 
   return (
-    <span className="mb-2 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
+    <span className="mb-2 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-(--border) bg-(--surface-elevated)">
       {showImage ? (
         <Image
           src={logoUrl!}
@@ -372,7 +372,7 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
     // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
-      className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-10050 flex items-center justify-center bg-black/60 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onFinish() }}
     >
       {/* Import step is a transient post-tour surface, not a persistent native <dialog>. */}
@@ -380,39 +380,39 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
       <div
         role="dialog"
         aria-labelledby="onboarding-import-title"
-        className="w-[min(540px,92vw)] max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
+        className="w-[min(540px,92vw)] max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-(--border) bg-(--surface-elevated) p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-start justify-between gap-3">
-          <h2 id="onboarding-import-title" className="text-base font-semibold text-[var(--foreground)]">
+          <h2 id="onboarding-import-title" className="text-base font-semibold text-(--foreground)">
             Import memories from other assistants
           </h2>
           <button
             type="button"
             onClick={onFinish}
-            className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
             aria-label="Skip import"
           >
             <X size={16} />
           </button>
         </div>
-        <p className="mb-6 text-xs text-[var(--muted)]">
+        <p className="mb-6 text-xs text-(--muted)">
           Optional — bring over context from ChatGPT, Claude, or other tools. Copy the prompt, paste it there, then paste the reply below. We&apos;ll save it into your Overlay memories.
         </p>
 
         <div className="relative mb-6 flex gap-3">
           <div className="flex flex-col items-center">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--foreground) text-[11px] font-semibold text-(--background)">
               1
             </span>
-            <div className="mt-1 w-px flex-1 min-h-[24px] bg-[var(--border)]" aria-hidden />
+            <div className="mt-1 w-px flex-1 min-h-[24px] bg-(--border)" aria-hidden />
           </div>
           <div className="min-w-0 flex-1 pt-0.5">
-            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+            <p className="mb-2 text-xs font-medium text-(--foreground)">
               Copy this prompt into a chat with your other AI provider
             </p>
-            <div className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 pb-10 pt-3">
-              <p className="text-xs leading-relaxed text-[var(--foreground)]">{ONBOARDING_IMPORT_MEMORY_PROMPT}</p>
+            <div className="relative rounded-lg border border-(--border) bg-(--surface-muted) px-3 pb-10 pt-3">
+              <p className="text-xs leading-relaxed text-(--foreground)">{ONBOARDING_IMPORT_MEMORY_PROMPT}</p>
               <button
                 type="button"
                 onClick={async () => {
@@ -420,7 +420,7 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
                   setMemoryPromptCopied(true)
                   window.setTimeout(() => setMemoryPromptCopied(false), 2000)
                 }}
-                className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+                className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
               >
                 {memoryPromptCopied ? <Check size={11} /> : <Copy size={11} />}
                 {memoryPromptCopied ? 'Copied!' : 'Copy'}
@@ -430,11 +430,11 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
         </div>
 
         <div className="flex gap-3">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--foreground)] text-[11px] font-semibold text-[var(--background)]">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--foreground) text-[11px] font-semibold text-(--background)">
             2
           </span>
           <div className="min-w-0 flex-1">
-            <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+            <p className="mb-2 text-xs font-medium text-(--foreground)">
               Paste results below to add to Overlay memories
             </p>
             <textarea
@@ -443,7 +443,7 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
               onChange={(e) => setImportPaste(e.target.value)}
               placeholder="Paste your memory details here"
               rows={6}
-              className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2.5 text-xs text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted)] focus:border-[var(--muted)]"
+              className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 text-xs text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted) focus:border-(--muted)"
             />
             {importError ? (
               <p className="mt-2 text-xs text-red-500">{importError}</p>
@@ -589,7 +589,7 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
       {/* Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls. */}
       {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
       <div
-        className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 p-4"
+        className="fixed inset-0 z-10050 flex items-center justify-center bg-black/60 p-4"
         onClick={(e) => { if (e.target === e.currentTarget) onFinish() }}
       >
         {/* Anchored post-tour surface, not a persistent native <dialog>. */}
@@ -597,25 +597,25 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
         <div
           role="dialog"
           aria-labelledby="onboarding-connectors-title"
-          className="w-[min(520px,94vw)] max-h-[min(90vh,840px)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-2xl"
+          className="w-[min(520px,94vw)] max-h-[min(90vh,840px)] overflow-y-auto rounded-xl border border-(--border) bg-(--surface-elevated) p-6 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-4 flex items-start justify-between gap-3">
-            <h2 id="onboarding-connectors-title" className="text-base font-semibold text-[var(--foreground)]">
+            <h2 id="onboarding-connectors-title" className="text-base font-semibold text-(--foreground)">
               Connect your tools
             </h2>
             <button
               type="button"
               onClick={onFinish}
-              className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              className="rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
               aria-label="Close"
             >
               <X size={16} />
             </button>
           </div>
-          <p className="mb-4 text-xs leading-relaxed text-[var(--muted)]">
+          <p className="mb-4 text-xs leading-relaxed text-(--muted)">
             Optional — connect apps you use with Overlay. Use Connect on a card below (same OAuth flow as Extensions), or{' '}
-            <span className="text-[var(--foreground)]">Add</span> to search the full integration catalog.
+            <span className="text-(--foreground)">Add</span> to search the full integration catalog.
           </p>
 
           <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -626,22 +626,22 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
               return (
                 <div
                   key={c.slug}
-                  className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 shadow-sm"
+                  className="flex flex-col rounded-xl border border-(--border) bg-(--surface-muted) p-3 shadow-xs"
                 >
                   <OnboardingConnectorCardLogo
                     name={c.name}
                     fallbackEmoji={c.icon}
                     logoUrl={connectorLogos[c.slug]}
                   />
-                  <p className="text-xs font-semibold text-[var(--foreground)]">{c.name}</p>
-                  <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-[var(--muted)]">
+                  <p className="text-xs font-semibold text-(--foreground)">{c.name}</p>
+                  <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-(--muted)">
                     {c.description}
                   </p>
                   <button
                     type="button"
                     onClick={() => { if (!isConnected) void connectPopularConnector(c.slug) }}
                     disabled={anyBusy || isConnected}
-                    className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-100 disabled:hover:bg-[var(--surface-elevated)]"
+                    className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) text-[11px] font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-100 disabled:hover:bg-(--surface-elevated)"
                   >
                     {isConnected ? (
                       <>
@@ -665,9 +665,9 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
           <button
             type="button"
             onClick={() => setIntegrationsPickerOpen(true)}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)]/60 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-(--border) bg-(--surface-muted)/60 py-3 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-muted)"
           >
-            <Plus size={16} strokeWidth={2} className="text-[var(--muted)]" aria-hidden />
+            <Plus size={16} strokeWidth={2} className="text-(--muted)" aria-hidden />
             Add integration
           </button>
 
@@ -694,7 +694,7 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
         onClose={() => setIntegrationsPickerOpen(false)}
         onConnect={dialogConnect}
         onDisconnect={dialogDisconnect}
-        overlayClassName="fixed inset-0 z-[10060] flex items-center justify-center bg-[var(--overlay-scrim)] p-5"
+        overlayClassName="fixed inset-0 z-10060 flex items-center justify-center bg-(--overlay-scrim) p-5"
       />
     </>
   )
@@ -804,32 +804,32 @@ function TourOverlay({
             transform: visible ? 'scale(1)' : 'scale(0.95)',
             transition: 'opacity 400ms ease, transform 400ms ease',
           }}
-          className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
+          className="rounded-xl border border-(--border) bg-(--surface-elevated) p-5 shadow-2xl"
         >
           <div style={tooltipInfo.arrowStyle} aria-hidden />
 
           <div className="mb-3 flex items-start justify-between gap-3">
-            <span className="text-[11px] font-medium tabular-nums text-[var(--muted)]">
+            <span className="text-[11px] font-medium tabular-nums text-(--muted)">
               {currentStep + 1} / {stepsCount}
             </span>
             <button
               type="button"
               onClick={onSkip}
-              className="rounded p-0.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              className="rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
               aria-label="Close tour"
             >
               <X size={14} />
             </button>
           </div>
 
-          <h3 className="mb-1.5 text-base font-semibold text-[var(--foreground)]">{step.title}</h3>
-          <p className="mb-5 text-sm leading-relaxed text-[var(--muted)]">{step.description}</p>
+          <h3 className="mb-1.5 text-base font-semibold text-(--foreground)">{step.title}</h3>
+          <p className="mb-5 text-sm leading-relaxed text-(--muted)">{step.description}</p>
 
           <div className="flex items-center justify-between">
             <button
               type="button"
               onClick={onSkip}
-              className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+              className="text-sm text-(--muted) hover:text-(--foreground)"
             >
               Skip tour
             </button>
@@ -838,7 +838,7 @@ function TourOverlay({
                 <button
                   type="button"
                   onClick={onBack}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--surface-elevated)]"
+                  className="rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-sm font-medium text-(--foreground) hover:bg-(--surface-elevated)"
                 >
                   Back
                 </button>
@@ -846,7 +846,7 @@ function TourOverlay({
               <button
                 type="button"
                 onClick={isLast ? onComplete : onNext}
-                className="flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-1.5 text-sm font-medium text-[var(--background)]"
+                className="flex items-center gap-1.5 rounded-lg bg-(--foreground) px-4 py-1.5 text-sm font-medium text-(--background)"
               >
                 {isLast ? (
                   <>Get started</>

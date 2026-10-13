@@ -56,7 +56,7 @@ export function IntegrationLogo({ logoUrl, name, size = 28 }: IntegrationLogoPro
 
   return (
     <span
-      className="inline-flex flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]"
+      className="inline-flex shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-elevated)"
       style={{ width: size, height: size }}
     >
       {logoUrl && !hasError ? (
@@ -69,7 +69,7 @@ export function IntegrationLogo({ logoUrl, name, size = 28 }: IntegrationLogoPro
           onError={() => setFailedLogoUrl(logoUrl)}
         />
       ) : (
-        <span className="text-xs font-bold text-[var(--foreground)]">{name.charAt(0).toUpperCase()}</span>
+        <span className="text-xs font-bold text-(--foreground)">{name.charAt(0).toUpperCase()}</span>
       )}
     </span>
   )
@@ -126,7 +126,7 @@ export function IntegrationsPanel({
 
           {connectedRows.length > 0 ? (
             <div>
-              <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Connected</p>
+              <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-(--muted-light)">Connected</p>
               <div className="space-y-1">
                 {connectedShown.map((integration) => (
                   <IntegrationRow
@@ -147,11 +147,11 @@ export function IntegrationsPanel({
 
           <div>
             <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-light)]">Available</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-(--muted-light)">Available</p>
               <button
                 type="button"
                 onClick={onOpenCatalog}
-                className="flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+                className="flex shrink-0 items-center gap-1 rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-xs text-(--foreground) transition-colors hover:bg-(--border)"
                 title="Browse all integrations"
               >
                 <Plus size={12} />
@@ -185,7 +185,7 @@ function ShowMoreButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+      className="mt-3 w-full rounded-lg border border-(--border) bg-(--surface-subtle) py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)"
     >
       Show more
     </button>
@@ -219,7 +219,7 @@ function IntegrationRow({
           type="button"
           onClick={() => onAction(integration)}
           disabled={isConnecting || actionUnavailable}
-          className="flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+          className="shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
         >
           {isConnecting ? (
             <Loader2 size={11} className="animate-spin" />

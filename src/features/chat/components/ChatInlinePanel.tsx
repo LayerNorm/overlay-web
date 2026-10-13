@@ -649,16 +649,16 @@ function ChatListRow({
             }
           }}
           onBlur={() => onSaveRename(chat._id)}
-          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none"
+          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
         />
       ) : (
         <span className="min-w-0 flex-1 truncate">{chat.title}</span>
       )}
       {isStreaming && !unread ? (
-        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--muted)]" />
+        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--muted)" />
       ) : null}
       {unread > 0 ? (
-        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[9px] font-medium text-[var(--foreground)]">
+        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-[9px] font-medium text-(--foreground)">
           {unread > 9 ? '9+' : unread}
         </span>
       ) : null}
@@ -670,7 +670,7 @@ function ChatListRow({
             event.stopPropagation()
             onSaveRename(chat._id)
           }}
-          className="ml-1 shrink-0 rounded p-0.5 text-[var(--foreground)] hover:bg-[var(--border)]"
+          className="ml-1 shrink-0 rounded-sm p-0.5 text-(--foreground) hover:bg-(--border)"
           aria-label="Save chat name"
         >
           <Check size={11} />
@@ -681,7 +681,7 @@ function ChatListRow({
             <button
               type="button"
               onClick={(event) => onBeginRename(chat, event)}
-              className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+              className="ml-1 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
               aria-label="Rename chat"
             >
               <Pencil size={11} />
@@ -690,7 +690,7 @@ function ChatListRow({
           <button
             type="button"
             onClick={(event) => onRequestArchive(chat, event)}
-            className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-[var(--border)] group-hover:opacity-100"
+            className="ml-1 shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) group-hover:opacity-100"
             aria-label="Archive chat"
           >
             <Archive size={11} />
@@ -773,7 +773,7 @@ function ChatListBody({
   if (filteredChats.length === 0) {
     return (
       <SidebarResourceList>
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
+        <p className="px-2.5 py-2 text-xs text-(--muted-light)">
           {viewChats.length === 0 ? emptyLabel : 'No results'}
         </p>
       </SidebarResourceList>
@@ -806,7 +806,7 @@ function ChatListBody({
               type="button"
               disabled={loadingMore}
               onClick={() => void loadMoreChats()}
-              className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
+              className="h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
             >
               {loadingMore ? 'Loading...' : 'Load more'}
             </button>

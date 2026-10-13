@@ -42,7 +42,7 @@ export function DialogFrame({
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       className={cn(
-        'fixed inset-0 z-[10070] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)]',
+        'fixed inset-0 z-10070 flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-(--overlay-ease)',
         visible ? 'opacity-100' : 'opacity-0',
       )}
       onClick={(event) => {
@@ -56,7 +56,7 @@ export function DialogFrame({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'w-[min(420px,92vw)] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)]',
+          'w-[min(420px,92vw)] rounded-xl border border-(--border) bg-(--surface-elevated) p-5 shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease)',
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1',
           className,
         )}
@@ -64,12 +64,12 @@ export function DialogFrame({
       >
         {title || actions ? (
           <div className="flex items-center justify-between gap-3">
-            {title ? <h2 className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">{title}</h2> : <span />}
+            {title ? <h2 className="min-w-0 truncate text-sm font-semibold text-(--foreground)">{title}</h2> : <span />}
             {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
           </div>
         ) : null}
         {description ? (
-          <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">{description}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-(--muted)">{description}</p>
         ) : null}
         {children}
         {footer ? <div className="mt-5 flex items-center justify-end gap-2">{footer}</div> : null}

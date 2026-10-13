@@ -177,7 +177,7 @@ function ResetPasswordContent() {
           Remember your password?{' '}
           <Link
             href="/auth/sign-in"
-            className="text-[var(--foreground)] hover:underline font-medium"
+            className="text-(--foreground) hover:underline font-medium"
           >
             Sign in
           </Link>
