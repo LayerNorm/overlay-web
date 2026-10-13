@@ -226,8 +226,8 @@ Enable the human approval gate when a second eligible reviewer joins.
 
 ## Known limits
 
-- Previews cannot receive third-party webhooks or finish third-party OAuth with
-  fixed callback URLs. Those flows are verified on staging.
+- Providers that require fixed webhook or OAuth callback URLs are verified on
+  staging. WorkOS accepts the configured wildcard preview callback.
 - Seed data does not reproduce every real data shape. Migrations are always
   checked on staging before production.
 - Preview count is bounded by Vercel concurrent builds and Convex preview
@@ -236,11 +236,13 @@ Enable the human approval gate when a second eligible reviewer joins.
   last successful alias in place; QA must check the deployed SHA before treating
   a preview as evidence for the current PR head.
 
-Prepared staging backend: `doting-cuttlefish-819` has separately generated
+Dedicated staging backend: `doting-cuttlefish-819` has separately generated
 internal secrets, its sandbox smoke identity and staging app URL configured, with
 readback verified. Application functions and synthetic fixtures are deployed. The gated build sequence deploys backend functions, seeds guarded fixtures,
 then builds web; Convex `deploy --cmd` alone runs the command before its push.
-Activation still requires provider isolation, authenticated smoke and the cutover.
+Provider isolation, complete authenticated smoke and cutover passed on the
+accepted application revision recorded below. Each future candidate requires
+fresh smoke evidence.
 
 Shared Vercel Preview settings and Convex preview defaults now contain the
 existing LayerNorm sandbox Stripe credentials/prices and the test Gateway key,
@@ -250,10 +252,12 @@ no expiry and a $1 total limit without reset. Shared Preview model keys and
 hosted-access flags are verified by readback; an actual Free Router reply and reload persistence passed. Authenticated R2 upload/finalization, exact byte download, browser image
 rendering and CORS isolation also passed. No provider credentials need copying per new PR.
 
-Initial staging cutover is prepared as a candidate build and authenticated smoke
-on its verified native hostname, leaving the current staging alias unchanged.
-Publication requires provider isolation plus complete smoke evidence from that
-same serialized workflow run; canonical staging is then smoked again. Main merges never deploy staging; this workflow remains manual-only.
+Each on-demand candidate is tested on its verified native hostname before any
+optional canonical publication. Publication requires provider isolation plus
+complete smoke evidence from the same serialized workflow run; canonical staging
+is then smoked again. Both gates passed for the accepted application revision
+`bee84a33a2d4b101bf85d3b179cd30984b556045`, now served by canonical staging.
+Main merges never deploy staging; this workflow remains manual-only.
 
 Owner decision (2026-10-12): cut over when live isolation and staging smoke
 checks pass; the planned one-to-two-week waiting period is waived.
