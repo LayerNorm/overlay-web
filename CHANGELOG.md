@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- **`DelayedTooltip` now runs on a shadcn/Radix tooltip.** New canonical `components/ui/tooltip` in `packages/overlay-ui` (portal, collision-aware positioning, arrow, delayed-open animations); the existing `DelayedTooltip` keeps the same `{label, side}` props, so every callsite upgrades with no consumer changes. 450 ms show delay and fine-pointer hover gating are preserved. Third step of the shadcn/ui migration.
+
 - **`@overlay/ui` dialogs now run on shadcn/Radix primitives.** New canonical `components/ui/dialog` + `alert-dialog` in `packages/overlay-ui` (Radix focus trap, scroll lock, portal, `role`/`aria` wiring, Escape dismissal); the existing `DialogFrame` and `ConfirmDialog` re-export the same props on top, so all 16 callsites upgrade with no consumer changes. Adds `radix-ui`/`clsx`/`tailwind-merge`/`class-variance-authority`/`tw-animate-css`, a real `cn()`, and repo `components.json` pointing into the package. No visual changes intended. Second step of the shadcn/ui migration (`docs/plans/SHADCN_MIGRATION_PLAN.md`).
 
 - **Tailwind CSS upgraded to v4.** The app now builds on `tailwindcss@4` via `@tailwindcss/postcss` with CSS-first configuration (`@theme`, `@custom-variant`, `@source`). `dark:` utilities now follow the app's `[data-theme]` attribute instead of the OS color scheme — previously 61 `dark:` classes ignored the in-app theme toggle. The base palette has a single canonical definition in `@overlay/ui` styles; `globals.css` keeps only app-specific variables. No visual changes intended. First step of the shadcn/ui migration (`docs/plans/SHADCN_MIGRATION_PLAN.md`).
