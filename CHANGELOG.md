@@ -17,7 +17,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - **Boolean release flags default off.** A request-scoped PostHog helper lets unfinished server behavior stay dark, evaluates each requested set once, and falls back to the existing behavior when configuration or the flag service is unavailable.
 
-- **Prepared dedicated staging deployments from main.** An inactive, serialized workflow pins Divyansh's staging project, exact accepted revision and separate Convex backend. It rejects manual or mismatched builds and records web/backend provenance. Activation awaits the preview soak, isolated providers and authenticated staging smoke; current staging and manual production releases remain in place.
+- **Prepared authenticated staging cutover.** A candidate build can pass sandbox sign-in, note CRUD/conflict, real chat and Files checks before changing staging's canonical alias. Publication requires verified provider isolation and complete proof from the same serialized main workflow, followed by canonical smoke. Activation remains pending live checks; the owner waived the calendar soak.
+
+- **Shared preview provider defaults.** Existing LayerNorm sandbox Stripe credentials/prices and a test Gateway key are configured once for future Vercel builds and new Convex previews, with readback verified. The dedicated staging backend has corresponding test settings. OpenRouter and isolated storage remain pending.
+
+- **Prepared dedicated staging deployments from main.** An inactive, serialized workflow pins Divyansh's staging project, exact accepted revision and separate Convex backend. It rejects manual or mismatched builds and records web/backend provenance. Activation awaits isolated providers and authenticated staging smoke; current staging and manual production releases remain in place.
 
 - **PR preview lifecycle automation and merge-queue checks.** Trusted main workflows provision per-PR custom origins, pin builds to the current head, verify alias assignment, and clean up on close or retarget; scheduled reconciliation covers missed events. Wildcard fallback hosts return 404. All required checks support merge groups, including explicit dependency comparisons and existing CLA-signature verification.
   Management credentials are confined to a main-only GitHub environment, and the controller disables automatic domain assignment before provenance checks.

@@ -61,12 +61,14 @@ Overlay has two backend lanes that must stay paired with their matching web depl
 preparation. The prepared lane targets only Divyansh's Vercel team
 `team_VT3uNspuyAOwicxedhtG4SMe`, project `overlay-web-staging`, and dedicated
 Convex `doting-cuttlefish-819` in project `overlay-staging` (`3199896`). Its
-deployment-scoped key expires 2027-01-10 and is stored privately; the empty
-backend is not serving the current staging site.
+deployment-scoped key expires 2027-01-10 and is stored privately. Sandbox auth,
+separate internal secrets and test Stripe/Gateway settings are configured, but
+the backend has no app functions or fixtures and does not serve current staging.
 
-Before activation, complete the preview soak, isolate staging providers,
+The owner waived the calendar soak on 2026-10-12. Before activation, prove live
+provider isolation,
 configure the dedicated backend/app environment, switch the staging project's
-production branch and domain to `main`, add authenticated staging smoke, freeze
+production branch and domain to `main`, pass authenticated staging smoke, freeze
 the legacy staging branch and rewrite the process docs in the cutover PR.
 Keep root `git.deploymentEnabled.main=false` and production manual.
 
@@ -80,6 +82,25 @@ requires READY plus project/repository/main/SHA/backend metadata and readback.
 Deployment evidence records `smoke: pending`: it is not promotion evidence until
 the exact revision passes authenticated smoke. The existing lane above stays
 active until these cutover requirements are met.
+
+For the first cutover, manually dispatch reviewed `main` with
+`prepare_candidate=true`. The controller builds a candidate with automatic
+custom-domain assignment disabled, verifies its native Vercel hostname against
+the owned deployment, and leaves the canonical staging alias unchanged. The
+same serialized job installs reviewed smoke dependencies without management
+secrets, then performs ordinary sandbox password sign-in, fixture reads, note
+CRUD and a stale-save conflict, a real chat reply and a rendered Files check.
+Only the smoke step receives the synthetic account credentials.
+
+After provider isolation is independently proved, set
+`STAGING_ISOLATION_VERIFIED=enabled`. Dispatch with both candidate inputs true
+to publish only after those checks pass. Publication verifies evidence from
+the same workflow run, current main, deployment provenance and the unchanged
+previous alias before assigning `staging.getoverlay.io`. Canonical smoke runs
+again afterward. Save `staging-smoke-<sha>` and its screenshots as evidence;
+an unpublished candidate or a deployment artifact with `smoke: pending` is not
+production promotion proof. Enable `RELEASE_STAGING_FROM_MAIN` only after this
+cutover passes. These steps are prepared in source and have not run live yet.
 
 A feature worktree must never change production Convex. The `main` app and production Convex are a single release unit: deploy them only from an up-to-date, clean `main` worktree.
 
