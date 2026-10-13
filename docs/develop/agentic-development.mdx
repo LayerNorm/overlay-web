@@ -10,8 +10,8 @@ staging candidate passed Sandbox sign-in and discovered a production-redacted
 note-conflict bug. Its fix is included in this cutover revision. Canonical staging
 still serves the previous deployment until the same-run smoke/publication checks
 pass. Release candidates are dispatched manually; no merge triggers a staging
-build and no activation variable is required. Live queue verification and production drill
-remain acceptance work, not proof supplied by this document.
+build and no activation variable is required. The main queue merge and semantic rejection are verified. A new successful
+trusted candidate producer and the production drill remain acceptance work.
 
 ## Release model
 
@@ -201,3 +201,13 @@ After every successful preview deploy, the hosted build therefore explicitly run
 idempotent repair preserves edited fixture data and reuses any existing personal
 workspace; it does not recreate the backend or deploy shared development/production.
 A failed deploy never runs the repair, and a failed repair fails the hosted build.
+
+### Chat smoke readiness
+
+Candidate and production smoke create a fresh Auto conversation, await its initial
+transcript response, matching `data-overlay-chat-id` with
+`data-overlay-chat-hydrated="true"`, and requested heading, then explicitly select Chat before
+sending. A visible composer alone does not prove route hydration is complete.
+Live diagnostics reproduced an early send using default model/runtime state;
+waiting for the transcript fixed immediate reply rendering and reload persistence.
+Both suites clean their own synthetic conversations after success or failure.

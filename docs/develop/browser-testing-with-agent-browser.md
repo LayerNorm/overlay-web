@@ -256,3 +256,15 @@ The old approach had three modes, all with issues:
 
 The Playwright MCP config has been removed from `~/.config/devin/mcp_config.json`. All
 browser QA should use agent-browser instead.
+
+## Chat readiness before a smoke send
+
+The composer and requested heading can appear before chat hydration finishes.
+Wait for the chat root with both `data-overlay-chat-id` equal to the requested
+conversation and `data-overlay-chat-hydrated="true"`. These attributes reflect
+the existing active runtime state after messages/meta have been applied. A
+finished network response alone is insufficient. Select Chat, send the real
+model request, verify the visible reply and reload persistence, then clean the
+synthetic conversation. Keep failed diagnostics separate from trusted CI proof.
+
+Release smoke awaits chat navigation and its transcript response together so a failed navigation cannot leave an unhandled response wait during browser cleanup. Production regressions assert deletion of the exact temporary chat even when chat verification or note cleanup fails.
