@@ -19,6 +19,13 @@ smoke with a separate synthetic account. Live promotion and rollback rehearsal
 remain pending. See `docs/develop/worktree-staging-qa.mdx` for configuration,
 checkpoints and the rollback runbook.
 
+The separate production QA identity and deployment-scoped Convex credential are
+prepared privately. WorkOS password authentication passed; production application
+smoke and deployment remain pending. The bootstrap hosted-provider gate also
+remains closed in test apps until their model keys are accepted. Enabling model
+QA requires the shared hosted-access flag and emergency-switch settings described
+in the staging guide, followed by a rebuild and a real application reply.
+
 ## Preview-domain decision — 2026-10-12
 
 Implement stable `pr-<number>.preview.getoverlay.io` URLs with ordinary Vercel
