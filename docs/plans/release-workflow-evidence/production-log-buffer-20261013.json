@@ -1,0 +1,10 @@
+{
+  "sha": "7a3a682134fef623c859c8c89d75234c1c56728a",
+  "phase": "remote web build",
+  "childErrorCode": "ENOBUFS",
+  "capturedStdoutBytes": 0,
+  "capturedStderrBytes": 1049148,
+  "unpublishedDeploymentId": "dpl_Cubzvm3HZh1VKCizzV5p1yHrx8Zh",
+  "customerAliasUnchanged": "dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f",
+  "productionBackendPushOccurred": false
+}

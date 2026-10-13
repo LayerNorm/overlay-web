@@ -3,7 +3,8 @@ import test from 'node:test'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { canonicalMain, promote, productionEnvironment, productionCliOrigin, waitForProductionBuild } from './production-promote.mjs'
+import { canonicalMain, promote, productionEnvironment, productionCliOrigin, waitForProductionBuild,
+  productionBuildArguments, runCommand } from './production-promote.mjs'
 import { PRODUCTION, promotionEvidence, productionCredentials, productionDeploymentMatches, verifyStagingLive } from './production-control.mjs'
 import { STAGING } from './staging-control.mjs'
 import { SMOKE_CHECKS } from './staging-publish.mjs'
@@ -21,6 +22,20 @@ const job = { name: 'deploy', status: 'completed', conclusion: 'success',
 const deployment = { id: 'dpl_prod', projectId: PRODUCTION.projectId, target: 'production', readyState: 'READY',
   url: 'release-proof.vercel.app', meta: { overlayReleaseLane: 'production', overlayReleaseSha: sha,
     overlayConvexBackend: PRODUCTION.backend, githubCommitSha: sha, githubCommitRef: 'main' } }
+
+test('production submits an asynchronous remote build without assigning customer domains', () => {
+  const args = productionBuildArguments(sha)
+  for (const flag of ['--prod', '--skip-domain', '--no-wait', '--yes']) assert.ok(args.includes(flag))
+  for (const value of ['overlayReleaseSha=' + sha, 'githubCommitSha=' + sha,
+    'overlayConvexBackend=' + PRODUCTION.backend, 'githubCommitRef=main']) assert.ok(args.includes(value))
+  assert.ok(!args.includes('--prebuilt'))
+  assert.throws(() => productionBuildArguments('invalid'))
+})
+
+test('release command capture tolerates output beyond the former one-megabyte limit', () => {
+  const output = runCommand(process.execPath, ['--eval', 'process.stdout.write("x".repeat(2 * 1024 * 1024))'])
+  assert.equal(output.length, 2 * 1024 * 1024)
+})
 
 test('production CLI accepts structured non-interactive and plain native origins only', () => {
   const url = 'https://release-proof.vercel.app'
