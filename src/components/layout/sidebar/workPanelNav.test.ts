@@ -4,9 +4,24 @@ import { buildWorkPanelNav } from './workPanelNav'
 
 test('Work scope/view changes preserve view, drop open task, and retain workspace URL', () => {
   const routes: string[] = []
-  const nav = buildWorkPanelNav({ scope: 'personal', params: new URLSearchParams('view=timeline&id=private-task'), pendingId: null, solo: false, href: '/app/w/ws-1/work', push: (href) => routes.push(href), close: () => {}, begin: () => {} })
-  assert.deepEqual(nav.items.map((item) => item.label), ['Personal', 'Workspace'])
-  assert.deepEqual(nav.items[0].children?.map((item) => item.label), ['List', 'Board', 'Timeline'])
+  const nav = buildWorkPanelNav({
+    scope: 'personal',
+    params: new URLSearchParams('view=timeline&id=private-task'),
+    pendingId: null,
+    solo: false,
+    href: '/app/w/ws-1/work',
+    push: (href) => routes.push(href),
+    close: () => {},
+    begin: () => {},
+  })
+  assert.deepEqual(
+    nav.items.map((item) => item.label),
+    ['Personal', 'Workspace'],
+  )
+  assert.deepEqual(
+    nav.items[0].children?.map((item) => item.label),
+    ['List', 'Board', 'Timeline'],
+  )
   nav.onSelect('workspace')
   const url = new URL(routes[0], 'https://example.test')
   assert.equal(url.pathname, '/app/w/ws-1/work')
@@ -15,7 +30,40 @@ test('Work scope/view changes preserve view, drop open task, and retain workspac
   assert.equal(url.searchParams.has('id'), false)
 })
 test('solo workspace uses the existing flat panel convention', () => {
-  const nav = buildWorkPanelNav({ scope: 'personal', params: new URLSearchParams('view=board'), pendingId: null, solo: true, href: '/app/work', push: () => {}, close: () => {}, begin: () => {} })
-  assert.deepEqual(nav.items.map((item) => item.label), ['List', 'Board', 'Timeline'])
+  const nav = buildWorkPanelNav({
+    scope: 'personal',
+    params: new URLSearchParams('view=board'),
+    pendingId: null,
+    solo: true,
+    href: '/app/work',
+    push: () => {},
+    close: () => {},
+    begin: () => {},
+  })
+  assert.deepEqual(
+    nav.items.map((item) => item.label),
+    ['List', 'Board', 'Timeline'],
+  )
   assert.equal(nav.activeId, 'personal:board')
+})
+
+test('returning to Personal has an explicit scope so remembered Workspace cannot win during navigation', () => {
+  let href = ''
+  const nav = buildWorkPanelNav({
+    scope: 'workspace',
+    params: new URLSearchParams('scope=workspace&view=board&id=shared'),
+    pendingId: null,
+    solo: false,
+    href: '/app/w/ws/work',
+    push: (next) => {
+      href = next
+    },
+    close: () => {},
+    begin: () => {},
+  })
+  nav.onSelect('personal')
+  const url = new URL(href, 'https://example.test')
+  assert.equal(url.searchParams.get('scope'), 'personal')
+  assert.equal(url.searchParams.get('view'), 'board')
+  assert.equal(url.searchParams.has('id'), false)
 })

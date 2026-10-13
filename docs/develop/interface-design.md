@@ -202,3 +202,5 @@ Work on narrow screens stacks the List title and controls; Board columns snap-sc
 Work briefs use the shared confirmation dialog for unsaved changes. A parent Escape handler must honor `defaultPrevented` so dismissing a nested dialog keeps the brief open. Timeline pointer movement suppresses its trailing click while keyboard activation still opens the brief.
 
 For nested confirmation over a hand-built drawer, pause `useDialogFocus` with `restoreFocus: false`; preserve the drawer opener until its actual unmount. This lets the shared confirmation return focus to the edited field instead of the page behind it. Other callers retain the default focus restoration.
+
+Work view links carry an explicit `scope=personal` or `scope=workspace`; the URL wins over remembered scope during navigation, including the return from Workspace to Personal.
