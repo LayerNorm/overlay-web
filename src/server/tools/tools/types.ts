@@ -35,13 +35,13 @@ export interface OverlayToolsOptions {
   memoryOwnerId?: string
   /**
    * Set when a workspace agent is driving the turn. Tools still authenticate as
-   * `userId` (the delegate model — see docs/develop/bring-your-own-agents.md),
+   * `userId` (the delegate model — see internal/develop/bring-your-own-agents.md),
    * so this exists to attribute the work, not to authorize it.
    */
   agentId?: string
   agentPrincipalId?: string
   /**
-   * Set when the turn is in a room others can read (docs/plans/TOOL_SCOPING_PLAN.md, T4): searches return only what the
+   * Set when the turn is in a room others can read (internal/plans/TOOL_SCOPING_PLAN.md, T4): searches return only what the
    * workspace shares, and the list tools are limited to the Workspace scope, so the person's private items are not
    * brought into the room by default.
    */

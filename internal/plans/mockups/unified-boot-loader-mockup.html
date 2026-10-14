@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overlay — Unified boot loader mockup</title>
+<script>
+  /* theme: saved choice, else the system setting (set before first paint to avoid a flash) */
+  (function () {
+    var t = null
+    try { t = localStorage.getItem('overlay-mockup-theme') } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    document.documentElement.dataset.theme = t
+  })()
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+  /* Tokens copied from src/app/globals.css / @overlay/ui styles.css */
+  :root {
+    --background: #fafafa;
+    --foreground: #0a0a0a;
+    --muted: #71717a;
+    --muted-light: #a1a1aa;
+    --border: #e4e4e7;
+    --surface-elevated: #ffffff;
+    --surface-muted: #f5f5f5;
+    --surface-subtle: #f0f0f0;
+    --sidebar-surface: #f5f5f5;
+    --serif: 'Libre Baskerville', Georgia, serif;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  :root[data-theme="dark"] {
+    --background: #09090b;
+    --foreground: #f5f5f5;
+    --muted: #a1a1aa;
+    --muted-light: #71717a;
+    --border: #27272a;
+    --surface-elevated: #111113;
+    --surface-muted: #151518;
+    --surface-subtle: #1c1c20;
+    --sidebar-surface: #111113;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+
+  /* ---------- mockup chrome (not part of the design) ---------- */
+  .mockup-bar {
+    height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-elevated);
+    font-size: 12px;
+    color: var(--muted);
+    position: relative;
+    z-index: 10;
+  }
+  .mockup-bar .title { font-weight: 600; color: var(--foreground); }
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--surface-muted);
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    padding: 4px 12px;
+    cursor: pointer;
+    border-radius: 999px;
+  }
+  .seg button[aria-pressed="true"] {
+    background: var(--foreground);
+    color: var(--background);
+  }
+  .bar-btn {
+    border: 1px solid var(--border);
+    background: var(--surface-elevated);
+    color: var(--foreground);
+    font: inherit;
+    padding: 4px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .bar-btn:hover { background: var(--surface-muted); }
+  .spacer { flex: 1; }
+  .caption { white-space: nowrap; }
+
+  /* ---------- simulated app viewport ---------- */
+  .stage {
+    position: relative;
+    height: calc(100vh - 46px);
+    overflow: hidden;
+    background: var(--background);
+  }
+  .phase {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 380ms ease;
+  }
+  #stage[data-orb="x-center"] { --orb-nudge: 6px; }
+  #stage[data-orb="mid"] { --orb-nudge: 2.5px; }
+  #stage[data-orb="baseline"] { --orb-nudge: -1px; }
+  .phase.on { opacity: 1; }
+
+  /* ---------- the proposed unified loader ---------- */
+  .boot-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+
+  /* one-shot reveal, same as today's app-brand-loader entrance */
+  @keyframes logoFade {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes wordReveal {
+    from { opacity: 0; transform: translateX(-110%); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* continuous breathing — same shape as the chat stream-marker pulse,
+     but phased to start at full opacity so it hands off seamlessly
+     from the entrance (opacity is already 1 when the animation kicks in) */
+  @keyframes lockupPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.15; }
+  }
+
+  .lockup {
+    display: flex;
+    align-items: center;
+  }
+  .lockup .orb-wrap {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    /* orb vertical position vs the wordmark (mockup compare toggle:
+       baseline = bottom rests on the text baseline like a letter,
+       mid = halfway, x-center = centered on the lowercase "o" bowl) */
+    margin-top: var(--orb-nudge, -1px);
+    background: var(--background);
+    animation: logoFade 360ms ease-out both;
+  }
+  .lockup .word-clip {
+    margin-left: 8px;
+    overflow: hidden;
+    padding: 4px 0;
+  }
+  .lockup .word {
+    display: block;
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    color: var(--foreground);
+    animation: wordReveal 620ms var(--ease-out) 180ms both;
+  }
+
+  /* the pulse is applied to the whole lockup after its entrance
+     (wordReveal ends at 800ms; the first cycle starts at opacity 1) */
+  .proposed .lockup-pulse {
+    animation: lockupPulse 1.4s ease-in-out 800ms infinite;
+  }
+
+  /* the "Opening workspace…" line, lifted as-is onto the same screen */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .workspace-line {
+    margin-top: 30px;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    color: var(--muted);
+    opacity: 0;
+    animation: wsIn 420ms ease-out 560ms forwards;
+  }
+  @keyframes wsIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .workspace-line svg {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    animation: spin 1s linear infinite;
+  }
+
+  /* ---------- current flow (for comparison) ---------- */
+  .gate-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .gate-screen svg {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    animation: spin 1s linear infinite;
+  }
+
+  /* ---------- skeleton / settled app shell ---------- */
+  .sk {
+    position: relative;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--surface-muted);
+    min-height: 10px;
+  }
+  :root[data-theme="dark"] .sk { background: var(--surface-subtle); }
+  .sk::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -55%;
+    width: 55%; height: 100%;
+    background: linear-gradient(105deg, transparent 0%, rgba(128,128,128,0.06) 35%, rgba(255,255,255,0.45) 50%, rgba(128,128,128,0.06) 65%, transparent 100%);
+    animation: skslide 1.4s ease-in-out infinite;
+  }
+  :root[data-theme="dark"] .sk::after {
+    background: linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.03) 35%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.03) 65%, transparent 100%);
+  }
+  @keyframes skslide {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(320%); }
+  }
+  .settled .sk::after { animation: none; opacity: 0; }
+  .settled .sk {
+    background: transparent;
+    transition: background 300ms ease;
+  }
+
+  .appshell {
+    display: flex;
+    height: 100%;
+  }
+  .sidebar {
+    width: 244px;
+    flex-shrink: 0;
+    background: var(--sidebar-surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 12px 10px;
+    gap: 4px;
+  }
+  .sidebar .brand {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 8px 14px;
+  }
+  .sidebar .brand .word {
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .side-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--foreground);
+  }
+  .side-row .dot { width: 14px; height: 14px; }
+  .side-label {
+    opacity: 0;
+    transition: opacity 300ms ease;
+    white-space: nowrap;
+  }
+  .settled .side-label { opacity: 1; }
+  .settled .side-row .sk { min-height: 0; }
+  .side-section {
+    margin: 12px 8px 4px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .pagehead {
+    height: 64px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+  }
+  .chat-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px 16px;
+    min-height: 0;
+  }
+  .chat-col { max-width: 768px; width: 100%; margin: 0 auto; }
+  .composer {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface-elevated);
+    padding: 12px;
+  }
+  .composer .ph {
+    font-size: 14px;
+    color: var(--muted-light);
+    opacity: 0;
+    transition: opacity 300ms ease;
+  }
+  .settled .composer .ph { opacity: 1; }
+  .composer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+  .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
+  .send-btn { width: 32px; height: 32px; border-radius: 999px; }
+
+  .real-text {
+    font-size: 13px;
+    color: var(--foreground);
+    opacity: 0;
+    transition: opacity 300ms ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .settled .real-text { opacity: 1; }
+  .settled .sk.text-swap { display: none; }
+  .text-swap-wrap { position: relative; }
+  .head-title {
+    font-size: 15px;
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 300ms ease;
+  }
+  .settled .head-title { opacity: 1; }
+  .head-sub {
+    font-size: 12px;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity 300ms ease;
+  }
+  .settled .head-sub { opacity: 1; }
+
+  /* Mockup only: reduced motion still shows the real pulse (the design under
+     review is the breathing itself); only one-shot entrances are skipped.
+     The small arc spinner keeps rotating regardless. */
+  @media (prefers-reduced-motion: reduce) {
+    .lockup .orb-wrap, .lockup .word, .workspace-line, .sk::after {
+      animation-duration: 1ms !important;
+      animation-delay: 0ms !important;
+      animation-iteration-count: 1 !important;
+    }
+    .workspace-line { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="mockup-bar">
+  <span class="title">Boot loader</span>
+  <div class="seg" role="group" aria-label="Flow">
+    <button id="btn-proposed" aria-pressed="true">Proposed</button>
+    <button id="btn-current" aria-pressed="false">Current</button>
+  </div>
+  <button class="bar-btn" id="btn-replay">Replay</button>
+  <div class="seg" role="group" aria-label="Orb position">
+    <button id="orb-baseline" aria-pressed="true">baseline</button>
+    <button id="orb-mid" aria-pressed="false">mid</button>
+    <button id="orb-xcenter" aria-pressed="false">x-center</button>
+  </div>
+  <span class="caption" id="caption"></span>
+  <span class="spacer"></span>
+  <button class="bar-btn" id="btn-theme">Toggle theme</button>
+</div>
+
+<div class="stage" id="stage">
+
+  <!-- PROPOSED: one screen — pulsing lockup + workspace line beneath -->
+  <div class="phase boot-loader proposed" id="p-unified">
+    <div class="lockup-pulse">
+      <div class="lockup" role="status" aria-label="Loading overlay">
+        <span class="orb-wrap">
+          <!-- exact OverlayMark metal SVG from packages/overlay-ui Orb.tsx -->
+          <svg width="18" height="18" viewBox="0 0 200 200" aria-hidden="true">
+            <defs>
+              <radialGradient id="ob1" cx="38%" cy="28%" r="78%">
+                <stop offset="0%" stop-color="#ffffff"/><stop offset="22%" stop-color="#eceef1"/>
+                <stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/>
+                <stop offset="100%" stop-color="#17191d"/>
+              </radialGradient>
+              <linearGradient id="or1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="52%" stop-color="#ffffff" stop-opacity="0"/>
+                <stop offset="80%" stop-color="#ffffff" stop-opacity="0.75"/>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+              </linearGradient>
+              <filter id="os16" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>
+              <filter id="os12" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2"/></filter>
+              <filter id="os114" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14"/></filter>
+              <clipPath id="oc1"><circle cx="100" cy="100" r="96"/></clipPath>
+            </defs>
+            <g clip-path="url(#oc1)">
+              <circle cx="100" cy="100" r="96" fill="url(#ob1)"/>
+              <ellipse cx="138" cy="142" rx="44" ry="34" fill="#000" opacity="0.22" filter="url(#os114)"/>
+              <ellipse cx="80" cy="72" rx="54" ry="42" fill="#fff" opacity="0.26" filter="url(#os114)" transform="rotate(-20 80 72)"/>
+              <circle cx="100" cy="100" r="88" fill="none" stroke="url(#or1)" stroke-width="7" filter="url(#os16)"/>
+              <ellipse cx="100" cy="168" rx="54" ry="13" fill="#fff" opacity="0.3" filter="url(#os16)"/>
+              <ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity="0.9" filter="url(#os16)" transform="rotate(-24 73 59)"/>
+              <ellipse cx="67" cy="51" rx="10" ry="7" fill="#fff" opacity="0.95" filter="url(#os12)" transform="rotate(-24 67 51)"/>
+            </g>
+          </svg>
+        </span><span class="word-clip"><span class="word">overlay</span></span>
+      </div>
+    </div>
+    <div class="workspace-line">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      <span>Opening workspace&hellip;</span>
+    </div>
+  </div>
+
+  <!-- CURRENT step 1: brand screen -->
+  <div class="phase boot-loader" id="p-brand">
+    <div class="lockup" role="status" aria-label="Loading overlay">
+      <span class="orb-wrap">
+        <svg width="18" height="18" viewBox="0 0 200 200" aria-hidden="true">
+          <defs>
+            <radialGradient id="ob2" cx="38%" cy="28%" r="78%">
+              <stop offset="0%" stop-color="#ffffff"/><stop offset="22%" stop-color="#eceef1"/>
+              <stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/>
+              <stop offset="100%" stop-color="#17191d"/>
+            </radialGradient>
+            <linearGradient id="or2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="52%" stop-color="#ffffff" stop-opacity="0"/>
+              <stop offset="80%" stop-color="#ffffff" stop-opacity="0.75"/>
+              <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+            </linearGradient>
+            <filter id="os26" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>
+            <filter id="os22" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2"/></filter>
+            <filter id="os214" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14"/></filter>
+            <clipPath id="oc2"><circle cx="100" cy="100" r="96"/></clipPath>
+          </defs>
+          <g clip-path="url(#oc2)">
+            <circle cx="100" cy="100" r="96" fill="url(#ob2)"/>
+            <ellipse cx="138" cy="142" rx="44" ry="34" fill="#000" opacity="0.22" filter="url(#os214)"/>
+            <ellipse cx="80" cy="72" rx="54" ry="42" fill="#fff" opacity="0.26" filter="url(#os214)" transform="rotate(-20 80 72)"/>
+            <circle cx="100" cy="100" r="88" fill="none" stroke="url(#or2)" stroke-width="7" filter="url(#os26)"/>
+            <ellipse cx="100" cy="168" rx="54" ry="13" fill="#fff" opacity="0.3" filter="url(#os26)"/>
+            <ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity="0.9" filter="url(#os26)" transform="rotate(-24 73 59)"/>
+            <ellipse cx="67" cy="51" rx="10" ry="7" fill="#fff" opacity="0.95" filter="url(#os22)" transform="rotate(-24 67 51)"/>
+          </g>
+        </svg>
+      </span><span class="word-clip"><span class="word">overlay</span></span>
+    </div>
+  </div>
+
+  <!-- CURRENT step 2: the separate "Opening workspace…" gate -->
+  <div class="phase gate-screen" id="p-gate">
+    <span style="display:inline-flex;align-items:center">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      Opening workspace&hellip;
+    </span>
+  </div>
+
+  <!-- CURRENT step 3 / PROPOSED end state: skeleton app shell -->
+  <div class="phase" id="p-shell">
+    <div class="appshell" id="appshell">
+      <div class="sidebar">
+        <div class="brand">
+          <svg width="14" height="14" viewBox="0 0 200 200" aria-hidden="true">
+            <defs>
+              <radialGradient id="ob3" cx="38%" cy="28%" r="78%">
+                <stop offset="0%" stop-color="#ffffff"/><stop offset="22%" stop-color="#eceef1"/>
+                <stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/>
+                <stop offset="100%" stop-color="#17191d"/>
+              </radialGradient>
+              <clipPath id="oc3"><circle cx="100" cy="100" r="96"/></clipPath>
+            </defs>
+            <g clip-path="url(#oc3)">
+              <circle cx="100" cy="100" r="96" fill="url(#ob3)"/>
+              <ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity="0.9" transform="rotate(-24 73 59)"/>
+            </g>
+          </svg>
+          <span class="word">overlay</span>
+        </div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:72px"></span><span class="side-label" style="position:absolute;margin-left:22px">New chat</span></div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:56px"></span><span class="side-label" style="position:absolute;margin-left:22px">Search</span></div>
+        <div class="side-section">Chats</div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:128px"></span><span class="side-label" style="position:absolute;margin-left:22px">Pricing page refresh</span></div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:112px"></span><span class="side-label" style="position:absolute;margin-left:22px">Launch checklist</span></div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:96px"></span><span class="side-label" style="position:absolute;margin-left:22px">Agent notes</span></div>
+        <div class="side-section">Workspace</div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:44px"></span><span class="side-label" style="position:absolute;margin-left:22px">Work</span></div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:44px"></span><span class="side-label" style="position:absolute;margin-left:22px">Notes</span></div>
+        <div class="side-row"><span class="sk dot" style="border-radius:4px"></span><span class="sk" style="height:12px;width:40px"></span><span class="side-label" style="position:absolute;margin-left:22px">Files</span></div>
+      </div>
+      <div class="main">
+        <div class="pagehead">
+          <div>
+            <div class="sk" style="height:14px;width:120px"></div>
+            <div class="sk" style="height:10px;width:180px;margin-top:8px"></div>
+            <div style="position:absolute;top:22px"><span class="head-title">New chat</span><br/><span class="head-sub">Auto &middot; Free model</span></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div class="sk" style="height:32px;width:32px"></div>
+            <div class="sk" style="height:32px;width:32px"></div>
+            <div class="sk" style="height:32px;width:32px"></div>
+          </div>
+        </div>
+        <div class="chat-body">
+          <div class="chat-col">
+            <div class="sk" style="height:12px;width:90px"></div>
+            <div style="margin-top:20px">
+              <div class="sk" style="height:12px;width:72%"></div>
+              <div class="sk" style="height:12px;width:86%;margin-top:10px"></div>
+              <div class="sk" style="height:12px;width:48%;margin-top:10px"></div>
+            </div>
+            <div style="margin-left:auto;width:72%;margin-top:20px">
+              <div class="sk" style="height:12px;width:100%"></div>
+              <div class="sk" style="height:12px;width:68%;margin-top:10px"></div>
+            </div>
+          </div>
+          <div class="chat-col composer">
+            <div class="sk" style="height:16px;width:160px"></div>
+            <div class="ph" style="position:absolute;margin-top:-14px">Message overlay&hellip;</div>
+            <div class="composer-row">
+              <div style="display:flex;gap:8px">
+                <div class="sk icon-btn"></div>
+                <div class="sk icon-btn"></div>
+              </div>
+              <div class="sk send-btn"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var CAPTIONS = {
+    proposed: [
+      [0, 'shell render + workspace fetch — one screen, logo breathing'],
+      [3600, 'skeletons painted — loader fades away'],
+      [5200, 'content resolved']
+    ],
+    current: [
+      [0, '1/3 brand screen'],
+      [1500, '2/3 separate \u201cOpening workspace\u2026\u201d screen'],
+      [3100, '3/3 brand screen again'],
+      [4100, 'skeletons painted'],
+      [5600, 'content resolved']
+    ]
+  }
+
+  var stage = document.getElementById('stage')
+  var unified = document.getElementById('p-unified')
+  var brand = document.getElementById('p-brand')
+  var gate = document.getElementById('p-gate')
+  var shell = document.getElementById('p-shell')
+  var appshell = document.getElementById('appshell')
+  var caption = document.getElementById('caption')
+  var timers = []
+  var mode = 'proposed'
+
+  function clearTimers() {
+    timers.forEach(clearTimeout)
+    timers = []
+  }
+  function later(ms, fn) { timers.push(setTimeout(fn, ms)) }
+
+  function show(el) { el.classList.add('on') }
+  function hide(el) { el.classList.remove('on') }
+  function hideAll() {
+    ;[unified, brand, gate, shell].forEach(hide)
+  }
+
+  function restartAnimation(el, cls) {
+    el.classList.remove(cls)
+    void el.offsetWidth
+    el.classList.add(cls)
+  }
+
+  function setCaption(list, t) {
+    var text = ''
+    for (var i = 0; i < list.length; i++) if (t >= list[i][0]) text = list[i][1]
+    caption.textContent = text
+  }
+
+  function run() {
+    clearTimers()
+    hideAll()
+    appshell.classList.remove('settled')
+    // restart CSS entrance animations (and the synced pulse, so replays
+    // keep the same phase as the first run)
+    unified.querySelectorAll('.orb-wrap, .word, .workspace-line, .lockup-pulse').forEach(function (el) {
+      el.style.animation = 'none'
+    })
+    brand.querySelectorAll('.orb-wrap, .word').forEach(function (el) {
+      el.style.animation = 'none'
+    })
+    void stage.offsetWidth
+    unified.querySelectorAll('.orb-wrap, .word, .workspace-line, .lockup-pulse').forEach(function (el) {
+      el.style.animation = ''
+    })
+    brand.querySelectorAll('.orb-wrap, .word').forEach(function (el) {
+      el.style.animation = ''
+    })
+
+    var steps = CAPTIONS[mode]
+    var t0 = Date.now()
+    steps.forEach(function (s) { later(s[0], function () { setCaption(steps, s[0]) }) })
+
+    if (mode === 'proposed') {
+      show(unified)
+      later(3600, function () { show(shell); hide(unified) })
+      later(5200, function () { appshell.classList.add('settled') })
+    } else {
+      show(brand)
+      later(1500, function () {
+        hide(brand)
+        show(gate)
+        // re-run brand entrance for the third flash
+        restartAnimation(brand, 'x')
+      })
+      later(3100, function () { hide(gate); show(brand) })
+      later(4100, function () { hide(brand); show(shell) })
+      later(5600, function () { appshell.classList.add('settled') })
+    }
+  }
+
+  var btnP = document.getElementById('btn-proposed')
+  var btnC = document.getElementById('btn-current')
+  btnP.addEventListener('click', function () {
+    mode = 'proposed'
+    btnP.setAttribute('aria-pressed', 'true')
+    btnC.setAttribute('aria-pressed', 'false')
+    run()
+  })
+  btnC.addEventListener('click', function () {
+    mode = 'current'
+    btnC.setAttribute('aria-pressed', 'true')
+    btnP.setAttribute('aria-pressed', 'false')
+    run()
+  })
+  var orbBtns = {
+    'orb-baseline': 'baseline',
+    'orb-mid': 'mid',
+    'orb-xcenter': 'x-center'
+  }
+  Object.keys(orbBtns).forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function () {
+      stage.dataset.orb = orbBtns[id]
+      Object.keys(orbBtns).forEach(function (other) {
+        document.getElementById(other).setAttribute('aria-pressed', String(other === id))
+      })
+    })
+  })
+  stage.dataset.orb = 'baseline'
+  document.getElementById('btn-replay').addEventListener('click', run)
+  document.getElementById('btn-theme').addEventListener('click', function () {
+    var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('overlay-mockup-theme', next) } catch (e) {}
+  })
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'r' || e.key === 'R') run()
+  })
+
+  run()
+})()
+</script>
+</body>
+</html>

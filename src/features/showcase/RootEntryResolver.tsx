@@ -6,6 +6,7 @@ import {
   classifyRootSessionResponse,
   resolveRootEntryDestination,
 } from '@/shared/auth/root-entry'
+import { AppBootLoader } from '@/components/layout/AppBootLoader'
 
 export function RootEntryResolver() {
   // Client-side data load on mount — no server data layer in this app.
@@ -49,11 +50,7 @@ export function RootEntryResolver() {
     }
   }, [])
 
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
-      <p role="status" className="text-sm text-(--muted)">
-        Opening Overlay…
-      </p>
-    </main>
-  )
+  // Same screen as the server Suspense fallback it replaces, rendered
+  // already-settled so the handoff shows no second splash.
+  return <AppBootLoader settled />
 }

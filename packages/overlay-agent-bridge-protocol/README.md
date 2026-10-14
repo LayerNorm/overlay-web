@@ -12,4 +12,4 @@ npm install @layernorm/overlay-agent-bridge-protocol@0.3.4 @layernorm/overlay-ag
 
 Protocol version 1 fails closed on unknown versions, invalid event sequences, oversized payloads,
 and malformed filesystem grants. See the repository's
-`docs/develop/bring-your-own-agents.md` for the complete trust and compatibility policy.
+`internal/develop/bring-your-own-agents.md` for the complete trust and compatibility policy.
