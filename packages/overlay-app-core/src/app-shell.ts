@@ -94,6 +94,14 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
   {
+    id: 'work',
+    href: '/app/work',
+    label: 'Work',
+    icon: 'list-checks',
+    requiredCapabilities: ['work'],
+    subviews: ['list', 'board', 'timeline'],
+  },
+  {
     id: 'agents',
     href: '/app/agents',
     label: 'Agents',

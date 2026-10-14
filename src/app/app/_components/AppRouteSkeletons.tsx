@@ -95,6 +95,26 @@ export function ChatRouteSkeleton({ mode = 'chat' }: { mode?: 'chat' | 'automate
   )
 }
 
+/** Work: a header and rows, the shape of the List view. */
+export function WorkRouteSkeleton() {
+  return (
+    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-(--background)" role="status" aria-label="Loading work">
+      <PageHeaderSkeleton actions={2} />
+      <div className="space-y-0.5 px-6 py-5" aria-hidden>
+        {Array.from({ length: 9 }).map((_, index) => (
+          <div key={index} className="flex h-10 items-center gap-3 border-b border-(--border)/60">
+            <SkeletonBlock className="h-4 w-4 shrink-0 rounded-full" />
+            <SkeletonBlock className={`h-3 ${index % 3 === 0 ? 'w-2/5' : index % 3 === 1 ? 'w-1/2' : 'w-1/3'}`} />
+            <div className="flex-1" />
+            <SkeletonBlock className="h-3 w-12" />
+            <SkeletonBlock className="h-5 w-5 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export type FilesRouteSkeletonLayout = 'list' | 'cards'
 
 function FilesHeaderSkeleton({ layout }: { layout: FilesRouteSkeletonLayout }) {

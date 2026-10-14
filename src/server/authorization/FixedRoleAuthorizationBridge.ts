@@ -34,6 +34,7 @@ export const MEMBER_AUTHORIZATION_CAPABILITIES: AuthorizationCapability[] = [
   'notes.read',
   'notes.edit',
   'notes.delete',
+  'work.use',
   'outputs.read',
   'outputs.delete',
   'models.use',

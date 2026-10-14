@@ -13,7 +13,7 @@ function item(partial: Partial<ArchivedItem> & Pick<ArchivedItem, 'kind' | 'id' 
   const category = partial.kind === 'chat' ? 'chats'
     : partial.kind === 'agent' || partial.kind === 'agent-thread' ? 'agents'
       : partial.kind === 'skill' || partial.kind === 'mcp-server' ? 'extensions'
-        : partial.kind === 'automation' ? 'automations' : 'files'
+        : partial.kind === 'automation' ? 'automations' : partial.kind === 'work-item' ? 'work' : 'files'
   return { key: archivedItemKey(partial.kind, partial.id), category, scope: null, ...partial }
 }
 
@@ -23,13 +23,16 @@ const ITEMS = [
   item({ kind: 'agent', id: 'a1', name: 'Researcher', archivedAt: 7, scope: 'personal' }),
   item({ kind: 'agent-thread', id: 't1', name: 'Q3 research', detail: 'Thread with Analyst', archivedAt: 8, agentId: 'a2' }),
   item({ kind: 'skill', id: 's1', name: 'Summarise', detail: 'Short summaries', archivedAt: 1 }),
+  item({ kind: 'work-item', id: 'w1', name: 'Write the launch post', archivedAt: 3, scope: 'workspace' }),
 ]
 
 test('the dropdown narrows to one kind and "All" shows everything, newest archived first', () => {
-  assert.deepEqual(filterArchivedItems(ITEMS, 'all', '').map((row) => row.id), ['n1', 't1', 'a1', 'c1', 's1'])
+  assert.deepEqual(filterArchivedItems(ITEMS, 'all', '').map((row) => row.id), ['n1', 't1', 'a1', 'c1', 'w1', 's1'])
   assert.deepEqual(filterArchivedItems(ITEMS, 'agents', '').map((row) => row.id), ['t1', 'a1'])
   assert.deepEqual(filterArchivedItems(ITEMS, 'files', '').map((row) => row.id), ['n1'])
   assert.deepEqual(filterArchivedItems(ITEMS, 'automations', ''), [])
+  assert.deepEqual(filterArchivedItems(ITEMS, 'work', '').map((row) => row.id), ['w1'])
+  assert.deepEqual(filterArchivedItems(ITEMS, 'all', 'task').map((row) => row.id), ['w1'])
 })
 
 test('search matches the name, the second line, and the kind, and combines with the dropdown', () => {

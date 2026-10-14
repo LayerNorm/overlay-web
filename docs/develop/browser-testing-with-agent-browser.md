@@ -243,6 +243,36 @@ agent-browser close --all
 - **Prefer staging over local dev.** Browser testing should run against staging after
   deployment. Use `npm run dev` for local development, not for agent-driven QA.
 
+## Work UI harness (no backend needed)
+
+`npm run test:work:ui` (`scripts/qa/work-ui-qa.mjs`) drives the real Work page, task panel, Board, Timeline and the
+Cmd+K entry in Chromium against an in-page fake of `/api/v1/work` and `/api/v1/scope`
+(`scripts/qa/work-ui/fake-work-api.ts`). It bundles the actual components with esbuild, compiles the app's Tailwind CSS,
+and swaps only what needs Next.js, a session or a workspace for small shims (`scripts/qa/work-ui/shims/`). Use it for fast
+UI iteration and regression checks; it does not replace the preview-URL pass, because the fake is not Convex.
+
+```bash
+WORK_QA_CHROMIUM=/opt/pw-browsers/chromium npm run test:work:ui          # when Playwright's own browser is not installed
+WORK_QA_SHOTS=artifacts/work-qa npm run test:work:ui                      # also write light and dark screenshots
+WORK_QA_ONLY="board" WORK_QA_VERBOSE=1 npm run test:work:ui               # one group, with progress
+```
+
+Query parameters pick the situation: `scope=`, `view=`, `filter=`, `task=`, `theme=dark`, `solo=1` (a workspace of one),
+`role=member&policy=admins` (a member who may not edit others' tasks), `failList=1`. In a check, `window.__work` exposes the
+fake (`dump`, `patchWhere`, `add`, `clear`, `state.failNext`, `state.calls`).
+
+Gotchas found building it, which apply to real-browser QA too:
+
+- **A drag is cancelled if its source node leaves the DOM during `dragstart`.** Keep the dragged card rendered (dimmed) and
+  only remove it after the drop. Playwright's `dragTo` then hangs rather than failing, so give each check a default timeout.
+- **Moving a keyed node drops its focus.** A bar or card that changes position after a keyboard move must be re-focused.
+- **`@overlay/api-client` binds `fetch` when the client is created.** Install a `fetch` fake before the app modules load
+  (dynamic `import()` after setup), or requests go to the original.
+- **`page.goto` restarts an in-page fake.** Move between URLs inside a check with `history.pushState` plus a `popstate`
+  event to keep its state.
+- **Assert on the list after the refresh finished, not after the event was dispatched.** A check that edits the fake and
+  then clicks can race the reload.
+
 ## Previous approach: Playwright MCP (deprecated)
 
 We previously used Playwright MCP with the user's main Chrome. This is no longer used.

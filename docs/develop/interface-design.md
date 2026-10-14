@@ -78,6 +78,24 @@ WorkspaceSwitcher does for CreateWorkspaceDialog. Run
 `node scripts/qa/menu-interactions.mjs` for the shared and product-picker
 interaction checks; authenticated current-head preview QA remains required.
 
+## Work: tasks, board, and timeline
+
+The Work page (`src/features/work/`) follows the existing patterns and adds a few of its own:
+
+- **One page, three views.** List, Board and Timeline show the same tasks. Scope (`?scope=`), view (`?view=`), filter
+  (`?filter=`) and the open task (`?task=`) live in the URL, so a link opens where it was copied and Back closes a task.
+  A task link opens in the scope the task lives in.
+- **Edit in place, save at once.** There are no save bars. Every change appears immediately, is confirmed by the
+  server's answer, and rolls back with a plain message in an inline alert if the server refuses.
+- **The task panel is a docked right panel** (`AppScreenSidePanel`), not a modal. Escape closes it unless a picker or a
+  text field has it first.
+- **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
+  one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
+- **The done-when checklist is the one place a box is ticked.** Each condition is a `button role="checkbox"`, not an
+  `<input type="checkbox">`: it is part of a task's content (a list the person writes), not an on/off setting, so the
+  Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.
+- Status is shown as a glyph first (dashed, empty, half, lens, filled with a check), colour second.
+
 ## Toggles are the only on/off control
 
 Nowhere in the web app do we render checkboxes (`<input type="checkbox">`).

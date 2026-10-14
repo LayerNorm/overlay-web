@@ -159,7 +159,7 @@ export async function planRestore(
   return { ok: true, scope: args.row.archivedFromScope ?? args.row.scope ?? 'personal' }
 }
 
-type ScopedTable = 'files' | 'skills' | 'mcpServers' | 'workspaceConnectors' | 'automations'
+type ScopedTable = 'files' | 'skills' | 'mcpServers' | 'workspaceConnectors' | 'automations' | 'workItems'
 
 /**
  * Gathers the rows `userId` can see for a list: with a workspace, their own rows plus other members' workspace-scoped
