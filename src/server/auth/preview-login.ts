@@ -3,9 +3,10 @@ import 'server-only'
 import { WorkOS } from '@workos-inc/node'
 import { createSession } from './workos-auth'
 import { previewLoginResponse } from './preview-login-policy'
+import { deploymentEnv } from '@/server/env/deployment-env'
 
 export function handlePreviewLogin(request: Request, rateLimit: () => Promise<Response | null>): Promise<Response> {
-  return previewLoginResponse(request, process.env, {
+  return previewLoginResponse(request, deploymentEnv(), {
     authenticate: async (email, password) => {
       const workos = new WorkOS({ apiKey: process.env.WORKOS_API_KEY })
       const response = await workos.userManagement.authenticateWithPassword({

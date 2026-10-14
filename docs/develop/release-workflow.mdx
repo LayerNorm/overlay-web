@@ -1,6 +1,6 @@
 ---
 title: "Release Workflow"
-description: "PR previews, main integration, release candidates, and automatic production."
+description: "PR previews on overlay-landing, main integration, and automatic production."
 ---
 
 ## Operating contract
@@ -8,8 +8,7 @@ description: "PR previews, main integration, release candidates, and automatic p
 | Environment | Source | Data and providers |
 | --- | --- | --- |
 | Local | Working tree | Engineer-owned dev backend and test credentials |
-| PR preview | Current internal main PR head | Per-PR Convex, synthetic Sandbox identity, shared test credentials |
-| Staging | Accepted main SHA | Dedicated `doting-cuttlefish-819`, Sandbox identity, staging test providers |
+| PR preview | Current internal main PR head on `overlay-landing` Preview | Per-PR Convex, Sandbox identity, shared test credentials |
 | Customer production | Automatically deployed current main SHA | `colorful-chickadee-419`, production identity/providers |
 
 Cloud Builder verifies a focused main PR on its isolated preview and stops when ready.
@@ -27,20 +26,33 @@ trigger Vercel’s native Git production deployment. Integration verifies the li
 SHA, synchronizes Convex only for backend changes after matching web is live,
 and runs proportionate production smoke. There is no mandatory staging step.
 
-Staging is optional for explicitly requested sensitive-change acceptance. Its
-legacy branch is frozen. The owner enabled Git as a production deployment source
+The PR preview is also the acceptance environment for sensitive changes. The
+legacy staging branch and project are retired. The owner enabled Git as a production deployment source
 for `overlay-landing`, production branch `main`, on 2026-10-14. Keep root
 `git.deploymentEnabled.main=true`. The custom production workflow, promotion
 script and deployment token are retired. Native Git deploys web only; backend
 synchronization and application smoke remain Integration responsibilities.
 Never pass `.env.local` or feature-worktree source to production commands.
 
-Shared Preview/staging test credentials are configured once per scope, with no
+Shared Preview test credentials are configured once in `overlay-landing` Preview, with no
 scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
 calls. Convex's five-day preview retention is renewed while PRs are open and is
 independent of credential lifetime. Closure cleans owned aliases and stops renewal.
 Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
 Preview Deployment Suffix.
+
+Vercel’s native Git integration builds internal main PR heads in Preview and
+builds main in Production. Enable Git as a deployment source in both environments.
+The trusted `PR Preview` GitHub workflow uses the project-scoped, non-expiring
+`VERCEL_PREVIEW_TOKEN` to manage branch app URLs and ordinary custom aliases.
+It waits for the exact READY Git deployment and validates its SHA and per-PR
+Convex backend before reporting success. It does not create deployments.
+If an old backend has expired, push a new PR revision to trigger a Git rebuild. Preview and Production variable targets are separate.
+The `codex/preview-unassigned` wildcard branch has no deployment alias, so
+unknown or closed PR hosts return HTTPS 404.
+
+The migration evidence below records the former staging lane historically; it
+is not an instruction to deploy staging or gate production on a candidate.
 
 ## Activation checkpoint
 

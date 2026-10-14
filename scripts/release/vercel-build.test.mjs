@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import test from 'node:test'
 import { buildPlan, deploymentEnvFile, runBuild } from './vercel-build.mjs'
-import { STAGING } from './staging-control.mjs'
 
 const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
@@ -34,6 +31,14 @@ test('production builds never push Convex as part of the web build', () => {
   const plan = buildPlan({ VERCEL_ENV: 'production', CONVEX_DEPLOY_KEY: 'prod:wrong|key' })
   assert.equal(plan.command, 'npm')
   assert.deepEqual(plan.args, ['run', 'build'])
+})
+
+test('native Git builds derive their canonical PR origin before branch provisioning', () => {
+  for (const appUrl of [undefined, 'https://preview-unassigned.invalid']) {
+    const plan = buildPlan({ ...preview, NEXT_PUBLIC_APP_URL: appUrl })
+    assert.equal(plan.env.NEXT_PUBLIC_APP_URL, 'https://pr-123.preview.getoverlay.io')
+  }
+  assert.throws(() => buildPlan({ ...preview, NEXT_PUBLIC_APP_URL: 'https://pr-124.preview.getoverlay.io' }))
 })
 
 test('release builds cannot advertise a disabled provider as an enabled capability', () => {
@@ -71,93 +76,10 @@ test('a preview cannot deploy with a production key, shared origin, or missing P
   ]) assert.throws(() => buildPlan({ ...preview, ...patch }))
 })
 
-test('staging refuses a production backend or mismatched key', () => {
-  const staging = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
-    WORKOS_CLIENT_ID: 'client_01KJ9A19X317J7VWRWQ6XBME9Z', WORKOS_API_KEY: 'fixture-sandbox',
-    OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: STAGING.backend,
-    CONVEX_DEPLOY_KEY: 'prod:' + STAGING.backend + '|fixture',
-    OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),
-    VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40),
-    VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web', NEXT_PUBLIC_APP_URL: STAGING.origin }
-  assert.equal(buildPlan(staging).target, 'staging ' + STAGING.backend)
-  assert.throws(() => buildPlan({ ...staging, WORKOS_API_KEY: '' }), /sandbox WorkOS/)
-  assert.throws(() => buildPlan({ ...staging, WORKOS_CLIENT_ID: 'customer-production' }), /sandbox WorkOS/)
-  assert.throws(() => buildPlan({ ...staging, CONVEX_DEPLOY_KEY: 'prod:wrong|key' }))
-  assert.throws(() => buildPlan({ ...staging,
-    OVERLAY_STAGING_CONVEX_DEPLOYMENT: 'colorful-chickadee-419',
-    CONVEX_DEPLOY_KEY: 'prod:colorful-chickadee-419|key' }))
-  for (const patch of [
-    { OVERLAY_STAGING_BUILD: undefined }, { OVERLAY_STAGING_BUILD_SHA: '' },
-    { VERCEL_GIT_COMMIT_SHA: 'b'.repeat(40) }, { VERCEL_GIT_COMMIT_REF: 'staging' },
-    { VERCEL_GIT_REPO_OWNER: 'another-account' }, { VERCEL_GIT_REPO_SLUG: 'another-repository' },
-    { NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io' },
-    { OVERLAY_STAGING_CONVEX_DEPLOYMENT: 'arbitrary-backend', CONVEX_DEPLOY_KEY: 'prod:arbitrary-backend|key' },
-  ]) assert.throws(() => buildPlan({ ...staging, ...patch }))
+test('retired staging builds cannot deploy a shared backend', () => {
+  assert.throws(() => buildPlan({ OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
+    OVERLAY_DEPLOYMENT_ENV: 'staging', CONVEX_DEPLOY_KEY: 'prod:doting-cuttlefish-819|fixture' }), /Unsupported preview/)
 })
-
-test('trusted staging deploys backend, then seed, then web; failure stops subsequent steps', () => {
-  const env = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
-    WORKOS_CLIENT_ID: 'client_01KJ9A19X317J7VWRWQ6XBME9Z', WORKOS_API_KEY: 'fixture-sandbox',
-    OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: STAGING.backend,
-    CONVEX_DEPLOY_KEY: 'prod:' + STAGING.backend + '|fixture',
-    OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),
-    VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40),
-    VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web', NEXT_PUBLIC_APP_URL: STAGING.origin }
-  for (const failAt of [0, 1, 2, 3]) {
-    const calls = []
-    const result = runBuild(env, (command, args, options) => {
-      calls.push({ command, args: [...args] })
-      assert.equal(options.env.NEXT_PUBLIC_CONVEX_URL, `https://${STAGING.backend}.convex.cloud`)
-      if (command.includes('convex')) {
-        const path = args[args.indexOf('--env-file') + 1]
-        assert.equal(readFileSync(path, 'utf8'), deploymentEnvFile(env))
-      }
-      return { status: calls.length - 1 === failAt ? 1 : 0 }
-    })
-    assert.equal(result, failAt === 3 ? 0 : 1)
-    assert.equal(calls.length, Math.min(failAt + 1, 3))
-    assert.equal(calls[0].args[0], 'deploy')
-    assert.ok(!calls[0].args.includes('--cmd'))
-    if (calls[1]) assert.deepEqual(calls[1].args.slice(0, 3), ['run', 'dev/seed:initStaging', '{}'])
-    if (calls[2]) assert.deepEqual(calls[2], { command: 'node', args: ['scripts/release/build-web.mjs'] })
-  }
-})
-
-test('dedicated staging ignore guard rejects manual, hook, other-ref and wrong-SHA builds', () => {
-  const script = fileURLToPath(new URL('../vercel-ignore-build.sh', import.meta.url))
-  const staging = { ...preview, DEPLOY_BRANCH: 'main', VERCEL_ENV: 'production',
-    OVERLAY_DEPLOYMENT_ENV: 'staging', NEXT_PUBLIC_APP_URL: STAGING.origin,
-    OVERLAY_STAGING_BUILD: 'trusted-main', OVERLAY_STAGING_BUILD_SHA: 'a'.repeat(40),
-    VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }
-  const exit = patch => spawnSync('bash', [script], { env: { PATH: process.env.PATH, ...staging, ...patch } }).status
-  assert.equal(exit({}), 1)
-  for (const patch of [
-    { OVERLAY_STAGING_BUILD: '' }, { OVERLAY_STAGING_BUILD_SHA: 'a;evil' },
-    { VERCEL_GIT_COMMIT_SHA: 'b'.repeat(40) }, { VERCEL_GIT_COMMIT_REF: '' },
-    { VERCEL_GIT_COMMIT_REF: 'staging' }, { VERCEL_GIT_COMMIT_REF: 'codex/feature' },
-    { VERCEL_GIT_REPO_OWNER: 'another-account' }, { VERCEL_ENV: 'preview' },
-    { NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io' },
-  ]) assert.equal(exit(patch), 0)
-})
-
-test('ignored-build gate runs only provisioned PRs in the staging project', () => {
-  const script = fileURLToPath(new URL('../vercel-ignore-build.sh', import.meta.url))
-  function exit(patch) {
-    return spawnSync('bash', [script], { env: { PATH: process.env.PATH,
-      ...preview, PREVIEW_BUILDS: 'pr', DEPLOY_BRANCH: 'staging',
-      VERCEL_GIT_COMMIT_REF: 'codex/example', ...patch } }).status
-  }
-  assert.equal(exit({}), 1)
-  for (const patch of [
-    { OVERLAY_RELEASE_LANE: 'production' }, { PREVIEW_BUILDS: '' },
-    { VERCEL_GIT_PULL_REQUEST_ID: '' }, { VERCEL_GIT_PULL_REQUEST_ID: 'abc' },
-    { NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io' }, { DEPLOY_BRANCH: '' },
-    { VERCEL_GIT_REPO_OWNER: 'outside' }, { VERCEL_GIT_REPO_SLUG: 'fork' },
-  ]) assert.equal(exit(patch), 0)
-  assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: 'staging' }), 1)
-  assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: '' }), 0)
-})
-
 
 test('preview rebuild repairs missing fixtures after deploy and never seeds a failed build', () => {
   for (const failAt of [0, 1, 2]) {
