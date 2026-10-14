@@ -48,6 +48,39 @@ positioning, the portal and Escape dismissal. Fine-pointer hover opens after
 while mounted. Run `node scripts/qa/tooltip-interactions.mjs` for rendered
 association, cleanup, pointer and media-query checks in installed Chrome.
 
+## Shared selects
+
+`Select` (option-child API) and generic `ListboxSelect<T>` use the canonical
+`packages/overlay-ui/src/components/ui/select.tsx` Radix primitives. Keep imports
+from `@overlay/ui`; `SelectRoot` exposes the canonical root without colliding
+with the compatibility `Select`. Trigger dimensions, option rows, Overlay CSS
+variables and portalled `z-10090` remain unchanged. `portal=false` stays inline
+at `z-50`, with Radix collision handling in both modes.
+
+Radix forbids empty item values; the adapter uses private index IDs and translates
+back to original public values. Empty options remain selectable (sharing, replay,
+agent defaults/accounts); an unmatched controlled value retains its display text
+(the Slack channel prompt). Groups preserve source order; disabled options/groups
+stay visible and cannot be selected. No domain model-picker ordering changes.
+
+`Select` keeps a visually hidden native select for original FormData values,
+required validation, autofill, real `ChangeEvent<HTMLSelectElement>` callbacks and
+uncontrolled form reset. Labels/IDs and control events belong on the visible
+trigger. Multiple selection or `size > 1` remains narrowly native because Radix
+Select supports neither; no current product consumer requests these modes.
+`ListboxSelect` retains its named hidden input, omitting it when disabled.
+Radix's private form events do not bubble through this adapter.
+
+Radix supplies arrows, typeahead, selection, scroll buttons, Escape/outside
+dismissal and focus return. The adapter closes on Tab/Shift+Tab and advances
+through visible controls, wrapping at the boundaries of an enclosing dialog
+and skipping disabled controls (including busy footer actions). Only actual modal
+dialogs advertise `aria-modal=true`; non-modal popovers traverse the document
+instead of looping on their own select. Run
+`node scripts/qa/select-interactions.mjs` for real-browser adapter/form/keyboard/
+collision/dialog/mobile tests and all 39 preset variable checks. Set
+`SELECT_QA_CHROMIUM` only when using an existing Chromium executable.
+
 ## Work: tasks, board, and timeline
 
 The Work page (`src/features/work/`) follows the existing patterns and adds a few of its own:

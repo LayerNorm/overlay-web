@@ -130,6 +130,7 @@ export function ThemePresetRow({
           </div>
         ) : null}
         <ListboxSelect
+          aria-label="Theme preset"
           disabled={disabled}
           value={value}
           onChange={(nextValue) => onChange(nextValue as ThemePresetId)}

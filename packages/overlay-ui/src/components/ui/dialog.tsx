@@ -6,8 +6,10 @@ import { XIcon } from 'lucide-react'
 
 import { cn } from '../../utils/cn'
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+const DialogModalContext = React.createContext(true)
+
+function Dialog({ modal = true, ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogModalContext.Provider value={modal}><DialogPrimitive.Root data-slot="dialog" modal={modal} {...props} /></DialogModalContext.Provider>
 }
 
 function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
@@ -46,11 +48,13 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const modal = React.useContext(DialogModalContext)
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        aria-modal={modal || undefined}
         className={cn(
           'fixed left-[50%] top-[50%] z-10070 grid w-[min(420px,92vw)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border border-(--border) bg-(--surface-elevated) p-5 shadow-2xl duration-200 ease-(--overlay-ease) data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
           className,

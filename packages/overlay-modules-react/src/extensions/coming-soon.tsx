@@ -87,11 +87,11 @@ export function McpServerForm({
         placeholder="Description"
       />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Select value={value.transport} onChange={(event) => update('transport', event.target.value as McpTransport)}>
+        <Select aria-label="Transport" value={value.transport} onChange={(event) => update('transport', event.target.value as McpTransport)}>
           <option value="streamable-http">Streamable HTTP</option>
           <option value="sse">SSE</option>
         </Select>
-        <Select value={value.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)}>
+        <Select aria-label="Authentication" value={value.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)}>
           <option value="none">No auth</option>
           <option value="bearer">Bearer token</option>
           <option value="header">Custom header</option>
