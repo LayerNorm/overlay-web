@@ -80,11 +80,14 @@ The WorkOS AuthKit redirect URI must be `<origin>/auth/callback`.
 
 ## Security headers
 
-`next.config.ts` sets a strict CSP (`default-src 'self'`, `connect-src`
-limited to Convex + WorkOS), `frame-ancestors 'none'`, `X-Frame-Options:
-DENY`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, and
-`Strict-Transport-Security`. `apps/admin/vercel.json` disables all Git
-deployments until Stage 3 wires the project.
+`src/proxy.ts` sets the CSP per request with a nonce (`default-src 'self'`,
+`connect-src` limited to Convex + WorkOS) — a static `script-src 'self'`
+blocks Next's inline RSC bootstrap scripts and kills hydration, so Next
+stamps the nonce onto its own scripts instead. `next.config.ts` keeps the
+nonce-independent headers: `frame-ancestors 'none'` (also inside the CSP),
+`X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Robots-Tag:
+noindex, nofollow`, and `poweredByHeader: false`. `apps/admin/vercel.json`
+disables all Git deployments until Stage 3 wires the project.
 
 ## CI
 

@@ -1,28 +1,9 @@
 import type { NextConfig } from 'next'
 
-const convexUrl = (
-  process.env.ADMIN_CONVEX_URL
-  ?? (process.env.NODE_ENV !== 'production' ? process.env.DEV_NEXT_PUBLIC_CONVEX_URL : undefined)
-  ?? process.env.NEXT_PUBLIC_CONVEX_URL
-  ?? ''
-).trim().replace(/\/+$/, '')
-const convexHost = convexUrl ? new URL(convexUrl).origin : ''
-
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  `connect-src 'self' https://api.workos.com${convexHost ? ` ${convexHost}` : ''}`,
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "object-src 'none'",
-].join('; ')
-
+// Content-Security-Policy is set per-request in src/proxy.ts so it can carry a
+// nonce: a static `script-src 'self'` blocks Next's inline bootstrap scripts
+// and kills hydration. These headers are nonce-independent and stay static.
 const securityHeaders = [
-  { key: 'Content-Security-Policy', value: contentSecurityPolicy },
   { key: 'Referrer-Policy', value: 'no-referrer' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
