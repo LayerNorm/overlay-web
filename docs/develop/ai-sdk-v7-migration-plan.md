@@ -279,11 +279,11 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
 - [x] **4.6** **Provider file uploads:** Use `uploadFile` for large PDFs/images in the act agent to avoid re-sending bytes.
   - **Implemented:** `uploadFile` and `ProviderReference` re-exported from `sdk.ts`. Created `src/server/ai/file-upload.ts` with `tryUploadFileToProvider` and `uploadFilePartsForModel` helpers. Supports OpenAI, Anthropic, Google, xAI providers (requires direct API keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.). Falls back to inline for small files (under 100 KB data URLs), non-image media types, or when no direct API key is configured. Called in act route before `ToolLoopAgent` creation.
 
-### Phase 5: Staging QA + production rollout
+### Phase 5: PR Preview QA + production rollout
 
-**Goal:** Verify on staging, then merge to production.
+**Goal:** Verify the isolated preview, then integrate main and verify Production.
 
-- [ ] **5.1** Merge `codex/ai-sdk-v7` to `staging` worktree
+- [ ] **5.1** Open the `codex/ai-sdk-v7` PR against main
 - [ ] **5.2** Push the feature PR, wait for its current-head `pr-<number>.preview.getoverlay.io` deployment
 - [ ] **5.3** QA checklist:
   - [ ] Send a chat message — verify streaming works, text renders without flicker
@@ -299,8 +299,8 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
   - [ ] Verify token billing — check usage amounts match pre-migration (H2 fix)
   - [ ] Check Sentry — no new errors from AI SDK
   - [ ] Check console — no deprecation warnings (all should be migrated in Phase 3)
-- [ ] **5.4** Merge staging → main
-- [ ] **5.5** Push main, wait for deploy to `www.getoverlay.io`
+- [ ] **5.4** Integration reviews and enqueues the verified main PR
+- [ ] **5.5** Verify the exact native Git Production SHA at `www.getoverlay.io`; synchronize Convex only for backend changes, after matching web is live
 - [ ] **5.6** Monitor Sentry and PostHog for 24h post-deploy
 
 ## Rollback plan

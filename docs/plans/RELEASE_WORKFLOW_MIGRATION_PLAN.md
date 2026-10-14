@@ -31,14 +31,29 @@ merge queue on `main`, on-demand exact-main release candidates, manual productio
 - Enabled native Git Preview builds and Git deployment-source rules for both
   environments. The controller now waits for Git builds and manages aliases;
   it does not create deployments. Production remains Git-only.
-- Seven existing working previews are being recreated in the new project before
-  moving their domains. One-time migration rebuilds temporarily permit CLI/REST
-  in Preview; restore Git-only once those builds finish.
-- Repository cleanup passed 47 release/workflow checks, 6 auth/environment
-  checks, targeted ESLint and diff whitespace review. Publication and final
-  live readback remain pending.
-- Remaining: publish the controller/build/documentation changes, verify all
-  migrated PR aliases, then retire the old project, branch and staging resources.
+- Native Git acceptance probe PR #219 reached READY at
+  `fed505c94` in deployment `dpl_2HBFiXgGTFB5cYRT9bgZ7tJbkEkv`. The first-push
+  missing-PR-metadata case is fixed with exact public GitHub branch/SHA lookup;
+  nine focused build checks passed. No credentials go to that lookup.
+- Four existing previews (#125, #127, #167, #217) have moved to the new project;
+  each passed sandbox login, workspace API and Files API. The three remaining
+  existing previews (#161, #168, #177) are still rebuilding on Basic and remain
+  available through the old project until those builds finish.
+- Deleted the staging branch after preserving its history at
+  `archive/staging-retired-20261014`; main history protections remain. Removed
+  the obsolete staging ruleset, label and GitHub deployment environments.
+- Deleted dedicated Convex project `3199896`, empty R2 bucket
+  `overlay-release-staging`, its test Stripe webhook, the old Vercel controller
+  token and old GitHub staging secrets. Removed `staging.getoverlay.io` alias
+  and domain registration. Customer production and shared Preview resources remain.
+- Native Production `dpl_75QwbufXbdh9QVXA28vmUy1vzcj8` serves main `84648020b`;
+  normal synthetic production sign-in, workspace API and Files API passed.
+- Owner selected Basic builds. Keep on-demand concurrency enabled with one
+  active build per branch; independent PRs build in parallel. Do not restore
+  the earlier globally serial configuration or upgrade slow builds automatically.
+- Remaining: finish the three Basic rebuilds and verify their migrated aliases,
+  verify disposable probe closure, delete `overlay-web-staging`, restore Git-only
+  Preview sources after migration rebuilds, and verify the final main deployment.
 
 ## Current acceptance — 2026-10-13
 
