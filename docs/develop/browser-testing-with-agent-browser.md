@@ -268,3 +268,19 @@ model request, verify the visible reply and reload persistence, then clean the
 synthetic conversation. Keep failed diagnostics separate from trusted CI proof.
 
 Release smoke awaits chat navigation and its transcript response together so a failed navigation cannot leave an unhandled response wait during browser cleanup. Production regressions assert deletion of the exact temporary chat even when chat verification or note cleanup fails.
+
+## Floating-surface regression checks
+
+`node scripts/qa/menu-interactions.mjs` bundles the real UI wrappers and model/
+workspace picker components into a backend-free Chromium fixture. It checks
+action-menu navigation/typeahead/disabled selection, rich controls and scrolling,
+legacy external anchors, workspace create-dialog focus, popovers inside dialogs,
+model details following their row during animation/scroll, CSS-variable themes
+and mobile touch. Screenshots are explicitly fixture evidence; authenticated
+current-head preview QA and real presets remain separate requirements.
+
+The script uses installed Playwright Chromium by default. A restricted cloud
+runner may set `CHROMIUM_EXECUTABLE_PATH` to an installed Chromium executable or
+`CHROMIUM_RUNTIME_MODULE` to an npm-packaged Chromium runtime module exposing
+`executablePath()` and `args`. No browser dependency is added to the application.
+Never put credentials or auth-state files in the fixture or its screenshots.

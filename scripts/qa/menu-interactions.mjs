@@ -155,6 +155,16 @@ try {
   const details = page.getByRole('dialog', { name: 'Model details' })
   await details.waitFor()
   await contained('[aria-label="Model details"]')
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[aria-label="Model details"]')).opacity === '1')
+  await page.mouse.move(450, 650)
+  const detailsAlignment = async () => {
+    const panel = await details.boundingBox()
+    const row = await header.getByRole('button', { name: 'Beta', exact: true }).boundingBox()
+    return Math.abs(panel.y + panel.height / 2 - row.y - row.height / 2)
+  }
+  await expect.poll(detailsAlignment).toBeLessThan(2)
+  await header.locator('.max-h-72.overflow-y-auto').evaluate(el => { el.scrollTop = 15 })
+  await expect.poll(detailsAlignment).toBeLessThan(2)
   await details.getByRole('button', { name: 'Reasoning effort' }).click()
   await details.getByRole('option', { name: 'High', exact: true }).click()
   assert.equal(await page.locator('#reason').textContent(), 'high')

@@ -287,7 +287,9 @@ function ModelQualitiesHoverCard({
             ?.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)
             ?.getBoundingClientRect() ?? new DOMRect(),
         get contextElement() {
-          return modelPickerRef.current ?? undefined
+          // Floating UI must observe the row's scroll ancestors, including the
+          // model list inside the outer popover, rather than only the panel.
+          return modelPickerRef.current?.querySelector<HTMLElement>(`[data-model-row="${CSS.escape(modelId)}"]`) ?? undefined
         },
       },
     }),
@@ -304,6 +306,7 @@ function ModelQualitiesHoverCard({
       <PopoverContent
         side="left"
         align="center"
+        updatePositionStrategy="always"
         aria-label="Model details"
         className="hidden w-56 overflow-visible rounded-lg px-3 py-2 shadow-md md:block"
         onOpenAutoFocus={(event) => event.preventDefault()}

@@ -66,7 +66,9 @@ Both primitives portal at z-10090, consume Overlay CSS vars directly, use a 6px
 anchor gap and 8px collision padding, and constrain height to the available
 viewport. Rich picker content refs belong on the portalled content, not the
 trigger wrapper; remove document-level outside/Escape listeners when Radix owns
-the layer. Model details are a nested Popover, anchored to the hovered row.
+the layer. Model details are a nested Popover, anchored to the hovered row. Their virtual
+anchor exposes that row as its scroll context and uses Radix continuous updates
+to track the parent pop-in animation; Escape closes the whole model picker.
 Their existing reasoning select stays inline in that panel so its clicks remain
 inside the owning layer (the select migration is deferred).
 
