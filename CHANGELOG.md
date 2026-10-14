@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- **Selects use Radix with Overlay's existing appearance (shadcn Phase 4).** Shared Select/ListboxSelect now provide keyboard selection/typeahead, collision-aware lists and focus return. Existing generic values, selectable empty options, groups, native form events/reset and import APIs remain intact; dropdown-menu/popover migration stays separate.
+
 ### Added
 
 - Phase 2 shadcn migration: conversation action menus gain Radix keyboard navigation/typeahead; account, workspace and model pickers use collision-aware portalled popovers while retaining Overlay themes and selection callbacks. Workspace creation returns focus to its surviving trigger.

@@ -165,7 +165,7 @@ try {
   await expect.poll(detailsAlignment).toBeLessThan(2)
   await header.locator('.max-h-72.overflow-y-auto').evaluate(el => { el.scrollTop = 15 })
   await expect.poll(detailsAlignment).toBeLessThan(2)
-  await details.getByRole('button', { name: 'Reasoning effort' }).click()
+  await details.getByRole('combobox', { name: 'Reasoning effort' }).click()
   await details.getByRole('option', { name: 'High', exact: true }).click()
   assert.equal(await page.locator('#reason').textContent(), 'high')
   assert.equal(await header.count(), 1)

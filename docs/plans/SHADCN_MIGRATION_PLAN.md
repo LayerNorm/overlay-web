@@ -12,6 +12,7 @@ _Dated 2026-10-13. Companion visual mockup:
 | 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (merged, base `main`) |
 | 2 dropdown-menu + popover | Implemented; current-head hosted QA pending. Action menus use DropdownMenu; account/workspace and model controls use Popover. Public shims and Overlay tokens retained. | [#209](https://github.com/LayerNorm/overlay-web/pull/209) (draft, base `main`) |
 | 3 tooltip | Implemented: canonical `ui/tooltip.tsx`; `DelayedTooltip` reimplemented on Radix Tooltip with unchanged `{label, side}` API (all callsites upgraded untouched); 450 ms delay + hover-only gating preserved | [#202](https://github.com/LayerNorm/overlay-web/pull/202) (merged, base `main`) |
+| 4 select | Implemented on `codex/shadcn-selects`; local adapter browser QA passes; isolated deployed consumer QA required before readiness | [#208](https://github.com/LayerNorm/overlay-web/pull/208) (draft, base `main`) |
 
 One scope note vs the original plan: phase 0b's semantic shadcn token
 aliasing (`--card`/`--primary`/…) is deferred — the components consume
@@ -220,9 +221,33 @@ wrapper (~6 files / ~22 callsites). Smallest PR; instant consistency.
 
 ## Phase 4 — select
 
-`Select`/`ListboxSelect` → Radix Select (14 files), keeping the
-`ListboxSelect` API — everything already funnels through it. Model pickers
-gain real listbox semantics + collision handling.
+`Select`/`ListboxSelect` use canonical Radix Select primitives, preserving the
+option-child and generic APIs. Audit found 24 production consumer files plus
+one chat compatibility re-export and Storybook. Plain-string option rendering
+and source/group order remain unchanged; comprehensive model pickers are outside
+this phase (Phase 2 owns their floating machinery).
+
+Affected surfaces: Settings (link preference, theme preset, default model,
+archived category, MCP token workspace/expiry); Agents (new/editor model,
+reasoning, computer size, provider account, Slack channel, environment); chat
+model qualities (reasoning); Memories (member/type/importance); Extensions MCP
+transport/auth/tool policy; Automations schedule/model/time zone and run replay;
+workspace roles/invites and automatic top-up; ShareDialog target/group/permission;
+authorization/catalog admin; `/oauth/authorize` workspace consent.
+
+Selectable empty options in ShareDialog, run replay, catalog principals and
+agent defaults/accounts cannot be Radix empty item values. A private ID adapter
+preserves them without product changes; original values stay in callbacks/forms.
+Unknown values retain their prompt text. Native `multiple`/`size > 1` is a narrow
+compatibility fallback (no current consumer); native form bridge preserves
+validation, autofill, reset and real change events. Tab closes/advances rather
+than inheriting Radix's Tab trap. See Interface Design for the contract and
+`scripts/qa/select-interactions.mjs` for local browser checks.
+
+Local checks do not replace current-head isolated-preview consumer QA. Required
+coverage includes persisted settings, agent dialogs/scroll containers, sharing
+groups/empty targets, automation time zones/replay, mobile and theme presets.
+Permission/fixture-limited admin, billing and OAuth flows must be reported honestly.
 
 ## Phase 5 — command (cmdk)
 
