@@ -1,4 +1,4 @@
-import { OverlayMark } from '@/components/orb/Orb'
+import { AppBootLoader } from '@/components/layout/AppBootLoader'
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`ui-skeleton-line rounded-md ${className}`} aria-hidden />
@@ -38,27 +38,7 @@ export function AppShellLoadingFallback() {
 }
 
 export function InitialAppLoading() {
-  return (
-    <div className="flex h-screen items-center justify-center overflow-hidden bg-background text-foreground">
-      <div
-        className="app-brand-loader flex items-center"
-        role="status"
-        aria-label="Loading overlay"
-      >
-        <span className="app-brand-loader-logo relative z-10 flex items-center bg-background">
-          <OverlayMark size={18} />
-        </span>
-        <span className="ml-2 overflow-hidden py-1">
-          <span
-            className="app-brand-loader-word block text-2xl font-medium tracking-tight"
-            style={{ fontFamily: 'var(--font-serif)' }}
-          >
-            overlay
-          </span>
-        </span>
-      </div>
-    </div>
-  )
+  return <AppBootLoader />
 }
 
 export function ChatRouteSkeleton({ mode = 'chat' }: { mode?: 'chat' | 'automate' }) {

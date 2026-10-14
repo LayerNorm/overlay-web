@@ -310,6 +310,16 @@ this and its test fails on any `pl-*` or `ml-*` in the nested rows.
 
 The agent settings (`AgentEditorPage`) have several independent loaders (the agent, its connection and environments, its computer, reachability surfaces, the Cloud agent's machine and config, memories). They must not pop in one by one. Each part reports `useEditorLoad(loading)` (`EditorLoadGate.tsx`); the gate keeps the form mounted but hidden under one skeleton until none is loading, then reveals it and stays revealed (10 s timeout so a stuck part cannot trap the form). Hooks expose a derived `initialLoading` (keyed by agent id, so the first render already knows) rather than an effect-set flag. Parts that only needed the agent (`CloudAgentAccess`, `CloudAgentModel`) take it from the page instead of fetching it again. New async parts of the form must call `useEditorLoad`.
 
+## One boot loader
+
+Reduced motion disables the lockup pulse and workspace spinner; entrance elements
+settle immediately, with the workspace status text remaining visible.
+Pulse instances share their first document-timeline start time, applied before
+paint, so replacing a loading boundary preserves opacity and never restarts the
+800 ms pulse delay. Keep this clock shared by animated and settled instances.
+
+App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). The mark fades in, the word reveals from behind it, then the whole lockup breathes with the same opacity-only pulse as the chat stream marker (`appBrandLoaderPulse` in `globals.css`), with the "Opening workspace…" line beneath on the same screen. The orb rests on the wordmark's text baseline (`margin-top: -1px` on `.app-brand-loader-logo`); landing lockups do the same via `align-items: baseline` on `.lp .lockup`.
+
 ## Avatar colors
 
 The avatar picker offers the preset swatches plus a rainbow swatch that opens `AvatarColorPicker` (saturation/brightness square, hue strip, hex field; no opacity; helpers in `features/agents/lib/color-utils.ts`). Colors are stored as six-digit lowercase hex; the server accepts any such value.
