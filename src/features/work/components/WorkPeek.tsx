@@ -128,6 +128,7 @@ export function WorkPeek({
     <>
       <div
         ref={dialog}
+        id="work-task-brief"
         role={overlay ? 'dialog' : undefined}
         aria-modal={overlay || undefined}
         aria-label="Task brief"

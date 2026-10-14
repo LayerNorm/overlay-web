@@ -9,6 +9,7 @@ import type { WorkPerson } from './OwnerPicker'
 
 export function WorkList({
   items,
+  selectedId,
   people,
   pending,
   canEdit,
@@ -16,6 +17,7 @@ export function WorkList({
   onOpen,
 }: {
   items: readonly WorkItem[]
+  selectedId?: string | null
   people: readonly WorkPerson[]
   pending: ReadonlySet<string>
   canEdit: (item: WorkItem) => boolean
@@ -60,6 +62,7 @@ export function WorkList({
                     <WorkRow
                       key={item._id}
                       item={item}
+                      selected={item._id === selectedId}
                       people={people}
                       pending={pending.has(item._id)}
                       editable={canEdit(item)}

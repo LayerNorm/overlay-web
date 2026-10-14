@@ -29,7 +29,7 @@ test('Work scope/view changes preserve view, drop open task, and retain workspac
   assert.equal(url.searchParams.get('scope'), 'workspace')
   assert.equal(url.searchParams.has('id'), false)
 })
-test('Work retains Personal and Workspace in a solo workspace', () => {
+test('solo workspace uses the existing flat panel convention', () => {
   const nav = buildWorkPanelNav({
     scope: 'personal',
     params: new URLSearchParams('view=board'),
@@ -42,10 +42,9 @@ test('Work retains Personal and Workspace in a solo workspace', () => {
   })
   assert.deepEqual(
     nav.items.map((item) => item.label),
-    ['Personal', 'Workspace'],
+    ['List', 'Board', 'Timeline'],
   )
-  assert.equal(nav.activeId, 'personal')
-  assert.equal(nav.activeChildId, 'personal:board')
+  assert.equal(nav.activeId, 'personal:board')
 })
 
 test('returning to Personal has an explicit scope so remembered Workspace cannot win during navigation', () => {

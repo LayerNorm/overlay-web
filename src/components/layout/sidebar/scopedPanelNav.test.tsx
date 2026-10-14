@@ -191,17 +191,3 @@ test('Work routes select the Work panel only while enabled', () => {
   assert.equal(visible.panelKind, 'work')
   assert.equal(visible.scope, 'workspace')
 })
-
-
-test('Work keeps URL and remembered Workspace scope even with one human member', () => {
-  const args = {
-    pathname: '/app/w/ws-1/work',
-    resolveWorkspaceSurface: () => 'work',
-    automationsEnabled: true,
-    workEnabled: true,
-    solo: true,
-  }
-  assert.equal(resolveSidebarRouteState({ ...args, searchParams: new URLSearchParams('scope=workspace') }).scope, 'workspace')
-  assert.equal(resolveSidebarRouteState({ ...args, searchParams: new URLSearchParams(), savedScope: 'workspace' }).scope, 'workspace')
-  assert.equal(resolveSidebarRouteState({ ...args, searchParams: new URLSearchParams('scope=personal'), savedScope: 'workspace' }).scope, 'personal')
-})

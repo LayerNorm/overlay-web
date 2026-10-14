@@ -184,9 +184,9 @@ export function resolveSidebarRouteState({
   const chatsView = resolveChatsView({ activityOpen, chatViewParam })
   // Agent links from before scopes carried the tab as `?view=`.
   const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
-  const workOpen = workEnabled && (pathname.startsWith('/app/work') || (canonicalWorkspaceRoute && workspaceSurface === 'work'))
-  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo: solo && !workOpen })
+  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo })
   const agentsView = scope
+  const workOpen = workEnabled && (pathname.startsWith('/app/work') || (canonicalWorkspaceRoute && workspaceSurface === 'work'))
   const panelKind: SecondaryPanelKind | null = workOpen ? 'work' : chatOpen
     ? 'chat'
     : filesOpen

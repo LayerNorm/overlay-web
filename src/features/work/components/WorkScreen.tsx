@@ -11,8 +11,10 @@ import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { canEditResource } from '@/shared/workspaces/resource-scope'
+import { listViewForScope } from '@/shared/workspaces/panel-scope'
 import { resolveWorkView } from '@/shared/work/view'
 import { useWorkItems } from '../lib/useWorkItems'
 import { useWorkPeople } from '../lib/useWorkPeople'
@@ -26,13 +28,14 @@ import { WorkList } from './WorkList'
 export default function WorkScreen() {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { user } = useAuth()
-  const scope = usePanelScope({ showInSolo: true })
+  const scope = usePanelScope()
+  const solo = useIsSoloWorkspace()
   const { canCreate } = useWorkspaceCreateAccess()
   const params = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
   const view = resolveWorkView(params.get('view'))
-  const data = useWorkItems(activeWorkspaceId, scope)
+  const data = useWorkItems(activeWorkspaceId, listViewForScope(scope, solo))
   const people = useWorkPeople(activeWorkspaceId)
   const principalId = people.people.find((person) => person.userId === user?.id)?.principalId
   const [query, setQuery] = useState('')
@@ -140,7 +143,12 @@ export default function WorkScreen() {
         </header>
       }
     >
-      <AppScreenBody padding="none" maxWidth="none" className="min-w-0 flex-1" scroll="auto">
+      <AppScreenBody
+        padding="none"
+        maxWidth="none"
+        className="@container min-w-0 flex-1"
+        scroll="auto"
+      >
         <QuickAdd
           key={`${activeWorkspaceId}:${scope}`}
           inputRef={input}
@@ -176,6 +184,7 @@ export default function WorkScreen() {
           </div>
         ) : view === 'list' ? (
           <WorkList
+            selectedId={taskId}
             items={items}
             people={people.people}
             pending={data.pending}

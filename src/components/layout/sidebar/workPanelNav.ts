@@ -24,7 +24,7 @@ export function buildWorkPanelNav(args: {
     sub: view,
     subItems: { personal: views, workspace: views },
     pendingId: args.pendingId,
-    solo: false,
+    solo: args.solo,
     onSelect: (scope, selected) => {
       const nextView = selected ?? view
       args.close()

@@ -8,6 +8,7 @@ import { OwnerPicker, type WorkPerson } from './OwnerPicker'
 
 export function WorkRow({
   item,
+  selected = false,
   people,
   pending,
   editable,
@@ -15,6 +16,7 @@ export function WorkRow({
   onOpen,
 }: {
   item: WorkItem
+  selected?: boolean
   people: readonly WorkPerson[]
   pending: boolean
   editable: boolean
@@ -39,7 +41,7 @@ export function WorkRow({
   return (
     <div data-work-id={item._id}>
       <ListRow
-        className="group/row mx-3 flex-col items-stretch gap-1 rounded-md py-2 sm:flex-row sm:items-center sm:gap-3 [&>div:last-child]:flex-wrap [&>div:last-child]:shrink sm:[&>div:last-child]:shrink-0"
+        className={`group/row mx-3 flex-col items-stretch gap-1 rounded-md py-2 @lg:flex-row @lg:items-center @lg:gap-3 [&>div:last-child]:flex-wrap [&>div:last-child]:shrink @lg:[&>div:last-child]:shrink-0 ${selected ? 'bg-(--surface-subtle)' : ''}`}
         title={
           renaming ? (
             <form
@@ -64,6 +66,8 @@ export function WorkRow({
           ) : (
             <button
               onClick={() => onOpen(item)}
+              aria-expanded={selected}
+              aria-controls={selected ? 'work-task-brief' : undefined}
               className="block max-w-full truncate text-left font-normal hover:underline"
               title={item.title}
             >
@@ -86,7 +90,7 @@ export function WorkRow({
         trailing={
           <>
             {item.dueDate ? (
-              <time dateTime={item.dueDate} className="hidden text-xs text-(--muted) sm:block">
+              <time dateTime={item.dueDate} className="hidden text-xs text-(--muted) @lg:block">
                 {new Intl.DateTimeFormat('en', {
                   month: 'short',
                   day: 'numeric',
@@ -125,7 +129,7 @@ export function WorkRow({
                   setTitle(item.title)
                   setRenaming(true)
                 }}
-                className="rounded p-1.5 text-(--muted) opacity-100 sm:opacity-0 focus:opacity-100 group-hover/row:opacity-100"
+                className="rounded p-1.5 text-(--muted) opacity-100 @lg:opacity-0 focus:opacity-100 group-hover/row:opacity-100"
               >
                 <Pencil size={13} />
               </button>
