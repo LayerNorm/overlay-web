@@ -80,6 +80,70 @@ credentials or the preview-only login route above.
 Do not copy a Production app session into a Preview environment. Each preview
 uses sandbox WorkOS and its own Convex backend.
 
+### Cloud agents without a Vercel login
+
+**First choice: Vercel MCP, independent of agent platform.** Connect the agent
+to `https://mcp.vercel.com` and authorize the Divyansh account that has access to
+`overlay-landing`. Call `get_access_to_vercel_url` with the current canonical PR
+URL and team `team_VT3uNspuyAOwicxedhtG4SMe`. Open the returned shareable URL in
+the actual QA browser; its redirect establishes that browser's access cookie.
+Continue using the ordinary canonical PR URL in the same browser session, then
+sign into Overlay separately. A terminal fetch does not authenticate a separate
+browser. For HTTP-only checks, `web_fetch_vercel_url` handles protected fetches.
+
+New MCP links expire after 23 hours; existing links retain their own expiry.
+Request access again if it expires. Treat `_vercel_share` links as credentials:
+keep them out of PR text, logs, screenshots and recordings; return to the clean
+canonical URL before capturing evidence. MCP must be connected and authorized
+in each agent platform; adding instructions to this repo cannot install it into
+an arbitrary VM. Agents without MCP need the fallback below. Never post a shared
+access link in a public PR to give every agent access.
+
+**Fallback for runners without Vercel MCP:**
+
+Provision `VERCEL_AUTOMATION_BYPASS_SECRET` once in the cloud platform's private
+runtime secret store for this repository, using the existing `overlay-landing`
+automation bypass secret. GitHub Actions secrets and Vercel app variables do not
+automatically reach a Builder's VM. The secret must be available during browser
+QA, not just environment setup. Reuse it for every requested PR preview; do not
+create a per-PR bypass token or disable Deployment Protection.
+
+Send `x-vercel-protection-bypass` only to the exact verified PR preview origin.
+For Playwright, bootstrap a host-scoped bypass cookie through the browser
+context's request client, then navigate normally in that same context:
+
+```js
+const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+if (!secret) throw new Error('Missing cloud preview bypass credential')
+const origin = new URL(process.env.PREVIEW_URL).origin
+if (!/^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(origin)) {
+  throw new Error('Expected the canonical PR preview origin')
+}
+// context.request shares its cookie jar with pages in this browser context.
+const response = await context.request.get(origin, {
+  headers: {
+    'x-vercel-protection-bypass': secret,
+    'x-vercel-set-bypass-cookie': 'true',
+  },
+  maxRedirects: 0,
+})
+if (response.status() < 200 || response.status() >= 400) {
+  throw new Error('Preview protection bootstrap failed')
+}
+await page.goto(origin)
+```
+
+For another browser runner, use its origin-scoped request headers or import the
+bypass cookie into its own session. A terminal cookie jar does not authenticate
+an unrelated browser. Never put the secret in a URL, global browser headers,
+screenshots, network traces, logs, PR descriptions or tracked storage-state
+files. The Vercel automation secret is project-scoped, not PR-scoped; restrict
+its distribution to trusted repository agents. It bypasses Vercel's hosting
+gate only; Overlay sandbox login and exact-head/backend verification still apply.
+
+See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
+See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).
+
 ## Clearing controlled search inputs
 
 For cmdk search, `agent-browser fill <selector> ""` can clear the displayed DOM

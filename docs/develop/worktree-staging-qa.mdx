@@ -27,7 +27,9 @@ part of the release path. Historical staging drills are preserved in
    flows when requested. Check authentication, persistence, expected error
    states, relevant permissions, and network failures. Record the tested SHA.
 5. Removing `needs-preview` or closing the PR settles builds and removes the owned alias, domain, and branch app URL. The
-   backend stops renewing and expires under Convex's preview retention policy.
+   isolated Convex backend and its synthetic data are deleted with ownership and
+   absence checks. Six-hour reconciliation also cleans retained closed/unlabeled
+   PR backends. Re-adding the label creates a fresh backend and fixtures.
    Closed and unknown preview hosts must return HTTPS 404.
 
 ## Production
