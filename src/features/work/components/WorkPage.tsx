@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { AlertCircle, ListChecks, Plus, X } from 'lucide-react'
@@ -188,6 +189,7 @@ function WorkUnavailable() {
         <div className="max-w-md text-center">
           <h1 className="text-xl font-semibold text-(--foreground)">Work unavailable</h1>
           <p className="mt-2 text-sm leading-6 text-(--muted)">Work is turned off for this deployment.</p>
+          <Link href="/app/agents" className="mt-5 inline-flex h-9 items-center rounded-md border border-(--border) px-4 text-sm font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle)">Open Agents</Link>
         </div>
       </AppScreenBody>
     </AppScreenShell>

@@ -142,3 +142,4 @@ Phases 1 to 8 landed together on one branch, each as its own commit. Where the b
     which the web routes check, cannot be skipped with a browser token.
   - A named reviewer can approve (done) or send back (in progress) a task in review without edit rights; nothing else.
   - The Personal list is cut to `listCap` after the scope filter, so workspace tasks cannot push Personal ones out.
+- **Work is the authenticated home** (`ROOT_APP_DESTINATION`, the default brand `homeHref`, and the marketing app link). The public showcase still opens on Agents. With the Work switch off, the unavailable notice links to Agents.

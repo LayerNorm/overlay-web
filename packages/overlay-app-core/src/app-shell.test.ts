@@ -42,7 +42,7 @@ test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
 test('agents are the default home; Work sits above them in the primary navigation', () => {
   const shell = resolveOverlayAppShellConfig()
 
-  assert.equal(shell.brand.homeHref, '/app/agents')
+  assert.equal(shell.brand.homeHref, '/app/work')
   assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'work')
   assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'agents')
   assert.equal(DEFAULT_OVERLAY_NAVIGATION[2]?.id, 'chat')
