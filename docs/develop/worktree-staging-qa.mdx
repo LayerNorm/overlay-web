@@ -5,50 +5,25 @@ description: "Production deployment details and optional staging acceptance."
 
 [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is authoritative: main changes deploy directly to Vercel production, then production smoke. Staging is optional. This guide covers supporting deployment and optional hosted QA details only. Follow [Agentic Development](/develop/agentic-development) for feature branches, worktree creation, pull requests, commit history, and integration ownership.
 
-## Production promotion command
+## Native production deployment
 
-`bash scripts/release/promote.sh <40-character-main-sha> --check` performs
-preflight only. Omitting `--check` manually releases that exact current `main`.
-The command deploys current main directly by default. `--require-staging` opts into successful exact-main candidate proof only for explicitly requested sensitive acceptance.
-Canonical staging alias publication remains optional.
+Vercel’s native Git integration deploys main from LayerNorm/overlay-web to
+Divyansh’s overlay-landing project. Git is enabled as a production source,
+main is the production branch, and automatic production domain assignment is on.
+Keep root git.deploymentEnabled.main=true. The custom Production Release workflow,
+promotion script and Vercel production deployment token are retired.
 
-Run it from clean canonical `main`, linked to Divyansh's production project.
-Provide `CONVEX_PRODUCTION_DEPLOY_KEY` scoped to `colorful-chickadee-419`, and
-`PRODUCTION_SMOKE_EMAIL`, `PRODUCTION_SMOKE_PASSWORD`, `PRODUCTION_SMOKE_USER_ID`
-for the separate `overlay-release-qa@getoverlay.io` synthetic production account.
-The account must have a personal workspace; do not use the sandbox QA user or a
-customer account. The production QA identity is now provisioned separately in
-the production WorkOS environment. Identity readback and direct WorkOS password
-authentication, application sign-in and the complete live production smoke passed on the accepted release. Subsequent revisions require fresh proof.
-Its password and the deployment-scoped Convex key (expires 2027-01-10) are stored
-privately on the owner's machine, outside the checkout and preview configuration.
-The command loads those four settings from
-`~/.config/overlay/release/production.json` after validating canonical main.
-The prepared file uses mode `0600` in a private directory. Set
-`OVERLAY_PRODUCTION_RELEASE_CONFIG` to use another private JSON file, or supply
-the four environment variables explicitly. Unknown JSON fields are ignored;
-explicit environment values take precedence. This file is never part of a web
-deployment upload and does not replace production provider settings on Vercel.
-The native
-GitHub/Vercel CLI accounts must be `DevelopedByDev`/`developedbydev1`. Install the
-reviewed dependencies and Playwright Chromium before release.
+After merge, verify Vercel's deployment SHA and the live production domain.
+Integration runs proportionate authenticated production smoke. For backend changes,
+synchronize colorful-chickadee-419 only from clean current canonical main after
+matching web is live, using its private production-scoped Convex key. Do not push
+Convex for frontend-only releases. Never pass .env.local to production or seed
+customer production. See [Convex Workflow](/develop/convex-workflow).
 
-When `--require-staging` is selected, the command first validates the successful exact-main candidate artifact and producer. Otherwise it directly builds production web without assigning
-domains, checks provenance, publishes and verifies the canonical web alias,
-synchronizes production Convex only when backend inputs changed, using a private key-only env file, and performs normal
-sign-in, note CRUD/conflict/cleanup, persisted chat, Files and realtime QA.
-Files checks target the accessible named file button; scope the locator to the
-main Files region when the sidebar exposes a button with the same name.
-The chat composer is the accessible `Ask anything` combobox, not a textarea.
-No production seed runs. Root `git.deploymentEnabled.main=false` prevents a
-duplicate native Git deployment bypassing the automatic release gates.
-
-The production Convex target is announced before its push. Neither `.env.local`
-nor conflicting development selectors authorize that push. Failure stops later
-steps; checkpoints and screenshots are saved under ignored
-`artifacts/release-workflow/promotions/`. A local Git-directory lock prevents
-simultaneous invocations in this checkout. A failed command may have already
-published web or backend: read `lastCompletedState` and the previous deployment ID.
+Use the synthetic production QA account for sign-in, note CRUD/conflict/cleanup,
+chat reply and reload persistence, Files and realtime checks when relevant.
+The existing production smoke helper remains available; it does not deploy web.
+A Git deployment alone does not prove backend synchronization or application QA.
 
 ### Hosted model acceptance
 
@@ -89,7 +64,7 @@ and browser image rendering passed on PR #194. Initial PR #194 API upload and br
 3. Retain the current backward-compatible Convex functions for the immediate
    web rollback. If functions must also be restored, review a revert on `main`
    that restores the previous function source while preserving expanded schema
-   and customer data. Test that revision on staging, then promote its web first
+   and customer data. Use optional staging if explicitly requested, then deploy its web first
    and push its production functions from clean canonical `main`. Never use a
    feature checkout, force/reset `main`, or deploy an obsolete schema over data
    written since release. Record the previous-source revision and any retained
@@ -128,7 +103,7 @@ limit, independent of the non-expiring shared credentials.
 
 Dispatch `staging-release.yml` manually only for explicitly requested sensitive-change acceptance. The candidate workflow itself has no push trigger. All candidates share one serialized lock. The staging project's Production
 branch is main; Production and Preview deployment sources permit controller REST
-API builds only. Root Git main deployments remain disabled. The ignore/build
+API builds only. The staging project’s native Git deployments remain disabled; root main Git deployment is enabled for customer production. The ignore/build
 guards accept an exact trusted-main SHA override and reject unrelated refs,
 manual builds and wrong backends. Automatic custom-domain assignment is disabled.
 
@@ -155,10 +130,10 @@ gh run list --repo LayerNorm/overlay-web --workflow staging-release.yml
 gh run view <run-id> --repo LayerNorm/overlay-web
 ```
 
-Before promotion, verify current origin/main still equals the smoke SHA, its verified native origin (or optionally published
-canonical alias) serves its deployment and all required behavioral checks passed.
-The production command checks this only when `--require-staging` is selected. If main advances or smoke
-fails, wait for and verify the new revision; do not promote older proof.
+For explicitly requested staging acceptance, verify current origin/main equals the
+smoke SHA and the candidate origin (or optional canonical staging alias) serves
+that exact deployment. If main advances or smoke fails, verify the new revision.
+This optional evidence does not gate ordinary native Vercel production deployment.
 
 ## Convex contract QA
 
@@ -172,7 +147,7 @@ and retained web rollback against the expanded schema. See
 
 1. Review exact PR head, resolved findings, required checks and affected preview QA.
 2. Enqueue through main's merge queue; verify accepted main SHA after merge.
-3. Follow Production Release for automatic Vercel production publication and smoke.
+3. Verify Vercel’s native production deployment, synchronize Convex only for backend changes, then run production smoke.
 4. Use `needs-staging` only for explicitly requested sensitive-change acceptance.
 5. Verify the automatic guarded promotion used clean current main and published web before production Convex.
    Manual recovery requires authorization and the same promotion command.
@@ -216,11 +191,14 @@ The primary Overlay checkout is a submodule: its Git directory is under the pare
 
 The first complete exact-main candidate passed both native and published smoke at `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. Browser staging upload, exact-byte download, image rendering and metadata/object cleanup also passed. The canonical submodule guard correction merged through PR #201 and passed the actual clean-main production preflight, promotion and rollback drill.
 
-### Production CLI output and readiness
+### Historical production CLI output and readiness
+
+The custom promotion command in this historical record is retired; native Vercel
+Git deployment is the current mechanism.
 
 Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including native-hostname inspection output. The command polls the owned exact-SHA deployment until READY, rejecting changed provenance, terminal errors and a bounded timeout. Web publication/live verification precedes production Convex and authenticated smoke. Earlier remote-build capture attempts left unpublished READY builds and preserved the customer alias. Structured CLI parsing/readiness merged through PR #203; asynchronous submission and bounded command capture merged through PR #204. The complete corrected command, production smoke and rollback/restoration passed on the release recorded above.
 
-### Asynchronous production build submission
+### Historical asynchronous production build submission
 
 Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
 
@@ -229,31 +207,11 @@ Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exa
 The Convex CLI may regenerate `convex/_generated/api.d.ts` during a production push. The accepted release added only type entries for existing preview/staging helper modules. Preserve that generated output in ignored release evidence, inspect its diff, and restore only the deploy-generated changes to the accepted tracked version before the clean-main rollback drill. Preserve all pre-existing edits separately. No second backend deployment is needed for that local type-file restoration.
 
 
-### Automatic production after main changes
+### Production deployment ownership
 
-The owner enabled automatic releases on 2026-10-14 and removed mandatory staging.
-`production-release.yml` runs on every main push, with a non-canceling production
-lock. It deploys the exact main SHA remotely to Vercel, verifies the live alias,
-synchronizes Convex only if backend inputs changed, and runs production smoke.
-A superseded revision stops before publication; the latest queued run handles it.
-
-The main-only `production-release` environment stores the existing Vercel token,
-production Convex key and synthetic smoke settings. Dependency installation has no
-release secrets. GitHub uses an ephemeral Actions token and verifies the active
-main release run. Evidence is saved as `production-release-<sha>`, including the
-previous deployment and last completed phase. Inspect that checkpoint on failure.
-
-Backend synchronization records its own GitHub deployment state under
-`overlay-convex-production-sync`, before and immediately after the Convex push.
-It does not infer backend state from web publication or the later smoke result.
-Manual and CI releases use the same marker; an incomplete/failed push forces
-repair. A successful push followed by failed smoke still records the actual
-backend source, so a revert synchronizes the reverted functions. The initial
-baseline is the accepted pre-automation backend at `7578b6914`.
-
-Root native Git builds remain disabled to prevent a duplicate deployment; Actions
-automatically deploys to Vercel. Disable Production Release to pause auto releases.
-Staging is optional and its separate workflow remains available on demand.
+Native Vercel Git owns web builds and publication. Integration checks the actual
+live revision and affected behavior. No GitHub production deploy job or deployment
+token is needed. Optional staging remains manually dispatched and separate.
 
 Closed preview backends can temporarily exhaust the team deployment quota before
 retention expires. Audit exact project/type/PR ownership and closed PR state before

@@ -23,21 +23,18 @@ Ordinary work uses the main queue. The owner bypass requires explicit authorizat
 for the current emergency action, equivalent validation, diff/ancestry review,
 fast-forward only and post-push verification. Account access is not permission.
 
-After merge, verify exact origin/main and follow Production Release. It remotely
-builds and publishes the main revision to Vercel, synchronizes Convex only when
-backend inputs change, and runs authenticated production smoke. Verify the live
-SHA and result. Staging is optional only when the owner/task explicitly requests
-extra acceptance for a sensitive change. It is not an ordinary release gate.
+After merge, verify exact origin/main and the native Vercel Git production
+deployment in Divyansh's overlay-landing project. Verify its live SHA. Synchronize
+Convex only for backend changes, from clean current canonical main after matching
+web is live, then run proportionate authenticated production smoke. Staging is
+optional only when the owner/task explicitly requests sensitive-change acceptance.
 
-Development Workflow is authoritative. For authorized manual deployment, use
-`bash scripts/release/promote.sh <main-sha>` from clean current canonical main.
-The default does not require staging; `--require-staging` opts in. Root native Git
-builds stay disabled because Production Release owns automatic Vercel deployment.
-Never use feature-worktree source or `.env.local` for production deployment.
+Development Workflow is authoritative. Keep root git.deploymentEnabled.main=true.
+The owner enabled Git as a production deployment source. Do not recreate the
+retired Production Release workflow, promotion script or deployment token.
+Never use feature-worktree source or .env.local for production backend deployment.
 
-On failure, inspect saved checkpoints and previous deployment IDs. Follow the
+On failure, inspect the native Vercel deployment and application errors. Use the
 verified rollback runbook; do not shrink expanded schema or rewrite branch history.
-Report the PR, accepted main SHA, staging deployment/smoke, production deployment
-state, actual checks, evidence and limitations. Keep merged, live and verified
-states separate. Archive completed managed feature worktrees only after preserving
-needed work and confirming merge.
+Report the PR, accepted main SHA, actual production deployment and smoke results,
+evidence and limitations. Keep merged, live and verified states separate.

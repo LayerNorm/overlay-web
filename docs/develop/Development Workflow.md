@@ -4,7 +4,7 @@ Use multiple Builder threads to develop independent features and one Integration
 
 **The workflow:** assign a feature → implement → local smoke QA → draft PR → Vercel preview interaction QA → ready PR → Integration review → main merge queue.
 
-Production follows **merge to main → automatic Vercel production deployment → production smoke checks**. Convex is synchronized when backend inputs change. Staging is optional for explicitly requested sensitive-change acceptance. This document is the authoritative workflow; supporting guides must not add an ordinary staging prerequisite.
+Production follows **merge to main → automatic Vercel Git production deployment → production smoke checks**. Integration synchronizes Convex when backend changes require it, after matching production web is live. Staging is optional for explicitly requested sensitive-change acceptance. This document is the authoritative workflow; supporting guides must not add an ordinary staging prerequisite.
 
 ## How to use this document
 
@@ -41,7 +41,7 @@ Process independent ready PRs while others are still being built or fixed.
 Keep using this thread for subsequent PRs. Report blockers with the exact
 failure and the next action. Stop after the available queue is processed;
 use supported wait or notification tools if this session supports them.
-Main pushes automatically deploy to Vercel; verify the Production Release and production smoke result.
+Main pushes automatically deploy to Vercel; verify the native Vercel deployment SHA and production smoke result.
 ```
 
 ## Builder instructions
@@ -121,23 +121,24 @@ The native merge queue runs required checks on the combined revision containing 
 
 Preserve meaningful commits with merge merging; squash only trivial or noisy history. Ordinary changes go through PRs and the queue. Never force-push, reset, or delete release branches. The emergency bypass requires explicit authorization for that action.
 
-Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Follow Production Release and verify its accepted main SHA, production deployment and smoke result. Preserve needed work and evidence before archiving a completed feature worktree.
+Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Verify the native Vercel deployment serves the accepted main SHA, synchronize Convex if this release changes the backend, and check production smoke. Preserve needed work and evidence before archiving a completed feature worktree.
 
 ### 3. Report and continue
 
 Report each accepted PR and main SHA, or the concrete blocker and next action. Describe the state accurately: ready, queued, merged, deployed, or verified. Continue processing the available authorized PRs in this Integration thread.
 
-Main changes automatically deploy to production and run smoke checks. Leave the legacy staging branch frozen.
+Main changes automatically deploy to production through Vercel’s Git integration; Integration then runs proportionate smoke checks. Leave the legacy staging branch frozen.
 
 ## Automatic production release
 
-1. A main push starts Production Release. It remotely builds and publishes that exact main revision to Vercel.
-2. The workflow verifies the live production deployment and synchronizes Convex only if its source, imported shared code or dependencies changed.
-3. It runs authenticated production smoke and saves the deployed SHA, previous deployment and result. Report live and verified only after smoke passes.
+1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay-web` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
+2. Keep `git.deploymentEnabled.main=true` in root `vercel.json`, production branch `main`, and automatic production domain assignment enabled. No custom GitHub Actions deployer or Vercel deployment token is required.
+3. Integration verifies the exact live SHA. If Convex source, imported shared code or runtime dependencies changed, synchronize the production backend from clean current canonical main after matching web is live; frontend-only releases need no backend push.
+4. Integration runs proportionate authenticated production smoke and records the deployed SHA and result. Vercel Git deployment does not itself synchronize Convex or run these application checks. Report live and verified only after the relevant checks pass.
 
 Staging is optional for sensitive changes. Use `needs-staging` and explicitly dispatch its acceptance only when the owner/task calls for it. Ordinary reviewed UI changes deploy directly from main. The legacy staging branch stays frozen.
 
-For authorized manual deployment, run `bash scripts/release/promote.sh <main-sha>` from clean current canonical main. There is no staging requirement by default; `--require-staging` opts into exact-main candidate proof for a sensitive release. Root `git.deploymentEnabled.main=false` prevents a second native Git build: Production Release performs the automatic Vercel deployment itself. Follow [Production deployment details](worktree-staging-qa.mdx) for credentials and recovery, subject to this workflow.
+The former custom Production Release workflow, promotion script and production deployment token have been retired. Do not recreate them for ordinary releases. Use Vercel’s deployment history for authorized redeploy/rollback, and follow [Production deployment details](worktree-staging-qa.mdx) for backend safety and recovery.
 
 ## Coordination rules
 
