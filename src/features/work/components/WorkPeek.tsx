@@ -12,7 +12,7 @@ import { checkParent, descendantsOf } from '@/shared/work/graph'
 import { validateWorkDates, validateWorkTitle } from '@/shared/work/status'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkRoute } from '../lib/use-work-route'
-import { ContextSection, DoneWhenSection, ObjectiveSection, ActivitySection, Section } from './WorkPeekSections'
+import { ContextSection, DoneWhenSection, ObjectiveSection, ActivitySection, Section, WaitingOnSection } from './WorkPeekSections'
 import { useWorkData } from './WorkDataProvider'
 import { OwnerPicker, ParentPicker, PriorityPicker, ReviewerPicker, StatusPicker } from './WorkPickers'
 import { Avatar, StatusIcon, Tag } from './work-ui'
@@ -285,6 +285,7 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
         <Section title="Objective" hint="The outcome, not the steps">
           <ObjectiveSection value={item.description} editable={editable} onSave={(description) => save({ description })} />
         </Section>
+        <WaitingOnSection item={item} editable={editable} onChange={(blockedBy) => save({ blockedBy })} />
         <ContextSection items={item.context} editable={editable} onChange={(context) => save({ context })} />
         <DoneWhenSection items={item.doneWhen} editable={editable} onChange={(doneWhen) => save({ doneWhen })} />
         <ActivitySection taskId={item.id} version={item.updatedAt} canComment={!archived && canWork(item)} />

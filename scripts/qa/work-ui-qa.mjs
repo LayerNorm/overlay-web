@@ -505,6 +505,61 @@ await check('timeline: a person who may not edit a task cannot drag it', async (
   assert.equal((await dates(page, 'Fix the pricing table'))[0], start)
 })
 
+await check('dependencies: add a blocker in the panel, arrows follow the bars, a loop is refused, and removing it clears the arrow', async (page, shot) => {
+  await open(page, 'scope=workspace&view=timeline')
+  await page.waitForSelector('[data-testid="work-timeline"]')
+  // The seed already has one dependency (Reconcile invoices waits on Migrate legacy plan names).
+  const edges = () => page.locator('[data-testid="work-dependency"]').count()
+  assert.equal(await edges(), 1)
+
+  await page.locator('[data-testid="work-timeline-row"] button', { hasText: 'Summarize competitor changelogs' }).click()
+  const peek = page.getByTestId('work-peek')
+  await peek.getByRole('button', { name: 'Wait on a task' }).click()
+  await page.getByLabel('Find a task to wait on').fill('interview')
+  await page.getByLabel('Wait on a task').getByRole('button', { name: /Draft interview questions/ }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.startsWith('Summarize competitor')).blockedBy.length === 1)
+  await peek.getByTestId('work-waiting-on').getByText('Draft interview questions for churned customers').waitFor()
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="work-dependency"]').length === 2)
+  await shot('light')
+
+  // The panel of the blocker lists what it holds up.
+  await page.locator('[data-testid="work-timeline-row"] button', { hasText: 'Draft interview questions' }).click()
+  await page.getByTestId('work-holding-up').getByText('Summarize competitor changelogs from September').waitFor()
+
+  // A task that would make a loop is not offered, and the server refuses it too.
+  await peek.getByRole('button', { name: 'Wait on a task' }).click()
+  await page.getByLabel('Find a task to wait on').fill('Summarize')
+  await page.getByText('No other task can be waited on here.').waitFor()
+  await page.keyboard.press('Escape')
+  const refused = await page.evaluate(async () => {
+    const dump = window.__work.dump()
+    const a = dump.find((i) => i.title.startsWith('Draft interview'))
+    const b = dump.find((i) => i.title.startsWith('Summarize competitor'))
+    const response = await fetch(`/api/v1/work/${a.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ blockedBy: [b.id] }) })
+    return { status: response.status, body: await response.json() }
+  })
+  assert.equal(refused.status, 400)
+  assert.match(refused.body.error, /wait on each other/)
+
+  // Arrows follow a moved bar: dragging the blocker changes where its arrow starts.
+  const edge = page.locator('[data-testid="work-dependency"][data-edge]').first()
+  const before = await edge.locator('path').getAttribute('d')
+  const blockerBar = page.locator('[data-testid="work-bar"][aria-label^="Migrate legacy plan names"]')
+  const box = await blockerBar.boundingBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 48, box.y + box.height / 2, { steps: 5 })
+  const during = await page.locator('[data-edge$=">' + (await page.evaluate(() => window.__work.dump().find((i) => i.title.startsWith('Reconcile September')).id)) + '"] path').getAttribute('d')
+  await page.mouse.up()
+  assert.notEqual(during, before, 'the arrow moved with the bar while it was dragged')
+
+  // Remove the dependency again: the arrow goes.
+  await page.locator('[data-testid="work-timeline-row"] button', { hasText: 'Summarize competitor changelogs' }).click()
+  await peek.getByRole('button', { name: /^Stop waiting on Draft interview/ }).click()
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="work-dependency"]').length === 1)
+  await peek.getByTestId('work-activity').getByText(/no longer waits on “Draft interview questions for churned customers”/).waitFor()
+})
+
 await browser.close()
 await harness.close()
 let failed = 0

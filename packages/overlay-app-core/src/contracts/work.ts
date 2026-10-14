@@ -10,7 +10,7 @@ export type WorkPriority = 1 | 2 | 3
 export type WorkContextType = 'file' | 'note' | 'chat' | 'link'
 export type WorkEventKind =
   | 'created' | 'status' | 'assignee' | 'reviewer' | 'priority' | 'dates' | 'title'
-  | 'blocked' | 'scope' | 'archived' | 'restored' | 'comment'
+  | 'blocked' | 'dependencies' | 'scope' | 'archived' | 'restored' | 'comment'
 
 export interface WorkDoneWhen { text: string; checked: boolean }
 export interface WorkContextRef { type: WorkContextType; id: string; label: string }
@@ -100,6 +100,8 @@ export interface UpdateWorkItemRequest {
   startDate?: string | null
   dueDate?: string | null
   parentId?: string | null
+  /** The tasks that must finish first. Replaces the list; a loop is refused. */
+  blockedBy?: string[]
   doneWhen?: WorkDoneWhen[]
   context?: WorkContextRef[]
 }

@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, FileText, Link as LinkIcon, MessageSquare, NotebookText, Plus, X } from 'lucide-react'
 import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
-import type { WorkContextRef, WorkContextType, WorkDoneWhen, WorkEvent } from '@overlay/app-core'
+import type { WorkContextRef, WorkContextType, WorkDoneWhen, WorkEvent, WorkItem } from '@overlay/app-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { actorName, commentBody, describeEvent, formatAgo, indexPeople } from '@/shared/work/activity'
 import { hrefForContext, labelForLink, safeLinkUrl } from '@/shared/work/context-links'
+import { checkBlockedBy } from '@/shared/work/graph'
 import { WORK_LIMITS } from '@/shared/work/status'
 import { useWorkData } from './WorkDataProvider'
-import { Avatar } from './work-ui'
+import { Avatar, StatusIcon } from './work-ui'
 
 export function Section({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -352,6 +353,82 @@ export function ActivitySection({ taskId, version, canComment }: { taskId: strin
         </div>
       ) : null}
       {failure ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{failure}</p> : null}
+    </Section>
+  )
+}
+
+/** Tasks that have to finish first. A task that would make a loop is not offered. */
+export function WaitingOnSection({ item, editable, onChange }: { item: WorkItem; editable: boolean; onChange: (blockedBy: string[]) => void }) {
+  const { items, byId, state } = useWorkData()
+  const anchor = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const blockers = item.blockedBy.map((id) => byId.get(id)).filter((task): task is WorkItem => Boolean(task))
+  const blocking = items.filter((other) => other.blockedBy.includes(item.id))
+  const candidates = items
+    .filter((other) => other.id !== item.id && other.scope === item.scope && other.archivedAt === null && !item.blockedBy.includes(other.id)
+      && other.title.toLowerCase().includes(query.trim().toLowerCase())
+      && checkBlockedBy({ id: item.id, blockers: [...item.blockedBy, other.id], blockedByOf: (id) => byId.get(id)?.blockedBy }).ok)
+    .slice(0, 30)
+  if (!editable && blockers.length === 0 && blocking.length === 0) return null
+  if (state !== 'ready') return null
+  const chip = (task: WorkItem, onRemove?: () => void) => (
+    <span key={task.id} className="inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-(--border) bg-(--surface-elevated) pl-2 pr-1.5 text-[12.5px] text-(--foreground)">
+      <StatusIcon status={task.status} size={13} />
+      <span className="max-w-48 truncate">{task.title}</span>
+      {onRemove ? (
+        <button type="button" aria-label={`Stop waiting on ${task.title}`} onClick={onRemove} className="rounded p-0.5 text-(--muted-light) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+          <X size={11} />
+        </button>
+      ) : null}
+    </span>
+  )
+  return (
+    <Section title="Waiting on" hint={blockers.some((task) => task.status !== 'done') ? 'Not done yet' : undefined}>
+      <div className="flex flex-wrap gap-1.5" data-testid="work-waiting-on">
+        {blockers.map((task) => chip(task, editable ? () => onChange(item.blockedBy.filter((id) => id !== task.id)) : undefined))}
+        {editable && item.blockedBy.length < WORK_LIMITS.blockedBy ? (
+          <>
+            <button
+              ref={anchor}
+              type="button"
+              onClick={() => setOpen((current) => !current)}
+              className="inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border border-dashed border-(--border) px-2.5 text-[12.5px] text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            >
+              <Plus size={12} aria-hidden />
+              Wait on a task
+            </button>
+            <FloatingMenu anchorRef={anchor} open={open} onOpenChange={setOpen} className="w-72" role="dialog" aria-label="Wait on a task" data-work-menu>
+              <div className="px-2 pb-1 pt-1.5">
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  aria-label="Find a task to wait on"
+                  placeholder="Find a task"
+                  className="h-8 w-full rounded-md border border-(--border) bg-(--background) px-2.5 text-[13px] text-(--foreground) outline-none focus:border-(--muted-light)"
+                />
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {candidates.map((task) => (
+                  <MenuItem key={task.id} onClick={() => { setOpen(false); setQuery(''); onChange([...item.blockedBy, task.id]) }} className="text-(--foreground)">
+                    <StatusIcon status={task.status} size={13} />
+                    <span className="flex-1 truncate">{task.title}</span>
+                  </MenuItem>
+                ))}
+                {candidates.length === 0 ? <div className="px-3 py-2 text-xs text-(--muted-light)">No other task can be waited on here.</div> : null}
+              </div>
+            </FloatingMenu>
+          </>
+        ) : null}
+        {blockers.length === 0 && !editable ? <span className="text-[13px] text-(--muted-light)">Nothing.</span> : null}
+      </div>
+      {blocking.length > 0 ? (
+        <div className="mt-3">
+          <div className="mb-1.5 text-xs text-(--muted-light)">Holding up</div>
+          <div className="flex flex-wrap gap-1.5" data-testid="work-holding-up">{blocking.map((task) => chip(task))}</div>
+        </div>
+      ) : null}
     </Section>
   )
 }

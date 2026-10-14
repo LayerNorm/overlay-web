@@ -129,6 +129,8 @@ export function installFakeWorkApi() {
           for (let i = 0; cursor && i < 4; i += 1) { if (cursor.id === item.id) return json({ error: 'A task cannot be moved inside one of its own subtasks.', code: 'work_descendant' }, 400); cursor = items.find((candidate) => candidate.id === cursor!.parentId) }
         }
         if ('blockedBy' in body) {
+          const unreadable = body.blockedBy.find((id: string) => { const b = items.find((candidate) => candidate.id === id); return !b || b.archivedAt !== null || b.scope !== item.scope })
+          if (unreadable) return json({ error: 'A blocking task is not available.', code: 'work_blocker' }, 400)
           const stack = [...body.blockedBy]
           const seen = new Set<string>()
           while (stack.length) {
@@ -139,6 +141,7 @@ export function installFakeWorkApi() {
             stack.push(...(items.find((candidate) => candidate.id === id)?.blockedBy ?? []))
           }
         }
+        if ('blockedBy' in body) log(item, 'dependencies', { added: body.blockedBy.filter((id: string) => !item.blockedBy.includes(id)).map((id: string) => items.find((c) => c.id === id)?.title), removed: item.blockedBy.filter((id: string) => !body.blockedBy.includes(id)).map((id: string) => items.find((c) => c.id === id)?.title) })
         Object.assign(item, body, { updatedAt: Date.now() })
         return json({ item: clean(item) })
       }

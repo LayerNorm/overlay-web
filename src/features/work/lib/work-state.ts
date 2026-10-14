@@ -29,6 +29,7 @@ export function applyItemPatch(item: WorkItem, patch: UpdateWorkItemRequest, opt
   if (patch.startDate !== undefined) next.startDate = patch.startDate
   if (patch.dueDate !== undefined) next.dueDate = patch.dueDate
   if (patch.parentId !== undefined) next.parentId = patch.parentId
+  if (patch.blockedBy !== undefined) next.blockedBy = patch.blockedBy
   if (patch.doneWhen !== undefined) next.doneWhen = patch.doneWhen
   if (patch.context !== undefined) next.context = patch.context
   return next

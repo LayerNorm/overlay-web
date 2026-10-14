@@ -34,6 +34,7 @@ export const WORK_EVENT_KINDS = [
   'dates',
   'title',
   'blocked',
+  'dependencies',
   'scope',
   'archived',
   'restored',
@@ -52,6 +53,8 @@ export const WORK_LIMITS = {
   contextLabel: 200,
   contextId: 2_000,
   blockedBy: 50,
+  /** Tasks read when checking a dependency for a loop; a graph bigger than this is refused rather than half-checked. */
+  graphWalkCap: 1_000,
   /** How deep parent links may go (objective, task, subtask). The UI shows one level to start. */
   maxDepth: 3,
   /** Rows one list will return before the client has to narrow by view. */

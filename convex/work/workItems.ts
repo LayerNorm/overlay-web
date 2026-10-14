@@ -23,7 +23,7 @@ import {
   rebalanceColumn,
   type WorkItemDoc,
 } from '../lib/workItems'
-import { checkParent } from '../../src/shared/work/graph'
+import { checkBlockedBy, checkParent } from '../../src/shared/work/graph'
 import { compareRanked, rankBetween } from '../../src/shared/work/rank'
 import { DEFAULT_WORK_PRIORITY, DEFAULT_WORK_STATUS, WORK_LIMITS } from '../../src/shared/work/status'
 import { rowScope } from '../../src/shared/workspaces/resource-scope'
@@ -180,6 +180,35 @@ async function assertParent(ctx: MutationCtx, args: { id?: string; parentId: str
   return parent
 }
 
+/**
+ * The tasks `row` waits on: each must be an active task in the same workspace and scope that the caller can see, and no
+ * chain of them may lead back to `row`. Returns the blockers, in order, without duplicates.
+ */
+async function assertBlockers(ctx: MutationCtx, args: { row: WorkItemDoc; blockedBy: string[]; userId: string }): Promise<WorkItemDoc[]> {
+  const ids = [...new Set(args.blockedBy)]
+  const scope = rowScope(args.row)
+  const blockers: WorkItemDoc[] = []
+  for (const id of ids) {
+    const blocker = await getReadableRow(ctx, { row: await loadWorkItem(ctx, id), userId: args.userId, workspaceId: args.row.workspaceId })
+    if (!blocker || blocker.archivedAt !== undefined || rowScope(blocker) !== scope) throw new Error('WORK_INVALID:blocker')
+    blockers.push(blocker)
+  }
+  // What each task waits on, read from the blockers outward (every task counts for a loop, readable or not).
+  const waitsOn = new Map<string, string[]>()
+  const queue = blockers.map((blocker) => blocker._id as Id<'workItems'>)
+  while (queue.length > 0) {
+    const id = queue.shift() as Id<'workItems'>
+    if (waitsOn.has(String(id))) continue
+    if (waitsOn.size >= WORK_LIMITS.graphWalkCap) throw new Error('WORK_INVALID:too_many')
+    const next = (await ctx.db.get(id))?.blockedBy ?? []
+    waitsOn.set(String(id), next.map(String))
+    queue.push(...next)
+  }
+  const check = checkBlockedBy({ id: String(args.row._id), blockers: blockers.map((blocker) => String(blocker._id)), blockedByOf: (id) => waitsOn.get(id) })
+  if (!check.ok) throw new Error(`WORK_INVALID:${check.reason}`)
+  return blockers
+}
+
 export const create = mutation({
   args: {
     ...auth,
@@ -254,6 +283,7 @@ export const update = mutation({
     startDate: v.optional(v.union(v.string(), v.null())),
     dueDate: v.optional(v.union(v.string(), v.null())),
     parentId: v.optional(v.union(v.string(), v.null())),
+    blockedBy: v.optional(v.array(v.string())),
     doneWhen: v.optional(doneWhenArg),
     context: v.optional(contextArg),
   },
@@ -314,6 +344,19 @@ export const update = mutation({
       patch.parentId = args.parentId === null
         ? undefined
         : (await assertParent(ctx, { id: String(row._id), parentId: args.parentId, workspaceId: row.workspaceId, scope, userId: args.userId }))._id
+    }
+    if (args.blockedBy !== undefined) {
+      const blockers = await assertBlockers(ctx, { row, blockedBy: args.blockedBy, userId: args.userId })
+      const before = new Set((row.blockedBy ?? []).map(String))
+      const after = new Set(blockers.map((blocker) => String(blocker._id)))
+      if (before.size !== after.size || [...after].some((id) => !before.has(id))) {
+        patch.blockedBy = blockers.map((blocker) => blocker._id)
+        const titleOf = async (id: string) => (await ctx.db.get(id as Id<'workItems'>))?.title ?? 'a task'
+        events.push({ kind: 'dependencies', data: {
+          added: await Promise.all([...after].filter((id) => !before.has(id)).map(titleOf)),
+          removed: await Promise.all([...before].filter((id) => !after.has(id)).map(titleOf)),
+        } })
+      }
     }
     if (args.doneWhen !== undefined) patch.doneWhen = normalizeDoneWhen(args.doneWhen)
     if (args.context !== undefined) patch.context = normalizeContext(args.context)

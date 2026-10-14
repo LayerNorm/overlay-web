@@ -66,6 +66,14 @@ export function describeEvent(event: Pick<WorkEvent, 'kind' | 'data'>, people: A
       return from && to ? `renamed this from “${from}” to “${to}”` : 'renamed this'
     }
     case 'blocked': return data.to === true ? 'marked this as blocked' : 'cleared the blocked flag'
+    case 'dependencies': {
+      const added = Array.isArray(data.added) ? data.added.filter((title): title is string => typeof title === 'string') : []
+      const removed = Array.isArray(data.removed) ? data.removed.filter((title): title is string => typeof title === 'string') : []
+      const quote = (titles: string[]) => titles.map((title) => `“${title}”`).join(', ')
+      if (added.length > 0 && removed.length === 0) return `made this wait on ${quote(added)}`
+      if (removed.length > 0 && added.length === 0) return `no longer waits on ${quote(removed)}`
+      return 'changed what this waits on'
+    }
     case 'scope': return data.to === 'workspace' ? 'moved this to the Workspace' : 'moved this to Personal'
     case 'archived': return 'archived this'
     case 'restored': return 'restored this'

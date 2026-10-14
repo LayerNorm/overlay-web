@@ -214,6 +214,65 @@ describe('structure', () => {
   })
 })
 
+describe('dependencies', () => {
+  test('a task can wait on others; a task cannot wait on itself, and no chain of waiting may loop back', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const a = await work.create('alice', { title: 'A', scope: 'workspace' })
+    const b = await work.create('alice', { title: 'B', scope: 'workspace' })
+    const c = await work.create('alice', { title: 'C', scope: 'workspace' })
+
+    expect(((await work.update('alice', b._id, { blockedBy: [a._id] })) as unknown as { blockedBy: string[] }).blockedBy).toEqual([a._id])
+    await work.update('alice', c._id, { blockedBy: [b._id, a._id, b._id] })
+    expect(((await work.get('alice', c._id)) as unknown as { blockedBy: string[] }).blockedBy).toEqual([b._id, a._id])
+
+    await expect(work.update('alice', a._id, { blockedBy: [a._id] })).rejects.toThrow(/self/)
+    await expect(work.update('alice', a._id, { blockedBy: [b._id] })).rejects.toThrow(/cycle/)
+    // A longer chain: A would wait on C, which waits on B, which waits on A.
+    await expect(work.update('alice', a._id, { blockedBy: [c._id] })).rejects.toThrow(/cycle/)
+    // The refusals changed nothing.
+    expect(((await work.get('alice', a._id)) as unknown as { blockedBy?: string[] }).blockedBy).toBeUndefined()
+
+    // Waiting on fewer is always fine, and clearing works.
+    await work.update('alice', c._id, { blockedBy: [b._id] })
+    expect(((await work.get('alice', c._id)) as unknown as { blockedBy: string[] }).blockedBy).toEqual([b._id])
+    await work.update('alice', c._id, { blockedBy: [] })
+    expect(((await work.get('alice', c._id)) as unknown as { blockedBy: string[] }).blockedBy).toEqual([])
+  })
+
+  test('blockers must be active tasks the person can see, in the same scope; each change is logged with task titles', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const mine = await work.create('alice', { title: 'Mine' })
+    const shared = await work.create('alice', { title: 'Shared', scope: 'workspace' })
+    const bobsPrivate = await work.create('bob', { title: 'Bobs private' })
+    const target = await work.create('alice', { title: 'Target', scope: 'workspace' })
+
+    await expect(work.update('alice', target._id, { blockedBy: [mine._id] })).rejects.toThrow(/blocker/)
+    await expect(work.update('alice', mine._id, { blockedBy: [shared._id] })).rejects.toThrow(/blocker/)
+    await expect(work.update('alice', mine._id, { blockedBy: [bobsPrivate._id] })).rejects.toThrow(/blocker/)
+    await expect(work.update('alice', target._id, { blockedBy: ['not-an-id'] })).rejects.toThrow(/blocker/)
+    await work.archive('alice', shared._id)
+    await expect(work.update('alice', target._id, { blockedBy: [shared._id] })).rejects.toThrow(/blocker/)
+
+    const first = await work.create('alice', { title: 'First', scope: 'workspace' })
+    const second = await work.create('alice', { title: 'Second', scope: 'workspace' })
+    await work.update('alice', target._id, { blockedBy: [first._id] })
+    await work.update('alice', target._id, { blockedBy: [second._id] })
+    await work.update('alice', target._id, { blockedBy: [second._id] })
+    const log = (await work.events('alice', target._id)).filter((event) => event.kind === 'dependencies')
+    expect(log.map((event) => event.data)).toEqual([
+      { added: ['First'], removed: [] },
+      { added: ['Second'], removed: ['First'] },
+    ])
+
+    const many = await Promise.all(Array.from({ length: 51 }, (_, index) => work.create('alice', { title: `M${index}`, scope: 'workspace' })))
+    await expect(work.update('alice', target._id, { blockedBy: many.map((task) => task._id) })).rejects.toThrow(/too_many/)
+  })
+})
+
 describe('fields, assignees and validation', () => {
   test('title, dates, priority and brief fields are validated', async () => {
     const convex = convexTest(schema, modules)

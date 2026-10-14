@@ -33,6 +33,10 @@ test('update lets null clear a field and leaves absent fields alone', () => {
     { description: null, assigneePrincipalId: null, dueDate: null, parentId: null, blocked: true, status: 'done' },
   )
   assert.deepEqual(parseUpdateWorkItem({ context: [{ type: 'link', id: 'https://a.test', label: 'A' }] }), { context: [{ type: 'link', id: 'https://a.test', label: 'A' }] })
+  assert.deepEqual(parseUpdateWorkItem({ blockedBy: ['a', 'b'] }), { blockedBy: ['a', 'b'] })
+  assert.deepEqual(parseUpdateWorkItem({ blockedBy: [] }), { blockedBy: [] })
+  assert.throws(() => parseUpdateWorkItem({ blockedBy: 'a' }), /list of task ids/)
+  assert.throws(() => parseUpdateWorkItem({ blockedBy: ['a', 5] }), /list of task ids/)
   assert.throws(() => parseUpdateWorkItem({ blocked: 'yes' }), /blocked/)
   assert.throws(() => parseUpdateWorkItem({ title: null }), /text/)
   assert.throws(() => parseUpdateWorkItem({ dueDate: 20260101 }), /text or null/)

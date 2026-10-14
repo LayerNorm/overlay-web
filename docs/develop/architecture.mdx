@@ -108,6 +108,9 @@ Plan and phases: `docs/plans/WORK_PLAN.md`. Where things live:
 - Editing is wider than for most content: any member can work on a workspace task when the workspace lets members
   edit workspace content, and the assignee always can. Move between scopes, archive and restore stay with the creator
   and admins, exactly as for other content.
+- Dependencies (`blockedBy`) are set through `update`, which reads the tasks they lead to and refuses a loop with `checkBlockedBy`
+  (`src/shared/work/graph.ts`); blockers must be active tasks in the same scope. The Timeline draws them with `dependencyArrow`
+  (`src/shared/work/timeline.ts`).
 - The assignee is a workspace principal (a person now, an agent later). Dates are `YYYY-MM-DD` strings so a due date
   never shifts with timezone.
 

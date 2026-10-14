@@ -818,7 +818,7 @@ export default defineSchema({
     actorPrincipalId: v.string(),
     kind: v.union(
       v.literal('created'), v.literal('status'), v.literal('assignee'), v.literal('reviewer'), v.literal('priority'),
-      v.literal('dates'), v.literal('title'), v.literal('blocked'), v.literal('scope'), v.literal('archived'),
+      v.literal('dates'), v.literal('title'), v.literal('blocked'), v.literal('dependencies'), v.literal('scope'), v.literal('archived'),
       v.literal('restored'), v.literal('comment'),
     ),
     data: v.optional(v.any()),

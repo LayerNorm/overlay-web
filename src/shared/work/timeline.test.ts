@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkItem } from '@overlay/app-core'
-import { applyDrag, barLayout, buildTimelineRows, dayAtX, timelineRange, unionSpan, weekColumns } from './timeline'
+import { applyDrag, barLayout, buildTimelineRows, dayAtX, dependencyArrow, timelineRange, unionSpan, weekColumns } from './timeline'
 
 function item(overrides: Partial<WorkItem> & { id: string }): WorkItem {
   return {
@@ -77,4 +77,18 @@ test('week headers tile the range exactly', () => {
   const weeks = weekColumns(range)
   assert.deepEqual(weeks.map((week) => week.start), ['2026-10-05', '2026-10-12', '2026-10-19'])
   assert.deepEqual(weeks.map((week) => [week.left, week.width]), [[0, 168], [168, 168], [336, 168]])
+})
+
+test('a dependency arrow runs out of the blocker, into the waiting task, and routes around when there is no room', () => {
+  const forward = dependencyArrow({ x: 100, y: 20 }, { x: 200, y: 100 })
+  assert.equal(forward.path, 'M100 20 H108 V100 H194')
+  assert.equal(forward.head, '200,100 194,96.5 194,103.5')
+  // The waiting task starts before the blocker ends: along the gap above the waiting row.
+  const overlap = dependencyArrow({ x: 300, y: 20 }, { x: 250, y: 100 })
+  assert.equal(overlap.path, 'M300 20 H308 V80 H236 V100 H244')
+  // The waiting task is above the blocker: along the gap above the blocker's row.
+  const upward = dependencyArrow({ x: 300, y: 100 }, { x: 250, y: 20 })
+  assert.equal(upward.path, 'M300 100 H308 V80 H236 V20 H244')
+  // Barely enough room still draws the straight elbow.
+  assert.equal(dependencyArrow({ x: 100, y: 20 }, { x: 114, y: 60 }).path, 'M100 20 H108 V60 H108')
 })

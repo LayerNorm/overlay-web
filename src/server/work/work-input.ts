@@ -64,6 +64,14 @@ function doneWhen(body: Body): WorkDoneWhen[] | undefined {
   })
 }
 
+function blockedBy(body: Body): string[] | undefined {
+  if (body.blockedBy === undefined) return undefined
+  if (!Array.isArray(body.blockedBy) || body.blockedBy.some((id) => typeof id !== 'string' || !id)) {
+    throw new WorkInputError('blockedBy must be a list of task ids.')
+  }
+  return body.blockedBy as string[]
+}
+
 function contextRefs(body: Body): WorkContextRef[] | undefined {
   if (body.context === undefined) return undefined
   if (!Array.isArray(body.context)) throw new WorkInputError('context must be a list.')
@@ -115,6 +123,7 @@ export function parseUpdateWorkItem(body: unknown): UpdateWorkItemRequest {
     startDate: clearableText(body, 'startDate'),
     dueDate: clearableText(body, 'dueDate'),
     parentId: clearableText(body, 'parentId'),
+    blockedBy: blockedBy(body),
     doneWhen: doneWhen(body),
     context: contextRefs(body),
   })

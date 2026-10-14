@@ -12,6 +12,7 @@ import {
   barLayout,
   buildTimelineRows,
   dayAtX,
+  dependencyArrow,
   sameSpan,
   spanToDates,
   timelineRange,
@@ -133,6 +134,30 @@ export function WorkTimeline({
     commit(item.id, next)
   }
 
+  // Where each task's bar is right now (a bar being dragged included), so arrows follow it.
+  const arrows = useMemo(() => {
+    const at = new Map<string, { x1: number; x2: number; y: number }>()
+    rows.forEach((row, index) => {
+      if (row.kind !== 'task') return
+      const span = preview?.id === row.item.id ? preview.span : row.span
+      if (!span) return
+      const layout = barLayout(span, range)
+      at.set(row.item.id, { x1: layout.left + Math.max(layout.width, DAY), x2: layout.left, y: index * ROW + ROW / 2 })
+    })
+    const lines: Array<{ key: string; path: string; head: string }> = []
+    for (const row of rows) {
+      if (row.kind !== 'task') continue
+      const waiting = at.get(row.item.id)
+      if (!waiting) continue
+      for (const blockerId of row.item.blockedBy) {
+        const blocker = at.get(blockerId)
+        if (!blocker) continue
+        lines.push({ key: `${blockerId}>${row.item.id}`, ...dependencyArrow({ x: blocker.x1, y: blocker.y }, { x: waiting.x2, y: waiting.y }) })
+      }
+    }
+    return lines
+  }, [preview, range, rows])
+
   const width = range.days * DAY
   const todayX = diffDays(range.start, today) * DAY + DAY / 2
   const weeks = weekColumns(range)
@@ -240,6 +265,24 @@ export function WorkTimeline({
             </div>
           )
         })}
+
+        {arrows.length > 0 ? (
+          <svg
+            className="pointer-events-none absolute z-[1] overflow-visible text-(--muted-light)"
+            style={{ left: LABEL, top: HEADER }}
+            width={width}
+            height={rows.length * ROW}
+            data-testid="work-dependencies"
+            aria-hidden
+          >
+            {arrows.map((arrow) => (
+              <g key={arrow.key} data-testid="work-dependency" data-edge={arrow.key}>
+                <path d={arrow.path} fill="none" stroke="currentColor" strokeWidth="1.25" />
+                <polygon points={arrow.head} fill="currentColor" />
+              </g>
+            ))}
+          </svg>
+        ) : null}
 
         <div className="pointer-events-none absolute bottom-0 z-10 w-0 border-l-[1.5px] border-red-500/60" style={{ left: LABEL + todayX, top: HEADER }} data-testid="work-today-line">
           <span className="absolute -left-4 -top-0.5 rounded bg-red-500 px-1.5 py-px text-[9.5px] text-white">Today</span>

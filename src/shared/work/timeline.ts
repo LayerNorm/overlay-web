@@ -129,3 +129,20 @@ export function weekColumns(range: TimelineRange, dayWidth = TIMELINE_DAY_WIDTH)
   }
   return weeks
 }
+
+export type Point = { x: number; y: number }
+
+/**
+ * The arrow from the end of the task that has to finish first to the start of the task that waits on it: out of the
+ * blocker's right edge, down or up to the waiting task's row, and into its left edge. When the waiting task starts
+ * before the blocker ends there is no room for a straight elbow, so the line runs along the gap between rows instead.
+ */
+export function dependencyArrow(from: Point, to: Point, rowHeight = TIMELINE_ROW_HEIGHT): { path: string; head: string } {
+  const out = from.x + 8
+  const into = to.x - 6
+  const head = `${to.x},${to.y} ${to.x - 6},${to.y - 3.5} ${to.x - 6},${to.y + 3.5}`
+  if (into >= out) return { path: `M${from.x} ${from.y} H${out} V${to.y} H${into}`, head }
+  const lane = (from.y < to.y ? to.y : from.y) - rowHeight / 2
+  const back = to.x - 14
+  return { path: `M${from.x} ${from.y} H${out} V${lane} H${back} V${to.y} H${into}`, head }
+}
