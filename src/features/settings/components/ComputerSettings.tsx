@@ -159,42 +159,42 @@ export function ComputerSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-        <h2 className="text-sm font-semibold text-[var(--foreground)]">Computers</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">Persistent cloud desktops for you and your agents. Open one to watch or drive the live screen; stopped computers keep their disk.</p>
+      <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+        <h2 className="text-sm font-semibold text-(--foreground)">Computers</h2>
+        <p className="mt-1 text-sm text-(--muted)">Persistent cloud desktops for you and your agents. Open one to watch or drive the live screen; stopped computers keep their disk.</p>
       </div>
 
       {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[var(--foreground)]">Workspace computers</h2>
+          <h2 className="text-sm font-semibold text-(--foreground)">Workspace computers</h2>
           <div className="flex items-center gap-1">
             {!hasPersonal ? (
               <button
                 type="button"
                 disabled={creating || busy !== null}
                 onClick={() => void provision()}
-                className="flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
               >
                 <Plus size={13} /> New computer
               </button>
             ) : null}
-            <button type="button" aria-label="Refresh computers" onClick={() => void refresh()} className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"><RefreshCw size={15} /></button>
+            <button type="button" aria-label="Refresh computers" onClick={() => void refresh()} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"><RefreshCw size={15} /></button>
           </div>
         </div>
-        {computers.length === 0 && environmentMachines.length === 0 ? <p className="rounded-xl border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted)]">No computers yet. Create one to give yourself a persistent cloud desktop.</p> : null}
+        {computers.length === 0 && environmentMachines.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No computers yet. Create one to give yourself a persistent cloud desktop.</p> : null}
         {environmentMachines.map(({ environment, agentName }) => (
-          <div key={environment.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+          <div key={environment.id} className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
             <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--surface-subtle)] text-[var(--muted)]"><Monitor size={17} /></div>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-(--surface-subtle) text-(--muted)"><Monitor size={17} /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-medium text-[var(--foreground)]">{environment.name}</h3>
-                  <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">{environment.status}</span>
-                  <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">Agent machine</span>
+                  <h3 className="text-sm font-medium text-(--foreground)">{environment.name}</h3>
+                  <span className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] uppercase tracking-wide text-(--muted)">{environment.status}</span>
+                  <span className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] uppercase tracking-wide text-(--muted)">Agent machine</span>
                 </div>
-                <p className="mt-1 truncate text-xs text-[var(--muted)]">
+                <p className="mt-1 truncate text-xs text-(--muted)">
                   {agentName ?? 'Unbound agent environment'} · lifecycle managed by Overlay
                 </p>
               </div>
@@ -203,7 +203,7 @@ export function ComputerSettings() {
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void openEnvironmentDesktop(environment.id)}
-                  className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+                  className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
                 >
                   Open
                 </button>
@@ -212,15 +212,15 @@ export function ComputerSettings() {
           </div>
         ))}
         {computers.map((computer) => (
-          <div key={computer.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+          <div key={computer.id} className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
             <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--surface-subtle)] text-[var(--muted)]"><Monitor size={17} /></div>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-(--surface-subtle) text-(--muted)"><Monitor size={17} /></div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-medium text-[var(--foreground)]">{computer.name ?? 'Computer'}</h3>
-                  <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">{computer.status}</span>
+                  <h3 className="text-sm font-medium text-(--foreground)">{computer.name ?? 'Computer'}</h3>
+                  <span className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] uppercase tracking-wide text-(--muted)">{computer.status}</span>
                 </div>
-                <p className="mt-1 truncate text-xs text-[var(--muted)]">
+                <p className="mt-1 truncate text-xs text-(--muted)">
                   {ownerLabel(computer, agentNames)} · {computer.size}
                   {computer.lastActiveAt ? ` · ${lastActiveLabel(computer.lastActiveAt)}` : ''}
                 </p>
@@ -234,18 +234,18 @@ export function ComputerSettings() {
                     type="button"
                     disabled={busy !== null}
                     onClick={() => void openDesktop(computer.id)}
-                    className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+                    className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
                   >
                     Open
                   </button>
                 ) : null}
                 {computer.status === 'ready' ? (
-                  <button type="button" aria-label="Stop computer" disabled={busy !== null} onClick={() => void setRunning(computer, false)} className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-50"><Square size={15} /></button>
+                  <button type="button" aria-label="Stop computer" disabled={busy !== null} onClick={() => void setRunning(computer, false)} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50"><Square size={15} /></button>
                 ) : null}
                 {computer.status === 'stopped' ? (
-                  <button type="button" aria-label="Start computer" disabled={busy !== null} onClick={() => void setRunning(computer, true)} className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-50"><Play size={15} /></button>
+                  <button type="button" aria-label="Start computer" disabled={busy !== null} onClick={() => void setRunning(computer, true)} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50"><Play size={15} /></button>
                 ) : null}
-                <button type="button" aria-label="Delete computer" disabled={busy !== null} onClick={() => void destroy(computer)} className="rounded-lg p-2 text-[var(--muted)] hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"><Trash2 size={15} /></button>
+                <button type="button" aria-label="Delete computer" disabled={busy !== null} onClick={() => void destroy(computer)} className="rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"><Trash2 size={15} /></button>
               </div>
             </div>
           </div>

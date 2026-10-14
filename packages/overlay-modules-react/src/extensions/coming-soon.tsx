@@ -15,11 +15,11 @@ export function ToolsComingSoonView({ title, icon: Icon }: {
 }) {
   return (
     <AppScreenShell header={<AppScreenHeader title={title} className="px-6" />}>
-      <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 text-[var(--muted)]">
-        <Icon size={40} strokeWidth={1} className="text-[var(--muted-light)] opacity-80" />
+      <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 text-(--muted)">
+        <Icon size={40} strokeWidth={1} className="text-(--muted-light) opacity-80" />
         <div className="space-y-1 text-center">
-          <p className="text-sm font-medium text-[var(--foreground)]">{title} coming soon</p>
-          <p className="text-xs text-[var(--muted-light)]">This feature is under development</p>
+          <p className="text-sm font-medium text-(--foreground)">{title} coming soon</p>
+          <p className="text-xs text-(--muted-light)">This feature is under development</p>
         </div>
       </AppScreenBody>
     </AppScreenShell>
@@ -87,11 +87,11 @@ export function McpServerForm({
         placeholder="Description"
       />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Select value={value.transport} onChange={(event) => update('transport', event.target.value as McpTransport)}>
+        <Select aria-label="Transport" value={value.transport} onChange={(event) => update('transport', event.target.value as McpTransport)}>
           <option value="streamable-http">Streamable HTTP</option>
           <option value="sse">SSE</option>
         </Select>
-        <Select value={value.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)}>
+        <Select aria-label="Authentication" value={value.authType} onChange={(event) => update('authType', event.target.value as McpAuthType)}>
           <option value="none">No auth</option>
           <option value="bearer">Bearer token</option>
           <option value="header">Custom header</option>
@@ -112,11 +112,11 @@ export function McpServerForm({
           <Input value={value.headerValue ?? ''} onChange={(event) => update('headerValue', event.target.value)} placeholder="Header value" type="password" />
         </div>
       ) : null}
-      <label className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm">
+      <label className="flex items-center justify-between gap-3 rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2 text-sm">
         <span>Enabled</span>
         <Toggle checked={value.enabled} onCheckedChange={(checked) => update('enabled', checked)} />
       </label>
-      {testResult ? <div className="text-xs text-[var(--muted)]">{testResult}</div> : null}
+      {testResult ? <div className="text-xs text-(--muted)">{testResult}</div> : null}
       <div className="flex items-center justify-end gap-2">
         {onTest ? (
           <Button type="button" variant="ghost" disabled={testing} onClick={onTest}>

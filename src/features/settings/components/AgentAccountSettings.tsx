@@ -63,11 +63,11 @@ export function AgentAccountSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+      <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--foreground)]">Agent accounts</h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
+            <h2 className="text-sm font-semibold text-(--foreground)">Agent accounts</h2>
+            <p className="mt-1 text-sm text-(--muted)">
               Your Claude and OpenAI credentials, used by Claude Code and Codex agents running on Overlay Cloud. They are stored encrypted and sent to an agent only while it works.
             </p>
           </div>
@@ -81,25 +81,25 @@ export function AgentAccountSettings() {
 
       <div className="space-y-2">
         {accounts !== null && accounts.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted)]">
+          <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">
             No accounts yet. Connect one to run Claude Code or Codex on Overlay Cloud.
           </p>
         ) : null}
         {(accounts ?? []).map((account) => (
-          <div key={account.id} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-subtle)] text-[var(--muted)]">
+          <div key={account.id} className="flex items-center gap-3 rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-(--surface-subtle) text-(--muted)">
               <KeyRound size={16} />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-sm font-medium text-[var(--foreground)]">{account.label}</h3>
+                <h3 className="truncate text-sm font-medium text-(--foreground)">{account.label}</h3>
                 {account.status === 'needs_reauth' ? (
                   <span className="rounded-full border border-amber-500/40 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400">
                     Needs reconnecting
                   </span>
                 ) : null}
               </div>
-              <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+              <p className="mt-0.5 truncate text-xs text-(--muted)">
                 {describe(account)} · {formatLastUsed(account.lastUsedAt)}
               </p>
             </div>
@@ -115,7 +115,7 @@ export function AgentAccountSettings() {
                 type="button"
                 aria-label={`Remove ${account.label}`}
                 onClick={() => setRemoving(account)}
-                className="rounded-lg p-2 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-red-400"
+                className="rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400"
               >
                 <Trash2 size={14} />
               </button>

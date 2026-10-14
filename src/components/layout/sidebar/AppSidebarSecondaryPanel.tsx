@@ -2,8 +2,12 @@
 
 import type { ReactNode } from 'react'
 import {
+  Sidebar,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarProvider,
+  SidebarRail,
   SidebarResourceSection,
-  SidebarShell,
   type SidebarResourceAction,
   type SidebarResourceSearch,
 } from '@overlay/ui/primitives'
@@ -15,6 +19,8 @@ export interface SecondaryPanelNav {
   items: ReadonlyArray<InlineNavItem>
   /** Empty when no subview is selected, so nothing reads as pre-selected. */
   activeId: string
+  /** The selected row among an expanded item's `children` (scope sub-rows). */
+  activeChildId?: string
   /** The subpage whose navigation has started but has not committed yet. */
   pendingId?: string | null
   onSelect: (id: string) => void
@@ -37,16 +43,16 @@ export function SecondaryPanelHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="flex h-16 min-h-16 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
+    <SidebarHeader>
       {/* Match the primary rail wordmark: Libre Baskerville, lowercase, text-lg. */}
       <span
-        className="min-w-0 flex-1 truncate text-lg font-medium lowercase tracking-tight text-[var(--foreground)]"
+        className="min-w-0 flex-1 truncate text-lg font-medium lowercase tracking-tight text-(--foreground)"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
         {title}
       </span>
       {action}
-    </div>
+    </SidebarHeader>
   )
 }
 
@@ -70,6 +76,7 @@ export function SecondaryPanelContent({
           className="shrink-0 space-y-0.5 px-2 py-3"
           items={nav.items}
           activeId={nav.activeId}
+          activeChildId={nav.activeChildId}
           pendingId={nav.pendingId}
           onSelect={nav.onSelect}
         />
@@ -79,31 +86,38 @@ export function SecondaryPanelContent({
           {children}
         </SidebarResourceSection>
       ) : null}
-      {footer ? (
-        <div className="mt-auto shrink-0 border-t border-[var(--border)] px-2 py-3">{footer}</div>
-      ) : null}
+      {footer ? <SidebarFooter>{footer}</SidebarFooter> : null}
     </div>
   )
 }
 
 /**
  * Secondary sidebar: a contextual list/subnavigation panel that sits beside
- * the primary rail for routes that have one.
+ * the primary rail for routes that have one. Built on the shadcn Sidebar parts;
+ * the shell decides whether it is shown (`open`), and the edge handle asks it to hide.
  */
 export function AppSidebarSecondaryPanel({
   title,
   headerAction,
   className,
+  open = true,
+  onOpenChange,
   ...content
 }: {
   title: string
   headerAction?: ReactNode
   className?: string
+  /** Whether the panel is showing. The caller animates the width; this drives the edge handle. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 } & SecondaryPanelContentProps) {
   return (
-    <SidebarShell className={className}>
-      <SecondaryPanelHeader title={title} action={headerAction} />
-      <SecondaryPanelContent {...content} />
-    </SidebarShell>
+    <SidebarProvider open={open} onOpenChange={onOpenChange}>
+      <Sidebar className={className} aria-label={title}>
+        <SecondaryPanelHeader title={title} action={headerAction} />
+        <SecondaryPanelContent {...content} />
+        {onOpenChange ? <SidebarRail /> : null}
+      </Sidebar>
+    </SidebarProvider>
   )
 }

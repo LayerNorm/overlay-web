@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
-import PricingClient from '@/app/pricing/PricingClient'
+import { PricingPage as WorkspacePricingPage } from '@/features/marketing/pricing/PricingPage'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 
 export const metadata: Metadata = {
   title: 'Pricing',
   description:
-    'Choose an Overlay plan, the control plane for AI employees with private chat, files, browser tasks, and automations. Free tier included.',
+    'Every workspace is free or paid. Paid starts at $8 a month, becomes credit, and is billed as you go, one line per resource.',
   alternates: {
     canonical: '/pricing',
   },
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   },
 }
 
+/** Plans belong to workspaces; deployments without Overlay billing see the billing-unavailable notice. */
 export default function PricingPage() {
-  const capabilities = getOverlayCapabilitiesSync()
-  return <PricingClient billingEnabled={capabilities.billing} />
+  return <WorkspacePricingPage billingEnabled={getOverlayCapabilitiesSync().billing} />
 }

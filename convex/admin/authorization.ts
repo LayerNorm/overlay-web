@@ -442,9 +442,9 @@ export const getResourceOwnerByServer = query({
         const file = await ctx.db.get(fileId)
         if (file?.kind === 'output' && file.deletedAt === undefined) return { userId: file.userId }
       }
-      const outputId = ctx.db.normalizeId('outputs', args.resourceId)
-      const output = outputId ? await ctx.db.get(outputId) : null
-      return output ? { userId: output.userId } : null
+      // An id from before outputs moved into `files`.
+      const migrated = await ctx.db.query('files').withIndex('by_legacyOutputId', (q) => q.eq('legacyOutputId', args.resourceId)).first()
+      return migrated && migrated.deletedAt === undefined ? { userId: migrated.userId } : null
     }
     if (args.resourceType === 'note') {
       const fileId = ctx.db.normalizeId('files', args.resourceId)
@@ -452,9 +452,9 @@ export const getResourceOwnerByServer = query({
         const file = await ctx.db.get(fileId)
         if (file?.kind === 'note' && file.deletedAt === undefined) return { userId: file.userId }
       }
-      const noteId = ctx.db.normalizeId('notes', args.resourceId)
-      const note = noteId ? await ctx.db.get(noteId) : null
-      return note && note.deletedAt === undefined ? { userId: note.userId } : null
+      // An id from before notes moved into `files`.
+      const migrated = await ctx.db.query('files').withIndex('by_legacyNoteId', (q) => q.eq('legacyNoteId', args.resourceId)).first()
+      return migrated && migrated.deletedAt === undefined ? { userId: migrated.userId } : null
     }
     const table = resourceTable(args.resourceType)
     if (!table) return null

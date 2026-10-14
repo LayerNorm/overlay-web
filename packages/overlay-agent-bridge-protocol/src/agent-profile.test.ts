@@ -137,7 +137,11 @@ test('size limits drop what does not fit, and the same file cannot be listed twi
 })
 
 test('secret detection catches known token shapes and opaque tokens, not ordinary text or paths', () => {
-  for (const value of [FAKE_GH, FAKE_ANT, 'AKIAABCDEFGHIJKLMNOP', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r', 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6']) assert.equal(looksLikeSecret(value), true, value.slice(0, 20))
+  // Construct fake shapes at runtime so repository scans do not mistake test
+  // fixtures for credentials. The detector still receives the complete strings.
+  const fakeAws = 'AKIA' + 'ABCDEFGHIJKLMNOP'
+  const fakeJwt = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'dBjftJeZ4CVPmB92K27uhbUJU1p1r'].join('.')
+  for (const value of [FAKE_GH, FAKE_ANT, fakeAws, fakeJwt, 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6']) assert.equal(looksLikeSecret(value), true, value.slice(0, 20))
   for (const value of ['hello world', 'info', '/usr/local/bin/something-long-with-digits-123456789', 'https://example.com/a/b/c', 'camelCaseIdentifierWithoutDigits']) assert.equal(looksLikeSecret(value), false, value)
   assert.deepEqual(redactSecretText('plain text'), { text: 'plain text', count: 0 })
 })

@@ -52,11 +52,6 @@ import {
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import {
-  resolveWorkspaceBillingRollout,
-  workspaceBillingRolloutConfigFromEnv,
-  workspaceBillingRolloutEnabled,
-} from '@/shared/billing/workspace-billing-rollout'
-import {
   connectedAgentRolloutConfigFromEnv,
   connectedAgentRolloutEnabled,
   resolveConnectedAgentRollout,
@@ -214,13 +209,17 @@ export function createOverlayServerContext(
 
   // ── Workspace, authorization, and collaboration services ────────────────
   const workspaceRepository = new ConvexWorkspaceRepository()
-  const workspaceService = new WorkspaceService(workspaceRepository, { lifecycleEvents })
-  const workspaceBillingRollout = workspaceBillingRolloutConfigFromEnv(process.env)
+  const workspaceService = new WorkspaceService(workspaceRepository, {
+    lifecycleEvents,
+    hasWorkspacePlan: async (workspaceId) => {
+      const billing = appData.repositories.billing
+      const account = await billing.getWorkspaceBillingAccountByWorkspaceIdByServer({ workspaceId })
+      if (!account) return false
+      return (await billing.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }))?.planKind === 'paid'
+    },
+  })
   const billingPayerResolver = new BillingPayerResolver({
     billing: appData.repositories.billing,
-    workspaceWalletsEnabled: (workspaceId) => workspaceId
-      ? resolveWorkspaceBillingRollout(workspaceBillingRollout, workspaceId).eligible
-      : workspaceBillingRolloutEnabled(workspaceBillingRollout),
     workspaces: workspaceService,
   })
 
@@ -367,7 +366,7 @@ export function createOverlayServerContext(
       })
     },
     meterSandboxLease: async (lease) => {
-      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0 })
+      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0, idleStop: 'none' })
     },
     settleUsage: async (usage) => {
       if (!usage.userId) return

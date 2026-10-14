@@ -1,7 +1,11 @@
 import { cronJobs } from 'convex/server'
 import { internal } from './_generated/api'
+import { isPreviewDeployment } from './lib/preview'
 
 const crons = cronJobs()
+
+// Preview fixtures must never start scheduled work or call shared third parties.
+if (!isPreviewDeployment()) {
 
 // Claims due automation runs every minute and dispatches each to the BFF,
 // which executes it as a durable one-shot automation workflow. Sleep()-based
@@ -12,6 +16,14 @@ crons.interval(
   'automation scheduler',
   { minutes: 1 },
   internal.automations.automationRunner.runMinuteTick,
+)
+
+// Credits automatic workspace top-ups that Stripe finished after the request that started them (3-D Secure etc.),
+// in case the payment_intent webhook was missed.
+crons.interval(
+  'pending automatic top-up settlement',
+  { minutes: 5 },
+  internal.billing.autoTopUpReconcile.reconcilePendingAutoTopUps,
 )
 
 crons.interval(
@@ -173,5 +185,7 @@ crons.interval(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).surfaces.chatState.pruneExpired,
 )
+
+}
 
 export default crons

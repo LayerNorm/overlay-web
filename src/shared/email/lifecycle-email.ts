@@ -10,6 +10,7 @@ export type LifecycleEmailEvent = {
     | 'workspace.invitation_sent'
     | 'workspace.mention'
     | 'workspace.dm_received'
+    | 'billing.auto_topup_limit_reached'
   resource: Record<string, unknown>
   userId: string
 }
@@ -63,6 +64,7 @@ function contentForEvent(event: LifecycleEmailEvent, appUrl: string): EmailConte
     case 'workspace.invitation_sent': return invitationContent(event, appUrl)
     case 'workspace.mention': return mentionContent(event, appUrl)
     case 'workspace.dm_received': return dmContent(event, appUrl)
+    case 'billing.auto_topup_limit_reached': return topUpLimitContent(event, appUrl)
   }
 }
 
@@ -172,6 +174,29 @@ function automationFailedContent(event: LifecycleEmailEvent, appUrl: string): Em
     reason: 'You received this because an automation you own failed.',
     showPreferences: true,
     subject: 'An Overlay automation needs attention',
+  }
+}
+
+function topUpLimitContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'Your workspace'
+  const limitCents = typeof event.attributes.monthlyLimitCents === 'number' ? event.attributes.monthlyLimitCents : 0
+  const limit = `$${(limitCents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+  const periodEnd = typeof event.attributes.periodEnd === 'number'
+    ? new Date(event.attributes.periodEnd).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+    : null
+  return {
+    body: `${workspaceName} used this month's credit and reached its ${limit} automatic top-up limit. Paid resources are paused${periodEnd ? ` until ${periodEnd}` : ' until next month'}. Free ones keep working. Add credit or raise the limit to keep going now.`,
+    ctaLabel: 'Open workspace billing',
+    ctaUrl: appPath(appUrl, '/app/settings?section=workspace&workspace_tab=billing'),
+    feature: card(
+      `<table role="presentation" cellspacing="0" cellpadding="0"><tr>` +
+      `<td style="vertical-align:middle;padding-right:10px;">${statusDot('#f59e0b')}</td>` +
+      `<td style="font-family:${SANS};font-size:12.5px;color:#0a0a0a;vertical-align:middle;">${escapeHtml(workspaceName)} &middot; ${escapeHtml(limit)} monthly top-up limit reached</td>` +
+      `</tr></table>`,
+    ),
+    heading: 'Paid resources are paused',
+    reason: 'You received this because you are an owner or admin of this workspace and its automatic top-ups reached the limit you set.',
+    subject: `${workspaceName} reached its monthly top-up limit`,
   }
 }
 

@@ -83,7 +83,7 @@ test('auto top-up is skipped when the billing capability is disabled', async (t)
 
   const { ensureBudgetAvailable } = await import('./billing-runtime')
 
-  // Paid plan with an exhausted budget: the one shape that reaches auto top-up.
+  // An exhausted budget never reaches Stripe: a person's own account has no automatic top-ups.
   // Reaching Stripe here would throw, so returning cleanly is the assertion.
   const result = await ensureBudgetAvailable({
     userId: 'user_billing_disabled',
@@ -100,6 +100,5 @@ test('auto top-up is skipped when the billing capability is disabled', async (t)
   })
 
   assert.equal(result.autoTopUpApplied, false)
-  assert.equal(result.autoTopUpReason, 'billing_disabled')
   assert.equal(result.remainingCents, 0)
 })

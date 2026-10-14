@@ -36,10 +36,10 @@ function LegalPageInner({
         <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[220px_minmax(0,760px)]">
           <aside className="hidden lg:block">
             <div className="sticky top-24">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)]">{label}</p>
-              <nav className="mt-6 grid gap-2 text-sm text-[var(--muted)]">
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-(--muted-light)">{label}</p>
+              <nav className="mt-6 grid gap-2 text-sm text-(--muted)">
                 {sections.map((section) => (
-                  <a key={section.title} href={`#${slugFor(section.title)}`} className="transition-colors hover:text-[var(--foreground)]">
+                  <a key={section.title} href={`#${slugFor(section.title)}`} className="transition-colors hover:text-(--foreground)">
                     {section.title}
                   </a>
                 ))}
@@ -48,19 +48,19 @@ function LegalPageInner({
           </aside>
 
           <article>
-            <p className="text-xs font-medium uppercase tracking-[0.24em] text-[var(--muted-light)] lg:hidden">{label}</p>
+            <p className="text-xs font-medium uppercase tracking-[0.24em] text-(--muted-light) lg:hidden">{label}</p>
             <h1 className="mt-4 text-4xl tracking-tight md:text-6xl">{title}</h1>
-            <p className="mt-4 text-sm text-[var(--muted-light)]">Last updated: {updated}</p>
-            <p className="mt-8 max-w-2xl text-lg leading-8 text-[var(--muted)]">{intro}</p>
-            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-[var(--muted)]">
+            <p className="mt-4 text-sm text-(--muted-light)">Last updated: {updated}</p>
+            <p className="mt-8 max-w-2xl text-lg leading-8 text-(--muted)">{intro}</p>
+            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-(--muted)">
               Counsel-review draft. LayerNorm is preparing these terms for launch; a qualified lawyer must approve the final version before LayerNorm relies on it as a mature commercial agreement.
             </div>
 
-            <div className="mt-12 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+            <div className="mt-12 divide-y divide-(--border) border-y border-(--border)">
               {sections.map((section) => (
                 <section id={slugFor(section.title)} key={section.title} className="py-8">
                   <h2 className="text-2xl tracking-tight">{section.title}</h2>
-                  <div className="mt-4 space-y-4 text-base leading-8 text-[var(--muted)]">
+                  <div className="mt-4 space-y-4 text-base leading-8 text-(--muted)">
                     {(Array.isArray(section.body) ? section.body : [section.body]).map((paragraph) => (
                       <p key={paragraph}>{paragraph}</p>
                     ))}
@@ -69,7 +69,7 @@ function LegalPageInner({
               ))}
             </div>
 
-            <p className="mt-10 text-sm leading-6 text-[var(--muted)]">
+            <p className="mt-10 text-sm leading-6 text-(--muted)">
               Questions? Email{" "}
               <a href="mailto:divyansh@layernorm.co" className="underline underline-offset-4">
                 divyansh@layernorm.co

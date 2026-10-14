@@ -1,0 +1,106 @@
+import { afterEach, expect, test, vi } from 'vitest'
+import { convexTest } from 'convex-test'
+import { makeFunctionReference } from 'convex/server'
+import schema from './schema'
+
+const modules = import.meta.glob('./**/*.ts')
+const seed = makeFunctionReference<'mutation'>('dev/seed:init')
+const stagingSeed = makeFunctionReference<'mutation'>('dev/seed:initStaging')
+afterEach(() => vi.unstubAllEnvs())
+
+test('preview deployments register no crons and outbound delivery ticks are inert', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
+  vi.resetModules()
+  const { default: crons } = await import('./crons')
+  expect(JSON.parse(crons.export())).toEqual({})
+  const t = convexTest(schema, modules)
+  const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    throw new Error('Preview must not send outbound requests')
+  })
+  try {
+    expect(await t.action(makeFunctionReference<'action'>('email/deliveryRunner:runMinuteTick'), {})).toBeNull()
+    expect(await t.action(makeFunctionReference<'action'>('webhooks/deliveryRunner:runMinuteTick'), {})).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  } finally { fetchSpy.mockRestore() }
+})
+
+test('preview seed refuses every non-preview deployment before writing', async () => {
+  const t = convexTest(schema, modules)
+  for (const environment of ['production', 'staging', 'development', '']) {
+    vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', environment)
+    await expect(t.mutation(seed, {})).rejects.toThrow('Preview seed is unavailable')
+  }
+  expect(await t.run((ctx) => ctx.db.query('subscriptions').take(1))).toHaveLength(0)
+})
+
+test('preview seed requires sandbox identity and creates fixtures idempotently', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
+  vi.stubEnv('PREVIEW_LOGIN_USER_ID', '')
+  const t = convexTest(schema, modules)
+  await expect(t.mutation(seed, {})).rejects.toThrow('sandbox preview login identity')
+  vi.stubEnv('PREVIEW_LOGIN_USER_ID', 'user_preview_fixture')
+  vi.stubEnv('PREVIEW_LOGIN_EMAIL', 'preview@example.test')
+  const first = await t.mutation(seed, {})
+  expect(await t.mutation(seed, {})).toEqual(first)
+  const counts = await t.run(async (ctx) => ({
+    users: (await ctx.db.query('subscriptions').take(5)).length,
+    workspaces: (await ctx.db.query('workspaces').take(5)).length,
+    members: (await ctx.db.query('workspaceMemberships').take(5)).length,
+    conversations: (await ctx.db.query('conversations').take(5)).length,
+    files: (await ctx.db.query('files').take(5)).length,
+    automations: await ctx.db.query('automations').take(5),
+  }))
+  expect(counts).toMatchObject({ users: 1, workspaces: 1, members: 1, conversations: 1, files: 2 })
+  expect(counts.automations).toHaveLength(1)
+  expect(counts.automations[0]).toMatchObject({ enabled: false, status: 'paused' })
+})
+
+test('synthetic staging fixtures refuse customer production and preserve edits when repeated', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'staging')
+  vi.stubEnv('WORKOS_CLIENT_ID', 'client_01KJ9A19X317J7VWRWQ6XBME9Z')
+  vi.stubEnv('STAGING_SMOKE_USER_ID', 'user_01M4R1EKTMDZ4E6BQ5DMZXD0F2')
+  vi.stubEnv('STAGING_SMOKE_EMAIL', 'overlay-preview-qa@getoverlay.io')
+  vi.stubEnv('CONVEX_CLOUD_URL', 'https://colorful-chickadee-419.convex.cloud')
+  const t = convexTest(schema, modules)
+  await expect(t.mutation(stagingSeed, {})).rejects.toThrow('Synthetic staging seed is unavailable')
+  expect(await t.run(ctx => ctx.db.query('files').take(1))).toHaveLength(0)
+  vi.stubEnv('CONVEX_CLOUD_URL', 'https://doting-cuttlefish-819.convex.cloud')
+  const first = await t.mutation(stagingSeed, {})
+  expect(first.workspaceId).toBe('staging-personal-' + first.userId)
+  const note = await t.run(async ctx => {
+    const row = await ctx.db.query('files').withIndex('by_userId_clientId', q =>
+      q.eq('userId', first.userId).eq('clientId', 'staging-seed-note-v1')).unique()
+    if (!row) throw new Error('Missing staging note')
+    await ctx.db.patch(row._id, { content: 'Preserved QA edit' })
+    return row._id
+  })
+  expect(await t.mutation(stagingSeed, {})).toEqual(first)
+  expect(await t.run(async ctx => (await ctx.db.get(note))?.content)).toBe('Preserved QA edit')
+  expect(await t.run(ctx => ctx.db.query('files').take(5))).toHaveLength(2)
+})
+
+
+test('preview repair reuses an existing personal workspace and preserves unrelated data', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
+  vi.stubEnv('PREVIEW_LOGIN_USER_ID', 'user_preview_fixture')
+  vi.stubEnv('PREVIEW_LOGIN_EMAIL', 'preview@example.test')
+  const t = convexTest(schema, modules)
+  await t.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId: 'existing-personal', kind: 'personal', name: 'Preserved name',
+      slug: 'existing-personal', status: 'active', personalOwnerUserId: 'user_preview_fixture',
+      createdByPrincipalId: 'existing-human', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'existing-human', workspaceId: 'existing-personal',
+      type: 'human', userId: 'user_preview_fixture', displayName: 'Preserved owner', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspaceMemberships', { membershipId: 'existing-member', workspaceId: 'existing-personal',
+      principalId: 'existing-human', role: 'owner', status: 'active', joinedAt: 1, updatedAt: 1 })
+  })
+  expect((await t.mutation(seed, {})).workspaceId).toBe('existing-personal')
+  expect((await t.mutation(seed, {})).workspaceId).toBe('existing-personal')
+  const rows = await t.run(async ctx => ({ workspaces: await ctx.db.query('workspaces').take(5),
+    files: await ctx.db.query('files').take(5), members: await ctx.db.query('workspaceMemberships').take(5) }))
+  expect(rows.workspaces).toHaveLength(1)
+  expect(rows.workspaces[0].name).toBe('Preserved name')
+  expect(rows.members).toHaveLength(1)
+  expect(rows.files).toHaveLength(2)
+  expect(rows.files.every(f => f.workspaceId === 'existing-personal')).toBe(true)
+})

@@ -1,4 +1,5 @@
 import { partedFileName, splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
+import { parseResourceScope, type ResourceView } from '@/shared/workspaces/resource-scope'
 import {
   DEFAULT_CONTEXT_CHARS,
   DEFAULT_MAX_MATCHES_PER_FILE,
@@ -88,6 +89,7 @@ export function buildFileListArgs(args: {
   parentId?: string | null
   summary?: boolean
   userId: string
+  view?: ResourceView
   workspaceId?: string
 }): Record<string, unknown> & { userId: string } {
   const listArgs: Record<string, unknown> & { userId: string } = { userId: args.userId }
@@ -103,6 +105,7 @@ export function buildFileListArgs(args: {
   if (isFileKind(args.kind)) listArgs.kind = args.kind
   if (args.summary) listArgs.summary = true
   assignIfPresent(listArgs, 'workspaceId', args.workspaceId)
+  assignIfPresent(listArgs, 'view', args.view)
   return listArgs
 }
 
@@ -127,6 +130,8 @@ export function parseCreateFileRequest(
   }
   if (isFileKind(body.kind)) fileArgs.kind = body.kind
   if (body.parentId) fileArgs.parentId = body.parentId
+  const scope = parseResourceScope(body.scope)
+  if (scope) fileArgs.scope = scope
 
   const textValue = getTextValue(body)
   return {

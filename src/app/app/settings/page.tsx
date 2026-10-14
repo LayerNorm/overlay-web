@@ -5,7 +5,7 @@
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Link2, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
+import { Link2, ListCollapse, Mail, Moon, Sun, Play, Palette, ShieldCheck } from 'lucide-react'
 import { AccountPageContent } from '@/app/app/account/page'
 import { DefaultChatModelSetting } from '@/features/settings/components/DefaultChatModelSetting'
 import { ModelCatalogSetting } from '@/features/settings/components/ModelCatalogSetting'
@@ -35,13 +35,13 @@ import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { AgentEnvironmentSettings } from '@/features/settings/components/AgentEnvironmentSettings'
 import { AgentAccountSettings } from '@/features/settings/components/AgentAccountSettings'
 import { ConnectedAppsSettings } from '@/features/settings/components/ConnectedAppsSettings'
+import { ArchivedSettings } from '@/features/settings/components/ArchivedSettings'
 import { ComputerSettings } from '@/features/settings/components/ComputerSettings'
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
 import { WorkspaceSettingsPanel } from '@/features/workspaces/components/WorkspaceSettingsPanel'
 import { isWorkspaceSettingsTab } from '@/features/workspaces/lib/workspace-settings-tabs'
 import { createShowcaseWorkspaceManagementClient } from '@/features/showcase/showcase-workspace-client'
 import { SHOWCASE_WORKSPACES } from '@/features/showcase/showcase-data'
-import { ApiKeySettings } from '@/features/settings/components/ApiKeySettings'
 import { ProviderConnectionsSetting } from '@/features/settings/components/ProviderConnectionsSetting'
 
 const MemoriesView = dynamic(
@@ -126,7 +126,7 @@ function GeneralSettingsSection({
             disabled={busy}
             aria-label="Where to open links"
             className="shrink-0"
-            buttonClassName="min-w-[9.5rem]"
+            buttonClassName="min-w-38"
             onChange={(linkOpenPreference) => void updateSettings({ linkOpenPreference })}
           />
         }
@@ -144,7 +144,7 @@ function GeneralSettingsSection({
                 router.push('/app/chat?tour=replay')
               })()
             }}
-            className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)]"
+            className="shrink-0 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated)"
           >
             Replay tour
           </button>
@@ -154,16 +154,38 @@ function GeneralSettingsSection({
   )
 }
 
-function AccountSettingsSection({
-  supportsApiKeys,
-}: {
-  supportsApiKeys: OverlayCapabilitiesApi['appDataCapabilities']['supportsApiKeys']
-}) {
+function AccountSettingsSection() {
   return (
     <Suspense fallback={null}>
       <AccountPageContent embedded />
-      {supportsApiKeys ? <ApiKeySettings /> : null}
     </Suspense>
+  )
+}
+
+/** Settings for agents: how their replies read, then the accounts agents on Overlay Cloud run on. */
+function AgentsSettingsSection({
+  settings,
+  busy,
+  updateSettings,
+}: {
+  settings: AppSettingsApi['settings']
+  busy: boolean
+  updateSettings: AppSettingsApi['updateSettings']
+}) {
+  return (
+    <div className="space-y-6">
+      <SettingsGroup>
+        <SettingRow
+          icon={<ListCollapse size={18} strokeWidth={1.8} />}
+          title="Collapse working details in responses"
+          description="An agent's reply shows its final answer, with the tool calls and the text written between them folded behind “Worked for…”. Turn off to show the whole response."
+          checked={settings.collapseAgentWork !== false}
+          disabled={busy}
+          onChange={() => void updateSettings({ collapseAgentWork: settings.collapseAgentWork === false })}
+        />
+      </SettingsGroup>
+      <AgentAccountSettings />
+    </div>
   )
 }
 
@@ -271,12 +293,12 @@ function ContactSettingsSection({
   return (
     <SettingsCard title="Contact">
       <p className="flex items-start gap-2">
-        <Mail size={16} className="mt-0.5 shrink-0 text-[var(--muted)]" strokeWidth={1.75} />
+        <Mail size={16} className="mt-0.5 shrink-0 text-(--muted)" strokeWidth={1.75} />
         <span>
           Questions or feedback? Email the founder:{' '}
           <a
             href={`mailto:${supportEmail ?? 'divyansh@layernorm.co'}`}
-            className="font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
+            className="font-medium text-(--foreground) underline underline-offset-4 hover:opacity-90"
           >
             {supportEmail ?? 'divyansh@layernorm.co'}
           </a>
@@ -314,7 +336,6 @@ function SettingsSectionContent({
   busy,
   billingSettings,
   billingEnabled,
-  supportsApiKeys,
   publicShowcase,
   showcaseWorkspaceManagementClient,
   workspaceTabParam,
@@ -330,7 +351,6 @@ function SettingsSectionContent({
   busy: boolean
   billingSettings: BillingSettings | null
   billingEnabled: OverlayCapabilitiesApi['capabilities']['billing']
-  supportsApiKeys: OverlayCapabilitiesApi['appDataCapabilities']['supportsApiKeys']
   publicShowcase: boolean
   showcaseWorkspaceManagementClient: ReturnType<typeof createShowcaseWorkspaceManagementClient>
   workspaceTabParam: string | null | undefined
@@ -352,7 +372,7 @@ function SettingsSectionContent({
       />
     )
   }
-  if (section === 'account') return <AccountSettingsSection supportsApiKeys={supportsApiKeys} />
+  if (section === 'account') return <AccountSettingsSection />
   if (section === 'workspace') {
     return (
       <WorkspaceSettingsSection
@@ -375,9 +395,10 @@ function SettingsSectionContent({
   if (section === 'providers') return <ProviderConnectionsSetting />
   if (section === 'webhooks') return <WebhookSettings />
   if (section === 'agent-environments') return <AgentEnvironmentSettings />
-  if (section === 'agent-accounts') return <AgentAccountSettings />
+  if (section === 'agent-accounts') return <AgentsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
   if (section === 'connected-apps') return <ConnectedAppsSettings />
   if (section === 'computers') return <ComputerSettings />
+  if (section === 'archived') return <ArchivedSettings />
   if (section === 'contact') return <ContactSettingsSection supportEmail={supportEmail} />
   return (
     <UnimplementedSettingsPanel
@@ -477,7 +498,7 @@ function SettingsPage() {
       activeLabel={sectionLabel}
       activeDetail={
         section === 'memories' && memoriesHeaderState && memoriesHeaderState.count > 0 ? (
-          <span className="text-xs text-[var(--muted-light)]">{memoriesHeaderState.count}</span>
+          <span className="text-xs text-(--muted-light)">{memoriesHeaderState.count}</span>
         ) : null
       }
       actions={section === 'memories' ? memoriesHeaderState?.actions : null}
@@ -492,7 +513,6 @@ function SettingsPage() {
           busy={busy}
           billingSettings={billingSettings}
           billingEnabled={capabilities.billing}
-          supportsApiKeys={appDataCapabilities.supportsApiKeys}
           publicShowcase={publicShowcase}
           showcaseWorkspaceManagementClient={showcaseWorkspaceManagementClient}
           workspaceTabParam={searchParams?.get('workspace_tab')}

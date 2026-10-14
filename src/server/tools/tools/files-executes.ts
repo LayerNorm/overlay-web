@@ -1,4 +1,5 @@
 import 'server-only'
+import { roomListScope } from './room-scope'
 
 import { utf8ByteLength } from '@/shared/storage/convex-file-content'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
@@ -97,7 +98,7 @@ function summarize(file: FileSummary) {
 
 export async function executeListFiles(
   options: OverlayToolsOptions,
-  input: { folderId?: string },
+  input: { folderId?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     // The list endpoint returns at most 100 rows per page.
@@ -107,6 +108,8 @@ export async function executeListFiles(
     do {
       const params = new URLSearchParams({ summary: 'true', page: 'true', limit: '100' })
       if (input.folderId) params.set('parentId', input.folderId)
+      const scope = roomListScope(options, input.scope)
+      if (scope) params.set('view', scope)
       if (cursor) params.set('cursor', cursor)
       const res = await get(options, params)
       if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list files') }

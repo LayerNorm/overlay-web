@@ -50,7 +50,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
   const { runtime, created } = fakeRuntime(machine)
   const service = new CloudAgentMachineService({
     audit: { record: async () => undefined } as never,
-    image: 'overlay-agent-v2',
+    image: 'overlay-agent-v5',
     provisions: {
       get: async () => null,
       begin: async () => ({ started: true, phase: 'queued' }),
@@ -94,7 +94,7 @@ test('provision boots the image, redeems the code with acpx, approves the worksp
   const { service, log, created } = deps(machine)
   const result = await service.provision(provisionArgs)
 
-  assert.equal(created[0]?.snapshotId, 'overlay-agent-v2')
+  assert.equal(created[0]?.snapshotId, 'overlay-agent-v5')
   assert.equal(created[0]?.hardTimeoutMs, 0)
   assert.deepEqual(created[0]?.resources, { vcpus: 4, memoryGiB: 8, diskGiB: 40 })
   assert.equal(commands[0], cloudAgentConnectCommand({
@@ -223,4 +223,27 @@ test('files for a run go onto the running machine under the home folder, and now
   await assert.rejects(service.writeFiles({ workspaceId: 'ws', environmentId: 'env-1', files: [{ path: '/home/user/../etc/x', contents: 'x' }] }), /not allowed/)
   const gone = deps(fakeMachine('running').machine, { lease: null })
   await assert.rejects(gone.service.writeFiles({ workspaceId: 'ws', environmentId: 'env-1', files: [{ path: '/home/user/a', contents: 'x' }] }), /not available/)
+})
+
+test('an agent whose machine is gone shows as unavailable, and reviving clears its environment and provision record', async () => {
+  const { machine } = fakeMachine()
+  const { service, log, wasRemoved } = deps(machine, { lease: null })
+  // The provision record says "ready" (a finished provision), but no lease or machine backs the agent any more.
+  const status = await new (service.constructor as typeof CloudAgentMachineService)({
+    ...(service as unknown as { dependencies: ConstructorParameters<typeof CloudAgentMachineService>[0] }).dependencies,
+    provisions: { get: async () => ({ phase: 'ready', updatedAt: 1 }), begin: async () => ({ started: false, phase: 'ready' }), setPhase: async () => undefined, remove: async () => undefined } as never,
+  }).status({ workspaceId: 'ws', agentId: 'agent-1' })
+  assert.equal(status.state, 'unavailable')
+  assert.equal(status.adapterId, 'claude-code')
+  assert.equal(await service.reviveIfMachineGone({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' }), true)
+  assert.ok(log.some(([name]) => name === 'revoke'))
+  assert.equal(wasRemoved(), true)
+})
+
+test('reviving never touches an agent whose machine exists', async () => {
+  const { machine } = fakeMachine()
+  const { service, log, wasRemoved } = deps(machine)
+  assert.equal(await service.reviveIfMachineGone({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' }), false)
+  assert.equal(log.some(([name]) => name === 'revoke'), false)
+  assert.equal(wasRemoved(), false)
 })

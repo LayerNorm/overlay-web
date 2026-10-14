@@ -16,6 +16,8 @@ export type McpAuthConfig = {
 /** Sealed at rest with McpCredentialCipher; never returned by list APIs. */
 export type McpOAuthTokens = {
   accessToken: string
+  /** Authorization server binding supplied by the MCP SDK; sealed with the tokens. */
+  issuer?: string
   refreshToken?: string
   /** Epoch ms. Absent when the server issues non-expiring tokens. */
   expiresAt?: number
@@ -26,6 +28,8 @@ export type McpOAuthTokens = {
 /** Sealed at rest. `clientId` is stored separately in the clear because it is not a secret. */
 export type McpOAuthClient = {
   clientId: string
+  /** Authorization server binding supplied by the MCP SDK; sealed with the client. */
+  issuer?: string
   clientSecret?: string
   /** Set for DCR registrations so we can tell them apart from user-supplied credentials. */
   registered?: boolean
@@ -77,6 +81,9 @@ export type McpServerRecord = {
   oauthConnectedAt?: number
   oauthError?: string
   oauthTokenVersion?: number
+  scope?: 'personal' | 'workspace'
+  archivedAt?: number
+  archivedFromScope?: 'personal' | 'workspace'
   createdAt: number
   updatedAt: number
 }
@@ -98,6 +105,7 @@ export type CreateMcpServerInput = {
   defaultToolPolicy?: McpToolPolicyMode
   toolPolicies?: Record<string, McpToolPolicyMode>
   workspaceId?: string
+  scope?: 'personal' | 'workspace'
 }
 
 export type UpdateMcpServerInput = Partial<Omit<CreateMcpServerInput, 'userId'>> & {
@@ -122,8 +130,9 @@ export type McpExecutionRecord = {
 }
 
 export interface McpServerRepository {
-  list(args: { userId: string; workspaceId?: string }): Promise<McpServerSummary[]>
-  listEnabled(args: { userId: string; workspaceId?: string }): Promise<McpServerRecord[]>
+  list(args: { userId: string; workspaceId?: string; view?: 'personal' | 'workspace' | 'archived' }): Promise<McpServerSummary[]>
+  /** `includeShared` adds the servers other members shared with the workspace (their creator's credentials stay server-side). */
+  listEnabled(args: { userId: string; workspaceId?: string; includeShared?: boolean; workspaceOnly?: boolean }): Promise<McpServerRecord[]>
   get(args: { mcpServerId: string; userId: string; workspaceId?: string }): Promise<McpServerRecord | null>
   create(args: CreateMcpServerInput): Promise<string>
   update(args: UpdateMcpServerInput): Promise<void>

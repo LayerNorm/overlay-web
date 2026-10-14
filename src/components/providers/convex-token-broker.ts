@@ -2,9 +2,9 @@
  * Single-flight Convex token broker.
  *
  * Ensures only one in-flight request to `/api/auth/convex-token` at a time.
- * Both the interval-based refresh in ConvexAuthProvider and the Convex
- * client's on-demand auth callback share the same promise, eliminating
- * duplicate token fetches.
+ * The initial and interval refreshes in ConvexAuthProvider share the same
+ * promise with other callers. The token travels as a query argument, never
+ * through Convex's separate platform authentication callback.
  */
 
 let inFlight: Promise<string | null> | null = null

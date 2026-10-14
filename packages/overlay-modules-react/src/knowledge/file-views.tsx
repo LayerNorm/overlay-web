@@ -3,10 +3,16 @@
 import type { KnowledgeFileNode } from '@overlay/app-core'
 import { filePathLabel } from '@overlay/app-core'
 import { BookOpen, Folder, Trash2 } from 'lucide-react'
-import { useState, type MouseEvent } from 'react'
+import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { FileTypeIcon } from '../shared/file-type-icon'
 import { BulkSelectMarker } from './selection'
+
+/**
+ * Extra hover controls for a row (the web app puts Move to Workspace/Personal and Archive here, since they depend on who
+ * is viewing). Absent means none.
+ */
+export const KnowledgeRowActionsContext = createContext<((node: KnowledgeFileNode) => ReactNode) | null>(null)
 
 export function KnowledgeFileList({
   nodes,
@@ -71,6 +77,7 @@ export function FileTreeRow({
   onMove?: (fileId: string, parentId: string | null) => void
 }) {
   const [dragOver, setDragOver] = useState(false)
+  const renderRowActions = useContext(KnowledgeRowActionsContext)
   const isFileViewerSelected = node.type === 'file' && node._id === selectedId
   const isBulkSelected = Boolean(bulkSelectedIds?.has(node._id))
 
@@ -108,14 +115,14 @@ export function FileTreeRow({
           if (!fileId || fileId === node._id) return
           onMove(fileId, node._id)
         }}
-        className={`overlay-knowledge-row group flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
+        className={`overlay-knowledge-row group flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:border-(--border) hover:bg-(--surface-muted) ${
           dragOver
-            ? 'border-[var(--foreground)] bg-[var(--surface-muted)]'
+            ? 'border-(--foreground) bg-(--surface-muted)'
             : isFileViewerSelected && !bulkSelectMode
-              ? 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--foreground)]'
+              ? 'border-(--border) bg-(--surface-muted) text-(--foreground)'
               : isBulkSelected
-                ? 'border-[var(--border)] bg-[var(--surface-muted)]'
-                : 'border-transparent text-[var(--foreground)]'
+                ? 'border-(--border) bg-(--surface-muted)'
+                : 'border-transparent text-(--foreground)'
         }`}
         style={{ paddingLeft: '12px' }}
       >
@@ -123,23 +130,28 @@ export function FileTreeRow({
         <button
           type="button"
           onClick={handleRowClick}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs text-left outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
         >
           {node.type === 'folder' ? (
-            <Folder size={14} className="shrink-0 text-[var(--muted-light)]" />
+            <Folder size={14} className="shrink-0 text-(--muted-light)" />
           ) : node.kind === 'note' ? (
-            <BookOpen size={14} className="shrink-0 text-[var(--muted-light)]" />
+            <BookOpen size={14} className="shrink-0 text-(--muted-light)" />
           ) : (
-            <FileTypeIcon file={node} size={15} className="text-[var(--muted-light)]" />
+            <FileTypeIcon file={node} size={15} className="text-(--muted-light)" />
           )}
           <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
         </button>
+        {!bulkSelectMode ? (
+          <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {renderRowActions?.(node)}
+          </span>
+        ) : null}
         {!bulkSelectMode ? (
           <button
             type="button"
             aria-label={`Delete ${node.name}`}
             onClick={(event) => onDelete(node._id, event)}
-            className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
+            className="shrink-0 rounded-sm p-1 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-red-500 group-hover:opacity-100"
           >
             <Trash2 size={12} />
           </button>
@@ -171,31 +183,60 @@ export function KnowledgeFileCards({
   onMove?: (fileId: string, parentId: string | null) => void
 }) {
   return (
-    <div className="overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4">
+    <div className="overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 gap-x-4 sm:columns-2 lg:columns-3 xl:columns-4">
       {folders.map((folder) => (
-        <FolderCard
-          key={folder._id}
-          folder={folder}
-          bulkSel={selectedIds.has(folder._id)}
-          selectMode={selectMode}
-          onOpen={() =>
-            selectMode ? onToggleBulk(folder._id) : onOpenFolder(folder._id)
-          }
-          onMove={onMove}
-        />
+        <CardActionsOverlay key={folder._id} node={folder} selectMode={selectMode}>
+          <FolderCard
+            folder={folder}
+            bulkSel={selectedIds.has(folder._id)}
+            selectMode={selectMode}
+            onOpen={() =>
+              selectMode ? onToggleBulk(folder._id) : onOpenFolder(folder._id)
+            }
+            onMove={onMove}
+          />
+        </CardActionsOverlay>
       ))}
       {files.map((file) => (
-        <FileCard
-          key={file._id}
-          file={file}
-          allFiles={allFiles}
-          bulkSel={selectedIds.has(file._id)}
-          selectMode={selectMode}
-          onOpen={() =>
-            selectMode ? onToggleBulk(file._id) : onOpenFile(file)
-          }
-        />
+        <CardActionsOverlay key={file._id} node={file} selectMode={selectMode}>
+          <FileCard
+            file={file}
+            allFiles={allFiles}
+            bulkSel={selectedIds.has(file._id)}
+            selectMode={selectMode}
+            onOpen={() =>
+              selectMode ? onToggleBulk(file._id) : onOpenFile(file)
+            }
+          />
+        </CardActionsOverlay>
       ))}
+    </div>
+  )
+}
+
+/**
+ * A card is one big button, so its hover controls sit beside it rather than inside it (a button cannot hold buttons).
+ * Shows whatever the host supplies through `KnowledgeRowActionsContext`.
+ */
+function CardActionsOverlay({
+  node,
+  selectMode,
+  children,
+}: {
+  node: KnowledgeFileNode
+  selectMode: boolean
+  children: ReactNode
+}) {
+  const renderRowActions = useContext(KnowledgeRowActionsContext)
+  const actions = !selectMode ? renderRowActions?.(node) : null
+  return (
+    <div className="group/card relative" style={{ breakInside: 'avoid' }}>
+      {children}
+      {actions ? (
+        <span className="absolute right-2 top-2 z-10 flex items-center rounded-md border border-(--border) bg-(--surface-elevated) opacity-0 shadow-xs transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100">
+          {actions}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -226,8 +267,8 @@ export function FileCard({
         event.dataTransfer.effectAllowed = 'move'
       }}
       onClick={onOpen}
-      className={`overlay-knowledge-card overlay-knowledge-card--file group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
-        bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
+      className={`overlay-knowledge-card overlay-knowledge-card--file group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-(--surface-elevated) text-left transition-shadow hover:shadow-md ${
+        bulkSel ? 'border-(--foreground) ring-1 ring-(--foreground)/20' : 'border-(--border)'
       }`}
       style={{ breakInside: 'avoid' }}
     >
@@ -238,13 +279,13 @@ export function FileCard({
         />
       ) : null}
       {file.kind === 'note' ? (
-        <div className="h-36 overflow-hidden bg-[var(--surface-muted)] p-3">
-          <div className="h-full overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 shadow-sm">
+        <div className="h-36 overflow-hidden bg-(--surface-muted) p-3">
+          <div className="h-full overflow-hidden rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 shadow-xs">
             <p
               className={`whitespace-pre-wrap text-[10px] leading-[1.45] ${
                 notePreview
-                  ? 'text-[var(--muted)]'
-                  : 'italic text-[var(--muted-light)]'
+                  ? 'text-(--muted)'
+                  : 'italic text-(--muted-light)'
               }`}
             >
               {notePreview || 'Empty note'}
@@ -252,18 +293,18 @@ export function FileCard({
           </div>
         </div>
       ) : (
-        <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+        <div className="flex h-28 items-center justify-center bg-(--surface-muted)">
           <FileTypeIcon file={file} size={36} framed />
         </div>
       )}
       <div className="px-3 py-2">
-        <p className='line-clamp-2 text-xs font-medium text-[var(--foreground)]'>
+        <p className='line-clamp-2 text-xs font-medium text-(--foreground)'>
           {file.name}
         </p>
-        <p className='mt-1 line-clamp-2 text-[10px] text-[var(--muted)]'>
+        <p className='mt-1 line-clamp-2 text-[10px] text-(--muted)'>
           {filePathLabel(allFiles, file)}
         </p>
-        <p className="mt-1 text-[10px] text-[var(--muted-light)]">
+        <p className="mt-1 text-[10px] text-(--muted-light)">
           {
             // Locale pinned to 'en-US'.
             // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
@@ -314,21 +355,21 @@ export function FolderCard({
         onMove(fileId, folder._id)
       }}
       onClick={onOpen}
-      className={`overlay-knowledge-card overlay-knowledge-card--folder group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-[var(--surface-elevated)] text-left transition-shadow hover:shadow-md ${
+      className={`overlay-knowledge-card overlay-knowledge-card--folder group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-(--surface-elevated) text-left transition-shadow hover:shadow-md ${
         dragOver
-          ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20'
-          : bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
+          ? 'border-(--foreground) ring-1 ring-(--foreground)/20'
+          : bulkSel ? 'border-(--foreground) ring-1 ring-(--foreground)/20' : 'border-(--border)'
       }`}
       style={{ breakInside: 'avoid' }}
     >
-      <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
-        <Folder size={36} className="text-[var(--muted-light)]" />
+      <div className="flex h-28 items-center justify-center bg-(--surface-muted)">
+        <Folder size={36} className="text-(--muted-light)" />
       </div>
       <div className="px-3 py-2">
-        <p className='line-clamp-2 text-xs font-medium text-[var(--foreground)]'>
+        <p className='line-clamp-2 text-xs font-medium text-(--foreground)'>
           {folder.name}
         </p>
-        <p className="mt-1 text-[10px] text-[var(--muted-light)]">Folder</p>
+        <p className="mt-1 text-[10px] text-(--muted-light)">Folder</p>
       </div>
     </button>
   )
@@ -337,22 +378,22 @@ export function FolderCard({
 export function KnowledgeFileCardsSkeleton({ cards = 10 }: { cards?: number }) {
   return (
     <div
-      className='overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3 xl:columns-4'
+      className='overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 gap-x-4 sm:columns-2 lg:columns-3 xl:columns-4'
       aria-hidden
     >
       {Array.from({ length: cards }).map((_, index) => (
         <div
           key={index}
-          className="mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]"
+          className="mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)"
           style={{ breakInside: 'avoid' }}
         >
-          <div className="flex h-28 items-center justify-center bg-[var(--surface-muted)]">
+          <div className="flex h-28 items-center justify-center bg-(--surface-muted)">
             <div className="ui-skeleton-line h-9 w-9 rounded-md" />
           </div>
           <div className="space-y-2 px-3 py-2.5">
-            <div className={`ui-skeleton-line h-3 rounded ${index % 3 === 0 ? 'w-4/5' : index % 3 === 1 ? 'w-3/5' : 'w-2/3'}`} />
-            <div className="ui-skeleton-line h-2.5 w-2/5 rounded opacity-75" />
-            <div className="ui-skeleton-line h-2 w-1/4 rounded opacity-60" />
+            <div className={`ui-skeleton-line h-3 rounded-sm ${index % 3 === 0 ? 'w-4/5' : index % 3 === 1 ? 'w-3/5' : 'w-2/3'}`} />
+            <div className="ui-skeleton-line h-2.5 w-2/5 rounded-sm opacity-75" />
+            <div className="ui-skeleton-line h-2 w-1/4 rounded-sm opacity-60" />
           </div>
         </div>
       ))}

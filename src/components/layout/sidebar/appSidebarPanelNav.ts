@@ -7,11 +7,15 @@ import {
   type CollaborationChatView,
 } from '@/shared/chat/chat-view-navigation'
 import type { CachedConversation } from '@/shared/chat/chat-list-cache'
-import { chatsInlineItems, agentsInlineItems } from '@/components/layout/sidebar-nav'
+import { chatsInlineItems } from '@/components/layout/sidebar-nav'
 import { filesInlineItems } from '@/components/layout/FilesCategorySidebar'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
-import { SETTINGS_SECTION_ICONS, type SidebarRouteState } from './appSidebarNav'
+import { SETTINGS_SECTION_ICONS, chatScopeForView, type SidebarRouteState } from './appSidebarNav'
+import { buildScopedPanelNav } from './scopedPanelNav'
+import { buildWorkPanelNav } from './workPanelNav'
+import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { soloPanelScope } from '@/shared/workspaces/solo-workspace'
 
 interface SidebarRouter {
   push: (href: string) => void
@@ -20,31 +24,6 @@ interface SidebarRouter {
 // Incremented per chats-subview select; an in-flight fetch that resolves after
 // a newer selection is stale and must not steer the route.
 let chatViewNavigationVersion = 0
-
-async function pushArchivedDestination(router: SidebarRouter, surface: string) {
-  try {
-    const response = await fetch('/api/v1/conversations?archived=true', {
-      cache: 'no-store',
-      credentials: 'same-origin',
-    })
-    if (response.ok) {
-      const body = await response.json() as unknown
-      const conversations = Array.isArray(body)
-        ? body as Array<{ _id?: string }>
-        : (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)
-          ? (body as { data: Array<{ _id?: string }> }).data
-          : [])
-      const mostRecentId = conversations[0]?._id
-      if (mostRecentId) {
-        router.push(`${surface}?id=${encodeURIComponent(mostRecentId)}`)
-        return
-      }
-    }
-  } catch {
-    // Empty archived surface is still the right destination.
-  }
-  router.push(surface)
-}
 
 async function resolveViewConversationId({
   view,
@@ -87,6 +66,7 @@ function buildChatPanelNav({
   buildWorkspaceHref,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   publicShowcase: boolean
   chatsView: string
@@ -97,11 +77,12 @@ function buildChatPanelNav({
   buildWorkspaceHref: (workspaceId: string, href: string) => string
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
   const chatItems = (publicShowcase
-    ? chatsInlineItems.filter((item) => item.id !== 'activity' && item.id !== 'archived')
+    ? chatsInlineItems.filter((item) => item.id !== 'activity')
     : chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
-  return {
+  const flat: SecondaryPanelNav = {
     items: chatItems,
     activeId: chatsView,
     pendingId: effectivePendingSecondaryNavId,
@@ -113,13 +94,6 @@ function buildChatPanelNav({
         router.push(activeWorkspaceId
           ? buildWorkspaceHref(activeWorkspaceId, '/app/activity')
           : '/app/activity')
-        return
-      }
-      if (next === 'archived') {
-        const surface = activeWorkspaceId
-          ? buildWorkspaceHref(activeWorkspaceId, '/app/archived')
-          : '/app/archived'
-        await pushArchivedDestination(router, surface)
         return
       }
       const baseHref = activeWorkspaceId
@@ -143,10 +117,37 @@ function buildChatPanelNav({
       }).toString()}`)
     },
   }
+
+  const chatScope = chatScopeForView(chatsView)
+  const unreadOf = (id: string) => chatItems.find((item) => item.id === id)?.badgeCount ?? 0
+  if (solo) {
+    // One person: no direct messages or activity feed, just chats and channels (rooms with agents).
+    const soloRows = chatItems
+      .filter((item) => item.id === 'personal' || item.id === 'channels')
+      .map((item) => (item.id === 'personal' ? { ...item, label: 'Chats' } : item))
+    return buildScopedPanelNav({
+      scope: soloPanelScope(chatScope, true),
+      sub: chatsView === 'channels' ? 'channels' : chatScope === 'personal' ? 'personal' : null,
+      subItems: { personal: soloRows },
+      pendingId: effectivePendingSecondaryNavId,
+      solo: true,
+      onSelect: (scope, sub) => flat.onSelect(sub ?? scope),
+    })
+  }
+  return buildScopedPanelNav({
+    scope: chatScope,
+    sub: chatScope === 'workspace' ? chatsView : null,
+    // Direct messages, channels, and activity are the Workspace scope; personal chats and archived chats have no sub-rows.
+    subItems: { workspace: chatItems.filter((item) => item.id === 'dms' || item.id === 'channels' || item.id === 'activity') },
+    pendingId: effectivePendingSecondaryNavId,
+    badges: { workspace: unreadOf('dms') + unreadOf('channels') },
+    onSelect: (scope, sub) => flat.onSelect(sub ?? (scope === 'workspace' ? (chatScope === 'workspace' ? chatsView : 'dms') : scope)),
+  })
 }
 
 function buildFilesPanelNav({
   filesView,
+  scope,
   effectivePendingSecondaryNavId,
   notesOpen,
   currentSearchParams,
@@ -157,8 +158,10 @@ function buildFilesPanelNav({
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   filesView: string
+  scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   notesOpen: boolean
   currentSearchParams: URLSearchParams
@@ -169,23 +172,27 @@ function buildFilesPanelNav({
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
-  return {
-    items: filesInlineItems,
-    activeId: filesView,
+  return buildScopedPanelNav({
+    scope,
+    solo,
+    sub: filesView,
+    subItems: { personal: filesInlineItems, workspace: filesInlineItems },
     pendingId: effectivePendingSecondaryNavId,
-    onSelect: (next) => {
+    onSelect: (nextScope, nextSub) => {
       closeMobileDrawer()
+      const nextView = nextSub ?? filesView
       // With a file or folder open the category row is still "current", so a
       // plain equality check swallowed the click and nothing happened. Selecting
       // the category you are already in is how you get back out to its list.
       const hasOpenItem = notesOpen || currentSearchParams.has('file') || currentSearchParams.has('folder') || currentSearchParams.has('id')
-      if (next === filesView && !hasOpenItem) return
-      beginSecondaryNavigation(next)
-      const params = new URLSearchParams(currentSearchParams.toString())
+      if (nextScope === scope && nextView === filesView && !hasOpenItem) return
+      beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
+      const params = withPanelScope(currentSearchParams, nextScope)
       if (publicShowcase) params.set('showcase', '1')
-      if (next === 'all') params.delete('view')
-      else params.set('view', next)
+      if (nextView === 'all') params.delete('view')
+      else params.set('view', nextView)
       params.delete('file')
       params.delete('folder')
       params.delete('id')
@@ -196,11 +203,11 @@ function buildFilesPanelNav({
         : '/app/files'
       router.push(query ? `${filesHref}?${query}` : filesHref)
     },
-  }
+  })
 }
 
 function buildAgentsPanelNav({
-  agentsView,
+  scope,
   effectivePendingSecondaryNavId,
   currentSearchParams,
   publicShowcase,
@@ -210,8 +217,9 @@ function buildAgentsPanelNav({
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
-  agentsView: string
+  scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
   publicShowcase: boolean
@@ -221,63 +229,127 @@ function buildAgentsPanelNav({
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
-  return {
-    items: agentsInlineItems,
-    activeId: agentsView,
+  return buildScopedPanelNav({
+    scope,
+    solo,
+    soloLabel: 'Agents',
+    sub: null,
+    subItems: {},
     pendingId: effectivePendingSecondaryNavId,
     onSelect: (next) => {
       closeMobileDrawer()
-      if (next === agentsView) return
+      if (next === scope) return
       beginSecondaryNavigation(next)
-      const params = new URLSearchParams(currentSearchParams.toString())
+      const params = withPanelScope(currentSearchParams, next)
+      // The tab used to be `?view=`; the scope replaces it.
+      params.delete('view')
       if (publicShowcase) params.set('showcase', '1')
       // With an agent open, Personal must stay explicit in the URL — the
       // panel auto-corrects bare `?agent=` links to the agent's own tab, so
-      // a missing `view` would read as an uncorrected link and fight the
+      // a missing `scope` would read as an uncorrected link and fight the
       // deliberate switch.
-      if (next === 'personal' && !params.has('agent')) params.delete('view')
-      else params.set('view', next)
+      if (next === 'personal' && params.has('agent')) params.set('scope', 'personal')
       const query = params.toString()
       const agentsHref = canonicalWorkspaceRoute && activeWorkspaceId
         ? buildWorkspaceHref(activeWorkspaceId, '/app/agents')
         : '/app/agents'
       router.push(query ? `${agentsHref}?${query}` : agentsHref)
     },
-  }
+  })
 }
 
 function buildToolsPanelNav({
   toolsView,
+  scope,
   effectivePendingSecondaryNavId,
   toolsItems,
+  currentSearchParams,
   publicShowcase,
   router,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   toolsView: string
+  scope: PanelScope
   effectivePendingSecondaryNavId: string | null
   toolsItems: ReadonlyArray<InlineNavItem>
+  currentSearchParams: URLSearchParams
   publicShowcase: boolean
   router: SidebarRouter
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  solo: boolean
 }): SecondaryPanelNav {
-  return {
-    items: toolsItems,
-    activeId: toolsView,
+  return buildScopedPanelNav({
+    scope,
+    solo,
+    sub: toolsView,
+    subItems: { personal: toolsItems, workspace: toolsItems },
+    pendingId: effectivePendingSecondaryNavId,
+    onSelect: (nextScope, nextSub) => {
+      closeMobileDrawer()
+      const nextView = nextSub ?? toolsView
+      if (nextScope === scope && nextView === toolsView) return
+      beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
+      const params = withPanelScope(new URLSearchParams(currentSearchParams.toString()), nextScope)
+      if (publicShowcase) params.set('showcase', '1')
+      params.set('view', nextView)
+      router.push(`/app/tools?${params.toString()}`)
+    },
+  })
+}
+
+function buildAutomationsPanelNav({
+  scope,
+  effectivePendingSecondaryNavId,
+  currentSearchParams,
+  publicShowcase,
+  canonicalWorkspaceRoute,
+  activeWorkspaceId,
+  buildWorkspaceHref,
+  router,
+  closeMobileDrawer,
+  beginSecondaryNavigation,
+  solo,
+}: {
+  scope: PanelScope
+  effectivePendingSecondaryNavId: string | null
+  currentSearchParams: URLSearchParams
+  publicShowcase: boolean
+  canonicalWorkspaceRoute: boolean
+  activeWorkspaceId: string | null
+  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  router: SidebarRouter
+  closeMobileDrawer: () => void
+  beginSecondaryNavigation: (id: string) => void
+  solo: boolean
+}): SecondaryPanelNav {
+  return buildScopedPanelNav({
+    scope,
+    solo,
+    soloLabel: 'Automations',
+    sub: null,
+    subItems: {},
     pendingId: effectivePendingSecondaryNavId,
     onSelect: (next) => {
       closeMobileDrawer()
-      if (next === toolsView) return
+      if (next === scope) return
       beginSecondaryNavigation(next)
-      router.push(`/app/tools?${new URLSearchParams({
-        ...(publicShowcase ? { showcase: '1' } : {}),
-        view: next,
-      }).toString()}`)
+      const params = withPanelScope(currentSearchParams, next)
+      // Leave an open automation behind: it may not exist in the scope being switched to.
+      params.delete('id')
+      params.delete('automation')
+      if (publicShowcase) params.set('showcase', '1')
+      const query = params.toString()
+      const href = canonicalWorkspaceRoute && activeWorkspaceId
+        ? buildWorkspaceHref(activeWorkspaceId, '/app/automations')
+        : '/app/automations'
+      router.push(query ? `${href}?${query}` : href)
     },
-  }
+  })
 }
 
 function buildSettingsPanelNav({
@@ -325,10 +397,11 @@ export function resolveSecondaryPanelNav({
   settingsSections,
   closeMobileDrawer,
   beginSecondaryNavigation,
+  solo,
 }: {
   panelKind: SidebarRouteState['panelKind']
   publicShowcase: boolean
-  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'agentsView' | 'toolsView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
+  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
   effectivePendingSecondaryNavId: string | null
   totalUnread: number
   collaborationUnread: { dms: number; channels: number; total: number }
@@ -341,6 +414,8 @@ export function resolveSecondaryPanelNav({
   settingsSections: readonly OverlaySettingsSection[]
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
+  /** The workspace is one person: no Personal/Workspace split (see `isSoloWorkspace`). */
+  solo: boolean
 }): SecondaryPanelNav | undefined {
   if (panelKind === 'chat') {
     const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
@@ -349,9 +424,6 @@ export function resolveSecondaryPanelNav({
       dms: shouldLoadCollaborationUnread ? collaborationUnread.dms : 0,
       channels: shouldLoadCollaborationUnread ? collaborationUnread.channels : 0,
       activity: cumulativeChatUnread,
-      // Archived chats are deliberately out of the unread count: they were put
-      // away, so surfacing a badge would pull attention back to them.
-      archived: 0,
     }
     return buildChatPanelNav({
       publicShowcase,
@@ -363,11 +435,13 @@ export function resolveSecondaryPanelNav({
       buildWorkspaceHref,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'files' || panelKind === 'notes') {
     return buildFilesPanelNav({
       filesView: routeState.filesView,
+      scope: routeState.scope,
       effectivePendingSecondaryNavId,
       notesOpen: routeState.notesOpen,
       currentSearchParams,
@@ -378,11 +452,12 @@ export function resolveSecondaryPanelNav({
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'agents') {
     return buildAgentsPanelNav({
-      agentsView: routeState.agentsView,
+      scope: routeState.scope,
       effectivePendingSecondaryNavId,
       currentSearchParams,
       publicShowcase,
@@ -392,17 +467,51 @@ export function resolveSecondaryPanelNav({
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
+    })
+  }
+  if (panelKind === 'automations') {
+    return buildAutomationsPanelNav({
+      scope: routeState.scope,
+      effectivePendingSecondaryNavId,
+      currentSearchParams,
+      publicShowcase,
+      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
+      activeWorkspaceId,
+      buildWorkspaceHref,
+      router,
+      closeMobileDrawer,
+      beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'tools') {
     return buildToolsPanelNav({
       toolsView: routeState.toolsView,
+      scope: routeState.scope,
+      currentSearchParams,
       effectivePendingSecondaryNavId,
       toolsItems,
       publicShowcase,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,
+      solo,
+    })
+  }
+  if (panelKind === 'work') {
+    return buildWorkPanelNav({
+      scope: routeState.scope,
+      workView: routeState.workView,
+      effectivePendingSecondaryNavId,
+      currentSearchParams,
+      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
+      activeWorkspaceId,
+      buildWorkspaceHref,
+      router,
+      closeMobileDrawer,
+      beginSecondaryNavigation,
+      solo,
     })
   }
   if (panelKind === 'settings') {

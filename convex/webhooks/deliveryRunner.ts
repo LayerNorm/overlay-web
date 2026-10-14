@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { internal } from '../_generated/api'
 import { internalAction } from '../_generated/server'
+import { isPreviewDeployment } from '../lib/preview'
 
 const textEncoder = new TextEncoder()
 
@@ -42,6 +43,7 @@ export const runMinuteTick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
+    if (isPreviewDeployment()) return null
     const now = Date.now()
     await ctx.runMutation(internal.webhooks.deliveries.resetStuckDelivering, {
       now,
@@ -67,6 +69,7 @@ export const deliverOne = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    if (isPreviewDeployment()) return null
     const job = await ctx.runQuery(internal.webhooks.deliveries.getDeliveryForExecution, {
       deliveryId: args.deliveryId,
     })

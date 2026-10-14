@@ -16,6 +16,13 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import dynamic from 'next/dynamic'
 import type { TourStep } from '@/features/account/components/OnboardingTour'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { isStartingWorkspaceName } from '@/shared/workspaces/default-name'
+import { peopleInWorkspace } from '@/shared/workspaces/solo-workspace'
+
+const NameWorkspaceStep = dynamic(() =>
+  import('@/features/workspaces/components/NameWorkspaceStep').then((mod) => ({ default: mod.NameWorkspaceStep })),
+)
 
 const OnboardingTour = dynamic(() =>
   import('@/features/account/components/OnboardingTour').then((mod) => ({ default: mod.OnboardingTour })),
@@ -96,29 +103,29 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
         role="dialog"
         aria-label="Welcome to Overlay"
         onClick={(e) => e.stopPropagation()}
-        className="absolute bottom-6 left-4 right-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
+        className="absolute bottom-6 left-4 right-4 rounded-xl border border-(--border) bg-(--surface-elevated) p-5 shadow-2xl"
       >
-        <h3 className='mb-2 text-sm font-semibold text-[var(--foreground)]'>
+        <h3 className='mb-2 text-sm font-semibold text-(--foreground)'>
           Welcome to Overlay
         </h3>
-        <ul className="mb-5 space-y-1.5 text-xs text-[var(--muted)]">
+        <ul className="mb-5 space-y-1.5 text-xs text-(--muted)">
           <li>
-            💬 <strong className='text-[var(--foreground)]'>Chat</strong> — talk
+            💬 <strong className='text-(--foreground)'>Chat</strong> — talk
             to the best models, or multiple at once
           </li>
           <li>
-            🎨 <strong className='text-[var(--foreground)]'>Generate</strong> —
+            🎨 <strong className='text-(--foreground)'>Generate</strong> —
             images & video with best-in-class models
           </li>
           <li>
-            🧠 <strong className='text-[var(--foreground)]'>Knowledge</strong> —
+            🧠 <strong className='text-(--foreground)'>Knowledge</strong> —
             memories, files, connectors, skills & MCPs
           </li>
         </ul>
         <button
           type="button"
           onClick={onDismiss}
-          className="w-full rounded-md bg-[var(--foreground)] py-2 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-80"
+          className="w-full rounded-md bg-(--foreground) py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-80"
         >
           Get started
         </button>
@@ -138,7 +145,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       : TOUR_STEPS.filter((step) => step.target !== 'nav-knowledge'),
     [capabilities.files],
   )
+  const { activeWorkspace } = useWorkspace()
   const [active, setActive] = useState(false)
+  const [workspaceNamed, setWorkspaceNamed] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
@@ -283,11 +292,19 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const onInvitationRoute = Boolean(pathname?.startsWith('/app/invitations'))
   // Never mount the tour over invitation accept — missing tour targets used to
   // paint a full-screen click shield that made Accept invitation unclickable.
-  const showTourChrome = (active || isClosing) && !onInvitationRoute
+  // A new person names their workspace first, when it is theirs alone and still has its starting name.
+  const askWorkspaceName = active
+    && !workspaceNamed
+    && !onInvitationRoute
+    && activeWorkspace?.role === 'owner'
+    && (peopleInWorkspace(activeWorkspace) ?? 1) <= 1
+    && isStartingWorkspaceName(activeWorkspace.name)
+  const showTourChrome = (active || isClosing) && !onInvitationRoute && !askWorkspaceName
 
   return (
     <OnboardingContext.Provider value={onboardingValue}>
       {children}
+      {askWorkspaceName ? <NameWorkspaceStep onDone={() => setWorkspaceNamed(true)} /> : null}
       {showTourChrome && isMobile && (
         <MobileWelcomeCard onDismiss={closeTour} />
       )}

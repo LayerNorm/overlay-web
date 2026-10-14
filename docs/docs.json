@@ -161,6 +161,7 @@
           {
             "group": "Workflow",
             "pages": [
+              "develop/release-workflow",
               "develop/agentic-development",
               "develop/worktree-staging-qa",
               "develop/convex-workflow",

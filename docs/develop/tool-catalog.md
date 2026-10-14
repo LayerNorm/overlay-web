@@ -6,7 +6,7 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 
 | Group | Tools |
 | --- | --- |
-| Memory | `search_memory`, `search_messages`, `save_memory`, `save_memory_batch`, `update_memory`, `delete_memory` |
+| Memory | `search_memory`, `search_messages`, `list_chats`, `read_chat`, `save_memory`, `save_memory_batch`, `update_memory`, `delete_memory` |
 | Knowledge and files (read) | `search_knowledge`, `search_in_files`, `list_files`, `read_file` |
 | File editing | `write_file`, `create_folder`, `move_file` |
 | Notes | `list_notes`, `get_note`, `create_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`, `delete_note` |
@@ -23,8 +23,38 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 Not tool ids but granted as capabilities:
 
 - **Web** (paid): `web_search`, `deep_search`, `web_fetch`. On the free plan they exist as stubs that answer "needs a paid plan".
-- **Connected apps** (`integrations`): the connector provider's meta-tools (Composio: search tools, execute tools, manage connections), named by the provider at run time. They act through the person's connected accounts.
+- **Connected apps** (`integrations`): the connector provider's meta-tools (Composio: search tools, execute tools, manage connections), named by the provider at run time. They act through the person's connected accounts, and, when the workspace has linked its own accounts, a `workspace_`-prefixed copy acts through those.
 - **Your MCP servers** (`mcp`): `search_mcp_tools` and `call_mcp_tool`, which stand in for every tool on every MCP server the person connected. A server's policy can require approval per tool.
+
+## Scope on list tools
+
+`list_notes`, `list_files`, `list_skills`, and `list_automations` take an optional `scope`: `personal` (only yours),
+or `workspace` (shared with the workspace); archived items are not offered to agents (they live in Settings → Archived, not in any scope). Omitted, they return everything active the caller can read, which
+includes what other members shared with the workspace but never their personal items. Skills the workspace shares are also
+in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
+the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the
+server's name and tools, never the secret. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
+
+## Rooms others can read
+
+An agent summoned in a room others can read does not bring the person's private reach into it. A room is shared when more
+than one person is in it, or when it is a channel anyone in the workspace can read; a chat between one person and an agent,
+and a private channel with one person, are not. The server decides this from the conversation
+(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared), for native agents and
+for Claude Code / Codex over `/api/agent-mcp` alike. In a shared room:
+
+- **Loaded automatically** (`buildAgentTurnContext`): the person's memories and memory profile, retrieval over their files,
+  notes and memories, and their personal skills are not loaded; what the workspace shares still is.
+- **Searches** (`search_knowledge`, `search_memory`, `search_messages`) send `workspaceOnly`: nothing private is returned,
+  not even the person's own, and files are not searched (`chunkVisibleToSearch`).
+- **Lists** (`list_files`, `list_notes`, `list_skills`, `list_automations`) read the Workspace scope whatever `scope` was asked.
+- **Not offered**: `list_chats`, `read_chat`, `search_in_files`.
+- **Connected apps**: only the workspace's (`workspace_…`) tools; the person's own accounts are not offered.
+- **MCP servers**: only the ones shared with the workspace.
+
+Not covered: reading a specific item by id (`read_file`, `get_note`), the write tools (which create the person's personal
+items), computer and browser tools, and agents asking agents. Naming an item in the message is how a person includes it on
+purpose, but there is no per-message opt-in yet.
 
 ## Who gets what
 
@@ -37,6 +67,6 @@ Not tool ids but granted as capabilities:
 
 ## Outside-app access levels (`src/shared/mcp/access.ts`)
 
-- **Read only**: `search_memory`, `search_messages`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`.
+- **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`.
 - **Read and write**: read, plus memory, knowledge, files, notes, and skills groups and web search.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, the browser, and asking agents. Never agent editing or computers. (A personal token at this level saw 46 tools on 2026-10-03.)

@@ -3,7 +3,7 @@ export type OverlayPlanKind = 'free' | 'paid'
 export type LegacyOverlayTier = 'free' | 'pro' | 'max'
 
 export const PAID_PLAN_MIN_AMOUNT_CENTS = 800
-export const PAID_PLAN_MAX_AMOUNT_CENTS = 20_000
+export const PAID_PLAN_MAX_AMOUNT_CENTS = 50_000
 export const PAID_PLAN_STEP_AMOUNT_CENTS = 100
 export const PAID_PLAN_UNIT_AMOUNT_CENTS = 100
 
@@ -14,7 +14,7 @@ export const PAID_STORAGE_BASE_PLAN_AMOUNT_CENTS = 800
 export const PAID_STORAGE_BASE_BYTES = 1024 * 1024 * 1024
 
 export const TOP_UP_MIN_AMOUNT_CENTS = 800
-export const TOP_UP_MAX_AMOUNT_CENTS = 20_000
+export const TOP_UP_MAX_AMOUNT_CENTS = 50_000
 export const TOP_UP_STEP_AMOUNT_CENTS = 100
 export const TOP_UP_UNIT_AMOUNT_CENTS = 100
 

@@ -69,9 +69,9 @@ export function ConnectedAppsSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-        <h2 className="text-sm font-semibold text-[var(--foreground)]">Connected apps</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">
+      <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+        <h2 className="text-sm font-semibold text-(--foreground)">Connected apps</h2>
+        <p className="mt-1 text-sm text-(--muted)">
           Let ChatGPT, Claude, Cursor, and other AI apps use your Overlay notes, files, memory, and knowledge. You choose the workspace and what each app can do, and you can disconnect it here at any time.
         </p>
         {endpoint ? <div className="mt-4"><ConnectAppGuide endpoint={endpoint} /></div> : null}
@@ -80,7 +80,7 @@ export function ConnectedAppsSettings() {
       {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
 
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Connected</h3>
+        <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">Connected</h3>
         <Button variant="secondary" size="sm" onClick={() => setTokenOpen(true)} disabled={workspaces.length === 0}>
           <Plus size={13} className="mr-1" /> Create a token
         </Button>
@@ -88,16 +88,16 @@ export function ConnectedAppsSettings() {
 
       <div className="space-y-2">
         {connections !== null && connections.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted)]">
+          <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">
             Nothing connected yet. Add Overlay to an app above, or create a token for a local agent.
           </p>
         ) : null}
         {(connections ?? []).map((connection) => (
-          <div key={connection.id} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-subtle)] text-[var(--muted)]"><Plug size={16} /></span>
+          <div key={connection.id} className="flex items-center gap-3 rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-(--surface-subtle) text-(--muted)"><Plug size={16} /></span>
             <div className="min-w-0 flex-1">
-              <h4 className="truncate text-sm font-medium text-[var(--foreground)]">{connection.name}</h4>
-              <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+              <h4 className="truncate text-sm font-medium text-(--foreground)">{connection.name}</h4>
+              <p className="mt-0.5 truncate text-xs text-(--muted)">
                 {workspaceName(connection.workspaceId)} · {MCP_ACCESS_LABEL[connection.access]} · {connection.kind === 'token' ? 'Token' : 'Signed in'} · Last used {formatWhen(connection.lastUsedAt, 'never')}
               </p>
             </div>
@@ -105,7 +105,7 @@ export function ConnectedAppsSettings() {
               type="button"
               aria-label={`Disconnect ${connection.name}`}
               onClick={() => setRemoving(connection)}
-              className="rounded-lg p-2 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-red-400"
+              className="rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400"
             >
               <Trash2 size={14} />
             </button>

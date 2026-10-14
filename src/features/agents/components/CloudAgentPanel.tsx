@@ -6,8 +6,10 @@ import { Button } from '@overlay/ui/primitives'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { CLOUD_AGENT_STATE_LABEL, isCloudAgentStarting, type CloudAgentAction } from '@/shared/agents/cloud-agent'
+import { AGENT_PROVIDER_IDS, type AgentProviderId } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
 import { CloudAgentConfig } from './CloudAgentConfig'
+import { useEditorLoad } from './EditorLoadGate'
 import { CloudAgentProgress } from './CloudAgentProgress'
 import { FieldLabel } from './InfoTip'
 import { OTHER_AGENT_LABEL } from './cloud-agent-draft'
@@ -38,16 +40,33 @@ function useCloudAgentStatus(agentId: string) {
   return { workspaceId: activeWorkspaceId, status, error, refresh }
 }
 
-type PanelBusy = CloudAgentAction | 'retry' | null
+const DESKTOP_PREPARE_POLL_MS = 2_000
+const DESKTOP_PREPARE_ATTEMPTS = 15
+
+/** The desktop stream takes a few seconds to prepare on a machine that was paused; ask again until it is ready. */
+async function openDesktopWhenReady(workspaceId: string, environmentId: string) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await overlayAppClient.agentEnvironments.openDesktop(workspaceId, environmentId)
+    } catch (error) {
+      const preparing = error instanceof Error && /still preparing/i.test(error.message)
+      if (!preparing || attempt >= DESKTOP_PREPARE_ATTEMPTS) throw error
+      await new Promise((resolve) => window.setTimeout(resolve, DESKTOP_PREPARE_POLL_MS))
+    }
+  }
+}
+
+type PanelBusy = CloudAgentAction | 'retry' | 'control' | null
 
 /** Pause/Resume, Restart, and Try again, for the states where each makes sense. */
-function MachineActions({ state, busy, onRun, onRetry }: {
+function MachineActions({ state, busy, onRun, onRetry, onControl }: {
   state: CloudAgentStatusResource['state']
   busy: PanelBusy
   onRun(action: CloudAgentAction): void
   onRetry(): void
+  onControl(): void
 }) {
-  const canRestart = state === 'ready' || state === 'unavailable' || state === 'needs_sign_in'
+  const canRestart = state === 'ready' || state === 'needs_sign_in'
   return (
     <div className="mt-3 flex flex-wrap gap-2">
       {state === 'paused' ? (
@@ -56,11 +75,17 @@ function MachineActions({ state, busy, onRun, onRetry }: {
       {state === 'ready' ? (
         <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => onRun('pause')}>{busy === 'pause' ? 'Pausing…' : 'Pause'}</Button>
       ) : null}
+      {state === 'ready' ? (
+        <Button variant="secondary" size="sm" disabled={busy !== null} onClick={onControl}>{busy === 'control' ? 'Opening…' : 'Control'}</Button>
+      ) : null}
       {canRestart ? (
         <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => onRun('restart')}>{busy === 'restart' ? 'Restarting…' : 'Restart'}</Button>
       ) : null}
       {state === 'failed' ? (
         <Button variant="primary" size="sm" disabled={busy !== null} onClick={onRetry}>{busy === 'retry' ? 'Starting…' : 'Try again'}</Button>
+      ) : null}
+      {state === 'unavailable' ? (
+        <Button variant="primary" size="sm" disabled={busy !== null} onClick={onRetry}>{busy === 'retry' ? 'Starting…' : 'Start a new machine'}</Button>
       ) : null}
     </div>
   )
@@ -76,6 +101,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   const [busy, setBusy] = useState<PanelBusy>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [reconnect, setReconnect] = useState<ProviderAccountResource | null>(null)
+  useEditorLoad(!status && !error)
 
   const run = async (action: CloudAgentAction) => {
     if (!workspaceId || busy) return
@@ -92,15 +118,38 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   }
 
   const retry = async () => {
-    const adapterId = status?.machine?.adapterId
-    if (!workspaceId || !status?.account || (adapterId !== 'claude-code' && adapterId !== 'codex') || busy) return
+    const adapterId = status?.machine?.adapterId ?? status?.adapterId
+    if (!workspaceId || !status?.account || (!adapterId || !(AGENT_PROVIDER_IDS as readonly string[]).includes(adapterId)) || busy) return
     setBusy('retry')
     setActionError(null)
     try {
-      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId, providerAccountId: status.account.id })
+      await overlayAppClient.cloudAgents.provision(workspaceId, { agentId, adapterId: adapterId as AgentProviderId, providerAccountId: status.account.id, size: 'small' })
       refresh()
     } catch (retryError) {
       setActionError(retryError instanceof Error ? retryError.message : 'Could not start the machine.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** Opens the machine's desktop in a new tab. The tab is opened first, while the click still counts, and pointed at the stream once it is ready (it can take a few seconds to prepare). */
+  const control = async () => {
+    const environmentId = status?.environment?.id
+    if (!workspaceId || !environmentId || busy) return
+    setBusy('control')
+    setActionError(null)
+    const tab = window.open('', '_blank')
+    try {
+      const ticket = await openDesktopWhenReady(workspaceId, environmentId)
+      if (tab) {
+        tab.opener = null
+        tab.location.href = ticket.url
+      } else {
+        window.open(ticket.url, '_blank', 'noopener,noreferrer')
+      }
+    } catch (openError) {
+      tab?.close()
+      setActionError(openError instanceof Error ? openError.message : 'Could not open the desktop.')
     } finally {
       setBusy(null)
     }
@@ -117,7 +166,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   if (!status) {
     return error
       ? <p role="alert" className="text-xs text-red-500">{error}</p>
-      : <p className="text-xs text-[var(--muted)]">Loading the machine…</p>
+      : <p className="text-xs text-(--muted)">Loading the machine…</p>
   }
 
   const phase = status.provision?.phase
@@ -127,21 +176,21 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
     <div className="space-y-3">
       <div>
         <FieldLabel info="This agent runs on a machine Overlay manages. It pauses itself when idle and wakes when you message it.">Machine</FieldLabel>
-        <div className="rounded-xl border border-[var(--border)] p-3">
+        <div className="rounded-xl border border-(--border) p-3">
           <div className="flex items-center gap-2">
             <span
               aria-hidden
-              className={`h-2 w-2 rounded-full ${status.state === 'ready' ? 'bg-emerald-500' : status.state === 'failed' || status.state === 'needs_sign_in' ? 'bg-amber-500' : 'bg-[var(--muted-light)]'}`}
+              className={`h-2 w-2 rounded-full ${status.state === 'ready' ? 'bg-emerald-500' : status.state === 'failed' || status.state === 'needs_sign_in' ? 'bg-amber-500' : 'bg-(--muted-light)'}`}
             />
             <span className="text-sm font-medium" role="status">{CLOUD_AGENT_STATE_LABEL[status.state]}</span>
-            <span className="min-w-0 flex-1 truncate text-right text-xs text-[var(--muted)]">{adapterLabel}</span>
+            <span className="min-w-0 flex-1 truncate text-right text-xs text-(--muted)">{adapterLabel}</span>
           </div>
 
           {phase && isCloudAgentStarting(phase) ? <CloudAgentProgress phase={phase} /> : null}
 
           {status.state === 'unavailable' && !isCloudAgentStarting(phase) ? (
-            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-              This agent&rsquo;s machine is gone, usually because your credit ran low. Messages will not be answered. Add credit, then archive this agent and create it again.
+            <p className="mt-2 text-xs leading-5 text-(--muted)">
+              This agent&rsquo;s machine is gone, usually because your credit ran low. Messages will not be answered until you start a new one (it needs at least $1 of credit).
             </p>
           ) : null}
 
@@ -149,19 +198,19 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
             <p role="alert" className="mt-2 text-xs text-red-500">{status.provision?.error ?? 'Could not start the machine.'}</p>
           ) : null}
 
-          <dl className="mt-2.5 space-y-1 text-xs text-[var(--muted)]">
-            {status.machine?.size ? <div className="flex justify-between gap-3"><dt>Size</dt><dd className="text-[var(--foreground)]">{SIZE_LABEL[status.machine.size] ?? status.machine.size}</dd></div> : null}
-            {status.account ? <div className="flex justify-between gap-3"><dt>Account</dt><dd className="truncate text-[var(--foreground)]">{status.account.label}</dd></div> : null}
+          <dl className="mt-2.5 space-y-1 text-xs text-(--muted)">
+            {status.machine?.size ? <div className="flex justify-between gap-3"><dt>Size</dt><dd className="text-(--foreground)">{SIZE_LABEL[status.machine.size] ?? status.machine.size}</dd></div> : null}
+            {status.account ? <div className="flex justify-between gap-3"><dt>Account</dt><dd className="truncate text-(--foreground)">{status.account.label}</dd></div> : null}
           </dl>
 
           {status.state === 'needs_sign_in' ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-[var(--surface-subtle)] px-3 py-2">
-              <p className="text-xs text-[var(--foreground)]">{adapterLabel} could not sign in. Reconnect the account to continue.</p>
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-(--surface-subtle) px-3 py-2">
+              <p className="text-xs text-(--foreground)">{adapterLabel} could not sign in. Reconnect the account to continue.</p>
               <Button variant="primary" size="sm" onClick={() => void openReconnect()}>Reconnect</Button>
             </div>
           ) : null}
 
-          <MachineActions state={status.state} busy={busy} onRun={(action) => void run(action)} onRetry={() => void retry()} />
+          <MachineActions state={status.state} busy={busy} onRun={(action) => void run(action)} onRetry={() => void retry()} onControl={() => void control()} />
           {actionError ? <p role="alert" className="mt-2 text-xs text-red-500">{actionError}</p> : null}
         </div>
       </div>

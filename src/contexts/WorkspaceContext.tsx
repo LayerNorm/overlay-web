@@ -240,3 +240,8 @@ export function useWorkspace(): WorkspaceContextValue {
   if (!value) throw new Error('useWorkspace must be used within WorkspaceProvider')
   return value
 }
+
+/** The workspace context where one may be absent (tests, the public showcase); null outside a provider. */
+export function useOptionalWorkspace(): WorkspaceContextValue | null {
+  return useContext(WorkspaceContext)
+}

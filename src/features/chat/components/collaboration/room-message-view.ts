@@ -140,6 +140,16 @@ function stripAttachmentSummary(text: string): string {
   return text.replace(ATTACHMENT_SUMMARY, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
+/**
+ * While the agent waits for the person's answer to a permission or input card, what it produced after asking is not shown:
+ * the transcript stops at the card and picks up in order once it is answered. Without this, output from the rest of the turn
+ * kept appearing above the card, as though the agent had not stopped to ask.
+ */
+export function partsUntilPendingRequest(parts: RoomMessagePart[] | undefined): RoomMessagePart[] | undefined {
+  const pending = parts?.findIndex((part) => part.type === 'data-remote-agent-request' && part.data?.state === 'pending') ?? -1
+  return parts && pending >= 0 ? parts.slice(0, pending) : parts
+}
+
 function displayParts(parts: RoomMessagePart[] | undefined): RoomMessagePart[] | undefined {
   if (!parts?.length) return parts
   return parts
@@ -201,9 +211,13 @@ export function toRoomMessageView({
   const mine = isOwnRoomMessage(message, currentPrincipalId)
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const { bodyText, docNames } = splitUserDisplayText(stripAttachmentSummary(message.content ?? ''))
+  const remoteQueue = remoteQueueStatus(message.parts)
   const blocks: AssistantVisualBlock[] = (() => {
     if (!isAgent) return []
-    const sequence = buildAssistantVisualSequence(displayParts(message.parts))
+    // While a connected agent's computer wakes up the row reads like a tool call that is running ("Connecting to
+    // computer", shimmering) instead of the stored "Waiting for <name>" text.
+    if (remoteQueue) return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }]
+    const sequence = buildAssistantVisualSequence(displayParts(partsUntilPendingRequest(message.parts)))
     if (sequence.length > 0) return sequence
     return bodyText ? [{ kind: 'text', text: bodyText }] : []
   })()
@@ -231,7 +245,7 @@ export function toRoomMessageView({
     documentNames: docNames,
     mentions,
     askedBy: askedBy(message),
-    remoteQueue: remoteQueueStatus(message.parts),
+    remoteQueue,
     remoteRequest: remoteRequest(message.parts),
     remoteRun: remoteRunStatus(message.parts),
     // Assistant rows are inserted with status 'generating' at turn start and

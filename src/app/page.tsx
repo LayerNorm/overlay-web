@@ -7,7 +7,7 @@ import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 function RootEntryFallback() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
-      <p role="status" className="text-sm text-[var(--muted)]">
+      <p role="status" className="text-sm text-(--muted)">
         Opening Overlay…
       </p>
     </main>

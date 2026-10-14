@@ -1,0 +1,57 @@
+{
+  "accountId": "89121dcb0c2438bd294f06db8d17ce02",
+  "credentials": [
+    {
+      "lane": "staging",
+      "name": "overlay-release-staging-20261012",
+      "bucket": "overlay-release-staging",
+      "permission": "Object Read & Write",
+      "expiresOn": null
+    },
+    {
+      "lane": "preview",
+      "name": "overlay-release-preview-20261012",
+      "bucket": "overlay-release-preview",
+      "permission": "Object Read & Write",
+      "expiresOn": null
+    }
+  ],
+  "reads": [
+    {
+      "lane": "staging",
+      "bucket": "overlay-release-staging",
+      "writeReadVerified": true
+    },
+    {
+      "lane": "preview",
+      "bucket": "overlay-release-preview",
+      "writeReadVerified": true
+    }
+  ],
+  "denials": [
+    {
+      "credentialLane": "preview",
+      "bucket": "overlay-release-staging",
+      "status": 403
+    },
+    {
+      "credentialLane": "staging",
+      "bucket": "overlay-release-preview",
+      "status": 403
+    },
+    {
+      "credentialLane": "staging",
+      "bucket": "overlay-dev",
+      "status": 403
+    },
+    {
+      "credentialLane": "preview",
+      "bucket": "overlay-dev",
+      "status": 403
+    }
+  ],
+  "cleanupVerified": true,
+  "publicAccessEnabled": false,
+  "applicationUploadVerified": false,
+  "verifiedAt": "2026-10-13T07:33:25.174Z"
+}

@@ -28,6 +28,8 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/auth/native/refresh': ['POST'],
   '/api/auth/native/subscription': ['GET'],
   '/api/auth/options': ['GET'],
+  // Preview environment + sandbox identity + scoped header secret; absent elsewhere.
+  '/api/auth/preview-login': ['POST'],
   '/api/auth/reset-password': ['POST'],
   '/api/auth/session': ['GET'],
   '/api/auth/sign-in': ['POST'],

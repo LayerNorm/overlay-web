@@ -1,15 +1,12 @@
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
+import { internal } from '../_generated/api'
 import { internalMutation, mutation, query, type MutationCtx } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
 import { projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
-import { markBudgetReservationReconcile } from '../platform/usage'
-import {
-  applyUsageEvents, finalizeWorkspaceLedger, getSubscriptionBudgetState,
-} from '../platform/usage'
-import { ensurePersonalBillingAccount } from '../billing/accountModel'
+import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../platform/usage'
 
 const anyObject = v.any()
 const MAX_COMMAND_BYTES = 128 * 1024
@@ -664,9 +661,9 @@ export const controlRemoteAgentTurnByServer = mutation({
       }
       await ctx.db.patch(run._id, { status: 'cancelled', cancelledAt: args.now, updatedAt: args.now })
       await ctx.db.patch(session._id, { status: 'cancelled', endedAt: args.now, updatedAt: args.now })
-      await Promise.all(commands
-        .filter((command) => command.type !== 'cancel' && (command.status === 'pending' || command.status === 'claimed'))
-        .map((command) => ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now })))
+      // The run's other commands are left as they are. A host numbers its commands and rejects every later one when a
+      // number is missing, so a command that was never delivered must not be cancelled: once the run is over, delivery
+      // sends it as a harmless shutdown instead (see `claimCommandsByServer`).
       const pendingRequests = await ctx.db.query('agentApprovalRequests')
         .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', args.workspaceId).eq('runId', args.runId)).take(100)
       await Promise.all(pendingRequests.filter((request) => !request.resolution).map((request) =>
@@ -818,8 +815,18 @@ export const enqueueCommandByServer = mutation({
   },
 })
 
+/** What the host said when it rejected a command, made safe to show: one short line of plain text. */
+function rejectionDetail(code: string | undefined, message: string | undefined): string {
+  const text = [code, message].filter(Boolean).join(': ').replace(/\s+/g, ' ').trim().slice(0, 200)
+  return text ? ` (${text})` : ''
+}
+
 export const acknowledgeCommandByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), commandId: v.string(), accepted: v.optional(v.boolean()), now: v.number() },
+  args: {
+    serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), commandId: v.string(), accepted: v.optional(v.boolean()), now: v.number(),
+    /** Why the host rejected the command, when it said. Host-supplied, so it is trimmed before it is shown. */
+    errorCode: v.optional(v.string()), errorMessage: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const command = await ctx.db
@@ -859,7 +866,7 @@ export const acknowledgeCommandByServer = mutation({
         : null
       if (run && session && message && !['completed', 'failed', 'cancelled'].includes(run.status)) {
         const code = 'remote_command_rejected'
-        const failureMessage = 'The connected environment rejected this command. Reconnect it, then retry this message.'
+        const failureMessage = `The connected environment rejected this command${rejectionDetail(args.errorCode, args.errorMessage)}. Reconnect it, then retry this message.`
         await ctx.db.patch(run._id, { status: 'failed', failedAt: args.now,
           terminalError: { code, message: failureMessage, retryable: true }, updatedAt: args.now })
         await ctx.db.patch(session._id, { status: 'failed', endedAt: args.now, updatedAt: args.now })
@@ -1595,6 +1602,9 @@ export const patchSandboxLeaseUsageByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string(),
     patch: anyObject, now: v.number(),
+    // Schedule the idle check for this long from now. A new token replaces any earlier one, so an earlier
+    // timer finds its token stale and does nothing: patching with `idleToken: null` cancels without deleting.
+    idleCheckInMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -1603,9 +1613,102 @@ export const patchSandboxLeaseUsageByServer = mutation({
       .withIndex('by_leaseId', (q) => q.eq('leaseId', args.leaseId))
       .unique()
     if (!current || current.workspaceId !== args.workspaceId) return null
-    const usage = { ...((current.usage ?? {}) as Record<string, unknown>), ...args.patch }
+    const usage: Record<string, unknown> = { ...((current.usage ?? {}) as Record<string, unknown>), ...args.patch }
+    if (args.idleCheckInMs !== undefined) {
+      const delay = Math.max(1_000, Math.floor(args.idleCheckInMs))
+      const token = `${args.now.toString(36)}${Math.random().toString(36).slice(2, 10)}`
+      usage.idleToken = token
+      usage.idleCheckAt = args.now + delay
+      await ctx.scheduler.runAfter(delay, internal.agents.idleStop.runIdleCheck, {
+        workspaceId: args.workspaceId, leaseId: args.leaseId, token,
+      })
+    }
     await ctx.db.patch(current._id, { usage, updatedAt: args.now })
     return { ...clean(current), usage, updatedAt: args.now, id: current.leaseId }
+  },
+})
+
+/** Whether a run on this environment is still going (so its machine must stay up). */
+export const environmentHasActiveRunsByServer = query({
+  args: { serverSecret: v.string(), environmentId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    for (const status of ['starting', 'running', 'waiting_for_approval', 'recovering'] as const) {
+      const row = await ctx.db
+        .query('agentRemoteSessions')
+        .withIndex('by_environmentId_status', (q) => q.eq('environmentId', args.environmentId).eq('status', status))
+        .first()
+      if (row) return true
+    }
+    return false
+  },
+})
+
+const USAGE_LIMITED_NOTICE = 'Stopped: your Overlay credit ran low, so the agent\'s computer was shut down. Add credit and send the message again.'
+
+/**
+ * Closes the chat row of a connected-agent run that ended without its machine saying so (its machine was shut down):
+ * the message stops showing as generating, unfinished actions are closed, the run's remote session is ended, and the
+ * room is told. Safe to repeat.
+ */
+async function finishRunMessage(
+  ctx: MutationCtx,
+  run: Doc<'conversationAgentRuns'>,
+  workspaceId: string,
+  now: number,
+  notice: string,
+) {
+  const message = await ctx.db.get(run.assistantMessageId)
+  if (message && message.status === 'generating') {
+    const environmentName = 'connected environment'
+    const projection = projectRemoteAgentEvents({
+      content: message.content,
+      parts: Array.isArray(message.parts) ? (message.parts as unknown as Array<Record<string, unknown>>) : [],
+      events: [{
+        protocolVersion: 1, eventId: `system-stop-${run._id}`, environmentId: run.environmentId ?? '', runId: run.externalRunId ?? '',
+        sourceSequence: 0, type: 'cancelled', occurredAt: now, payload: { reason: notice },
+      } as AgentRemoteEvent],
+      environmentName,
+      queueExpiresAt: now,
+      runId: run.externalRunId ?? '',
+    })
+    const base = message.content.trim() ? projection.content : ''
+    await ctx.db.patch(message._id, {
+      content: `${base.trimEnd()}${base.trim() ? '\n\n' : ''}${notice}`,
+      parts: [...(projection.parts as never[]), { type: 'text', text: `${base.trim() ? '\n\n' : ''}${notice}` }] as never,
+      status: 'completed',
+      updatedAt: now,
+    })
+    await ctx.db.insert('conversationEvents', {
+      conversationId: run.conversationId, workspaceId, messageId: message._id,
+      type: 'message.completed', userId: run.userId, createdAt: now,
+    })
+  }
+  if (run.externalRunId) {
+    const session = await ctx.db.query('agentRemoteSessions').withIndex('by_runId', (q) => q.eq('runId', run.externalRunId!)).unique()
+    if (session && !['completed', 'failed', 'cancelled'].includes(session.status)) {
+      await ctx.db.patch(session._id, { status: 'cancelled', endedAt: now, updatedAt: now })
+    }
+  }
+}
+
+/** One-off/operations repair: finishes the chat rows of cancelled connected-agent runs that still show as generating. */
+export const repairOrphanedRemoteMessages = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+    const cancelled = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_runner_status_leaseExpiresAt', (q) => q.eq('runner', 'remote').eq('status', 'cancelled'))
+      .take(500)
+    let repaired = 0
+    for (const run of cancelled) {
+      const message = await ctx.db.get(run.assistantMessageId)
+      if (message?.status !== 'generating') continue
+      const conversation = await ctx.db.get(run.conversationId)
+      await finishRunMessage(ctx, run, conversation?.workspaceId ?? '', now, USAGE_LIMITED_NOTICE)
+      repaired += 1
+    }
+    return { repaired }
   },
 })
 
@@ -1645,9 +1748,9 @@ export const stopSandboxLeaseByServer = mutation({
     // cancelling them here is what fails parked turns cleanly.
     const leaseRuns = await ctx.db.query('conversationAgentRuns')
       .withIndex('by_environmentId_createdAt', q => q.eq('environmentId', lease.environmentId)).take(1_000)
-    await Promise.all(leaseRuns
-      .filter((run) => ['queued', 'running', 'waiting_for_approval'].includes(run.status))
-      .map((run) => ctx.db.patch(run._id, {
+    const stoppedRuns = leaseRuns.filter((run) => ['queued', 'running', 'waiting_for_approval'].includes(run.status))
+    await Promise.all(stoppedRuns.map(async (run) => {
+      await ctx.db.patch(run._id, {
         status: 'cancelled',
         cancelledAt: args.now,
         terminalError: {
@@ -1656,7 +1759,9 @@ export const stopSandboxLeaseByServer = mutation({
           retryable: false,
         },
         updatedAt: args.now,
-      })))
+      })
+      await finishRunMessage(ctx, run, args.workspaceId, args.now, USAGE_LIMITED_NOTICE)
+    }))
     return {
       ...clean(lease), status: 'stopping', reservedUntil: args.now,
       runtimeEndedAt: lease.runtimeEndedAt ?? args.now, cleanupAfter: args.now,
@@ -1777,37 +1882,18 @@ export const meterSandboxLeaseDebitByServer = mutation({
             billingAccountId,
             operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
             recorded: 1,
+            ...meterUsageFields(charge),
             createdAt: args.now,
           })
         }
         remainingCents =
           Math.round(((availableMicros - chargeMicros) / 10_000) * 100) / 100
       } else {
-        const budget = await getSubscriptionBudgetState(ctx, payer.userId)
-        const available = budget.budgetRemainingCents
-        const costCents = charge?.costCents ?? 0
-        if (costCents + Math.max(0, args.minRemainingCents) > available + 0.000001) {
-          return { applied: false, reason: 'insufficient_budget', remainingCents: Math.max(0, available) }
+        // Not a paid workspace: a person's own account has no credit, so metered machine time cannot be paid for.
+        if ((charge?.costCents ?? 0) + Math.max(0, args.minRemainingCents) > 0) {
+          return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
         }
-        if (charge) {
-          const billingAccount = await ensurePersonalBillingAccount(ctx, payer.userId)
-          await applyUsageEvents(ctx, payer.userId, [{
-            type: 'sandbox',
-            modelId: charge.modelId,
-            cost: charge.costCents,
-            providerCostUsd: charge.providerCostUsd,
-            durationSeconds: charge.durationSeconds,
-            timestamp: args.meteredAt,
-          }], { chargeCredits: true })
-          await ctx.db.insert('usageOperations', {
-            userId: payer.userId,
-            billingAccountId: billingAccount.billingAccountId,
-            operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
-            recorded: 1,
-            createdAt: args.now,
-          })
-        }
-        remainingCents = Math.max(0, available - costCents)
+        remainingCents = 0
       }
     }
     await ctx.db.patch(lease._id, { usage: nextUsage, updatedAt: args.now })
@@ -2704,3 +2790,37 @@ export const repairUndeliveredCancelledCommands = internalMutation({
     return { repaired }
   },
 })
+
+
+/**
+ * Repairs an environment whose host has stopped accepting commands because commands were cancelled before they were
+ * delivered (a hole in its command numbers: it rejects every later command with `command_sequence_gap`). Every command
+ * after the last one the host acknowledged goes back to pending; delivery sends the ones whose run is over as shutdowns,
+ * which the host accepts, so the host catches up in order and new commands are accepted again. Run once per wedged
+ * environment: `npx convex run agents/connectedAgents:reopenUndeliveredCommands '{"environmentId":"..."}' --prod`.
+ */
+export const reopenUndeliveredCommands = internalMutation({
+  args: { environmentId: v.string() },
+  handler: async (ctx, args) => {
+    const commands = await ctx.db.query('agentRunCommands')
+      .withIndex('by_environmentId_sequence', (q) => q.eq('environmentId', args.environmentId))
+      .collect()
+    const lastAcknowledged = commands.filter((command) => command.status === 'acknowledged').reduce((max, command) => Math.max(max, command.sequence), 0)
+    const toReopen = commands.filter((command) => command.sequence > lastAcknowledged && command.status !== 'pending')
+    const now = Date.now()
+    await Promise.all(toReopen.map((command) => ctx.db.patch(command._id, {
+      status: 'pending', claimedAt: undefined, claimExpiresAt: undefined, updatedAt: now,
+    })))
+    return { lastAcknowledged, reopened: toReopen.map((command) => command.sequence) }
+  },
+})
+
+/** The machine-time charge, recorded on the usage operation so it shows on the itemized usage list. */
+function meterUsageFields(charge: { costCents: number; modelId?: string; durationSeconds?: number }) {
+  return {
+    cents: Math.max(0, charge.costCents),
+    kind: 'sandbox' as const,
+    ...(charge.modelId ? { modelId: charge.modelId } : {}),
+    ...(charge.durationSeconds ? { usageSeconds: charge.durationSeconds } : {}),
+  }
+}

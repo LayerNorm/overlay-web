@@ -1,15 +1,18 @@
 import { z } from 'zod'
+import { ResourceViewQuery } from './misc'
 import { AuthFields, BooleanQueryValue, IdQuery, PaginationQuery, UnknownResponse } from './common'
 
 export const NoteListQuery = PaginationQuery.extend({
   noteId: IdQuery,
   includeDeleted: BooleanQueryValue,
+  view: ResourceViewQuery,
 })
 
 export const CreateNoteRequest = z.object({
   ...AuthFields,
   title: z.string().max(200).optional(),
   content: z.string().optional(),
+  scope: z.enum(['personal', 'workspace']).optional(),
 })
 
 export const UpdateNoteRequest = CreateNoteRequest.partial().extend({

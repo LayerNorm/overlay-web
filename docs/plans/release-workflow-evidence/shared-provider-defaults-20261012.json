@@ -1,0 +1,149 @@
+{
+  "capturedAt": "2026-10-12",
+  "vercel": {
+    "project": "overlay-web-staging",
+    "teamId": "team_VT3uNspuyAOwicxedhtG4SMe",
+    "scope": "preview",
+    "branchScope": null,
+    "keys": [
+      "AI_GATEWAY_API_KEY",
+      "LLM_GATEWAY",
+      "OVERLAY_PROVIDER_MODELS",
+      "BILLING_PROVIDER",
+      "DEV_STRIPE_SECRET_KEY",
+      "STRIPE_SECRET_KEY",
+      "DEV_STRIPE_WEBHOOK_SECRET",
+      "STRIPE_WEBHOOK_SECRET",
+      "DEV_STRIPE_PAID_UNIT_PRICE_ID",
+      "STRIPE_PAID_UNIT_PRICE_ID",
+      "DEV_STRIPE_TOPUP_UNIT_PRICE_ID",
+      "STRIPE_TOPUP_UNIT_PRICE_ID",
+      "DEV_STRIPE_PORTAL_CONFIGURATION_ID",
+      "STRIPE_PORTAL_CONFIGURATION_ID"
+    ],
+    "testStripeAccount": "acct_1SyJ6jPH7ssnO0LI",
+    "testStripePricesVerified": true,
+    "gatewayKey": "overlay-release-preview-20261012",
+    "readbackVerified": true,
+    "legacyProductionVariablesPreserved": true,
+    "openRouterPending": true,
+    "storagePending": true,
+    "existingDeploymentsChanged": false
+  },
+  "convex": {
+    "previewProject": 1649204,
+    "previewDefaultsKeys": [
+      "AI_GATEWAY_API_KEY",
+      "LLM_GATEWAY",
+      "OVERLAY_PROVIDER_MODELS",
+      "BILLING_PROVIDER",
+      "DEV_STRIPE_SECRET_KEY",
+      "STRIPE_SECRET_KEY",
+      "DEV_STRIPE_WEBHOOK_SECRET",
+      "STRIPE_WEBHOOK_SECRET",
+      "DEV_STRIPE_PAID_UNIT_PRICE_ID",
+      "STRIPE_PAID_UNIT_PRICE_ID",
+      "DEV_STRIPE_TOPUP_UNIT_PRICE_ID",
+      "STRIPE_TOPUP_UNIT_PRICE_ID",
+      "DEV_STRIPE_PORTAL_CONFIGURATION_ID",
+      "STRIPE_PORTAL_CONFIGURATION_ID"
+    ],
+    "newPreviewBackendsInherit": true,
+    "existingPreviewBackendsUpdated": false,
+    "devAndCustomerProductionDefaultsPreserved": true,
+    "stagingBackend": "doting-cuttlefish-819",
+    "stagingConfiguredKeys": [
+      "AI_GATEWAY_API_KEY",
+      "LLM_GATEWAY",
+      "OVERLAY_PROVIDER_MODELS",
+      "BILLING_PROVIDER",
+      "DEV_STRIPE_SECRET_KEY",
+      "STRIPE_SECRET_KEY",
+      "DEV_STRIPE_WEBHOOK_SECRET",
+      "STRIPE_WEBHOOK_SECRET",
+      "DEV_STRIPE_PAID_UNIT_PRICE_ID",
+      "STRIPE_PAID_UNIT_PRICE_ID",
+      "DEV_STRIPE_TOPUP_UNIT_PRICE_ID",
+      "STRIPE_TOPUP_UNIT_PRICE_ID",
+      "DEV_STRIPE_PORTAL_CONFIGURATION_ID",
+      "STRIPE_PORTAL_CONFIGURATION_ID"
+    ],
+    "stagingCorePreserved": true,
+    "readbackVerified": true,
+    "appFunctionsDeployed": false
+  },
+  "providerReadback": {
+    "storage": {
+      "inventory": {
+        "ok": false,
+        "status": 403,
+        "code": "AccessDenied"
+      },
+      "devBucket": {
+        "ok": true,
+        "bucket": "overlay-dev"
+      }
+    },
+    "openrouter": [
+      {
+        "source": "official-cli-env-pull",
+        "keyFormat": false,
+        "matchesKnownStagingKey": false,
+        "matchesLocalProductionKey": false
+      },
+      {
+        "target": [
+          "production"
+        ],
+        "decrypted": false,
+        "keyFormat": false,
+        "matchesKnownStagingKey": false,
+        "matchesLocalProductionKey": false
+      }
+    ],
+    "billing": {
+      "accountId": "acct_1SyJ6jPH7ssnO0LI",
+      "businessName": "LayerNorm sandbox",
+      "displayName": "LayerNorm sandbox",
+      "matchesPreparedAccount": false,
+      "prices": [
+        {
+          "name": "DEV_STRIPE_PAID_UNIT_PRICE_ID",
+          "ok": true,
+          "id": "price_1TKyb6PH7ssnO0LI9A53Rrwr",
+          "test": true,
+          "unitAmount": 100,
+          "currency": "usd",
+          "recurring": {
+            "interval": "month",
+            "interval_count": 1,
+            "meter": null,
+            "trial_period_days": null,
+            "usage_type": "licensed"
+          }
+        },
+        {
+          "name": "DEV_STRIPE_TOPUP_UNIT_PRICE_ID",
+          "ok": true,
+          "id": "price_1TKyb6PH7ssnO0LIozFb37vy",
+          "test": true,
+          "unitAmount": 100,
+          "currency": "usd",
+          "recurring": null
+        }
+      ]
+    }
+  },
+  "storageProvisioning": {
+    "source": "existing .env.local dev S3 credential",
+    "buckets": [
+      {
+        "bucket": "overlay-release-staging",
+        "createdAndReadback": false,
+        "status": 403,
+        "code": "AccessDenied"
+      }
+    ],
+    "loginStillNeeded": true
+  }
+}

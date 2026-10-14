@@ -1,0 +1,18 @@
+{
+  "sha": "f863915508795c695d9778f33476eaaf4d14436e",
+  "pr": 199,
+  "mergeQueueUsed": true,
+  "mergeGroupSha": "f863915508795c695d9778f33476eaaf4d14436e",
+  "qualityRunId": 38393412270,
+  "automaticDeployments": [
+    {
+      "projectId": "prj_wucEZdZyA2xKUurHLXSuQNcS1YPy",
+      "count": 0
+    },
+    {
+      "projectId": "prj_IKvugqekF8qLP14p7Rg4ilWErXPr",
+      "count": 0
+    }
+  ],
+  "productionDeploymentUnchanged": "dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f"
+}

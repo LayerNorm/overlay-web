@@ -12,6 +12,8 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'move_file',
   'search_memory',
   'search_messages',
+  'list_chats',
+  'read_chat',
   'save_memory',
   'save_memory_batch',
   'update_memory',

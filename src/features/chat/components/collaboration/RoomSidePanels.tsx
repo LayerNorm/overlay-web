@@ -37,21 +37,21 @@ export function RoomPeoplePanel({
             key={participant.principalId}
             className='flex items-center gap-3 rounded-lg px-3 py-2'
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)] text-xs">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-muted) text-xs">
               {participant.displayName.slice(0, 1).toUpperCase()}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm">
                 {participant.principalId === currentPrincipalId ? 'You' : participant.displayName}
               </span>
-              <span className="block text-[11px] capitalize text-[var(--muted-light)]">
+              <span className="block text-[11px] capitalize text-(--muted-light)">
                 {participant.principalType === 'agent' ? 'Agent' : participant.role}
               </span>
             </span>
             <span className={`h-2 w-2 rounded-full ${
               presence.find((row) => row.principalId === participant.principalId)?.status === 'online'
                 ? 'bg-emerald-500'
-                : 'bg-[var(--border)]'
+                : 'bg-(--border)'
             }`} />
           </div>
         ))}
@@ -59,9 +59,9 @@ export function RoomPeoplePanel({
           <button
             type="button"
             onClick={onAddPeople}
-            className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-[var(--border)]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-(--border)">
               <UserPlus size={14} />
             </span>
             Add people
@@ -103,11 +103,11 @@ export function RoomThreadPanel({
       onClose={onClose}
       bodyClassName="flex flex-col"
     >
-      <div className="flex items-center justify-end border-b border-[var(--border)] px-3 py-2">
+      <div className="flex items-center justify-end border-b border-(--border) px-3 py-2">
         <button
           type="button"
           onClick={onToggleFollow}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
           aria-pressed={following}
         >
           {following ? <BellOff size={12} /> : <Bell size={12} />}
@@ -118,12 +118,12 @@ export function RoomThreadPanel({
         <div className="flex flex-col gap-5">{messages}</div>
       </div>
       {readOnlyNotice ? (
-        <div className="shrink-0 border-t border-[var(--border)] px-4 py-3 text-center text-xs text-[var(--muted)]">
+        <div className="shrink-0 border-t border-(--border) px-4 py-3 text-center text-xs text-(--muted)">
           {readOnlyNotice}
         </div>
       ) : (
       <form
-        className="m-3 flex shrink-0 items-end gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 focus-within:border-[var(--muted-light)]"
+        className="m-3 flex shrink-0 items-end gap-2 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 focus-within:border-(--muted-light)"
         onSubmit={(event) => {
           event.preventDefault()
           onSubmit()
@@ -135,7 +135,7 @@ export function RoomThreadPanel({
           rows={1}
           placeholder="Reply…"
           aria-label="Reply in thread"
-          className="min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[var(--muted-light)]"
+          className="min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-hidden placeholder:text-(--muted-light)"
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -147,7 +147,7 @@ export function RoomThreadPanel({
           type="submit"
           disabled={!input.trim()}
           aria-label="Send thread reply"
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] disabled:opacity-30"
+          className="flex h-9 w-9 items-center justify-center rounded-lg bg-(--foreground) text-(--background) disabled:opacity-30"
         >
           <Send size={14} />
         </button>
@@ -182,7 +182,7 @@ export function RoomPinnedPanel({
       onClose={onClose}
     >
       {pinned.length === 0 ? (
-        <p className="px-4 py-6 text-xs text-[var(--muted)]">
+        <p className="px-4 py-6 text-xs text-(--muted)">
           Nothing pinned yet. Pin a message to keep it at hand for everyone in the room.
         </p>
       ) : (
@@ -195,13 +195,13 @@ export function RoomPinnedPanel({
               <button
                 type="button"
                 onClick={() => onJump(item.messageId)}
-                className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--surface-subtle)]"
+                className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left transition-colors hover:bg-(--surface-subtle)"
               >
                 <span className="flex items-baseline gap-2">
-                  <span className='truncate text-xs font-medium text-[var(--foreground)]'>
+                  <span className='truncate text-xs font-medium text-(--foreground)'>
                     {item.authorName}
                   </span>
-                  <time className="shrink-0 text-[10px] text-[var(--muted-light)]">
+                  <time className="shrink-0 text-[10px] text-(--muted-light)">
                     {
                       // Locale pinned to 'en-US' — SSR and client output are identical.
                       // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
@@ -212,7 +212,7 @@ export function RoomPinnedPanel({
                     }
                   </time>
                 </span>
-                <span className='mt-0.5 line-clamp-2 block text-xs text-[var(--muted)]'>
+                <span className='mt-0.5 line-clamp-2 block text-xs text-(--muted)'>
                   {item.preview}
                 </span>
               </button>
@@ -220,7 +220,7 @@ export function RoomPinnedPanel({
                 type="button"
                 onClick={() => onUnpin(item.messageId)}
                 aria-label={`Unpin ${item.authorName}'s message`}
-                className="mt-2 shrink-0 rounded-md p-1.5 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] focus-visible:opacity-100 group-hover/pin:opacity-100"
+                className="mt-2 shrink-0 rounded-md p-1.5 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:opacity-100 group-hover/pin:opacity-100"
               >
                 <Pin size={13} strokeWidth={1.75} className="fill-current" />
               </button>

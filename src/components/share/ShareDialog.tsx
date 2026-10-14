@@ -248,7 +248,7 @@ export function ShareDialog({
     // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
-      className={`fixed inset-0 z-[10080] flex items-center justify-center bg-black/55 p-4 transition-opacity duration-150 ${visible ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 z-10080 flex items-center justify-center bg-black/55 p-4 transition-opacity duration-150 ${visible ? 'opacity-100' : 'opacity-0'}`}
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
       {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
@@ -258,16 +258,16 @@ export function ShareDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-dialog-title"
-        className={`w-[min(620px,94vw)] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition duration-150 ${visible ? 'translate-y-0 scale-100' : 'translate-y-1 scale-[.98]'}`}
+        className={`w-[min(620px,94vw)] overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated) shadow-2xl transition duration-150 ${visible ? 'translate-y-0 scale-100' : 'translate-y-1 scale-[.98]'}`}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+        <header className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
           <div className="min-w-0">
-            <h2 id="share-dialog-title" className="truncate text-lg font-semibold text-[var(--foreground)]">
+            <h2 id="share-dialog-title" className="truncate text-lg font-semibold text-(--foreground)">
               Share “{resource.title}”
             </h2>
-            <p className="mt-1 text-xs text-[var(--muted)]">People, agents, teams, and rooms inherit access dynamically.</p>
+            <p className="mt-1 text-xs text-(--muted)">People, agents, teams, and rooms inherit access dynamically.</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
             <X size={17} />
           </button>
         </header>
@@ -426,7 +426,7 @@ export function ShareDialogContent({
         onCopyLink={onCopyLink}
       />
 
-      {notice ? <p data-testid="share-dialog-notice" className="mt-4 text-xs text-[var(--muted)]">{notice}</p> : null}
+      {notice ? <p data-testid="share-dialog-notice" className="mt-4 text-xs text-(--muted)">{notice}</p> : null}
     </div>
   )
 }
@@ -457,7 +457,7 @@ function ShareTargetForm({
           value={target}
           aria-label="Add a person, agent, team, or room"
           onChange={(event) => onTargetChange(event.target.value)}
-          className="h-10 min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
+          className="h-10 min-w-0 rounded-lg border border-(--border) bg-(--background) px-3 text-sm text-(--foreground)"
         >
           <option value="">Add a person, agent, team, or room…</option>
           {shareDirectoryGroups(available).map(({ label, entries }) => entries.length > 0 ? (
@@ -472,7 +472,7 @@ function ShareTargetForm({
           value={role}
           aria-label="Permission"
           onChange={(event) => onRoleChange(event.target.value as WorkspaceShareAccessRole)}
-          className="h-10 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs text-[var(--foreground)]"
+          className="h-10 rounded-lg border border-(--border) bg-(--background) px-2 text-xs text-(--foreground)"
         >
           {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </Select>
@@ -480,12 +480,12 @@ function ShareTargetForm({
           type="button"
           disabled={!target || busy}
           onClick={onRequestGrant}
-          className="h-10 rounded-lg bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-40"
+          className="h-10 rounded-lg bg-(--foreground) px-4 text-sm font-medium text-(--background) disabled:opacity-40"
         >
           Add
         </button>
       </div>
-      <p className="mt-2 text-[11px] text-[var(--muted)]">
+      <p className="mt-2 text-[11px] text-(--muted)">
         {roleOptions.find((option) => option.value === role)?.description}
       </p>
     </>
@@ -512,13 +512,13 @@ function PendingShareConfirmation({
       data-testid="share-dialog-confirmation"
       className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4"
     >
-      <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+      <div className="flex items-center gap-2 text-sm font-medium text-(--foreground)">
         <TriangleAlert size={15} className="text-amber-500" />
         {pending.kind === 'grant'
           ? `Share this ${SHARE_RESOURCE_LABELS[resourceType]} with ${pending.impact.targetName}?`
           : `Remove ${pending.impact.targetName}’s access?`}
       </div>
-      <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+      <p className="mt-2 text-xs leading-5 text-(--muted)">
         {pending.kind === 'grant'
           ? `${describeTargetInheritance(pending.impact.targetType)} will be able to open “${resourceTitle}”.`
           : `Access granted through ${pending.impact.targetName} ends immediately, including open downloads, streams, and agent tool calls.`}
@@ -538,7 +538,7 @@ function PendingShareConfirmation({
         />
       ) : null}
       {pending.impact.dynamic ? (
-        <p className="mt-3 text-[11px] text-[var(--muted-light)]">
+        <p className="mt-3 text-[11px] text-(--muted-light)">
           This list changes with membership. People and agents added later inherit the same access.
         </p>
       ) : null}
@@ -547,7 +547,7 @@ function PendingShareConfirmation({
           type="button"
           disabled={busy}
           onClick={onConfirm}
-          className="h-9 rounded-lg bg-[var(--foreground)] px-3 text-xs font-medium text-[var(--background)] disabled:opacity-40"
+          className="h-9 rounded-lg bg-(--foreground) px-3 text-xs font-medium text-(--background) disabled:opacity-40"
         >
           {pending.kind === 'grant' ? 'Share with everyone listed' : 'Remove access'}
         </button>
@@ -555,7 +555,7 @@ function PendingShareConfirmation({
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="h-9 rounded-lg border border-[var(--border)] px-3 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+          className="h-9 rounded-lg border border-(--border) px-3 text-xs font-medium text-(--foreground) hover:bg-(--surface-subtle) disabled:opacity-40"
         >
           Cancel
         </button>
@@ -583,24 +583,24 @@ function ShareAccessList({
 }) {
   return (
     <section className="mt-6">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Who has access</h3>
-      <div className="mt-2 overflow-hidden rounded-xl border border-[var(--border)]">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">Who has access</h3>
+      <div className="mt-2 overflow-hidden rounded-xl border border-(--border)">
         {loading ? (
-          <div data-testid="share-dialog-loading" className="flex h-20 items-center justify-center text-[var(--muted)]">
+          <div data-testid="share-dialog-loading" className="flex h-20 items-center justify-center text-(--muted)">
             <Loader2 size={16} className="animate-spin" />
           </div>
         ) : grants.length === 0 ? (
-          <div data-testid="share-dialog-empty" className="px-4 py-5 text-sm text-[var(--muted)]">
+          <div data-testid="share-dialog-empty" className="px-4 py-5 text-sm text-(--muted)">
             Only the owner has explicit access.
           </div>
         ) : grants.map((grant) => {
           const entry = entriesByKey.get(`${grant.targetType}:${grant.targetId}`)
           return (
-            <div key={grant.id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-b-0">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">{entryIcon(entry)}</span>
+            <div key={grant.id} className="flex items-center gap-3 border-b border-(--border) px-4 py-3 last:border-b-0">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-subtle) text-(--muted)">{entryIcon(entry)}</span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[var(--foreground)]">{entry?.name ?? 'Unavailable target'}</p>
-                <p className="truncate text-[11px] text-[var(--muted)]">
+                <p className="truncate text-sm font-medium text-(--foreground)">{entry?.name ?? 'Unavailable target'}</p>
+                <p className="truncate text-[11px] text-(--muted)">
                   {describeTargetInheritance(grant.targetType)}
                 </p>
               </div>
@@ -609,7 +609,7 @@ function ShareAccessList({
                 aria-label={`Permission for ${entry?.name ?? targetLabel(grant.targetType)}`}
                 disabled={busy}
                 onChange={(event) => onChangeRole(grant, event.target.value as WorkspaceShareAccessRole)}
-                className="h-8 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-xs"
+                className="h-8 rounded-md border border-(--border) bg-(--background) px-2 text-xs"
               >
                 {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </Select>
@@ -618,7 +618,7 @@ function ShareAccessList({
                 disabled={busy}
                 onClick={() => onRequestRevoke(grant)}
                 aria-label={`Remove access for ${entry?.name ?? targetLabel(grant.targetType)}`}
-                className="rounded-md p-1.5 text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-red-500"
+                className="rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-red-500"
               >
                 <Trash2 size={14} />
               </button>
@@ -642,8 +642,8 @@ function ShareInviteSection({
   onInvite(): void
 }) {
   return (
-    <section className="mt-5 rounded-xl border border-[var(--border)] p-4">
-      <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]"><MailPlus size={15} /> Invite someone to the workspace</div>
+    <section className="mt-5 rounded-xl border border-(--border) p-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-(--foreground)"><MailPlus size={15} /> Invite someone to the workspace</div>
       <div className="mt-3 flex gap-2">
         <input
           type="email"
@@ -651,13 +651,13 @@ function ShareInviteSection({
           aria-label="Guest email"
           onChange={(event) => onInviteEmailChange(event.target.value)}
           placeholder="name@company.com"
-          className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-(--border) bg-(--background) px-3 text-sm"
         />
         <button
           type="button"
           disabled={busy || !inviteEmail.trim()}
           onClick={onInvite}
-          className="rounded-lg border border-[var(--border)] px-3 text-xs font-medium hover:bg-[var(--surface-subtle)] disabled:opacity-40"
+          className="rounded-lg border border-(--border) px-3 text-xs font-medium hover:bg-(--surface-subtle) disabled:opacity-40"
         >
           Invite as guest
         </button>
@@ -679,21 +679,21 @@ function GeneralAccessSection({
 }) {
   return (
     <section className="mt-5">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">General access</h3>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">General access</h3>
       <div
         data-testid="share-dialog-general-access"
-        className="mt-2 flex items-center gap-3 rounded-xl border border-[var(--border)] px-4 py-3"
+        className="mt-2 flex items-center gap-3 rounded-xl border border-(--border) px-4 py-3"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-subtle) text-(--muted)">
           {publicLinksEnabled && publicUrl ? <Globe2 size={15} /> : <Lock size={15} />}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-[var(--foreground)]">
+          <p className="text-sm font-medium text-(--foreground)">
             {!publicLinksEnabled
               ? 'Public links are off for this workspace'
               : publicUrl ? 'Anyone with the link' : 'Restricted'}
           </p>
-          <p className="text-[11px] text-[var(--muted)]">
+          <p className="text-[11px] text-(--muted)">
             {!publicLinksEnabled
               ? 'An owner or admin can turn public links back on in Workspace settings → Sharing & links.'
               : publicUrl
@@ -702,7 +702,7 @@ function GeneralAccessSection({
           </p>
         </div>
         {publicLinksEnabled && publicUrl ? (
-          <button type="button" onClick={onCopyLink} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 text-xs hover:bg-[var(--surface-subtle)]">
+          <button type="button" onClick={onCopyLink} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-(--border) px-2.5 text-xs hover:bg-(--surface-subtle)">
             {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy link'}
           </button>
         ) : null}
@@ -722,16 +722,16 @@ function ImpactList({
 }) {
   return (
     <div className="mt-3">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">{label}</p>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-(--muted)">{label}</p>
       {principals.length === 0 ? (
-        emptyLabel ? <p className="mt-1 text-xs text-[var(--muted)]">{emptyLabel}</p> : null
+        emptyLabel ? <p className="mt-1 text-xs text-(--muted)">{emptyLabel}</p> : null
       ) : (
         <ul className="mt-1 space-y-1">
           {principals.map((principal) => (
-            <li key={`${label}:${principal.principalId}`} className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+            <li key={`${label}:${principal.principalId}`} className="flex items-center gap-2 text-xs text-(--foreground)">
               {principal.kind === 'agent' ? <Bot size={12} /> : <User size={12} />}
               <span className="truncate">{principal.name}</span>
-              {principal.via ? <span className="truncate text-[var(--muted)]">via {principal.via}</span> : null}
+              {principal.via ? <span className="truncate text-(--muted)">via {principal.via}</span> : null}
             </li>
           ))}
         </ul>

@@ -1,0 +1,91 @@
+name: PR Preview
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, closed, ready_for_review, edited, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Internal PR to reconcile (needs-preview label required to deploy)
+        required: true
+        type: string
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    environment: release-control
+    outputs:
+      numbers: ${{ steps.inventory.outputs.numbers }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+      - id: inventory
+        run: node scripts/release/preview-control.mjs inventory
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
+          CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
+
+  preview:
+    if: >-
+      github.event_name != 'schedule' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: release-control
+    timeout-minutes: 40
+    concurrency:
+      group: pr-preview-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      # Always execute protected main, never the PR head or its package scripts.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+      - run: node scripts/release/preview-control.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
+          CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
+
+  reconcile:
+    needs: inventory
+    if: github.event_name == 'schedule' && needs.inventory.outputs.numbers != '[]'
+    runs-on: ubuntu-latest
+    environment: release-control
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        pr: ${{ fromJSON(needs.inventory.outputs.numbers) }}
+    concurrency:
+      group: pr-preview-${{ matrix.pr }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          persist-credentials: false
+      - run: node scripts/release/preview-control.mjs "$PREVIEW_PR_NUMBER"
+        env:
+          PREVIEW_PR_NUMBER: ${{ matrix.pr }}
+          GITHUB_TOKEN: ${{ github.token }}
+          VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
+          CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}

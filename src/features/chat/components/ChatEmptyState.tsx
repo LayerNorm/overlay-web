@@ -45,7 +45,7 @@ export function ChatEmptyHero({
           transition={{ duration: 0.15 }}
           className="text-center max-md:order-1 max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col max-md:items-center max-md:justify-center md:mb-8"
         >
-          <p className="text-3xl text-[var(--foreground)]" style={{ fontFamily: 'var(--font-serif)' }}>
+          <p className="text-3xl text-(--foreground)" style={{ fontFamily: 'var(--font-serif)' }}>
             {greetingLine}
           </p>
         </m.div>
@@ -74,14 +74,14 @@ export function ChatEmptyState({
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12 }}
-            className="mx-auto mt-4 w-full max-w-[36rem] min-w-0 px-0 max-md:order-2 max-md:mb-3 max-md:mt-0 md:mt-5"
+            className="mx-auto mt-4 w-full max-w-xl min-w-0 px-0 max-md:order-2 max-md:mb-3 max-md:mt-0 md:mt-5"
           >
-            <div className="flex items-center gap-2 max-md:flex-nowrap max-md:justify-start max-md:overflow-x-auto max-md:overflow-y-hidden max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center">
+            <div className="flex items-center gap-2 max-md:flex-nowrap max-md:justify-start max-md:overflow-x-auto max-md:overflow-y-hidden max-md:scrollbar-none max-md:[&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center">
               {suggestions.map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   type="button"
-                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border border-[var(--border)] bg-transparent px-3.5 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border border-(--border) bg-transparent px-3.5 text-sm text-(--foreground) transition-colors hover:bg-(--surface-muted)"
                   onClick={() => {
                     if (mode === 'automate') {
                       onAutomateSuggestion?.(id as EmptyAutomateSuggestionId)
@@ -90,7 +90,7 @@ export function ChatEmptyState({
                     }
                   }}
                 >
-                  <Icon size={15} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+                  <Icon size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
                   <span>{label}</span>
                 </button>
               ))}
@@ -100,7 +100,7 @@ export function ChatEmptyState({
       </AnimatePresence>
       </LazyMotion>
       {visible && belowComposer ? (
-        <div className="mx-auto mt-8 w-full max-w-[36rem] min-w-0 px-0">
+        <div className="mx-auto mt-8 w-full max-w-xl min-w-0 px-0">
           {belowComposer}
         </div>
       ) : null}

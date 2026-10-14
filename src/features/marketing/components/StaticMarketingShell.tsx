@@ -15,15 +15,15 @@ import { MarketingNavbar } from '@/features/marketing/components/MarketingNavbar
 export function useStaticMarketingTheme() {
   const { landingTheme, toggleLandingTheme, isLandingDark } = useLandingTheme()
 
-  const shellClass = 'bg-[var(--background)] text-[var(--foreground)]'
-  const panelClass = 'border-[var(--border)] bg-[var(--surface-elevated)]'
-  const mutedClass = 'text-[var(--muted)]'
-  const subtleClass = 'text-[var(--muted-light)]'
-  const dividerClass = 'border-[var(--border)]'
+  const shellClass = 'bg-(--background) text-(--foreground)'
+  const panelClass = 'border-(--border) bg-(--surface-elevated)'
+  const mutedClass = 'text-(--muted)'
+  const subtleClass = 'text-(--muted-light)'
+  const dividerClass = 'border-(--border)'
   const secondaryButtonClass =
-    'border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--surface-muted)]'
+    'border-(--border) text-(--foreground) hover:bg-(--surface-muted)'
   const primaryButtonClass =
-    'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:opacity-90'
+    'bg-(--button-primary-bg) text-(--button-primary-text) hover:opacity-90'
 
   return {
     landingTheme,

@@ -180,7 +180,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                 <button
                   type="button"
                   onClick={() => void markAllRead()}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 >
                   <BellOff size={13} /> Mark all read
                 </button>
@@ -192,21 +192,21 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                   <button
                     type="button"
                     onClick={() => void openNotification(notification)}
-                    className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] ${notification.readAt ? 'opacity-70' : ''}`}
+                    className={`flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-(--surface-subtle) ${notification.readAt ? 'opacity-70' : ''}`}
                   >
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">
                       {notificationIcon(notification.type)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className='block text-sm font-medium text-[var(--foreground)]'>
+                      <span className='block text-sm font-medium text-(--foreground)'>
                         {notification.title}
                       </span>
                       {notification.body ? (
-                        <span className='mt-0.5 line-clamp-2 block text-xs leading-5 text-[var(--muted)]'>
+                        <span className='mt-0.5 line-clamp-2 block text-xs leading-5 text-(--muted)'>
                           {notification.body}
                         </span>
                       ) : null}
-                      <time className="mt-1 block text-[11px] text-[var(--muted-light)]">
+                      <time className="mt-1 block text-[11px] text-(--muted-light)">
                         {
                           // Locale pinned to 'en-US' — SSR and client output are identical.
                           // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
@@ -225,11 +225,11 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                     {notification.readAt ? (
                       <Check
                         size={13}
-                        className='mt-2 shrink-0 text-[var(--muted-light)]'
+                        className='mt-2 shrink-0 text-(--muted-light)'
                       />
                     ) : (
                       <span
-                        className='mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--muted)]'
+                        className='mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-(--muted)'
                         aria-label='Unread'
                       />
                     )}

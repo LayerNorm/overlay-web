@@ -6,7 +6,7 @@ import type { AutomationRepository } from '@/server/automations/AutomationReposi
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
 import { ConvexBillingProviderEventRepository } from '@/server/billing/ConvexBillingProviderEventRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
-import type { BillingProviderEventRepository, BillingWebhookRepository } from '@/server/billing/BillingProviderEventRepository'
+import type { BillingProviderEventRepository } from '@/server/billing/BillingProviderEventRepository'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
 import type { ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import { ConvexConversationCollaborationRepository } from '@/server/conversations/ConvexConversationCollaborationRepository'
@@ -89,6 +89,8 @@ import type { ComputerRepository } from '@/server/computers/ComputerRepository'
 import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
 import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
 import { ConvexSurfaceRepository } from '@/server/surfaces/ConvexSurfaceRepository'
+import type { WorkRepository } from '@/server/work/WorkRepository'
+import { ConvexWorkRepository } from '@/server/work/ConvexWorkRepository'
 
 export interface AppDataRepositories {
   agentProviderAccounts: AgentProviderAccountRepository
@@ -103,7 +105,6 @@ export interface AppDataRepositories {
   automations: AutomationRepository
   billing: BillingRepository
   billingEvents: BillingProviderEventRepository
-  billingWebhooks: BillingWebhookRepository
   chatSuggestions: ChatSuggestionRepository
   computers: ComputerRepository
   conversationCollaboration: ConversationCollaborationRepository
@@ -126,6 +127,7 @@ export interface AppDataRepositories {
   users: UserRepository
   webhooks: WebhookRepository
   usage: UsageRepository
+  work: WorkRepository
   workspaceConnectors: WorkspaceConnectorRepository
   connectedAgents: ConnectedAgentRepository
 }
@@ -152,7 +154,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       automations: new ConvexAutomationRepository(),
       billing: new ConvexBillingRepository(),
       billingEvents: new ConvexBillingProviderEventRepository(),
-      billingWebhooks: new ConvexBillingRepository(),
       chatSuggestions: new ConvexChatSuggestionRepository(),
       computers: new ConvexComputerRepository(),
       conversationCollaboration: new ConvexConversationCollaborationRepository(),
@@ -175,6 +176,7 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       users: new ConvexUserRepository(),
       webhooks: new ConvexWebhookRepository(),
       usage: new ConvexUsageRepository(),
+      work: new ConvexWorkRepository(),
       workspaceConnectors: new ConvexWorkspaceConnectorRepository(),
       connectedAgents: new ConvexConnectedAgentRepository(),
     },

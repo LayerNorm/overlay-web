@@ -1,0 +1,14 @@
+{
+  "sha": "bee84a33a2d4b101bf85d3b179cd30984b556045",
+  "previousDeploymentId": "dpl_H3bjroYBhAhJCx6EY8TAviPNNz3f",
+  "currentDeploymentId": "dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg",
+  "backendRetained": "colorful-chickadee-419",
+  "rollbackVerified": true,
+  "restored": true,
+  "rollbackAliasVerified": true,
+  "rollbackChecks": {
+    "authenticatedIdentity": true,
+    "noteCreateRead": true,
+    "filesUi": true
+  }
+}

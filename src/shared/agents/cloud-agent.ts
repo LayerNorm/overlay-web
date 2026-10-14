@@ -24,6 +24,8 @@ export type CloudAgentState = 'ready' | 'paused' | 'starting' | 'needs_sign_in' 
 
 export type CloudAgentStatus = {
   agentId: string
+  /** Which agent runs on the machine (from the agent's binding), known even when the machine is gone. */
+  adapterId?: string
   provision: { phase: CloudAgentPhase; error?: string; updatedAt: number } | null
   environment: { id: string; status: string; lastSeenAt?: number; createdAt: number } | null
   /** The machine itself, read from the provider. `unknown` when it could not be reached. */
@@ -66,6 +68,8 @@ export function deriveCloudAgentState(input: Pick<CloudAgentStatus, 'provision' 
   if (input.provision?.phase === 'failed') return 'failed'
   if (isCloudAgentStarting(input.provision?.phase)) return 'starting'
   if (!input.environment) return 'unavailable'
+  // The provisioning finished but no machine backs the agent any more (it was deleted, usually when credit ran out).
+  if (input.machine === null && input.provision?.phase === 'ready') return 'unavailable'
   if (input.account?.status === 'needs_reauth') return 'needs_sign_in'
   if (input.machine?.state === 'stopped') return 'paused'
   if (input.machine?.state === 'unknown') return input.environment.status === 'online' ? 'ready' : 'unavailable'

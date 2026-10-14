@@ -27,6 +27,8 @@ import type { useAgentSurfaces } from './use-agent-surfaces'
 import { AgentSurfacesField } from './AgentSurfacesField'
 import { CloudAgentPanel } from './CloudAgentPanel'
 import { CloudAgentAccess } from './CloudAgentAccess'
+import { CloudAgentModel } from './CloudAgentModel'
+import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
 
 type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
@@ -35,6 +37,7 @@ type AgentEditorFormSectionProps = {
   showcase: boolean
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
+  connectedAgentsChecked: boolean
   modelOptions: { value: string; label: string }[]
   valid: boolean
   busy: boolean
@@ -58,6 +61,7 @@ function AgentEditorFormSection({
   showcase,
   computersAvailable,
   connectedAgentsEnabled,
+  connectedAgentsChecked,
   modelOptions,
   valid,
   busy,
@@ -73,6 +77,9 @@ function AgentEditorFormSection({
   cancelEdit,
   archiveAgent,
 }: AgentEditorFormSectionProps) {
+  // One loading state for the whole form: it shows when everything (the agent's connection, computer, reachability,
+  // machine, memories) has loaded, not piece by piece.
+  useEditorLoad(!connectedAgentsChecked || byo.initialLoading || surfaces.initialLoading || computer.initialLoading)
   const {
     name,
     description,
@@ -137,7 +144,7 @@ function AgentEditorFormSection({
   } = computer
 
   return (
-    <div className="mx-auto w-full max-w-2xl pb-24">
+    <div className="mx-auto w-full max-w-2xl">
       {isDefaultMaster ? <MasterAgentNotice /> : null}
 
       <div className="mt-5 space-y-5">
@@ -158,8 +165,8 @@ function AgentEditorFormSection({
           value={agentType}
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
-        <div className="space-y-4">
-          {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} /></> : null}
+        <div className="space-y-5">
+          {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} /><CloudAgentModel agentId={agent.id} modelId={agent.modelId} /></> : null}
           {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}
             connectedAgentsEnabled={connectedAgentsEnabled}
@@ -273,7 +280,7 @@ function AgentEditorFormFooter({
     <>
       {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
       {savedFlash && mode === 'edit'
-        ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p>
+        ? <p role="status" className="text-xs text-(--muted)">Saved.</p>
         : null}
       {mode === 'new' ? (
         <>
@@ -317,6 +324,7 @@ export function AgentEditorView({
   showcase,
   computersAvailable,
   connectedAgentsEnabled,
+  connectedAgentsChecked,
   modelOptions,
   form,
   runtime,
@@ -348,6 +356,7 @@ export function AgentEditorView({
   showcase: boolean
   computersAvailable: boolean
   connectedAgentsEnabled: boolean
+  connectedAgentsChecked: boolean
   modelOptions: { value: string; label: string }[]
   form: ReturnType<typeof useAgentEditorForm>
   runtime: ReturnType<typeof useAgentRuntime>
@@ -386,26 +395,23 @@ export function AgentEditorView({
         />
       ) : undefined}
     >
-      <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full" style={inPanel ? { background: 'transparent' } : undefined}>
+      <AppScreenBody padding="lg" maxWidth="xl" className={inPanel ? 'min-h-full pb-4 sm:pb-4' : 'min-h-full'} style={inPanel ? { background: 'transparent' } : undefined}>
         {loading ? (
-          <div className="mx-auto w-full max-w-2xl space-y-4" aria-label="Loading agent">
-            <div className="h-9 w-48 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
-            <div className="h-28 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
-            <div className="h-36 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
-          </div>
+          <AgentEditorSkeleton />
         ) : loadFailed || (mode === 'edit' && !agent) ? (
-          <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
-            <p className="text-sm font-medium text-[var(--foreground)]">Agent not found</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">It may have been archived, or you may not have access to it.</p>
+          <div className="mx-auto w-full max-w-2xl rounded-xl border border-(--border) bg-(--surface-elevated) p-8 text-center">
+            <p className="text-sm font-medium text-(--foreground)">Agent not found</p>
+            <p className="mt-1 text-xs leading-5 text-(--muted)">It may have been archived, or you may not have access to it.</p>
             <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : mode === 'new' && !canCreate ? (
-          <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
-            <p className="text-sm font-medium text-[var(--foreground)]">You cannot create agents in this workspace</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Guests can chat with agents but cannot create new ones.</p>
+          <div className="mx-auto w-full max-w-2xl rounded-xl border border-(--border) bg-(--surface-elevated) p-8 text-center">
+            <p className="text-sm font-medium text-(--foreground)">You cannot create agents in this workspace</p>
+            <p className="mt-1 text-xs leading-5 text-(--muted)">Guests can chat with agents but cannot create new ones.</p>
             <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : (
+          <EditorLoadGate key={agent?.id ?? 'new'}>
           <AgentEditorFormSection
             mode={mode}
             agent={agent}
@@ -413,6 +419,7 @@ export function AgentEditorView({
             showcase={showcase}
             computersAvailable={computersAvailable}
             connectedAgentsEnabled={connectedAgentsEnabled}
+            connectedAgentsChecked={connectedAgentsChecked}
             modelOptions={modelOptions}
             valid={valid}
             busy={busy}
@@ -428,6 +435,7 @@ export function AgentEditorView({
             cancelEdit={cancelEdit}
             archiveAgent={archiveAgent}
           />
+          </EditorLoadGate>
         )}
       </AppScreenBody>
     </AppScreenShell>

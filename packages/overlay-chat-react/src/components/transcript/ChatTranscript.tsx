@@ -98,12 +98,12 @@ export function ChatTranscript({
       <Fragment key={exchange.id}>
         {showDayDivider ? (
           <div
-            className="flex items-center gap-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]"
+            className="flex items-center gap-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)"
             data-testid="chat-day-divider"
           >
-            <span className="h-px flex-1 bg-[var(--border)]" />
+            <span className="h-px flex-1 bg-(--border)" />
             <span>{dayLabel(exchange.user.createdAt!)}</span>
-            <span className="h-px flex-1 bg-[var(--border)]" />
+            <span className="h-px flex-1 bg-(--border)" />
           </div>
         ) : null}
         {actions.renderExchange(exchange, resolvedPresentation)}

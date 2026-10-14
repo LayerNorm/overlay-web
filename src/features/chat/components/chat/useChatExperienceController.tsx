@@ -1076,6 +1076,7 @@ export function useChatExperienceController({
   return {
     chats,
     activeChatId,
+    activeChatHydrated,
     idParam,
     automationConversationId,
     automationIdParam,

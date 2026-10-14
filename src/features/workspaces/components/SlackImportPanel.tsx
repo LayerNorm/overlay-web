@@ -593,7 +593,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
   if (connectionState === 'loading') {
     return (
       <ImportFlow serviceLabel="Slack" step={null} onBack={onBack}>
-        <div className="flex min-h-56 items-center justify-center px-5 text-sm text-[var(--muted)]">
+        <div className="flex min-h-56 items-center justify-center px-5 text-sm text-(--muted)">
           <Loader2 size={16} className="mr-2 animate-spin" />
           Loading…
         </div>
@@ -718,7 +718,7 @@ function SlackUserStatusBadge({ status }: { status: SlackUser['status'] }) {
           ? 'bg-green-500/10 text-green-600'
           : status === 'invited'
             ? 'bg-amber-500/10 text-amber-600'
-            : 'bg-[var(--surface-subtle)] text-[var(--muted)]'
+            : 'bg-(--surface-subtle) text-(--muted)'
       }`}
     >
       {status === 'member' ? 'In workspace' : status === 'invited' ? 'Invited' : 'New'}
@@ -735,8 +735,8 @@ function SlackUserRow({ user, selected, onToggle }: {
     <div
       className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors ${
         selected
-          ? 'border-[var(--foreground)]/30 bg-[var(--surface-subtle)]'
-          : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]/50'
+          ? 'border-(--foreground)/30 bg-(--surface-subtle)'
+          : 'border-(--border) hover:bg-(--surface-subtle)/50'
       }`}
     >
       <Toggle
@@ -745,12 +745,12 @@ function SlackUserRow({ user, selected, onToggle }: {
         disabled={user.status !== 'new'}
         aria-label={user.displayName}
       />
-      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[10px] text-[var(--muted)]">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-(--surface-subtle) text-[10px] text-(--muted)">
         {user.displayName.slice(0, 2).toUpperCase()}
       </div>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-[var(--foreground)]">{user.displayName}</span>
-        <span className="text-[10px] text-[var(--muted-light)]">{user.email}</span>
+        <span className="block truncate text-sm text-(--foreground)">{user.displayName}</span>
+        <span className="text-[10px] text-(--muted-light)">{user.email}</span>
       </span>
       <SlackUserStatusBadge status={user.status} />
     </div>
@@ -769,9 +769,9 @@ function SlackUserListContent({ usersLoading, usersError, onRetryUsers, users, s
     return (
       <div className="space-y-2">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center gap-3 rounded-lg border border-[var(--border)] p-3">
-            <span className="h-6 w-6 animate-pulse rounded-full bg-[var(--surface-subtle)]" />
-            <span className="h-3 w-32 animate-pulse rounded bg-[var(--surface-subtle)]" />
+          <div key={i} className="flex items-center gap-3 rounded-lg border border-(--border) p-3">
+            <span className="h-6 w-6 animate-pulse rounded-full bg-(--surface-subtle)" />
+            <span className="h-3 w-32 animate-pulse rounded-sm bg-(--surface-subtle)" />
           </div>
         ))}
       </div>
@@ -805,7 +805,7 @@ function SlackUserListContent({ usersLoading, usersError, onRetryUsers, users, s
   }
   return (
     <>
-      <div className="mb-3 flex items-center justify-between text-xs text-[var(--muted)]">
+      <div className="mb-3 flex items-center justify-between text-xs text-(--muted)">
         <span>{users.filter((u) => selectedUserIds.has(u.id)).length} selected</span>
         <span>
           {users.filter((u) => u.status === 'member').length} members ·{' '}
@@ -846,8 +846,8 @@ function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRe
     <div className="px-5 py-4">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">Choose who to invite</h3>
-          <p className="mt-0.5 text-xs text-[var(--muted)]">
+          <h3 className="text-sm font-semibold text-(--foreground)">Choose who to invite</h3>
+          <p className="mt-0.5 text-xs text-(--muted)">
             Invite Slack members to your Overlay workspace before importing channels.
           </p>
         </div>
@@ -865,7 +865,7 @@ function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRe
       />
 
       {showListActions ? (
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-[var(--border)] pt-4">
+        <div className="mt-4 flex items-center justify-end gap-2 border-t border-(--border) pt-4">
           <Button
             size="sm"
             onClick={onSkip}
@@ -896,14 +896,14 @@ function JobsSummaryBar({ jobs, onShowActiveJob }: {
 }) {
   if (jobs.length === 0) return null
   return (
-    <div className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2">
-      <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+    <div className="mb-4 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2">
+      <div className="flex items-center gap-2 text-xs text-(--muted)">
         <CheckCircle2 size={12} />
         {jobs.filter((j) => j.status === 'completed').length} completed import(s).
         {jobs.some((j) => ACTIVE_JOB_STATUSES.has(j.status)) && (
           <button
             type="button"
-            className="text-[var(--foreground)] underline"
+            className="text-(--foreground) underline"
             onClick={onShowActiveJob}
           >
             View active job
@@ -925,8 +925,8 @@ function SlackChannelRow({ channel, selected, onToggle }: {
     <div
       className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors ${
         selected
-          ? 'border-[var(--foreground)]/30 bg-[var(--surface-subtle)]'
-          : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]/50'
+          ? 'border-(--foreground)/30 bg-(--surface-subtle)'
+          : 'border-(--border) hover:bg-(--surface-subtle)/50'
       }`}
     >
       <Toggle
@@ -934,12 +934,12 @@ function SlackChannelRow({ channel, selected, onToggle }: {
         onCheckedChange={onToggle}
         aria-label={displayName}
       />
-      <Icon size={14} className="shrink-0 text-[var(--muted)]" />
+      <Icon size={14} className="shrink-0 text-(--muted)" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-[var(--foreground)]">
+        <span className="block truncate text-sm text-(--foreground)">
           {displayName}
         </span>
-        <span className="text-[10px] text-[var(--muted-light)]">
+        <span className="text-[10px] text-(--muted-light)">
           {CHANNEL_TYPE_LABEL[channel.type]}
           {channel.memberCount > 0 ? ` · ${channel.memberCount} members` : ''}
         </span>
@@ -957,21 +957,21 @@ function ChannelSelectionControls({ selectedCount, onSelectAllPublic, onClearSel
     <div className="mb-3 flex items-center gap-2 text-xs">
       <button
         type="button"
-        className="text-[var(--foreground)] underline"
+        className="text-(--foreground) underline"
         onClick={onSelectAllPublic}
       >
         Select all public
       </button>
-      <span className="text-[var(--muted-light)]">·</span>
+      <span className="text-(--muted-light)">·</span>
       <button
         type="button"
-        className="text-[var(--muted)] underline"
+        className="text-(--muted) underline"
         onClick={onClearSelection}
         disabled={selectedCount === 0}
       >
         Clear
       </button>
-      <span className="ml-auto text-[var(--muted)]">
+      <span className="ml-auto text-(--muted)">
         {selectedCount} selected
       </span>
     </div>
@@ -992,9 +992,9 @@ function ChannelListContent({ channelsLoading, channelsError, onRefreshChannels,
     return (
       <div className="space-y-2">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center gap-3 rounded-lg border border-[var(--border)] p-3">
-            <span className="h-4 w-4 animate-pulse rounded bg-[var(--surface-subtle)]" />
-            <span className="h-3 w-32 animate-pulse rounded bg-[var(--surface-subtle)]" />
+          <div key={i} className="flex items-center gap-3 rounded-lg border border-(--border) p-3">
+            <span className="h-4 w-4 animate-pulse rounded-sm bg-(--surface-subtle)" />
+            <span className="h-3 w-32 animate-pulse rounded-sm bg-(--surface-subtle)" />
           </div>
         ))}
       </div>
@@ -1069,8 +1069,8 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">Choose channels</h3>
-          <p className="mt-0.5 text-xs text-[var(--muted)]">
+          <h3 className="text-sm font-semibold text-(--foreground)">Choose channels</h3>
+          <p className="mt-0.5 text-xs text-(--muted)">
             Select channels to import. Each becomes an Overlay conversation, including DMs and group DMs.
           </p>
         </div>
@@ -1102,7 +1102,7 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
 
       {/* Start import button */}
       {hasChannels ? (
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-[var(--border)] pt-4">
+        <div className="mt-4 flex items-center justify-end gap-2 border-t border-(--border) pt-4">
           <Button
             size="sm"
             onClick={onStartImport}
@@ -1138,19 +1138,19 @@ function ImportFlow({
   const steps = ['Connect', 'People', 'Chats', 'Import', 'Done']
   return (
     <div className="flex flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--border)] px-5 pb-3 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-(--border) px-5 pb-3 pt-4">
         <div className="flex items-center gap-2">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
             >
               <ArrowLeft size={13} />
               All services
             </button>
           ) : null}
-          <span className="text-sm font-semibold text-[var(--foreground)]">Import from {serviceLabel}</span>
+          <span className="text-sm font-semibold text-(--foreground)">Import from {serviceLabel}</span>
         </div>
         {step !== null ? (
           <ol className="flex items-center gap-1.5">
@@ -1162,19 +1162,19 @@ function ImportFlow({
                   <span
                     className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-colors ${
                       done
-                        ? 'bg-[var(--foreground)] text-[var(--background)]'
+                        ? 'bg-(--foreground) text-(--background)'
                         : active
-                          ? 'border border-[var(--foreground)] text-[var(--foreground)]'
-                          : 'border border-[var(--border)] text-[var(--muted-light)]'
+                          ? 'border border-(--foreground) text-(--foreground)'
+                          : 'border border-(--border) text-(--muted-light)'
                     }`}
                   >
                     {done ? <CheckCircle2 size={12} /> : index + 1}
                   </span>
-                  <span className={`text-[11px] ${active ? 'font-semibold text-[var(--foreground)]' : 'text-[var(--muted)]'}`}>
+                  <span className={`text-[11px] ${active ? 'font-semibold text-(--foreground)' : 'text-(--muted)'}`}>
                     {label}
                   </span>
                   {index < steps.length - 1 ? (
-                    <span className="mx-1 h-px w-5 bg-[var(--border)]" />
+                    <span className="mx-1 h-px w-5 bg-(--border)" />
                   ) : null}
                 </li>
               )
@@ -1206,15 +1206,15 @@ function JobProgressHeader({ job, isActive, totalChats, cancelling, onCancel, on
         type="button"
         aria-label="Back to channel picker"
         onClick={onBackToPicker}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
       >
         <ArrowLeft size={14} />
       </button>
       <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-semibold text-[var(--foreground)]">
+        <h3 className="text-sm font-semibold text-(--foreground)">
           {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Importing…'}
         </h3>
-        <p className="mt-0.5 text-xs text-[var(--muted)]">
+        <p className="mt-0.5 text-xs text-(--muted)">
           {totalChats} chat{totalChats === 1 ? '' : 's'} selected
         </p>
       </div>
@@ -1241,7 +1241,7 @@ function JobActiveProgress({ job, isPreparing, processedChats, totalChats }: {
     <>
       {/* Progress bar */}
       <div className="mb-4">
-        <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+        <div className="flex items-center justify-between text-xs text-(--muted)">
           <span>
             {isPreparing
               ? 'Preparing…'
@@ -1249,21 +1249,21 @@ function JobActiveProgress({ job, isPreparing, processedChats, totalChats }: {
           </span>
           <span>{progressPct}%</span>
         </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
+        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-(--surface-subtle)">
           <div
-            className="h-full rounded-full bg-[var(--foreground)] transition-[width] duration-500"
+            className="h-full rounded-full bg-(--foreground) transition-[width] duration-500"
             style={{ width: `${progressPct}%` }}
           />
         </div>
         {job.totalMessages !== undefined && job.totalMessages > 0 ? (
-          <p className="mt-1.5 text-[10px] text-[var(--muted-light)]">
+          <p className="mt-1.5 text-[10px] text-(--muted-light)">
             {job.totalMessages.toLocaleString()} messages imported so far
           </p>
         ) : null}
       </div>
 
       {/* Spinner for active states */}
-      <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+      <div className="flex items-center gap-2 text-xs text-(--muted)">
         <Loader2 size={12} className="animate-spin" />
         {job.status === 'listing_channels'
           ? 'Fetching workspace users and channels…'
@@ -1328,7 +1328,7 @@ function JobProgressView({
 
       {/* Back to picker */}
       {!isActive ? (
-        <div className="mt-4 border-t border-[var(--border)] pt-4">
+        <div className="mt-4 border-t border-(--border) pt-4">
           <Button size="sm" onClick={onBackToPicker}>
             <Download size={13} />
             Import more channels
@@ -1342,7 +1342,7 @@ function JobProgressView({
 function ImportCoverageSummary({ coverage }: { coverage: NonNullable<SlackImportJob['coverage']> }) {
   return (
     <div className="mb-4 space-y-3">
-      <div className="flex items-center gap-2 text-sm text-[var(--foreground)]">
+      <div className="flex items-center gap-2 text-sm text-(--foreground)">
         <CheckCircle2 size={16} className="text-green-500" />
         Successfully imported
       </div>
@@ -1354,7 +1354,7 @@ function ImportCoverageSummary({ coverage }: { coverage: NonNullable<SlackImport
         <CoverageRow label="Private channels" value={coverage.privateChannels} />
         <CoverageRow label="DMs + Group DMs" value={coverage.dms + coverage.mpims} />
       </div>
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-[10px] text-[var(--muted)]">
+      <div className="rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-[10px] text-(--muted)">
         Imported messages are read-only in Overlay. They appear as conversations in your workspace chat.
         Coverage reflects what the connected Slack account can access — not all workspace data may be visible.
       </div>
@@ -1364,9 +1364,9 @@ function ImportCoverageSummary({ coverage }: { coverage: NonNullable<SlackImport
 
 function CoverageRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2">
-      <span className="text-[var(--muted)]">{label}</span>
-      <span className="font-medium text-[var(--foreground)]">{value.toLocaleString()}</span>
+    <div className="flex items-center justify-between rounded-lg border border-(--border) px-3 py-2">
+      <span className="text-(--muted)">{label}</span>
+      <span className="font-medium text-(--foreground)">{value.toLocaleString()}</span>
     </div>
   )
 }
@@ -1393,15 +1393,15 @@ function JobDoneView({
           type="button"
           aria-label="Back to channel picker"
           onClick={onBackToPicker}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <ArrowLeft size={14} />
         </button>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">
+          <h3 className="text-sm font-semibold text-(--foreground)">
             {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Import finished'}
           </h3>
-          <p className="mt-0.5 text-xs text-[var(--muted)]">
+          <p className="mt-0.5 text-xs text-(--muted)">
             {job.totalChannels ?? 0} channel{(job.totalChannels ?? 0) === 1 ? '' : 's'} selected
           </p>
         </div>
@@ -1419,10 +1419,10 @@ function JobDoneView({
       ) : null}
 
       {isCancelled ? (
-        <div className="mb-4 text-xs text-[var(--muted)]">The import was cancelled before it completed.</div>
+        <div className="mb-4 text-xs text-(--muted)">The import was cancelled before it completed.</div>
       ) : null}
 
-      <div className="mt-4 flex items-center gap-2 border-t border-[var(--border)] pt-4">
+      <div className="mt-4 flex items-center gap-2 border-t border-(--border) pt-4">
         <Button size="sm" onClick={onBackToPicker}>
           <Download size={13} />
           Import more channels

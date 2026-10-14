@@ -1,15 +1,15 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { createPortal } from 'react-dom'
-import { ChevronDown } from 'lucide-react'
+import { useImperativeHandle, useRef, useState, type ComponentProps } from 'react'
 import { cn } from '../../utils/cn'
+import { Select as SelectRoot, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select'
 
 export interface ListboxOption<T extends string> {
   value: T
   label: string
-  /** Optional visual grouping, rendered as a non-selectable menu heading. */
+  /** Optional visual grouping, rendered as a non-selectable heading. */
   group?: string
+  disabled?: boolean
 }
 
 export interface ListboxSelectProps<T extends string> {
@@ -23,241 +23,99 @@ export interface ListboxSelectProps<T extends string> {
   id?: string
   name?: string
   'aria-label'?: string
+  'aria-labelledby'?: string
   'aria-describedby'?: string
+  placeholder?: string
   /** Defaults to true so the listbox can escape clipping parents. */
   portal?: boolean
+  /** Native control attributes used by the option-child compatibility wrapper. */
+  triggerProps?: Omit<ComponentProps<typeof SelectTrigger>, 'children' | 'value' | 'className'>
 }
 
 export function ListboxSelect<T extends string>({
-  value,
-  options,
-  onChange,
-  disabled,
-  className,
-  buttonClassName,
-  menuClassName,
-  id,
-  name,
-  'aria-label': ariaLabel,
-  'aria-describedby': ariaDescribedBy,
-  portal = true,
+  value, options, onChange, disabled, className, buttonClassName, menuClassName,
+  id, name, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledBy,
+  'aria-describedby': ariaDescribedBy, placeholder, portal = true, triggerProps,
 }: ListboxSelectProps<T>) {
   const [open, setOpen] = useState(false)
-  const [menuPosition, setMenuPosition] = useState<ListboxMenuPosition | null>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const tabTarget = useRef<HTMLElement | null>(null)
+  useImperativeHandle(triggerProps?.ref, () => triggerRef.current!)
+  // Disabling an open control closes it permanently, rather than reopening it
+  // when an asynchronous busy state clears.
+  if (disabled && open) setOpen(false)
 
-  const selected = options.find((option) => option.value === value)?.label ?? value
-
-  useListboxDismiss(open, rootRef, menuRef, setOpen)
-  useListboxMenuPosition(open, portal, buttonRef, menuRef, setMenuPosition)
-
-  const groupedOptions = groupListboxOptions(options)
-
-  const menu = open ? (
-    <ListboxMenu
-      menuRef={menuRef}
-      portal={portal}
-      menuPosition={menuPosition}
-      menuClassName={menuClassName}
-      groupedOptions={groupedOptions}
-      value={value}
-      onSelect={(optionValue) => {
-        onChange(optionValue)
-        setOpen(false)
-      }}
-    />
-  ) : null
-
-  return (
-    <div ref={rootRef} className={cn('relative min-w-0', className)}>
-      {name ? <input type="hidden" name={name} value={value} /> : null}
-      <button
-        ref={buttonRef}
-        id={id}
-        type="button"
-        disabled={disabled}
-        aria-label={ariaLabel}
-        aria-describedby={ariaDescribedBy}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => {
-          if (disabled) return
-          setMenuPosition(null)
-          setOpen((current) => !current)
-        }}
-        className={cn(
-          'flex min-h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-left text-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--foreground)]',
-          disabled
-            ? 'cursor-not-allowed text-[var(--muted-light)]'
-            : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]',
-          buttonClassName,
-        )}
-      >
-        <span className="min-w-0 truncate">{selected}</span>
-        <ChevronDown size={11} className={cn('shrink-0 transition-transform', open ? 'rotate-180' : '')} />
-      </button>
-      {!portal ? menu : null}
-      {portal && menu && typeof document !== 'undefined' ? createPortal(menu, document.body) : null}
-    </div>
-  )
-}
-
-interface ListboxMenuPosition {
-  left: number
-  top: number
-  width: number
-  maxHeight: number
-}
-
-interface ListboxOptionGroup<T extends string> {
-  group?: string
-  options: ListboxOption<T>[]
-}
-
-function groupListboxOptions<T extends string>(options: ListboxOption<T>[]) {
-  return options.reduce<ListboxOptionGroup<T>[]>((groups, option) => {
-    const last = groups.at(-1)
-    if (last && last.group === option.group) {
-      last.options.push(option)
-    } else {
-      groups.push({ group: option.group, options: [option] })
-    }
-    return groups
+  // Radix forbids empty item values. Index IDs also avoid sentinel collisions with
+  // arbitrary public values. Only the adapter knows these IDs; forms/callbacks
+  // continue using the caller's values (including selectable empty options).
+  const selectedIndex = options.findIndex((option) => option.value === value)
+  const selected = selectedIndex < 0 ? (placeholder ?? value) : options[selectedIndex].label
+  const groups = options.reduce<{ group?: string; indices: number[] }[]>((result, option, index) => {
+    const last = result.at(-1)
+    if (last && last.group === option.group) last.indices.push(index)
+    else result.push({ group: option.group, indices: [index] })
+    return result
   }, [])
-}
 
-function useListboxDismiss(
-  open: boolean,
-  rootRef: RefObject<HTMLDivElement | null>,
-  menuRef: RefObject<HTMLDivElement | null>,
-  setOpen: (open: boolean) => void,
-) {
-  useEffect(() => {
-    if (!open) return
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node
-      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return
-      setOpen(false)
-    }
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [open, rootRef, menuRef, setOpen])
-}
-
-function useListboxMenuPosition(
-  open: boolean,
-  portal: boolean,
-  buttonRef: RefObject<HTMLButtonElement | null>,
-  menuRef: RefObject<HTMLDivElement | null>,
-  setMenuPosition: (position: ListboxMenuPosition | null) => void,
-) {
-  useLayoutEffect(() => {
-    if (!open || !portal) return
-    function updateMenuPosition() {
-      const button = buttonRef.current
-      const menu = menuRef.current
-      if (!button || !menu) return
-      const rect = button.getBoundingClientRect()
-      const padding = 8
-      const gap = 4
-      const spaceBelow = window.innerHeight - rect.bottom - padding
-      const spaceAbove = rect.top - padding
-      const opensUpward = spaceBelow < 144 && spaceAbove > spaceBelow
-      const width = Math.min(rect.width, window.innerWidth - padding * 2)
-      const left = Math.min(Math.max(padding, rect.left), Math.max(padding, window.innerWidth - width - padding))
-      setMenuPosition({
-        left,
-        top: opensUpward
-          ? Math.max(padding, rect.top - Math.min(menu.offsetHeight || 240, spaceAbove) - gap)
-          : rect.bottom + gap,
-        width,
-        maxHeight: Math.max(96, Math.min(240, opensUpward ? spaceAbove : spaceBelow)),
-      })
-    }
-    updateMenuPosition()
-    window.addEventListener('resize', updateMenuPosition)
-    window.addEventListener('scroll', updateMenuPosition, true)
-    return () => {
-      window.removeEventListener('resize', updateMenuPosition)
-      window.removeEventListener('scroll', updateMenuPosition, true)
-    }
-  }, [open, portal, buttonRef, menuRef, setMenuPosition])
-}
-
-interface ListboxMenuProps<T extends string> {
-  menuRef: RefObject<HTMLDivElement | null>
-  portal: boolean
-  menuPosition: ListboxMenuPosition | null
-  menuClassName?: string
-  groupedOptions: ListboxOptionGroup<T>[]
-  value: T
-  onSelect: (value: T) => void
-}
-
-function ListboxMenu<T extends string>({
-  menuRef,
-  portal,
-  menuPosition,
-  menuClassName,
-  groupedOptions,
-  value,
-  onSelect,
-}: ListboxMenuProps<T>) {
   return (
-    <div
-      ref={menuRef}
-      className={cn(
-        'overlay-pop-in max-h-60 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg',
-        portal ? 'fixed z-[10090]' : 'absolute left-0 right-0 top-full z-50 mt-1',
-        menuClassName,
-      )}
-      style={portal ? {
-        left: menuPosition?.left ?? -10_000,
-        top: menuPosition?.top ?? -10_000,
-        width: menuPosition?.width,
-        maxHeight: menuPosition?.maxHeight,
-        visibility: menuPosition ? 'visible' : 'hidden',
-      } : undefined}
-      role="listbox"
-    >
-      {groupedOptions.map(({ group, options: optionsInGroup }) => (
-        <div key={group ?? '__ungrouped'}>
-          {group ? (
-            <p className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">
-              {group}
-            </p>
-          ) : null}
-          {optionsInGroup.map((option) => {
-            const active = option.value === value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={active}
-                className={cn(
-                  'flex w-full items-center px-3 py-2 text-left text-sm transition-colors',
-                  active
-                    ? 'bg-[var(--surface-muted)] font-medium text-[var(--foreground)]'
-                    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]',
-                )}
-                onClick={() => onSelect(option.value)}
-              >
-                {option.label}
-              </button>
-            )
-          })}
-        </div>
-      ))}
+    <div className={cn('relative min-w-0', className)} onChangeCapture={(event) => {
+      // Radix's unnamed internal form control contains private IDs. Do not let
+      // its implementation events leak into the caller's form.
+      if (event.target instanceof HTMLSelectElement) event.stopPropagation()
+    }}>
+      {name ? <input type="hidden" name={name} value={value} disabled={disabled} /> : null}
+      <SelectRoot
+        value={selectedIndex < 0 ? '' : `option-${selectedIndex}`}
+        disabled={disabled}
+        open={open && !disabled}
+        onOpenChange={setOpen}
+        onValueChange={(key) => {
+          const option = options[Number(key.slice('option-'.length))]
+          if (option && !option.disabled) onChange(option.value)
+        }}
+      >
+        <SelectTrigger {...triggerProps} ref={triggerRef} id={id} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-describedby={ariaDescribedBy} className={buttonClassName}>
+          <SelectValue placeholder={selected}>{selected}</SelectValue>
+        </SelectTrigger>
+        <SelectContent
+          portal={portal}
+          className={cn(!portal && 'z-50', menuClassName)}
+          onKeyDown={(event) => {
+            // Radix traps Tab by default. Overlay's form controls should close
+            // and continue through the form, without escaping an enclosing dialog.
+            if (event.key !== 'Tab' || !triggerRef.current) return
+            event.preventDefault()
+            const trigger = triggerRef.current
+            const dialog = trigger.closest('[aria-modal="true"]')
+            const scope = dialog ?? document
+            const controls = Array.from(scope.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
+              .filter((node) => node.tabIndex >= 0 && !node.matches(':disabled') && !node.hasAttribute('data-radix-focus-guard') && !event.currentTarget.contains(node) && node.getClientRects().length > 0)
+            const index = controls.indexOf(trigger)
+            const adjacent = controls[index + (event.shiftKey ? -1 : 1)]
+            const wrapped = controls[event.shiftKey ? controls.length - 1 : 0]
+            tabTarget.current = adjacent ?? wrapped ?? trigger
+            setOpen(false)
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!tabTarget.current) return
+            event.preventDefault()
+            const target = tabTarget.current
+            tabTarget.current = null
+            target.focus()
+          }}
+        >
+          {groups.map(({ group, indices }, groupIndex) => (
+            <SelectGroup key={groupIndex}>
+              {group ? <SelectLabel>{group}</SelectLabel> : null}
+              {indices.map((index) => (
+                <SelectItem key={`option-${index}`} value={`option-${index}`} disabled={options[index].disabled} textValue={options[index].label}>
+                  {options[index].label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </SelectRoot>
     </div>
   )
 }

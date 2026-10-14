@@ -1,0 +1,23 @@
+{
+  "qaPreviewsClosed": [
+    {
+      "pr": 188,
+      "domainStatus": 404,
+      "aliasStatus": 404,
+      "branchAppUrlAbsent": true,
+      "httpsStatus": 404,
+      "redirect": null
+    },
+    {
+      "pr": 189,
+      "domainStatus": 404,
+      "aliasStatus": 404,
+      "branchAppUrlAbsent": true,
+      "httpsStatus": 404,
+      "redirect": null
+    }
+  ],
+  "wildcardPreserved": true,
+  "certificateVerified": true,
+  "stagingDeploymentPreserved": "dpl_5NdvM5PgzUEHukT7Nodj1Aj4h546"
+}

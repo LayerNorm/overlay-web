@@ -65,6 +65,8 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     }
     const service = createCloudAgentMachineService()
     const workspaceId = context.workspace.workspace.id
+    // An agent whose machine is gone gets a fresh one (its old environment is revoked) instead of "already provisioned".
+    await service.reviveIfMachineGone({ actorUserId: context.auth.userId, workspaceId, agentId: body.agentId })
     const started = await server.appData.repositories.cloudAgentProvisions.begin({
       workspaceId, agentId: body.agentId, userId: context.auth.userId, now: Date.now(),
     })

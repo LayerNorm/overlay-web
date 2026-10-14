@@ -822,6 +822,7 @@ export class ConnectedAgentControlPlaneService {
       environmentId: auth.credential.environmentId,
       commandId: acknowledgement.commandId,
       accepted: acknowledgement.accepted,
+      ...(acknowledgement.error ? { errorCode: acknowledgement.error.code, errorMessage: acknowledgement.error.message } : {}),
       now: this.now(),
     })
     if (!updated) throw controlPlaneError('Command was not found or is no longer acknowledgeable', 409, 'command_acknowledgement_rejected')

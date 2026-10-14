@@ -1,4 +1,5 @@
 import 'server-only'
+import { roomListScope } from './room-scope'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
 import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
@@ -23,6 +24,11 @@ function memoryOwnerBody(options: OverlayToolsOptions): { memoryOwnerId?: string
     ? { memoryOwnerId: options.memoryOwnerId }
     : {}
 }
+
+/** In a room others can read, searches return only what the workspace shares. */
+function roomSearchBody(options: OverlayToolsOptions): { workspaceOnly?: true } {
+  return options.sharedRoom ? { workspaceOnly: true } : {}
+}
 import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/features/automations/lib/automation-drafts'
 import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -46,6 +52,7 @@ export async function executeSearchKnowledge(
       {
         query,
         sourceKind: options.memoryEnabled === false ? 'file' : sourceKind,
+        ...roomSearchBody(options),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -199,6 +206,7 @@ export async function executeSearchMemory(
       {
         query,
         sourceKind: 'memory',
+        ...roomSearchBody(options),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -250,6 +258,7 @@ export async function executeSearchMessages(
       {
         query,
         sourceKind: 'message',
+        ...roomSearchBody(options),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -389,11 +398,11 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
 
 export async function executeListSkills(
   options: OverlayToolsOptions,
-  input: { query?: string },
+  input: { query?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/skills?limit=100',
+      `/api/v1/skills?limit=100${roomListScope(options, input.scope) ? `&view=${roomListScope(options, input.scope)}` : ''}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -433,16 +442,17 @@ export async function executeListSkills(
 
 export async function executeListAutomations(
   options: OverlayToolsOptions,
-  input: { query?: string },
+  input: { query?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const res = await callInternalApiGet(
-      '/api/v1/automations?limit=100',
+      `/api/v1/automations?limit=100${roomListScope(options, input.scope) ? `&view=${roomListScope(options, input.scope)}` : ''}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
       options.serverSecret,
       options.userId,
+      options.workspaceId,
     )
     if (!res.ok) {
       return { success: false, error: 'Failed to fetch automations' }

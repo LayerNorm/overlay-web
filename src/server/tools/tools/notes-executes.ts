@@ -1,4 +1,5 @@
 import 'server-only'
+import { roomListScope } from './room-scope'
 
 import {
   appendToNote,
@@ -143,7 +144,7 @@ function readNotesPage(payload: unknown): NotesPage {
 
 export async function executeListNotes(
   options: OverlayToolsOptions,
-  _input: Record<string, never>,
+  input: { scope?: 'personal' | 'workspace' },
 ) {
   try {
     const notes: NoteDoc[] = []
@@ -151,6 +152,8 @@ export async function executeListNotes(
     let truncated = false
     do {
       const params = new URLSearchParams({ limit: '100', sort: 'updatedAt', order: 'desc' })
+      const scope = roomListScope(options, input.scope)
+      if (scope) params.set('view', scope)
       if (cursor) params.set('cursor', cursor)
       const res = await callInternalApiGet(
         `${NOTES_PATH}?${params}`,

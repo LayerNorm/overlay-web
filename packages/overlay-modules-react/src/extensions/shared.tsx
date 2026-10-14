@@ -11,7 +11,7 @@ export function Field({ label, children }: { label: string; children: ReactNode 
       : children
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted-light)]">{label}</label>
+      <label htmlFor={id} className="text-[11px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">{label}</label>
       {control}
     </div>
   )
@@ -19,10 +19,10 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 
 export function EnabledToggle({ enabled, onChange }: { enabled: boolean; onChange(): void }) {
   return (
-    <button type="button" onClick={onChange} className="flex items-center gap-1.5 text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">
+    <button type="button" onClick={onChange} className="flex items-center gap-1.5 text-xs text-(--muted) transition-colors hover:text-(--foreground)">
       {enabled
-        ? <ToggleRight size={18} className="text-[var(--foreground)]" />
-        : <ToggleLeft size={18} className="text-[var(--muted-light)]" />}
+        ? <ToggleRight size={18} className="text-(--foreground)" />
+        : <ToggleLeft size={18} className="text-(--muted-light)" />}
       <span>{enabled ? 'Active' : 'Disabled'}</span>
     </button>
   )

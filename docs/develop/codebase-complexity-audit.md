@@ -18,6 +18,20 @@ sprawl, an unguarded `features/workspaces` kernel, one 1520-line route, ~500
 lines of provably dead code, and a handful of forked duplicates from the
 package-extraction migration.
 
+- **Release workflow prerequisite (2026-10-12):** moved web file upload transport
+  and response error parsing from `KnowledgeView` into `webKnowledgeFilePort`.
+  The host again fits the existing knowledge-surface boundary; behavior is unchanged.
+
+- **Release workflow baseline audit (2026-10-12):** the complexity gate failed
+  on pristine `origin/main` at `c4900589eda3cf1225c6fee4e0d18ad013c24e5a`.
+  Regenerated its legacy size/function inventory from an archive of that exact
+  commit, before applying the migration diff; all thresholds remain unchanged.
+  The discovery compatibility route now delegates to the canonical handler,
+  removing the duplicated implementation rather than allowing the duplicate.
+  Workflow SDK bundles under `.well-known/workflow/` are excluded from source
+  metrics; their authored `src/server` modules remain measured. This prevents
+  a build's ignored compiler output from changing the source ratchet result.
+
 ## 1. Root folder: what stays, what moves, what dies
 
 99 entries at root. The rule going forward: **only toolchain contracts and
@@ -38,7 +52,7 @@ discoverable policy live at root** (`package.json`, configs, `README`,
 - **Kept at root:** `convex/`, `docs/`, `migrations/`, `packages/`, `public/`, `scripts/`, `src/`, `config/`, `examples/`, `.github/`, `.githooks/`, `tests/`, toolchain configs, legal, agent entrypoints.
 - **Done:** `infra/` + `installer/` merged into `deploy/` (`deploy/infra/aws/`, `deploy/installer/`; CI `docker-publish.yml` updated); `workers/` removed (untracked `.wrangler` cache); `landing-copy/` deleted (owner-approved); `fixtures/` → `tests/fixtures/`; `workflows/` → `src/server/workflows/` (new boundary domain, `@/workflows` alias dropped, SDK manifest re-verified via production build); orphaned `app.json`/`eas.json` deleted; `tsconfig.tsbuildinfo` untracked.
 - **`docker/` consolidation landed:** both Dockerfiles + all six compose files moved under `docker/`; `docker-compose.build.yml`/`onprem.build.yml` now use `context: ..` + `dockerfile: docker/Dockerfile`, `env_file` paths became `../.env*`, and `package.json` `app-db:*`/`better-auth:db:*` scripts + `docker-publish.yml` matrix + deploy docs repointed. Also fixed: the publish workflow's installer entry still said `context: installer` — broken since the `deploy/` move; now `context: deploy/installer`, `dockerfile: Dockerfile`.
-- **`scripts/` split landed:** `scripts/ci/` (34 checks/gates/boundary rules), `scripts/qa/` (43 smoke/rehearsal harnesses), `scripts/db/` (17 migrations/backfills/ops), `scripts/lib/` (shared `convex-admin-utils`), root keeps only `dev-setup.sh`, `vercel-ignore-build.sh` (pinned by the Vercel project setting), and `baselines/`. All `package.json`, `.github`, `.githooks`, Dockerfile/compose, and docs references rewritten; moved scripts' `dirname(..)` root resolution and `../src` escapes fixed (`../..` / `@/` aliases).
+- **`scripts/` split landed:** `scripts/ci/` (34 checks/gates/boundary rules), `scripts/qa/` (43 smoke/rehearsal harnesses), `scripts/db/` (17 migrations/backfills/ops), `scripts/lib/` (shared `convex-admin-utils`), root keeps `dev-setup.sh` and `baselines/`; the former staging `vercel-ignore-build.sh` has been retired. All `package.json`, `.github`, `.githooks`, Dockerfile/compose, and docs references rewritten; moved scripts' `dirname(..)` root resolution and `../src` escapes fixed (`../..` / `@/` aliases).
 - **`docs/plans/` created** for the five strategy docs; `check-docs-health` treats `plans/` as internal (outside-root links allowed + existence-checked; public-facing wording rules exempted).
 - **Left in place per owner decision:** `overlay-chrome/`, `overlay-marketing/`, `overlay-mobile/` sibling checkouts. `overlay-desktop/` stays as a gitlink.
 - **Remaining:** `.agents/skills` / `.claude/skills` / `agent/skills` triplication is gitignored local state (no tracked change needed); `docs/security/` is gitignored local state and trips `docs:health` locally when present — pre-existing, unchanged.

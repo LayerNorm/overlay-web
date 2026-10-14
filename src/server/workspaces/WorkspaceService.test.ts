@@ -647,3 +647,112 @@ test('invite rejects an active member but allows re-inviting a removed member', 
   })
   assert.equal(result.id, 'invite_new')
 })
+
+test('owners and admins rename any workspace, the first one included; members cannot', async () => {
+  const renames: string[] = []
+  const make = (role: 'owner' | 'admin' | 'member', workspaceId = 'workspace_personal') => {
+    const actor = access({ workspaceId, role })
+    return new WorkspaceService(repository({
+      async getAccess() { return actor },
+      async renameWorkspace(input) {
+        renames.push(input.name)
+        return { ...actor.workspace, name: input.name }
+      },
+    }))
+  }
+  const rename = (service: WorkspaceService, name: string) => service.renameWorkspace({ actorUserId: 'user_1', workspaceId: 'workspace_personal', name })
+  assert.equal((await rename(make('owner'), '  Maya’s workspace ')).name, 'Maya’s workspace')
+  assert.equal((await rename(make('admin', 'workspace_org'), 'Acme Labs')).name, 'Acme Labs')
+  await assert.rejects(() => rename(make('member'), 'Mine now'), (error) => assertServiceError(error, 'forbidden'))
+  await assert.rejects(() => rename(make('owner'), '   '), (error) => assertServiceError(error, 'validation'))
+  await assert.rejects(() => rename(make('owner'), 'x'.repeat(81)), (error) => assertServiceError(error, 'validation'))
+  assert.deepEqual(renames, ['Maya’s workspace', 'Acme Labs'])
+})
+
+test('countMemberKinds separates people from agents, so one person with the default agent is one human', async () => {
+  const owner = access()
+  const agent: WorkspacePrincipal = {
+    id: 'principal_default_agent',
+    workspaceId: owner.workspace.id,
+    type: 'agent',
+    agentId: 'agent_default',
+    displayName: 'Overlay',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const agentMembership = { ...owner.membership, principalId: agent.id, role: 'member' as const }
+  const service = new WorkspaceService(repository({
+    async getAccess() { return owner },
+    async listPrincipals() { return [owner.principal, agent] },
+    async listMemberships() { return [owner.membership, agentMembership] },
+  }))
+
+  const counts = await service.countMemberKinds({ actorUserId: owner.principal.userId!, workspaceId: owner.workspace.id })
+
+  assert.deepEqual(counts, { memberCount: 2, humanMemberCount: 1 })
+})
+
+test('a person can own three active workspaces; the fourth is refused until one is archived', async () => {
+  const owned = ['workspace_personal', 'workspace_a', 'workspace_b'].map((workspaceId) => access({ workspaceId }))
+  const archived = access({ workspaceId: 'workspace_old', workspaceStatus: 'archived' })
+  const memberOnly = access({ workspaceId: 'workspace_theirs', role: 'member' })
+  const created: string[] = []
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [...owned, archived, memberOnly] },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }))
+
+  await assert.rejects(
+    () => service.createOrganization({ actorUserId: 'user_1', name: 'Fourth' }),
+    (error) => assertServiceError(error, 'free_workspace_limit'),
+  )
+  assert.deepEqual(created, [])
+})
+
+test('archived workspaces and workspaces someone else owns do not count toward the limit', async () => {
+  const owned = ['workspace_personal', 'workspace_a'].map((workspaceId) => access({ workspaceId }))
+  const archived = access({ workspaceId: 'workspace_old', workspaceStatus: 'archived' })
+  const memberOnly = access({ workspaceId: 'workspace_theirs', role: 'member' })
+  const created: string[] = []
+  const service = new WorkspaceService(repository({
+    async listForUser() { return [...owned, archived, memberOnly] },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }))
+
+  await service.createOrganization({ actorUserId: 'user_1', name: 'Third' })
+  assert.deepEqual(created, ['Third'])
+})
+
+test('workspaces on a paid plan do not count toward the free-workspace limit', async () => {
+  const owned = ['workspace_personal', 'workspace_a', 'workspace_b', 'workspace_c'].map((workspaceId) => access({ workspaceId }))
+  const created: string[] = []
+  // Four owned, one on a plan: three free ones is the limit, so a fifth workspace is refused...
+  const service = new WorkspaceService(repository({
+    async listForUser() { return owned },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }), { hasWorkspacePlan: async (workspaceId) => workspaceId === 'workspace_c' })
+
+  await assert.rejects(
+    () => service.createOrganization({ actorUserId: 'user_1', name: 'Fifth' }),
+    (error) => assertServiceError(error, 'free_workspace_limit'),
+  )
+  // ...but with two plans there are only two free ones, so there is room for another.
+  const roomy = new WorkspaceService(repository({
+    async listForUser() { return owned },
+    async createOrganization(input) {
+      created.push(input.name)
+      return access({ workspaceId: 'workspace_new' })
+    },
+  }), { hasWorkspacePlan: async (workspaceId) => workspaceId === 'workspace_b' || workspaceId === 'workspace_c' })
+  await roomy.createOrganization({ actorUserId: 'user_1', name: 'Fifth' })
+  assert.deepEqual(created, ['Fifth'])
+})

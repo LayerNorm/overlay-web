@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-03T23:18:37.687Z",
+  "generatedAt": "2026-10-14T23:00:16.301Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -26,25 +26,24 @@
     }
   },
   "allowedExactDuplicateGroups": [
-    "src/sentry.edge.config.ts|src/sentry.server.config.ts",
-    "src/app/.well-known/oauth-authorization-server/route.ts|src/app/.well-known/openid-configuration/route.ts"
+    "src/sentry.edge.config.ts|src/sentry.server.config.ts"
   ],
   "largeProductionFiles": [
     {
       "file": "packages/overlay-agent-bridge-protocol/src/index.ts",
       "loc": 673,
       "complexity": 143,
-      "recordedAt": "2026-10-03T22:56:37.914Z"
+      "recordedAt": "2026-10-12T14:08:57.759Z"
     },
     {
       "file": "packages/overlay-app-core/src/app-shell.ts",
-      "loc": 520,
+      "loc": 524,
       "complexity": 25,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-app-core/src/automations.ts",
-      "loc": 629,
+      "loc": 630,
       "complexity": 101,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -68,14 +67,14 @@
     },
     {
       "file": "packages/overlay-chat-core/src/messages.ts",
-      "loc": 614,
-      "complexity": 205,
+      "loc": 630,
+      "complexity": 211,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-chat-react/src/components/ChatExperienceHeader.tsx",
-      "loc": 1027,
-      "complexity": 78,
+      "loc": 1080,
+      "complexity": 81,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -110,8 +109,8 @@
     },
     {
       "file": "packages/overlay-modules-react/src/extensions/mcp.tsx",
-      "loc": 592,
-      "complexity": 83,
+      "loc": 601,
+      "complexity": 89,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
@@ -122,20 +121,20 @@
     },
     {
       "file": "packages/overlay-modules-react/src/knowledge/surface-state.ts",
-      "loc": 911,
-      "complexity": 171,
+      "loc": 918,
+      "complexity": 172,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "packages/overlay-modules-react/src/knowledge/surface.tsx",
-      "loc": 525,
+      "loc": 531,
       "complexity": 40,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "packages/overlay-modules-react/src/knowledge/view-header.tsx",
-      "loc": 733,
-      "complexity": 41,
+      "loc": 751,
+      "complexity": 46,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -164,27 +163,21 @@
     },
     {
       "file": "packages/overlay-workspace-contracts/src/types.ts",
-      "loc": 651,
+      "loc": 684,
       "complexity": 6,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
-      "file": "src/app/.well-known/workflow/v1/flow/route.js",
-      "loc": 1616,
-      "complexity": 1,
-      "recordedAt": "2026-10-03T22:56:37.914Z"
-    },
-    {
-      "file": "src/app/.well-known/workflow/v1/step/route.js",
-      "loc": 15098,
-      "complexity": 2181,
-      "recordedAt": "2026-10-03T22:56:37.914Z"
-    },
-    {
       "file": "src/app/app/account/page.tsx",
-      "loc": 604,
-      "complexity": 64,
+      "loc": 591,
+      "complexity": 65,
       "recordedAt": "2026-09-27T13:09:07.924Z"
+    },
+    {
+      "file": "src/app/app/settings/page.tsx",
+      "loc": 502,
+      "complexity": 53,
+      "recordedAt": "2026-10-12T14:08:57.759Z"
     },
     {
       "file": "src/app/auth/(shell)/sign-up/SignUpClient.tsx",
@@ -193,32 +186,26 @@
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
-      "file": "src/app/pricing/PricingClient.tsx",
-      "loc": 801,
-      "complexity": 74,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
       "file": "src/components/layout/AppSidebarAgentsPanel.tsx",
-      "loc": 645,
-      "complexity": 118,
+      "loc": 610,
+      "complexity": 109,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/components/layout/sidebar/AppSidebarChrome.tsx",
-      "loc": 814,
-      "complexity": 51,
+      "loc": 831,
+      "complexity": 49,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/components/layout/sidebar/appSidebarNav.ts",
-      "loc": 562,
-      "complexity": 105,
+      "loc": 619,
+      "complexity": 125,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/components/layout/sidebar/useAppSidebarState.ts",
-      "loc": 844,
+      "loc": 863,
       "complexity": 60,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
@@ -242,26 +229,26 @@
     },
     {
       "file": "src/features/agents/components/AgentEditorForm.tsx",
-      "loc": 1012,
+      "loc": 1006,
       "complexity": 116,
       "recordedAt": "2026-09-19T00:40:49.060Z"
     },
     {
       "file": "src/features/chat/components/ChatInlinePanel.tsx",
-      "loc": 988,
-      "complexity": 129,
+      "loc": 997,
+      "complexity": 130,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/chat/components/DirectMessageExperience.hooks.ts",
-      "loc": 2171,
-      "complexity": 248,
+      "loc": 2209,
+      "complexity": 255,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/features/chat/components/DirectMessageExperience.parts.tsx",
-      "loc": 996,
-      "complexity": 103,
+      "loc": 954,
+      "complexity": 98,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
@@ -277,21 +264,15 @@
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
-      "file": "src/features/chat/components/chat/useChatBillingControls.ts",
-      "loc": 520,
-      "complexity": 82,
-      "recordedAt": "2026-09-27T13:09:07.924Z"
-    },
-    {
       "file": "src/features/chat/components/chat/useChatExperienceController.tsx",
-      "loc": 1183,
+      "loc": 1184,
       "complexity": 77,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
       "file": "src/features/chat/components/chat/useChatModelSelectionController.ts",
-      "loc": 773,
-      "complexity": 99,
+      "loc": 714,
+      "complexity": 82,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -302,8 +283,8 @@
     },
     {
       "file": "src/features/chat/components/collaboration/RoomMessageItem.tsx",
-      "loc": 1218,
-      "complexity": 126,
+      "loc": 1219,
+      "complexity": 130,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -311,24 +292,6 @@
       "loc": 824,
       "complexity": 82,
       "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
-      "file": "src/features/marketing/components/LandingShowcase.tsx",
-      "loc": 870,
-      "complexity": 36,
-      "recordedAt": "2026-09-19T00:40:49.060Z"
-    },
-    {
-      "file": "src/features/marketing/components/MarketingShowcase.tsx",
-      "loc": 507,
-      "complexity": 15,
-      "recordedAt": "2026-09-19T00:40:49.060Z"
-    },
-    {
-      "file": "src/features/marketing/pages/MarketingOverviewPage.tsx",
-      "loc": 940,
-      "complexity": 4,
-      "recordedAt": "2026-09-19T00:40:49.060Z"
     },
     {
       "file": "src/features/settings/components/ProviderConnectionRow.tsx",
@@ -350,31 +313,31 @@
     },
     {
       "file": "src/features/workspaces/components/WorkspaceSettingsPanel.tsx",
-      "loc": 1247,
-      "complexity": 137,
+      "loc": 1303,
+      "complexity": 139,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/agents/ConnectedAgentControlPlaneService.ts",
-      "loc": 1108,
-      "complexity": 214,
+      "loc": 1109,
+      "complexity": 215,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/agents/ManagedAgentSandboxBilling.ts",
-      "loc": 775,
-      "complexity": 209,
+      "loc": 831,
+      "complexity": 233,
       "recordedAt": "2026-09-19T00:40:49.060Z"
     },
     {
       "file": "src/server/agents/workspace-agent-invocation.ts",
-      "loc": 1040,
-      "complexity": 117,
+      "loc": 1051,
+      "complexity": 119,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts",
-      "loc": 1341,
+      "loc": 1342,
       "complexity": 195,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -398,14 +361,14 @@
     },
     {
       "file": "src/server/authorization/authorization-route-policy.ts",
-      "loc": 652,
+      "loc": 666,
       "complexity": 11,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/automations/AutomationService.ts",
-      "loc": 849,
-      "complexity": 165,
+      "loc": 853,
+      "complexity": 167,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -416,13 +379,13 @@
     },
     {
       "file": "src/server/bootstrap.ts",
-      "loc": 754,
+      "loc": 753,
       "complexity": 145,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/config/env-overrides.ts",
-      "loc": 624,
+      "loc": 625,
       "complexity": 183,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -434,49 +397,49 @@
     },
     {
       "file": "src/server/files/FileService.ts",
-      "loc": 788,
+      "loc": 792,
       "complexity": 125,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/tools/mcp-tools.ts",
-      "loc": 953,
-      "complexity": 128,
+      "loc": 961,
+      "complexity": 131,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/tools/tools/build.ts",
-      "loc": 1002,
-      "complexity": 61,
+      "loc": 1042,
+      "complexity": 63,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/tools/tools/overlay-executes.ts",
-      "loc": 1069,
-      "complexity": 167,
+      "loc": 1077,
+      "complexity": 170,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/workspaces/ConvexWorkspaceRepository.ts",
-      "loc": 582,
-      "complexity": 91,
+      "loc": 592,
+      "complexity": 94,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/workspaces/WorkspaceService.ts",
-      "loc": 1038,
-      "complexity": 152,
+      "loc": 1089,
+      "complexity": 162,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/shared/config/overlayConfigSchema.ts",
-      "loc": 1120,
+      "loc": 1121,
       "complexity": 165,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/shared/schemas/api-boundary.ts",
-      "loc": 1062,
+      "loc": 1077,
       "complexity": 16,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     }
@@ -485,18 +448,14 @@
     "src/shared/config/overlayConfigSchema.ts#callback": 1,
     "src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts#executeActTurn": 1,
     "src/server/app-api/v1/settings/route.ts#PATCH": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#doStreamStep": 1,
     "packages/overlay-chat-core/src/visual-sequence.ts#buildAssistantVisualSequence": 1,
     "src/components/providers/AppSettingsProvider.tsx#isAppSettingsPayload": 1,
+    "src/server/agents/ManagedAgentSandboxBilling.ts#meterLease": 1,
     "src/server/app-api/v1/generate-video/route.ts#start": 1,
     "src/shared/tools/output-types.ts#classifyOutputType": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#meterLease": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#assertSelectedProviderConfig": 1,
-    "src/server/agents/ManagedAgentSandboxBilling.ts#meterLease": 1,
     "src/server/bootstrap.ts#assertSelectedProviderConfig": 1,
     "packages/overlay-tools-core/src/mcp-schema-to-zod.ts#jsonSchemaToZod": 1,
     "src/shared/chat/persist-assistant-turn.ts#buildAssistantPersistenceFromSteps": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#buildOverlayToolSet": 1,
     "src/server/tools/tools/build.ts#buildOverlayToolSet": 1,
     "packages/overlay-app-core/src/automations/run-status.ts#applyEvent": 1,
     "src/server/app-api/v1/providers/connections/route.ts#PATCH": 1,
@@ -507,37 +466,33 @@
     "src/server/app-api/v1/conversations/route.ts#GET": 1,
     "packages/overlay-chat-react/src/components/MarkdownMessage.tsx#a": 1,
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts#parseMarkdownLine": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#runWorkspaceAgentTurn": 1,
+    "src/components/layout/sidebar/appSidebarNav.ts#resolveSidebarRouteState": 1,
     "src/server/agents/workspace-agent-invocation.ts#runWorkspaceAgentTurn": 1,
     "packages/overlay-modules-react/src/notes/inline-diff-extension.ts#parseMarkdownLines": 1,
     "src/shared/knowledge/temporal-query.ts#parseTemporalRange": 1,
     "src/server/app-api/v1/browser-task/route.ts#POST": 1,
     "src/features/agents/components/CloudAgentConfig.tsx#CloudAgentConfig": 1,
     "src/features/chat/components/chat/chatDerivedView.tsx#buildChatDerivedView": 1,
-    "src/components/layout/sidebar/appSidebarNav.ts#resolveSidebarRouteState": 1,
     "src/shared/tools/tool-result-summary.ts#summarizeToolResultForTranscript": 1,
     "packages/overlay-agent-host/src/eve-adapter.ts#projectEveEvent": 1,
     "src/features/chat/components/chat/useChatPreferences.ts#callback": 1,
     "src/features/chat/components/chat/chat-send-text.ts#sendTextTurn": 1,
     "src/features/chat/components/chat/toChatTranscriptView.ts#callback": 1,
     "packages/overlay-chat-react/src/components/SourcesPanel.tsx#callback": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#resolveOne": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#buildAutomationUpdateNote": 1,
     "src/server/automations/AutomationService.ts#buildAutomationUpdateNote": 1,
     "src/server/knowledge/mention-resolver.ts#resolveOne": 1,
     "src/shared/agents/elicitation-schema.ts#matchesPropertySchema": 1,
     "packages/overlay-billing/src/adapters/stripe-billing-provider.ts#verifyPaidPlanCheckoutSession": 1,
     "packages/overlay-chat-react/src/components/MediaSlotOutput.tsx#MediaSlotOutput": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#authorizeActRequest": 1,
     "src/server/app-api/v1/conversations/act/turn-authorization.ts#authorizeActRequest": 1,
+    "src/server/database/convex.ts#callConvex": 1,
     "src/server/app-api/v1/conversations/message/route.ts#POST": 1,
     "packages/overlay-chat-core/src/tool-labels.ts#describeComposioIntegrationTool": 1,
     "src/features/chat/components/chat/chat-send-media.ts#sendMediaTurn": 1,
     "src/features/chat/components/chat/useChatTurnActions.ts#handleBranchConversationAtTurn": 1,
     "src/server/app-api/v1/conversations/act/extension-plan/route.ts#POST": 1,
-    "src/server/database/convex.ts#callConvex": 1,
     "packages/overlay-chat-core/src/messages.ts#errorLabel": 1,
-    "src/app/.well-known/workflow/v1/step/route.js#callback": 1,
+    "packages/overlay-chat-core/src/tool-labels.ts#getDescriptiveToolLabel": 1,
     "src/components/agents/AgentAccountDialog.tsx#AccountDialog": 1,
     "src/server/tools/mcp-tools.ts#execute": 1
   },
@@ -585,6 +540,12 @@
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
+      "file": "src/server/app-api/v1/integrations/route.ts",
+      "loc": 277,
+      "complexity": 51,
+      "recordedAt": "2026-10-12T14:08:57.759Z"
+    },
+    {
       "file": "src/server/app-api/v1/memory/route.ts",
       "loc": 251,
       "complexity": 51,
@@ -604,8 +565,8 @@
     },
     {
       "file": "src/server/app-api/v1/settings/route.ts",
-      "loc": 311,
-      "complexity": 86,
+      "loc": 320,
+      "complexity": 89,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     }
   ],
@@ -620,16 +581,9 @@
     {
       "file": "packages/overlay-ui/postcss.config.cjs",
       "layer": "packages/overlay-ui",
-      "loc": 6,
+      "loc": 5,
       "classification": "keep",
       "reason": "Package-local build config consumed by package tooling."
-    },
-    {
-      "file": "packages/overlay-ui/tailwind.config.cjs",
-      "layer": "packages/overlay-ui",
-      "loc": 19,
-      "classification": "keep",
-      "reason": "Package-local Tailwind config consumed by package tooling."
     },
     {
       "file": "src/app/.well-known/apple-app-site-association/route.ts",
@@ -646,13 +600,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/app/.well-known/oauth-authorization-server/route.ts",
-      "layer": "src/app routes",
-      "loc": 10,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
       "file": "src/app/.well-known/oauth-protected-resource/api/mcp/route.ts",
       "layer": "src/app routes",
       "loc": 10,
@@ -663,34 +610,6 @@
       "file": "src/app/.well-known/oauth-protected-resource/route.ts",
       "layer": "src/app routes",
       "loc": 10,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/.well-known/openid-configuration/route.ts",
-      "layer": "src/app routes",
-      "loc": 10,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/.well-known/workflow/v1/flow/route.js",
-      "layer": "src/app routes",
-      "loc": 1616,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/.well-known/workflow/v1/step/route.js",
-      "layer": "src/app routes",
-      "loc": 15098,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/.well-known/workflow/v1/webhook/[token]/route.js",
-      "layer": "src/app routes",
-      "loc": 23,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -788,7 +707,7 @@
     {
       "file": "src/app/(marketing)/home/page.tsx",
       "layer": "src/app routes",
-      "loc": 18,
+      "loc": 17,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -809,7 +728,7 @@
     {
       "file": "src/app/(marketing)/pricing/page.tsx",
       "layer": "src/app routes",
-      "loc": 19,
+      "loc": 18,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -940,6 +859,13 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
+      "file": "src/app/api/auth/preview-login/route.ts",
+      "layer": "src/app/api other",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
       "file": "src/app/api/auth/reset-password/route.ts",
       "layer": "src/app/api other",
       "loc": 45,
@@ -1005,7 +931,7 @@
     {
       "file": "src/app/api/checkout/verify/route.ts",
       "layer": "src/app/api other",
-      "loc": 36,
+      "loc": 13,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1131,7 +1057,7 @@
     {
       "file": "src/app/api/v1/admin/usage/route.ts",
       "layer": "src/app/api/v1 wrappers",
-      "loc": 106,
+      "loc": 58,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1314,6 +1240,13 @@
       "file": "src/app/api/v1/agents/[agentId]/machine/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 13,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/agents/[agentId]/permanent/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1969,6 +1902,13 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
+      "file": "src/app/api/v1/scope/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
       "file": "src/app/api/v1/search/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 6,
@@ -2088,6 +2028,41 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
+      "file": "src/app/api/v1/work/[id]/events/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/work/[id]/move/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/work/[id]/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 12,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/work/context/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/work/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
       "file": "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 10,
@@ -2098,6 +2073,13 @@
       "file": "src/app/api/v1/workspaces/[workspaceId]/audit-export/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 10,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/workspaces/[workspaceId]/billing/auto-top-up/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 6,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2160,7 +2142,7 @@
     {
       "file": "src/app/api/v1/workspaces/[workspaceId]/lifecycle/route.ts",
       "layer": "src/app/api/v1 wrappers",
-      "loc": 10,
+      "loc": 13,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2223,7 +2205,7 @@
     {
       "file": "src/app/app/admin/page.tsx",
       "layer": "src/app routes",
-      "loc": 422,
+      "loc": 353,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2251,7 +2233,7 @@
     {
       "file": "src/app/app/archived/page.tsx",
       "layer": "src/app routes",
-      "loc": 27,
+      "loc": 30,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2440,7 +2422,7 @@
     {
       "file": "src/app/app/settings/page.tsx",
       "layer": "src/app routes",
-      "loc": 484,
+      "loc": 502,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2455,6 +2437,27 @@
       "file": "src/app/app/tools/page.tsx",
       "layer": "src/app routes",
       "loc": 40,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/work/error.tsx",
+      "layer": "src/app routes",
+      "loc": 11,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/work/loading.tsx",
+      "layer": "src/app routes",
+      "loc": 4,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/app/work/page.tsx",
+      "layer": "src/app routes",
+      "loc": 10,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2573,7 +2576,7 @@
     {
       "file": "src/app/layout.tsx",
       "layer": "src/app routes",
-      "loc": 106,
+      "loc": 93,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2690,6 +2693,20 @@
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
     {
+      "file": "src/features/marketing/components/BrandLogo.tsx",
+      "layer": "src/features",
+      "loc": 17,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "src/features/marketing/lib/logos.ts",
+      "layer": "src/features",
+      "loc": 24,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "src/features/showcase/PublicMarketingPageFrame.tsx",
       "layer": "src/features",
       "loc": 16,
@@ -2739,6 +2756,13 @@
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
     },
     {
+      "file": "src/server/workflows/automation-run.ts",
+      "layer": "src/server",
+      "loc": 36,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "src/shared/agents/connected-agent-repository-contract.ts",
       "layer": "src/shared",
       "loc": 453,
@@ -2768,12 +2792,12 @@
     }
   ],
   "totals": {
-    "files": 2062,
-    "code": 255591,
-    "total": 287477,
-    "productionFiles": 1695,
-    "productionCode": 218961,
-    "testFiles": 367,
-    "testCode": 36630
+    "files": 2268,
+    "code": 248153,
+    "total": 282312,
+    "productionFiles": 1851,
+    "productionCode": 208615,
+    "testFiles": 417,
+    "testCode": 39538
   }
 }

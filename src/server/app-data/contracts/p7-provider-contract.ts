@@ -35,8 +35,7 @@ export async function runP7ProviderContract(
   const scope = `p7g_${backend.provider}_${randomUUID().replaceAll('-', '')}`
   const userId = `${scope}_user`
   const foreignUserId = `${scope}_foreign`
-  const budgetUserId = `${scope}_budget`
-  for (const id of [userId, foreignUserId, budgetUserId]) await backend.prepareUser?.(id)
+  for (const id of [userId, foreignUserId]) await backend.prepareUser?.(id)
 
   const audit = new AuditService(backend.audit)
   const administration = new AdministrativeService({ audit, repository: backend.administration })
@@ -75,46 +74,14 @@ export async function runP7ProviderContract(
       )
     })
 
-    await t.test(`${backend.provider} subscription, top-up, and entitlement calculation`, async () => {
-      await seedPaidSubscription(backend.billing, userId, scope)
-      const before = await backend.billing.getSubscriptionByUserIdByServer({ userId })
-      assert.equal(before?.status, 'active')
-      assert.equal(before?.planKind, 'paid')
-      assert.ok(before?.billingAccountId)
-
-      const topUp = {
-        amountCents: 1_000,
-        source: 'manual' as const,
-        status: 'succeeded' as const,
-        stripeCheckoutSessionId: `${scope}_checkout`,
-        stripePaymentIntentId: `${scope}_payment`,
-        userId,
-      }
-      await backend.billing.recordBudgetTopUp(topUp)
-      await backend.billing.recordBudgetTopUp(topUp)
-      await backend.billing.recordBudgetTopUp({ ...topUp, status: 'pending' })
-      await assert.rejects(
-        backend.billing.recordBudgetTopUp({ ...topUp, amountCents: 2_000 }),
-        /different amount/,
-      )
-      const topUps = await backend.billing.listBudgetTopUpsByServer({ userId })
-      assert.equal(topUps.length, 1)
-      assert.equal(topUps[0]?.status, 'succeeded')
+    await t.test(`${backend.provider} a person's own entitlements are always free`, async () => {
+      const account = await backend.billing.ensurePersonalBillingAccount({ userId })
       const entitlements = await backend.billing.getEntitlementsByServer({ userId })
       assert.ok(entitlements)
-      assert.ok(entitlements!.budgetTotalCents >= 1_000)
-      assert.equal(entitlements!.budgetRemainingCents, entitlements!.budgetTotalCents)
-      assert.equal(entitlements!.allowanceUsedCents, 0)
-      assert.equal(entitlements!.allowancePercentUsed, 0)
-      assert.equal(entitlements!.topUpBalanceCents, 1_000)
-      assert.equal(entitlements!.billingAccountId, before?.billingAccountId)
-      const backfill = await backend.billing.backfillPersonalBillingAccountByServer({ userId })
-      assert.equal(backfill.billingAccountId, before?.billingAccountId)
-      assert.equal(backfill.complete, true)
-      const parity = await backend.billing.getPersonalBillingBalanceParityByServer({ userId })
-      assert.equal(parity?.matches, true, parity?.differences.join(', '))
-      assert.ok((await backend.billing.listSubscriptionVerificationRowsByServer({ limit: 500 }))
-        .some((row) => row.userId === userId && row.billingAccountId === before?.billingAccountId))
+      assert.equal(entitlements!.planKind, 'free')
+      assert.equal(entitlements!.budgetTotalCents, 0)
+      assert.equal(entitlements!.budgetRemainingCents, 0)
+      assert.equal(entitlements!.billingAccountId ?? account.billingAccountId, account.billingAccountId)
     })
 
     await t.test(`${backend.provider} usage reserve/finalize/release and idempotency`, async () => {
@@ -125,10 +92,22 @@ export async function runP7ProviderContract(
         kind: 'ask',
         ...reservationSecurityContext(reservationId),
         reservationId,
-        reservedCents: 100,
+        reservedCents: 0,
         userId,
       })
       assert.equal(reserved.ok, true)
+      // A person's own account has no credit: anything but free work is refused.
+      const paidId = `${scope}_paid`
+      const refused = await backend.usage.reserve({
+        entitlements,
+        kind: 'ask',
+        ...reservationSecurityContext(paidId),
+        reservationId: paidId,
+        reservedCents: 100,
+        userId,
+      })
+      assert.equal(refused.ok, false)
+      assert.equal(refused.ok ? null : refused.code, 'insufficient_budget')
       await assert.rejects(
         backend.usage.reserve({
           entitlements,
@@ -136,13 +115,13 @@ export async function runP7ProviderContract(
           ...reservationSecurityContext(reservationId),
           modelId: 'different/model',
           reservationId,
-          reservedCents: 100,
+          reservedCents: 0,
           userId,
         }),
         /mismatch|different parameters/,
       )
-      assert.equal((await backend.usage.finalize({ actualCostCents: 75, reservationId, userId })).status, 'finalized')
-      assert.equal((await backend.usage.finalize({ actualCostCents: 75, reservationId, userId })).status, 'finalized')
+      assert.equal((await backend.usage.finalize({ actualCostCents: 0, reservationId, userId })).status, 'finalized')
+      assert.equal((await backend.usage.finalize({ actualCostCents: 0, reservationId, userId })).status, 'finalized')
 
       const releaseId = `${scope}_release`
       assert.equal((await backend.usage.reserve({
@@ -150,7 +129,7 @@ export async function runP7ProviderContract(
         kind: 'generation',
         ...reservationSecurityContext(releaseId),
         reservationId: releaseId,
-        reservedCents: 50,
+        reservedCents: 0,
         userId,
       })).ok, true)
       assert.equal((await backend.usage.release({ reservationId: releaseId, userId })).status, 'released')
@@ -162,12 +141,12 @@ export async function runP7ProviderContract(
         kind: 'generation',
         ...reservationSecurityContext(overageId),
         reservationId: overageId,
-        reservedCents: 10,
+        reservedCents: 0,
         userId,
       })).ok, true)
       await backend.usage.markStarted({ reservationId: overageId, userId })
       await assert.rejects(
-        backend.usage.finalize({ actualCostCents: 11, reservationId: overageId, userId }),
+        backend.usage.finalize({ actualCostCents: 1, reservationId: overageId, userId }),
         /actual_cost_exceeds_reservation/,
       )
 
@@ -180,44 +159,9 @@ export async function runP7ProviderContract(
       }
       assert.equal((await backend.usage.recordBatch({ events: [event], operationId, userId })).recorded, 1)
       assert.equal((await backend.usage.recordBatch({ events: [event], operationId, userId })).recorded, 0)
+      // Usage outside a paid workspace is recorded but never charged to the person.
       const after = await requireEntitlements(backend.usage, userId)
-      assert.equal(after.budgetUsedCents, 80)
-      assert.equal(after.allowanceUsedCents, 80)
-      assert.equal(after.topUpBalanceCents, 1_000)
-    })
-
-    await t.test(`${backend.provider} enforces one budget under 20 concurrent reservations`, async () => {
-      await seedPaidSubscription(backend.billing, budgetUserId, `${scope}_budget`)
-      await backend.billing.recordBudgetTopUp({
-        amountCents: 100,
-        source: 'manual',
-        status: 'succeeded',
-        stripePaymentIntentId: `${scope}_budget_payment`,
-        userId: budgetUserId,
-      })
-      const initial = await requireEntitlements(backend.usage, budgetUserId)
-      const perReservationCents = initial.budgetRemainingCents! / 10
-      const attempts = await Promise.all(Array.from({ length: 20 }, async (_, index) => {
-        const reservationId = `${scope}_concurrent_${index}`
-        try {
-          const result = await backend.usage.reserve({
-            entitlements: await requireEntitlements(backend.usage, budgetUserId),
-            kind: 'agent',
-            ...reservationSecurityContext(reservationId),
-            reservationId,
-            reservedCents: perReservationCents,
-            userId: budgetUserId,
-          })
-          return { reservationId, ok: result.ok }
-        } catch (_error) {
-          return { reservationId, ok: false }
-        }
-      }))
-      const accepted = attempts.filter((attempt) => attempt.ok)
-      assert.equal(accepted.length, 10)
-      for (const attempt of accepted) {
-        await backend.usage.release({ reservationId: attempt.reservationId, userId: budgetUserId })
-      }
+      assert.equal(after.budgetUsedCents, 0)
     })
 
     await t.test(`${backend.provider} recovers provider-work and expired reservations`, async () => {
@@ -227,7 +171,7 @@ export async function runP7ProviderContract(
         kind: 'generation',
         ...reservationSecurityContext(reconcileId),
         reservationId: reconcileId,
-        reservedCents: 25,
+        reservedCents: 0,
         userId,
       })
       assert.equal((await backend.usage.markStarted({
@@ -240,7 +184,7 @@ export async function runP7ProviderContract(
         userId,
       })).status, 'reconcile_required')
       assert.equal((await backend.usage.finalize({
-        actualCostCents: 20,
+        actualCostCents: 0,
         reservationId: reconcileId,
         userId,
       })).status, 'finalized')
@@ -252,7 +196,7 @@ export async function runP7ProviderContract(
         kind: 'ask',
         ...reservationSecurityContext(expiredId),
         reservationId: expiredId,
-        reservedCents: 10,
+        reservedCents: 0,
         userId,
       })
       const reconciled = await backend.usage.reconcileExpired({ now: Date.now() })
@@ -266,7 +210,7 @@ export async function runP7ProviderContract(
         kind: 'generation',
         ...reservationSecurityContext(releaseId),
         reservationId: releaseId,
-        reservedCents: 25,
+        reservedCents: 0,
         userId,
       })
       await backend.usage.markStarted({ reservationId: releaseId, userId })
@@ -296,7 +240,7 @@ export async function runP7ProviderContract(
         userId,
       }), { idempotent: true, status: 'released' })
       await assert.rejects(backend.usage.resolveReconciliation({
-        actualCostCents: 20,
+        actualCostCents: 0,
         evidence,
         reservationId: releaseId,
         resolution: 'finalize',
@@ -309,7 +253,7 @@ export async function runP7ProviderContract(
         kind: 'generation',
         ...reservationSecurityContext(finalizeId),
         reservationId: finalizeId,
-        reservedCents: 25,
+        reservedCents: 0,
         userId,
       })
       await backend.usage.markStarted({ reservationId: finalizeId, userId })
@@ -319,7 +263,7 @@ export async function runP7ProviderContract(
         userId,
       })
       const finalized = await backend.usage.resolveReconciliation({
-        actualCostCents: 20,
+        actualCostCents: 0,
         evidence: {
           reason: 'Provider usage record confirms the completed request.',
           reference: `${scope}_provider_usage_record`,
@@ -330,7 +274,7 @@ export async function runP7ProviderContract(
         userId,
       })
       assert.deepEqual(finalized, {
-        finalizedCents: 20,
+        finalizedCents: 0,
         idempotent: false,
         status: 'finalized',
       })
@@ -394,11 +338,6 @@ export async function runP7ProviderContract(
       })
       assert.equal(await administration.canViewAudit(foreignUserId), true)
       assert.equal(await administration.canManageAdministrators(foreignUserId), false)
-      const adjusted = await backend.billing.adjustAdministrativeBudget({ amountCents: 250, userId })
-      assert.ok(adjusted.budgetTotalCents >= 1_250)
-      const usageRows = await backend.billing.listAdministrativeUsage({ userId })
-      assert.equal(usageRows.length, 1)
-      assert.equal(usageRows[0]?.userId, userId)
       await audit.record({
         action: 'p7.contract.audit',
         actorType: 'user',
@@ -421,24 +360,10 @@ export async function runP7ProviderContract(
       await backend.deleteUser(userId)
       assert.equal((await apiKeys.list({ userId })).length, 0)
       assert.equal(await backend.administration.get({ userId }), null)
-      assert.equal(await backend.billing.getSubscriptionByUserIdByServer({ userId }), null)
     })
   } finally {
-    for (const id of [userId, foreignUserId, budgetUserId]) await backend.cleanupUser?.(id)
+    for (const id of [userId, foreignUserId]) await backend.cleanupUser?.(id)
   }
-}
-
-async function seedPaidSubscription(billing: BillingRepository, userId: string, scope: string): Promise<void> {
-  await billing.upsertSubscription({
-    currentPeriodEnd: Date.now() + 30 * 24 * 60 * 60 * 1000,
-    currentPeriodStart: Date.now(),
-    email: `${scope}@example.test`,
-    planAmountCents: 800,
-    planKind: 'paid',
-    status: 'active',
-    tier: 'pro',
-    userId,
-  })
 }
 
 async function requireEntitlements(usage: UsageRepository, userId: string) {

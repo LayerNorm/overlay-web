@@ -3,12 +3,20 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
-import { Button, EmptyState, Select, Toggle } from '@overlay/ui/primitives'
+import { Button, EmptyState, Toggle } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
 import type { WorkspaceManagementClient } from '@/shared/workspaces/types'
+import {
+  PAID_PLAN_MAX_AMOUNT_CENTS,
+  PAID_PLAN_MIN_AMOUNT_CENTS,
+  TOP_UP_MAX_AMOUNT_CENTS,
+  TOP_UP_MIN_AMOUNT_CENTS,
+} from '@/shared/billing/billing-pricing'
+import { DollarAmountInput } from './DollarAmountInput'
+import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
+import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
 
-const AMOUNTS = [800, 2_000, 5_000, 10_000, 20_000] as const
 
 type BillingState =
   | { status: 'loading' }
@@ -22,24 +30,11 @@ export function WorkspaceBillingSection({
   client: WorkspaceManagementClient
   workspace: WorkspaceSummary
 }) {
-  const router = useRouter()
   const billing = useWorkspaceBilling(client, workspace)
   const { state } = billing
 
-  if (workspace.kind !== 'organization') {
-    return (
-      <EmptyState
-        className="min-h-72 px-6 py-12"
-        icon={<WalletCards size={28} />}
-        title="Personal billing stays personal"
-        description="Your subscription and top-up credits remain in Account. Workspace wallets are only for organization workspaces."
-        action={<Button size="sm" onClick={() => router.push('/app/settings?section=account')}>Open account billing</Button>}
-      />
-    )
-  }
-
   if (state.status === 'loading') {
-    return <div className="flex min-h-72 items-center justify-center text-sm text-[var(--muted)]"><Loader2 size={16} className="mr-2 animate-spin" />Loading workspace billing…</div>
+    return <div className="flex min-h-72 items-center justify-center text-sm text-(--muted)"><Loader2 size={16} className="mr-2 animate-spin" />Loading workspace billing…</div>
   }
   if (state.status === 'error') {
     return (
@@ -70,7 +65,6 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
   const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
 
   useEffect(() => {
-    if (workspace.kind !== 'organization') return
     const controller = new AbortController()
     setState({ status: 'loading' })
     void client
@@ -88,7 +82,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
         }
       })
     return () => controller.abort()
-  }, [client, refreshKey, workspace.id, workspace.kind])
+  }, [client, refreshKey, workspace.id])
 
   useEffect(() => {
     const sessionId = searchParams?.get('workspace_session_id')
@@ -97,7 +91,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
       : searchParams?.get('workspace_topup_success') === 'true'
         ? 'budget_topup'
         : null
-    if (!sessionId || !kind || workspace.kind !== 'organization') return
+    if (!sessionId || !kind) return
     setBusy('verify')
     void client
       .verifyBillingCheckout(workspace.id, { kind, sessionId })
@@ -114,7 +108,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
           '/app/settings?section=workspace&workspace_tab=billing',
         )
       })
-  }, [client, router, searchParams, workspace.id, workspace.kind])
+  }, [client, router, searchParams, workspace.id])
 
   const run = async (key: string, operation: () => Promise<{ url: string | null } | WorkspaceBillingSummaryResponse>) => {
     setBusy(key)
@@ -166,15 +160,13 @@ function WorkspaceBillingLoaded({
       {message ? (
         <div
           role='status'
-          className='rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm text-[var(--foreground)]'
+          className='rounded-xl border border-(--border) bg-(--surface-subtle) px-4 py-3 text-sm text-(--foreground)'
         >
           {message}
         </div>
       ) : null}
 
-      {!summary.rollout.eligible ? (
-        <RolloutNotice stage={summary.rollout.stage} />
-      ) : !summary.initialized ? (
+      {!summary.initialized ? (
         <WalletSetupCard
           canManage={summary.canManage}
           busy={busy}
@@ -183,16 +175,6 @@ function WorkspaceBillingLoaded({
       ) : (
         <WalletOverview client={client} workspaceId={workspaceId} summary={summary} billing={billing} />
       )}
-    </div>
-  )
-}
-
-function RolloutNotice({ stage }: { stage: string }) {
-  return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
-      <p className="text-sm font-medium text-[var(--foreground)]">Controlled rollout</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Workspace wallets are not enabled for this workspace yet. Personal billing remains unchanged until this workspace is selected.</p>
-      <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-[var(--muted-light)]">Stage: {stage}</p>
     </div>
   )
 }
@@ -207,13 +189,13 @@ function WalletSetupCard({
   onSetup: () => void
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] p-5">
+    <div className="rounded-xl border border-(--border) p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-[var(--foreground)]">Set up the workspace wallet</p>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-[var(--muted)]">Shared agents, files, automations, browser runs, and other hosted work will use this wallet. If it is empty, shared work stops—there is no personal fallback.</p>
+          <p className="text-sm font-medium text-(--foreground)">Free</p>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-(--muted)">Everyone working in this workspace shares one free weekly allowance of chat turns. Add a plan to give the workspace its own pool of credits for agents, files, automations, browser runs, and other hosted work, shared by every member.</p>
         </div>
-        {canManage ? <Button size="sm" disabled={busy !== null} onClick={onSetup}>{busy === 'initialize' ? <Loader2 size={13} className="animate-spin" /> : <WalletCards size={13} />}Set up wallet</Button> : null}
+        {canManage ? <Button size="sm" disabled={busy !== null} onClick={onSetup}>{busy === 'initialize' ? <Loader2 size={13} className="animate-spin" /> : <WalletCards size={13} />}Add a plan</Button> : null}
       </div>
     </div>
   )
@@ -231,7 +213,7 @@ function WalletOverview({
   billing: WorkspaceBilling
 }) {
   const { busy, run } = billing
-  const checkoutAvailable = summary.canManage && summary.rollout.checkoutEnabled
+  const checkoutAvailable = summary.canTopUp
 
   return (
     <>
@@ -240,13 +222,25 @@ function WalletOverview({
         <WalletSubscriptionCard summary={summary} />
       </div>
 
+      {summary.usage ? <WorkspaceUsagePanel usage={summary.usage} /> : null}
+
+      {summary.autoTopUp ? (
+        <WorkspaceAutoTopUpCard
+          key={`${summary.autoTopUp.enabled}:${summary.autoTopUp.amountCents}:${summary.autoTopUp.monthlyLimitCents}`}
+          autoTopUp={summary.autoTopUp}
+          canManage={summary.canManage}
+          periodEnd={summary.subscription.currentPeriodEnd}
+          busy={busy === 'auto-top-up'}
+          onSave={(input) => void run('auto-top-up', () => client.updateBillingAutoTopUp(workspaceId, input))}
+        />
+      ) : null}
+
       {checkoutAvailable ? <CheckoutActions client={client} workspaceId={workspaceId} summary={summary} billing={billing} /> : null}
 
       {summary.canManage ? (
         <div className="flex justify-end"><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspaceId))}>Manage billing</Button></div>
-      ) : <p className="text-xs text-[var(--muted)]">Only workspace owners and admins can add credits or change the subscription.</p>}
+      ) : <p className="text-xs text-(--muted)">{summary.canTopUp ? 'Only workspace owners and admins can change the subscription.' : 'Only workspace owners and admins can add credits or change the subscription.'}</p>}
 
-      {summary.observability ? <MarginPanel report={summary.observability} /> : null}
     </>
   )
 }
@@ -254,20 +248,20 @@ function WalletOverview({
 function WalletCreditsCard({ summary }: { summary: WorkspaceBillingSummaryResponse }) {
   const allowanceUsed = Math.min(100, Math.max(0, summary.credits.allowancePercentUsed))
   return (
-    <div className="rounded-xl border border-[var(--border)] p-4">
+    <div className="rounded-xl border border-(--border) p-4">
       <div className="flex items-baseline justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-[var(--foreground)]">Workspace credits</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">{formatCredits(summary.credits.remaining)} remaining</p>
+          <p className="text-sm font-medium text-(--foreground)">Workspace credits</p>
+          <p className="mt-1 text-xs text-(--muted)">{formatCredits(summary.credits.remaining)} remaining</p>
         </div>
-        <span className="text-xs text-[var(--muted)]">{allowanceUsed.toFixed(0)}% allowance used</span>
+        <span className="text-xs text-(--muted)">{allowanceUsed.toFixed(0)}% allowance used</span>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-subtle)]" aria-label={`${allowanceUsed.toFixed(0)}% allowance used`}>
-        <div className="h-full rounded-full bg-[var(--foreground)] transition-[width]" style={{ width: `${allowanceUsed}%` }} />
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-(--surface-subtle)" aria-label={`${allowanceUsed.toFixed(0)}% allowance used`}>
+        <div className="h-full rounded-full bg-(--foreground) transition-[width]" style={{ width: `${allowanceUsed}%` }} />
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
-        <div><dt className="text-[var(--muted-light)]">Used this period</dt><dd className="mt-1 text-[var(--foreground)]">{formatCredits(summary.credits.used)}</dd></div>
-        <div><dt className="text-[var(--muted-light)]">Top-up credits</dt><dd className="mt-1 text-[var(--foreground)]">{formatCredits(summary.credits.topUpBalance)}</dd></div>
+        <div><dt className="text-(--muted-light)">Used this period</dt><dd className="mt-1 text-(--foreground)">{formatCredits(summary.credits.used)}</dd></div>
+        <div><dt className="text-(--muted-light)">Top-up credits</dt><dd className="mt-1 text-(--foreground)">{formatCredits(summary.credits.topUpBalance)}</dd></div>
       </dl>
     </div>
   )
@@ -275,10 +269,10 @@ function WalletCreditsCard({ summary }: { summary: WorkspaceBillingSummaryRespon
 
 function WalletSubscriptionCard({ summary }: { summary: WorkspaceBillingSummaryResponse }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] p-4">
-      <p className="text-sm font-medium text-[var(--foreground)]">{summary.subscription.planKind === 'paid' ? `$${summary.subscription.planAmountCents / 100}/month` : 'No subscription'}</p>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">One workspace wallet. Unlimited members. Owners and admins control funding.</p>
-      {summary.subscription.status ? <span className="mt-3 inline-flex rounded-full bg-[var(--surface-subtle)] px-2 py-1 text-[10px] font-medium capitalize text-[var(--muted)]">{summary.subscription.status}</span> : null}
+    <div className="rounded-xl border border-(--border) p-4">
+      <p className="text-sm font-medium text-(--foreground)">{summary.subscription.planKind === 'paid' ? `$${summary.subscription.planAmountCents / 100}/month` : 'No subscription'}</p>
+      <p className="mt-1 text-xs leading-5 text-(--muted)">One plan for the whole workspace. Unlimited members. Owners and admins control funding.</p>
+      {summary.subscription.status ? <span className="mt-3 inline-flex rounded-full bg-(--surface-subtle) px-2 py-1 text-[10px] font-medium capitalize text-(--muted)">{summary.subscription.status}</span> : null}
     </div>
   )
 }
@@ -308,70 +302,23 @@ function CheckoutActions({
   return (
     <>
       <div className="grid gap-3 lg:grid-cols-2">
-        <BillingActionCard title="Monthly workspace credits" description="Choose a recurring allowance from $8 to $200. Existing personal subscriptions are untouched.">
-          <Select aria-label="Workspace monthly plan" value={String(planAmountCents)} onChange={(event) => setPlanAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100}/month`}</option>)}</Select>
+        {summary.canManage ? <BillingActionCard title="Monthly workspace credits" description="Choose a monthly amount from $8 to $500. It becomes the workspace’s credit each month.">
+          <DollarAmountInput label="Workspace monthly plan" valueCents={planAmountCents} minCents={PAID_PLAN_MIN_AMOUNT_CENTS} maxCents={PAID_PLAN_MAX_AMOUNT_CENTS} suffix="/month" onChange={setPlanAmountCents} />
           <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspaceId, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
-        </BillingActionCard>
-        <BillingActionCard title="One-time top-up" description="Add credits directly to this workspace. Personal-wallet transfers are not supported.">
-          <Select aria-label="Workspace top-up" value={String(topUpAmountCents)} onChange={(event) => setTopUpAmountCents(Number(event.target.value))}>{AMOUNTS.map((amount) => <option key={amount} value={amount}>{`$${amount / 100} in credits`}</option>)}</Select>
+        </BillingActionCard> : null}
+        <BillingActionCard title="One-time top-up" description="Add credits to this workspace now. Like the monthly credit, it does not carry over to next month.">
+          <DollarAmountInput label="Workspace top-up" valueCents={topUpAmountCents} minCents={TOP_UP_MIN_AMOUNT_CENTS} maxCents={TOP_UP_MAX_AMOUNT_CENTS} suffix="credit" onChange={setTopUpAmountCents} />
           <Button size="sm" variant="ghost" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('topup', () => client.createBillingTopUp(workspaceId, { amountCents: topUpAmountCents, ...currentLegalAcceptancePayload() }))}>{busy === 'topup' ? <Loader2 size={13} className="animate-spin" /> : null}Add credits</Button>
         </BillingActionCard>
       </div>
 
-      <div className="flex items-start gap-3 text-xs leading-5 text-[var(--muted)]"><Toggle checked={acceptedCheckoutTerms} onCheckedChange={setAcceptedCheckoutTerms} aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms" /><span>I agree to the current <a className="underline" href="/terms">Terms of Service</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing and cancellation terms</a>.</span></div>
+      <div className="flex items-start gap-3 text-xs leading-5 text-(--muted)"><Toggle checked={acceptedCheckoutTerms} onCheckedChange={setAcceptedCheckoutTerms} aria-label="Agree to the Terms of Service, Privacy Policy, and billing terms" /><span>I agree to the current <a className="underline" href="/terms">Terms of Service</a>, <a className="underline" href="/privacy">Privacy Policy</a>, and <a className="underline" href="/refunds">billing and cancellation terms</a>.</span></div>
     </>
   )
 }
 
 function BillingActionCard({ children, description, title }: { children: ReactNode; description: string; title: string }) {
-  return <div className="rounded-xl border border-[var(--border)] p-4"><p className="text-sm font-medium text-[var(--foreground)]">{title}</p><p className="mt-1 min-h-10 text-xs leading-5 text-[var(--muted)]">{description}</p><div className="mt-4 flex items-center gap-2">{children}</div></div>
-}
-
-function MarginPanel({ report }: { report: NonNullable<WorkspaceBillingSummaryResponse['observability']> }) {
-  return (
-    <div
-      data-testid='workspace-margin-report'
-      className='rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4'
-    >
-      <div className='flex items-center justify-between gap-3'>
-        <p className='text-sm font-medium text-[var(--foreground)]'>
-          Billing health
-        </p>
-        <span className='text-[10px] uppercase tracking-[0.14em] text-[var(--muted-light)]'>
-          Owners & admins
-        </span>
-      </div>
-      <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
-        <Metric label="Provider cost" value={`$${(report.actualProviderCostCents / 100).toFixed(2)}`} />
-        <Metric label="Retail usage" value={formatCredits(report.retailCredits)} />
-        <Metric label="Realized margin" value={report.realizedMarginPercent === null ? '—' : `${report.realizedMarginPercent.toFixed(1)}%`} />
-        <Metric label="Cost coverage" value={`${report.costCoveragePercent.toFixed(0)}%`} />
-        <Metric label="Reconcile queue" value={String(report.reconciliationReservations)} />
-        <Metric label="Past 15m SLA" value={String(report.staleReconciliationReservations)} danger={report.staleReconciliationReservations > 0} />
-      </dl>
-    </div>
-  )
-}
-
-function Metric({
-  danger,
-  label,
-  value,
-}: {
-  danger?: boolean
-  label: string
-  value: string
-}) {
-  return (
-    <div>
-      <dt className='text-[var(--muted-light)]'>{label}</dt>
-      <dd
-        className={`mt-1 font-medium ${danger ? 'text-red-500' : 'text-[var(--foreground)]'}`}
-      >
-        {value}
-      </dd>
-    </div>
-  )
+  return <div className="rounded-xl border border-(--border) p-4"><p className="text-sm font-medium text-(--foreground)">{title}</p><p className="mt-1 min-h-10 text-xs leading-5 text-(--muted)">{description}</p><div className="mt-4 flex items-center gap-2">{children}</div></div>
 }
 
 const CREDITS_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })

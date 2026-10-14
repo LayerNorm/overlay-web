@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 
 process.env.INTERNAL_API_SECRET = 'test-browser-convex-secret'
 
@@ -32,4 +33,20 @@ test('browser Convex tokens reject subject-less mint attempts', async () => {
     () => mintBrowserConvexAccessToken({ userId: '   ' }),
     /userId is required/,
   )
+})
+
+test('browser handler tokens cannot impersonate another query user', async () => {
+  const { mintBrowserConvexAccessToken } = await import('./browser-convex-token')
+  const { requireAccessToken } = await import('../../../convex/lib/auth')
+  const token = await mintBrowserConvexAccessToken({ userId: 'user_test_123' })
+  await requireAccessToken(token, 'user_test_123')
+  await assert.rejects(requireAccessToken(token, 'user_other'), /Unauthorized/)
+  await assert.rejects(requireAccessToken('', 'user_test_123'), /Unauthorized/)
+})
+
+test('browser transport does not register a handler HMAC token as native Convex identity', () => {
+  const source = readFileSync(new URL('../../components/providers/ConvexAuthProvider.tsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /convexReactClient\s*\.\s*setAuth\s*\(/)
+  assert.match(source, /<ConvexProvider client=\{convexReactClient\}>/)
+  assert.match(source, /fetchConvexToken\(\)/)
 })

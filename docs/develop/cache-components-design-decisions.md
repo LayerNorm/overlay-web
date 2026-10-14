@@ -25,6 +25,7 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 4. `/about` — `src/app/about/page.tsx` — Pure redirect to `/home`. Removed opt-out.
 5. `/pricing` — `src/app/(marketing)/pricing/page.tsx` — `getOverlayCapabilitiesSync()`
    reads `process.env` only. Removed opt-out.
+   Always the workspace pricing page (the account-plan page is deleted).
 
 ### Batch 2 — Root layout + home page (2 routes)
 
@@ -68,6 +69,15 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 23. `/app/projects` — `src/app/app/projects/page.tsx` — Moved session +
     `searchParams` inside Suspense. `getOverlayCapabilities()` (async, env-only)
     + `notFound()` stay outside. Route removed with the projects feature.
+24. `/app/work` — `src/app/app/work/page.tsx` — Converted from the start (no opt-out).
+    The page must NOT gate on `getOverlayCapabilitiesSync()`: the static shell is prerendered at build
+    time, when runtime flags are unknown, and a build-time "off" would be served to everyone. The gate
+    is client-side in `WorkPage` (`useOverlayCapabilities()`: skeleton while loading, then the
+    "Work unavailable" notice when the `work` flag is off; the API enforces `work.use` regardless).
+    `WorkPage` is a client component that reads
+    the scope and view from the URL with `useSearchParams()`, so it sits inside a `<Suspense>` with
+    `WorkRouteSkeleton` as the fallback (also the route's `loading.tsx`). The page does no session or
+    data I/O on the server; tasks load client-side through `client.work`. `error.tsx` retries the segment.
 
 ### Batch 5 — Marketing + auth decouple (15 newly converted routes)
 
@@ -185,11 +195,11 @@ with the specific reason.
 
 | Category | Count | Status |
 | --- | --- | --- |
-| Converted (Batches 1-5) | 35 | `instant = false` removed, PPR active |
+| Converted (Batches 1-5, plus `/app/work`) | 36 | `instant = false` removed, PPR active |
 | Medium-risk, kept as opt-out | 7 | `instant = false` retained permanently |
 | Higher-risk, kept as opt-out | 5 | `instant = false` retained permanently |
 | Test fixtures, kept as opt-out | 2 | `instant = false` retained permanently |
-| **Total inventoried routes** | **49** | |
+| **Total inventoried routes** | **50** | |
 
 Batch 5 retired the two shared-shell group opt-outs, the low-value `/home`
 redirect entry, and the `/app/home|pricing|manifesto` per-route notes (now pure
@@ -201,3 +211,12 @@ cannot or should not be validated for instant navigation. It does not disable
 prerendering — the route still prerenders if it can. It only skips the
 validation error. See [the Next.js docs](https://nextjs.org/docs/messages/instant-unrendered-segment)
 for details.
+
+## Inline scripts in the prerendered shell and the nonce CSP
+
+With `SECURITY_CSP_NONCE=true`, only dynamically rendered paths get a per-request nonce; the static shell (PPR) ships
+inline scripts with none. Two exist and are allowed by hash in `buildCspPolicy` (`INLINE_SCRIPT_HASHES`, `src/proxy.ts`):
+React's shell-time script (`$RT`) and the theme initializer (`THEME_INIT_SCRIPT`). Blocked, the saved theme applies only after hydration and React's batched Suspense reveal falls back to `requestAnimationFrame`.
+`csp-nonce.test.ts` recomputes both hashes (React's from the installed
+`next/dist/compiled/react-dom`) and fails when an upgrade or edit changes them. Any new inline script in a prerendered
+shell needs the same treatment.

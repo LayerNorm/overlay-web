@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
-import { Button, Input, ListboxSelect, Toggle } from '@overlay/ui/primitives'
+import { Button, Input, ListboxSelect, Textarea, Toggle } from '@overlay/ui/primitives'
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
@@ -12,6 +12,8 @@ import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
+import { FieldLabel } from './InfoTip'
+import { useEditorLoad } from './EditorLoadGate'
 import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
 export type AgentType = 'overlay' | 'byo'
@@ -38,24 +40,24 @@ export function OptionRow({ checked, onSelect, label, description, icon, labelle
       aria-label={labelledBy ?? label}
       disabled={disabled}
       onClick={onSelect}
-      className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-[var(--muted)] bg-[var(--surface-subtle)]' : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'}`}
+      className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-(--muted) bg-(--surface-subtle)' : 'border-(--border) hover:bg-(--surface-subtle)'}`}
     >
       <span
-        className={`relative mt-0.5 h-4 w-4 shrink-0 rounded-full border ${checked ? 'border-[var(--foreground)]' : 'border-[var(--muted-light)]'}`}
+        className={`relative mt-0.5 h-4 w-4 shrink-0 rounded-full border ${checked ? 'border-(--foreground)' : 'border-(--muted-light)'}`}
       >
         {checked ? (
-          <span className='absolute inset-[3px] rounded-full bg-[var(--foreground)]' />
+          <span className='absolute inset-[3px] rounded-full bg-(--foreground)' />
         ) : null}
       </span>
       {icon ? (
-        <span className='mt-0.5 shrink-0 text-[var(--muted)]'>{icon}</span>
+        <span className='mt-0.5 shrink-0 text-(--muted)'>{icon}</span>
       ) : null}
       <span className="min-w-0">
-        <span className='block text-xs font-medium text-[var(--foreground)]'>
+        <span className='block text-xs font-medium text-(--foreground)'>
           {label}
         </span>
         {description ? (
-          <span className='mt-0.5 block text-[11px] leading-4 text-[var(--muted)]'>
+          <span className='mt-0.5 block text-[11px] leading-4 text-(--muted)'>
             {description}
           </span>
         ) : null}
@@ -76,11 +78,11 @@ export function ToggleRow({ checked, onChange, label, description, disabled }: {
   disabled?: boolean
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+    <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-[var(--foreground)]">{label}</p>
+        <p className="text-xs font-medium text-(--foreground)">{label}</p>
         {description ? (
-          <p className='mt-0.5 text-[11px] leading-4 text-[var(--muted)]'>
+          <p className='mt-0.5 text-[11px] leading-4 text-(--muted)'>
             {description}
           </p>
         ) : null}
@@ -138,6 +140,7 @@ const MEMORY_PREVIEW_COUNT = 5
 export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: string }) {
   const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  useEditorLoad(rows === null)
 
   // cancelled flag makes the fetch safe against overlapping re-runs.
   // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
@@ -166,7 +169,7 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
 
   if (rows === null) {
     return (
-      <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
+      <div className="flex items-center gap-2 text-[11px] text-(--muted)">
         <Loader2 size={12} className="animate-spin" /> Loading memories…
       </div>
     )
@@ -178,21 +181,21 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
     <div>
       <p className='text-xs font-medium'>
         Memories{' '}
-        <span className='font-normal text-[var(--muted-light)]'>
+        <span className='font-normal text-(--muted-light)'>
           {rows.length}
         </span>
       </p>
-      <div className="mt-1.5 overflow-hidden rounded-xl border border-[var(--border)]">
+      <div className="mt-1.5 overflow-hidden rounded-xl border border-(--border)">
         {preview.map((row) => (
           <div
             key={row.memoryId}
-            className="group flex items-center gap-3 border-b border-[var(--border)] px-3 py-2.5 last:border-b-0"
+            className="group flex items-center gap-3 border-b border-(--border) px-3 py-2.5 last:border-b-0"
           >
             <div className="min-w-0 flex-1">
-              <p className='truncate text-xs text-[var(--foreground)]'>
+              <p className='truncate text-xs text-(--foreground)'>
                 {row.fullContent ?? row.content}
               </p>
-              <p className="mt-0.5 text-[11px] text-[var(--muted-light)]">
+              <p className="mt-0.5 text-[11px] text-(--muted-light)">
                 {
                   // Locale is pinned to 'en-US', so SSR and client output are identical.
                   // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
@@ -206,7 +209,7 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
                 onClick={() => void remove(row.memoryId)}
                 disabled={deletingId === row.memoryId}
                 aria-label="Delete memory"
-                className="shrink-0 text-[var(--muted-light)] opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40"
+                className="shrink-0 text-(--muted-light) opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40"
               >
                 {deletingId === row.memoryId ? (
                   <Loader2 size={13} className='animate-spin' />
@@ -220,7 +223,7 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
       </div>
       <Link
         href={`/app/settings?section=memories&owner=${encodeURIComponent(agentPrincipalId)}`}
-        className="mt-1.5 inline-block text-[11px] text-[var(--muted)] underline underline-offset-2 transition-colors hover:text-[var(--foreground)]"
+        className="mt-1.5 inline-block text-[11px] text-(--muted) underline underline-offset-2 transition-colors hover:text-(--foreground)"
       >
         {rows.length > MEMORY_PREVIEW_COUNT ? `View all ${rows.length} in Memories` : 'View in Memories'}
       </Link>
@@ -239,10 +242,10 @@ export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, o
   if (mode !== 'edit' || !hasAgent || isDefaultMaster) return null
   return (
     <section className="rounded-xl border border-red-500/25 p-4">
-      <p className='text-xs font-medium text-[var(--foreground)]'>
+      <p className='text-xs font-medium text-(--foreground)'>
         Danger zone
       </p>
-      <p className='mt-1 text-[11px] leading-4 text-[var(--muted)]'>
+      <p className='mt-1 text-[11px] leading-4 text-(--muted)'>
         Archiving removes {agentName} from rooms and teams. Its message history
         remains.
       </p>
@@ -283,7 +286,7 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
           description="Only you can see, chat with, or @-mention this agent."
         />
       </div>
-      <p className='mt-1.5 text-[11px] leading-4 text-[var(--muted)]'>
+      <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
         {value === 'creator'
           ? 'Hidden from everyone else — reported as not found.'
           : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}
@@ -364,10 +367,10 @@ function ProvisionedComputerCard({ computer, openBusy, lifecycleBusy, onOpenDesk
   const canDeleteComputer = canTogglePower || computer.status === 'error'
   const powerLabel = lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop' : 'Start'
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] p-3">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-(--border) p-3">
       <div className="min-w-0">
-        <p className="flex items-center gap-1.5 text-xs font-medium text-[var(--foreground)]"><Monitor size={13} className="shrink-0 text-[var(--muted)]" />{computer.name ?? 'Computer'}</p>
-        <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">{computer.status} · {computer.size} · size is fixed once provisioned</p>
+        <p className="flex items-center gap-1.5 text-xs font-medium text-(--foreground)"><Monitor size={13} className="shrink-0 text-(--muted)" />{computer.name ?? 'Computer'}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">{computer.status} · {computer.size} · size is fixed once provisioned</p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         <ComputerCardActions
@@ -406,7 +409,7 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
 }) {
   if (!enabled && !computer) return null
   return (
-    <div className="space-y-3 border-b border-[var(--border)] pb-3 pt-1 last:border-b-0">
+    <div className="space-y-3 border-b border-(--border) pb-3 pt-1 last:border-b-0">
       {enabled && !computer ? <ComputerSizePicker size={size} onSizeChange={onSizeChange} disabled={disabled} /> : null}
       {enabled && computer ? (
         <ProvisionedComputerCard
@@ -419,12 +422,12 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, op
         />
       ) : null}
       {enabled && !computer ? (
-        <p className='text-[11px] leading-4 text-[var(--muted)]'>
+        <p className='text-[11px] leading-4 text-(--muted)'>
           Created when you save. Also managed under Settings → Computers.
         </p>
       ) : null}
       {!enabled && computer ? (
-        <p className='text-[11px] leading-4 text-[var(--muted)]'>
+        <p className='text-[11px] leading-4 text-(--muted)'>
           Saving deletes this computer and its disk permanently.
         </p>
       ) : null}
@@ -467,26 +470,26 @@ export function AgentSurfacesSection({
     <div>
       <p className="flex items-center gap-1.5 text-xs font-medium">
         Reachable on
-        {loading ? <Loader2 size={12} className="animate-spin text-[var(--muted)]" /> : null}
+        {loading ? <Loader2 size={12} className="animate-spin text-(--muted)" /> : null}
       </p>
       {notice ? (
-        <p className={`mt-1 text-[11px] leading-4 ${notice.kind === 'error' ? 'text-red-500' : 'text-[var(--muted)]'}`}>{notice.message}</p>
+        <p className={`mt-1 text-[11px] leading-4 ${notice.kind === 'error' ? 'text-red-500' : 'text-(--muted)'}`}>{notice.message}</p>
       ) : null}
       <div className="mt-1.5">
-        <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+        <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-[var(--foreground)]">Overlay</p>
-            <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">In Chats and rooms.</p>
+            <p className="text-xs font-medium text-(--foreground)">Overlay</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">In Chats and rooms.</p>
           </div>
-          <span className="shrink-0 text-[11px] text-[var(--muted)]">always on</span>
+          <span className="shrink-0 text-[11px] text-(--muted)">always on</span>
         </div>
 
         {slackConnections.length === 0 ? (
-          <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+          <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-[var(--foreground)]">Slack</p>
+              <p className="text-xs font-medium text-(--foreground)">Slack</p>
               {canBind ? (
-                <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">Connect a Slack workspace so people can reach {name} there.</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">Connect a Slack workspace so people can reach {name} there.</p>
               ) : null}
             </div>
             {canBind ? (
@@ -503,9 +506,9 @@ export function AgentSurfacesSection({
           )
           return (
             <Fragment key={connection.id}>
-              <div className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+              <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-[var(--foreground)]">Slack · {connection.externalTeamName ?? 'Slack workspace'}</p>
+                  <p className="text-xs font-medium text-(--foreground)">Slack · {connection.externalTeamName ?? 'Slack workspace'}</p>
                   {connection.status !== 'active' ? (
                     <p className="mt-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400">
                       {connection.status === 'degraded' ? 'Connection degraded — reconnect Slack to resume.' : 'Uninstalled from Slack — reconnect to resume.'}
@@ -517,7 +520,7 @@ export function AgentSurfacesSection({
                     type="button"
                     onClick={() => onToggleChannelPicker(connection.id)}
                     disabled={!hasAgent || connection.status !== 'active'}
-                    className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Plus size={11} />Add channel
                   </button>
@@ -525,12 +528,12 @@ export function AgentSurfacesSection({
               </div>
 
               {connectionBindings.map((binding) => (
-                <div key={binding.id} className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
+                <div key={binding.id} className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
                   <div className="min-w-0 flex-1 pl-5">
-                    <p className="flex items-center gap-1 text-xs font-medium text-[var(--foreground)]">
-                      <Hash size={11} className="shrink-0 text-[var(--muted)]" />{binding.channelName ?? binding.channelId}
+                    <p className="flex items-center gap-1 text-xs font-medium text-(--foreground)">
+                      <Hash size={11} className="shrink-0 text-(--muted)" />{binding.channelName ?? binding.channelId}
                     </p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">
+                    <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">
                       Anyone in {binding.channelName ? `#${binding.channelName}` : 'this channel'} can reach {name} with @Overlay {name}. It acts with your access.
                     </p>
                   </div>
@@ -539,7 +542,7 @@ export function AgentSurfacesSection({
                       type="button"
                       onClick={() => onRemoveBinding(binding.id)}
                       disabled={busyId !== null}
-                      className="shrink-0 text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+                      className="shrink-0 text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50"
                     >
                       {busyId === binding.id ? 'Removing…' : 'Remove'}
                     </button>
@@ -548,13 +551,13 @@ export function AgentSurfacesSection({
               ))}
 
               {pickerOpen && channelPicker ? (
-                <div className="border-b border-[var(--border)] py-2.5 pl-5 last:border-b-0">
+                <div className="border-b border-(--border) py-2.5 pl-5 last:border-b-0">
                   {channelPicker.loading ? (
-                    <p className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]"><Loader2 size={11} className="animate-spin" />Loading channels…</p>
+                    <p className="flex items-center gap-1.5 text-[11px] text-(--muted)"><Loader2 size={11} className="animate-spin" />Loading channels…</p>
                   ) : channelPicker.error ? (
                     <p className="text-[11px] leading-4 text-red-500">{channelPicker.error}</p>
                   ) : pickerChannels.length === 0 ? (
-                    <p className="text-[11px] leading-4 text-[var(--muted)]">No more channels to add.</p>
+                    <p className="text-[11px] leading-4 text-(--muted)">No more channels to add.</p>
                   ) : (
                     <>
                       <ListboxSelect
@@ -570,7 +573,7 @@ export function AgentSurfacesSection({
                         }}
                         disabled={busyId !== null}
                       />
-                      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+                      <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
                         The bot only answers in channels it has joined — invite it with /invite @Overlay.
                       </p>
                     </>
@@ -582,12 +585,12 @@ export function AgentSurfacesSection({
         })}
 
         {canBind && slackConnections.length > 0 ? (
-          <div className="border-b border-[var(--border)] py-2.5 last:border-b-0">
+          <div className="border-b border-(--border) py-2.5 last:border-b-0">
             <button
               type="button"
               onClick={onConnectSlack}
               disabled={!hasAgent}
-              className="text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
+              className="text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50"
             >
               Connect another Slack workspace
             </button>
@@ -595,19 +598,19 @@ export function AgentSurfacesSection({
         ) : null}
 
         {(['Teams', 'Discord'] as const).map((platform) => (
-          <div key={platform} className="flex items-center gap-3 border-b border-[var(--border)] py-2.5 opacity-50 last:border-b-0">
-            <p className="min-w-0 flex-1 text-xs font-medium text-[var(--foreground)]">{platform}</p>
-            <span className="shrink-0 text-[11px] text-[var(--muted)]">coming soon</span>
+          <div key={platform} className="flex items-center gap-3 border-b border-(--border) py-2.5 opacity-50 last:border-b-0">
+            <p className="min-w-0 flex-1 text-xs font-medium text-(--foreground)">{platform}</p>
+            <span className="shrink-0 text-[11px] text-(--muted)">coming soon</span>
           </div>
         ))}
       </div>
       {error ? <p className="mt-1.5 text-[11px] leading-4 text-red-500">{error}</p> : null}
       {!hasAgent ? (
-        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Create the agent to connect it to a surface.</p>
+        <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">Create the agent to connect it to a surface.</p>
       ) : canBindResolved && !loading && !canBind ? (
-        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Only this agent&rsquo;s creator can connect surfaces.</p>
+        <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">Only this agent&rsquo;s creator can connect surfaces.</p>
       ) : null}
-      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">Threads from connected surfaces appear in Chats.</p>
+      <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">Threads from connected surfaces appear in Chats.</p>
     </div>
   )
 }
@@ -625,30 +628,21 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
   onShapeChange(shape: WorkspaceAgentCreatureShape): void
 }) {
   return (
-    <div>
-      <p className="text-xs font-medium">Identity</p>
-      <div className="mt-2 flex items-start gap-3">
-        <div className="flex h-[76px] w-[76px] shrink-0 items-center justify-center">
-          <AgentAvatarPicker shape={shape} color={color} onShapeChange={onShapeChange} onColorChange={onChange} align="start" />
-        </div>
-        <div className="min-w-0 flex-1 space-y-3">
-          <label className="block text-xs font-medium">
-            Agent name
-            <Input autoFocus className="mt-1.5" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={namePlaceholder} />
-          </label>
-          <label className="block text-xs font-medium">
-            Short description{' '}
-            <span className='font-normal text-[var(--muted-light)]'>
-              optional
-            </span>
-            <Input
-              className='mt-1.5'
-              value={description}
-              onChange={(event) => onDescriptionChange(event.target.value)}
-              placeholder={descriptionPlaceholder}
-            />
-          </label>
-        </div>
+    <div className="space-y-3.5">
+      <AgentAvatarPicker shape={shape} color={color} onShapeChange={onShapeChange} onColorChange={onChange} />
+      <div>
+        <FieldLabel htmlFor="agent-editor-name">Name</FieldLabel>
+        <Input id="agent-editor-name" autoComplete="off" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={namePlaceholder} />
+      </div>
+      <div>
+        <FieldLabel htmlFor="agent-editor-description" info="A short line about what this agent is for. It shows next to the agent in lists.">Description</FieldLabel>
+        <Textarea
+          id="agent-editor-description"
+          value={description}
+          onChange={(event) => onDescriptionChange(event.target.value)}
+          placeholder={descriptionPlaceholder}
+          className="min-h-16 resize-none!"
+        />
       </div>
     </div>
   )
@@ -656,7 +650,7 @@ export function AgentAvatar({ color, shape, name, description, namePlaceholder, 
 
 export function MasterAgentNotice() {
   return (
-    <p className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4 text-xs leading-5 text-[var(--muted)]">
+    <p className="mt-5 rounded-xl border border-(--border) bg-(--surface-subtle) p-4 text-xs leading-5 text-(--muted)">
       Master workspace agent with full access to workspace context, memory, and tools (cannot be deleted).
     </p>
   )
@@ -707,7 +701,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
     // save would convert it into).
     if (legacyHostedRuntime) {
       return (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--muted)]">
+        <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4 text-xs leading-5 text-(--muted)">
           This agent ran on a hosted runtime that is no longer available. It is unchanged; recreate it as an Overlay agent, or connect an agent running on your own machine.
         </div>
       )
@@ -730,7 +724,7 @@ export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, compute
   }
   if (!connectedAgentsEnabled) {
     return (
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-xs leading-5 text-[var(--muted)]">
+      <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4 text-xs leading-5 text-(--muted)">
         This connected agent is unchanged. Connected-agent editing is not available for this workspace right now.
       </div>
     )
@@ -773,7 +767,7 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
           value={instructions}
           onChange={(event) => onInstructionsChange(event.target.value)}
           placeholder='Describe what this agent should do, how it should respond, and when it should stop.'
-          className='mt-1.5 min-h-36 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-sm leading-5 outline-none focus:border-[var(--muted)]'
+          className='mt-1.5 min-h-36 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2.5 text-sm leading-5 outline-hidden focus:border-(--muted)'
         />
       </label>
       <label className='block text-xs font-medium'>
@@ -793,12 +787,12 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
           }
           onChange={onModelChange}
           portal
-          buttonClassName='h-9 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)]'
+          buttonClassName='h-9 rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground)'
         />
       </label>
       <div>
         <p className="text-xs font-medium">Tools</p>
-        <p className='mt-1 text-[11px] leading-4 text-[var(--muted)]'>
+        <p className='mt-1 text-[11px] leading-4 text-(--muted)'>
           Grant this agent the same tools the personal chat can use. It only
           acts on what you enable here.
         </p>
@@ -821,13 +815,13 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
       <button
         type='button'
         onClick={() => onAdvancedChange(!advanced)}
-        className='flex items-center gap-1.5 text-xs font-medium text-[var(--muted)]'
+        className='flex items-center gap-1.5 text-xs font-medium text-(--muted)'
       >
         Advanced{' '}
         <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
       </button>
       {advanced ? (
-        <div className='rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-[11px] leading-4 text-[var(--muted)]'>
+        <div className='rounded-lg border border-(--border) bg-(--surface-subtle) p-3 text-[11px] leading-4 text-(--muted)'>
           Mention-first is enforced. One-to-one agent DMs invoke implicitly
           channels and group DMs require a human mention or reply in the agent’s
           thread.
@@ -862,7 +856,7 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
     <div className="space-y-5">
       <section>
         <p className='text-xs font-medium'>Harness</p>
-        <p className='mt-1 text-[11px] leading-4 text-[var(--muted)]'>
+        <p className='mt-1 text-[11px] leading-4 text-(--muted)'>
           Choose the coding agent Overlay will invoke.
         </p>
         <div className="mt-2 space-y-2" role="radiogroup" aria-label="Harness">
@@ -900,7 +894,7 @@ export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, cho
             onClick={() => onChoiceChange('connect')}
           />
         </div>
-        <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+        <div className="mt-3 rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
           {choice === 'existing' ? (
             <ExistingEnvironmentFields
               environmentsLoading={environmentsLoading}
@@ -949,11 +943,11 @@ function ExistingEnvironmentFields({ environmentsLoading, compatibleEnvironments
   onWorkingDirectoryChange(value: string): void
 }) {
   if (environmentsLoading) {
-    return <p className="flex items-center gap-2 text-xs text-[var(--muted)]"><Loader2 size={14} className="animate-spin" /> Loading environments…</p>
+    return <p className="flex items-center gap-2 text-xs text-(--muted)"><Loader2 size={14} className="animate-spin" /> Loading environments…</p>
   }
   if (compatibleEnvironments.length === 0) {
     return (
-      <div className="text-xs text-[var(--muted)]">
+      <div className="text-xs text-(--muted)">
         <p>No connected environment currently advertises this harness.</p>
         {selectedHarnessConnectable ? <p className="mt-1">Connect a computer, VPS, or sandbox to continue.</p> : null}
       </div>
@@ -963,7 +957,7 @@ function ExistingEnvironmentFields({ environmentsLoading, compatibleEnvironments
     <div className="space-y-3">
       <label className="block text-xs font-medium">Environment<ListboxSelect className="mt-1.5" aria-label="Connected environment" value={environmentId} options={compatibleEnvironments.map((environment) => ({ value: environment.id, label: `${environment.name} · ${environment.status}` }))} onChange={onEnvironmentChange} portal /></label>
       <label className="block text-xs font-medium">Default working directory<Input className="mt-1.5" value={workingDirectory} onChange={(event) => onWorkingDirectoryChange(event.target.value)} placeholder="/Users/you/Projects/app" /></label>
-      <p className="text-[11px] leading-4 text-[var(--muted)]">This must be inside the environment’s approved roots. The environment may host other agents too.</p>
+      <p className="text-[11px] leading-4 text-(--muted)">This must be inside the environment’s approved roots. The environment may host other agents too.</p>
     </div>
   )
 }
@@ -975,8 +969,8 @@ function SetupPromptPane({ setupPrompt, copiedPrompt, onCopyPrompt }: {
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] leading-4 text-[var(--muted)]">Paste this into a chat with the agent on this machine — it runs the connection command for you and keeps it alive.</p>
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-2.5"><pre className="max-h-44 overflow-y-auto whitespace-pre-wrap break-words px-0.5 font-mono text-[11px] leading-4 text-[var(--foreground)]">{setupPrompt}</pre></div>
+      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine — it runs the connection command for you and keeps it alive.</p>
+      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="max-h-44 overflow-y-auto whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
       <Button variant="secondary" size="sm" onClick={onCopyPrompt} className="gap-1.5">{copiedPrompt ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompt</>}</Button>
     </div>
   )
@@ -998,25 +992,25 @@ function ConnectMachineFields({ command, environmentBusy, onBeginConnection, set
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-xs font-medium text-[var(--foreground)]">Connect any computer, VPS, or sandbox</p>
-        <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">Outbound-only. No inbound port is opened.</p>
+        <p className="text-xs font-medium text-(--foreground)">Connect any computer, VPS, or sandbox</p>
+        <p className="mt-1 text-[11px] leading-4 text-(--muted)">Outbound-only. No inbound port is opened.</p>
       </div>
       {!command ? (
         <Button variant="secondary" size="sm" disabled={environmentBusy !== null} onClick={onBeginConnection}>{environmentBusy === 'connect' ? 'Creating…' : 'Create connection'}</Button>
       ) : (
         <div className="space-y-2.5">
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-[var(--surface-subtle)] p-1" role="radiogroup" aria-label="Setup mode">
-            <button type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Sparkles size={12} /> Automatic setup</button>
-            <button type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--foreground)]'}`}><Terminal size={12} /> Manual setup</button>
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-(--surface-subtle) p-1" role="radiogroup" aria-label="Setup mode">
+            <button type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`}><Sparkles size={12} /> Automatic setup</button>
+            <button type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`}><Terminal size={12} /> Manual setup</button>
           </div>
           {setupMode === 'paste' ? (
             <SetupPromptPane setupPrompt={setupPrompt} copiedPrompt={copiedPrompt} onCopyPrompt={onCopyPrompt} />
           ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-[var(--foreground)]">{command}</code><button type="button" aria-label="Copy connection command" onClick={onCopyCommand} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>
+            <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--background) p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-(--foreground)">{command}</code><button type="button" aria-label="Copy connection command" onClick={onCopyCommand} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>
           )}
         </div>
       )}
-      {command && !setupEnvironment ? <p className="flex items-center gap-2 text-[11px] text-[var(--muted)]"><Loader2 size={13} className="animate-spin" /> Waiting for the host to connect…</p> : null}
+      {command && !setupEnvironment ? <p className="flex items-center gap-2 text-[11px] text-(--muted)"><Loader2 size={13} className="animate-spin" /> Waiting for the host to connect…</p> : null}
     </div>
   )
 }
@@ -1048,9 +1042,9 @@ export function EnvironmentApprovalPanel({
   onApprove(): void
 }) {
   return (
-    <div className='mt-4 space-y-3 border-t border-[var(--border)] pt-4'>
-      <div className='flex items-center gap-2 text-xs text-[var(--foreground)]'>
-        <ShieldCheck size={15} className='text-[var(--muted)]' /> Verify phrase:{' '}
+    <div className='mt-4 space-y-3 border-t border-(--border) pt-4'>
+      <div className='flex items-center gap-2 text-xs text-(--foreground)'>
+        <ShieldCheck size={15} className='text-(--muted)' /> Verify phrase:{' '}
         <strong>{environment.verificationPhrase ?? 'waiting…'}</strong>
       </div>
       <label className='block text-xs font-medium'>
@@ -1063,10 +1057,10 @@ export function EnvironmentApprovalPanel({
               ? '/workspace'
               : '/Users/you/Projects'
           }
-          className='mt-1.5 min-h-20 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]'
+          className='mt-1.5 min-h-20 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:border-(--muted)'
         />
       </label>
-      <p className='text-[11px] leading-4 text-[var(--muted)]'>
+      <p className='text-[11px] leading-4 text-(--muted)'>
         Overlay can dispatch work only inside these explicit roots. You can
         change or revoke access later.
       </p>

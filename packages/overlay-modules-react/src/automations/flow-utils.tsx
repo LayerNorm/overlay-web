@@ -106,7 +106,7 @@ export function AutomationFlowPreview({ flow }: { flow: ParsedAutomationFlow }) 
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label="Automation flowchart preview"
-      className="h-auto min-w-[34rem] max-w-full text-[var(--foreground)]"
+      className="h-auto min-w-136 max-w-full text-(--foreground)"
     >
       <defs>
         <marker

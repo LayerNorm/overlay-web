@@ -11,69 +11,61 @@ import {
 const personal = account({ billingAccountId: 'ba_personal', scope: 'personal', userId: 'user_1' })
 const workspace = account({ billingAccountId: 'ba_workspace', scope: 'workspace', workspaceId: 'workspace_1' })
 
-test('disabled workspace wallets preserve the personal payer without resolving workspace access', async () => {
-  let workspaceLookups = 0
-  const resolver = new BillingPayerResolver({
+test('a workspace with no wallet, or a wallet that is not on a paid plan, is on the free allowance', async () => {
+  const noWallet = new BillingPayerResolver({
     billing: billingRepository({ personal }),
-    workspaceWalletsEnabled: () => false,
-    workspaces: {
-      async resolveActiveWorkspace() {
-        workspaceLookups += 1
-        return organizationAccess('owner')
-      },
-    },
+    workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
   })
-  assert.deepEqual(await resolver.resolve({ userId: 'user_1', workspaceId: 'workspace_1' }), {
-    billingAccountId: 'ba_personal',
-    scope: 'personal',
-    subject: { id: 'user_1', kind: 'member' },
-    userId: 'user_1',
+  assert.equal((await noWallet.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'personal')
+
+  const unpaidWallet = new BillingPayerResolver({
+    billing: billingRepository({ personal, workspace, plan: 'free' }),
+    workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
   })
-  assert.equal(workspaceLookups, 0)
+  assert.equal((await unpaidWallet.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'personal')
 })
 
-test('enabled organization wallets fail closed and preserve programmatic attribution', async () => {
-  const missing = new BillingPayerResolver({
-    billing: billingRepository({ personal }),
-    workspaceWalletsEnabled: () => true,
+test('a workspace with a paid plan is the payer, whatever kind of workspace it is, and keeps programmatic attribution', async () => {
+  for (const kind of ['organization', 'personal'] as const) {
+    const configured = new BillingPayerResolver({
+      billing: billingRepository({ personal, workspace, plan: 'paid' }),
+        workspaces: { resolveActiveWorkspace: async () => workspaceAccess('member', kind) },
+    })
+    assert.deepEqual(await configured.resolve({
+      programmaticSubjectId: 'agent_shared',
+      userId: 'user_1',
+      workspaceId: 'workspace_1',
+    }), {
+      billingAccountId: 'ba_workspace',
+      scope: 'workspace',
+      subject: { id: 'agent_shared', kind: 'programmatic' },
+      workspaceId: 'workspace_1',
+    })
+  }
+})
+
+test('a paid wallet that has been suspended fails closed instead of falling back to a personal payer', async () => {
+  const suspended = new BillingPayerResolver({
+    billing: billingRepository({ personal, workspace: { ...workspace, status: 'suspended' } as BillingAccountRecord, plan: 'paid' }),
     workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
   })
   await assert.rejects(
-    missing.resolve({ userId: 'user_1', workspaceId: 'workspace_1' }),
-    (error: unknown) => error instanceof BillingPayerResolutionError
-      && error.code === 'workspace_wallet_not_configured',
+    suspended.resolve({ userId: 'user_1', workspaceId: 'workspace_1' }),
+    (error: unknown) => error instanceof BillingPayerResolutionError && error.code === 'billing_account_inactive',
   )
-
-  const configured = new BillingPayerResolver({
-    billing: billingRepository({ personal, workspace }),
-    workspaceWalletsEnabled: () => true,
-    workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
-  })
-  assert.deepEqual(await configured.resolve({
-    programmaticSubjectId: 'agent_shared',
-    userId: 'user_1',
-    workspaceId: 'workspace_1',
-  }), {
-    billingAccountId: 'ba_workspace',
-    scope: 'workspace',
-    subject: { id: 'agent_shared', kind: 'programmatic' },
-    workspaceId: 'workspace_1',
-  })
 })
 
-test('controlled rollout preserves personal billing outside the selected workspace', async () => {
-  const resolver = new BillingPayerResolver({
+test('a manager of a first (personal-kind) workspace can set up its wallet too', async () => {
+  const manager = new BillingPayerResolver({
     billing: billingRepository({ personal, workspace }),
-    workspaceWalletsEnabled: (workspaceId) => workspaceId === undefined || workspaceId === 'workspace_internal',
-    workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
+    workspaces: { resolveActiveWorkspace: async () => workspaceAccess('owner', 'personal') },
   })
-  assert.equal((await resolver.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'personal')
+  assert.equal((await manager.initializeWorkspaceWallet({ actorUserId: 'user_1', workspaceId: 'workspace_1' })).billingAccountId, 'ba_workspace')
 })
 
 test('only workspace managers can initialize wallets or configure limits', async () => {
   const forbidden = new BillingPayerResolver({
     billing: billingRepository({ personal, workspace }),
-    workspaceWalletsEnabled: () => true,
     workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
   })
   await assert.rejects(
@@ -84,7 +76,6 @@ test('only workspace managers can initialize wallets or configure limits', async
 
   const manager = new BillingPayerResolver({
     billing: billingRepository({ personal, workspace }),
-    workspaceWalletsEnabled: () => true,
     workspaces: { resolveActiveWorkspace: async () => organizationAccess('admin') },
   })
   assert.equal((await manager.initializeWorkspaceWallet({
@@ -105,8 +96,10 @@ test('only workspace managers can initialize wallets or configure limits', async
 function billingRepository(args: {
   personal: BillingAccountRecord
   workspace?: BillingAccountRecord
+  plan?: 'free' | 'paid'
 }): BillingRepository {
   return {
+    getBillingAccountSubscriptionByServer: async () => args.plan ? { planKind: args.plan } : null,
     ensurePersonalBillingAccount: async () => args.personal,
     ensureWorkspaceBillingAccount: async () => args.workspace ?? workspace,
     getWorkspaceBillingAccountByWorkspaceIdByServer: async () => args.workspace ?? null,
@@ -142,8 +135,12 @@ function account(args: {
 }
 
 function organizationAccess(role: 'owner' | 'admin' | 'member'): WorkspaceAccess {
+  return workspaceAccess(role, 'organization')
+}
+
+function workspaceAccess(role: 'owner' | 'admin' | 'member', kind: 'organization' | 'personal'): WorkspaceAccess {
   return {
-    workspace: { id: 'workspace_1', kind: 'organization', status: 'active' },
+    workspace: { id: 'workspace_1', kind, status: 'active' },
     membership: { role, status: 'active' },
     principal: { id: 'principal_1', type: 'human' },
   } as WorkspaceAccess

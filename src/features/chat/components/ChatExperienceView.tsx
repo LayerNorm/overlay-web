@@ -43,6 +43,8 @@ export type ChatExperienceViewProps = {
     onRightPanelResize?: (width: number) => void
   }
   main: {
+    activeChatId: string | null
+    activeChatHydrated: boolean
     activeChatDeleting: boolean
     dragHandlers: DragHandlers
     isDragging: boolean
@@ -85,6 +87,8 @@ export function ChatExperienceView({
         onRightPanelResize={shell.onRightPanelResize}
       >
         <div
+          data-overlay-chat-id={main.activeChatId ?? ''}
+          data-overlay-chat-hydrated={main.activeChatHydrated ? 'true' : 'false'}
           className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden transition-opacity duration-200 ${
             main.activeChatDeleting ? 'pointer-events-none opacity-0' : 'opacity-100'
           }`}
@@ -106,7 +110,7 @@ export function ChatExperienceView({
               !automationEditorProps &&
               !body.showAutomationChatTab && (
                 <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
-                  <p className="text-sm text-[var(--muted)]">Automation not found.</p>
+                  <p className="text-sm text-(--muted)">Automation not found.</p>
                 </div>
               )}
 

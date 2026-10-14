@@ -1,0 +1,46 @@
+{
+  "mainRuleset": 21959970,
+  "acceptedMain": "896b3803b0689d82a32cb5ea01a3f2dc25e5cc38",
+  "headContracts": [
+    {
+      "pr": 196,
+      "sha": "d9a41e1edd723dc6031c5f5d03e19871423b4163",
+      "markers": [
+        "a"
+      ],
+      "independentlyPassed": true
+    },
+    {
+      "pr": 197,
+      "sha": "5123449cfd9596bb87bb3305ab43a6bf98b7a40c",
+      "markers": [
+        "b"
+      ],
+      "independentlyPassed": true
+    }
+  ],
+  "groups": [
+    {
+      "sha": "367dff21b7e4b85aa29057db2e2ddfd4c66ab68c",
+      "ref": "refs/heads/gh-readonly-queue/main/pr-196-896b3803b0689d82a32cb5ea01a3f2dc25e5cc38",
+      "markers": [
+        "a"
+      ],
+      "state": "pending"
+    },
+    {
+      "sha": "647ef00852441c72451b20ed548536ac84f3c6fe",
+      "ref": "refs/heads/gh-readonly-queue/main/pr-197-367dff21b7e4b85aa29057db2e2ddfd4c66ab68c",
+      "markers": [
+        "a",
+        "b"
+      ],
+      "state": "failure"
+    }
+  ],
+  "queueDecision": "UNMERGEABLE",
+  "combinedRejected": true,
+  "mainUnchanged": true,
+  "closedWithoutMerge": true,
+  "temporaryContextRemoved": true
+}

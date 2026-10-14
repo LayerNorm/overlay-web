@@ -103,7 +103,7 @@ Overlay (Next.js + Convex)                         Box machine (one per agent)
 
 - **One machine per agent**, created on agent creation, stored as a Computer row with `ownerType: 'agent'` and an `overlay_cloud` environment bound to the agent. Sizes reuse Computer sizes.
 - **Desired states**: `ready`, `paused`, `deleted`. Observed: `queued → provisioning → setup → ready ↔ pausing/paused/resuming`, `failed`, `deleting → deleted`. One leased reconciler (Convex scheduled action or workflow) moves observed toward desired with compare-and-set on a revision. Routes only record intent.
-- **Wake on work, pause on idle.** A turn for a paused agent sets desired `ready`; the reconciler resumes the same sandbox and waits for the host to reconnect, then the queued command is claimed. Idle 15 minutes (existing `MANAGED_SANDBOX_IDLE_TIMEOUT_MS`) → pause. Opening the transcript never wakes it.
+- **Wake on work, pause on idle.** A turn for a paused agent sets desired `ready`; the reconciler resumes the same sandbox and waits for the host to reconnect, then the queued command is claimed. Idle 10 minutes (was 15; changed 2026-10-03) (existing `MANAGED_SANDBOX_IDLE_TIMEOUT_MS`) → pause. Opening the transcript never wakes it.
 - **Startup phases** reported by reconciler and host: Allocating → Booting → Connecting → Signing in → Ready. Shown in the dialog after Create and on the agent page.
 
 ### Base image: one definition, two targets

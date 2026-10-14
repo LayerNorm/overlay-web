@@ -41,7 +41,7 @@ export function FlashCopyIconButton({
       type="button"
       onClick={() => void handleClick()}
       disabled={disabled || !copyText}
-      className={`rounded-md p-1.5 text-[var(--muted)] transition-all duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
+      className={`rounded-md p-1.5 text-(--muted) transition-all duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
         showCheck ? 'text-emerald-600 hover:text-emerald-600 hover:bg-[#ecfdf5]' : ''
       }`}
       aria-label={ariaLabel}
@@ -87,7 +87,7 @@ export function DraftReviewModal({
     // Backdrop click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
-      className={`fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 transition-opacity duration-300 ease-[var(--overlay-ease)] sm:items-center sm:p-4 ${
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 transition-opacity duration-300 ease-(--overlay-ease) sm:items-center sm:p-4 ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={(event) => {
@@ -101,33 +101,33 @@ export function DraftReviewModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="draft-review-modal-title"
-        className={`w-full max-w-2xl rounded-t-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl transition-[opacity,transform] duration-300 ease-[var(--overlay-ease)] sm:rounded-2xl ${
+        className={`w-full max-w-2xl rounded-t-2xl border border-(--border) bg-(--surface-elevated) shadow-xl transition-[opacity,transform] duration-300 ease-(--overlay-ease) sm:rounded-2xl ${
           visible
             ? 'translate-y-0 opacity-100 sm:scale-100'
             : 'translate-y-full opacity-100 sm:translate-y-2 sm:scale-95 sm:opacity-0'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
           <div>
-            <h3 id="draft-review-modal-title" className="text-sm font-medium text-[var(--foreground)]">
+            <h3 id="draft-review-modal-title" className="text-sm font-medium text-(--foreground)">
               {isAutomation ? 'Review Automation Draft' : 'Review Skill Draft'}
             </h3>
-            <p className="mt-0.5 text-[11px] text-[var(--muted)]">{state.draft.reason}</p>
+            <p className="mt-0.5 text-[11px] text-(--muted)">{state.draft.reason}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label="Close draft review"
           >
             <X size={16} />
           </button>
         </div>
         <div className="space-y-4 px-4 py-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-            <p className="text-sm font-medium text-[var(--foreground)]">{state.draft.name}</p>
-            <p className="mt-1 text-[12px] text-[var(--muted)]">{state.draft.description}</p>
-            <div className="mt-3 grid gap-2 text-[12px] text-[var(--muted)] sm:grid-cols-2">
+          <div className="rounded-xl border border-(--border) bg-(--surface-muted) p-4">
+            <p className="text-sm font-medium text-(--foreground)">{state.draft.name}</p>
+            <p className="mt-1 text-[12px] text-(--muted)">{state.draft.description}</p>
+            <div className="mt-3 grid gap-2 text-[12px] text-(--muted) sm:grid-cols-2">
               <p>Confidence: {state.draft.confidence}</p>
               <p>Integrations: {state.draft.detectedIntegrations.join(', ') || 'None detected'}</p>
               {isAutomation ? (
@@ -138,21 +138,21 @@ export function DraftReviewModal({
               ) : null}
             </div>
           </div>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]">
-            <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-2">
-              <span className="text-[11px] font-medium text-[var(--muted)]">Instructions</span>
+          <div className="rounded-xl border border-(--border) bg-(--surface-muted)">
+            <div className="flex items-center justify-between border-b border-(--border) px-4 py-2">
+              <span className="text-[11px] font-medium text-(--muted)">Instructions</span>
               <FlashCopyIconButton copyText={state.draft.instructions} ariaLabel="Copy draft instructions" />
             </div>
-            <pre className="max-h-[280px] overflow-auto p-4 text-[11px] leading-relaxed text-[var(--foreground)] whitespace-pre-wrap">
+            <pre className="max-h-[280px] overflow-auto p-4 text-[11px] leading-relaxed text-(--foreground) whitespace-pre-wrap">
               {state.draft.instructions}
             </pre>
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-(--border) px-4 py-3">
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            className="inline-flex items-center rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-[12px] font-medium text-(--foreground) transition-colors hover:bg-(--border)"
           >
             Cancel
           </button>
@@ -166,7 +166,7 @@ export function DraftReviewModal({
                 void onSaveSkill(state.draft)
               }
             }}
-            className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-colors hover:opacity-85 disabled:opacity-60"
+            className="inline-flex items-center rounded-md border border-(--border) bg-(--foreground) px-3 py-1.5 text-[12px] font-medium text-(--background) transition-colors hover:opacity-85 disabled:opacity-60"
           >
             {saving ? 'Saving...' : isAutomation ? 'Create automation' : 'Save skill'}
           </button>

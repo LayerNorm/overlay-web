@@ -10,6 +10,7 @@ import type { Id } from '../_generated/dataModel'
 import { internalAction, type ActionCtx } from '../_generated/server'
 import type { EmailProvider, LifecycleEmailEvent } from '../../src/shared/email'
 import { renderLifecycleEmail } from '../../src/shared/email'
+import { isPreviewDeployment } from '../lib/preview'
 
 const WORKER_ID = 'convex-email-runner-v1'
 
@@ -17,7 +18,7 @@ export const runMinuteTick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    if (emailProviderName() === 'none') return null
+    if (isPreviewDeployment() || emailProviderName() === 'none') return null
     const ids = await ctx.runMutation(internal.email.outbox.claimDueInternal, {
       limit: 25,
       now: Date.now(),
@@ -33,6 +34,7 @@ export const deliverOne = internalAction({
   args: { outboxId: v.id('emailOutbox') },
   returns: v.null(),
   handler: async (ctx, args) => {
+    if (isPreviewDeployment()) return null
     const job = await ctx.runQuery(internal.email.outbox.getDeliveryInternal, args)
     if (!job) return null
     const event = parseEvent(job.payloadJson)
@@ -208,6 +210,7 @@ function parseEvent(payloadJson: string): LifecycleEmailEvent {
     'workspace.invitation_sent',
     'workspace.mention',
     'workspace.dm_received',
+    'billing.auto_topup_limit_reached',
   ]
   if (!allowed.includes(String(value.name))) throw new Error('Unsupported lifecycle email event')
   return {

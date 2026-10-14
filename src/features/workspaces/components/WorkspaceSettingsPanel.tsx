@@ -1,5 +1,6 @@
 'use client'
 
+import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -45,6 +46,7 @@ import type {
   WorkspaceSettingsTab,
 } from '@/shared/workspaces/types'
 import { WorkspaceAvatar } from './WorkspaceAvatar'
+import { WorkspaceNameEditor } from './WorkspaceNameEditor'
 import {
   ConfirmWorkspaceActionDialog,
   CreateTeamDialog,
@@ -53,6 +55,7 @@ import {
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
 import { ImportPanel } from './ImportPanel'
+import { invalidateWorkspaceScopePolicy } from '@/hooks/use-workspace-create-access'
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -68,7 +71,7 @@ function WorkspaceSettingsTabs({
   onTabChange(tab: WorkspaceSettingsTab): void
 }) {
   return (
-    <div className="overflow-x-auto border-b border-[var(--border)] px-5">
+    <div className="overflow-x-auto border-b border-(--border) px-5">
       <TabsList className="min-w-max gap-1 rounded-none bg-transparent p-0" aria-label="Workspace settings">
         {TABS.filter((tab) => tab.id !== 'teams').map((tab) => {
           const Icon = tab.icon
@@ -79,7 +82,7 @@ function WorkspaceSettingsTabs({
               onClick={() => onTabChange(tab.id)}
               className={`relative h-11 gap-1.5 rounded-none bg-transparent px-2.5 shadow-none ${
                 activeTab === tab.id
-                  ? 'after:absolute after:inset-x-1 after:bottom-0 after:h-px after:bg-[var(--foreground)]'
+                  ? 'after:absolute after:inset-x-1 after:bottom-0 after:h-px after:bg-(--foreground)'
                   : ''
               }`}
             >
@@ -123,9 +126,9 @@ export function WorkspaceManagementContent({
     return (
       <div className="space-y-3 p-5" aria-label={`Loading ${config.label.toLowerCase()}`}>
         {[0, 1, 2].map((item) => (
-          <div key={item} className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-3">
-            <span className="h-9 w-9 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
-            <span className="h-3 w-2/5 animate-pulse rounded bg-[var(--surface-subtle)]" />
+          <div key={item} className="flex items-center gap-3 rounded-xl border border-(--border) p-3">
+            <span className="h-9 w-9 animate-pulse rounded-lg bg-(--surface-subtle)" />
+            <span className="h-3 w-2/5 animate-pulse rounded-sm bg-(--surface-subtle)" />
           </div>
         ))}
       </div>
@@ -181,31 +184,31 @@ export function WorkspaceManagementContent({
 
   return (
     <div data-testid="workspace-management-list">
-      <div className="divide-y divide-[var(--border)]">
+      <div className="divide-y divide-(--border)">
         {state.items.map((item) => {
           const busy = busyItemId === item.id
           return (
             <div key={item.id} className="flex min-h-16 items-center gap-3 px-5 py-3">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
                 <Icon size={15} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-[var(--foreground)]">{item.name}</span>
+                  <span className="truncate text-sm font-medium text-(--foreground)">{item.name}</span>
                   {item.badge ? (
-                    <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-[var(--muted)]">
+                    <span className="rounded-full border border-(--border) px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-(--muted)">
                       {item.badge}
                     </span>
                   ) : null}
                 </span>
                 {item.description ? (
-                  <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">{item.description}</span>
+                  <span className="mt-0.5 block truncate text-xs text-(--muted)">{item.description}</span>
                 ) : null}
               </span>
               {item.detail && item.kind !== 'member' && item.kind !== 'invitation' ? (
-                <span className="shrink-0 text-xs text-[var(--muted-light)]">{item.detail}</span>
+                <span className="shrink-0 text-xs text-(--muted-light)">{item.detail}</span>
               ) : null}
-              {busy ? <Loader2 size={14} className="animate-spin text-[var(--muted)]" /> : (
+              {busy ? <Loader2 size={14} className="animate-spin text-(--muted)" /> : (
                 <WorkspaceItemActions
                   item={item}
                   state={state}
@@ -235,6 +238,13 @@ export type WorkspaceSharingPolicyState =
     memberCanCreateChannels: boolean
     memberCanCreateAgents: boolean
     memberCanInvite: boolean
+    /** True when anyone in the workspace (not only admins) may create or edit workspace-scoped skills, MCP servers, and connectors. */
+    membersCanEditExtensions: boolean
+    /** True when anyone in the workspace may create or edit workspace-scoped notes, files, outputs, and automations. */
+    membersCanEditContent: boolean
+    memberCanMoveScope: boolean
+    /** True when anyone in the workspace (not only admins) may add usage. */
+    membersCanTopUp: boolean
     legalHold: boolean
     rolloutStage: WorkspaceRolloutStage
     guestExpirationDays?: number
@@ -247,7 +257,20 @@ type PolicyToggleKey =
   | 'memberCanCreateChannels'
   | 'memberCanCreateAgents'
   | 'memberCanInvite'
+  | 'membersCanEditExtensions'
+  | 'membersCanEditContent'
+  | 'memberCanMoveScope'
+  | 'membersCanTopUp'
   | 'legalHold'
+
+/** The policy patch for a toggle: most are plain booleans, the "who may" ones are `members` or `admins`. */
+function policyPatchFor(key: PolicyToggleKey, value: boolean): Record<string, unknown> {
+  const editors = value ? 'members' : 'admins'
+  if (key === 'membersCanEditExtensions') return { workspaceExtensionsEditors: editors }
+  if (key === 'membersCanEditContent') return { workspaceContentEditors: editors }
+  if (key === 'membersCanTopUp') return { usageTopUpBy: editors }
+  return { [key]: value }
+}
 
 const POLICY_TOGGLES: ReadonlyArray<{
   key: PolicyToggleKey
@@ -285,6 +308,34 @@ const POLICY_TOGGLES: ReadonlyArray<{
     offLabel: 'Owners and admins only',
   },
   {
+    key: 'membersCanEditExtensions',
+    label: 'Anyone can share skills, MCP servers, and connectors',
+    description: 'When off, only owners and admins create or edit workspace-scoped skills, MCP servers, and connectors (they hold credentials or run code). Personal ones stay with their creator.',
+    onLabel: 'Anyone in the workspace',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanEditContent',
+    label: 'Anyone can share notes, files, outputs, and automations',
+    description: 'When off, only owners and admins create or edit workspace-scoped notes, files, outputs, and automations.',
+    onLabel: 'Anyone in the workspace',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'memberCanMoveScope',
+    label: 'Members can move their own items between Personal and Workspace',
+    description: 'When off, members cannot move items between scopes; owners and admins still can for items they created. Nobody moves someone else’s item.',
+    onLabel: 'Members may move their own items',
+    offLabel: 'Owners and admins only',
+  },
+  {
+    key: 'membersCanTopUp',
+    label: 'Anyone can add usage to the workspace',
+    description: 'When off, only owners and admins add usage (top-ups) to this workspace.',
+    onLabel: 'Anyone in the workspace',
+    offLabel: 'Owners and admins only',
+  },
+  {
     key: 'legalHold',
     label: 'Legal hold',
     description: 'While a hold is active, retention never deletes channel history, even when a retention window is set.',
@@ -311,7 +362,7 @@ export function WorkspaceSharingPolicySection({
   if (state.status === 'loading') {
     return (
       <div className="space-y-3 p-5" aria-label="Loading sharing & links">
-        <div className="h-16 animate-pulse rounded-xl bg-[var(--surface-subtle)]" />
+        <div className="h-16 animate-pulse rounded-xl bg-(--surface-subtle)" />
       </div>
     )
   }
@@ -332,14 +383,14 @@ export function WorkspaceSharingPolicySection({
   return (
     <div data-testid="workspace-sharing-policy" className="space-y-3 p-5">
       {POLICY_TOGGLES.map((toggle) => (
-        <div key={toggle.key} className="flex items-start gap-3 rounded-xl border border-[var(--border)] p-4">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]">
+        <div key={toggle.key} className="flex items-start gap-3 rounded-xl border border-(--border) p-4">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
             <Link2 size={15} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-[var(--foreground)]">{toggle.label}</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{toggle.description}</p>
-            <p className="mt-2 text-[11px] text-[var(--muted-light)]">
+            <p className="text-sm font-medium text-(--foreground)">{toggle.label}</p>
+            <p className="mt-1 text-xs leading-5 text-(--muted)">{toggle.description}</p>
+            <p className="mt-2 text-[11px] text-(--muted-light)">
               {state[toggle.key] ? toggle.onLabel : toggle.offLabel}
             </p>
           </div>
@@ -358,36 +409,36 @@ export function WorkspaceSharingPolicySection({
         </div>
       ))}
 
-      <div className="rounded-xl border border-[var(--border)] p-4">
-        <p className="text-sm font-medium text-[var(--foreground)]">Rollout and retention</p>
-        <dl className="mt-2 grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-2">
+      <div className="rounded-xl border border-(--border) p-4">
+        <p className="text-sm font-medium text-(--foreground)">Rollout and retention</p>
+        <dl className="mt-2 grid gap-2 text-xs text-(--muted) sm:grid-cols-2">
           <div>
-            <dt className="text-[var(--muted-light)]">Rollout stage</dt>
-            <dd className="text-[var(--foreground)]">{describeRolloutStage(state.rolloutStage)}</dd>
+            <dt className="text-(--muted-light)">Rollout stage</dt>
+            <dd className="text-(--foreground)">{describeRolloutStage(state.rolloutStage)}</dd>
           </div>
           <div>
-            <dt className="text-[var(--muted-light)]">Guest expiry</dt>
-            <dd className="text-[var(--foreground)]">
+            <dt className="text-(--muted-light)">Guest expiry</dt>
+            <dd className="text-(--foreground)">
               {state.guestExpirationDays ? `${state.guestExpirationDays} days` : 'No automatic expiry'}
             </dd>
           </div>
           <div>
-            <dt className="text-[var(--muted-light)]">Channel retention</dt>
-            <dd className="text-[var(--foreground)]">
+            <dt className="text-(--muted-light)">Channel retention</dt>
+            <dd className="text-(--foreground)">
               {state.channelRetentionDays ? `${state.channelRetentionDays} days` : 'Keep everything'}
             </dd>
           </div>
           <div>
-            <dt className="text-[var(--muted-light)]">Audit export</dt>
-            <dd className="text-[var(--foreground)]">Owners and admins, newline-delimited JSON</dd>
+            <dt className="text-(--muted-light)">Audit export</dt>
+            <dd className="text-(--foreground)">Owners and admins, newline-delimited JSON</dd>
           </div>
         </dl>
       </div>
 
       {state.metrics ? (
-        <div data-testid="workspace-operational-metrics" className="rounded-xl border border-[var(--border)] p-4">
-          <p className="text-sm font-medium text-[var(--foreground)]">Operational signals</p>
-          <dl className="mt-2 grid gap-2 text-xs text-[var(--muted)] sm:grid-cols-3">
+        <div data-testid="workspace-operational-metrics" className="rounded-xl border border-(--border) p-4">
+          <p className="text-sm font-medium text-(--foreground)">Operational signals</p>
+          <dl className="mt-2 grid gap-2 text-xs text-(--muted) sm:grid-cols-3">
             {[
               ['Event backlog', String(state.metrics.outboxPendingEvents)],
               ['Failed deliveries', String(state.metrics.failedDeliveries)],
@@ -403,8 +454,8 @@ export function WorkspaceSharingPolicySection({
               ],
             ].map(([label, value]) => (
               <div key={label}>
-                <dt className="text-[var(--muted-light)]">{label}</dt>
-                <dd className="text-[var(--foreground)]">{value}</dd>
+                <dt className="text-(--muted-light)">{label}</dt>
+                <dd className="text-(--foreground)">{value}</dd>
               </div>
             ))}
           </dl>
@@ -526,7 +577,7 @@ function MemberItemActions({
           ) : null}
         </Select>
       ) : (
-        <span className="text-xs capitalize text-[var(--muted-light)]">{item.role}</span>
+        <span className="text-xs capitalize text-(--muted-light)">{item.role}</span>
       )}
       {state.canManage && !isSelf ? (
         <Button
@@ -639,6 +690,10 @@ export function WorkspaceSettingsPanel({
           memberCanCreateChannels: result.policy.memberCanCreateChannels,
           memberCanCreateAgents: result.policy.memberCanCreateAgents,
           memberCanInvite: result.policy.memberCanInvite,
+          membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
+          membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
+          memberCanMoveScope: result.policy.memberCanMoveScope !== false,
+          membersCanTopUp: result.policy.usageTopUpBy === 'members',
           legalHold: result.policy.legalHold,
           rolloutStage: result.policy.rolloutStage,
           guestExpirationDays: result.policy.guestExpirationDays,
@@ -717,10 +772,8 @@ export function WorkspaceSettingsPanel({
 
   const workspaceLabel = useMemo(() => {
     if (!activeWorkspace) return null
-    const memberLabel = typeof activeWorkspace.memberCount === 'number'
-      ? ` · ${activeWorkspace.memberCount} ${activeWorkspace.memberCount === 1 ? 'member' : 'members'}`
-      : ''
-    return `${activeWorkspace.kind === 'personal' ? 'Personal workspace' : 'Organization workspace'}${memberLabel}`
+    const label = workspaceMemberLabel(activeWorkspace)
+    return `Workspace${label ? ` · ${label}` : ''}`
   }, [activeWorkspace])
 
   function openPrimaryAction() {
@@ -866,7 +919,7 @@ function WorkspaceSettingsGate({
 }) {
   if (status === 'loading' || status === 'idle') {
     return (
-      <div className="flex min-h-72 items-center justify-center text-sm text-[var(--muted)]">
+      <div className="flex min-h-72 items-center justify-center text-sm text-(--muted)">
         <Loader2 size={16} className="mr-2 animate-spin" />
         Loading workspace…
       </div>
@@ -917,7 +970,12 @@ function WorkspaceSharingTab({
   function handleToggle(key: PolicyToggleKey, value: boolean) {
     setPolicyBusy(true)
     setActionError(null)
-    void client.setSharingPolicy(workspaceId, { [key]: value })
+    void client.setSharingPolicy(workspaceId, policyPatchFor(key, value))
+      .then((result) => {
+        // The sidebar's New buttons follow these settings.
+        invalidateWorkspaceScopePolicy(workspaceId)
+        return result
+      })
       .then((result) => setPolicyState((current) => ({
         ...(current.status === 'ready' ? current : {}),
         status: 'ready',
@@ -927,6 +985,10 @@ function WorkspaceSharingTab({
         memberCanCreateChannels: result.policy.memberCanCreateChannels,
         memberCanCreateAgents: result.policy.memberCanCreateAgents,
         memberCanInvite: result.policy.memberCanInvite,
+        membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
+        membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
+        memberCanMoveScope: result.policy.memberCanMoveScope !== false,
+        membersCanTopUp: result.policy.usageTopUpBy === 'members',
         legalHold: result.policy.legalHold,
         rolloutStage: result.policy.rolloutStage,
         guestExpirationDays: result.policy.guestExpirationDays,
@@ -1001,12 +1063,12 @@ function WorkspacePanelBody({
   onArchiveTeam(item: WorkspaceManagementItem): void
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)]">
+    <section className="overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated)">
       <header className="flex items-center gap-3 px-5 py-4">
         <WorkspaceAvatar workspace={activeWorkspace} size="lg" />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">{activeWorkspace.name}</h2>
-          <p className="mt-0.5 truncate text-xs text-[var(--muted)]">{workspaceLabel}</p>
+          <WorkspaceNameEditor workspace={activeWorkspace} client={client} />
+          <p className="mt-0.5 truncate text-xs text-(--muted)">{workspaceLabel}</p>
         </div>
         {showPrimaryAction ? (
           <Button size="sm" onClick={onPrimaryAction}>
@@ -1019,14 +1081,14 @@ function WorkspacePanelBody({
             Archive
           </Button>
         ) : null}
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 py-1 text-[10px] font-medium capitalize text-[var(--muted)]">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-(--border) px-2.5 py-1 text-[10px] font-medium capitalize text-(--muted)">
           <KeyRound size={11} />
           {activeWorkspace.role}
         </span>
       </header>
       <WorkspaceSettingsTabs activeTab={activeTab} onTabChange={onTabChange} />
       {actionError && !hasAction ? (
-        <div role="alert" className="border-b border-[var(--border)] bg-red-500/5 px-5 py-2.5 text-xs text-red-500">
+        <div role="alert" className="border-b border-(--border) bg-red-500/5 px-5 py-2.5 text-xs text-red-500">
           {actionError}
         </div>
       ) : null}
@@ -1060,7 +1122,7 @@ function WorkspacePanelBody({
       />
       )}
       {activeTab === 'chats-agents' ? (
-        <footer className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3 text-[11px] text-[var(--muted-light)]">
+        <footer className="flex items-center gap-2 border-t border-(--border) px-5 py-3 text-[11px] text-(--muted-light)">
           <MessageSquareText size={12} />
           Personal chats stay private; shared rooms and named agents belong to this workspace.
         </footer>

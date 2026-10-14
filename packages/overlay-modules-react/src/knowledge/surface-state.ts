@@ -786,6 +786,14 @@ export function useSelectMode({
     }
   }
 
+  /** The selected items left this list without being deleted (moved to another scope, or archived). */
+  function dropSelectedFromView() {
+    const ids = Array.from(selectedFileIds)
+    if (ids.length === 0) return
+    setFiles((prev) => removeKnowledgeFileSubtrees(prev, ids))
+    exitSelectMode()
+  }
+
   async function bulkDeleteOutputs() {
     if (selectedOutputIds.size === 0 || bulkDeleting) return
     setBulkDeleting(true)
@@ -811,6 +819,7 @@ export function useSelectMode({
     toggleFileBulkSelect,
     bulkDeleteMemories,
     bulkDeleteFiles,
+    dropSelectedFromView,
     bulkDeleteOutputs,
   }
 }

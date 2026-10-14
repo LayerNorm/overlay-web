@@ -15,6 +15,8 @@ import {
 } from '@overlay/app-core/automations'
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { usePanelListView } from '@/hooks/use-panel-scope'
+import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
 
@@ -37,11 +39,13 @@ export function AutomationsInlinePanel({
   const [pendingNavId, setPendingNavId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
   const activeAutomationId = searchParams?.get('automationId') ?? null
+  const listView = usePanelListView()
 
   const loadAutomations = useCallback(async () => {
     try {
       const page = await overlayAppClient.automations.getPage<AutomationSummary>({
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
+        view: listView,
       })
       setAutomations(Array.isArray(page.data) ? page.data : [])
       nextCursorRef.current = page.nextCursor
@@ -51,7 +55,7 @@ export function AutomationsInlinePanel({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [listView])
 
   async function loadMoreAutomations() {
     if (!nextCursorRef.current) return
@@ -60,6 +64,7 @@ export function AutomationsInlinePanel({
       const page = await overlayAppClient.automations.getPage<AutomationSummary>({
         cursor: nextCursorRef.current,
         limit: INITIAL_SIDEBAR_LIST_LIMIT,
+        view: listView,
       })
       setAutomations((current) => {
         const byId = new Map(current.map((automation) => [automation._id, automation]))
@@ -76,6 +81,7 @@ export function AutomationsInlinePanel({
   }
 
   useEffect(() => {
+    setLoading(true)
     void loadAutomations()
   }, [loadAutomations])
 
@@ -177,13 +183,25 @@ export function AutomationsInlinePanel({
         }}
         onConfirmDelete={(automation, event) => void performDeleteAutomation(automation, event)}
         onClearPendingDelete={() => setPendingDeleteAutomationId(null)}
+        renderRowActions={(automation) => (
+          <ScopeItemActions
+            kind="content"
+            resource="automations"
+            item={automation}
+            onChanged={() => {
+              // It leaves the list being viewed (moved to the other scope, or archived).
+              setAutomations((current) => removeAutomationById(current, automation._id))
+              window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
+            }}
+          />
+        )}
       />
       {hasMore ? (
         <button
           type="button"
           disabled={loadingMore}
           onClick={() => void loadMoreAutomations()}
-          className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
+          className="h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
         >
           {loadingMore ? 'Loading...' : 'Load more'}
         </button>

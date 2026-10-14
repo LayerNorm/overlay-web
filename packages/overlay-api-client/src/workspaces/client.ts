@@ -13,6 +13,7 @@ import type {
   WorkspaceBillingCheckoutInput,
   WorkspaceBillingCheckoutResponse,
   WorkspaceBillingSummaryResponse,
+  WorkspaceBillingAutoTopUpInput,
   WorkspaceBillingTopUpInput,
   WorkspaceBillingVerificationInput,
   WorkspaceBillingVerificationResponse,
@@ -76,6 +77,13 @@ export class WorkspacesClient {
   createBillingTopUp(workspaceId: string, body: WorkspaceBillingTopUpInput, init?: RequestInit) {
     return this.http.json<WorkspaceBillingCheckoutResponse>(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/top-ups`,
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+    )
+  }
+
+  updateBillingAutoTopUp(workspaceId: string, body: WorkspaceBillingAutoTopUpInput, init?: RequestInit) {
+    return this.http.json<WorkspaceBillingSummaryResponse>(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/auto-top-up`,
       this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }

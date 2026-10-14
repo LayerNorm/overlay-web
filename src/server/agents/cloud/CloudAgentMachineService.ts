@@ -149,6 +149,24 @@ export class CloudAgentMachineService {
   }
 
   /**
+   * An agent whose machine is gone (deleted when credit ran out, or by hand) still has its environment and a finished
+   * provision record, so provisioning again would be skipped as "already done". This clears both, so a new machine can
+   * be provisioned for the same agent. Returns whether it did; a live machine is never touched.
+   */
+  async reviveIfMachineGone(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<boolean> {
+    const bindings = await this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId })
+    const found = await this.cloudBinding(args.workspaceId, bindings)
+    if (!found) return false
+    const lease = await this.dependencies.repository.getActiveSandboxLease({ workspaceId: args.workspaceId, environmentId: found.environment.id })
+    if (lease) return false
+    await this.dependencies.controlPlane.revokeEnvironment({
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId, environmentId: found.environment.id,
+    }).catch((_error) => undefined)
+    await this.dependencies.provisions.remove({ workspaceId: args.workspaceId, agentId: args.agentId })
+    return true
+  }
+
+  /**
    * Everything the agent page shows. The provider is asked for the machine's
    * state (one read), so this is called when the page opens, not per message.
    */
@@ -176,7 +194,9 @@ export class CloudAgentMachineService {
       machine,
       account,
     }
-    return { agentId: args.agentId, ...parts, state: deriveCloudAgentState({
+    const configuredAdapter = found?.binding.adapterConfig.adapterId
+    const adapterId = typeof configuredAdapter === 'string' && configuredAdapter ? configuredAdapter : (found?.binding as { adapterId?: string } | undefined)?.adapterId
+    return { agentId: args.agentId, ...(adapterId ? { adapterId } : {}), ...parts, state: deriveCloudAgentState({
       ...parts,
       // A host is "online" only while it keeps checking in.
       environment: found ? { ...parts.environment!, status: this.hostFresh(found.environment) ? 'online' : 'offline' } : null,
@@ -210,6 +230,8 @@ export class CloudAgentMachineService {
     await this.runDetached(machine, cloudAgentRunCommand())
     await this.dependencies.repository.patchSandboxLeaseUsage({
       workspaceId: args.workspaceId, leaseId: lease.id, patch: { lastActiveAt: this.now() }, now: this.now(),
+      // A machine woken for something other than a run still stops after the idle window.
+      idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
     })
   }
 
@@ -369,6 +391,7 @@ export class CloudAgentMachineService {
       leaseId: lease.id,
       patch: { lastActiveAt: this.now() },
       now: this.now(),
+      idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
     })
     return status === 'running' ? 'running' : 'resumed'
   }
@@ -386,7 +409,7 @@ export class CloudAgentMachineService {
     details: { resources: unknown; adapterId: string; agentId: string; image: string },
   ): Promise<AgentSandboxLease> {
     const now = this.now()
-    return await this.dependencies.repository.createSandboxLease({
+    const created = await this.dependencies.repository.createSandboxLease({
       id: randomUUID(),
       workspaceId,
       environmentId,
@@ -407,6 +430,11 @@ export class CloudAgentMachineService {
       cleanupAttempts: 0,
       now,
     })
+    // The machine starts idle: its first idle check is one window from now (a run's end restarts it).
+    await this.dependencies.repository.patchSandboxLeaseUsage({
+      workspaceId, leaseId: created.id, patch: {}, now, idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
+    }).catch((_error) => undefined)
+    return created
   }
 
   /** The host advertises its adapters on its first poll; binding needs them. */

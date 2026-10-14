@@ -7,13 +7,10 @@ import { requireServerSecret } from '../lib/auth'
 const BACKFILL_TABLES = [
   'conversations',
   'files',
-  'notes',
   'skills',
   'mcpServers',
-  'projects',
   'automations',
   'memories',
-  'outputs',
   'webhookSubscriptions',
   'knowledgeChunks',
 ] as const

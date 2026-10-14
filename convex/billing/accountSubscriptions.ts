@@ -1,7 +1,14 @@
 import { v } from 'convex/values'
-import { internalMutation, mutation, query } from '../_generated/server'
+import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
-import { ensureEmptyBalance } from './accountModel'
+import { ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
+
+async function requireCanonicalAccountById(ctx: { db: MutationCtx['db'] }, billingAccountId: string) {
+  const account = await ctx.db.query('billingAccounts')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+    .unique()
+  requireCanonicalBalanceAccount(account)
+}
 
 const subscriptionStatus = v.union(
   v.literal('active'),
@@ -20,10 +27,28 @@ const subscriptionRecord = v.object({
   status: subscriptionStatus,
   autoTopUpEnabled: v.boolean(),
   autoTopUpAmountCents: v.number(),
+  autoTopUpMonthlyLimitCents: v.optional(v.number()),
+  /** Automatic top-ups charged (pending or succeeded) since the current period started. */
+  autoTopUpSpentThisPeriodCents: v.number(),
+  /** An automatic top-up is still waiting on Stripe (for example 3-D Secure); no second one starts meanwhile. */
+  autoTopUpPending: v.boolean(),
   offSessionConsentAt: v.optional(v.number()),
   currentPeriodStart: v.optional(v.number()),
   currentPeriodEnd: v.optional(v.number()),
 })
+
+/** Automatic top-ups charged or being charged (pending or succeeded) since `since`, and whether one is pending. */
+async function autoTopUpsSince(ctx: QueryCtx, billingAccountId: string, since: number | undefined) {
+  const start = since ?? Date.now() - 31 * 24 * 60 * 60 * 1000
+  const rows = (await ctx.db.query('budgetTopUps')
+    .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId).gte('createdAt', start))
+    .collect())
+    .filter((row) => row.source === 'auto' && (row.status === 'pending' || row.status === 'succeeded'))
+  return {
+    spentCents: rows.reduce((sum, row) => sum + row.amountCents, 0),
+    pending: rows.some((row) => row.status === 'pending'),
+  }
+}
 
 export const getByServer = query({
   args: { billingAccountId: v.string(), serverSecret: v.string() },
@@ -44,6 +69,11 @@ export const getByServer = query({
       status: row.status,
       autoTopUpEnabled: row.autoTopUpEnabled,
       autoTopUpAmountCents: row.autoTopUpAmountCents,
+      ...(row.autoTopUpMonthlyLimitCents === undefined ? {} : { autoTopUpMonthlyLimitCents: row.autoTopUpMonthlyLimitCents }),
+      ...(await autoTopUpsSince(ctx, row.billingAccountId, row.currentPeriodStart).then((auto) => ({
+        autoTopUpSpentThisPeriodCents: auto.spentCents,
+        autoTopUpPending: auto.pending,
+      }))),
       ...(row.offSessionConsentAt === undefined ? {} : { offSessionConsentAt: row.offSessionConsentAt }),
       ...(row.currentPeriodStart === undefined ? {} : { currentPeriodStart: row.currentPeriodStart }),
       ...(row.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: row.currentPeriodEnd }),
@@ -133,6 +163,7 @@ export const upsertByServer = mutation({
     status: v.optional(subscriptionStatus),
     autoTopUpEnabled: v.optional(v.boolean()),
     autoTopUpAmountCents: v.optional(v.number()),
+    autoTopUpMonthlyLimitCents: v.optional(v.number()),
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
@@ -146,6 +177,7 @@ export const upsertByServer = mutation({
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
       .unique()
     if (!account) throw new Error('billing_account_not_found')
+    requireCanonicalBalanceAccount(account)
     if (account.status !== 'active') throw new Error('billing_account_inactive')
     const existing = await ctx.db.query('billingAccountSubscriptions')
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
@@ -156,7 +188,8 @@ export const upsertByServer = mutation({
       && args.providerEventCreatedAt < existing.providerEventCreatedAt
     ) return { billingAccountId, applied: false }
     const now = Date.now()
-    const periodChanged = existing?.currentPeriodStart !== undefined
+    const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
+    const periodChanged = !isCancellation && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const planKind = args.planKind ?? existing?.planKind ?? 'free'
@@ -181,8 +214,11 @@ export const upsertByServer = mutation({
       planAmountCents,
       markupBasisPoints: args.markupBasisPoints ?? existing?.markupBasisPoints ?? account.markupBasisPoints,
       status: args.status ?? existing?.status ?? 'active' as const,
-      autoTopUpEnabled: args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
+      autoTopUpEnabled: isCancellation ? false : args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
       autoTopUpAmountCents: args.autoTopUpAmountCents ?? existing?.autoTopUpAmountCents ?? 0,
+      ...(args.autoTopUpMonthlyLimitCents ?? existing?.autoTopUpMonthlyLimitCents
+        ? { autoTopUpMonthlyLimitCents: args.autoTopUpMonthlyLimitCents ?? existing?.autoTopUpMonthlyLimitCents }
+        : {}),
       ...(args.offSessionConsentAt ?? existing?.offSessionConsentAt
         ? { offSessionConsentAt: args.offSessionConsentAt ?? existing?.offSessionConsentAt }
         : {}),
@@ -200,11 +236,18 @@ export const upsertByServer = mutation({
     if (existing) await ctx.db.patch(existing._id, value)
     else await ctx.db.insert('billingAccountSubscriptions', { ...value, createdAt: now })
     const balance = await ensureEmptyBalance(ctx, billingAccountId)
-    const includedMicros = planAmountCents * 10_000
+    const planIncludedMicros = planAmountCents * 10_000
     if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
     const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
     const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
-    const nextTopUpPurchasedMicros = periodChanged ? balance.topUpBalanceMicros : balance.topUpPurchasedMicros
+    // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
+    const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
+    const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
+    // Cancellation removes unused plan credit, while retaining the historical
+    // funding needed for consumed spend and existing reservations.
+    const includedMicros = isCancellation
+      ? Math.max(0, nextUsedMicros + nextReservedMicros - balance.institutionalGrantMicros - nextTopUpPurchasedMicros)
+      : planIncludedMicros
     if (nextUsedMicros + nextReservedMicros
       > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
       throw new Error('Subscription change would remove already consumed or reserved credits')
@@ -216,6 +259,7 @@ export const upsertByServer = mutation({
       usedMicros: nextUsedMicros,
       reservedMicros: nextReservedMicros,
       topUpPurchasedMicros: nextTopUpPurchasedMicros,
+      topUpBalanceMicros: nextTopUpBalanceMicros,
       updatedAt: now,
       version: balance.version + 1,
     })
@@ -240,6 +284,7 @@ export const recordTopUpByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     if (!Number.isSafeInteger(args.amountCents) || args.amountCents <= 0) throw new Error('invalid_top_up_amount')
+    await requireCanonicalAccountById(ctx, args.billingAccountId)
     const byCheckout = args.stripeCheckoutSessionId
       ? await ctx.db.query('budgetTopUps')
           .withIndex('by_checkoutSessionId', (q) => q.eq('stripeCheckoutSessionId', args.stripeCheckoutSessionId))
@@ -319,6 +364,7 @@ export const reverseTopUpByServer = mutation({
     if (!Number.isSafeInteger(args.refundAmountCents) || args.refundAmountCents <= 0) {
       throw new Error('invalid_refund_amount')
     }
+    await requireCanonicalAccountById(ctx, args.billingAccountId)
     const existing = await ctx.db
       .query('budgetTopUps')
       .withIndex('by_paymentIntentId', (q) => q.eq('stripePaymentIntentId', args.stripePaymentIntentId))
@@ -403,6 +449,7 @@ export const upsertFromStripeInternal = internalMutation({
     const account = await ctx.db.query('billingAccounts')
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
       .unique()
+    requireCanonicalBalanceAccount(account)
     if (!account || account.status !== 'active') throw new Error('billing_account_inactive')
     const existing = await ctx.db.query('billingAccountSubscriptions')
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
@@ -410,7 +457,8 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing?.providerEventCreatedAt !== undefined
       && args.providerEventCreatedAt < existing.providerEventCreatedAt) return { applied: false }
     const now = Date.now()
-    const periodChanged = existing?.currentPeriodStart !== undefined
+    const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
+    const periodChanged = !isCancellation && existing?.currentPeriodStart !== undefined
       && args.currentPeriodStart !== undefined
       && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const value = {
@@ -433,7 +481,7 @@ export const upsertFromStripeInternal = internalMutation({
       planAmountCents: args.planAmountCents ?? existing?.planAmountCents ?? 0,
       markupBasisPoints: account.markupBasisPoints,
       status: args.status,
-      autoTopUpEnabled: args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
+      autoTopUpEnabled: isCancellation ? false : args.autoTopUpEnabled ?? existing?.autoTopUpEnabled ?? false,
       autoTopUpAmountCents: args.autoTopUpAmountCents ?? existing?.autoTopUpAmountCents ?? 0,
       ...(args.offSessionConsentAt ?? existing?.offSessionConsentAt
         ? { offSessionConsentAt: args.offSessionConsentAt ?? existing?.offSessionConsentAt }
@@ -450,11 +498,18 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing) await ctx.db.patch(existing._id, value)
     else await ctx.db.insert('billingAccountSubscriptions', { ...value, createdAt: now })
     const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
-    const includedMicros = (args.planAmountCents ?? existing?.planAmountCents ?? 0) * 10_000
+    const planIncludedMicros = (args.planAmountCents ?? existing?.planAmountCents ?? 0) * 10_000
     if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
     const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
     const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
-    const nextTopUpPurchasedMicros = periodChanged ? balance.topUpBalanceMicros : balance.topUpPurchasedMicros
+    // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
+    const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
+    const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
+    // Cancellation removes unused plan credit, while retaining the historical
+    // funding needed for consumed spend and existing reservations.
+    const includedMicros = isCancellation
+      ? Math.max(0, nextUsedMicros + nextReservedMicros - balance.institutionalGrantMicros - nextTopUpPurchasedMicros)
+      : planIncludedMicros
     if (nextUsedMicros + nextReservedMicros
       > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
       throw new Error('Subscription change would remove already consumed or reserved credits')
@@ -465,6 +520,7 @@ export const upsertFromStripeInternal = internalMutation({
       usedMicros: nextUsedMicros,
       reservedMicros: nextReservedMicros,
       topUpPurchasedMicros: nextTopUpPurchasedMicros,
+      topUpBalanceMicros: nextTopUpBalanceMicros,
       updatedAt: now,
       version: balance.version + 1,
     })
@@ -483,6 +539,7 @@ export const recordTopUpInternal = internalMutation({
   },
   returns: v.object({ granted: v.boolean() }),
   handler: async (ctx, args) => {
+    await requireCanonicalAccountById(ctx, args.billingAccountId)
     const byCheckout = args.stripeCheckoutSessionId
       ? await ctx.db.query('budgetTopUps')
           .withIndex('by_checkoutSessionId', (q) => q.eq('stripeCheckoutSessionId', args.stripeCheckoutSessionId))
@@ -528,5 +585,29 @@ export const recordTopUpInternal = internalMutation({
       })
     }
     return { granted }
+  },
+})
+
+/**
+ * The workspace billing account that owns a Stripe subscription or customer. Webhooks use it when the Stripe object's
+ * metadata does not name a billing account (subscriptions started before plans moved to workspaces name the person).
+ */
+export const workspaceAccountByProviderReferenceInternal = internalQuery({
+  args: { stripeCustomerId: v.optional(v.string()), stripeSubscriptionId: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<string | null> => {
+    const rows = [
+      args.stripeSubscriptionId
+        ? await ctx.db.query('billingAccountSubscriptions').withIndex('by_providerSubscriptionId', (q) => q.eq('providerSubscriptionId', args.stripeSubscriptionId)).first()
+        : null,
+      args.stripeCustomerId
+        ? await ctx.db.query('billingAccountSubscriptions').withIndex('by_providerCustomerId', (q) => q.eq('providerCustomerId', args.stripeCustomerId)).first()
+        : null,
+    ]
+    for (const row of rows) {
+      if (!row) continue
+      const account = await ctx.db.query('billingAccounts').withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', row.billingAccountId)).unique()
+      if (account?.scope === 'workspace') return account.billingAccountId
+    }
+    return null
   },
 })

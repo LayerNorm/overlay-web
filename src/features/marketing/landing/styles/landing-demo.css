@@ -1,0 +1,130 @@
+/* Landing page. Part 3: the interactive mini Overlay app in the hero. */
+/* the app is drawn on a fixed 1000x563 canvas and scaled to whatever size the demo frame has */
+.lp .app { position: absolute; left: 0; top: 0; width: 1000px; height: 563px; transform-origin: 0 0; transform: scale(var(--ds, .6)); display: grid; grid-template-columns: 118px 152px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); font: 400 10px/1.4 var(--sans); text-align: left; color: var(--foreground); user-select: none; }
+.lp .app svg.i { width: 12px; height: 12px; stroke-width: 1.6; }
+.lp .app .col1, .lp .app .col2 { display: flex; flex-direction: column; background: var(--surface-elevated); border-right: var(--hairline); min-width: 0; }
+.lp .app .head { height: 31px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: var(--hairline); }
+.lp .app .head .lockup { font-size: 14px; gap: .4em; }
+.lp .app .head .ttl { font: 400 13px var(--serif); letter-spacing: -.01em; }
+.lp .app .head svg { color: var(--muted); }
+.lp .app .nav-i, .lp .app .row { display: flex; align-items: center; gap: 8px; height: 24px; margin: 0 6px; padding: 0 8px; border-radius: 6px; color: var(--muted); white-space: nowrap; font-size: 10.5px; }
+.lp .app .nav-i svg, .lp .app .row svg { flex: none; }
+.lp .app .nav-i.on, .lp .app .row.on { background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); }
+.lp .app .nav-i { color: var(--foreground); }
+.lp .app .col1 .list { padding-top: 7px; display: flex; flex-direction: column; gap: 2px; }
+.lp .app .ws { margin-top: auto; display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-top: var(--hairline); }
+.lp .app .ws b { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font: 600 7px var(--sans); background: var(--surface-muted); border: var(--hairline); }
+.lp .app .ws span { display: flex; flex-direction: column; line-height: 1.25; font-size: 9px; }
+.lp .app .ws span i { font-style: normal; color: var(--muted); font-size: 7.5px; }
+.lp .app .scope { padding: 7px 0; border-bottom: var(--hairline); display: flex; flex-direction: column; gap: 2px; }
+.lp .app .newagent { margin: 9px 7px 7px; height: 26px; border: var(--hairline); border-radius: 6px; display: flex; align-items: center; padding: 0 9px; color: var(--muted); font-size: 10px; }
+.lp .app .agent { display: flex; align-items: center; gap: 7px; height: 22px; white-space: nowrap; overflow: hidden; margin: 0 6px; padding: 0 8px; border-radius: 6px; font-size: 9.5px; color: var(--muted); }
+.lp .app .agent .cr { width: 13px; height: 13px; flex: none; display: inline-flex; }
+.lp .app .agent .cr svg { width: 100%; height: 100%; }
+.lp .app .agent .end { margin-left: auto; opacity: .7; }
+.lp .app .agent.child { padding-left: 8px; }
+.lp .app .agent.child.on { background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); }
+.lp .app .agent.child small { margin-left: auto; font-size: 7.5px; color: var(--muted-light); }
+.lp .app .agent.dim { color: var(--muted-light); }
+.lp .app .main { display: flex; flex-direction: column; min-width: 0; background: var(--background); }
+.lp .app .main .head .who { display: flex; align-items: center; gap: 7px; font: 500 11px var(--sans); }
+.lp .app .main .head .who .cr { width: 17px; height: 17px; display: inline-flex; }
+.lp .app .main .head .who .cr svg { width: 100%; height: 100%; }
+.lp .app .main .head .tools { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 9.5px; }
+.lp .app .main .head .tools span { display: inline-flex; align-items: center; gap: 4px; }
+.lp .app :where(button) { all: unset; box-sizing: border-box; cursor: pointer; }
+.lp .app .menu .mi { display: block; }
+.lp .app .composer .send { cursor: pointer; }
+.lp .app .nav-i:hover, .lp .app .row:hover, .lp .app .agent:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+.lp .app .agent.sel { color: var(--foreground); }
+.lp .app .agent .lab, .lp .app .row .lab { overflow: hidden; text-overflow: ellipsis; }
+.lp .app .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lp .app .msgs { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; align-items: center; }
+.lp .app .msgs::-webkit-scrollbar, .lp .app .page::-webkit-scrollbar { display: none; }
+.lp .app .msgs .col { width: 480px; margin-top: auto; padding: 12px 0 6px; user-select: text; }
+.lp .app .daydiv { display: flex; align-items: center; gap: 10px; color: var(--muted-light); font: 7.5px var(--mono); letter-spacing: .1em; margin-bottom: 12px; }
+.lp .app .daydiv::before, .lp .app .daydiv::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.lp .app .msg { display: flex; gap: 8px; margin-bottom: 14px; animation: lp-rise .45s var(--ease-out) both; }
+.lp .app .msg.you { justify-content: flex-end; margin-bottom: 16px; }
+.lp .app .msg .bubble { max-width: 74%; padding: 7px 12px; border-radius: 12px; background: var(--surface-muted); border: var(--hairline); font-size: 10.5px; line-height: 1.45; user-select: text; }
+.lp .app .msg .mb { min-width: 0; flex: 1; user-select: text; }
+.lp .app .msg.plain { display: block; }
+.lp .app .msg ol { padding-left: 16px; margin: 4px 0; }
+.lp .app .msg li { font-size: 10.5px; line-height: 1.6; margin: 1px 0; }
+.lp .app .msg strong { font-weight: 600; }
+.lp .app .tool { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9.5px; margin: 3px 0 7px; }
+.lp .app .tool .orb { width: 7px; height: 7px; }
+.lp .app .tool svg { width: 10px; height: 10px; }
+.lp .app .code { border: var(--hairline); border-radius: 9px; background: var(--surface-elevated); margin: 8px 0 9px; overflow: hidden; }
+.lp .app .code .ch { display: flex; justify-content: space-between; align-items: center; padding: 7px 11px; font: 8.5px var(--mono); color: var(--muted); border-bottom: var(--hairline); }
+.lp .app .code pre { font: 8.5px/1.9 var(--mono); padding: 8px 11px; margin: 0; white-space: pre-wrap; color: color-mix(in srgb, var(--foreground) 85%, transparent); }
+.lp .app .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border: var(--hairline); border-radius: 7px; color: var(--muted); font-size: 9px; }
+.lp .app .chip.solid { color: var(--foreground); }
+.lp .app .row .gi { color: #16a34a; display: inline-flex; }
+.lp .app .msg .cr { width: 19px; height: 19px; flex: none; display: inline-flex; }
+.lp .app .msg .cr svg { width: 100%; height: 100%; }
+.lp .app .msg .av { width: 19px; height: 19px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--surface-muted); border: var(--hairline); font: 600 8px var(--sans); }
+.lp .app .msg .by { font: 600 10px var(--sans); }
+.lp .app .msg .by small { font: 400 8px var(--sans); color: var(--muted-light); margin-left: 5px; }
+.lp .app .msg p { font-size: 10.5px; margin-top: 2px; line-height: 1.5; }
+.lp .app code { font: 9.5px var(--mono); background: var(--surface-muted); padding: 0 3px; border-radius: 3px; }
+.lp .app .typing { display: flex; gap: 3px; padding-top: 5px; }
+.lp .app .typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); animation: lp-tdot 1s ease-in-out infinite; }
+.lp .app .typing i:nth-child(2) { animation-delay: .15s; }
+.lp .app .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes lp-tdot { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+.lp .app .cwrap { width: 480px; margin: 0 auto; padding: 0 0 9px; flex: none; }
+.lp .app .composer { border: var(--hairline); border-radius: 13px; background: var(--surface-elevated); padding: 11px 12px 9px; height: 62px; display: flex; flex-direction: column; justify-content: space-between; cursor: text; }
+.lp .app .composer:focus-within { border-color: color-mix(in srgb, var(--foreground) 35%, var(--border)); }
+.lp .app .composer input { all: unset; width: 100%; font-size: 10px; color: var(--foreground); user-select: text; cursor: text; }
+.lp .app .composer input::placeholder { color: var(--muted); }
+.lp .app .composer .bar { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.lp .app .composer .send { margin-left: auto; width: 22px; height: 20px; border-radius: 6px; background: var(--surface-muted); border: var(--hairline); display: grid; place-items: center; }
+.lp .app .composer .send:hover { background: var(--foreground); color: var(--background); }
+.lp .app .note { margin-top: 7px; text-align: center; color: var(--muted-light); font-size: 8px; }
+.lp .app .page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 18px 24px; }
+.lp .app .page h2 { font: 400 16px var(--serif); letter-spacing: -.01em; }
+.lp .app .page .sub2 { color: var(--muted); font-size: 9.5px; margin: 3px 0 14px; }
+.lp .app .doc { max-width: 430px; margin: 0 auto; user-select: text; }
+.lp .app .doc h3 { font: 400 15px var(--serif); margin: 0 0 8px; }
+.lp .app .doc h4 { font: 600 10px var(--sans); margin: 12px 0 4px; }
+.lp .app .doc p, .lp .app .doc li { font-size: 10px; line-height: 1.6; color: color-mix(in srgb, var(--foreground) 82%, transparent); }
+.lp .app .doc ul { padding-left: 14px; }
+.lp .app table { border-collapse: collapse; width: 100%; font-size: 9.5px; }
+.lp .app th, .lp .app td { text-align: left; padding: 6px 9px; border-bottom: var(--hairline); }
+.lp .app th { color: var(--muted); font-weight: 500; font-size: 8.5px; letter-spacing: .04em; }
+.lp .app .pdf { width: 250px; height: 300px; margin: 0 auto; border: var(--hairline); border-radius: 4px; background: var(--surface-elevated); padding: 22px 20px; box-shadow: 0 8px 24px -14px rgba(0,0,0,.35); }
+.lp .app .pdf b { display: block; height: 7px; border-radius: 3px; background: var(--border); margin-bottom: 8px; }
+.lp .app .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.lp .app .card { border: var(--hairline); border-radius: 9px; padding: 10px; background: var(--surface-elevated); display: flex; flex-direction: column; gap: 5px; }
+.lp .app .card .top { display: flex; align-items: center; gap: 7px; font: 600 10.5px var(--sans); }
+.lp .app .tile { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: #fff; border: 1px solid rgba(0,0,0,.12); flex: none; }
+/* brand logos sit on white so dark marks stay visible */
+.lp .app .tile img { width: 13px; height: 13px; display: block; }
+.lp .app .lg.dk { display: none; }
+[data-landing-theme="dark"] .lp .app .lg.lt { display: none; }
+[data-landing-theme="dark"] .lp .app .lg.dk { display: block; }
+.lp .app .mwrap { position: relative; display: inline-flex; }
+.lp .app .menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 5; min-width: 118px; padding: 4px; border: var(--hairline); border-radius: 9px; background: var(--surface-elevated); box-shadow: 0 10px 28px -12px rgba(0,0,0,.45); }
+.lp .app .menu .mi { padding: 5px 9px; border-radius: 6px; font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+.lp .app .menu .mi:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); color: var(--foreground); }
+.lp .app .menu .mi.on { color: var(--foreground); }
+.lp .app .card p { font-size: 9px; color: var(--muted); min-height: 24px; }
+.lp .app .btn2 { align-self: flex-start; padding: 3px 10px; border-radius: 6px; border: var(--hairline); font-size: 9px; color: var(--foreground); background: none; }
+.lp .app .btn2:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+.lp .app .btn2.on { background: color-mix(in srgb, #16a34a 14%, transparent); border-color: color-mix(in srgb, #16a34a 45%, transparent); color: #16a34a; }
+.lp .app .btn2.solid { background: var(--foreground); color: var(--background); border-color: transparent; }
+.lp .app .flow { display: flex; align-items: center; gap: 7px; margin: 4px 0 16px; flex-wrap: wrap; }
+.lp .app .step { border: var(--hairline); border-radius: 8px; padding: 7px 11px; background: var(--surface-elevated); font-size: 9.5px; display: flex; align-items: center; gap: 6px; }
+.lp .app .step small { color: var(--muted); font-size: 8px; display: block; }
+.lp .app .flow > svg { color: var(--muted-light); }
+.lp .app .log { border: var(--hairline); border-radius: 8px; background: var(--surface-elevated); padding: 9px 11px; font: 9px/1.7 var(--mono); color: var(--muted); min-height: 90px; }
+.lp .app .log div { animation: lp-rise .35s var(--ease-out) both; }
+.lp .app .log .ok { color: #16a34a; }
+.lp .app .switch { width: 24px; height: 14px; border-radius: 8px; background: var(--border); position: relative; flex: none; transition: background .2s; }
+.lp .app .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease-out); box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.lp .app .switch.on { background: #16a34a; }
+.lp .app .switch.on::after { transform: translateX(10px); }
+.lp .app .pagehead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.lp .app .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-light); flex: none; }
+.lp .app .dot.on { background: #16a34a; }

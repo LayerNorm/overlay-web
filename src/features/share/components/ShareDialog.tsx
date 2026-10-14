@@ -109,7 +109,7 @@ export function ShareDialog({
     // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
-      className={`fixed inset-0 z-[10080] flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+      className={`fixed inset-0 z-10080 flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-(--overlay-ease) ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={(e) => {
@@ -123,19 +123,19 @@ export function ShareDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="share-dialog-title"
-        className={`w-[min(560px,94vw)] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+        className={`w-[min(560px,94vw)] overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated) shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease) ${
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
         }`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+        <div className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
           <div className="min-w-0">
             <h2
               id="share-dialog-title"
-              className="truncate text-lg font-semibold text-[var(--foreground)]"
+              className="truncate text-lg font-semibold text-(--foreground)"
             >
               {resource.title}
             </h2>
-            <p className="mt-0.5 text-xs text-[var(--muted)]">
+            <p className="mt-0.5 text-xs text-(--muted)">
               Anyone with the link can view this {resource.type === 'chat' ? 'conversation' : 'file'}
             </p>
           </div>
@@ -143,7 +143,7 @@ export function ShareDialog({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 rounded-md p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="shrink-0 rounded-md p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
             <X size={18} />
           </button>
@@ -156,10 +156,10 @@ export function ShareDialog({
             href={resource.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group block overflow-hidden rounded-xl border border-[var(--border)] transition-colors"
+            className="group block overflow-hidden rounded-xl border border-(--border) transition-colors"
           >
             <div
-              className="flex aspect-[1200/630] w-full flex-col justify-between bg-gradient-to-br from-[#0a0a0a] via-[#111418] to-[#0a0a0a] p-6 text-white"
+              className="flex aspect-1200/630 w-full flex-col justify-between bg-linear-to-br from-[#0a0a0a] via-[#111418] to-[#0a0a0a] p-6 text-white"
             >
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-base font-bold text-black">
@@ -177,23 +177,23 @@ export function ShareDialog({
                 <span>getoverlay.io</span>
               </div>
             </div>
-            <div className="bg-[var(--surface-subtle)] px-4 py-3">
-              <p className="truncate text-sm font-medium text-[var(--foreground)]">
+            <div className="bg-(--surface-subtle) px-4 py-3">
+              <p className="truncate text-sm font-medium text-(--foreground)">
                 {resource.title}
               </p>
-              <p className="truncate text-xs text-[var(--muted)]">{resource.url}</p>
+              <p className="truncate text-xs text-(--muted)">{resource.url}</p>
             </div>
           </a>
 
           {/* URL row + copy */}
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2">
-            <span className="flex-1 truncate text-xs text-[var(--muted)]" title={resource.url}>
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-(--border) bg-(--background) px-3 py-2">
+            <span className="flex-1 truncate text-xs text-(--muted)" title={resource.url}>
               {resource.url}
             </span>
             <button
               type="button"
               onClick={handleCopy}
-              className="rounded-md bg-[var(--foreground)] px-3 py-1 text-[11px] font-medium text-[var(--background)] transition-opacity hover:opacity-90"
+              className="rounded-md bg-(--foreground) px-3 py-1 text-[11px] font-medium text-(--background) transition-opacity hover:opacity-90"
             >
               {copied ? 'Copied' : 'Copy'}
             </button>
@@ -210,7 +210,7 @@ export function ShareDialog({
               <span className={SOCIAL_BUTTON_BASE}>
                 {copied ? <Check size={22} /> : <Link2 size={22} />}
               </span>
-              <span className="text-[11px] text-[var(--muted)]">
+              <span className="text-[11px] text-(--muted)">
                 {copied ? 'Copied' : 'Copy link'}
               </span>
             </button>
@@ -223,7 +223,7 @@ export function ShareDialog({
               <span className={SOCIAL_BUTTON_BASE}>
                 <XIcon />
               </span>
-              <span className="text-[11px] text-[var(--muted)]">X</span>
+              <span className="text-[11px] text-(--muted)">X</span>
             </button>
             <button
               type="button"
@@ -234,7 +234,7 @@ export function ShareDialog({
               <span className={SOCIAL_BUTTON_BASE}>
                 <Linkedin size={22} />
               </span>
-              <span className="text-[11px] text-[var(--muted)]">LinkedIn</span>
+              <span className="text-[11px] text-(--muted)">LinkedIn</span>
             </button>
             <button
               type="button"
@@ -245,7 +245,7 @@ export function ShareDialog({
               <span className={SOCIAL_BUTTON_BASE}>
                 <RedditIcon />
               </span>
-              <span className="text-[11px] text-[var(--muted)]">Reddit</span>
+              <span className="text-[11px] text-(--muted)">Reddit</span>
             </button>
           </div>
         </div>

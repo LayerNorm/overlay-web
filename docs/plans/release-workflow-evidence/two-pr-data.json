@@ -1,0 +1,82 @@
+{
+  "sandboxLoginBoth": true,
+  "seededNotesBoth": true,
+  "crossPreviewDataIsolation": true,
+  "foreignNoteReadDenied": true,
+  "otherPreviewUnchangedAfterMutation": true,
+  "temporaryNoteRemoved": true,
+  "evidence": [
+    {
+      "number": 188,
+      "method": "POST",
+      "path": "/api/auth/preview-login",
+      "status": 200
+    },
+    {
+      "number": 189,
+      "method": "POST",
+      "path": "/api/auth/preview-login",
+      "status": 200
+    },
+    {
+      "number": 188,
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "status": 200
+    },
+    {
+      "number": 189,
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "status": 200
+    },
+    {
+      "number": 188,
+      "method": "POST",
+      "path": "/api/v1/notes",
+      "status": 200
+    },
+    {
+      "number": 188,
+      "method": "GET",
+      "path": "/api/v1/notes?noteId=rx7c6pvqp5624x85qkgevpd5c58g5zgv",
+      "status": 200
+    },
+    {
+      "number": 189,
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "status": 200
+    },
+    {
+      "number": 189,
+      "method": "GET",
+      "path": "/api/v1/notes?noteId=rx7c6pvqp5624x85qkgevpd5c58g5zgv",
+      "status": 404
+    },
+    {
+      "number": 188,
+      "method": "PATCH",
+      "path": "/api/v1/notes",
+      "status": 200
+    },
+    {
+      "number": 189,
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "status": 200
+    },
+    {
+      "number": 188,
+      "method": "DELETE",
+      "path": "/api/v1/notes?noteId=rx7c6pvqp5624x85qkgevpd5c58g5zgv",
+      "status": 200
+    },
+    {
+      "number": 188,
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "status": 200
+    }
+  ]
+}

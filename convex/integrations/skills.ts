@@ -1,6 +1,13 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
+import { scopeMutations } from '../lib/scopeMutations'
+
+const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
+
+export const { setScope, archive, restore } = scopeMutations('skills', 'extension')
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -14,19 +21,24 @@ async function authorizeUserAccess(params: {
 }
 
 export const list = query({
-  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
+  args: {
+    userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()),
+    /** personal, workspace, or archived; omitted means everything active that the caller can see. */
+    view: viewArg,
+  },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, view }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
-    const all = await ctx.db
-      .query('skills')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .order('desc')
-      .collect()
-    return all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
+    return await listScopedRows(ctx, {
+      userId, workspaceId, view,
+      fetchMine: async () => (await ctx.db.query('skills').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').collect())
+        .filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true)),
+      fetchShared: async (ws) => await ctx.db.query('skills')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+    })
   },
 })
 
@@ -38,8 +50,7 @@ export const get = query({
     } catch {
       return null
     }
-    const skill = await ctx.db.get(skillId)
-    return skill?.userId === userId && (workspaceId === undefined || skill.workspaceId === workspaceId) ? skill : null
+    return await getReadableRow(ctx, { row: await ctx.db.get(skillId), userId, workspaceId })
   },
 })
 
@@ -50,19 +61,33 @@ export const get = query({
  * instead of injecting every skill's full instructions into every turn.
  */
 export const listDirectory = query({
-  args: { userId: v.string(), workspaceId: v.optional(v.string()), accessToken: v.optional(v.string()), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret }) => {
+  args: {
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+    /** Only skills shared with the workspace (what an agent in a room others can read may be offered). */
+    workspaceOnly: v.optional(v.boolean()),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+  },
+  handler: async (ctx, { userId, workspaceId, workspaceOnly, accessToken, serverSecret }) => {
     try {
       await authorizeUserAccess({ userId, accessToken, serverSecret })
     } catch {
       return []
     }
-    const all = await ctx.db
-      .query('skills')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .order('desc')
-      .collect()
-    const filtered = all.filter((s) => !s.projectId).filter((s) => (workspaceId !== undefined ? s.workspaceId === workspaceId : true))
+    // Archived skills are not offered to agents. In a workspace, skills other members shared with it are offered too:
+    // anyone's agent may use what the workspace shares.
+    const filtered = workspaceId !== undefined
+      ? await listScopedRows(ctx, {
+        userId, workspaceId, view: workspaceOnly ? 'workspace' : undefined,
+        fetchMine: async () => (await ctx.db.query('skills').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').collect())
+          // Skills from before workspaces carry no workspace and stay with their creator everywhere.
+          .filter((s) => s.workspaceId === workspaceId || s.workspaceId === undefined),
+        fetchShared: async (ws) => await ctx.db.query('skills')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+      })
+      : (await ctx.db.query('skills').withIndex('by_userId', (q) => q.eq('userId', userId)).order('desc').collect())
+        .filter((s) => s.archivedAt === undefined)
     return filtered.map((s) => ({
       _id: s._id,
       name: s.name,
@@ -84,8 +109,9 @@ export const getInstructions = query({
     } catch {
       return null
     }
-    const skill = await ctx.db.get(skillId)
-    if (!skill || skill.userId !== userId) return null
+    // The creator's, or one shared with a workspace the caller belongs to.
+    const skill = await getReadableRow(ctx, { row: await ctx.db.get(skillId), userId })
+    if (!skill) return null
     return { _id: skill._id, name: skill.name, instructions: skill.instructions }
   },
 })
@@ -100,13 +126,16 @@ export const create = mutation({
     description: v.string(),
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
+    scope: scopeArg,
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    const scope = await assertCanCreateInScope(ctx, { kind: 'extension', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
     const now = Date.now()
     return await ctx.db.insert('skills', {
       userId: args.userId,
       workspaceId: args.workspaceId,
+      scope,
       name: args.name,
       description: args.description,
       instructions: args.instructions,
@@ -133,7 +162,7 @@ export const update = mutation({
   handler: async (ctx, { skillId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const skill = await ctx.db.get(skillId)
-    if (!skill || skill.userId !== userId || (workspaceId !== undefined && skill.workspaceId !== workspaceId)) {
+    if (!skill || (workspaceId !== undefined && skill.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(skill))) {
       throw new Error('Unauthorized')
     }
     const patch: Record<string, unknown> = { updatedAt: Date.now() }
@@ -157,7 +186,7 @@ export const remove = mutation({
   handler: async (ctx, { skillId, userId, workspaceId, accessToken, serverSecret }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const skill = await ctx.db.get(skillId)
-    if (!skill || skill.userId !== userId || (workspaceId !== undefined && skill.workspaceId !== workspaceId)) {
+    if (!skill || (workspaceId !== undefined && skill.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(skill))) {
       throw new Error('Unauthorized')
     }
     await ctx.db.delete(skillId)

@@ -37,9 +37,9 @@ export function useWorkApproval({
 
   const workApprovalContent = agentRunLifecycle.run?.status === 'waiting_for_approval' && agentRunLifecycle.run.approval
     ? (
-        <div className="mb-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 shadow-sm">
-          <p className="text-sm font-medium text-[var(--foreground)]">{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
+        <div className="mb-2 rounded-2xl border border-(--border) bg-(--surface-elevated) px-4 py-3 shadow-xs">
+          <p className="text-sm font-medium text-(--foreground)">{agentRunLifecycle.run.approval.title ?? 'Work needs your approval'}</p>
+          <p className="mt-1 text-xs text-(--muted)">
             {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
           </p>
           <div className="mt-3 flex items-center gap-2">
@@ -47,7 +47,7 @@ export function useWorkApproval({
               type="button"
               disabled={approvalSubmitting}
               onClick={() => void submitWorkApproval(true)}
-              className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] disabled:opacity-50"
+              className="rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) disabled:opacity-50"
             >
               Approve
             </button>
@@ -55,7 +55,7 @@ export function useWorkApproval({
               type="button"
               disabled={approvalSubmitting}
               onClick={() => void submitWorkApproval(false)}
-              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] disabled:opacity-50"
+              className="rounded-lg border border-(--border) px-3 py-1.5 text-xs font-medium text-(--foreground) disabled:opacity-50"
             >
               Deny
             </button>

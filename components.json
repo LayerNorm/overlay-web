@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/app/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "packages/overlay-ui/src/components",
+    "ui": "packages/overlay-ui/src/components/ui",
+    "utils": "packages/overlay-ui/src/utils/cn",
+    "lib": "packages/overlay-ui/src",
+    "hooks": "packages/overlay-ui/src/hooks"
+  },
+  "iconLibrary": "lucide"
+}

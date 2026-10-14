@@ -69,6 +69,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agents/:agentId/automations', methods: { GET: authenticated() } },
   { path: '/api/v1/agents/:agentId/bundle', methods: { GET: authenticated() } },
   { path: '/api/v1/agents/:agentId/restore', methods: { POST: authenticated() } },
+  { path: '/api/v1/agents/:agentId/permanent', methods: { DELETE: authenticated() } },
   { path: '/api/v1/agents/:agentId/machine', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
   {
     path: '/api/v1/agents/:agentId/threads',
@@ -189,7 +190,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   {
     path: '/api/v1/workspaces/:workspaceId/lifecycle',
-    methods: { DELETE: authenticated() },
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
   },
   {
     path: '/api/v1/workspaces/:workspaceId/policies',
@@ -222,6 +223,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/workspaces/:workspaceId/billing/checkout', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/portal', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/auto-top-up', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
   {
     path: '/api/v1/subscription/settings',
@@ -229,10 +231,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
 
   { path: '/api/v1/admin/audit', methods: { GET: capability('audit.read') } },
-  {
-    path: '/api/v1/admin/usage',
-    methods: { GET: capability('usage.read'), POST: capability('usage.manage') },
-  },
+  { path: '/api/v1/admin/usage', methods: { GET: capability('usage.read') } },
   {
     path: '/api/v1/admin/principals',
     methods: {
@@ -553,6 +552,24 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   {
     path: '/api/v1/integrations',
     methods: { GET: capability('integrations.use'), POST: capability('integrations.use') },
+  },
+  // Convex enforces who may move, archive, or restore a given item; any signed-in member may ask.
+  { path: '/api/v1/scope', methods: { POST: authenticated() } },
+  // Work: Convex decides which tasks the caller can see and change (Personal / Workspace rules).
+  {
+    path: '/api/v1/work',
+    methods: { GET: capability('work.use'), POST: capability('work.use') },
+  },
+  // Must precede `:id` — the first matching path wins.
+  { path: '/api/v1/work/context', methods: { GET: capability('work.use') } },
+  {
+    path: '/api/v1/work/:id',
+    methods: { GET: capability('work.use'), PATCH: capability('work.use'), DELETE: capability('work.use') },
+  },
+  { path: '/api/v1/work/:id/move', methods: { POST: capability('work.use') } },
+  {
+    path: '/api/v1/work/:id/events',
+    methods: { GET: capability('work.use'), POST: capability('work.use') },
   },
   {
     path: '/api/v1/skills',

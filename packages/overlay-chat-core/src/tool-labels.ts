@@ -158,6 +158,26 @@ export function getDescriptiveToolLabel(
   toolInput?: Record<string, unknown>,
   phase: ToolLabelPhase = 'running',
 ): string {
+  // A connected agent (Claude Code, Codex…) names its own actions; show that, not the generic tool name.
+  if (toolName === 'remote_action') {
+    const title = pickFirstStringFromInput(toolInput, ['title'])
+    // An action the agent gave no real name (it says "tool call"/"tool") is shown as a plain "Tool call".
+    if (title && /^(tool( call)?|tool_call|action)$/i.test(title)) return 'Tool call'
+    if (title) return title.length > 140 ? `${title.slice(0, 140)}…` : title
+  }
+  // What a connected agent's terminal, file edits, and plan show, named for what they are.
+  if (toolName === 'remote_terminal') return 'Terminal output'
+  if (toolName === 'remote_diff') {
+    const path = pickFirstStringFromInput(toolInput, ['title'])
+    return path ? `Edited ${path.length > 120 ? `${path.slice(0, 120)}…` : path}` : 'File changes'
+  }
+  if (toolName === 'remote_plan') return 'Plan'
+
+  // Not a real tool: the row shown while a connected agent's computer is woken up or reconnecting.
+  if (toolName === 'connect_computer') {
+    return phase === 'running' ? 'Connecting to computer' : 'Connected to computer'
+  }
+
   if (toolName === 'call_mcp_tool') {
     return describeMcpToolCall(toolInput, phase)
   }
@@ -187,6 +207,8 @@ export function getDescriptiveToolLabel(
     write_file: 'Writing a file',
     create_folder: 'Creating a folder',
     move_file: 'Moving a file',
+    list_chats: 'Looking through your chats',
+    read_chat: 'Reading a chat',
     list_notes: 'Listing your notes',
     get_note: 'Opening a note',
     create_note: 'Creating a note',

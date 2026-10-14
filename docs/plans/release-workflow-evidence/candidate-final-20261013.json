@@ -1,0 +1,27 @@
+{
+  "state": "ready",
+  "sha": "bee84a33a2d4b101bf85d3b179cd30984b556045",
+  "projectId": "prj_IKvugqekF8qLP14p7Rg4ilWErXPr",
+  "deploymentId": "dpl_BvojtujMXadjjPjzGfp5F2quSXkt",
+  "backend": "doting-cuttlefish-819",
+  "backendUrl": "https://doting-cuttlefish-819.convex.cloud",
+  "url": "https://staging.getoverlay.io",
+  "published": true,
+  "previousDeploymentId": "dpl_9719ETW7XzDg2awEVHQdNfJ5ptxC",
+  "smoke": "passed",
+  "workspaceId": "staging-personal-user_01M4R1EKTMDZ4E6BQ5DMZXD0F2",
+  "runId": "38413217001",
+  "checks": {
+    "authenticatedSandboxIdentity": true,
+    "workspaceResolution": true,
+    "dedicatedFixture": true,
+    "noteCrudAndStaleEdit": true,
+    "noteCleanup": true,
+    "realChatReply": true,
+    "chatPersistence": true,
+    "chatCleanup": true,
+    "filesUi": true,
+    "realtimeAuthorization": true
+  },
+  "candidateUrl": "https://overlay-web-staging-1a40myk1d-divyansh-lalwanis-projects.vercel.app"
+}

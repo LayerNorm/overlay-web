@@ -1,0 +1,41 @@
+{
+  "account": "Divyansh Lalwani",
+  "keys": [
+    {
+      "lane": "staging",
+      "name": "overlay-release-staging",
+      "verified": true,
+      "expiresAt": null,
+      "limit": 1,
+      "limitReset": null
+    },
+    {
+      "lane": "preview",
+      "name": "overlay-release-preview",
+      "verified": true,
+      "expiresAt": null,
+      "limit": 1,
+      "limitReset": null
+    }
+  ],
+  "separateLaneCredentialsVerified": true,
+  "nonExpiring": true,
+  "webProject": "overlay-web-staging",
+  "webScope": "preview",
+  "branchScope": null,
+  "sharedKeys": [
+    "OPENROUTER_API_KEY",
+    "OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED",
+    "OVERLAY_HOSTED_PROVIDER_KILL_SWITCH"
+  ],
+  "futurePreviewsInherit": true,
+  "previewDefaultsReadback": true,
+  "stagingBackend": "doting-cuttlefish-819",
+  "stagingBackendReadback": true,
+  "legacyWebProductionPreserved": true,
+  "sharedDevAndCustomerProductionDefaultsPreserved": true,
+  "existingWebDeploymentsChanged": false,
+  "applicationReplyVerified": false,
+  "storagePending": true,
+  "configuredAt": "2026-10-13T07:28:09.498Z"
+}

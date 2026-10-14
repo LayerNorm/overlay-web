@@ -8,11 +8,15 @@ import {
   normalizeAppBaseUrl,
 } from '@/shared/web/normalize-app-url'
 import { isDevelopmentRuntime, serverEnv } from '@/server/env/server-env'
+import { previewOrigin } from '@/shared/web/preview-origin'
 
 /**
  * Canonical app base URL for server-side redirects, Stripe, WorkOS, etc.
  */
 export function getBaseUrl(): string {
+  const isolatedPreviewOrigin = previewOrigin(process.env)
+  if (isolatedPreviewOrigin) return isolatedPreviewOrigin
+
   if (isDevelopmentRuntime()) {
     const fromEnv = serverEnv.devAppUrlOverride || publicEnv.appUrl
     return normalizeAppBaseUrl(fromEnv, DEFAULT_APP_URL)

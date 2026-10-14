@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import { internal } from './_generated/api'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'remote-agent-turn-test-secret'
@@ -55,6 +56,31 @@ describe('Convex remote agent room turns', () => {
     await expect(call('startRemoteAgentTurnByServer', startInput({ ...seeded, userMessageId: questionId as string }, {
       actorUserId: 'someone-else', initiatorPrincipalId: 'foreign-principal', clientNonce: 'ask-nonce-2', commandId: 'ask-command-2', runId: 'ask-run-2', sessionId: 'ask-session-2',
     }))).rejects.toThrow(/CONVERSATION_ACCESS_DENIED/)
+  })
+
+  test('stopping a machine for lack of credit ends its runs: the chat row stops generating and the session is closed', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    await convex.run(async ctx => {
+      await ctx.db.insert('agentSandboxLeases', {
+        leaseId: 'lease-stop', workspaceId, environmentId, provider: 'box', providerReference: 'sandbox', status: 'running',
+        reservedUntil: Number.MAX_SAFE_INTEGER, usage: {}, cleanupAttempts: 0, createdAt: now, updatedAt: now,
+      })
+    })
+    await call('stopSandboxLeaseByServer', { workspaceId, leaseId: 'lease-stop', reason: 'budget_exhausted', now: now + 1_000 })
+    const after = await convex.run(async ctx => ({
+      message: await ctx.db.get(started.messageId as never) as { status?: string; content: string } | null,
+      session: (await ctx.db.query('agentRemoteSessions').withIndex('by_environmentId_status', q => q.eq('environmentId', environmentId).eq('status', 'cancelled')).collect()).length,
+    }))
+    expect(after.message?.status).toBe('completed')
+    expect(after.message?.content).toMatch(/credit ran low/)
+    expect(after.session).toBe(1)
+    const active = await convex.query(queryRef('environmentHasActiveRunsByServer'), { serverSecret: secret, environmentId })
+    expect(active).toBe(false)
   })
 
   test('offline start is atomic, inaccessible callers are denied, and expired run leases cannot claim', async () => {
@@ -198,6 +224,73 @@ describe('Convex remote agent room turns', () => {
         state: 'recoverable', retryClass: 'transient',
       }) }),
     ]))
+  })
+
+  test('the host is told why it rejected a command, in one safe line', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('acknowledgeCommandByServer', {
+      workspaceId, environmentId, commandId: 'command-remote-turn', accepted: false, now: now + 1,
+      errorCode: 'command_sequence_gap', errorMessage: 'expected command sequence 6\n<script>x</script>'.padEnd(400, '!'),
+    })
+    const state = await projectedState(convex, started.messageId)
+    const content = String(state.message?.content)
+    expect(content).toMatch(/^The connected environment rejected this command \(command_sequence_gap: expected command sequence 6 <script>/)
+    expect(content).not.toContain('\n')
+    expect(content.length).toBeLessThan(330)
+    expect(content).toMatch(/Reconnect it, then retry this message\.$/)
+  })
+
+  test('cancelling a run before its commands are delivered leaves no hole in the host’s command numbers', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await call('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('controlRemoteAgentTurnByServer', {
+      actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel',
+      queueExpiresAt: now + 120_000, now: now + 10,
+    })
+    const delivered = await call<Array<{ sequence: number; type: string }>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: now + 20, leaseMs: 5_000, limit: 10,
+    })
+    // Both commands reach the host, in order: the start as a shutdown (its run is over) and the cancel.
+    expect(delivered.map((command) => [command.sequence, command.type])).toEqual([[1, 'shutdown'], [2, 'cancel']])
+  })
+
+  test('repairing a wedged environment sends the host the commands it never got, so it catches up and accepts new ones', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await call('startRemoteAgentTurnByServer', startInput(seeded))
+    // The state production was in: command 1 acknowledged, 2 and 3 cancelled without ever being delivered, the run over.
+    await convex.run(async (ctx) => {
+      const [first] = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', (q) => q.eq('environmentId', environmentId)).collect()
+      await ctx.db.patch(first!._id, { status: 'acknowledged', acknowledgedAt: now + 1 })
+      for (const sequence of [2, 3]) {
+        await ctx.db.insert('agentRunCommands', {
+          commandId: `lost-${sequence}`, workspaceId, environmentId, runId: 'run-remote-turn', type: 'reconnect', sequence,
+          payload: { remoteSessionId: 'acp-session' }, status: 'cancelled', createdAt: now + sequence, updatedAt: now + sequence,
+        })
+      }
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', 'run-remote-turn')).unique()
+      await ctx.db.patch(run!._id, { status: 'failed' })
+    })
+    expect(await call('claimCommandsByServer', { workspaceId, environmentId, now: now + 50, leaseMs: 5_000, limit: 10 })).toEqual([])
+
+    const repaired = await convex.mutation(internal.agents.connectedAgents.reopenUndeliveredCommands, { environmentId })
+    expect(repaired).toEqual({ lastAcknowledged: 1, reopened: [2, 3] })
+    const delivered = await call<Array<{ sequence: number; type: string }>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: now + 60, leaseMs: 5_000, limit: 10,
+    })
+    expect(delivered.map((command) => [command.sequence, command.type])).toEqual([[2, 'shutdown'], [3, 'shutdown']])
   })
 
   test('an approval for an Overlay MCP tool call shows a card, answers the waiting call, and sends the host nothing', async () => {

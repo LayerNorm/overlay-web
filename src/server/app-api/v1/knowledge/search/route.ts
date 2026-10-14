@@ -15,6 +15,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       minVecScore?: number
       query?: string
       sourceKind?: 'file' | 'memory'
+      workspaceOnly?: boolean
     }
     const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
       accessToken: context.auth.accessToken,
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       query: body.query ?? '',
       sourceKind: body.sourceKind,
       userId: context.auth.userId,
+      ...(body.workspaceOnly === true ? { workspaceOnly: true } : {}),
       workspaceId: context.workspace.workspace.id,
     })
     return NextResponse.json(result)

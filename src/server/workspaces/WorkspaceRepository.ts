@@ -32,6 +32,8 @@ export type EnsurePersonalWorkspaceInput = {
   userId: string
   displayName: string
   email?: string
+  /** What the workspace is called until its owner renames it. */
+  workspaceName: string
   now: number
 }
 
@@ -118,6 +120,7 @@ export interface WorkspaceRepository {
     archivedByPrincipalId: string
     now: number
   }): Promise<Workspace | null>
+  renameWorkspace(args: { workspaceId: string; name: string; now: number }): Promise<Workspace | null>
 
   createPrincipal(input: CreateWorkspacePrincipalInput): Promise<WorkspacePrincipal>
   getPrincipal(principalId: string): Promise<WorkspacePrincipal | null>

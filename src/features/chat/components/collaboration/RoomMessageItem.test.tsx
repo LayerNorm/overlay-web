@@ -74,7 +74,7 @@ test('a member’s own message is just the personal gray bubble', () => {
   assert.match(html, /aria-label="Edit message"/)
   assert.match(html, /aria-label="Delete message"/)
   assert.doesNotMatch(html, /aria-label="Report message"/)
-  assert.doesNotMatch(html, /rounded-lg bg-\[var\(--surface-muted\)\]/)
+  assert.doesNotMatch(html, /rounded-lg bg-\(--surface-muted\)/)
 })
 
 test('another member’s message is flat Slack-style (no bubble) with avatar and hover row', () => {
@@ -87,7 +87,7 @@ test('another member’s message is flat Slack-style (no bubble) with avatar and
   assert.doesNotMatch(html, />You</)
   assert.doesNotMatch(html, /room-message-self-bubble/)
   assert.doesNotMatch(html, /chat-user-bubble/)
-  assert.match(html, /hover:bg-\[var\(--surface-subtle\)\]/)
+  assert.match(html, /hover:bg-\(--surface-subtle\)/)
   assert.match(html, /aria-label="Report message"/)
   assert.doesNotMatch(html, /aria-label="Edit message"/)
   assert.match(html, /data-testid="thread-teaser"/)
@@ -240,7 +240,9 @@ test('remote supervised state survives transcript reload as actionable view data
   assert.deepEqual(view.remoteRequest, { runId: 'run-1', requestKey: 'input-1', kind: 'elicitation',
     prompt: 'Choose branch', options: [], requestedSchema: { type: 'object', properties: { branch: { title: 'Branch' } }, required: ['branch'] } })
   assert.deepEqual(view.remoteRun, { runId: 'run-1', state: 'waiting_for_input', retryable: false, retryClass: undefined })
-  assert.ok(view.blocks.some((block) => block.kind === 'tool' && block.name === 'remote_plan'))
+  // The plan came after the card, so it waits for the answer; what came before shows.
+  assert.ok(!view.blocks.some((block) => block.kind === 'tool' && block.name === 'remote_plan'))
+  assert.deepEqual(view.blocks, [{ kind: 'text', text: 'I need a branch name.' }])
 })
 
 test('room reconciliation uses deterministic ordering and replaces optimistic duplicates', () => {

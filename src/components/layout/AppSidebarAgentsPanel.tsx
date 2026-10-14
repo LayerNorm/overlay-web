@@ -1,20 +1,27 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArchiveRestore,
   ChevronRight,
   Loader2,
+  Plus,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import {
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+} from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { announceArchived } from '@/shared/app/archive-toast'
 import { AgentCreature } from '@/components/orb/Creature'
 import {
   AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
-  dispatchAgentDirectoryChanged,
   type AgentDirectoryChangedEventDetail,
   type AgentDraftPreviewEventDetail,
   type AgentDraftPreviewPatch,
@@ -34,23 +41,32 @@ import {
   arrayOrEmpty,
   agentHref,
   agentThreadHref,
-  resourceRowClass,
   type AgentsPanelView,
 } from './sidebar-nav'
 import { AgentThreadRows } from './AppSidebarAgentThreads'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
+function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversationId: string): string {
+  if (!bundle || bundle === 'loading' || bundle === 'error') return 'Thread'
+  return bundle.threads.find((thread) => thread.conversationId === conversationId)?.title || 'Thread'
+}
+
 function useAgentBundles(workspaceId: string | null) {
   const [bundles, setBundles] = useState<AgentBundleMap>({})
+  const bundleRequests = useRef(new Map<string, symbol>())
 
   const loadBundle = useCallback(async (agentId: string) => {
     if (!workspaceId) return
+    const request = Symbol(agentId)
+    bundleRequests.current.set(agentId, request)
     setBundles((current) => ({ ...current, [agentId]: 'loading' }))
     try {
       const bundle = await overlayAppClient.agents.bundle(workspaceId, agentId)
+      if (bundleRequests.current.get(agentId) !== request) return
       setBundles((current) => ({ ...current, [agentId]: bundle }))
     } catch {
+      if (bundleRequests.current.get(agentId) !== request) return
       setBundles((current) => ({ ...current, [agentId]: 'error' }))
     }
   }, [workspaceId])
@@ -130,7 +146,6 @@ function useAgentDirectory(
 ) {
   const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
   const [viewerPrincipalId, setViewerPrincipalId] = useState<string | null>(null)
-  const [archivedThreadAgentIds, setArchivedThreadAgentIds] = useState<Set<string>>(new Set())
   const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
   const [loading, setLoading] = useState(true)
 
@@ -143,10 +158,9 @@ function useAgentDirectory(
     }
     if (showLoading) setLoading(true)
     try {
-      const response = await overlayAppClient.agents.list(workspaceId, { includeArchived: true })
+      const response = await overlayAppClient.agents.list(workspaceId)
       setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
       setViewerPrincipalId(response.viewerPrincipalId ?? null)
-      setArchivedThreadAgentIds(new Set(response.archivedThreadAgentIds ?? []))
     } catch {
       setAgents([])
     } finally {
@@ -190,7 +204,7 @@ function useAgentDirectory(
     return () => window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
   }, [workspaceId])
 
-  return { agents, viewerPrincipalId, archivedThreadAgentIds, setArchivedThreadAgentIds, draftPreviews, loading }
+  return { agents, viewerPrincipalId, draftPreviews, loading }
 }
 
 function useAgentActions({
@@ -204,7 +218,6 @@ function useAgentActions({
   activeAgentId,
   activeConversationId,
   sortedAgents,
-  setArchivedThreadAgentIds,
 }: {
   workspaceId: string | null
   baseHref: string
@@ -216,7 +229,6 @@ function useAgentActions({
   activeAgentId: string | null
   activeConversationId: string | null
   sortedAgents: WorkspaceAgentDirectoryItem[]
-  setArchivedThreadAgentIds: Dispatch<SetStateAction<Set<string>>>
 }) {
   const router = useRouter()
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
@@ -289,12 +301,15 @@ function useAgentActions({
           },
         }
       })
+      // A collapsed row may still have a bundle request in flight. Refresh after
+      // the mutation; only the newest request may publish the resulting tree.
+      await loadBundle(agent.id)
       router.push(agentThreadHref(baseHref, agent.id, thread.conversationId, view))
       onNavigate?.()
     } finally {
       setCreatingThreadFor(null)
     }
-  }, [baseHref, creatingThreadFor, onNavigate, router, setBundles, view, workspaceId])
+  }, [baseHref, creatingThreadFor, loadBundle, onNavigate, router, setBundles, view, workspaceId])
 
   const archiveThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -303,40 +318,32 @@ function useAgentActions({
   ) => {
     if (!workspaceId) return
     try {
+      // Only this thread is archived: the agent stays where it is, and the thread lands in Settings → Archived.
       await overlayAppClient.agents.setThreadArchived(workspaceId, agent.id, conversationId, archived)
-      const existing = bundles[agent.id]
-      if (existing && existing !== 'loading' && existing !== 'error') {
-        // The Archived tab shows live agents that still own archived threads;
-        // keep the membership set in step with the local bundle state.
-        const stillArchived = existing.threads.some((thread) => (
-          thread.conversationId === conversationId ? archived : Boolean(thread.archivedAt)
-        ))
-        setArchivedThreadAgentIds((ids) => {
-          const next = new Set(ids)
-          if (stillArchived) next.add(agent.id)
-          else next.delete(agent.id)
-          return next
-        })
-      }
-      setBundles((current) => {
-        const entry = current[agent.id]
-        if (entry === 'loading' || entry === 'error' || !entry) return current
-        return {
-          ...current,
-          [agent.id]: {
-            ...entry,
-            threads: entry.threads.map((thread) => (
-              thread.conversationId === conversationId
-                ? { ...thread, archivedAt: archived ? Date.now() : undefined }
-                : thread
-            )),
+      const archivedTitle = bundleThreadTitle(bundles[agent.id], conversationId)
+      // An archived thread leaves the agent's list; a restored one comes back with the next load.
+      void loadBundle(agent.id)
+      if (archived) {
+        announceArchived({
+          name: archivedTitle,
+          undo: async () => {
+            await overlayAppClient.agents.setThreadArchived(workspaceId, agent.id, conversationId, false)
           },
+          onUndone: () => void loadBundle(agent.id),
+        })
+        // Archiving the thread being viewed moves on to the agent's next active thread (a fresh one if none is left).
+        if (activeConversationId === conversationId) {
+          try {
+            await openAgent(agent, 'replace')
+          } catch {
+            setOpenError(`Could not open ${agent.name}. Check your connection and retry.`)
+          }
         }
-      })
+      }
     } catch {
       void loadBundle(agent.id)
     }
-  }, [bundles, loadBundle, setArchivedThreadAgentIds, setBundles, workspaceId])
+  }, [activeConversationId, bundles, loadBundle, openAgent, workspaceId])
 
   const deleteThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -345,25 +352,14 @@ function useAgentActions({
     if (!workspaceId) return
     try {
       await overlayAppClient.agents.deleteThread(workspaceId, agent.id, conversationId)
-      const existing = bundles[agent.id]
-      if (existing && existing !== 'loading' && existing !== 'error') {
-        const stillArchived = existing.threads.some((thread) => (
-          thread.conversationId !== conversationId && Boolean(thread.archivedAt)
-        ))
-        setArchivedThreadAgentIds((ids) => {
-          const next = new Set(ids)
-          if (stillArchived) next.add(agent.id)
-          else next.delete(agent.id)
-          return next
-        })
-      }
       setBundles((current) => {
         const existing = current[agent.id]
         if (existing === 'loading' || existing === 'error' || !existing) return current
         let threads = existing.threads.filter((thread) => thread.conversationId !== conversationId)
         // When the main thread goes away the oldest survivor becomes main.
-        if (threads.length && !threads.some((thread) => thread.isMain)) {
-          const oldest = threads.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b))
+        const active = threads.filter((thread) => !thread.archivedAt)
+        if (active.length && !active.some((thread) => thread.isMain)) {
+          const oldest = active.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b))
           threads = threads.map((thread) => (
             thread.conversationId === oldest.conversationId ? { ...thread, isMain: true } : thread
           ))
@@ -378,7 +374,7 @@ function useAgentActions({
         const survivors = bundles[agent.id]
         const next = survivors && survivors !== 'loading' && survivors !== 'error'
           ? survivors.threads
-            .filter((thread) => thread.conversationId !== conversationId)
+            .filter((thread) => thread.conversationId !== conversationId && !thread.archivedAt)
             .sort((a, b) => a.createdAt - b.createdAt)[0]
           : undefined
         router.push(
@@ -390,17 +386,7 @@ function useAgentActions({
     } catch {
       void loadBundle(agent.id)
     }
-  }, [activeConversationId, baseHref, bundles, loadBundle, router, setArchivedThreadAgentIds, setBundles, view, workspaceId])
-
-  const restoreAgent = useCallback(async (agent: WorkspaceAgentDirectoryItem) => {
-    if (!workspaceId) return
-    try {
-      await overlayAppClient.agents.restore(workspaceId, agent.id)
-      dispatchAgentDirectoryChanged(workspaceId)
-    } catch {
-      setOpenError(`Could not restore ${agent.name}. Check your connection and retry.`)
-    }
-  }, [workspaceId])
+  }, [activeConversationId, baseHref, bundles, loadBundle, router, setBundles, view, workspaceId])
 
   const openAgentById = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -432,14 +418,12 @@ function useAgentActions({
     createThread,
     archiveThread,
     deleteThread,
-    restoreAgent,
     retryOpen,
   }
 }
 
 function AgentListRow({
   agent,
-  view,
   isExpanded,
   isActive,
   anyOpening,
@@ -449,14 +433,12 @@ function AgentListRow({
   creatingThread,
   onToggleExpanded,
   onOpenAgent,
-  onRestoreAgent,
   onOpenThread,
   onCreateThread,
   onArchiveThread,
   onDeleteThread,
 }: {
   agent: WorkspaceAgentDirectoryItem
-  view: AgentsPanelView
   isExpanded: boolean
   isActive: boolean
   anyOpening: boolean
@@ -466,19 +448,19 @@ function AgentListRow({
   creatingThread: boolean
   onToggleExpanded: (agentId: string) => void
   onOpenAgent: (agent: WorkspaceAgentDirectoryItem) => void
-  onRestoreAgent: (agent: WorkspaceAgentDirectoryItem) => void
   onOpenThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
   onCreateThread: (agent: WorkspaceAgentDirectoryItem) => void
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
   onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
 }) {
   return (
-    <div>
-      <div className="group/agent relative">
-        <button
-          type="button"
+    <SidebarMenuItem>
+      <div className="group/agent-row relative">
+        <SidebarMenuButton
+          isActive={isActive}
           disabled={anyOpening}
-          className={`${resourceRowClass} pr-7 ${isActive ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+          // Reserve both actions on touch too; they are always visible below md.
+          className="group-has-data-[sidebar=menu-action]/menu-item:pr-14"
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)
@@ -488,44 +470,35 @@ function AgentListRow({
             ? <Loader2 size={13} className="shrink-0 animate-spin" />
             : <AgentCreature agent={agent} size={16} />}
           <span className="truncate">{agent.name}</span>
-        </button>
-        <span className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-          {view === 'archived' && agent.archivedAt ? (
-            <button
-              type="button"
-              aria-label={`Restore ${agent.name}`}
-              title={`Restore ${agent.name}`}
-              onClick={(event) => {
-                event.stopPropagation()
-                onRestoreAgent(agent)
-              }}
-              className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-            >
-              <ArchiveRestore size={12} />
-            </button>
-          ) : null}
-          <button
-            type="button"
-            aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
-            aria-expanded={isExpanded}
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleExpanded(agent.id)
-            }}
-            className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--muted-light)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-          >
-            <ChevronRight
-              size={12}
-              className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-            />
-          </button>
-        </span>
+        </SidebarMenuButton>
+        <SidebarMenuAction
+          aria-label={`New thread with ${agent.name}`}
+          title="New thread"
+          disabled={creatingThread}
+          className="right-7 md:opacity-0 group-hover/agent-row:opacity-100 group-focus-within/agent-row:opacity-100"
+          onClick={(event) => {
+            event.stopPropagation()
+            if (!isExpanded) onToggleExpanded(agent.id)
+            onCreateThread(agent)
+          }}
+        >
+          {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
+        </SidebarMenuAction>
+        <SidebarMenuAction
+          aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
+          aria-expanded={isExpanded}
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleExpanded(agent.id)
+          }}
+        >
+          <ChevronRight className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden />
+        </SidebarMenuAction>
       </div>
       {isExpanded ? (
         <AgentThreadRows
           agent={agent}
           bundle={bundle}
-          view={view}
           activeConversationId={activeConversationId}
           onOpenThread={onOpenThread}
           onCreateThread={onCreateThread}
@@ -534,7 +507,7 @@ function AgentListRow({
           creatingThread={creatingThread}
         />
       ) : null}
-    </div>
+    </SidebarMenuItem>
   )
 }
 
@@ -554,14 +527,15 @@ export function AgentsInlinePanel({
   const searchParams = useSearchParams()
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const activeConversationId = searchParams?.get('id') ?? null
+  // With one person there is no Personal/Workspace split: every live agent is listed (the default Overlay agent is
+  // created by the system, so it would otherwise sit under a Workspace tab nobody opens).
+  const solo = useIsSoloWorkspace()
 
   const { bundles, setBundles, loadBundle } = useAgentBundles(workspaceId)
   const { expanded, toggleExpanded } = useExpandedAgents({ activeAgentId, bundles, loadBundle })
   const {
     agents,
     viewerPrincipalId,
-    archivedThreadAgentIds,
-    setArchivedThreadAgentIds,
     draftPreviews,
     loading,
   } = useAgentDirectory(workspaceId, expanded, loadBundle, setBundles)
@@ -576,20 +550,17 @@ export function AgentsInlinePanel({
     [agents, draftPreviews],
   )
 
-  // Tab bucketing: the Archived tab holds archived agents plus live agents
-  // that own archived threads; live agents split into Personal (created by
-  // me) and Workspace (the rest).
+  // Live agents split into Personal (created by me) and Workspace (the rest). Archived agents and threads live in
+  // Settings → Archived, not here.
   const tabAgents = useMemo(
     () => previewedAgents.filter((agent) => {
-      if (view === 'archived') {
-        return Boolean(agent.archivedAt) || archivedThreadAgentIds.has(agent.id)
-      }
       if (agent.archivedAt) return false
+      if (solo) return true
       return view === 'personal'
         ? agent.createdByPrincipalId === viewerPrincipalId
         : agent.createdByPrincipalId !== viewerPrincipalId
     }),
-    [previewedAgents, view, viewerPrincipalId, archivedThreadAgentIds],
+    [previewedAgents, view, viewerPrincipalId, solo],
   )
 
   // Most recently used first; agents with no recorded use stay alphabetical.
@@ -607,7 +578,6 @@ export function AgentsInlinePanel({
     createThread,
     archiveThread,
     deleteThread,
-    restoreAgent,
     retryOpen,
   } = useAgentActions({
     workspaceId,
@@ -620,7 +590,6 @@ export function AgentsInlinePanel({
     activeAgentId,
     activeConversationId,
     sortedAgents,
-    setArchivedThreadAgentIds,
   })
 
   // Remember agents opened through direct links or refreshes so recency
@@ -641,29 +610,30 @@ export function AgentsInlinePanel({
   // deliberate tab choice and stays untouched.
   useEffect(() => {
     if (loading || !activeAgentId || !searchParams || viewerPrincipalId == null) return
-    const viewParam = searchParams.get('view')
-    if (viewParam === 'personal' || viewParam === 'workspace' || viewParam === 'archived') return
+    // `?view=` is how the tab was spelled before scopes.
+    const viewParam = searchParams.get('scope') ?? searchParams.get('view')
+    if (viewParam === 'personal' || viewParam === 'workspace') return
     const active = agents.find((agent) => agent.id === activeAgentId)
-    if (!active) return
-    const correctView: AgentsPanelView = active.archivedAt
-      ? 'archived'
-      : active.createdByPrincipalId === viewerPrincipalId
+    if (!active || active.archivedAt) return
+    const correctView: AgentsPanelView = solo || active.createdByPrincipalId === viewerPrincipalId
         ? 'personal'
         : 'workspace'
     const wanted = correctView === 'personal' ? null : correctView
     if (viewParam === wanted) return
     const params = new URLSearchParams(searchParams.toString())
-    if (wanted) params.set('view', wanted)
-    else params.delete('view')
+    params.delete('view')
+    if (wanted) params.set('scope', wanted)
+    else params.delete('scope')
     router.replace(`${pathname}?${params.toString()}`)
-  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname])
+  }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, solo])
 
   return (
-    <SidebarResourceList>
+    <SidebarMenu>
       {loading ? (
-        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          <Loader2 size={13} className="animate-spin" /> Loading agents...
-        </div>
+        // Placeholders as tall as the rows they replace, so the list does not jump when the agents arrive.
+        [0, 1, 2].map((index) => (
+          <SidebarMenuItem key={index}><SidebarMenuSkeleton index={index} /></SidebarMenuItem>
+        ))
       ) : sortedAgents.length ? (
         sortedAgents.map((agent) => {
           const isExpanded = expanded.has(agent.id)
@@ -671,7 +641,6 @@ export function AgentsInlinePanel({
             <AgentListRow
               key={agent.id}
               agent={agent}
-              view={view}
               isExpanded={isExpanded}
               isActive={activeAgentId === agent.id && !activeConversationId}
               anyOpening={Boolean(openingAgentId)}
@@ -681,7 +650,6 @@ export function AgentsInlinePanel({
               creatingThread={creatingThreadFor === agent.id}
               onToggleExpanded={toggleExpanded}
               onOpenAgent={(target) => void openAgentById(target)}
-              onRestoreAgent={(target) => void restoreAgent(target)}
               onOpenThread={openThread}
               onCreateThread={(target) => void createThread(target)}
               onArchiveThread={(target, conversationId, archived) => {
@@ -694,22 +662,26 @@ export function AgentsInlinePanel({
           )
         })
       ) : (
-        <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">
-          {view === 'archived' ? 'No archived agents' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
-        </p>
+        <SidebarMenuItem>
+          <p className="px-2.5 py-2 text-xs text-(--muted-light)">
+            {solo ? 'No agents yet' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
+          </p>
+        </SidebarMenuItem>
       )}
       {openError ? (
-        <div className="px-2.5 py-2">
-          <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
-          <button
-            type="button"
-            onClick={retryOpen}
-            className="mt-1.5 rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-          >
-            Retry
-          </button>
-        </div>
+        <SidebarMenuItem>
+          <div className="px-2.5 py-2">
+            <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
+            <button
+              type="button"
+              onClick={retryOpen}
+              className="mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)"
+            >
+              Retry
+            </button>
+          </div>
+        </SidebarMenuItem>
       ) : null}
-    </SidebarResourceList>
+    </SidebarMenu>
   )
 }

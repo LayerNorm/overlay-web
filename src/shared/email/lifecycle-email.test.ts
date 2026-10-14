@@ -117,3 +117,17 @@ test('email copy never contains em dashes', () => {
     assert.doesNotMatch(email.html, /[—–]|&m(dash|ndash);/, `${event.name} html`)
   }
 })
+
+test('top-up limit email names the workspace and limit and links to workspace billing', () => {
+  const email = renderLifecycleEmail({
+    name: 'billing.auto_topup_limit_reached',
+    userId: 'user_1',
+    idempotencyKey: 'billing.auto_topup_limit_reached:ba_1:1:user_1',
+    resource: { id: 'ba_1', type: 'billing_account' },
+    attributes: { workspaceId: 'ws_1', workspaceName: 'Acme', monthlyLimitCents: 4_000, periodEnd: Date.UTC(2026, 10, 1) },
+  }, 'https://getoverlay.io')
+  assert.equal(email.subject, 'Acme reached its monthly top-up limit')
+  assert.match(email.text, /\$40 automatic top-up limit/)
+  assert.match(email.text, /section=workspace&workspace_tab=billing/)
+  assert.match(email.html, /monthly top-up limit reached/)
+})

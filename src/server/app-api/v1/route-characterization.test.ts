@@ -763,9 +763,8 @@ test('billing customer routes preserve unauthenticated/invalid body response sha
   assert.deepEqual(await readJson(entitlementsResponse), { error: 'Unauthorized' })
 })
 
-test('sensitive billing mutations require an interactive same-origin confirmation', async (t) => {
+test('account billing mutations are retired behind the same-origin confirmation', async (t) => {
   const { getOverlayServerContext } = await import('@/server/bootstrap')
-  const { billingCheckoutService, billingCustomerService } = await import('@/server/billing/http')
   const server = getOverlayServerContext()
   t.mock.method(server.auth, 'getSession', async () => ({
     accessToken: 'session-access-token',
@@ -785,19 +784,6 @@ test('sensitive billing mutations require an interactive same-origin confirmatio
     })),
   }))
   t.mock.method(server.auditService, 'record', async () => undefined)
-  t.mock.method(billingCustomerService, 'updateBillingSettings', async () => ({
-    planKind: 'paid' as const,
-    autoTopUpEnabled: false,
-    topUpAmountCents: 800,
-    autoTopUpAmountCents: 800,
-    topUpMinAmountCents: 800,
-    topUpMaxAmountCents: 20_000,
-    topUpStepAmountCents: 100,
-  }))
-  t.mock.method(billingCheckoutService, 'createPortalSession', async () => ({
-    url: 'https://billing.example.test/session',
-  }))
-
   const settings = await import('@/app/api/subscription/settings/route')
   const portal = await import('@/app/api/portal/route')
 
@@ -820,17 +806,16 @@ test('sensitive billing mutations require an interactive same-origin confirmatio
       topUpAmountCents: 800,
     }),
   }))
-  assert.equal(settingsResponse.status, 200)
+  // Plans and automatic top-ups belong to workspaces; an account has nothing to change.
+  assert.equal(settingsResponse.status, 410)
 
   const portalResponse = await portal.POST(request('/api/portal', {
     method: 'POST',
     headers: { Origin: 'https://overlay.test', 'Sec-Fetch-Site': 'same-origin' },
     body: JSON.stringify({ confirmation: 'OPEN_BILLING_PORTAL' }),
   }))
-  assert.equal(portalResponse.status, 200)
-  assert.deepEqual(await readJson(portalResponse), {
-    url: 'https://billing.example.test/session',
-  })
+  assert.equal(portalResponse.status, 410)
+  assert.equal((await readJson(portalResponse) as { code?: string }).code, 'account_plans_retired')
 })
 
 test('conversations act preserves premium gating response shape for free users', async (t) => {
@@ -858,6 +843,7 @@ test('conversations act preserves premium gating response shape for free users',
     throw new Error(`Unexpected Convex mutation: ${path}`)
   })
 
+  await stubPersonalPayer(t)
   const route = await import('./conversations/act/route')
   const response = await route.POST(
     request('/api/v1/conversations/act', {
@@ -913,6 +899,7 @@ test('conversations act swallows user-message persistence failure before later f
     throw new Error(`Unexpected Convex mutation: ${path}`)
   })
 
+  await stubPersonalPayer(t)
   const route = await import('./conversations/act/route')
   const response = await route.POST(
     request('/api/v1/conversations/act', {
@@ -934,3 +921,15 @@ test('conversations act swallows user-message persistence failure before later f
   assert.equal(body.error, 'history unavailable')
   assert.equal(typeof body.requestId, 'string')
 })
+
+/** These routes run without a workspace fixture: the person is in a free workspace, so they pay nothing themselves. */
+async function stubPersonalPayer(t: { mock: { method: (...args: never[]) => unknown } }) {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const resolver = getOverlayServerContext().billingPayerResolver
+  ;(t.mock.method as unknown as (object: object, name: string, impl: () => Promise<unknown>) => void)(resolver, 'resolve', async () => ({
+    billingAccountId: 'ba_personal',
+    scope: 'personal',
+    subject: { id: 'user_1', kind: 'member' },
+    userId: 'user_1',
+  }))
+}

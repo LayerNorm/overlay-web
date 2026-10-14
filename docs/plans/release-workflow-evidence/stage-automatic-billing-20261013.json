@@ -1,0 +1,92 @@
+{
+  "candidateSha": "f863915508795c695d9778f33476eaaf4d14436e",
+  "deploymentId": "dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ",
+  "testOnly": true,
+  "automaticWebhookAcceptance": true,
+  "manualReplay": false,
+  "checkout": {
+    "checkoutId": "cs_test_b1bFYTmwlnpQNCUxJ7Ho1oSBL5xUMtGIsVJ6uXAG0LFRg8ioISVUdoXx5z",
+    "subscriptionId": "sub_1UQ4rfPH7ssnO0LIuSmvutYH",
+    "livemode": false,
+    "paymentStatus": "paid",
+    "checkoutStatus": "complete",
+    "workspaceId": "staging-personal-user_01M4R1EKTMDZ4E6BQ5DMZXD0F2",
+    "appSubscription": {
+      "planKind": "paid",
+      "planAmountCents": 2000,
+      "status": "active",
+      "currentPeriodEnd": 1794573089000
+    },
+    "webhooks": [
+      {
+        "id": "evt_1UQ4rhPH7ssnO0LI9ceEZ20A",
+        "type": "checkout.session.completed",
+        "status": "processed"
+      },
+      {
+        "id": "evt_1UQ4rhPH7ssnO0LIoUDULcHi",
+        "type": "customer.subscription.created",
+        "status": "processed"
+      }
+    ],
+    "cancellationRequested": false,
+    "cancellationVerified": false
+  },
+  "uiReturn": {
+    "checkoutId": "cs_test_b1bFYTmwlnpQNCUxJ7Ho1oSBL5xUMtGIsVJ6uXAG0LFRg8ioISVUdoXx5z",
+    "livemode": false,
+    "fakeCardOnly": true,
+    "uiSubscriptionSubmitted": true,
+    "returnedToCanonicalStaging": true,
+    "browserSessionWasGuest": true,
+    "authenticatedQaBillingReadback": "separate existing normal Sandbox session"
+  },
+  "paidConsumption": {
+    "workspaceId": "staging-personal-user_01M4R1EKTMDZ4E6BQ5DMZXD0F2",
+    "realChatPassed": true,
+    "normalQaIdentity": true,
+    "conversationId": "r9705jcgj319paf8gph141myts8g6w1b",
+    "chatCleanupVerified": true
+  },
+  "cancellation": {
+    "checkoutId": "cs_test_b1bFYTmwlnpQNCUxJ7Ho1oSBL5xUMtGIsVJ6uXAG0LFRg8ioISVUdoXx5z",
+    "subscriptionId": "sub_1UQ4rfPH7ssnO0LIuSmvutYH",
+    "livemode": false,
+    "paymentStatus": "paid",
+    "checkoutStatus": "complete",
+    "workspaceId": "staging-personal-user_01M4R1EKTMDZ4E6BQ5DMZXD0F2",
+    "appSubscription": {
+      "planKind": "free",
+      "planAmountCents": 0,
+      "status": "canceled",
+      "currentPeriodEnd": 1794573089000
+    },
+    "webhooks": [
+      {
+        "id": "evt_1UQ4tbPH7ssnO0LIGe4ssYKk",
+        "type": "customer.subscription.deleted",
+        "status": "processed"
+      },
+      {
+        "id": "evt_1UQ4rhPH7ssnO0LI9ceEZ20A",
+        "type": "checkout.session.completed",
+        "status": "processed"
+      },
+      {
+        "id": "evt_1UQ4rhPH7ssnO0LIoUDULcHi",
+        "type": "customer.subscription.created",
+        "status": "processed"
+      }
+    ],
+    "cancellationRequested": false,
+    "cancellationVerified": true
+  },
+  "balance": {
+    "billingAccountId": "ba_a36fd077794f47179b34695b74d306aa",
+    "includedMicros": 100,
+    "usedMicros": 100,
+    "reservedMicros": 0,
+    "institutionalGrantMicros": 0,
+    "topUpPurchasedMicros": 0
+  }
+}

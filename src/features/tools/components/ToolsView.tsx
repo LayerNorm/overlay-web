@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { AllExtensionsComingSoonView, AppsComingSoonView } from '@overlay/modules-react/extensions'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { usePanelScope } from '@/hooks/use-panel-scope'
 
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'))
 const SkillsView = dynamic(() => import('@/features/automations/components/SkillsView'))
@@ -15,6 +16,7 @@ export default function ToolsView({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const view = searchParams?.get('view') ?? null
   const { capabilities } = useOverlayCapabilities()
+  const scope = usePanelScope()
 
   if (view === 'skills' && capabilities.skills) return <SkillsView userId={userId} />
   if (view === 'mcps' && capabilities.mcpServers) return <McpServersView userId={userId} />
@@ -23,5 +25,6 @@ export default function ToolsView({ userId }: { userId: string }) {
   if (!capabilities.integrations && capabilities.skills) return <SkillsView userId={userId} />
   if (!capabilities.integrations && capabilities.mcpServers) return <McpServersView userId={userId} />
 
-  return <IntegrationsView userId={userId} />
+  // A fresh view per scope: the personal and workspace accounts are different lists.
+  return <IntegrationsView key={scope} userId={userId} />
 }

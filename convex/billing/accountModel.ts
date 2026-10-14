@@ -8,6 +8,21 @@ import {
   type BillingAccountRecord,
 } from '../../src/shared/billing/billing-account'
 
+/** Retained canceled-plan funding follows only spent credit and live holds. */
+export async function canceledPlanCreditPatch(
+  ctx: MutationCtx,
+  balance: Doc<'billingAccountBalances'>,
+  usedMicros: number,
+  reservedMicros: number,
+): Promise<{ includedMicros?: number }> {
+  const subscription = await ctx.db.query('billingAccountSubscriptions')
+    .withIndex('by_billingAccountId', q => q.eq('billingAccountId', balance.billingAccountId))
+    .unique()
+  if (subscription?.status !== 'canceled' || subscription.planKind !== 'free' || subscription.planAmountCents !== 0) return {}
+  return { includedMicros: Math.min(balance.includedMicros,
+    Math.max(0, usedMicros + reservedMicros - balance.institutionalGrantMicros - balance.topUpPurchasedMicros)) }
+}
+
 export const billingAccountValidator = v.object({
   billingAccountId: v.string(),
   closedAt: v.optional(v.number()),
@@ -167,4 +182,16 @@ export function toBillingAccountRecord(
     ...(account.userId === undefined ? {} : { userId: account.userId }),
     ...(account.workspaceId === undefined ? {} : { workspaceId: account.workspaceId }),
   }
+}
+
+/**
+ * Account-level billing writes (subscription, top-ups, refunds) are for accounts whose balance lives in the
+ * account-keyed tables, which means workspace accounts. A personal account's balance lives in the owner's
+ * `subscriptions` row, and `syncPersonalBillingShadows` rewrites the account-keyed copy from that row after every
+ * billing change, so a write that stops at the copy is silently undone on the next sync (a top-up vanishes).
+ * Refusing it loudly is the fix; use the personal mutations (`billing/subscriptions:*`) or an administrative
+ * adjustment (`platform/usage:adjustAdministrativeBudgetByServer`) for a personal account.
+ */
+export function requireCanonicalBalanceAccount(account: Pick<Doc<'billingAccounts'>, 'scope'> | null): void {
+  if (account?.scope === 'personal') throw new Error('billing_account_balance_is_legacy_synced')
 }

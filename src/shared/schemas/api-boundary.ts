@@ -47,6 +47,7 @@ import {
   EntityDeleteRequest,
   EntityListQuery,
   EntityMutationRequest,
+  ScopeActionRequest,
   FileContentQuery,
   FileListQuery,
   GenerateImageRequest,
@@ -159,7 +160,7 @@ export const webApiBoundaryDefinitions = [
     schema: {
       json: z.object({
         agentId: z.string().min(1).max(256),
-        adapterId: z.enum(['claude-code', 'codex']),
+        adapterId: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
         providerAccountId: z.string().min(1).max(64),
         size: z.enum(['small', 'default', 'large']).optional(),
       }).strict(),
@@ -652,7 +653,7 @@ export const webApiBoundaryDefinitions = [
     method: 'POST', path: '/api/v1/provider-accounts',
     schema: {
       json: z.object({
-        provider: z.enum(['claude-code', 'codex']),
+        provider: z.enum(['claude-code', 'codex', 'opencode', 'hermes', 'cursor']),
         method: z.enum(['subscription', 'api_key']),
         secret: z.string().min(1).max(4096),
         label: z.string().max(80).optional(),
@@ -766,6 +767,13 @@ export const webApiBoundaryDefinitions = [
   },
   { method: 'GET', path: '/api/v1/settings', schema: { query: SettingsQuery }, summary: 'Read settings', tag: 'Settings' },
   { method: 'PATCH', path: '/api/v1/settings', schema: { json: UpdateSettingsRequest }, summary: 'Update settings', tag: 'Settings' },
+  {
+    method: 'POST',
+    path: '/api/v1/scope',
+    schema: { json: ScopeActionRequest },
+    summary: 'Move a resource between Personal and Workspace, archive it, or restore it',
+    tag: 'Workspaces',
+  },
   { method: 'GET', path: '/api/v1/skills', schema: { query: EntityListQuery }, summary: 'List skills', tag: 'Skills' },
   { method: 'POST', path: '/api/v1/skills', schema: { json: EntityMutationRequest }, summary: 'Create a skill', tag: 'Skills' },
   { method: 'PATCH', path: '/api/v1/skills', schema: { json: EntityMutationRequest }, summary: 'Update a skill', tag: 'Skills' },
@@ -942,6 +950,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agent-bindings', reason: 'Agent binding management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents', reason: 'Agent directory management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]', reason: 'Agent detail management; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/agents/[agentId]/permanent', reason: 'Permanent deletion of an already archived agent; boundary definition pending. Protected by workspace authorization and the archived-state requirement.' },
   { routePath: '/api/v1/agents/[agentId]/bundle', reason: 'Agent sidebar bundle (threads and agent-owned automations); boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/automations', reason: 'Agent-owned automation listing; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/agents/[agentId]/machine', reason: 'Overlay Cloud machine status/pause/resume/restart/delete; the action body is validated in the handler. Protected by workspace authorization.' },
@@ -1005,6 +1014,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/workspaces', reason: 'Workspace management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/audit-export', reason: 'Workspace audit export; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing', reason: 'Workspace billing management; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/workspaces/[workspaceId]/billing/auto-top-up', reason: 'Workspace automatic top-up policy; boundary definition pending. Protected by workspace owner/admin authorization and validated by the billing service.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/checkout', reason: 'Workspace billing checkout; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/portal', reason: 'Workspace billing portal; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/top-ups', reason: 'Workspace billing top-ups; boundary definition pending. Protected by workspace authorization.' },
@@ -1018,6 +1028,11 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/workspaces/[workspaceId]/policies', reason: 'Workspace policy management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/teams', reason: 'Workspace team management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/teams/[teamId]/members', reason: 'Workspace team member management; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/work', reason: 'Work tasks (list and create); boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
+  { routePath: '/api/v1/work/context', reason: 'Work picker context; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/work/[id]', reason: 'Work task detail and update; boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
+  { routePath: '/api/v1/work/[id]/move', reason: 'Work board placement; boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
+  { routePath: '/api/v1/work/[id]/events', reason: 'Work task activity and comments; boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
   { routePath: '/api/v1/workspaces/active', reason: 'Active workspace selection; boundary definition pending. Protected by workspace authorization.' },
 ] as const satisfies readonly WebApiExcludedRouteDefinition[]
 

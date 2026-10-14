@@ -45,6 +45,12 @@ export function useByoConnection(args: {
   const [setupEnvironmentId, setSetupEnvironmentId] = useState<string | null>(null)
   const [setupRoots, setSetupRoots] = useState('')
   const [enrollmentBaselineIds, setEnrollmentBaselineIds] = useState<string[]>([])
+  // Which agent's environments and binding have been read once. Derived, so the first render already knows it is loading.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
+  const loadKey = agent?.id ?? 'new'
+  const initialLoading = Boolean(
+    activeWorkspaceId && !showcase && connectedAgentsEnabled && (agent || agentType === 'byo') && loadedFor !== loadKey,
+  )
 
   const refreshEnvironments = useCallback(async () => {
     if (!activeWorkspaceId || showcase) return []
@@ -87,7 +93,7 @@ export function useByoConnection(args: {
     }).catch((value) => {
       if (!cancelled) setEnvironmentError(value instanceof Error ? value.message : 'Could not load environments.')
     }).finally(() => {
-      if (!cancelled) setEnvironmentsLoading(false)
+      if (!cancelled) { setEnvironmentsLoading(false); setLoadedFor(agent?.id ?? 'new') }
     })
     return () => { cancelled = true }
     // `onLegacyHostedBinding` must be a stable useCallback from the page — a new
@@ -212,6 +218,7 @@ export function useByoConnection(args: {
     environmentChoice,
     setEnvironmentChoice,
     environmentsLoading,
+    initialLoading,
     environmentId,
     adapterId,
     workingDirectory,

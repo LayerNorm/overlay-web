@@ -63,7 +63,7 @@ export function ProviderConnectionsSetting() {
       {/* Header bar with Add button */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-[var(--muted)]">
+          <p className="text-sm text-(--muted)">
             Connect your own AI provider keys. Expand a provider to choose which models appear in your model dropdown.
           </p>
         </div>
@@ -71,7 +71,7 @@ export function ProviderConnectionsSetting() {
           type="button"
           onClick={() => setDialog({ mode: 'add' })}
           disabled={isLoading}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
         >
           <Plus size={14} strokeWidth={2} />
           Add provider
@@ -80,7 +80,7 @@ export function ProviderConnectionsSetting() {
 
       {/* Loading state */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-[var(--muted)]">
+        <div className="flex items-center justify-center py-12 text-sm text-(--muted)">
           <Loader2 size={16} className="mr-2 animate-spin" />
           Loading providers...
         </div>
@@ -96,17 +96,17 @@ export function ProviderConnectionsSetting() {
 
       {/* Connections list */}
       {!isLoading && connections.length === 0 && !error ? (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-12 text-center">
-          <KeyRound size={24} className="mx-auto mb-3 text-[var(--muted-light)]" strokeWidth={1.5} />
-          <p className="text-sm text-[var(--muted)]">No provider connections yet.</p>
-          <p className="mt-1 text-xs text-[var(--muted-light)]">
+        <div className="rounded-xl border border-(--border) bg-(--surface-elevated) py-12 text-center">
+          <KeyRound size={24} className="mx-auto mb-3 text-(--muted-light)" strokeWidth={1.5} />
+          <p className="text-sm text-(--muted)">No provider connections yet.</p>
+          <p className="mt-1 text-xs text-(--muted-light)">
             Add a provider to use your own API keys with Overlay.
           </p>
         </div>
       ) : null}
 
       {!isLoading && connections.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] divide-y divide-[var(--border)]">
+        <div className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) divide-y divide-(--border)">
           {connections.map((connection) => (
             <ProviderConnectionRow
               key={connection._id}

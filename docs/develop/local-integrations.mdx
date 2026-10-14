@@ -8,16 +8,44 @@ description: "Run provider-dependent web features during local development."
 Run the app locally, then forward Stripe events:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+stripe listen --forward-to https://<your-selected-dev-deployment>.convex.site/stripe/webhook
 ```
 
-Use matching Stripe test secrets in `.env.local`.
+Use matching Stripe test secrets for that explicitly selected personal development Convex backend. Do not forward to customer production; dedicated staging has its own test endpoint. The former Next.js webhook route was removed.
+
+## Redis rate limiter QA
+
+Redis client 6 uses RESP3 and requires Node.js 20 or newer. Use a disposable
+local Redis instance for the opt-in TCP tests; never point them at customer
+storage. Set `OVERLAY_REDIS_URL` explicitly and run
+`NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs npx tsx --test src/server/shared/providers/redis-rate-limiter.test.ts`.
+The live cases verify shared limits, concurrent requests and expiry; the same
+file retains ordinary unit tests for fail-closed behavior without Redis.
 
 ## Auth
 
 WorkOS sign-in flows require the local callback URL to match the WorkOS application settings. Keep local, staging, and production WorkOS credentials separate.
 
 For OIDC deployments, including Keycloak-compatible realm issuers, verify browser callback wiring and token claims before production use.
+
+Default web sign-in/sign-up and server SSO callbacks use the shared authenticated home (`/app/work`) when no return destination is supplied. Explicit same-origin paths, including `/account`, and supported desktop handoff redirects retain their existing validation and routing.
+
+## PR preview authentication
+
+Migration previews use `https://pr-<number>.preview.getoverlay.io` with the
+registered WorkOS sandbox wildcard callback. They do not require the paid
+Vercel preview suffix. `POST /api/auth/preview-login` accepts the
+`x-overlay-preview-secret` header only when both deployment markers say preview,
+the canonical origin is valid, and the WorkOS client is Overlay's sandbox.
+The server authenticates its configured QA email/password, checks the returned
+user ID against the seeded identity, and creates the normal encrypted session.
+It never returns provider tokens. Missing or incorrect configuration returns
+404 before provider access; authenticated requests are rate limited.
+
+Keep `PREVIEW_LOGIN_SECRET`, `PREVIEW_LOGIN_PASSWORD`, and the sandbox API key
+in the web app's Preview scope. Convex receives only the seed user ID/email and
+the matching internal secrets. The existing browser Convex-token endpoint issues
+the short-lived subscription token after this login.
 
 ## Storage
 
@@ -41,6 +69,14 @@ Verify configuration through `GET /api/v1/integrations?action=health`. Catalog r
 Connector visibility is workspace-scoped through `workspaceConnectors`. On the first Personal-workspace read after upgrading, active Composio accounts with no mapping in any workspace are assigned to Personal. Existing workspace mappings are never moved or duplicated.
 
 ## MCP tools
+
+The MCP OAuth adapter preserves the SDK's authorization-server `issuer` binding
+on both client information and tokens, inside the existing encrypted JSON
+credential fields. Credentials loaded without an issuer are withheld from the
+SDK and require reconnecting; do not infer their issuer from a new discovery
+response or silently stamp existing secrets. The SDK refuses to send bound
+credentials to a different issuer. This upgrade needs no new Convex schema
+field.
 
 AI SDK `toolsContext` is keyed by executable tool name. `call_mcp_tool` receives
 its user, conversation, turn, and model attribution under the

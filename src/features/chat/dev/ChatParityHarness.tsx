@@ -112,16 +112,16 @@ function FixtureSection({
   return (
     <section
       data-parity-scenario={scenarioId}
-      className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-4 shadow-sm sm:px-5"
+      className="rounded-2xl border border-(--border) bg-(--surface-elevated) px-3 py-4 shadow-xs sm:px-5"
     >
-      <div className="mb-5 border-b border-[var(--border)] pb-3">
-        <h2 className="text-sm font-semibold text-[var(--foreground)]">
+      <div className="mb-5 border-b border-(--border) pb-3">
+        <h2 className="text-sm font-semibold text-(--foreground)">
           {title}
         </h2>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+        <p className="mt-1 text-xs leading-relaxed text-(--muted)">
           {description}
         </p>
-        <code className="mt-2 inline-block text-[10px] text-[var(--muted-light)]">
+        <code className="mt-2 inline-block text-[10px] text-(--muted-light)">
           {scenarioId}
         </code>
       </div>
@@ -281,7 +281,7 @@ function PerfReadout({
   }, [scenario, theme, width]);
 
   return (
-    <details className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
+    <details className="rounded-xl border border-dashed border-(--border) p-3 text-xs text-(--muted)">
       <summary className="cursor-pointer font-medium">
         Render-count baseline
       </summary>
@@ -335,21 +335,21 @@ export function ChatParityHarness({
     mediaScenarios.length > 0;
 
   return (
-    <main className="overlay-chat-surface min-h-screen bg-[var(--background)] px-3 py-5 text-[var(--foreground)] sm:px-5">
+    <main className="overlay-chat-surface min-h-screen bg-(--background) px-3 py-5 text-(--foreground) sm:px-5">
       <div
         className="mx-auto flex w-full flex-col gap-5"
         style={{ maxWidth: width }}
       >
         <header className="flex flex-wrap items-end justify-between gap-3 px-1">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-light)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--muted-light)">
               Web parity harness
             </p>
             <h1 className="mt-1 text-lg font-semibold">
               Desktop chat baseline
             </h1>
           </div>
-          <div className="text-right text-[10px] leading-relaxed text-[var(--muted-light)]">
+          <div className="text-right text-[10px] leading-relaxed text-(--muted-light)">
             <div>{CHAT_PARITY_FIXTURE_VERSION}</div>
             <div>
               {theme} · {width}px · {scenario}
@@ -358,7 +358,7 @@ export function ChatParityHarness({
         </header>
 
         {!knownScenario ? (
-          <div className="rounded-xl border border-[var(--chat-alert-error-border)] bg-[var(--chat-alert-error-bg)] p-4 text-sm text-[var(--chat-alert-error-text)]">
+          <div className="rounded-xl border border-(--chat-alert-error-border) bg-(--chat-alert-error-bg) p-4 text-sm text-(--chat-alert-error-text)">
             Unknown fixture scenario: {scenario}
           </div>
         ) : null}

@@ -1,4 +1,5 @@
 import 'server-only'
+import { ConvexError } from 'convex/values'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -53,6 +54,7 @@ export class ConvexNoteRepository implements NoteRepository {
     userId: string
     includeDeleted?: boolean
     workspaceId?: string
+    view?: 'personal' | 'workspace' | 'archived'
   }): Promise<NoteRecord[]> {
     return await convex.query<NoteRecord[]>('files/files:list', {
       userId: args.userId,
@@ -60,6 +62,7 @@ export class ConvexNoteRepository implements NoteRepository {
       kind: 'note',
       ...(args.includeDeleted !== undefined ? { includeDeleted: args.includeDeleted } : {}),
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      ...(args.view ? { view: args.view } : {}),
     }) ?? []
   }
 
@@ -70,6 +73,7 @@ export class ConvexNoteRepository implements NoteRepository {
     tags?: string[]
     clientId?: string
     workspaceId?: string
+    scope?: 'personal' | 'workspace'
   }): Promise<{ id: string; note: NoteRecord | null }> {
     const fileId = await convex.mutation<string>('files/files:create', {
       userId: args.userId,
@@ -82,6 +86,7 @@ export class ConvexNoteRepository implements NoteRepository {
       content: args.content,
       contentHash: args.content ? hashTextContent(args.content) : undefined,
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      ...(args.scope ? { scope: args.scope } : {}),
     })
     if (!fileId) {
       throw new Error('Failed to create note')
@@ -125,9 +130,10 @@ export class ConvexNoteRepository implements NoteRepository {
           ? { expectedUpdatedAt: args.expectedUpdatedAt }
           : {}),
         ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
-      })
+      }, { throwOnError: true })
     } catch (error) {
-      if (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT')) {
+      if ((error instanceof ConvexError && error.data === 'NOTE_REVISION_CONFLICT')
+        || (error instanceof Error && error.message.includes('NOTE_REVISION_CONFLICT'))) {
         const current = await this.getNote({ noteId: args.noteId, userId: args.userId, ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}) })
         throw new NoteRevisionConflictError(args.expectedUpdatedAt, current?.updatedAt ?? existing.updatedAt)
       }

@@ -129,7 +129,14 @@ export class AcpxAgentAdapter implements AgentAdapter {
     const ensure = () => runtime.ensureSession({
       sessionKey, agent: this.options.agent, mode: 'persistent', cwd: input.workingDirectory,
     })
+    const requestedModel = typeof input.metadata?.model === 'string' && input.metadata.model.trim() ? input.metadata.model.trim() : null
+    // The model an agent's owner chose, in the agent's own id (Claude Code `sonnet`, Codex `gpt-6-sol[high]`). A model the
+    // agent does not offer fails the run with the agent's own message instead of silently running another model.
+    const applyModel = async (target: AcpRuntimeHandle) => {
+      if (requestedModel) await applyRequestedModel(runtime, target, requestedModel)
+    }
     let handle: AcpRuntimeHandle = await ensure()
+    await applyModel(handle)
     let activeTurn: AcpRuntimeTurn | undefined
     const permissions = new Map<string, PendingPermission>()
     const elicitations = new Map<string, PendingElicitation>()
@@ -182,6 +189,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
       prompt: async (prompt) => {
         if (!connected) {
           handle = await ensure()
+          await applyModel(handle)
           connected = true
         }
         textCheckpoint = ''
@@ -272,6 +280,34 @@ async function emitTurnResult(result: AcpRuntimeTurnResult, emit: EmitAgentEvent
       message: result.error.message.slice(0, 2_000),
       retryable: result.error.retryable ?? false,
     } })
+  }
+}
+
+type ModelControls = Pick<AcpRuntime, 'setModel' | 'setConfigOption'>
+
+/**
+ * Applies the model an agent's owner chose. The id is tried as given. Codex on a ChatGPT sign-in advertises plain model
+ * names (`gpt-6-sol`) while an API key advertises `gpt-6-sol[high]`; so when a `name[level]` id is not offered, the
+ * name is applied and the level is set as the reasoning effort (best effort: an agent without that setting keeps its
+ * own). A model the agent does not offer at all still fails the run, with the agent's own message.
+ */
+export async function applyRequestedModel(runtime: ModelControls, handle: AcpRuntimeHandle, model: string): Promise<void> {
+  if (!runtime.setModel) return
+  try {
+    await runtime.setModel({ handle, model })
+    return
+  } catch (error) {
+    const split = /^(.+)\[([^\]]+)\]$/.exec(model)
+    if (!split) throw error
+    await runtime.setModel({ handle, model: split[1]! })
+    for (const key of ['reasoning_effort', 'effort']) {
+      try {
+        await runtime.setConfigOption?.({ handle, key, value: split[2]! })
+        return
+      } catch (_error) {
+        // Try the next name; an agent with no such setting keeps its own level.
+      }
+    }
   }
 }
 

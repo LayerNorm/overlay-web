@@ -1,21 +1,24 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  Archive,
   Bot,
   Brain,
+  Cloud,
   CreditCard,
   FileText,
   House,
   Keyboard,
-  KeyRound,
   Plug,
   LayoutDashboard,
   Mail,
+  Monitor,
   Palette,
   ScrollText,
   Server,
   Settings,
   ShieldCheck,
   User,
+  UserCog,
   UsersRound,
   Webhook,
   X,
@@ -31,9 +34,11 @@ import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 import { resolveFilesCategory, type FilesCategory } from '@/components/layout/FilesCategorySidebar'
 import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
+import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
+import { resolveWorkView, type WorkView } from '@/shared/work/views'
 
-export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'settings'
+export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'work' | 'settings'
 
 export const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   chat: 'chats',
@@ -42,6 +47,7 @@ export const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   agents: 'agents',
   automations: 'automations',
   tools: 'extensions',
+  work: 'work',
   settings: 'settings',
 }
 
@@ -51,13 +57,16 @@ export const SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   customization: Palette,
   shortcuts: Keyboard,
   memories: Brain,
+  providers: Cloud,
   models: Bot,
+  computers: Monitor,
   'agent-environments': Server,
-  'agent-accounts': KeyRound,
+  'agent-accounts': UserCog,
   'connected-apps': Plug,
   webhooks: Webhook,
   contact: Mail,
   workspace: UsersRound,
+  archived: Archive,
 }
 
 /** Sidebar navigation chords stay inert while typing and ignore key repeat. */
@@ -90,13 +99,18 @@ export interface SidebarRouteState {
   automationsOpen: boolean
   automationsSectionOpen: boolean
   toolsOpen: boolean
+  workOpen: boolean
   settingsPathActive: boolean
   settingsSection: string
   toolsView: string
+  /** List, Board, or Timeline (`?view=`). */
+  workView: WorkView
   filesView: FilesCategory
   agentsView: AgentsPanelView
   chatViewParam: string | null
   chatsView: string
+  /** Personal or Workspace, from the URL, then the remembered choice. Chats derive it from their subview. */
+  scope: PanelScope
   panelKind: SecondaryPanelKind | null
   hasResourcePanel: boolean
   showSecondaryPanel: boolean
@@ -110,23 +124,20 @@ function resolveToolsView(current: string | null): string {
   return 'connectors'
 }
 
-function resolveAgentsView(current: string | null): AgentsPanelView {
-  if (current === 'workspace') return 'workspace'
-  if (current === 'archived') return 'archived'
+/** Chats keep their own routes: direct messages, channels, and activity are the Workspace scope. */
+export function chatScopeForView(chatsView: string): PanelScope {
+  if (chatsView === 'dms' || chatsView === 'channels' || chatsView === 'activity') return 'workspace'
   return 'personal'
 }
 
 function resolveChatsView({
   activityOpen,
-  archivedOpen,
   chatViewParam,
 }: {
   activityOpen: boolean
-  archivedOpen: boolean
   chatViewParam: string | null
 }): string {
   if (activityOpen) return 'activity'
-  if (archivedOpen) return 'archived'
   if (chatViewParam === 'dms') return 'dms'
   if (chatViewParam === 'channels') return 'channels'
   if (chatViewParam === 'all') return 'all'
@@ -138,11 +149,17 @@ export function resolveSidebarRouteState({
   searchParams,
   resolveWorkspaceSurface,
   automationsEnabled,
+  savedScope = null,
+  solo = false,
 }: {
   pathname: string
   searchParams: URLSearchParams
   resolveWorkspaceSurface: (path: string) => string | null
   automationsEnabled: boolean
+  /** The scope remembered from the last scoped page. */
+  savedScope?: PanelScope | null
+  /** The workspace is one person, so there is no Workspace scope to be in. */
+  solo?: boolean
 }): SidebarRouteState {
   const workspaceSurface = resolveWorkspaceSurface(pathname)
   const canonicalWorkspaceRoute = pathname.startsWith('/app/w/')
@@ -161,13 +178,18 @@ export function resolveSidebarRouteState({
   const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
   const automationsSectionOpen = automationsOpen && automationsEnabled
   const toolsOpen = pathname.startsWith('/app/tools') || (canonicalWorkspaceRoute && workspaceSurface === 'tools')
+  const workOpen = pathname.startsWith('/app/work') || (canonicalWorkspaceRoute && workspaceSurface === 'work')
   const settingsPathActive = pathname.startsWith('/app/settings') || (canonicalWorkspaceRoute && workspaceSurface === 'settings')
   const settingsSection = searchParams.get('section') ?? 'general'
   const chatViewParam = searchParams.get('view')
   const toolsView = resolveToolsView(chatViewParam)
+  const workView = resolveWorkView(chatViewParam)
   const filesView = resolveFilesCategory(chatViewParam)
-  const agentsView = resolveAgentsView(chatViewParam)
-  const chatsView = resolveChatsView({ activityOpen, archivedOpen, chatViewParam })
+  const chatsView = resolveChatsView({ activityOpen, chatViewParam })
+  // Agent links from before scopes carried the tab as `?view=`.
+  const scopeParam = searchParams.get(PANEL_SCOPE_PARAM) ?? (agentsOpen ? chatViewParam : null)
+  const scope = chatOpen ? chatScopeForView(chatsView) : resolvePanelScope({ param: scopeParam, saved: savedScope, solo })
+  const agentsView = scope
   const panelKind: SecondaryPanelKind | null = chatOpen
     ? 'chat'
     : filesOpen
@@ -180,9 +202,11 @@ export function resolveSidebarRouteState({
             ? 'automations'
             : toolsOpen
               ? 'tools'
-              : settingsPathActive
-                ? 'settings'
-                : null
+              : workOpen
+                ? 'work'
+                : settingsPathActive
+                  ? 'settings'
+                  : null
   return {
     workspaceSurface,
     canonicalWorkspaceRoute,
@@ -197,13 +221,16 @@ export function resolveSidebarRouteState({
     automationsOpen,
     automationsSectionOpen,
     toolsOpen,
+    workOpen,
     settingsPathActive,
     settingsSection,
     toolsView,
+    workView,
     filesView,
     agentsView,
     chatViewParam,
     chatsView,
+    scope,
     panelKind,
     hasResourcePanel: panelKind != null && RESOURCE_PANEL_KINDS.has(panelKind),
     showSecondaryPanel: panelKind != null,
@@ -277,6 +304,8 @@ export function panelKindForNavItem(
       return automationsEnabled ? 'automations' : null
     case '/app/tools':
       return 'tools'
+    case '/app/work':
+      return 'work'
     default:
       return null
   }
@@ -454,6 +483,48 @@ export function resolveResourceAction({
     }
   }
   return null
+}
+
+export interface PanelCreateRules {
+  /** Whether the person may create this kind of thing in the Workspace scope. */
+  canCreate: (kind: 'extension' | 'content', scope: 'personal' | 'workspace') => boolean
+  /** Owners and admins always may; members follow the workspace's settings. */
+  isManager: boolean
+  memberCanCreateChannels: boolean
+  memberCanCreateAgents: boolean
+}
+
+/**
+ * The panel's New button for the scope on screen: none in Archived, none where the person is not allowed to create in the
+ * Workspace scope (their admin decides), and in Workspace it says where the item will land.
+ */
+export function scopePanelAction({
+  action,
+  panelKind,
+  scope,
+  chatsView,
+  rules,
+}: {
+  action: { label: string; onClick: () => void } | null
+  panelKind: SecondaryPanelKind | null
+  scope: PanelScope
+  chatsView: string
+  rules: PanelCreateRules
+}): { label: string; onClick: () => void } | null {
+  if (!action) return null
+  if (scope === 'personal') return action
+  if (panelKind === 'chat') {
+    return chatsView === 'channels' && !rules.isManager && !rules.memberCanCreateChannels ? null : action
+  }
+  if (panelKind === 'agents') {
+    return !rules.isManager && !rules.memberCanCreateAgents ? null : action
+  }
+  if (panelKind === 'files' || panelKind === 'notes' || panelKind === 'automations') {
+    return rules.canCreate('content', 'workspace')
+      ? { ...action, label: `${action.label} in workspace` }
+      : null
+  }
+  return action
 }
 
 export function buildPrimaryRailItems({

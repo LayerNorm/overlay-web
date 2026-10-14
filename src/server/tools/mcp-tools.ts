@@ -113,9 +113,15 @@ function getMcpRepository(): McpServerRepository {
   return getOverlayServerContext().appData.repositories.mcpServers;
 }
 
-async function listRuntimeMcpServers(args: { userId: string }) {
+async function listRuntimeMcpServers(args: { userId: string; workspaceId?: string; workspaceOnly?: boolean }) {
   const repository = getMcpRepository();
-  return await repository.listEnabled({ userId: args.userId });
+  // In a workspace, the servers other members shared with it are usable too. They run with their creator's credentials
+  // on the server; the person (and the model) only ever sees the server's name and tools.
+  return await repository.listEnabled({
+    userId: args.userId,
+    ...(args.workspaceId ? { workspaceId: args.workspaceId, includeShared: true } : {}),
+    ...(args.workspaceId && args.workspaceOnly ? { workspaceOnly: true } : {}),
+  });
 }
 
 async function recordMcpExecution(input: {
@@ -454,11 +460,14 @@ export function rankMcpCatalogEntries(
 
 export async function createMcpLazyMetaTools(args: {
   userId: string;
+  workspaceId?: string;
   accessToken?: string;
   serverSecret?: string;
   conversationId?: string;
   turnId?: string;
   modelId?: string;
+  /** In a room others can read: only the workspace's shared servers, never the person's own. */
+  workspaceOnly?: boolean;
 }): Promise<{
   tools: ToolSet;
   toolApproval?: McpToolApprovalFn;
@@ -466,6 +475,8 @@ export async function createMcpLazyMetaTools(args: {
 }> {
   const configs = await listRuntimeMcpServers({
     userId: args.userId,
+    workspaceId: args.workspaceId,
+    workspaceOnly: args.workspaceOnly,
   });
 
   if (!configs || configs.length === 0) {

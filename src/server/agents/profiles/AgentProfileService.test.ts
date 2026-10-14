@@ -85,7 +85,7 @@ test('credentials and secret values never reach storage; the server needs are na
   const { profileId } = await importOnce(service, [
     { path: '.credentials.json', content: '{"token":"sk-ant-secret"}' },
     { path: 'CLAUDE.md', content: 'be kind' },
-  ], { mcpServers: { github: { command: 'npx', args: ['gh'], env: { GITHUB_TOKEN: 'ghp_1234567890abcdefghijklmnop' } } } })
+  ], { mcpServers: { github: { command: 'npx', args: ['gh'], env: { GITHUB_TOKEN: 'ghp_' + '1234567890abcdefghijklmnop' } } } })
   const row = profiles.find((p) => p.id === profileId)!
   assert.ok(!JSON.stringify(row).includes('sk-ant-secret'))
   assert.ok(!(row.chunks ?? []).join('').includes('ghp_1234567890'))

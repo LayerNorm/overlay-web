@@ -61,11 +61,11 @@ function AllowanceMeter({ entitlements }: { entitlements: SidebarEntitlements })
 
 export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements | null }) {
   if (!entitlements) {
-    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
+    return <p className="text-[11px] text-(--muted-light)">Loading...</p>
   }
 
   if (planKindOf(entitlements) === 'free') {
-    return <p className="text-[11px] text-[var(--muted-light)]">Auto model messages are unlimited. Premium models and budgeted tools are unavailable on this plan.</p>
+    return <p className="text-[11px] text-(--muted-light)">Auto model messages are unlimited. Premium models and budgeted tools are unavailable on this plan.</p>
   }
 
   return <AllowanceMeter entitlements={entitlements} />
@@ -73,7 +73,7 @@ export function UsageBar({ entitlements }: { entitlements: SidebarEntitlements |
 
 export function StorageBar({ entitlements }: { entitlements: SidebarEntitlements | null }) {
   if (!entitlements) {
-    return <p className="text-[11px] text-[var(--muted-light)]">Loading...</p>
+    return <p className="text-[11px] text-(--muted-light)">Loading...</p>
   }
 
   const usedBytes = Math.max(0, entitlements.overlayStorageBytesUsed)

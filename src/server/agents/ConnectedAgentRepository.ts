@@ -278,6 +278,9 @@ export interface ConnectedAgentRepository {
     environmentId: string
     commandId: string
     accepted?: boolean
+    /** Why the host rejected the command, when it said. */
+    errorCode?: string
+    errorMessage?: string
     now: number
   }): Promise<boolean>
   createApprovalRequest(input: ConnectedAgentCreateApprovalRequest): Promise<AgentApprovalRequest>
@@ -354,7 +357,11 @@ export interface ConnectedAgentRepository {
     leaseId: string
     patch: Record<string, unknown>
     now: number
+    /** Starts the idle timer: the lease is checked for idleness this long from now (replacing any earlier timer). */
+    idleCheckInMs?: number
   }): Promise<AgentSandboxLease | null>
+  /** Whether a run on the environment has not finished (its machine must stay up). */
+  environmentHasActiveRuns(args: { environmentId: string }): Promise<boolean>
   meterSandboxLease(args: {
     workspaceId: string
     leaseId: string

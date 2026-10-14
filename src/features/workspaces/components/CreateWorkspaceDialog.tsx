@@ -9,12 +9,14 @@ export function CreateWorkspaceDialog({
   error,
   onOpenChange,
   onCreate,
+  onCloseAutoFocus,
 }: {
   open: boolean
   busy?: boolean
   error?: string | null
   onOpenChange(open: boolean): void
   onCreate(name: string): Promise<void>
+  onCloseAutoFocus?: (event: Event) => void
 }) {
   const [name, setName] = useState('')
 
@@ -24,6 +26,7 @@ export function CreateWorkspaceDialog({
     <DialogFrame
       open={open}
       onOpenChange={onOpenChange}
+      onCloseAutoFocus={onCloseAutoFocus}
       title="Create a workspace"
       description="Workspaces keep your team, chats, agents, and shared resources together."
       footer={(
@@ -48,7 +51,7 @@ export function CreateWorkspaceDialog({
           if (!busy && trimmedName) void onCreate(trimmedName)
         }}
       >
-        <label className="block text-xs font-medium text-[var(--foreground)]" htmlFor="workspace-name">
+        <label className="block text-xs font-medium text-(--foreground)" htmlFor="workspace-name">
           Workspace name
         </label>
         <Input
@@ -61,8 +64,11 @@ export function CreateWorkspaceDialog({
           placeholder="Acme"
           autoComplete="organization"
         />
-        <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted-light)]">
+        <p className="mt-2 text-[11px] leading-relaxed text-(--muted-light)">
           You will be the workspace owner. You can invite people and add agents next.
+        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-(--muted-light)">
+          It starts on the free plan: everyone working in it shares one weekly allowance. Add a plan from its Billing tab for a pool of credits shared by every member.
         </p>
         {error ? (
           <p role="alert" className="mt-3 text-xs text-red-500">

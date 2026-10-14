@@ -18,7 +18,7 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   // app shell mounted so the account footer does not vanish behind a full-page gate.
   if (status === 'loading' && !hasShownApp) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[var(--background)] text-sm text-[var(--muted)]">
+      <div className="flex h-screen w-full items-center justify-center bg-(--background) text-sm text-(--muted)">
         <Loader2 size={16} className="mr-2 animate-spin" />
         Opening workspace…
       </div>
@@ -26,17 +26,17 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   }
   if (status === 'error') {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[var(--background)] p-6">
+      <div className="flex h-screen w-full items-center justify-center bg-(--background) p-6">
         <div className="max-w-sm text-center">
-          <CircleAlert size={26} className="mx-auto text-[var(--muted-light)]" />
-          <h1 className="mt-4 text-sm font-semibold text-[var(--foreground)]">Workspace unavailable</h1>
-          <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">
+          <CircleAlert size={26} className="mx-auto text-(--muted-light)" />
+          <h1 className="mt-4 text-sm font-semibold text-(--foreground)">Workspace unavailable</h1>
+          <p className="mt-1.5 text-xs leading-relaxed text-(--muted)">
             {error ?? 'Workspace not found or you no longer have access.'}
           </p>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="mt-4 h-8 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs font-medium text-[var(--foreground)]"
+            className="mt-4 h-8 rounded-md border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground)"
           >
             Try again
           </button>

@@ -93,6 +93,7 @@ const OverlayFeatureFlagsSchema = z
     // Inert: managed harness agents were removed. Kept so existing configs still validate.
     managedHarnessAgents: z.boolean().optional(),
     computers: z.boolean().optional(),
+    work: z.boolean().optional(),
   })
   .strict()
 

@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, Check, Search, UserRound, UserPlus } from 'lucide-react'
+import { Check, Search, UserRound, UserPlus } from 'lucide-react'
+import { AgentCreature } from '@/components/orb/Creature'
 import { Button, DialogFrame, Input } from '@overlay/ui/primitives'
 import type { WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -196,26 +197,31 @@ function MemberListItem({
   onToggle: (principalId: string) => void
 }) {
   const principalId = item.principalId!
-  const AgentIcon = item.principalType === 'agent' ? Bot : UserRound
   return (
     <button
       type="button"
       onClick={() => onToggle(principalId)}
       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-        checked ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'
+        checked ? 'bg-(--surface-subtle)' : 'hover:bg-(--surface-subtle)'
       }`}
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-[var(--muted)]">
-        <AgentIcon size={14} />
-      </span>
+      {item.principalType === 'agent' ? (
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+          <AgentCreature agent={{ name: item.name, avatarColor: item.avatarColor, avatarShape: item.avatarShape }} size={32} />
+        </span>
+      ) : (
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">
+          <UserRound size={14} />
+        </span>
+      )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-[var(--foreground)]">{item.name}</span>
-        <span className="block truncate text-[11px] text-[var(--muted-light)]">{item.description}</span>
+        <span className="block truncate text-sm font-medium text-(--foreground)">{item.name}</span>
+        <span className="block truncate text-[11px] text-(--muted-light)">{item.description}</span>
       </span>
       <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${
         checked
-          ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]'
-          : 'border-[var(--border)]'
+          ? 'border-(--foreground) bg-(--foreground) text-(--background)'
+          : 'border-(--border)'
       }`}>
         {checked ? <Check size={12} /> : null}
       </span>
@@ -250,7 +256,7 @@ function CandidateListBody({
       {loading ? (
         <div className="space-y-2 py-2" aria-label="Loading people">
           {[0, 1, 2].map((row) => (
-            <div key={row} className="h-11 animate-pulse rounded-lg bg-[var(--surface-subtle)]" />
+            <div key={row} className="h-11 animate-pulse rounded-lg bg-(--surface-subtle)" />
           ))}
         </div>
       ) : candidates.length > 0 ? candidates.map((item) => (
@@ -265,22 +271,22 @@ function CandidateListBody({
           type="button"
           disabled={busy || inviteSent}
           onClick={() => void onInvite(emailQuery)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-60"
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-(--surface-subtle) disabled:opacity-60"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-muted)]">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-muted)">
             <UserPlus size={14} />
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+            <span className="block truncate text-sm font-medium text-(--foreground)">
               {inviteSent ? 'Invitation sent' : `Invite ${emailQuery}`}
             </span>
-            <span className="block text-[11px] text-[var(--muted-light)]">
+            <span className="block text-[11px] text-(--muted-light)">
               They can join this workspace, then you can message them.
             </span>
           </span>
         </button>
       ) : (
-        <div className="px-3 py-6 text-center text-xs text-[var(--muted-light)]">
+        <div className="px-3 py-6 text-center text-xs text-(--muted-light)">
           {query.trim() ? 'No matching people.' : 'Invite someone to this workspace to start a DM.'}
         </div>
       )}
@@ -390,7 +396,7 @@ export function NewDirectMessageDialog({
     >
       <div className="mt-5">
         <div className="relative">
-          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
           <Input
             autoFocus
             value={query}
@@ -416,7 +422,7 @@ export function NewDirectMessageDialog({
           query={query}
         />
         {selected.length > 0 ? (
-          <p className="mt-3 text-[11px] text-[var(--muted-light)]">
+          <p className="mt-3 text-[11px] text-(--muted-light)">
             {selected.length === 1 ? '1 person selected' : `${selected.length} people selected · group DM`}
           </p>
         ) : null}
