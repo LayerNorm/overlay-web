@@ -389,6 +389,122 @@ await check('board: filters apply, a card opens the panel, and tasks you cannot 
   assert.equal(await page.locator('[data-card-id]', { hasText: 'Which analytics events' }).getAttribute('draggable'), 'true')
 })
 
+const dates = (page, prefix) => page.evaluate((p) => { const i = window.__work.dump().find((x) => x.title.startsWith(p)); return [i.startDate, i.dueDate] }, prefix)
+const addDays = (date, n) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+async function dragBy(page, locator, dx, from = 0.5) {
+  const box = await locator.boundingBox()
+  const x = box.x + box.width * from
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + dx / 2, y, { steps: 4 })
+  await page.mouse.move(x + dx, y, { steps: 4 })
+  await page.mouse.up()
+}
+
+await check('timeline: rows, objective bars, today line, and it opens on today', async (page, shot) => {
+  await open(page, 'scope=workspace&view=timeline')
+  await page.waitForSelector('[data-testid="work-timeline"]')
+  await page.waitForTimeout(200)
+  assert.ok((await page.locator('[data-testid="work-timeline-row"]').count()) >= 15)
+  assert.equal(await page.locator('[data-testid="work-today-line"]').count(), 1)
+  const scrolled = await page.locator('[data-testid="work-timeline"]').evaluate((node) => node.scrollLeft)
+  assert.ok(scrolled > 0, 'starts scrolled toward today')
+  const todayX = (await page.locator('[data-testid="work-today-line"]').boundingBox()).x
+  assert.ok(todayX > 300 && todayX < 700, `today is near the left of the visible grid (${todayX})`)
+  await shot('light')
+  await open(page, 'scope=workspace&view=timeline&theme=dark')
+  await page.waitForSelector('[data-testid="work-timeline"]')
+  await page.waitForTimeout(200)
+  await shot('dark')
+
+  // The objective's bar spans its tasks: from the earliest start to the latest end.
+  await open(page, 'scope=workspace&view=timeline')
+  await page.waitForSelector('[data-testid="work-timeline"]')
+  const launchRow = page.locator('[data-testid="work-timeline-row"]', { hasText: 'Launch the new homepage' })
+  const objective = await launchRow.locator('[data-testid="work-objective-bar"]').boundingBox()
+  const kids = await page.locator('[data-testid="work-bar"]').evaluateAll((nodes) => nodes.map((n) => ({ title: n.getAttribute('aria-label'), box: n.getBoundingClientRect().toJSON() })))
+  const launchKids = kids.filter((k) => /announcement post|analytics events|pricing table|60 second|staging domain|launch-day/.test(k.title))
+  assert.equal(launchKids.length, 6)
+  const left = Math.min(...launchKids.map((k) => k.box.x))
+  const right = Math.max(...launchKids.map((k) => k.box.x + k.box.width))
+  assert.ok(Math.abs(objective.x - left) <= 1 && Math.abs(objective.x + objective.width - right) <= 1, 'objective bar spans its tasks')
+
+  // Collapsing an objective hides its tasks.
+  await page.getByRole('button', { name: 'Collapse Launch the new homepage' }).click()
+  assert.equal(await page.locator('[data-testid="work-bar"][aria-label^="Write the launch announcement"]').count(), 0)
+  await page.getByRole('button', { name: 'Expand Launch the new homepage' }).click()
+  assert.equal(await page.locator('[data-testid="work-bar"][aria-label^="Write the launch announcement"]').count(), 1)
+})
+
+await check('timeline: drag a bar to move it, drag its ends to resize it, and the panel shows the new dates', async (page) => {
+  await open(page, 'scope=workspace&view=timeline')
+  await page.waitForSelector('[data-testid="work-timeline"]')
+  const target = page.locator('[data-testid="work-bar"][aria-label^="Draft interview questions"]')
+  const [start, due] = await dates(page, 'Draft interview questions')
+  await dragBy(page, target, 24 * 3)
+  await page.waitForFunction(([s]) => window.__work.dump().find((x) => x.title.startsWith('Draft interview')).startDate !== s, [start])
+  assert.deepEqual(await dates(page, 'Draft interview questions'), [addDays(start, 3), addDays(due, 3)])
+
+  const grown = target
+  await dragBy(page, grown, 24 * 2, 0.98)
+  await page.waitForFunction(([d]) => window.__work.dump().find((x) => x.title.startsWith('Draft interview')).dueDate !== d, [addDays(due, 3)])
+  assert.deepEqual(await dates(page, 'Draft interview questions'), [addDays(start, 3), addDays(due, 5)])
+
+  await dragBy(page, grown, -24 * 1, 0.02)
+  await page.waitForFunction(([s]) => window.__work.dump().find((x) => x.title.startsWith('Draft interview')).startDate !== s, [addDays(start, 3)])
+  assert.deepEqual(await dates(page, 'Draft interview questions'), [addDays(start, 2), addDays(due, 5)])
+
+  // Dragging an end past the other stops at one day.
+  await dragBy(page, grown, -24 * 40, 0.98)
+  await page.waitForFunction(() => { const x = window.__work.dump().find((i) => i.title.startsWith('Draft interview')); return x.startDate === x.dueDate })
+
+  // A plain click opens the panel, and the dates there are the bar's.
+  await target.click()
+  const peek = page.getByTestId('work-peek')
+  await peek.waitFor()
+  const [s2, d2] = await dates(page, 'Draft interview questions')
+  assert.equal(await peek.getByLabel('Start date').inputValue(), s2)
+  assert.equal(await peek.getByLabel('Due date').inputValue(), d2)
+})
+
+await check('timeline: arrow keys move and resize a focused bar; clicking a task with no dates schedules it', async (page) => {
+  await open(page, 'scope=workspace&view=timeline')
+  await page.waitForSelector('[data-testid="work-timeline"]')
+  const target = page.locator('[data-testid="work-bar"][aria-label^="Record the 60 second"]')
+  const [start, due] = await dates(page, 'Record the 60 second')
+  await target.focus()
+  await page.keyboard.press('ArrowRight')
+  await page.waitForFunction(([s]) => window.__work.dump().find((x) => x.title.startsWith('Record the 60')).startDate !== s, [start])
+  assert.deepEqual(await dates(page, 'Record the 60 second'), [addDays(start, 1), addDays(due, 1)])
+  await page.keyboard.press('Shift+ArrowRight')
+  await page.waitForFunction(([d]) => window.__work.dump().find((x) => x.title.startsWith('Record the 60')).dueDate !== d, [addDays(due, 1)])
+  assert.deepEqual(await dates(page, 'Record the 60 second'), [addDays(start, 1), addDays(due, 2)])
+  assert.match(await page.getByRole('status').first().innerText(), /Record the 60 second/)
+
+  // "Refund policy" has no dates: a click on a day gives it that single day.
+  const row = page.locator('[data-testid="work-timeline-row"]', { hasText: 'Write the refund policy page' })
+  assert.equal(await row.locator('[data-testid="work-bar"]').count(), 0)
+  await row.scrollIntoViewIfNeeded()
+  const grid = await row.locator('div.relative.shrink-0').boundingBox()
+  await page.mouse.click(grid.x + 24 * 30 + 12, grid.y + 20)
+  await page.waitForFunction(() => { const x = window.__work.dump().find((i) => i.title.startsWith('Write the refund')); return x.startDate && x.startDate === x.dueDate })
+  await row.locator('[data-testid="work-bar"]').waitFor()
+})
+
+await check('timeline: a person who may not edit a task cannot drag it', async (page) => {
+  await open(page, 'scope=workspace&view=timeline&role=member&policy=admins')
+  await page.waitForSelector('[data-testid="work-timeline"]')
+  await page.evaluate(() => window.__work.patchWhere((i) => i.scope === 'workspace' && i.assigneePrincipalId !== 'p-me', { createdBy: 'user-sam' }))
+  await refreshList(page)
+  const locked = page.locator('[data-testid="work-bar"][aria-label^="Fix the pricing table"]')
+  assert.equal(await locked.locator('[data-testid="work-bar-end"]').count(), 0)
+  const [start] = await dates(page, 'Fix the pricing table')
+  await dragBy(page, locked, 24 * 3)
+  await page.waitForTimeout(200)
+  assert.equal((await dates(page, 'Fix the pricing table'))[0], start)
+})
+
 await browser.close()
 await harness.close()
 let failed = 0

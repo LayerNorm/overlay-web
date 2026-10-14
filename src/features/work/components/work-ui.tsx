@@ -3,7 +3,7 @@ import { WORK_PRIORITY_LABELS } from '@/shared/work/status'
 import { dueTone, formatWorkDate } from '@/shared/work/dates'
 import { initialsOf } from '../lib/work-state'
 
-const STATUS_TEXT: Record<WorkStatus, string> = {
+export const STATUS_TEXT: Record<WorkStatus, string> = {
   backlog: 'text-zinc-400 dark:text-zinc-500',
   todo: 'text-zinc-500 dark:text-zinc-400',
   progress: 'text-amber-600 dark:text-amber-400',

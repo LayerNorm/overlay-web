@@ -14,6 +14,7 @@ import { WorkBoard } from './WorkBoard'
 import { WorkList } from './WorkList'
 import { WorkPeek } from './WorkPeek'
 import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
+import { WorkTimeline } from './WorkTimeline'
 import { WorkToolbar } from './WorkToolbar'
 
 function ListSkeleton() {
@@ -122,7 +123,9 @@ function WorkScreen() {
             </div>
           ) : null}
           {loaded && visible.length > 0 && view === 'timeline' ? (
-            <EmptyState title="Timeline is on its way" description="The List and Board show every task for now." />
+            <div className="min-h-0 flex-1">
+              <WorkTimeline items={visible} today={today} selectedId={taskId} onOpen={openTask} />
+            </div>
           ) : null}
         </div>
       </AppScreenBody>
