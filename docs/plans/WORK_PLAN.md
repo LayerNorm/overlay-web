@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: v1 implemented from scratch in one Builder PR, with `WORK PHASE {#} : {message}` commits and isolated-preview QA after each phase. Phase 8 covered search, shortcuts, mobile layouts, pagination errors and stale saves; explicit-off UI/API QA passed at `ffd42a69a`. Current-head proof and Integration handoff live in [PR #206](https://github.com/LayerNorm/overlay-web/pull/206). Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
+Status: v1 implemented from scratch in one Builder PR, with `WORK PHASE {#} : {message}` commits and isolated-preview QA after each phase. Phase 8 includes the revised visual acceptance criteria: always-visible Personal/Workspace, a single header filter toggle, and a compact docked brief matching chat Sources. PR #206 is draft while the revision is verified. Current-head proof and Integration handoff live in [PR #206](https://github.com/LayerNorm/overlay-web/pull/206).
 
 ## Goal
 

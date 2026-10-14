@@ -24,12 +24,15 @@ test('an unavailable reviewer or archived objective stays selected so it can be 
   const html = renderToStaticMarkup(
     React.createElement(WorkProperties, {
       item,
-      draft: { reviewerUserId: 'inactive-reviewer', parentId: 'archived-objective' },
+      draft: {
+        reviewerUserId: 'inactive-reviewer',
+        parentId: 'archived-objective',
+      },
       people: [],
       items: [],
       change: () => {},
     }),
   )
-  assert.match(html, /value="inactive-reviewer" selected="">Unavailable reviewer/)
-  assert.match(html, /value="archived-objective" selected="">Archived or unavailable objective/)
+  assert.match(html, />Unavailable reviewer</)
+  assert.match(html, />Archived or unavailable objective</)
 })

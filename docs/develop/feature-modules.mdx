@@ -56,6 +56,6 @@ The `work` shell flag controls the primary navigation item (before Agents), feat
 registry, page, and task HTTP exports. The web app enables it after the List and brief phase; an explicit `false` hides it. The portable shell registry remains off by default;
 `NEXT_PUBLIC_OVERLAY_FEATURE_WORK=true` enables an isolated preview at build time.
 Work uses the shared scoped secondary navigation with List, Board and Timeline.
-Solo workspaces retain the existing flat navigation convention. Scope/view are
+Work retains Personal and Workspace even in solo workspaces, with separately scoped lists; the other features retain their solo conventions. Scope/view are
 URL state; changing scope drops the open task. Rail shortcuts follow visible
 positions: Work, Agents, Chats, Files, Extensions, Automations when enabled.

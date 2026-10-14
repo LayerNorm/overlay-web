@@ -6,15 +6,13 @@ import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { trackWorkAction } from '@/shared/observability/client-metrics'
 import { Plus } from 'lucide-react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { HeaderSearch } from '@overlay/ui/primitives'
+import { HeaderSearch, SegmentedControl } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePanelScope } from '@/hooks/use-panel-scope'
-import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { canEditResource } from '@/shared/workspaces/resource-scope'
-import { listViewForScope } from '@/shared/workspaces/panel-scope'
 import { resolveWorkView } from '@/shared/work/view'
 import { useWorkItems } from '../lib/useWorkItems'
 import { useWorkPeople } from '../lib/useWorkPeople'
@@ -22,25 +20,26 @@ import { selectWork, type WorkFilter } from '../lib/selection'
 import { QuickAdd } from './QuickAdd'
 import { WorkTimeline } from './WorkTimeline'
 import { WorkBoard } from './WorkBoard'
-import { WorkPeek } from './WorkPeek'
+import { WorkPeek, type WorkPeekHandle } from './WorkPeek'
 import { WorkList } from './WorkList'
 
 export default function WorkScreen() {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { user } = useAuth()
-  const scope = usePanelScope()
-  const solo = useIsSoloWorkspace()
+  const scope = usePanelScope({ showInSolo: true })
   const { canCreate } = useWorkspaceCreateAccess()
   const params = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
   const view = resolveWorkView(params.get('view'))
-  const data = useWorkItems(activeWorkspaceId, listViewForScope(scope, solo))
+  const data = useWorkItems(activeWorkspaceId, scope)
   const people = useWorkPeople(activeWorkspaceId)
   const principalId = people.people.find((person) => person.userId === user?.id)?.principalId
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<WorkFilter>('all')
   const input = useRef<HTMLInputElement>(null)
+  const peek = useRef<WorkPeekHandle>(null)
+  const taskId = params.get('id')
   useHotkeys(
     requireShortcutHotkey('work.create'),
     () => input.current?.focus(),
@@ -55,8 +54,16 @@ export default function WorkScreen() {
   useEffect(() => {
     trackWorkAction({ action: 'view', view, scope })
   }, [view, scope])
-  const items = selectWork(data.items, { query, filter, userId: user?.id ?? '', principalId })
-  const viewer = { userId: user?.id ?? '', role: activeWorkspace?.role ?? null }
+  const items = selectWork(data.items, {
+    query,
+    filter,
+    userId: user?.id ?? '',
+    principalId,
+  })
+  const viewer = {
+    userId: user?.id ?? '',
+    role: activeWorkspace?.role ?? null,
+  }
   const editable = (item: WorkItem) =>
     canEditResource(item, viewer) &&
     (item.scope !== 'workspace' || canCreate('content', 'workspace'))
@@ -66,55 +73,73 @@ export default function WorkScreen() {
     router.replace(`${pathname}?${next}`, { scroll: false })
   }
   const open = (id: string) => {
+    if (id === taskId) return
     const next = new URLSearchParams(params.toString())
     next.set('id', id)
-    router.replace(`${pathname}?${next}`, { scroll: false })
+    const navigate = () => router.replace(`${pathname}?${next}`, { scroll: false })
+    if (peek.current) peek.current.requestClose(navigate)
+    else navigate()
   }
   return (
-    <AppScreenShell>
-      <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-(--border) px-6 py-3">
-        <h1
-          className="mr-auto text-lg font-medium lowercase tracking-tight"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
-          work{!solo ? <span className="ml-2 text-sm text-(--muted)">/ {scope}</span> : null}
-        </h1>
-        <HeaderSearch
-          value={query}
-          onChange={setQuery}
-          label="Search tasks"
-          placeholder="Search tasks…"
-        />
-        <button
-          onClick={() => input.current?.focus()}
-          disabled={!canCreate('content', scope)}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-(--surface-subtle) px-3 text-xs font-medium disabled:opacity-50"
-        >
-          <Plus size={14} />
-          New task
-        </button>
-      </header>
-      <div
-        className="flex shrink-0 flex-wrap gap-2 border-b border-(--border) px-6 py-3"
-        aria-label="Task filters"
-      >
-        {(
-          [
-            { id: 'all', label: 'Everything' },
-            { id: 'needs-you', label: 'Needs you' },
-            { id: 'assigned', label: 'Assigned to me' },
-          ] satisfies { id: WorkFilter; label: string }[]
-        ).map((option) => (
-          <button
-            key={option.id}
-            aria-pressed={filter === option.id}
-            onClick={() => setFilter(option.id)}
-            className={`rounded-full border px-3 py-1 text-xs ${filter === option.id ? 'border-(--muted-light) bg-(--surface-subtle) text-(--foreground)' : 'border-(--border) text-(--muted)'}`}
+    <AppScreenShell
+      contentClassName="flex flex-col"
+      rightPanelOpen={Boolean(taskId && activeWorkspaceId)}
+      rightPanelWidth={380}
+      rightPanelMode="docked"
+      rightPanelOverlayLabel="Task brief"
+      onRightPanelClose={() => peek.current?.requestClose()}
+      rightPanel={
+        taskId && activeWorkspaceId ? (
+          <WorkPeek
+            ref={peek}
+            key={`${activeWorkspaceId}:${taskId}`}
+            id={taskId}
+            workspaceId={activeWorkspaceId}
+            people={people.people}
+            items={data.items}
+            canEdit={editable}
+            onUpdate={data.update}
+            onClose={close}
+          />
+        ) : null
+      }
+      header={
+        <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-(--border) px-4 py-3">
+          <h1
+            className="text-lg font-medium lowercase tracking-tight"
+            style={{ fontFamily: 'var(--font-serif)' }}
           >
-            {option.label}
-          </button>
-        ))}
-      </div>
+            work
+          </h1>
+          <SegmentedControl<WorkFilter>
+            value={filter}
+            options={[
+              { value: 'all', label: 'Everything' },
+              { value: 'needs-you', label: 'Needs you' },
+              { value: 'assigned', label: 'Assigned to me' },
+            ]}
+            onChange={setFilter}
+            ariaLabel="Task filters"
+          />
+          <div className="ml-auto flex items-center gap-2">
+            <HeaderSearch
+              value={query}
+              onChange={setQuery}
+              label="Search tasks"
+              placeholder="Search tasks…"
+            />
+            <button
+              onClick={() => input.current?.focus()}
+              disabled={!canCreate('content', scope)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-(--surface-subtle) px-3 text-xs font-medium disabled:opacity-50"
+            >
+              <Plus size={14} />
+              New task
+            </button>
+          </div>
+        </header>
+      }
+    >
       <AppScreenBody padding="none" maxWidth="none" className="min-w-0 flex-1" scroll="auto">
         <QuickAdd
           key={`${activeWorkspaceId}:${scope}`}
@@ -178,18 +203,6 @@ export default function WorkScreen() {
           />
         )}
       </AppScreenBody>
-      {params.get('id') && activeWorkspaceId ? (
-        <WorkPeek
-          key={`${activeWorkspaceId}:${params.get('id')}`}
-          id={params.get('id')!}
-          workspaceId={activeWorkspaceId}
-          people={people.people}
-          items={data.items}
-          canEdit={editable}
-          onUpdate={data.update}
-          onClose={close}
-        />
-      ) : null}
     </AppScreenShell>
   )
 }

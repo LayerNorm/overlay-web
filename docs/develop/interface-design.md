@@ -195,7 +195,9 @@ request, optimistic feedback and rollback on failure. Personal tasks offer only
 their creator as owner; workspace tasks offer active human members. Filters and
 search apply together; groups keep the fixed workflow order.
 
-The Work brief uses a focus-trapped right drawer with explicit Save changes / Cancel changes in the form flow. Objective Markdown converts only through `@overlay/app-core/note-markdown`; checklist completion uses the shared Toggle. Comments save independently. Dirty dismissal asks before discarding, and a stale revision requires an explicit reload.
+Work keeps Personal and Workspace visible even with one human member; each lists only its selected scope. Everything / Needs you / Assigned to me use one shared `SegmentedControl` in the page header.
+
+The Work brief uses the shared `AppScreenShell` docked right panel (380px), matching chat Sources: it reduces the desktop content width and slides from the right. Narrow screens use the shell overlay with a focus trap. Status, Owner and Due date stay visible; secondary metadata lives under More properties. Pickers use the shared `ListboxSelect`, and empty context link fields appear only on request. Save changes / Cancel changes stay in the form flow. Objective Markdown converts only through `@overlay/app-core/note-markdown`; checklist completion uses the shared Toggle. Comments save independently. Dirty dismissal or switching to another task asks before discarding, and a stale revision requires an explicit reload.
 
 Work on narrow screens stacks the List title and controls; Board columns snap-scroll and the Timeline scrolls inside its own frame. C focuses quick-add, Escape clears it or closes the brief, and dirty dismissal uses the shared ConfirmDialog. Work usage metrics include only action/scope/status/view enums, never task text, comments, links, or IDs.
 

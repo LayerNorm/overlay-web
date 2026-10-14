@@ -60,7 +60,7 @@ export function useSavedPanelScope(): PanelScope | null {
  * The scope every scoped page shows: `?scope=` in the URL, else the remembered choice, else Personal.
  * Pages that list resources read it here so they always agree with the secondary panel.
  */
-export function usePanelScope(): PanelScope {
+export function usePanelScope({ showInSolo = false }: { showInSolo?: boolean } = {}): PanelScope {
   const params = useSearchParams()
   const saved = useSavedPanelScope()
   const solo = useIsSoloWorkspace()
@@ -70,7 +70,7 @@ export function usePanelScope(): PanelScope {
   useEffect(() => {
     if (param && param !== saved) rememberPanelScope(param)
   }, [param, saved])
-  return resolvePanelScope({ param, saved, solo })
+  return resolvePanelScope({ param, saved, solo: solo && !showInSolo })
 }
 
 /** The `view` for a list request: undefined (everything active) in a workspace of one person, the scope otherwise. */

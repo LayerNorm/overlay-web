@@ -1,7 +1,9 @@
 'use client'
 import { useState } from 'react'
 import { workContextHref } from '../lib/context-href'
-import { X, Plus } from 'lucide-react'
+import { X, Plus, Link } from 'lucide-react'
+import { ListboxSelect } from '@overlay/ui/primitives'
+import { workPickerClass } from './StatusPicker'
 import type { WorkContext, WorkScope } from '@overlay/app-core/work'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
@@ -22,6 +24,7 @@ export function WorkContextEditor({
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [url, setUrl] = useState('')
+  const [showLink, setShowLink] = useState(false)
   const add = (ref: WorkContext) => {
     if (!value.some((item) => item.id === ref.id && item.type === ref.type))
       onChange([...value, ref])
@@ -70,62 +73,81 @@ export function WorkContextEditor({
       ))}
       {!disabled ? (
         <>
-          <button
-            type="button"
-            onClick={() => {
-              void load()
-            }}
-            disabled={loading}
-            className="inline-flex items-center gap-1 text-xs text-(--muted)"
-          >
-            <Plus size={13} />
-            {loading ? 'Loading…' : 'Add a file, note or chat'}
-          </button>
-          {options ? (
-            <select
-              aria-label="Context resource"
-              value=""
-              onChange={(e) => {
-                const ref = options[Number(e.target.value)]
-                if (ref) add(ref)
-              }}
-              className="w-full rounded border border-(--border) bg-(--background) p-2 text-xs"
-            >
-              <option value="">Choose context…</option>
-              {options.map((ref, i) => (
-                <option key={`${ref.type}:${ref.id}`} value={i}>
-                  {ref.type}: {ref.label}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <div className="flex gap-2">
-            <input
-              aria-label="Context link"
-              type="url"
-              placeholder="https://…"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="min-w-0 flex-1 rounded border border-(--border) bg-transparent px-2 py-1 text-xs"
-            />
+          <div className="flex flex-wrap gap-4">
             <button
               type="button"
-              className="text-xs"
               onClick={() => {
-                try {
-                  const parsed = new URL(url)
-                  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error()
-                  add({ type: 'link', id: parsed.href, label: parsed.hostname })
-                  setUrl('')
-                  setError('')
-                } catch {
-                  setError('Enter an HTTP or HTTPS link')
-                }
+                void load()
               }}
+              disabled={loading}
+              className="inline-flex items-center gap-1 text-xs text-(--muted)"
             >
-              Add link
+              <Plus size={13} />
+              {loading ? 'Loading…' : 'Add context'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLink((open) => !open)}
+              aria-expanded={showLink}
+              className="inline-flex items-center gap-1 text-xs text-(--muted)"
+            >
+              <Link size={13} /> Add link
             </button>
           </div>
+          {options ? (
+            <ListboxSelect
+              portal={false}
+              aria-label="Context resource"
+              value=""
+              onChange={(value) => {
+                const ref = options.find((ref) => `${ref.type}:${ref.id}` === value)
+                if (ref) add(ref)
+              }}
+              buttonClassName={workPickerClass}
+              options={[
+                { value: '', label: 'Choose context…' },
+                ...options.map((ref) => ({
+                  value: `${ref.type}:${ref.id}`,
+                  label: ref.label,
+                  group: ref.type,
+                })),
+              ]}
+            />
+          ) : null}
+          {showLink ? (
+            <div className="flex gap-2">
+              <input
+                aria-label="Context link"
+                type="url"
+                placeholder="https://…"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="min-w-0 flex-1 rounded border border-(--border) bg-transparent px-2 py-1 text-xs"
+              />
+              <button
+                type="button"
+                className="text-xs"
+                onClick={() => {
+                  try {
+                    const parsed = new URL(url)
+                    if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error()
+                    add({
+                      type: 'link',
+                      id: parsed.href,
+                      label: parsed.hostname,
+                    })
+                    setUrl('')
+                    setShowLink(false)
+                    setError('')
+                  } catch {
+                    setError('Enter an HTTP or HTTPS link')
+                  }
+                }}
+              >
+                Attach
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
       {error ? (

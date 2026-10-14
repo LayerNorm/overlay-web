@@ -17,7 +17,7 @@ export function QuickAdd({
   return (
     <div>
       <form
-        className="mx-6 my-4 flex min-h-10 items-center gap-3 rounded-lg border border-dashed border-(--border) px-3 focus-within:border-solid"
+        className="mx-4 my-3 flex min-h-9 items-center gap-2 rounded-md px-2 focus-within:bg-(--surface-subtle)"
         onSubmit={async (event) => {
           event.preventDefault()
           if (!title.trim() || pending) return
@@ -30,7 +30,7 @@ export function QuickAdd({
           }
         }}
       >
-        <Plus size={16} className="shrink-0 text-(--muted)" />
+        <Plus size={14} className="shrink-0 text-(--muted)" />
         <input
           ref={inputRef}
           onKeyDown={(event) => {
@@ -47,7 +47,7 @@ export function QuickAdd({
           placeholder="Add a task…"
           maxLength={200}
           disabled={disabled || pending}
-          className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-hidden placeholder:text-(--muted-light)"
+          className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-hidden placeholder:text-(--muted-light)"
         />
         {title ? (
           <button

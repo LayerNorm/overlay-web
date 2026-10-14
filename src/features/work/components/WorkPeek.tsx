@@ -1,8 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { X, Archive, RotateCcw } from 'lucide-react'
+import { useEffect, useImperativeHandle, useState, type Ref } from 'react'
+import { Archive, RotateCcw } from 'lucide-react'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useDialogFocus } from '@overlay/ui/hooks'
+import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import type { WorkItem, WorkEvent, WorkPerson, WorkPatch, WorkAction } from '@overlay/app-core/work'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
@@ -35,7 +36,11 @@ function patchFor(item: WorkItem): WorkPatch {
     blockedBy: item.blockedBy ?? [],
   }
 }
+export type WorkPeekHandle = {
+  requestClose: (afterClose?: () => void) => void
+}
 export function WorkPeek({
+  ref,
   id,
   workspaceId,
   people,
@@ -44,6 +49,7 @@ export function WorkPeek({
   onUpdate,
   onClose,
 }: {
+  ref?: Ref<WorkPeekHandle>
   id: string
   workspaceId: string
   people: WorkPerson[]
@@ -52,31 +58,48 @@ export function WorkPeek({
   onUpdate: (item: WorkItem, patch: WorkPatch) => Promise<WorkItem>
   onClose: () => void
 }) {
-  const [result, setResult] = useState<{ item: WorkItem; events: WorkEvent[] } | null>(null)
+  const [result, setResult] = useState<{
+    item: WorkItem
+    events: WorkEvent[]
+  } | null>(null)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [dirty, setDirty] = useState(false)
-  const [discard, setDiscard] = useState<'close' | 'reload' | null>(null)
+  const [discard, setDiscard] = useState<(() => void) | null>(null)
+  const [overlay, setOverlay] = useState(false)
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1023px)')
+    const update = () => setOverlay(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     return () => {
       if (opener?.isConnected) opener.focus()
     }
   }, [])
-  const dialog = useDialogFocus<HTMLElement>(discard === null, { restoreFocus: false })
+  const dialog = useDialogFocus<HTMLDivElement>(overlay && discard === null, {
+    restoreFocus: false,
+  })
   const reload = () => {
     setDirty(false)
     setResult(null)
     setAttempt((value) => value + 1)
   }
-  const close = () => {
-    if (dirty) setDiscard('close')
-    else onClose()
+  const requestClose = (afterClose = onClose) => {
+    if (dirty) setDiscard(() => afterClose)
+    else afterClose()
   }
+  useImperativeHandle(ref, () => ({ requestClose }))
   useEffect(() => {
     const controller = new AbortController()
     overlayAppClient.work
-      .get(id, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId }, signal: controller.signal })
+      .get(id, {
+        headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
+        signal: controller.signal,
+      })
       .then(setResult)
       .catch((e: unknown) => {
         if (!controller.signal.aborted)
@@ -86,11 +109,15 @@ export function WorkPeek({
   }, [id, workspaceId, attempt])
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) {
+      if (
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        !document.querySelector('[role="listbox"]')
+      ) {
         event.preventDefault()
         if (discard !== null) return
         event.stopPropagation()
-        if (dirty) setDiscard('close')
+        if (dirty) setDiscard(() => onClose)
         else onClose()
       }
     }
@@ -98,32 +125,20 @@ export function WorkPeek({
     return () => document.removeEventListener('keydown', escape)
   }, [dirty, onClose, discard])
   return (
-    <div className="fixed inset-0 z-60 flex justify-end">
-      <button
-        aria-label="Close task backdrop"
-        className="absolute inset-0 bg-black/15"
-        onClick={close}
-        tabIndex={-1}
-      />
-      <aside
+    <>
+      <div
         ref={dialog}
-        role="dialog"
-        aria-modal="true"
+        role={overlay ? 'dialog' : undefined}
+        aria-modal={overlay || undefined}
         aria-label="Task brief"
-        className="relative flex h-full w-full max-w-lg flex-col border-l border-(--border) bg-(--background) shadow-xl"
+        className="h-full min-h-0"
       >
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-(--border) px-5">
-          <span className="text-xs text-(--muted)">Task brief</span>
-          <button
-            data-autofocus
-            aria-label="Close task"
-            onClick={close}
-            className="rounded p-2 hover:bg-(--surface-subtle)"
-          >
-            <X size={16} />
-          </button>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <AppScreenSidePanel
+          title="Task brief"
+          closeLabel="Close task"
+          onClose={() => requestClose()}
+          bodyClassName="p-5"
+        >
           {error ? (
             <div role="alert" className="space-y-2 text-sm">
               <p>{error}</p>
@@ -149,7 +164,7 @@ export function WorkPeek({
               onClose={onClose}
               onDirty={setDirty}
               onReload={() => {
-                if (dirty) setDiscard('reload')
+                if (dirty) setDiscard(() => reload)
                 else reload()
               }}
             />
@@ -158,8 +173,8 @@ export function WorkPeek({
               Loading task…
             </p>
           )}
-        </div>
-      </aside>
+        </AppScreenSidePanel>
+      </div>
       <ConfirmDialog
         isOpen={discard !== null}
         title="Discard task changes?"
@@ -170,11 +185,10 @@ export function WorkPeek({
         onConfirm={() => {
           const intent = discard
           setDiscard(null)
-          if (intent === 'reload') reload()
-          else onClose()
+          intent?.()
         }}
       />
-    </div>
+    </>
   )
 }
 function WorkBrief({
@@ -250,7 +264,7 @@ function WorkBrief({
     }
   }
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {item.archivedAt !== undefined ? (
         <div className="flex items-center justify-between rounded border border-(--border) p-3 text-xs">
           <span>Archived task</span>
@@ -268,16 +282,16 @@ function WorkBrief({
           ) : null}
         </div>
       ) : null}
-      <fieldset disabled={disabled} className="space-y-6">
-        <input
+      <fieldset disabled={disabled} className="min-w-0 space-y-5">
+        <textarea
           aria-label="Task title"
           maxLength={200}
           value={draft.title ?? ''}
           onChange={(e) => change({ title: e.target.value })}
-          className="w-full bg-transparent text-xl font-medium outline-none"
+          rows={1}
+          className="w-full resize-none bg-transparent text-lg font-medium leading-snug outline-none field-sizing-content"
         />
         <WorkProperties item={item} draft={draft} people={people} items={items} change={change} />
-        <WorkDependencies item={item} draft={draft} items={items} change={change} />
         <section>
           <h2 className={section}>Objective</h2>
           <WorkObjectiveEditor
@@ -298,6 +312,14 @@ function WorkBrief({
           />
         </section>
         <WorkChecklist draft={draft} change={change} disabled={disabled} />
+        <details open={Boolean(item.blockedBy?.length)} className="text-xs">
+          <summary className="cursor-pointer text-(--muted) hover:text-(--foreground)">
+            Dependencies
+          </summary>
+          <div className="pt-3">
+            <WorkDependencies item={item} draft={draft} items={items} change={change} />
+          </div>
+        </details>
       </fieldset>
       {error ? (
         <p role="alert" className="text-xs text-red-600 dark:text-red-400">

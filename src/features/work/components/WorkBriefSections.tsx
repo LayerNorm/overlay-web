@@ -1,12 +1,12 @@
 'use client'
 import { X } from 'lucide-react'
-import { Toggle } from '@overlay/ui/primitives'
+import { Toggle, ListboxSelect } from '@overlay/ui/primitives'
 import type { WorkItem, WorkPatch, WorkPerson, WorkEvent } from '@overlay/app-core/work'
-import { StatusPicker } from './StatusPicker'
+import { StatusPicker, workPickerClass } from './StatusPicker'
 import { OwnerPicker } from './OwnerPicker'
 export const workInputClass =
   'w-full min-w-0 rounded-md border border-(--border) bg-transparent px-2 py-1.5 text-sm disabled:opacity-60'
-export const workSectionClass = 'mb-3 text-xs font-medium text-(--muted)'
+export const workSectionClass = 'mb-2 text-xs font-medium text-(--muted)'
 const inputClass = workInputClass
 const section = workSectionClass
 type Fields = {
@@ -20,100 +20,124 @@ export function WorkProperties({ item, draft, people, items, change }: Fields) {
   const eligible = people.filter(
     (person) => item.scope !== 'personal' || person.userId === item.userId,
   )
+  const propertyGrid = 'grid grid-cols-[76px_minmax(0,1fr)] items-center gap-x-2 gap-y-1 text-xs'
   return (
-    <div className="grid grid-cols-[90px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-xs">
-      <span className="text-(--muted)">Status</span>
-      <StatusPicker value={draft.status ?? item.status} onChange={(status) => change({ status })} />
-      <span className="text-(--muted)">Owner</span>
-      <OwnerPicker
-        value={draft.assigneePrincipalId ?? undefined}
-        people={eligible}
-        label="Task owner"
-        onChange={(assigneePrincipalId) => change({ assigneePrincipalId })}
-      />
-      <label htmlFor="work-reviewer" className="text-(--muted)">
-        Reviewer
-      </label>
-      <select
-        id="work-reviewer"
-        value={draft.reviewerUserId ?? ''}
-        onChange={(e) => change({ reviewerUserId: e.target.value || null })}
-        className={inputClass}
-      >
-        <option value="">No reviewer</option>
-        {draft.reviewerUserId &&
-        !eligible.some((person) => person.userId === draft.reviewerUserId) ? (
-          <option value={draft.reviewerUserId}>Unavailable reviewer</option>
-        ) : null}
-        {eligible.map((person) => (
-          <option key={person.userId} value={person.userId}>
-            {person.name}
-          </option>
-        ))}
-      </select>
-      <label htmlFor="work-priority" className="text-(--muted)">
-        Priority
-      </label>
-      <select
-        id="work-priority"
-        value={draft.priority}
-        onChange={(e) =>
-          change({ priority: e.target.value === '1' ? 1 : e.target.value === '3' ? 3 : 2 })
-        }
-        className={inputClass}
-      >
-        <option value="1">High</option>
-        <option value="2">Normal</option>
-        <option value="3">Low</option>
-      </select>
-      <span className="text-(--muted)">Blocked</span>
-      <Toggle
-        aria-label="Task blocked"
-        checked={draft.blocked ?? false}
-        onCheckedChange={(blocked) => change({ blocked })}
-      />
-      <label htmlFor="work-start" className="text-(--muted)">
-        Start date
-      </label>
-      <input
-        id="work-start"
-        type="date"
-        value={draft.startDate ?? ''}
-        onChange={(e) => change({ startDate: e.target.value || null })}
-        className={inputClass}
-      />
-      <label htmlFor="work-due" className="text-(--muted)">
-        Due date
-      </label>
-      <input
-        id="work-due"
-        type="date"
-        min={draft.startDate ?? undefined}
-        value={draft.dueDate ?? ''}
-        onChange={(e) => change({ dueDate: e.target.value || null })}
-        className={inputClass}
-      />
-      <label htmlFor="work-parent" className="text-(--muted)">
-        Objective
-      </label>
-      <select
-        id="work-parent"
-        value={draft.parentId ?? ''}
-        onChange={(e) => change({ parentId: e.target.value || null })}
-        className={inputClass}
-      >
-        <option value="">No parent objective</option>
-        {draft.parentId && !items.some((row) => row._id === draft.parentId) ? (
-          <option value={draft.parentId}>Archived or unavailable objective</option>
-        ) : null}
-        {items
-          .filter((row) => row._id !== item._id && !row.parentId && row.scope === item.scope)
-          .map((row) => (
-            <option key={row._id} value={row._id}>
-              {row.title}
-            </option>
-          ))}
-      </select>
+    <div className="space-y-2">
+      <div className={propertyGrid}>
+        <span className="text-(--muted)">Status</span>
+        <StatusPicker
+          portal={false}
+          value={draft.status ?? item.status}
+          onChange={(status) => change({ status })}
+        />
+        <span className="text-(--muted)">Owner</span>
+        <OwnerPicker
+          portal={false}
+          value={draft.assigneePrincipalId ?? undefined}
+          people={eligible}
+          label="Task owner"
+          onChange={(assigneePrincipalId) => change({ assigneePrincipalId })}
+        />
+        <label htmlFor="work-due" className="text-(--muted)">
+          Due date
+        </label>
+        <input
+          id="work-due"
+          type="date"
+          min={draft.startDate ?? undefined}
+          value={draft.dueDate ?? ''}
+          onChange={(e) => change({ dueDate: e.target.value || null })}
+          className="h-8 min-w-0 rounded-md bg-transparent px-2 text-xs hover:bg-(--surface-subtle)"
+        />
+      </div>
+      <details>
+        <summary className="cursor-pointer py-1 text-xs text-(--muted) hover:text-(--foreground)">
+          More properties
+        </summary>
+        <div className={`${propertyGrid} mt-2`}>
+          <label htmlFor="work-reviewer" className="text-(--muted)">
+            Reviewer
+          </label>
+          <ListboxSelect
+            portal={false}
+            id="work-reviewer"
+            value={draft.reviewerUserId ?? ''}
+            onChange={(value) => change({ reviewerUserId: value || null })}
+            buttonClassName={workPickerClass}
+            options={[
+              { value: '', label: 'No reviewer' },
+              ...(draft.reviewerUserId &&
+              !eligible.some((person) => person.userId === draft.reviewerUserId)
+                ? [
+                    {
+                      value: draft.reviewerUserId,
+                      label: 'Unavailable reviewer',
+                    },
+                  ]
+                : []),
+              ...eligible.map((person) => ({
+                value: person.userId,
+                label: person.name,
+              })),
+            ]}
+          />
+          <label htmlFor="work-priority" className="text-(--muted)">
+            Priority
+          </label>
+          <ListboxSelect<'1' | '2' | '3'>
+            portal={false}
+            id="work-priority"
+            value={draft.priority === 1 ? '1' : draft.priority === 3 ? '3' : '2'}
+            onChange={(value) => change({ priority: value === '1' ? 1 : value === '3' ? 3 : 2 })}
+            buttonClassName={workPickerClass}
+            options={[
+              { value: '1', label: 'High' },
+              { value: '2', label: 'Normal' },
+              { value: '3', label: 'Low' },
+            ]}
+          />
+          <span className="text-(--muted)">Blocked</span>
+          <Toggle
+            aria-label="Task blocked"
+            checked={draft.blocked ?? false}
+            onCheckedChange={(blocked) => change({ blocked })}
+          />
+          <label htmlFor="work-start" className="text-(--muted)">
+            Start date
+          </label>
+          <input
+            id="work-start"
+            type="date"
+            value={draft.startDate ?? ''}
+            onChange={(e) => change({ startDate: e.target.value || null })}
+            className="h-8 min-w-0 rounded-md bg-transparent px-2 text-xs hover:bg-(--surface-subtle)"
+          />
+          <label htmlFor="work-parent" className="text-(--muted)">
+            Parent task
+          </label>
+          <ListboxSelect
+            portal={false}
+            id="work-parent"
+            value={draft.parentId ?? ''}
+            onChange={(value) => change({ parentId: value || null })}
+            buttonClassName={workPickerClass}
+            options={[
+              { value: '', label: 'No parent task' },
+              ...(draft.parentId && !items.some((row) => row._id === draft.parentId)
+                ? [
+                    {
+                      value: draft.parentId,
+                      label: 'Archived or unavailable objective',
+                    },
+                  ]
+                : []),
+              ...items
+                .filter((row) => row._id !== item._id && !row.parentId && row.scope === item.scope)
+                .map((row) => ({ value: row._id, label: row.title })),
+            ]}
+          />
+        </div>
+      </details>
     </div>
   )
 }
@@ -139,35 +163,35 @@ export function WorkDependencies({
               type="button"
               aria-label={`Remove dependency ${items.find((row) => row._id === id)?.title ?? id}`}
               onClick={() =>
-                change({ blockedBy: draft.blockedBy?.filter((other) => other !== id) })
+                change({
+                  blockedBy: draft.blockedBy?.filter((other) => other !== id),
+                })
               }
             >
               <X size={14} />
             </button>
           </div>
         ))}
-        <select
+        <ListboxSelect
+          portal={false}
           aria-label="Add dependency"
           value=""
-          onChange={(e) => {
-            if (e.target.value) change({ blockedBy: [...(draft.blockedBy ?? []), e.target.value] })
+          onChange={(value) => {
+            if (value) change({ blockedBy: [...(draft.blockedBy ?? []), value] })
           }}
-          className={inputClass}
-        >
-          <option value="">Choose a dependency…</option>
-          {items
-            .filter(
-              (row) =>
-                row._id !== item._id &&
-                row.scope === item.scope &&
-                !draft.blockedBy?.includes(row._id),
-            )
-            .map((row) => (
-              <option key={row._id} value={row._id}>
-                {row.title}
-              </option>
-            ))}
-        </select>
+          buttonClassName={workPickerClass}
+          options={[
+            { value: '', label: 'Add dependency…' },
+            ...items
+              .filter(
+                (row) =>
+                  row._id !== item._id &&
+                  row.scope === item.scope &&
+                  !draft.blockedBy?.includes(row._id),
+              )
+              .map((row) => ({ value: row._id, label: row.title })),
+          ]}
+        />
       </div>
     </section>
   )
@@ -214,7 +238,11 @@ export function WorkChecklist({
             <button
               type="button"
               aria-label={`Remove checklist item ${index + 1}`}
-              onClick={() => change({ doneWhen: draft.doneWhen?.filter((_, i) => i !== index) })}
+              onClick={() =>
+                change({
+                  doneWhen: draft.doneWhen?.filter((_, i) => i !== index),
+                })
+              }
             >
               <X size={14} />
             </button>
@@ -225,7 +253,9 @@ export function WorkChecklist({
             type="button"
             className="text-xs text-(--muted)"
             onClick={() =>
-              change({ doneWhen: [...(draft.doneWhen ?? []), { text: '', checked: false }] })
+              change({
+                doneWhen: [...(draft.doneWhen ?? []), { text: '', checked: false }],
+              })
             }
           >
             Add condition
