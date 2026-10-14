@@ -148,7 +148,7 @@ function SingleSelect({ children, className, defaultValue, disabled, id, name, o
         }}
       >
         {!options.some((option) => option.value === selectedValue) ? <option value={selectedValue} hidden>{selectedValue}</option> : null}
-        {children}
+        {options.map((option, index) => <option key={index} value={option.value} disabled={option.disabled}>{option.label}</option>)}
       </select>
     </>
   )

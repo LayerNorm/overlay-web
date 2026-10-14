@@ -85,6 +85,7 @@ try {
  await account.click();await page.keyboard.press('Escape');await closed();assert.equal(await account.evaluate(el=>el===document.activeElement),true)
  await account.click();await page.mouse.click(650,500);await closed()
  await account.click();await page.keyboard.press('Tab');await closed();assert.equal(await page.locator('#next').evaluate(el=>el===document.activeElement),true)
+ await account.click();await page.keyboard.press('Shift+Tab');await closed();assert.equal(await page.getByRole('button',{name:'Submit form'}).evaluate(el=>el===document.activeElement),true)
  console.log('arrows skip disabled, typeahead, Enter, Escape, outside and Tab dismissal: PASS')
  assert.equal(await page.getByRole('combobox',{name:'Disabled',exact:true}).isDisabled(),true)
  assert.equal(await page.getByRole('combobox',{name:'Unknown',exact:true}).textContent(),'Select a channel')

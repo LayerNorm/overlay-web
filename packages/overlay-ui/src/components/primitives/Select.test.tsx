@@ -39,6 +39,8 @@ test('nested elements inside an option still resolve to text', () => {
 
   assert.equal(markup.includes('Pro plan'), true)
   assert.equal(markup.includes('[object Object]'), false)
+  const nativeOptions = markup.slice(markup.indexOf('<select'))
+  assert.equal(nativeOptions.includes('<span'), false, 'native form bridge must have valid option text for hydration')
 })
 
 test('caller classes style the control once, not the wrapper and the button', () => {
