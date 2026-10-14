@@ -773,6 +773,58 @@ export default defineSchema({
       filterFields: ['userId', 'workspaceId'],
     }),
 
+  // Work: tasks shown as a list, a board and a timeline. Personal / Workspace / Archived like other content; see
+  // docs/plans/WORK_PLAN.md. Dates are `YYYY-MM-DD` strings (no timezone shift); `rank` is a fractional string.
+  workItems: defineTable({
+    scope: v.union(v.literal('personal'), v.literal('workspace')),
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.string()),
+    archivedFromScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    workspaceId: v.string(),
+    /** The creator. */
+    userId: v.string(),
+    title: v.string(),
+    /** Markdown (see @overlay/app-core/note-markdown). */
+    description: v.optional(v.string()),
+    status: v.union(v.literal('backlog'), v.literal('todo'), v.literal('progress'), v.literal('review'), v.literal('done')),
+    blocked: v.boolean(),
+    priority: v.number(),
+    rank: v.string(),
+    /** A workspace principal: a person now, an agent later. */
+    assigneePrincipalId: v.optional(v.string()),
+    reviewerUserId: v.optional(v.string()),
+    startDate: v.optional(v.string()),
+    dueDate: v.optional(v.string()),
+    parentId: v.optional(v.id('workItems')),
+    blockedBy: v.optional(v.array(v.id('workItems'))),
+    doneWhen: v.optional(v.array(v.object({ text: v.string(), checked: v.boolean() }))),
+    context: v.optional(v.array(v.object({
+      type: v.union(v.literal('file'), v.literal('note'), v.literal('chat'), v.literal('link')),
+      id: v.string(),
+      label: v.string(),
+    }))),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt'])
+    .index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
+    .index('by_parentId', ['parentId'])
+    .index('by_workspaceId_assignee', ['workspaceId', 'assigneePrincipalId'])
+    .index('by_workspaceId_status_rank', ['workspaceId', 'status', 'rank']),
+
+  // The activity log and comments of a task. Agent runs will write here later.
+  workItemEvents: defineTable({
+    workItemId: v.id('workItems'),
+    workspaceId: v.string(),
+    actorPrincipalId: v.string(),
+    kind: v.union(
+      v.literal('created'), v.literal('status'), v.literal('assignee'), v.literal('reviewer'), v.literal('priority'),
+      v.literal('dates'), v.literal('title'), v.literal('blocked'), v.literal('scope'), v.literal('archived'),
+      v.literal('restored'), v.literal('comment'),
+    ),
+    data: v.optional(v.any()),
+    createdAt: v.number(),
+  }).index('by_workItemId_createdAt', ['workItemId', 'createdAt']),
+
   automations: defineTable({
     // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),

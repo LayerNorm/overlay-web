@@ -94,6 +94,23 @@ archived through workspace lifecycle APIs, and its creating principal remains
 the canonical active owner. Permanent account-deletion erasure is a separate
 audited compliance path.
 
+### Work (tasks, board, timeline)
+
+`work` is a content domain: tasks that appear in a List, a Board and a Timeline, in Personal or Workspace scope.
+Plan and phases: `docs/plans/WORK_PLAN.md`. Where things live:
+
+- `src/shared/work/` — the isomorphic rules: statuses and limits (`status.ts`), fractional string ranks
+  (`rank.ts`), parent and "blocked by" validation (`graph.ts`) and who may work on a task (`permissions.ts`). Convex
+  and the UI import these, so what the UI previews is what the backend enforces.
+- `convex/work/workItems.ts` and `workItemEvents.ts` — the `workItems` and `workItemEvents` tables. Visibility,
+  move, archive and restore reuse `convex/lib/resourceScope.ts` and `scopeMutations('workItems', 'content')`; the
+  activity log is written by `afterApply` and by each mutation. Helpers are in `convex/lib/workItems.ts`.
+- Editing is wider than for most content: any member can work on a workspace task when the workspace lets members
+  edit workspace content, and the assignee always can. Move between scopes, archive and restore stay with the creator
+  and admins, exactly as for other content.
+- The assignee is a workspace principal (a person now, an agent later). Dates are `YYYY-MM-DD` strings so a due date
+  never shifts with timezone.
+
 ## Personal Chat execution lifecycle
 
 Interactive Personal Chat runs use the provider-neutral `AgentRun` contract in

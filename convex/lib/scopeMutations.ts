@@ -41,6 +41,8 @@ export function scopeMutations(
     onArchive?: Record<string, unknown>
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
+    /** Runs after a move, archive, or restore was written (an activity log, for example). */
+    afterApply?: (ctx: unknown, change: { action: 'scope' | 'archived' | 'restored'; id: string; row: ScopedDoc; userId: string; to?: 'personal' | 'workspace' }) => Promise<void>
   },
 ) {
   const common = {
@@ -74,6 +76,7 @@ export function scopeMutations(
         const child = await db.get(childId)
         if (child && !child.archivedAt && child.userId === row?.userId) await db.patch(childId, plan.patch)
       }
+      if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, to: args.to })
       return { ok: true }
     },
   })
@@ -92,6 +95,7 @@ export function scopeMutations(
           await db.patch(childId, { archivedAt: plan.patch.archivedAt, archivedBy: plan.patch.archivedBy, archivedFromScope: rowScopeOf(child), ...(options?.onArchive ?? {}) })
         }
       }
+      if (row) await options?.afterApply?.(ctx, { action: 'archived', id, row, userId: args.userId })
       return { ok: true }
     },
   })
@@ -112,6 +116,7 @@ export function scopeMutations(
           await db.patch(childId, { scope: child.archivedFromScope ?? child.scope ?? 'personal', archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
         }
       }
+      if (row) await options?.afterApply?.(ctx, { action: 'restored', id, row, userId: args.userId })
       return { ok: true }
     },
   })

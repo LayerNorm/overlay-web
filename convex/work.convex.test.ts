@@ -1,0 +1,314 @@
+import { beforeAll, describe, expect, test } from 'vitest'
+import { convexTest } from 'convex-test'
+import { makeFunctionReference } from 'convex/server'
+import schema from './schema'
+
+const modules = import.meta.glob('./**/*.ts')
+const secret = 'work-secret'
+const now = 1_900_000_000_000
+const workspaceId = 'ws-work'
+const otherWorkspaceId = 'ws-other'
+
+beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
+
+const q = (name: string) => makeFunctionReference<'query'>(name)
+const m = (name: string) => makeFunctionReference<'mutation'>(name)
+
+type Convex = ReturnType<typeof convexTest>
+type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; archivedAt?: number; blocked: boolean }
+
+/** A workspace with an owner, an admin, two members, a guest, and an agent. */
+async function seed(convex: Convex, policy?: Record<string, unknown>) {
+  await convex.run(async (ctx) => {
+    for (const ws of [workspaceId, otherWorkspaceId]) {
+      await ctx.db.insert('workspaces', { workspaceId: ws, kind: 'organization', name: ws, slug: ws, status: 'active', createdAt: now, updatedAt: now })
+    }
+    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member'], ['gus', 'guest']] as const) {
+      await ctx.db.insert('workspacePrincipals', { principalId: `p-${userId}`, workspaceId, type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
+    }
+    await ctx.db.insert('workspacePrincipals', { principalId: 'p-agent', workspaceId, type: 'agent', agentId: 'agent-1', displayName: 'Researcher', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { principalId: 'p-outsider', workspaceId: otherWorkspaceId, type: 'human', userId: 'outsider', displayName: 'outsider', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspaceMemberships', { membershipId: 'm-outsider', workspaceId: otherWorkspaceId, principalId: 'p-outsider', role: 'owner', status: 'active', joinedAt: now, updatedAt: now })
+    if (policy) await ctx.db.insert('workspaceSharingPolicies', { workspaceId, publicLinksEnabled: true, createdAt: now, updatedAt: now, ...policy })
+  })
+}
+
+const auth = (userId: string, ws = workspaceId) => ({ serverSecret: secret, workspaceId: ws, userId })
+
+function api(convex: Convex) {
+  return {
+    create: (userId: string, args: Record<string, unknown>) => convex.mutation(m('work/workItems:create'), { ...auth(userId), title: 'Task', ...args }) as Promise<Item>,
+    update: (userId: string, id: string, args: Record<string, unknown>) => convex.mutation(m('work/workItems:update'), { ...auth(userId), id, ...args }) as Promise<Item>,
+    move: (userId: string, id: string, args: Record<string, unknown>) => convex.mutation(m('work/workItems:move'), { ...auth(userId), id, ...args }) as Promise<Item>,
+    list: async (userId: string, view?: string) => (await convex.query(q('work/workItems:list'), { ...auth(userId), ...(view ? { view } : {}) })) as Item[],
+    titles: async (userId: string, view?: string) => (await convex.query(q('work/workItems:list'), { ...auth(userId), ...(view ? { view } : {}) }) as Item[]).map((i) => i.title),
+    get: (userId: string, id: string) => convex.query(q('work/workItems:get'), { ...auth(userId), id }) as Promise<Item | null>,
+    setScope: (userId: string, id: string, to: string) => convex.mutation(m('work/workItems:setScope'), { ...auth(userId), id, to }),
+    archive: (userId: string, id: string) => convex.mutation(m('work/workItems:archive'), { ...auth(userId), id }),
+    restore: (userId: string, id: string) => convex.mutation(m('work/workItems:restore'), { ...auth(userId), id }),
+    events: async (userId: string, workItemId: string) => (await convex.query(q('work/workItemEvents:list'), { ...auth(userId), workItemId })) as Array<{ kind: string; data?: Record<string, unknown>; actorPrincipalId: string }>,
+    comment: (userId: string, workItemId: string, body: string) => convex.mutation(m('work/workItemEvents:addComment'), { ...auth(userId), workItemId, body }),
+  }
+}
+
+describe('personal and workspace visibility', () => {
+  test('personal tasks are private; workspace tasks are shared with members but not guests or other workspaces', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    await work.create('alice', { title: 'Mine' })
+    await work.create('alice', { title: 'Ours', scope: 'workspace' })
+    await work.create('bob', { title: 'Bobs own', scope: 'workspace' })
+
+    expect(await work.titles('alice')).toEqual(['Mine', 'Ours', 'Bobs own'])
+    expect(await work.titles('bob')).toEqual(['Ours', 'Bobs own'])
+    expect(await work.titles('owner')).toEqual(['Ours', 'Bobs own'])
+    expect(await work.titles('gus')).toEqual([])
+    expect(await work.titles('outsider')).toEqual([])
+    expect(await work.titles('alice', 'personal')).toEqual(['Mine'])
+    expect(await work.titles('alice', 'workspace')).toEqual(['Ours', 'Bobs own'])
+    expect(await convex.query(q('work/workItems:list'), { ...auth('outsider', otherWorkspaceId) })).toEqual([])
+  })
+
+  test('another member cannot read, update, move, comment on, or archive a personal task', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const secretTask = await work.create('alice', { title: 'Private' })
+    expect(await work.get('bob', secretTask._id)).toBeNull()
+    expect(await work.get('admin', secretTask._id)).toBeNull()
+    await expect(work.update('bob', secretTask._id, { title: 'x' })).rejects.toThrow(/Unauthorized/)
+    await expect(work.move('owner', secretTask._id, { status: 'done' })).rejects.toThrow(/Unauthorized/)
+    await expect(work.comment('bob', secretTask._id, 'hi')).rejects.toThrow(/Unauthorized/)
+    expect(await work.archive('admin', secretTask._id)).toEqual({ ok: false, reason: 'not_found' })
+    expect(await work.events('bob', secretTask._id)).toEqual([])
+    // Reading it with another workspace's id does not find it either.
+    expect(await convex.query(q('work/workItems:get'), { ...auth('alice', otherWorkspaceId), id: secretTask._id })).toBeNull()
+  })
+
+  test('the workspace policy decides who may create in the workspace', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex, { workspaceContentEditors: 'admins' })
+    const work = api(convex)
+    await expect(work.create('alice', { title: 'No', scope: 'workspace' })).rejects.toThrow(/workspace_creation_restricted/)
+    expect((await work.create('admin', { title: 'Yes', scope: 'workspace' })).scope).toBe('workspace')
+    expect((await work.create('alice', { title: 'Personal still fine' })).scope).toBe('personal')
+    await expect(work.create('gus', { title: 'Guest' })).rejects.toThrow()
+  })
+
+  test('members may work on a workspace task when the policy allows, and only on assigned ones when admins-only', async () => {
+    const open = convexTest(schema, modules)
+    await seed(open)
+    const task = await api(open).create('alice', { title: 'Shared', scope: 'workspace' })
+    expect((await api(open).update('bob', task._id, { status: 'progress' })).status).toBe('progress')
+    await expect(api(open).update('gus', task._id, { status: 'done' })).rejects.toThrow()
+
+    const strict = convexTest(schema, modules)
+    await seed(strict, { workspaceContentEditors: 'admins' })
+    const work = api(strict)
+    const adminTask = await work.create('admin', { title: 'Admin task', scope: 'workspace', assigneePrincipalId: 'p-bob' })
+    await expect(work.update('alice', adminTask._id, { status: 'progress' })).rejects.toThrow(/Unauthorized/)
+    expect((await work.update('bob', adminTask._id, { status: 'progress' })).status).toBe('progress')
+  })
+})
+
+describe('move, archive and restore', () => {
+  test('only the creator moves a task; archive and restore follow the shared rules and keep children with it', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const objective = await work.create('alice', { title: 'Objective' })
+    const child = await work.create('alice', { title: 'Child', parentId: objective._id })
+
+    expect(await work.setScope('bob', objective._id, 'workspace')).toEqual({ ok: false, reason: 'not_found' })
+    expect(await work.setScope('alice', objective._id, 'workspace')).toEqual({ ok: true })
+    expect(await work.titles('bob')).toEqual(['Objective', 'Child'])
+    expect(await work.setScope('admin', objective._id, 'personal')).toEqual({ ok: false, reason: 'not_creator' })
+    expect(await work.setScope('alice', objective._id, 'workspace')).toEqual({ ok: false, reason: 'same_scope' })
+
+    // An admin may archive a member's workspace task; it leaves the workspace view and shows under Archived.
+    expect(await work.archive('admin', objective._id)).toEqual({ ok: true })
+    expect(await work.titles('bob')).toEqual([])
+    expect(await work.titles('bob', 'archived')).toEqual(['Objective', 'Child'])
+    expect(await work.setScope('alice', objective._id, 'personal')).toEqual({ ok: false, reason: 'archived' })
+    await expect(work.update('alice', objective._id, { title: 'Edited' })).rejects.toThrow(/archived/)
+    expect(await work.restore('alice', objective._id)).toEqual({ ok: true })
+    expect(await work.titles('bob', 'workspace')).toEqual(['Objective', 'Child'])
+    expect(await work.get('alice', child._id)).toMatchObject({ scope: 'workspace' })
+    expect(await work.restore('alice', objective._id)).toEqual({ ok: false, reason: 'not_archived' })
+  })
+
+  test('a moved, archived and restored task writes to its log', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Logged' })
+    await work.setScope('alice', task._id, 'workspace')
+    await work.archive('alice', task._id)
+    await work.restore('alice', task._id)
+    const events = await work.events('alice', task._id)
+    expect(events.map((e) => e.kind)).toEqual(['created', 'scope', 'archived', 'restored'])
+    expect(events[1].data).toEqual({ from: 'personal', to: 'workspace' })
+    expect(events.every((e) => e.actorPrincipalId === 'p-alice')).toBe(true)
+  })
+})
+
+describe('structure', () => {
+  test('a parent cannot be itself, a descendant, in another scope, archived, or too deep', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const objective = await work.create('alice', { title: 'Objective' })
+    const task = await work.create('alice', { title: 'Task', parentId: objective._id })
+    const sub = await work.create('alice', { title: 'Sub', parentId: task._id })
+
+    await expect(work.update('alice', task._id, { parentId: task._id })).rejects.toThrow(/self/)
+    await expect(work.update('alice', objective._id, { parentId: task._id })).rejects.toThrow(/descendant/)
+    await expect(work.update('alice', objective._id, { parentId: sub._id })).rejects.toThrow(/descendant/)
+    await expect(work.create('alice', { title: 'Too deep', parentId: sub._id })).rejects.toThrow(/too_deep/)
+
+    const shared = await work.create('alice', { title: 'Shared', scope: 'workspace' })
+    await expect(work.create('alice', { title: 'Cross', parentId: shared._id })).rejects.toThrow(/parent_scope/)
+    await expect(work.create('bob', { title: 'Stranger', parentId: objective._id })).rejects.toThrow(/parent/)
+
+    const lone = await work.create('alice', { title: 'Lone' })
+    expect((await work.update('alice', lone._id, { parentId: task._id })).parentId).toBe(task._id)
+    expect((await work.update('alice', lone._id, { parentId: null })).parentId).toBeUndefined()
+
+    await work.archive('alice', objective._id)
+    await expect(work.create('alice', { title: 'Late', parentId: objective._id })).rejects.toThrow(/parent/)
+  })
+})
+
+describe('fields, assignees and validation', () => {
+  test('title, dates, priority and brief fields are validated', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    await expect(work.create('alice', { title: '   ' })).rejects.toThrow(/title_required/)
+    await expect(work.create('alice', { title: 'x'.repeat(201) })).rejects.toThrow(/title_too_long/)
+    await expect(work.create('alice', { dueDate: '2026-02-30' })).rejects.toThrow(/date/)
+    await expect(work.create('alice', { startDate: '2026-03-02', dueDate: '2026-03-01' })).rejects.toThrow(/date_order/)
+    await expect(work.create('alice', { priority: 7 })).rejects.toThrow(/priority/)
+
+    const task = await work.create('alice', { title: ' Trimmed ', startDate: '2026-03-01', dueDate: '2026-03-10', doneWhen: [{ text: ' Ship ', checked: false }, { text: '  ', checked: true }], context: [{ type: 'link', id: 'https://example.com', label: 'Spec' }] })
+    expect(task).toMatchObject({ title: 'Trimmed', status: 'todo', priority: 2, blocked: false, startDate: '2026-03-01', dueDate: '2026-03-10' })
+    expect((task as unknown as { doneWhen: unknown }).doneWhen).toEqual([{ text: 'Ship', checked: false }])
+
+    await expect(work.update('alice', task._id, { dueDate: '2026-02-01' })).rejects.toThrow(/date_order/)
+    const cleared = await work.update('alice', task._id, { startDate: null, dueDate: null, description: '# Hello' })
+    expect(cleared.startDate).toBeUndefined()
+    expect((cleared as unknown as { description: string }).description).toBe('# Hello')
+    await expect(work.update('alice', task._id, { context: [{ type: 'link', id: '', label: 'x' }] })).rejects.toThrow(/context/)
+  })
+
+  test('assignees must be active workspace principals; personal tasks are only for the creator', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const shared = await work.create('alice', { title: 'Shared', scope: 'workspace', assigneePrincipalId: 'p-bob' })
+    expect(shared.assigneePrincipalId).toBe('p-bob')
+    expect((await work.update('alice', shared._id, { assigneePrincipalId: 'p-agent' })).assigneePrincipalId).toBe('p-agent')
+    await expect(work.update('alice', shared._id, { assigneePrincipalId: 'p-gus' })).rejects.toThrow(/assignee/)
+    await expect(work.update('alice', shared._id, { assigneePrincipalId: 'p-outsider' })).rejects.toThrow(/assignee/)
+    await expect(work.update('alice', shared._id, { assigneePrincipalId: 'nobody' })).rejects.toThrow(/assignee/)
+    expect((await work.update('alice', shared._id, { assigneePrincipalId: null })).assigneePrincipalId).toBeUndefined()
+
+    const mine = await work.create('alice', { title: 'Mine' })
+    await expect(work.update('alice', mine._id, { assigneePrincipalId: 'p-bob' })).rejects.toThrow(/personal_assignee/)
+    expect((await work.update('alice', mine._id, { assigneePrincipalId: 'p-alice' })).assigneePrincipalId).toBe('p-alice')
+    await expect(work.update('alice', shared._id, { reviewerUserId: 'gus' })).rejects.toThrow(/reviewer/)
+    expect(await work.update('alice', shared._id, { reviewerUserId: 'owner' })).toMatchObject({ reviewerUserId: 'owner' })
+  })
+
+  test('the picker context lists people and agents but not guests or other workspaces', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const ctxResult = await convex.query(q('work/workItems:context'), auth('alice')) as { principalId: string; role: string; canCreateInWorkspace: boolean; assignees: Array<{ principalId: string }> }
+    expect(ctxResult.principalId).toBe('p-alice')
+    expect(ctxResult.canCreateInWorkspace).toBe(true)
+    expect(ctxResult.assignees.map((a) => a.principalId)).toEqual(['p-admin', 'p-alice', 'p-bob', 'p-owner', 'p-agent'])
+    expect(await convex.query(q('work/workItems:context'), auth('gus'))).toBeNull()
+    expect(await convex.query(q('work/workItems:context'), auth('outsider'))).toBeNull()
+  })
+
+  test('status changes, assignments and comments are logged with the actor', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Logged', scope: 'workspace' })
+    await work.update('bob', task._id, { status: 'review', assigneePrincipalId: 'p-bob', blocked: true, priority: 3 })
+    await work.comment('bob', task._id, ' Looks good ')
+    await expect(work.comment('bob', task._id, '   ')).rejects.toThrow(/comment_required/)
+    const events = await work.events('alice', task._id)
+    expect(events.map((e) => e.kind).sort()).toEqual(['assignee', 'blocked', 'comment', 'created', 'priority', 'status'])
+    expect(events.find((e) => e.kind === 'comment')).toMatchObject({ actorPrincipalId: 'p-bob', data: { body: 'Looks good' } })
+    expect(events.find((e) => e.kind === 'status')?.data).toEqual({ from: 'todo', to: 'review' })
+  })
+})
+
+describe('ordering', () => {
+  test('new tasks go to the end of their column; move places a task between neighbours and changes status', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const a = await work.create('alice', { title: 'A' })
+    const b = await work.create('alice', { title: 'B' })
+    const c = await work.create('alice', { title: 'C' })
+    expect(await work.titles('alice')).toEqual(['A', 'B', 'C'])
+
+    await work.move('alice', c._id, { beforeId: a._id })
+    expect(await work.titles('alice')).toEqual(['C', 'A', 'B'])
+    await work.move('alice', c._id, { afterId: a._id, beforeId: b._id })
+    expect(await work.titles('alice')).toEqual(['A', 'C', 'B'])
+    await work.move('alice', a._id, { afterId: b._id })
+    expect(await work.titles('alice')).toEqual(['C', 'B', 'A'])
+
+    const moved = await work.move('alice', b._id, { status: 'done' })
+    expect(moved.status).toBe('done')
+    const doneColumn = (await work.list('alice')).filter((i) => i.status === 'done')
+    expect(doneColumn.map((i) => i.title)).toEqual(['B'])
+    // Updating the status from the list puts the task at the end of the new column.
+    const d = await work.create('alice', { title: 'D' })
+    await work.update('alice', d._id, { status: 'done' })
+    expect((await work.list('alice')).filter((i) => i.status === 'done').map((i) => i.title)).toEqual(['B', 'D'])
+  })
+
+  test('a neighbour in another column or one the caller cannot see is ignored', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const mine = await work.create('alice', { title: 'Mine' })
+    const bobs = await work.create('bob', { title: 'Bobs private' })
+    const doneTask = await work.create('alice', { title: 'Done one', status: 'done' })
+    const first = await work.create('alice', { title: 'First' })
+    const result = await work.move('alice', mine._id, { beforeId: bobs._id, afterId: doneTask._id })
+    expect(result.status).toBe('todo')
+    expect((await work.list('alice')).filter((i) => i.status === 'todo').map((i) => i.title).slice(-1)).toEqual(['Mine'])
+    expect(first.status).toBe('todo')
+  })
+
+  test('a column is rebalanced once ranks grow long, and the order survives', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const left = await work.create('alice', { title: 'Left' })
+    const right = await work.create('alice', { title: 'Right' })
+    const wedge = await work.create('alice', { title: 'Wedge' })
+    // Wedge repeatedly into the gap right after Left, in a fresh item each time.
+    const inserted: string[] = []
+    for (let i = 0; i < 60; i += 1) {
+      const item = await work.create('alice', { title: `W${i}` })
+      await work.move('alice', item._id, { afterId: left._id, beforeId: inserted.length ? inserted[inserted.length - 1] : right._id })
+      inserted.push(item._id)
+    }
+    const list = await work.list('alice')
+    const titles = list.map((i) => i.title)
+    expect(titles[0]).toBe('Left')
+    expect(titles.slice(1, 61)).toEqual(Array.from({ length: 60 }, (_, i) => `W${59 - i}`))
+    expect(titles.slice(61)).toEqual(['Right', 'Wedge'])
+    expect(Math.max(...list.map((i) => i.rank.length))).toBeLessThan(24)
+    expect(wedge.title).toBe('Wedge')
+  })
+})
