@@ -2,7 +2,7 @@
 
 Status: approved direction (2026-10-14); Stage 1 not started
 Owner: DevelopedByDev
-Workflow: [Development Workflow](../develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
+Workflow: [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
 ready PR; the Integration thread reviews and merges.
 
 ## Summary
