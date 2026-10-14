@@ -17,6 +17,7 @@ import React, {useState} from 'react'; import {createRoot} from 'react-dom/clien
 import {Select} from './packages/overlay-ui/src/components/primitives/Select';
 import {ListboxSelect} from './packages/overlay-ui/src/components/primitives/ListboxSelect';
 import {DialogFrame} from './packages/overlay-ui/src/components/primitives/Dialog';
+import {Popover as PopoverPrimitive} from 'radix-ui';
 import {PRESETS} from './packages/overlay-app-core/src/theme/presets';
 window.presets=PRESETS; window.events=[];
 function App(){
@@ -38,6 +39,7 @@ function App(){
  <ListboxSelect aria-label="Inline" value="a" options={options.slice(0,4)} portal={false} onChange={()=>{}}/>
  <button onClick={()=>setDialog(true)}>Open dialog</button>
  <DialogFrame open={dialog} onOpenChange={setDialog} title="Select fixture" description="Select in a scroll container"><ListboxSelect aria-label="First dialog account" value={value} options={options} onChange={record}/><div style={{height:200,overflow:'auto'}}><div style={{height:100}}/><ListboxSelect aria-label="Dialog account" value={value} options={options} onChange={record}/><div style={{height:400}}/></div><button disabled>Busy action</button></DialogFrame>
+ <PopoverPrimitive.Root><PopoverPrimitive.Trigger>Open nonmodal</PopoverPrimitive.Trigger><PopoverPrimitive.Portal><PopoverPrimitive.Content aria-label="Nonmodal fixture" style={{background:"var(--surface-elevated)",padding:8}}><ListboxSelect aria-label="Nonmodal account" value={value} options={options} onChange={record}/></PopoverPrimitive.Content></PopoverPrimitive.Portal></PopoverPrimitive.Root>
  <div style={{position:'fixed',bottom:8,right:8,width:180}}><ListboxSelect aria-label="Edge account" value={value} options={options} onChange={record}/></div>
  </main>
 }
@@ -106,6 +108,7 @@ try {
  console.log('dialog boundary Tab/Shift+Tab wraps past disabled footer controls: PASS')
  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'})
  console.log('select in dialog/scroll container, selection, Escape layering and focus return: PASS')
+ await page.getByRole('button',{name:'Open nonmodal'}).click();const nonmodal=page.getByRole('combobox',{name:'Nonmodal account'});await nonmodal.click();await page.keyboard.press('Tab');await closed();await expect(nonmodal).not.toBeFocused();assert.equal(await page.evaluate(()=>!!document.activeElement?.closest('[aria-label=\"Nonmodal fixture\"]')),false);await page.keyboard.press('Escape');console.log('nonmodal popover select Tab advances outside the panel: PASS')
  const presets=await page.evaluate(()=>window.presets)
  for(const preset of presets){
   await page.evaluate(p=>{document.documentElement.dataset.theme=p.variant;document.documentElement.dataset.themePreset=p.id;Object.entries(p.cssVars).forEach(([key,value])=>document.documentElement.style.setProperty(key,value))},preset)
