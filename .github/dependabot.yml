@@ -19,3 +19,5 @@ updates:
     directory: /.github
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
