@@ -41,6 +41,9 @@ export function ListboxSelect<T extends string>({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const tabTarget = useRef<HTMLElement | null>(null)
   useImperativeHandle(triggerProps?.ref, () => triggerRef.current!)
+  // Disabling an open control closes it permanently, rather than reopening it
+  // when an asynchronous busy state clears.
+  if (disabled && open) setOpen(false)
 
   // Radix forbids empty item values. Index IDs also avoid sentinel collisions with
   // arbitrary public values. Only the adapter knows these IDs; forms/callbacks

@@ -19,7 +19,7 @@ import {DialogFrame} from './packages/overlay-ui/src/components/primitives/Dialo
 import {PRESETS} from './packages/overlay-app-core/src/theme/presets';
 window.presets=PRESETS; window.events=[];
 function App(){
- const [value,setValue]=useState(''); const [dialog,setDialog]=useState(false);
+ const [value,setValue]=useState(''); const [dialog,setDialog]=useState(false); const [blocked,setBlocked]=useState(false); window.setBlocked=setBlocked;
  const options=[{value:'',label:'Choose account'}, {value:'a',label:'Alpha',group:'Accounts'}, {value:'b',label:'Beta',group:'Accounts',disabled:true}, {value:'z',label:'Zulu',group:'Accounts'}, ...Array.from({length:70},(_,i)=>({value:'long-'+i,label:'Long option '+String(i).padStart(2,'0'),group:'More'}))];
  const record=(v)=>{setValue(v);window.events.push(v)};
  return <main style={{padding:24,maxWidth:420}}>
@@ -29,7 +29,7 @@ function App(){
  <label>Uncontrolled plan<Select name="plan" defaultValue="800"><option value="800">$8/month</option><option value="2000">$20/month</option></Select></label>
  <button type="reset">Reset form</button><button type="submit">Submit form</button>
  </form>
- <ListboxSelect id="generic" aria-label="Account" name="account" value={value} options={options} onChange={record}/>
+ <ListboxSelect disabled={blocked} id="generic" aria-label="Account" name="account" value={value} options={options} onChange={record}/>
  <button id="next">Next control</button>
  <ListboxSelect aria-label="Disabled" value="a" options={options} disabled onChange={()=>{throw Error('disabled callback')}}/>
  <ListboxSelect aria-label="Empty" value="" options={[]} placeholder="No accounts" onChange={record}/>
@@ -86,7 +86,8 @@ try {
  await account.click();await page.mouse.click(650,500);await closed()
  await account.click();await page.keyboard.press('Tab');await closed();assert.equal(await page.locator('#next').evaluate(el=>el===document.activeElement),true)
  await account.click();await page.keyboard.press('Shift+Tab');await closed();assert.equal(await page.getByRole('button',{name:'Submit form'}).evaluate(el=>el===document.activeElement),true)
- console.log('arrows skip disabled, typeahead, Enter, Escape, outside and Tab dismissal: PASS')
+ await account.click();await page.evaluate(()=>window.setBlocked(true));await closed();assert.equal(await account.isDisabled(),true);await page.evaluate(()=>window.setBlocked(false));assert.equal(await page.getByRole('listbox').count(),0)
+ console.log('arrows skip disabled, typeahead, Enter, Escape, outside/Tab and disable-while-open dismissal: PASS')
  assert.equal(await page.getByRole('combobox',{name:'Disabled',exact:true}).isDisabled(),true)
  assert.equal(await page.getByRole('combobox',{name:'Unknown',exact:true}).textContent(),'Select a channel')
  await page.getByRole('combobox',{name:'Empty',exact:true}).click();await page.keyboard.press('Escape');await closed()
