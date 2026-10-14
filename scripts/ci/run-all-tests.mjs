@@ -23,12 +23,21 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { parseShard, selectShard, verifyShards } from './test-shards.mjs'
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..')
 const args = process.argv.slice(2)
 const listOnly = args.includes('--list')
 const onlyIndex = args.indexOf('--only')
 const onlyPrefix = onlyIndex >= 0 ? args[onlyIndex + 1] : undefined
+const shardIndex = args.indexOf('--shard')
+const verifyIndex = args.indexOf('--verify-shards')
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--list') continue
+  if (['--only', '--shard', '--verify-shards'].includes(args[i]) && args[i + 1] && !args[i + 1].startsWith('--')) { i++; continue }
+  throw new Error(`Invalid or incomplete argument: ${args[i]}`)
+}
+if (shardIndex >= 0 && verifyIndex >= 0) throw new Error('Choose --shard or --verify-shards')
 
 const TEST_FILE = /\.test\.(?:ts|tsx|mts|mjs)$/
 // A top-level await cannot be compiled to CommonJS, which is what tsx emits for
@@ -140,8 +149,19 @@ function commandFor(group) {
 }
 
 const groups = classify(trackedTestFiles())
-const selected = [...groups.entries()]
+let selected = [...groups.entries()]
   .filter(([name]) => !onlyPrefix || name.startsWith(onlyPrefix))
+if (!selected.length) throw new Error('No matching test groups')
+if (verifyIndex >= 0) {
+  const total = Number(args[verifyIndex + 1])
+  console.log(`Verified ${verifyShards(selected, total)} test files across ${total} disjoint shards.`)
+  process.exit(0)
+}
+if (shardIndex >= 0) {
+  const shard = parseShard(args[shardIndex + 1])
+  verifyShards(selected, shard.total)
+  selected = selectShard(selected, shard)
+}
 
 if (listOnly) {
   for (const [name, group] of selected) {

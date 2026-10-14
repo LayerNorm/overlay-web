@@ -68,6 +68,14 @@ The [migration plan](https://github.com/LayerNorm/overlay-web/blob/main/docs/pla
 
 ### Verified workspace and queue protections
 
+CI runs static checks, production compilation and two exhaustive test shards in
+parallel, retaining all nine required contexts. The required quality aggregate
+fails on failed, cancelled, absent or unexpectedly skipped lanes. Gateway contract
+results come from the test lane in `Security Checks`; Docs remains a separate
+required workflow. Current route types are generated before standalone typechecking,
+so the CI compilation job omits only its redundant TypeScript pass. Hosted builds
+keep their existing checks. See Development Workflow for the complete CI contract.
+
 Release smoke resolves and activates the synthetic account's actual personal
 workspace through the authenticated app API. It uses that ID for chat, Files and
 realtime checks, including when seeding reuses an app-created workspace. It creates

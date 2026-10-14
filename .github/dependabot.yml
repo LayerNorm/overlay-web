@@ -15,3 +15,7 @@ updates:
     ignore:
       # No upstream patch. Dev-only transitive from @puppeteer/browsers.
       - dependency-name: extract-zip
+  - package-ecosystem: pip
+    directory: /.github
+    schedule:
+      interval: weekly

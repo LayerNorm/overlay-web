@@ -1,8 +1,8 @@
 # Development and release workflow target
 
-Current policy, 2026-10-14. [Development Workflow](../develop/Development%20Workflow.md)
+Current policy, 2026-10-14. [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md)
 is authoritative. Historical migration drills remain in
-[Release workflow migration plan](RELEASE_WORKFLOW_MIGRATION_PLAN.md).
+[Release workflow migration plan](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md).
 
 ## Environments
 

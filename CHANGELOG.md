@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Run CI static checks, production compilation and exhaustive test shards in parallel; retain required security and merge-queue coverage, avoid duplicate build typechecking and gateway dependency installation, and repair release-document links.
+
 - Resolve first-push Preview PR identity from exact public Git metadata when Vercel starts before the draft PR opens.
 
 - Consolidate PR previews and native Git production deployments in `overlay-landing`, retaining custom PR URLs, isolated Convex backends and shared Preview test credentials. Retire the separate staging release lane.
