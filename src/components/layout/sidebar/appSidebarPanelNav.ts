@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react'
+import { ChartGantt, List, Settings, SquareKanban } from 'lucide-react'
 import type { OverlaySettingsSection } from '@overlay/app-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
@@ -15,6 +15,7 @@ import { SETTINGS_SECTION_ICONS, chatScopeForView, type SidebarRouteState } from
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { soloPanelScope } from '@/shared/workspaces/solo-workspace'
+import { WORK_VIEWS, WORK_VIEW_LABELS, WORK_VIEW_PARAM, parseWorkView, type WorkView } from '@/shared/work/views'
 
 interface SidebarRouter {
   push: (href: string) => void
@@ -351,6 +352,63 @@ function buildAutomationsPanelNav({
   })
 }
 
+const WORK_VIEW_ICONS: Record<WorkView, InlineNavItem['icon']> = { list: List, board: SquareKanban, timeline: ChartGantt }
+
+/** List, Board, and Timeline: the same tasks, three ways. They sit under Personal and under Workspace. */
+export const workInlineItems: ReadonlyArray<InlineNavItem> = WORK_VIEWS.map((id) => ({
+  id,
+  label: WORK_VIEW_LABELS[id],
+  icon: WORK_VIEW_ICONS[id],
+}))
+
+function buildWorkPanelNav({
+  scope,
+  workView,
+  effectivePendingSecondaryNavId,
+  currentSearchParams,
+  canonicalWorkspaceRoute,
+  activeWorkspaceId,
+  buildWorkspaceHref,
+  router,
+  closeMobileDrawer,
+  beginSecondaryNavigation,
+  solo,
+}: {
+  scope: PanelScope
+  workView: WorkView
+  effectivePendingSecondaryNavId: string | null
+  currentSearchParams: URLSearchParams
+  canonicalWorkspaceRoute: boolean
+  activeWorkspaceId: string | null
+  buildWorkspaceHref: (workspaceId: string, href: string) => string
+  router: SidebarRouter
+  closeMobileDrawer: () => void
+  beginSecondaryNavigation: (id: string) => void
+  solo: boolean
+}): SecondaryPanelNav {
+  return buildScopedPanelNav({
+    scope,
+    solo,
+    sub: workView,
+    subItems: { personal: workInlineItems, workspace: workInlineItems },
+    pendingId: effectivePendingSecondaryNavId,
+    onSelect: (nextScope, nextSub) => {
+      closeMobileDrawer()
+      const nextView = parseWorkView(nextSub) ?? workView
+      if (nextScope === scope && nextView === workView) return
+      beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
+      const params = withPanelScope(new URLSearchParams(currentSearchParams.toString()), nextScope)
+      // An open task may not exist in the scope being switched to.
+      params.delete('task')
+      params.set(WORK_VIEW_PARAM, nextView)
+      const href = canonicalWorkspaceRoute && activeWorkspaceId
+        ? buildWorkspaceHref(activeWorkspaceId, '/app/work')
+        : '/app/work'
+      router.push(`${href}?${params.toString()}`)
+    },
+  })
+}
+
 function buildSettingsPanelNav({
   settingsSections,
   settingsSection,
@@ -400,7 +458,7 @@ export function resolveSecondaryPanelNav({
 }: {
   panelKind: SidebarRouteState['panelKind']
   publicShowcase: boolean
-  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
+  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
   effectivePendingSecondaryNavId: string | null
   totalUnread: number
   collaborationUnread: { dms: number; channels: number; total: number }
@@ -492,6 +550,21 @@ export function resolveSecondaryPanelNav({
       effectivePendingSecondaryNavId,
       toolsItems,
       publicShowcase,
+      router,
+      closeMobileDrawer,
+      beginSecondaryNavigation,
+      solo,
+    })
+  }
+  if (panelKind === 'work') {
+    return buildWorkPanelNav({
+      scope: routeState.scope,
+      workView: routeState.workView,
+      effectivePendingSecondaryNavId,
+      currentSearchParams,
+      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
+      activeWorkspaceId,
+      buildWorkspaceHref,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,

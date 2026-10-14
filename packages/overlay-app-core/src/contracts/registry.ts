@@ -14,6 +14,7 @@ export type OverlayIconName =
   | 'chrome'
   | 'file-text'
   | 'folder-open'
+  | 'list-checks'
   | 'mail'
   | 'message-square'
   | 'monitor'

@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { InlineNavChildren } from '@/components/layout/AppSidebarInlinePanels'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { chatScopeForView, resolveSidebarRouteState, scopePanelAction, type PanelCreateRules } from './appSidebarNav'
+import { workInlineItems } from './appSidebarPanelNav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -182,4 +183,60 @@ test('a solo page with no sub-rows gets one row named for the page', () => {
   })
   assert.deepEqual(built.items.map((item) => [item.id, item.label]), [['personal', 'Agents']])
   assert.equal(built.activeId, 'personal')
+})
+
+test('Work opens a nav-only panel with List, Board, and Timeline under the scope, and reads the view from the URL', () => {
+  const state = routeState('/app/work', 'scope=workspace&view=board')
+  assert.equal(state.workOpen, true)
+  assert.equal(state.panelKind, 'work')
+  assert.equal(state.scope, 'workspace')
+  assert.equal(state.workView, 'board')
+  // It is a navigation panel, not a resource list like Chats or Files.
+  assert.equal(state.hasResourcePanel, false)
+  assert.equal(state.showSecondaryPanel, true)
+
+  // An unknown or missing view opens the List; the canonical workspace route is Work too.
+  assert.equal(routeState('/app/work', 'view=gantt').workView, 'list')
+  assert.equal(routeState('/app/work', '').workView, 'list')
+  const canonical = resolveSidebarRouteState({
+    pathname: '/app/w/ws_1/work',
+    searchParams: new URLSearchParams('view=timeline'),
+    resolveWorkspaceSurface: () => 'work',
+    automationsEnabled: true,
+  })
+  assert.equal(canonical.panelKind, 'work')
+  assert.equal(canonical.workView, 'timeline')
+  // The Tools page's own `view` values do not leak into Work.
+  assert.equal(routeState('/app/tools', 'view=board').workOpen, false)
+})
+
+test('the Work panel shows the three views under the selected scope and reports the choice', () => {
+  const rows = workInlineItems
+  assert.deepEqual(rows.map((row) => row.id), ['list', 'board', 'timeline'])
+  assert.deepEqual(rows.map((row) => row.label), ['List', 'Board', 'Timeline'])
+  const calls: Array<[string, string | null]> = []
+  const built = buildScopedPanelNav({
+    scope: 'workspace',
+    sub: 'board',
+    subItems: { personal: rows, workspace: rows },
+    pendingId: null,
+    onSelect: (scope, sub) => { calls.push([scope, sub]) },
+  })
+  assert.equal(built.activeChildId, 'workspace:board')
+  assert.deepEqual(built.items[1]!.children?.map((child) => child.id), ['workspace:list', 'workspace:board', 'workspace:timeline'])
+  built.onSelect('personal:timeline')
+  assert.deepEqual(calls, [['personal', 'timeline']])
+})
+
+test('a workspace of one person sees List, Board, and Timeline directly, with no Personal / Workspace split', () => {
+  const built = buildScopedPanelNav({
+    scope: 'personal',
+    solo: true,
+    sub: 'timeline',
+    subItems: { personal: workInlineItems, workspace: workInlineItems },
+    pendingId: null,
+    onSelect: () => undefined,
+  })
+  assert.deepEqual(built.items.map((item) => item.id), ['personal:list', 'personal:board', 'personal:timeline'])
+  assert.equal(built.activeId, 'personal:timeline')
 })

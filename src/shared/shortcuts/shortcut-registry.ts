@@ -52,7 +52,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   {
     id: 'navigation.section',
     label: 'Go to sidebar section',
-    description: 'Jump to the 1st through 6th item in the sidebar (Chat, Files, Tools, …).',
+    description: 'Jump to the 1st through 6th item in the sidebar (Work, Agents, Chats, …).',
     group: 'navigation',
     hotkey: 'alt+1,alt+2,alt+3,alt+4,alt+5,alt+6',
     keys: [['Alt', '1'], ['Alt', '…'], ['Alt', '6']],
