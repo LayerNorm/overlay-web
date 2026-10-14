@@ -15,6 +15,7 @@ const here = fileURLToPath(new URL('./', import.meta.url))
 /** Modules that need the Next.js runtime, a session, or a workspace are swapped for small shims. */
 const SHIMS = {
   'next/navigation': 'shims/next-navigation.ts',
+  'next/link': 'shims/next-link.tsx',
   '@/contexts/AuthContext': 'shims/auth-context.ts',
   '@/contexts/WorkspaceContext': 'shims/workspace-context.ts',
   '@/hooks/use-workspace-create-access': 'shims/use-workspace-create-access.ts',

@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- **Work is the home page.** Signing in, opening `/` or `/app`, clicking the Overlay logo, and the marketing site's app links now open Work (`/app/work`) instead of Agents. Agents is unchanged in the sidebar. A deployment with `OVERLAY_FEATURE_WORK=0` shows its "Work unavailable" notice, which now links to Agents.
 - Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 
 - Wrap open-select Tab/Shift+Tab navigation within actual modal dialogs, including disabled footer actions; non-modal popovers advance outside their panel.

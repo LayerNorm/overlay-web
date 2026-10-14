@@ -599,6 +599,7 @@ await check('search: without access to Work, tasks are not offered', async (page
 await check('capability gate: Work off shows the notice, and nothing is decided while capabilities load', async (page) => {
   await page.goto(`${harness.url}/?workOff=1`)
   await page.getByText('Work unavailable').waitFor()
+  assert.equal(await page.getByRole('link', { name: 'Open Agents' }).getAttribute('href'), '/app/agents')
   assert.equal(await page.locator('[data-testid="work-page"]').count(), 0)
   await page.goto(`${harness.url}/?capsLoading=1`)
   await page.getByTestId('work-fallback').waitFor()
