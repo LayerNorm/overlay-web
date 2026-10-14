@@ -1,5 +1,11 @@
+'use client'
+
+import { useLayoutEffect, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import { OverlayMark } from '@/components/orb/Orb'
+import { createBootLoaderPulseClock } from './boot-loader-pulse'
+
+const synchronizePulse = createBootLoaderPulseClock()
 
 /**
  * Unified app boot loader: the brand lockup appears once (mark fades in, word
@@ -11,12 +17,21 @@ import { OverlayMark } from '@/components/orb/Orb'
  * loader shows no re-flash.
  */
 export function AppBootLoader({ settled = false }: { settled?: boolean }) {
+  const pulseRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const pulse = pulseRef.current
+    const now = pulse?.ownerDocument.timeline.currentTime
+    const animation = pulse?.getAnimations()[0]
+    if (animation && typeof now === 'number') synchronizePulse(animation, now)
+  }, [])
+
   return (
     <div className="flex h-screen items-center justify-center overflow-hidden bg-background text-foreground">
       <div
         className={`flex flex-col items-center${settled ? ' app-brand-loader--steady' : ''}`}
       >
-        <div className="app-brand-loader-pulse">
+        <div ref={pulseRef} className="app-brand-loader-pulse">
           <div
             className="app-brand-loader flex items-center"
             role="status"
