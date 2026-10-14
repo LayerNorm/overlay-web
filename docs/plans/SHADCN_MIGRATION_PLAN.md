@@ -1,7 +1,7 @@
 # shadcn/ui migration plan
 
 _Started 2026-10-13. Progress verified 2026-10-14 against GitHub and
-`origin/main` at `7578b691417a992060901f53908683297c4cef43`. Companion visual
+`origin/main` at `6a5218fe9510e3df37ec0d4698b3af328112851f`. Companion visual
 mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/shadcn-migration-preview.html)._
 
 ## Progress
@@ -14,7 +14,7 @@ mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/o
 | 2 dropdown-menu + popover | Merged at `7578b6914`; authenticated current-head preview QA and all nine required merge-queue checks passed, including combined menu/select regressions | [#209](https://github.com/LayerNorm/overlay-web/pull/209), [final QA](https://github.com/LayerNorm/overlay-web/pull/209#issuecomment-6161698065) |
 | 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
 | 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
-| 5 command (cmdk) | Implementation complete; local real-component QA passed (39 presets, mobile, platform shortcuts and search destinations). Current-head hosted acceptance/checks are recorded in the PR; not merged. | [#210](https://github.com/LayerNorm/overlay-web/pull/210); scoped acceptance below |
+| 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Not promoted to production. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
 | 6 core form primitives | Not started | Separate 6a, 6b and 6c PRs |
 | 7 niche fills | Not started | After the relevant foundations |
 | 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
@@ -266,19 +266,15 @@ Permission/fixture-limited admin, billing and OAuth flows must be reported hones
 
 ## Phase 5 — command (cmdk)
 
-**Implementation (2026-10-14):** the replacement Builder owns
-`codex/shadcn-command-palette-restart` from main `7578b6914`. Read-only audit
-found no implementation diff on the old branch. The canonical cmdk primitives
-and retained palette API now compose the merged Radix dialog; application-ranked
-rows bypass cmdk filtering/sorting. Legacy hooks retain their other consumers.
-Current main lacked cmdk in its manifest/lockfile; this PR adds 1.1.1.
-
-UI/app types, targeted lint, UI tests, dialog regression, boundary checks and
-rendered command interactions passed, including 39 presets. [PR #210](https://github.com/LayerNorm/overlay-web/pull/210)
-records exact-head hosted acceptance, checks and readiness. Local fixtures alone
-do not satisfy hosted acceptance. Local production prerender needs configured
-auth/billing/backend env; Storybook has an existing app-core export blocker.
-The scope and acceptance below remain the completion gate.
+**Done (2026-10-14, [PR #210](https://github.com/LayerNorm/overlay-web/pull/210)):**
+canonical cmdk primitives live in `packages/overlay-ui/src/components/ui/command.tsx`
+and compose the merged Radix dialog; `CommandPalette` keeps its API and
+`GlobalSearchDialog` is unchanged for consumers. Application-ranked rows bypass
+cmdk filtering (`shouldFilter={false}`). Legacy dialog hooks keep their other
+consumers. cmdk 1.1.1 was added to the manifest/lockfile. Known limits
+carried from the PR: Storybook has an existing app-core export blocker and
+local production prerender needs configured env. Production promotion is a
+separate authorization. The scope and acceptance below are kept as the record.
 
 1. Audit `packages/overlay-ui/src/components/overlays/CommandPalette.tsx`,
    its public types/exports, Storybook and

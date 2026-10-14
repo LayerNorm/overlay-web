@@ -180,6 +180,11 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 
 - [ ] **Per-agent spend caps** (deferred 2026-10-06). A workspace with a plan draws every run from one shared pool; per-member limits already exist (`configureSpendLimit`). A cap per agent or automation would stop one runaway resource from draining the pool. Not in the first version of workspace billing: build it when a pool is actually shared by several people. Needs: a limit keyed by resource id beside the member limit, checked in the same reservation path as `reserveWorkspace`, and a row on the workspace billing tab. Plan: `docs/plans/UNIFIED_SCOPES_PLAN.md` (5b).
 
+## Admin console
+
+- [ ] **Separate WorkOS environment for the admin console** (added 2026-10-14). Today the owner is the only operator, so `apps/admin` signs in through the existing WorkOS environment, gated by `ADMIN_ALLOWED_USER_IDS` and `administrativePrincipals`. Before anyone else gets operator access, move admin sign-in to its own WorkOS environment: SSO through company Google Workspace, MFA required, no password or magic link. Plan: `docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`.
+- [ ] **Staff environment for other team members** (added 2026-10-14). When more people join, give them their own staff setup (accounts, roles in `administrativePrincipals`, access to the `overlay-admin` Vercel project) instead of sharing the owner's.
+
 ## Agent permission cards
 
 - [ ] **MCP approval gate (Overlay tools called by Claude Code / Codex over MCP) still lets the agent move on.** `mcp-approval-gate.ts` waits 25 s for the answer, then returns "waiting for approval, call again" and the agent keeps responding meanwhile (hosts time MCP calls out in about a minute). The permission cards for the agent's own shell/file/tool requests now stop the transcript at the card (`partsUntilPendingRequest`); this path needs a real pause (progress notifications to extend the host's timeout, or holding the call until answered). Cards stay; improve, do not remove (owner, 2026-10-07).
