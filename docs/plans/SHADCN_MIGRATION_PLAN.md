@@ -10,12 +10,12 @@ mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/o
 |---|---|---|
 | 0a Tailwind v4 | Merged; production acceptance recorded for `4698f8347caf0bc44b3a0fab29781ff744fc6629` | [#198](https://github.com/LayerNorm/overlay-web/pull/198) |
 | 0b shadcn foundation | Merged with Phase 1: dependencies, `components.json`, canonical primitives and `cn()` | [#200](https://github.com/LayerNorm/overlay-web/pull/200) |
-| 1 dialog + alert-dialog | Shared `DialogFrame`/`ConfirmDialog` shims merged. Phase 1b dialog consumers are migrated on this branch; `usePresence` remains only for non-dialog surfaces until the relevant later primitives. | [#200](https://github.com/LayerNorm/overlay-web/pull/200); Phase 1b PR pending |
+| 1 dialog + alert-dialog | Shared `DialogFrame`/`ConfirmDialog` shims merged. Phase 1b dialog consumers are migrated in #227; `usePresence` remains only for non-dialog surfaces until the relevant later primitives. | [#200](https://github.com/LayerNorm/overlay-web/pull/200), [#227](https://github.com/LayerNorm/overlay-web/pull/227) |
 | 2 dropdown-menu + popover | Merged at `7578b6914`; authenticated current-head preview QA and all nine required merge-queue checks passed, including combined menu/select regressions | [#209](https://github.com/LayerNorm/overlay-web/pull/209), [final QA](https://github.com/LayerNorm/overlay-web/pull/209#issuecomment-6161698065) |
 | 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
 | 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
 | 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Not promoted to production. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
-| 6 core form primitives | Phase 6a implemented on this branch (`button` including icon-button composition, `input`, `textarea`, `label`); 6b/6c remain unstarted. | Phase 6a PR pending; then separate 6b and 6c PRs |
+| 6 core form primitives | Phase 6a implemented in #227 (`button` including icon-button composition, `input`, `textarea`, `label`); 6b/6c remain unstarted. | [#227](https://github.com/LayerNorm/overlay-web/pull/227); then separate 6b and 6c PRs |
 | 7 niche fills | Not started | After the relevant foundations |
 | 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
 
