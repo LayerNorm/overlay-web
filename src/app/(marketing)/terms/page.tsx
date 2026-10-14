@@ -5,7 +5,7 @@ import { LEGAL_DOCUMENTS, LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-docu
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description:
-    'The terms governing use of Overlay — hosted services, subscriptions, integrations, user content, and AI features.',
+    'The terms governing use of Overlay: hosted services, subscriptions, integrations, user content, and AI features.',
   alternates: { canonical: '/terms' },
 }
 

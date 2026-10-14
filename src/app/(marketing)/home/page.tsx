@@ -3,9 +3,9 @@ import HomeMarketingPage from '@/features/marketing/pages/MarketingOverviewPage'
 import '@/features/marketing/landing.css'
 
 export const metadata: Metadata = {
-  title: { absolute: 'Overlay: the control plane for AI agents' },
+  title: { absolute: 'Overlay: The control plane for AI employees' },
   description:
-    'Overlay is the control plane for AI agents — create, deploy, and manage every agent in one workspace. Bring your own agents — Codex, Claude Code, Hermes — and put them to work on any platform.',
+    'Overlay is the control plane for AI employees. Create, deploy, and manage every agent in one workspace. Bring your own agents (Codex, Claude Code, Hermes) and put them to work on any platform.',
   alternates: {
     canonical: '/home',
   },

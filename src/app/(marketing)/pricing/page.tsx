@@ -5,7 +5,7 @@ import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 export const metadata: Metadata = {
   title: 'Pricing',
   description:
-    'Choose an Overlay plan — the control plane for AI agents with private chat, files, browser tasks, and automations. Free tier included.',
+    'Choose an Overlay plan, the control plane for AI employees with private chat, files, browser tasks, and automations. Free tier included.',
   alternates: {
     canonical: '/pricing',
   },

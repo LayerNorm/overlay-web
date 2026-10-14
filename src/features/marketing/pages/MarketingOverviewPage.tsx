@@ -84,7 +84,7 @@ function HeroSection({ webAppHref }: { webAppHref: string }) {
         <div className="hero-grid">
           <div>
             <h1 className="rise" style={rise(0)}>
-              The control plane for AI agents.
+              The control plane for AI employees.
             </h1>
             <p className="hero-sub rise" style={rise(1)}>
               Create, deploy, and manage your agents in one workspace — or
@@ -821,23 +821,23 @@ function AudiencesSection({ webAppHref }: { webAppHref: string }) {
 const FAQ_ITEMS: { q: string; a: string }[] = [
   {
     q: "How do I run all my AI agents from one place?",
-    a: "Overlay gives every agent a home in one workspace: agents you create in Overlay and agents you already use — Codex, Claude Code, Hermes — connect to the same roster with shared context, tools, and a computer to work from.",
+    a: "Overlay gives every agent a home in one workspace: agents you create in Overlay and agents you already use (Codex, Claude Code, Hermes) connect to the same roster with shared context, tools, and a computer to work from.",
   },
   {
     q: "Can I bring my own agents to Overlay?",
-    a: "Yes. Connect agents running on your own machine or deploy them on Overlay Cloud — they get the same workspace tools, memory, and supervision as agents built in Overlay.",
+    a: "Yes. Connect agents running on your own machine or deploy them on Overlay Cloud. They get the same workspace tools, memory, and supervision as agents built in Overlay.",
   },
   {
     q: "Where do Overlay agents work?",
-    a: "In the Overlay app and wherever work already happens — Slack, Telegram, iMessage, and the web. Agents can be scheduled or triggered, and they report back to the same place.",
+    a: "In the Overlay app and wherever work already happens: Slack, Telegram, iMessage, and the web. Agents can be scheduled or triggered, and they report back to the same place.",
   },
   {
     q: "How do I control what agents can do?",
-    a: "Permissions, tool approvals, spend limits, run history, and audit trails apply to every agent on the roster — not just the ones Overlay runs.",
+    a: "Permissions, tool approvals, spend limits, run history, and audit trails apply to every agent on the roster, not just the ones Overlay runs.",
   },
   {
     q: "Is Overlay open source?",
-    a: "Yes — the core is AGPL-3.0 with hosted and self-hosted options, plus commercial licensing for organizations that need different terms. The free tier needs no card.",
+    a: "Yes. The core is AGPL-3.0 with hosted and self-hosted options, plus commercial licensing for organizations that need different terms. The free tier needs no card.",
   },
 ]
 

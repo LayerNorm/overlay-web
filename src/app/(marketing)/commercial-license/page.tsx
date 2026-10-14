@@ -5,7 +5,7 @@ import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
 export const metadata: Metadata = {
   title: 'Commercial Licensing',
   description:
-    'Commercial licensing for Overlay — terms outside AGPL-3.0 for proprietary modifications, private distribution, and enterprise requirements.',
+    'Commercial licensing for Overlay: terms outside AGPL-3.0 for proprietary modifications, private distribution, and enterprise requirements.',
   alternates: { canonical: '/commercial-license' },
 }
 

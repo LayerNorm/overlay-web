@@ -5,7 +5,7 @@ import { LEGAL_DOCUMENTS, LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-docu
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description:
-    'How LayerNorm handles personal information in Overlay — what is collected, why it is used, whom it is shared with, and the choices available to users.',
+    'How LayerNorm handles personal information in Overlay: what is collected, why it is used, whom it is shared with, and the choices available to users.',
   alternates: { canonical: '/privacy' },
 }
 

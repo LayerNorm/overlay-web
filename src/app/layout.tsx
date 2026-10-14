@@ -6,13 +6,15 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://getoverlay.io"),
   title: {
-    default: "Overlay: the control plane for AI agents",
-    template: "%s — Overlay",
+    default: "Overlay: The control plane for AI employees",
+    template: "%s | Overlay",
   },
   description:
-    "Overlay is the control plane for AI agents — create, deploy, and manage every agent in one workspace. Bring your own agents, or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+    "Overlay is the control plane for AI employees. Create, deploy, and manage every agent in one workspace. Bring your own agents, or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
   applicationName: "Overlay",
   keywords: [
+    "control plane for AI employees",
+    "AI employees",
     "control plane for AI agents",
     "AI agent platform",
     "unify AI agents",
@@ -49,9 +51,9 @@ export const metadata: Metadata = {
     ],
   },
   openGraph: {
-    title: "Overlay: the control plane for AI agents",
+    title: "Overlay: The control plane for AI employees",
     description:
-      "One workspace to create, deploy, and manage every AI agent — bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
     type: "website",
     url: "https://getoverlay.io",
     siteName: "Overlay",
@@ -61,15 +63,15 @@ export const metadata: Metadata = {
         url: "https://getoverlay.io/assets/overlay-share-linkedin-thumb.png",
         width: 1200,
         height: 627,
-        alt: "Overlay — the control plane for AI agents",
+        alt: "Overlay: The control plane for AI employees",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Overlay: the control plane for AI agents",
+    title: "Overlay: The control plane for AI employees",
     description:
-      "One workspace to create, deploy, and manage every AI agent — bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
     images: ["https://getoverlay.io/assets/overlay-share-linkedin-thumb.png"],
   },
 };

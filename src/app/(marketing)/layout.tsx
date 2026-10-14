@@ -34,7 +34,7 @@ const structuredData = {
       url: 'https://getoverlay.io',
       name: 'Overlay',
       description:
-        'Overlay: the control plane for AI agents — create, deploy, and manage every agent in one workspace.',
+        'Overlay: The control plane for AI employees. Create, deploy, and manage every agent in one workspace.',
       publisher: { '@id': 'https://getoverlay.io/#organization' },
       inLanguage: 'en-US',
     },
@@ -46,12 +46,12 @@ const structuredData = {
       applicationCategory: 'BusinessApplication',
       operatingSystem: 'Web, macOS',
       description:
-        "Overlay is the control plane for AI agents: one workspace to create, deploy, and manage AI agents. Bring your own agents — Codex, Claude Code, Hermes — or run Overlay's, and put them to work in chat, Slack, Telegram, iMessage, and the web. Open source under AGPL-3.0, with hosted and self-hosted options.",
+        "Overlay is the control plane for AI employees: one workspace to create, deploy, and manage AI agents. Bring your own agents (Codex, Claude Code, Hermes) or run Overlay's, and put them to work in chat, Slack, Telegram, iMessage, and the web. Open source under AGPL-3.0, with hosted and self-hosted options.",
       offers: {
         '@type': 'Offer',
         price: '0',
         priceCurrency: 'USD',
-        description: 'Free tier included — no card required. Paid plans available.',
+        description: 'Free tier included, no card required. Paid plans available.',
       },
       creator: { '@id': 'https://getoverlay.io/#organization' },
     },
