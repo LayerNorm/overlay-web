@@ -8,16 +8,18 @@ description: "Run provider-dependent web features during local development."
 Run the app locally, then forward Stripe events:
 
 ```bash
-stripe listen --forward-to localhost:3000/api/webhooks/stripe
+stripe listen --forward-to https://<your-selected-dev-deployment>.convex.site/stripe/webhook
 ```
 
-Use matching Stripe test secrets in `.env.local`.
+Use matching Stripe test secrets for that explicitly selected personal development Convex backend. Do not forward to customer production; dedicated staging has its own test endpoint. The former Next.js webhook route was removed.
 
 ## Auth
 
 WorkOS sign-in flows require the local callback URL to match the WorkOS application settings. Keep local, staging, and production WorkOS credentials separate.
 
 For OIDC deployments, including Keycloak-compatible realm issuers, verify browser callback wiring and token claims before production use.
+
+Default web sign-in/sign-up and server SSO callbacks use the shared authenticated home (`/app/work`) when no return destination is supplied. Explicit same-origin paths, including `/account`, and supported desktop handoff redirects retain their existing validation and routing.
 
 ## PR preview authentication
 

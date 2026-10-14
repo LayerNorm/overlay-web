@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- **Work is the home page.** Signing in, opening `/` or `/app`, clicking the Overlay logo, and the marketing site's app links now open Work (`/app/work`) instead of Agents. Agents is unchanged in the sidebar. A deployment with `OVERLAY_FEATURE_WORK=0` shows its "Work unavailable" notice, which now links to Agents.
+- **Work is the home page.** Signing in, opening `/` or `/app`, clicking the Overlay logo, and the marketing site's app links now open Work (`/app/work`) instead of Agents, including password/SSO sign-in without an explicit return destination. Explicit Account/desktop returns are preserved. Agents is unchanged in the sidebar. A deployment with `OVERLAY_FEATURE_WORK=0` shows its "Work unavailable" notice, which now links to Agents.
 
 - **Command search uses cmdk and the shared modal primitives (shadcn Phase 5).** Preserve category drill-in, application-ranked async results, destinations and Overlay themes; keyboard selection, disabled rows, focus containment/return and scroll locking now share canonical owners. Long result descriptions leave their titles visible on mobile.
 
