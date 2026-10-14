@@ -1,6 +1,6 @@
 /**
  * Whether a searcher may see an indexed chunk, by the chunk's own visibility. A chunk marked `owner` is private to the
- * person it belongs to. `workspaceOnly` is a search made for a room others can read (docs/plans/TOOL_SCOPING_PLAN.md,
+ * person it belongs to. `workspaceOnly` is a search made for a room others can read (internal/plans/TOOL_SCOPING_PLAN.md,
  * T4): nothing private is returned, not even the searcher's own, because the result will be shown to everyone there.
  */
 export function chunkVisibleToSearch(args: {
