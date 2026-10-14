@@ -177,7 +177,7 @@ function PanelMessage({ title, onClose, children }: { title: string; onClose: ()
  */
 export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const { item, missing } = useWorkTask(taskId)
-  const { viewer, canWork, updateTask, moveTask, refresh, dropLocal } = useWorkData()
+  const { viewer, canWork, updateTask, moveTask, refreshTask, dropLocal } = useWorkData()
   useScopeFollowsTask(item)
   useEscapeToClose(onClose)
 
@@ -214,9 +214,10 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
           item={scopedItem}
           label={item.title}
           onChanged={(change) => {
+            // Archiving also archives what sits inside the task, so the list is reloaded rather than patched.
             if (change.action === 'archive') { dropLocal(item.id); onClose() }
-            else window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
-            if (change.action === 'restore') void refresh()
+            else void refreshTask(item.id)
+            window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
           }}
         />
       )}

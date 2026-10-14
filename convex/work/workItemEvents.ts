@@ -43,6 +43,7 @@ export const addComment = mutation({
     const item = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.workItemId), userId: args.userId, workspaceId: args.workspaceId })
     // Anyone who can work on a task can comment on it.
     if (!item || !canWork(item, viewer)) throw new Error('Unauthorized')
+    if (item.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
     await logWorkEvent(ctx, { workItemId: item._id, workspaceId: item.workspaceId, actorPrincipalId: viewer.principalId, kind: 'comment', data: { body } })
     await ctx.db.patch(item._id, { updatedAt: Date.now() })
   },

@@ -3,6 +3,8 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { authorizeCapability } from '@/server/authorization'
+import { getCapabilityDisabledError } from '@/server/capabilities-core'
 import { logger } from '@/server/observability/logger'
 import { parseResourceScope, scopeErrorMessage } from '@/shared/workspaces/resource-scope'
 
@@ -49,6 +51,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const to = parseResourceScope(body.to)
     if (action === 'move' && !to) {
       return NextResponse.json({ error: "move needs `to`: 'personal' or 'workspace'" }, { status: 400 })
+    }
+    // `/api/v1/work` is gated by `work.use` and the Work kill switch; this shared route must hold Work to the same bar.
+    if (resource === 'work') {
+      if (!context.capabilities.work) return NextResponse.json(getCapabilityDisabledError('work'), { status: 403 })
+      const denied = await authorizeCapability({
+        authorization: getOverlayServerContext().authorizationService,
+        capability: 'work.use',
+        context,
+      })
+      if (denied) return denied
     }
     const fn = action === 'move' ? 'setScope' : action
     const outcome = await convex.mutation<Outcome>(`${MODULES[resource]}:${fn}`, {

@@ -137,14 +137,20 @@ export function normalizeContext(items: WorkContextRef[]): WorkContextRef[] {
   })
 }
 
-/** The rank that puts a task at the end of a column. */
-export async function endRank(ctx: Ctx, workspaceId: string, status: WorkItemDoc['status']): Promise<string> {
-  const last = await ctx.db
+/**
+ * The rank that puts a task at the end of a column. Appending keeps lengthening the last rank, so when it has grown
+ * long the column is renumbered first and the new rank is taken from the short ones.
+ */
+export async function endRank(ctx: MutationCtx, workspaceId: string, status: WorkItemDoc['status']): Promise<string> {
+  const lastRank = async () => (await ctx.db
     .query('workItems')
     .withIndex('by_workspaceId_status_rank', (q) => q.eq('workspaceId', workspaceId).eq('status', status))
     .order('desc')
-    .first()
-  return rankBetween(last?.rank ?? null, null)
+    .first())?.rank ?? null
+  const rank = rankBetween(await lastRank(), null)
+  if (!needsRebalance(rank)) return rank
+  await rebalanceColumn(ctx, workspaceId, status)
+  return rankBetween(await lastRank(), null)
 }
 
 /**

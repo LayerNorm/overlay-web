@@ -20,6 +20,7 @@ import {
   normalizeDoneWhen,
   normalizePriority,
   normalizeTitle,
+  principalIdForUser,
   rebalanceColumn,
   type WorkItemDoc,
 } from '../lib/workItems'
@@ -67,12 +68,69 @@ async function descendantIds(db: unknown, id: string): Promise<string[]> {
   return out
 }
 
+/**
+ * After tasks change scope, drops what no longer fits (the rules `create` and `update` enforce): an owner or reviewer
+ * who cannot read a Personal task, a parent in the other scope, and blockers in the other scope. Tasks left behind that
+ * pointed at a moved task lose that parent or blocker too.
+ */
+async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; to: 'personal' | 'workspace'; workspaceId: string; actorPrincipalId: string }) {
+  const moved = new Set(args.movedIds)
+  const scopeOf = async (id: string | Id<'workItems'>) => {
+    const other = await ctx.db.get(id as Id<'workItems'>)
+    return other ? rowScope(other) : null
+  }
+  for (const id of args.movedIds) {
+    const task = await ctx.db.get(id as Id<'workItems'>)
+    if (!task) continue
+    const patch: Partial<WorkItemDoc> = {}
+    if (args.to === 'personal') {
+      const ownPrincipalId = await principalIdForUser(ctx, task.workspaceId, task.userId)
+      if (task.assigneePrincipalId !== undefined && task.assigneePrincipalId !== ownPrincipalId) {
+        patch.assigneePrincipalId = undefined
+        await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'assignee', data: { from: task.assigneePrincipalId, to: null } })
+      }
+      if (task.reviewerUserId !== undefined && task.reviewerUserId !== task.userId) {
+        patch.reviewerUserId = undefined
+        await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'reviewer', data: { from: task.reviewerUserId, to: null } })
+      }
+    }
+    if (task.parentId !== undefined && !moved.has(String(task.parentId)) && (await scopeOf(task.parentId)) !== args.to) patch.parentId = undefined
+    if (task.blockedBy?.length) {
+      const kept: Id<'workItems'>[] = []
+      for (const blockerId of task.blockedBy) {
+        if (moved.has(String(blockerId)) || (await scopeOf(blockerId)) === args.to) kept.push(blockerId)
+      }
+      if (kept.length !== task.blockedBy.length) patch.blockedBy = kept
+    }
+    if (Object.keys(patch).length > 0) await ctx.db.patch(task._id, patch)
+  }
+  // Tasks that stay put but pointed at a task that moved.
+  const everything = await ctx.db.query('workItems').withIndex('by_workspaceId_status_rank', (q) => q.eq('workspaceId', args.workspaceId)).collect()
+  for (const other of everything) {
+    if (moved.has(String(other._id)) || rowScope(other) === args.to) continue
+    const parentMoved = other.parentId !== undefined && moved.has(String(other.parentId))
+    const blockers = other.blockedBy?.filter((blockerId) => !moved.has(String(blockerId)))
+    const blockersChanged = blockers !== undefined && blockers.length !== other.blockedBy?.length
+    if (parentMoved || blockersChanged) {
+      await ctx.db.patch(other._id, { ...(parentMoved ? { parentId: undefined } : {}), ...(blockersChanged ? { blockedBy: blockers } : {}) })
+    }
+  }
+}
+
 // Moving, archiving, and restoring follow the shared Personal / Workspace rules; each is written to the task's log.
 export const { setScope, archive, restore } = scopeMutations('workItems', 'content', {
   descendants: descendantIds,
   afterApply: async (rawCtx, change) => {
     const ctx = rawCtx as MutationCtx
     const row = change.row as unknown as WorkItemDoc
+    if (change.action === 'scope' && change.to) {
+      await tidyLinksAfterMove(ctx, {
+        movedIds: change.moved ?? [change.id],
+        to: change.to,
+        workspaceId: row.workspaceId,
+        actorPrincipalId: (await loadWorkViewer(ctx, row.workspaceId, change.userId)).principalId,
+      })
+    }
     await logWorkEvent(ctx, {
       workItemId: change.id as Id<'workItems'>,
       workspaceId: row.workspaceId,
@@ -126,12 +184,25 @@ export const list = query({
     } catch {
       return []
     }
+    // Read only the rows the view needs, and never more than the list can hold, so a long history costs nothing extra.
+    const cap = WORK_LIMITS.listCap
+    const archivedView = view === 'archived'
     const rows = await listScopedRows(ctx, {
       userId, workspaceId, view,
-      fetchMine: async () => await ctx.db.query('workItems')
-        .withIndex('by_workspaceId_userId_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId)).collect(),
-      fetchShared: async (ws) => await ctx.db.query('workItems')
-        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+      fetchMine: async () => {
+        const byOwner = ctx.db.query('workItems').withIndex('by_workspaceId_userId_archivedAt', (q) => {
+          const mine = q.eq('workspaceId', workspaceId).eq('userId', userId)
+          return archivedView ? mine.gt('archivedAt', 0) : mine.eq('archivedAt', undefined)
+        })
+        return await byOwner.take(cap)
+      },
+      fetchShared: async (ws) => {
+        const shared = ctx.db.query('workItems').withIndex('by_workspaceId_scope_archivedAt', (q) => {
+          const inWorkspace = q.eq('workspaceId', ws).eq('scope', 'workspace')
+          return archivedView ? inWorkspace.gt('archivedAt', 0) : inWorkspace.eq('archivedAt', undefined)
+        })
+        return await shared.take(cap)
+      },
     })
     return rows
       .sort((a, b) => compareRanked({ rank: a.rank, createdAt: a.createdAt, id: a._id }, { rank: b.rank, createdAt: b.createdAt, id: b._id }))
@@ -351,7 +422,13 @@ export const update = mutation({
       const after = new Set(blockers.map((blocker) => String(blocker._id)))
       if (before.size !== after.size || [...after].some((id) => !before.has(id))) {
         patch.blockedBy = blockers.map((blocker) => blocker._id)
-        const titleOf = async (id: string) => (await ctx.db.get(id as Id<'workItems'>))?.title ?? 'a task'
+        // The log is read by everyone who can read this task, so a blocker's title is copied only when they can read it too.
+        const titleOf = async (id: string) => {
+          const blocker = await ctx.db.get(id as Id<'workItems'>)
+          if (!blocker) return 'a task'
+          const sharedWithReaders = scope === 'workspace' ? rowScope(blocker) === 'workspace' && blocker.workspaceId === row.workspaceId : blocker.userId === row.userId
+          return sharedWithReaders ? blocker.title : 'a private task'
+        }
         events.push({ kind: 'dependencies', data: {
           added: await Promise.all([...after].filter((id) => !before.has(id)).map(titleOf)),
           removed: await Promise.all([...before].filter((id) => !after.has(id)).map(titleOf)),

@@ -13,20 +13,21 @@ import { useWorkRoute } from './use-work-route'
  * scope, or archived), which is read directly. `missing` means the server has no such task for this person.
  */
 export function useWorkTask(taskId: string): { item: WorkItem | undefined; missing: boolean } {
-  const { byId, state } = useWorkData()
-  const [fetched, setFetched] = useState<WorkItem | null | undefined>(undefined)
-  const listed = byId.get(taskId)
+  const { byId, state, adoptTask } = useWorkData()
+  const [missingId, setMissingId] = useState<string | null>(null)
+  const item = byId.get(taskId)
+  const held = item !== undefined
 
   useEffect(() => {
-    if (listed || state !== 'ready') return
+    if (held || state !== 'ready') return
     let cancelled = false
     overlayAppClient.work.get(taskId)
-      .then(({ item }) => { if (!cancelled) setFetched(item) })
-      .catch(() => { if (!cancelled) setFetched(null) })
+      .then(({ item: found }) => { if (!cancelled) adoptTask(found) })
+      .catch(() => { if (!cancelled) setMissingId(taskId) })
     return () => { cancelled = true }
-  }, [listed, state, taskId])
+  }, [adoptTask, held, state, taskId])
 
-  return { item: listed ?? fetched ?? undefined, missing: state === 'ready' && !listed && fetched === null }
+  return { item, missing: state === 'ready' && !held && missingId === taskId }
 }
 
 /** A task opens in the scope it lives in, so the list behind the panel agrees with it. */

@@ -92,3 +92,34 @@ test('a dependency arrow runs out of the blocker, into the waiting task, and rou
   // Barely enough room still draws the straight elbow.
   assert.equal(dependencyArrow({ x: 100, y: 20 }, { x: 114, y: 60 }).path, 'M100 20 H108 V60 H108')
 })
+
+test('tasks below a task at any depth get their own rows under the objective', () => {
+  const rows = buildTimelineRows([
+    item({ id: 'goal', rank: 'A', startDate: '2026-10-01', dueDate: '2026-10-02' }),
+    item({ id: 'task', parentId: 'goal', startDate: '2026-10-05', dueDate: '2026-10-06' }),
+    item({ id: 'subtask', parentId: 'task', startDate: '2026-10-07', dueDate: '2026-10-12' }),
+    item({ id: 'other', parentId: 'goal', startDate: '2026-10-20', dueDate: '2026-10-21' }),
+  ])
+  assert.deepEqual(rows.map((row) => `${row.kind}:${row.item.id}`), ['objective:goal', 'task:task', 'task:subtask', 'task:other'])
+  const objective = rows[0]
+  assert.equal(objective.kind === 'objective' && objective.childCount, 3)
+  assert.deepEqual(objective.span, { start: '2026-10-05', end: '2026-10-21' })
+  for (const row of rows.slice(1)) assert.equal(row.kind === 'task' && row.groupId, 'goal')
+})
+
+test('a mistyped far-off date cannot make the range, or a bar, run for years', () => {
+  const today = '2026-10-14'
+  const rows = buildTimelineRows([
+    item({ id: 'typo', startDate: '2026-01-01', dueDate: '9999-12-31' }),
+    item({ id: 'old', rank: 'B', startDate: '1999-01-01', dueDate: '1999-01-02' }),
+  ])
+  const range = timelineRange(rows, today)
+  assert.ok(range.days <= 2 * 730 + 7 * 8, `range of ${range.days} days`)
+  assert.ok(weekColumns(range).length < 220)
+  for (const row of rows) {
+    const bar = barLayout(row.span!, range)
+    assert.ok(bar.left >= 0 && bar.left + bar.width <= range.days * 24, `bar for ${row.item.id}`)
+  }
+  // A span that straddles the edge keeps its real start inside the range.
+  assert.deepEqual(barLayout({ start: '2026-10-07', end: '9999-12-31' }, { start: '2026-10-05', days: 56 }), { left: 48, width: 54 * 24 })
+})

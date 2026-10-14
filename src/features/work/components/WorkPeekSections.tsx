@@ -214,7 +214,7 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
     <Section title="Done when" hint={items.length > 0 ? `${done} of ${items.length}` : undefined}>
       <ul className="m-0 list-none p-0">
         {items.map((item, index) => (
-          <li key={index} className="group/check flex items-start gap-2.5 py-1">
+          <li key={`${index}:${item.text}`} className="group/check flex items-start gap-2.5 py-1">
             <button
               type="button"
               role="checkbox"

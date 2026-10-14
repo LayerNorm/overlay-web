@@ -43,6 +43,8 @@ interface SearchCategory extends Omit<MentionCategory, 'type' | 'items'> {
   items: SearchItem[]
 }
 
+const EMPTY_SEARCH_ITEMS: SearchItem[] = []
+
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
   Bot,
   FileText,
@@ -120,7 +122,9 @@ export function GlobalSearchDialog({
   const [selectedCategory, setSelectedCategory] = useState<SearchType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const [agents, setAgents] = useState<SearchItem[]>([])
-  const [tasks, setTasks] = useState<SearchItem[]>([])
+  // Task results belong to the workspace they were fetched for; another workspace never shows them.
+  const [taskResults, setTaskResults] = useState<{ workspaceId: string | null | undefined; items: SearchItem[] }>({ workspaceId: undefined, items: [] })
+  const tasks = taskResults.workspaceId === workspaceId ? taskResults.items : EMPTY_SEARCH_ITEMS
   const { capabilities } = useOverlayCapabilities()
   const { allows } = useAuthorization()
   const workEnabled = capabilities.work && allows({ all: ['work.use'] })
@@ -198,17 +202,20 @@ export function GlobalSearchDialog({
       .then(({ items }) => {
         if (cancelled) return
         const titles = new Map(items.map((task) => [task.id, task.title]))
-        setTasks(items.map((task) => ({
-          type: 'work' as const,
-          id: task.id,
-          name: task.title,
-          description: [WORK_STATUS_LABELS[task.status], task.parentId ? titles.get(task.parentId) : null].filter(Boolean).join(' · '),
-          icon: 'ListChecks',
-        })))
+        setTaskResults({
+          workspaceId,
+          items: items.map((task) => ({
+            type: 'work' as const,
+            id: task.id,
+            name: task.title,
+            description: [WORK_STATUS_LABELS[task.status], task.parentId ? titles.get(task.parentId) : null].filter(Boolean).join(' · '),
+            icon: 'ListChecks',
+          })),
+        })
       })
-      .catch(() => { if (!cancelled) setTasks([]) })
+      .catch(() => { if (!cancelled) setTaskResults({ workspaceId, items: [] }) })
     return () => { cancelled = true }
-  }, [open, workEnabled])
+  }, [open, workEnabled, workspaceId])
 
   const allCategories: SearchCategory[] = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -219,11 +226,11 @@ export function GlobalSearchDialog({
 
     const extras: SearchCategory[] = [
       { type: 'agent' as const, label: 'Agents', icon: 'Bot', items: agents.filter(matches).slice(0, 10) },
-      { type: 'work' as const, label: 'Tasks', icon: 'ListChecks', items: tasks.filter(matches).slice(0, 10) },
+      { type: 'work' as const, label: 'Tasks', icon: 'ListChecks', items: workEnabled ? tasks.filter(matches).slice(0, 10) : [] },
     ].filter((cat) => cat.items.length > 0)
 
     return [...(categories as SearchCategory[]), ...extras]
-  }, [agents, categories, query, tasks])
+  }, [agents, categories, query, tasks, workEnabled])
 
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []

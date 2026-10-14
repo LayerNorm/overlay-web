@@ -16,7 +16,7 @@ export type Span = { start: string; end: string }
 
 export type TimelineRow =
   | { kind: 'objective'; item: WorkItem; span: Span | null; childCount: number }
-  | { kind: 'task'; item: WorkItem; span: Span | null; indented: boolean }
+  | { kind: 'task'; item: WorkItem; span: Span | null; indented: boolean; /** The objective row this one sits under (every level below it), when indented. */ groupId: string | null }
 
 /** The days an objective covers: from its earliest task's start to its latest task's end (its own dates if no task has any). */
 export function unionSpan(spans: ReadonlyArray<Span | null>): Span | null {
@@ -31,8 +31,9 @@ export function unionSpan(spans: ReadonlyArray<Span | null>): Span | null {
 }
 
 /**
- * The rows, top to bottom. A task that others sit inside is an objective row followed by its tasks (by start date, then
- * rank). Everything else is a plain row. Groups run in order of their earliest date; undated ones go last.
+ * The rows, top to bottom. A task that others sit inside is an objective row followed by everything below it, at any
+ * depth (by start date, then rank). Everything else is a plain row. Groups run in order of their earliest date; undated
+ * ones go last.
  */
 export function buildTimelineRows(items: readonly WorkItem[]): TimelineRow[] {
   const ids = new Set(items.map((item) => item.id))
@@ -46,23 +47,33 @@ export function buildTimelineRows(items: readonly WorkItem[]): TimelineRow[] {
     const sb = spanOf(b)?.start ?? '9999-12-31'
     return sa < sb ? -1 : sa > sb ? 1 : 0
   }
+  /** Everything below `id`, children before their own children, each level in start order. */
+  const below = (id: string, seen: Set<string>): WorkItem[] => {
+    const out: WorkItem[] = []
+    for (const kid of [...(kidsOf.get(id) ?? [])].sort(byStart)) {
+      if (seen.has(kid.id)) continue
+      seen.add(kid.id)
+      out.push(kid, ...below(kid.id, seen))
+    }
+    return out
+  }
 
   const groups: Array<{ first: string; rows: TimelineRow[] }> = []
   for (const item of sortByRank(items)) {
     if (item.parentId && ids.has(item.parentId)) continue
-    const kids = [...(kidsOf.get(item.id) ?? [])].sort(byStart)
-    if (kids.length > 0) {
-      const span = unionSpan(kids.map(spanOf)) ?? spanOf(item)
+    const descendants = below(item.id, new Set([item.id]))
+    if (descendants.length > 0) {
+      const span = unionSpan(descendants.map(spanOf)) ?? spanOf(item)
       groups.push({
         first: span?.start ?? '9999-12-31',
         rows: [
-          { kind: 'objective', item, span, childCount: kids.length },
-          ...kids.map((kid): TimelineRow => ({ kind: 'task', item: kid, span: spanOf(kid), indented: true })),
+          { kind: 'objective', item, span, childCount: descendants.length },
+          ...descendants.map((kid): TimelineRow => ({ kind: 'task', item: kid, span: spanOf(kid), indented: true, groupId: item.id })),
         ],
       })
     } else {
       const span = spanOf(item)
-      groups.push({ first: span?.start ?? '9999-12-31', rows: [{ kind: 'task', item, span, indented: false }] })
+      groups.push({ first: span?.start ?? '9999-12-31', rows: [{ kind: 'task', item, span, indented: false, groupId: null }] })
     }
   }
   return groups.sort((a, b) => (a.first < b.first ? -1 : a.first > b.first ? 1 : 0)).flatMap((group) => group.rows)
@@ -70,14 +81,22 @@ export function buildTimelineRows(items: readonly WorkItem[]): TimelineRow[] {
 
 export type TimelineRange = { start: string; days: number }
 
-/** Always at least eight weeks, from the Monday a week before the earliest date to two weeks after the latest, today included. */
+/** How far the Timeline reaches from today in either direction. A mistyped year cannot make it build years of columns. */
+export const TIMELINE_MAX_REACH_DAYS = 730
+
+/**
+ * Always at least eight weeks, from the Monday a week before the earliest date to two weeks after the latest, today
+ * included, and never more than `TIMELINE_MAX_REACH_DAYS` either side of today (bars beyond that are clipped).
+ */
 export function timelineRange(rows: readonly TimelineRow[], today: string): TimelineRange {
+  const earliest = addDays(today, -TIMELINE_MAX_REACH_DAYS)
+  const latest = addDays(today, TIMELINE_MAX_REACH_DAYS)
   let first = today
   let last = today
   for (const row of rows) {
     if (!row.span) continue
-    if (row.span.start < first) first = row.span.start
-    if (row.span.end > last) last = row.span.end
+    if (row.span.start < first) first = row.span.start < earliest ? earliest : row.span.start
+    if (row.span.end > last) last = row.span.end > latest ? latest : row.span.end
   }
   const start = startOfWeek(addDays(first, -7))
   const end = addDays(last, 14)
@@ -87,8 +106,12 @@ export function timelineRange(rows: readonly TimelineRow[], today: string): Time
 
 /** Pixel position of a span: it starts at its first day's left edge and covers every day up to and including its last. */
 export function barLayout(span: Span, range: TimelineRange, dayWidth = TIMELINE_DAY_WIDTH): { left: number; width: number } {
-  const left = diffDays(range.start, span.start) * dayWidth
-  const width = (diffDays(span.start, span.end) + 1) * dayWidth
+  // A span that runs past the range is clipped to it, so a far-off date still draws a bar at the edge.
+  const lastDay = addDays(range.start, range.days - 1)
+  const start = span.start < range.start ? range.start : span.start > lastDay ? lastDay : span.start
+  const end = span.end > lastDay ? lastDay : span.end < range.start ? range.start : span.end
+  const left = diffDays(range.start, start) * dayWidth
+  const width = (diffDays(start, end) + 1) * dayWidth
   return { left, width }
 }
 

@@ -404,3 +404,128 @@ describe('ordering', () => {
     expect(wedge.title).toBe('Wedge')
   })
 })
+
+type Linked = Item & { blockedBy?: string[]; reviewerUserId?: string }
+
+describe('moving between Personal and Workspace keeps links valid', () => {
+  test('an owner or reviewer who cannot read a Personal task is dropped when it moves there', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Handed over', scope: 'workspace', assigneePrincipalId: 'p-bob', reviewerUserId: 'bob' })
+    expect(await work.setScope('alice', task._id, 'personal')).toEqual({ ok: true })
+    const moved = (await work.get('alice', task._id)) as Linked
+    expect(moved.scope).toBe('personal')
+    expect(moved.assigneePrincipalId).toBeUndefined()
+    expect(moved.reviewerUserId).toBeUndefined()
+    const kinds = (await work.events('alice', task._id)).map((event) => event.kind)
+    expect(kinds).toEqual(expect.arrayContaining(['assignee', 'reviewer', 'scope']))
+    // Their own assignment survives.
+    const own = await work.create('alice', { title: 'Mine', scope: 'workspace', assigneePrincipalId: 'p-alice' })
+    await work.setScope('alice', own._id, 'personal')
+    expect(((await work.get('alice', own._id)) as Linked).assigneePrincipalId).toBe('p-alice')
+  })
+
+  test('a task moved without its parent leaves it; a task moved with its parent keeps it; others\' children are released', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const parent = await work.create('alice', { title: 'Parent', scope: 'workspace' })
+    const child = await work.create('alice', { title: 'Child', scope: 'workspace', parentId: parent._id })
+    await work.setScope('alice', child._id, 'personal')
+    expect(((await work.get('alice', child._id)) as Linked).parentId).toBeUndefined()
+
+    const whole = await work.create('alice', { title: 'Whole', scope: 'workspace' })
+    const inside = await work.create('alice', { title: 'Inside', scope: 'workspace', parentId: whole._id })
+    const bobsChild = await work.create('bob', { title: 'Bobs child', scope: 'workspace', parentId: whole._id })
+    await work.setScope('alice', whole._id, 'personal')
+    expect(((await work.get('alice', inside._id)) as Linked).parentId).toBe(whole._id)
+    expect(((await work.get('bob', bobsChild._id)) as Linked).parentId).toBeUndefined()
+  })
+
+  test('blockers in the other scope are released in both directions', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const first = await work.create('alice', { title: 'First', scope: 'workspace' })
+    const waiting = await work.create('alice', { title: 'Waiting', scope: 'workspace' })
+    await work.update('alice', waiting._id, { blockedBy: [first._id] })
+    await work.setScope('alice', first._id, 'personal')
+    expect(((await work.get('alice', waiting._id)) as Linked).blockedBy).toEqual([])
+
+    const blocker = await work.create('alice', { title: 'Blocker', scope: 'workspace' })
+    const other = await work.create('alice', { title: 'Other', scope: 'workspace' })
+    await work.update('alice', other._id, { blockedBy: [blocker._id] })
+    await work.setScope('alice', other._id, 'personal')
+    expect(((await work.get('alice', other._id)) as Linked).blockedBy).toEqual([])
+  })
+
+  test('a private blocker\'s title never reaches the shared activity log', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const shared = await work.create('alice', { title: 'Shared', scope: 'workspace' })
+    const secret = await work.create('alice', { title: 'Secret plan', scope: 'workspace' })
+    await work.update('alice', shared._id, { blockedBy: [secret._id] })
+    // A task from before the cleanup existed: still waiting on something that is now private.
+    await convex.run(async (ctx) => { await ctx.db.patch(secret._id as never, { scope: 'personal' } as never) })
+    await work.update('bob', shared._id, { blockedBy: [] })
+    const log = (await work.events('bob', shared._id)).filter((event) => event.kind === 'dependencies')
+    expect(log.at(-1)?.data).toEqual({ added: [], removed: ['a private task'] })
+  })
+})
+
+describe('archived tasks and long ranks', () => {
+  test('an archived task takes no comments', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Done and dusted', scope: 'workspace' })
+    await work.comment('alice', task._id, 'before')
+    await work.archive('alice', task._id)
+    await expect(work.comment('alice', task._id, 'after')).rejects.toThrow(/archived/)
+    const comments = (await work.events('alice', task._id)).filter((event) => event.kind === 'comment')
+    expect(comments).toHaveLength(1)
+  })
+
+  test('adding a task to a column whose last rank has grown long renumbers the column first', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const a = await work.create('alice', { title: 'A', scope: 'workspace', status: 'todo' })
+    const b = await work.create('alice', { title: 'B', scope: 'workspace', status: 'todo' })
+    await convex.run(async (ctx) => {
+      await ctx.db.patch(a._id as never, { rank: 'z'.repeat(30) } as never)
+      await ctx.db.patch(b._id as never, { rank: `${'z'.repeat(30)}y` } as never)
+    })
+    const next = await work.create('alice', { title: 'Next', scope: 'workspace', status: 'todo' })
+    const column = (await work.list('alice')).filter((item) => item.status === 'todo')
+    expect(Math.max(...column.map((item) => item.rank.length))).toBeLessThan(24)
+    expect(column.map((item) => item.title)).toEqual(['A', 'B', 'Next'])
+    expect(next.rank).toBe(column.at(-1)?.rank)
+
+    // The same goes for a task that changes column.
+    const c = await work.create('alice', { title: 'C', scope: 'workspace', status: 'review' })
+    await convex.run(async (ctx) => { await ctx.db.patch(c._id as never, { rank: 'z'.repeat(30) } as never) })
+    const d = await work.create('alice', { title: 'D', scope: 'workspace', status: 'progress' })
+    await work.update('alice', d._id, { status: 'review' })
+    const review = (await work.list('alice')).filter((item) => item.status === 'review')
+    expect(Math.max(...review.map((item) => item.rank.length))).toBeLessThan(24)
+    expect(review.map((item) => item.title)).toEqual(['C', 'D'])
+  })
+
+  test('lists read only the view asked for', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const gone = await work.create('alice', { title: 'Gone', scope: 'workspace' })
+    await work.create('alice', { title: 'Here', scope: 'workspace' })
+    await work.create('alice', { title: 'Mine' })
+    const mineArchived = await work.create('alice', { title: 'Old mine' })
+    await work.archive('alice', gone._id)
+    await work.archive('alice', mineArchived._id)
+    expect(await work.titles('alice')).toEqual(['Here', 'Mine'])
+    expect((await work.titles('alice', 'archived')).sort()).toEqual(['Gone', 'Old mine'])
+    expect(await work.titles('bob', 'archived')).toEqual(['Gone'])
+  })
+})

@@ -123,3 +123,18 @@ Phases 1 to 8 landed together on one branch, each as its own commit. Where the b
 - **Dependencies are set through `update`** (`blockedBy`), not a separate mutation, and are logged with task titles.
 - **Browser coverage without a backend:** `npm run test:work:ui` runs the real UI against an in-page fake API (see
   `docs/develop/browser-testing-with-agent-browser.md`). Hosted QA on the PR preview is still the acceptance pass.
+- **Review fixes (PR 207).**
+  - `POST /api/v1/scope` with `resource: work` needs `work.use` and the Work switch, like `/api/v1/work`.
+  - Moving a task between scopes releases owners, reviewers, parents and blockers that no longer fit, for the moved
+    tasks and for tasks left behind that pointed at them.
+  - A blocker's title is copied into a shared activity log only when readers of that task can read the blocker.
+  - Archived tasks take no comments.
+  - Appending to a column renumbers it when the last rank has grown to `RANK_REBALANCE_LENGTH`, on create and on a
+    status change as well as on a board move.
+  - Lists read only the view asked for (active or archived), at most `WORK_LIMITS.listCap` rows per source.
+  - The Timeline shows every level below an objective, and reaches at most `TIMELINE_MAX_REACH_DAYS` from today, so a
+    mistyped year clips a bar instead of building years of columns.
+  - The data provider ties each change to the scope and workspace it started in, rolls back only the task that failed,
+    applies only the newest answer per task, and reloads once overlapping changes settle (also when a move's answer
+    shows the column was renumbered). Tasks opened by link that the list does not hold stay editable.
+  - Cmd+K tasks follow the workspace and the Work switch.

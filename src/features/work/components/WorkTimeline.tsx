@@ -178,7 +178,7 @@ export function WorkTimeline({
   const range = useMemo(() => timelineRange(allRows, today), [allRows, today])
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const rows = useMemo(
-    () => allRows.filter((row) => !(row.kind === 'task' && row.indented && row.item.parentId !== null && collapsed.has(row.item.parentId))),
+    () => allRows.filter((row) => !(row.kind === 'task' && row.groupId !== null && collapsed.has(row.groupId))),
     [allRows, collapsed],
   )
   const [preview, setPreview] = useState<{ id: string; span: Span } | null>(null)
