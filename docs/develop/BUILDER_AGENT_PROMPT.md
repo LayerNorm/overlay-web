@@ -48,6 +48,13 @@ The PR description must state outcome, decisions, touched systems, dependencies,
 risk/rollback, exact checks, preview evidence, migration steps and current SHA.
 Resolve findings with new commits. Do not force-push after review or QA starts.
 
+Post a `QA handoff` PR comment using the Development Workflow template after
+testing. Include the full current tested SHA, clean preview URL, deployment and
+backend identity, actual checks, end-to-end flows/results, sanitized evidence and
+limitations. For CI-only changes, explain why no preview was needed. New pushes
+supersede earlier QA; retest the affected flow and post the new SHA. Keep blocked
+or incomplete work draft; mark ready only after QA and required checks pass.
+
 Stop when the PR is complete and ready for Integration. Do not merge, enqueue,
 deploy production or push release branches. Report the PR URL,
 head SHA, checks and limitations. Keep the feature worktree until Integration
