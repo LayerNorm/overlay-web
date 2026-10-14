@@ -8,6 +8,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Update CodeQL init, analyze and SARIF upload together to 4.38.2; group future Dependabot updates and enforce matching pins so dependency updates cannot break analysis through version mismatches.
 
+- **Add the standalone admin console app (`apps/admin`).** The operator surface is being split out of the web app per `docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`: Stage 1 scaffolds a separate Next.js app with WorkOS AuthKit sign-in, an `__Host-overlay_admin_session` cookie (8h absolute, 30m idle, recent-sign-in required for destructive actions), a single `convex-admin` server module that calls the existing admin Convex functions with `ADMIN_CONVEX_SECRET`, and the ported Overview/Roles/Groups/Catalog panels. Nothing deploys yet — Vercel project and domain wiring is Stage 3, and `/app/admin` stays in place.
+
 - Restrict preview cleanup to the pinned Overlay project Preview credential and explicitly block the customer production backend, alongside existing project/type/PR ownership checks, to protect production and other products from automation deletion.
 
 - Delete owned Convex Preview backends when a PR closes or loses `needs-preview`; settle builds first, confirm backend absence, and reconcile retained backends so abandoned previews release deployment quota.

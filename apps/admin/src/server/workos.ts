@@ -1,0 +1,35 @@
+import 'server-only'
+
+import { WorkOS } from '@workos-inc/node'
+
+import { workosApiKey, workosClientId } from './env'
+
+let cached: WorkOS | null = null
+
+function client(): WorkOS {
+  return (cached ??= new WorkOS(workosApiKey()))
+}
+
+/** Hosted AuthKit sign-in: staff authenticate with whatever providers WorkOS has configured. */
+export function adminAuthorizationUrl(args: { origin: string; state: string }): string {
+  return client().userManagement.getAuthorizationUrl({
+    clientId: workosClientId(),
+    provider: 'authkit',
+    redirectUri: `${args.origin}/auth/callback`,
+    state: args.state,
+  })
+}
+
+export async function authenticateWithCode(code: string) {
+  return client().userManagement.authenticateWithCode({
+    clientId: workosClientId(),
+    code,
+  })
+}
+
+export async function refreshSession(refreshToken: string) {
+  return client().userManagement.authenticateWithRefreshToken({
+    clientId: workosClientId(),
+    refreshToken,
+  })
+}

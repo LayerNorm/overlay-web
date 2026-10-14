@@ -80,6 +80,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/worktree-staging-qa.mdx` | Any change to hosted Preview QA, native production verification, or Convex deploy lanes. |
 | `docs/develop/convex-workflow.mdx` | Any change to Convex deploy commands, environment selection, or boundary rules. |
 | `docs/develop/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
+| `docs/develop/admin-console.md` | Any change to `apps/admin/**` (the standalone operator console), its auth/session model, Convex access path, env contract, or deployment staging. |
 | `docs/develop/feature-modules.mdx` | Any change to the feature module registry, extension system, or `@overlay/app-core` shell config. |
 | `docs/develop/api-source-of-truth.mdx` | Any change to where API logic lives (Convex vs BFF vs `@overlay/api-client`), or the contract between layers. |
 | `docs/develop/api-route-catalog.mdx` | Any change to a web API route's existence, methods, behavior, authentication boundary, or implementation files. Keep the exhaustive route descriptions current. |

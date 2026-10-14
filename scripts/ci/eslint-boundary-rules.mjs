@@ -250,6 +250,22 @@ export function createArchitectureBoundaryConfigs() {
     },
   })
 
+  // apps/ separation: the web app's src/ must never reach into standalone apps
+  // (e.g. apps/admin), and apps must not reach back into src/. The apps' own
+  // ESLint configs enforce the reverse direction for their trees.
+  configs.push({
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': noRestrictedImports(
+        'error',
+        restrictedPatterns(
+          ['**/apps/*', '../apps/*', '../../apps/*', '../../../apps/*'],
+          'src/ must not import from apps/. Shared code lives in packages/ or src/shared/.',
+        ),
+      ),
+    },
+  })
+
   // Server domain isolation (infra: env + database remain importable from any domain).
   for (const domain of SERVER_DOMAINS) {
     configs.push({

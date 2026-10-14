@@ -1,0 +1,48 @@
+@import '@overlay/ui/styles.css' layer(base);
+
+@import 'tailwindcss';
+
+/* Workspace packages ship components consumed by this app; scan them for
+   utilities in addition to ./src. */
+@source '../**/*.{ts,tsx,mdx}';
+@source '../../../packages/overlay-ui/src/**/*.{ts,tsx,mdx}';
+@source '../../../packages/overlay-modules-react/src/**/*.{ts,tsx,mdx}';
+
+/* `dark:` follows the [data-theme] attribute like the web app. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+}
+
+/* Tailwind v4 border-color compat (same as the web app). */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@font-face {
+  font-family: 'Libre Baskerville';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Libre Baskerville';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Bold.ttf') format('truetype');
+}
