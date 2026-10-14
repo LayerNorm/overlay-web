@@ -323,6 +323,12 @@ export function CommandPaletteStory() {
         },
         {
           kind: 'item',
+          id: 'chat-disabled',
+          label: 'Unavailable chat',
+          disabled: true,
+        },
+        {
+          kind: 'item',
           id: 'chat-2',
           label: 'API design notes',
           icon: <MessageSquare size={16} strokeWidth={1.75} />,
@@ -349,7 +355,8 @@ export function CommandPaletteStory() {
           setDrilledIn(false)
           setQuery('')
         }}
-        rows={rows}
+        rows={rows.filter(row => row.label.toLowerCase().includes(query.toLowerCase()))}
+        emptyState={query && !rows.some(row => row.label.toLowerCase().includes(query.toLowerCase())) ? 'No results' : undefined}
         onActivateRow={(row) => {
           if (row.kind === 'category') setDrilledIn(true)
         }}

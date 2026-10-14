@@ -245,6 +245,7 @@
     "chat": "^4.40.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "convex": "^1.41.0",
     "dagre": "^0.8.5",
     "docx": "^9.6.1",
