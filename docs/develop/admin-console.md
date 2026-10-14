@@ -50,7 +50,10 @@ Required env (same values the web app uses locally):
 - `ADMIN_ALLOWED_USER_IDS` — your WorkOS user id
 - `COMPOSIO_API_KEY` — optional; powers the live third-party catalog list
 
-The WorkOS AuthKit redirect URI must be `<origin>/auth/callback`.
+The WorkOS AuthKit redirect URI must be `<origin>/auth/callback`. Chrome
+drops `__Host-`-prefixed cookies on plain `http://localhost`, so local dev
+needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
+`apps/admin` (self-signed cert, accept the warning once).
 
 ## Architecture
 

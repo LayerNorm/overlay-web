@@ -75,7 +75,9 @@ export function openPayload<T>(sealed: string | null | undefined): T | null {
     const iv = raw.subarray(0, IV_LENGTH_BYTES)
     const tag = raw.subarray(raw.length - GCM_TAG_LENGTH_BYTES)
     const ciphertext = raw.subarray(IV_LENGTH_BYTES, raw.length - GCM_TAG_LENGTH_BYTES)
-    const decipher = createDecipheriv('aes-256-gcm', cryptoKey(), iv)
+    const decipher = createDecipheriv('aes-256-gcm', cryptoKey(), iv, {
+      authTagLength: GCM_TAG_LENGTH_BYTES,
+    })
     decipher.setAuthTag(tag)
     return JSON.parse(
       Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8'),

@@ -88,7 +88,7 @@ export async function resolveOperator(
     return { kind: 'denied', reason: 'not_allowlisted' }
   }
 
-  const principal = await getPrincipal(session.user.id)
+  const principal = await getPrincipal(session.user.id).catch(() => null)
   if (!principal || principal.revokedAt) {
     return { kind: 'denied', reason: 'not_operator' }
   }
