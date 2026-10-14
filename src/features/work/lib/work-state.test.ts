@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkItem } from '@overlay/app-core'
-import { applyItemPatch, endRankOf, initialsOf, rankForDrop, removeItem, upsertItem } from './work-state'
+import { applyItemPatch, endRankOf, initialsOf, keyboardMove, neighborsForSlot, rankForDrop, removeItem, slotFromPointer, upsertItem } from './work-state'
 
 function item(overrides: Partial<WorkItem> & { id: string }): WorkItem {
   return {
@@ -58,4 +58,48 @@ test('initials use the first and last word', () => {
   assert.equal(initialsOf('sam'), 'S')
   assert.equal(initialsOf('Priya Q. Nair'), 'PN')
   assert.equal(initialsOf('  '), '?')
+})
+
+test('a dropped card lands between the cards above and below the slot', () => {
+  const column = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  assert.deepEqual(neighborsForSlot(column, 0), { afterId: null, beforeId: 'a' })
+  assert.deepEqual(neighborsForSlot(column, 1), { afterId: 'a', beforeId: 'b' })
+  assert.deepEqual(neighborsForSlot(column, 3), { afterId: 'c', beforeId: null })
+  assert.deepEqual(neighborsForSlot(column, 99), { afterId: 'c', beforeId: null })
+  assert.deepEqual(neighborsForSlot(column, -4), { afterId: null, beforeId: 'a' })
+  assert.deepEqual(neighborsForSlot([], 0), { afterId: null, beforeId: null })
+})
+
+test('the slot under the pointer counts the cards whose centre is above it', () => {
+  const mids = [40, 120, 200]
+  assert.equal(slotFromPointer(mids, 10), 0)
+  assert.equal(slotFromPointer(mids, 41), 1)
+  assert.equal(slotFromPointer(mids, 130), 2)
+  assert.equal(slotFromPointer(mids, 999), 3)
+  assert.equal(slotFromPointer([], 50), 0)
+  // Exactly on a centre counts as above it, so the card goes before.
+  assert.equal(slotFromPointer(mids, 40), 0)
+})
+
+const COLUMNS = [
+  { status: 'backlog' as const, items: [] },
+  { status: 'todo' as const, items: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] },
+  { status: 'progress' as const, items: [{ id: 'd' }] },
+  { status: 'review' as const, items: [] },
+  { status: 'done' as const, items: [{ id: 'e' }] },
+]
+
+test('keyboard moves go up, down, left and right and stop at the edges', () => {
+  assert.deepEqual(keyboardMove(COLUMNS, 'b', 'up'), { id: 'b', status: 'todo', afterId: null, beforeId: 'a', position: 0 })
+  assert.deepEqual(keyboardMove(COLUMNS, 'b', 'down'), { id: 'b', status: 'todo', afterId: 'c', beforeId: null, position: 2 })
+  assert.equal(keyboardMove(COLUMNS, 'a', 'up'), null)
+  assert.equal(keyboardMove(COLUMNS, 'c', 'down'), null)
+  // Right: same height in the next column, or its end when that is shorter.
+  assert.deepEqual(keyboardMove(COLUMNS, 'a', 'right'), { id: 'a', status: 'progress', afterId: null, beforeId: 'd', position: 0 })
+  assert.deepEqual(keyboardMove(COLUMNS, 'c', 'right'), { id: 'c', status: 'progress', afterId: 'd', beforeId: null, position: 1 })
+  assert.deepEqual(keyboardMove(COLUMNS, 'd', 'right'), { id: 'd', status: 'review', afterId: null, beforeId: null, position: 0 })
+  assert.deepEqual(keyboardMove(COLUMNS, 'b', 'left'), { id: 'b', status: 'backlog', afterId: null, beforeId: null, position: 0 })
+  assert.equal(keyboardMove(COLUMNS, 'e', 'right'), null)
+  assert.equal(keyboardMove(COLUMNS, 'e', 'down'), null)
+  assert.equal(keyboardMove(COLUMNS, 'ghost', 'up'), null)
 })

@@ -10,6 +10,7 @@ import { WORK_VIEW_LABELS } from '@/shared/work/views'
 import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkUrlState } from '../lib/use-work-url-state'
 import { useWorkData, WorkDataProvider } from './WorkDataProvider'
+import { WorkBoard } from './WorkBoard'
 import { WorkList } from './WorkList'
 import { WorkPeek } from './WorkPeek'
 import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
@@ -94,7 +95,7 @@ function WorkScreen() {
         <WorkToolbar filter={filter} onChange={setFilter} needsYouCount={needsYouCount} />
         {error && state !== 'error' ? <ErrorBanner message={error} onDismiss={dismissError} /> : null}
         <WorkQuickAdd ref={quickAdd} disabled={!loaded} />
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <div className={`flex min-h-0 flex-1 flex-col ${view === 'list' || !loaded || visible.length === 0 ? 'overflow-auto' : 'overflow-hidden'}`}>
           {state === 'loading' ? <ListSkeleton /> : null}
           {state === 'error' ? (
             <EmptyState
@@ -115,8 +116,13 @@ function WorkScreen() {
           {loaded && visible.length > 0 && view === 'list' ? (
             <WorkList items={visible} byId={byId} today={today} selectedId={taskId} onOpen={openTask} />
           ) : null}
-          {loaded && visible.length > 0 && view !== 'list' ? (
-            <EmptyState title={`${WORK_VIEW_LABELS[view]} is on its way`} description="The List shows every task for now." />
+          {loaded && visible.length > 0 && view === 'board' ? (
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
+              <WorkBoard items={visible} today={today} selectedId={taskId} onOpen={openTask} />
+            </div>
+          ) : null}
+          {loaded && visible.length > 0 && view === 'timeline' ? (
+            <EmptyState title="Timeline is on its way" description="The List and Board show every task for now." />
           ) : null}
         </div>
       </AppScreenBody>

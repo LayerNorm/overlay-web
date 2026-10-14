@@ -66,3 +66,46 @@ export function initialsOf(name: string): string {
   const letters = words.length === 1 ? words[0]!.slice(0, 1) : `${words[0]!.slice(0, 1)}${words.at(-1)!.slice(0, 1)}`
   return letters.toUpperCase()
 }
+
+/** Which two tasks a dropped card lands between, in a column that does not contain the dropped card. */
+export function neighborsForSlot(ordered: ReadonlyArray<{ id: string }>, slot: number): { afterId: string | null; beforeId: string | null } {
+  const index = Math.max(0, Math.min(slot, ordered.length))
+  return { afterId: ordered[index - 1]?.id ?? null, beforeId: ordered[index]?.id ?? null }
+}
+
+/**
+ * The slot a card is dropped into: how many cards in the column sit above the pointer. `midpoints` are the vertical
+ * centres of the cards already there (the dragged card excluded), top to bottom.
+ */
+export function slotFromPointer(midpoints: readonly number[], pointerY: number): number {
+  let slot = 0
+  for (const middle of midpoints) if (pointerY > middle) slot += 1
+  return slot
+}
+
+export type BoardMove = { id: string; status: WorkStatus; afterId: string | null; beforeId: string | null; position: number }
+
+/**
+ * A keyboard move for the card `id`: up or down within its column, or left or right to the next status (landing at the
+ * same height, or the end of a shorter column). Null when there is nowhere to go.
+ */
+export function keyboardMove(
+  columns: ReadonlyArray<{ status: WorkStatus; items: ReadonlyArray<{ id: string }> }>,
+  id: string,
+  direction: 'up' | 'down' | 'left' | 'right',
+): BoardMove | null {
+  const columnIndex = columns.findIndex((column) => column.items.some((item) => item.id === id))
+  if (columnIndex < 0) return null
+  const column = columns[columnIndex]!
+  const index = column.items.findIndex((item) => item.id === id)
+  const others = column.items.filter((item) => item.id !== id)
+  if (direction === 'up' || direction === 'down') {
+    const slot = direction === 'up' ? index - 1 : index + 1
+    if (slot < 0 || slot > others.length) return null
+    return { id, status: column.status, ...neighborsForSlot(others, slot), position: slot }
+  }
+  const target = columns[columnIndex + (direction === 'left' ? -1 : 1)]
+  if (!target) return null
+  const slot = Math.min(index, target.items.length)
+  return { id, status: target.status, ...neighborsForSlot(target.items, slot), position: slot }
+}

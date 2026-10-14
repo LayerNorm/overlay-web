@@ -14,8 +14,11 @@ const browser = await chromium.launch({ headless: true, ...(process.env.WORK_QA_
 const results = []
 
 async function check(name, run) {
+  if (process.env.WORK_QA_ONLY && !name.includes(process.env.WORK_QA_ONLY)) return
+  if (process.env.WORK_QA_VERBOSE) console.error(`> ${name}`)
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await context.newPage()
+  page.setDefaultTimeout(10_000)
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
@@ -40,6 +43,13 @@ const open = async (page, query = '') => {
 }
 /** Navigates inside the page, keeping the fake API's state (a full load starts it over). */
 const go = (page, query) => page.evaluate((q) => { window.history.pushState(null, '', `/?${q}`); window.dispatchEvent(new PopStateEvent('popstate')) }, query)
+/** Tells the page tasks changed elsewhere and waits until the list has been fetched and shown again. */
+async function refreshList(page) {
+  const before = await page.evaluate(() => window.__work.state.calls.filter((c) => /^\/api\/v1\/work(\?|$)/.test(c.path) && c.method === 'GET').length)
+  await page.evaluate(() => window.dispatchEvent(new Event('overlay:work-updated')))
+  await page.waitForFunction((n) => window.__work.state.calls.filter((c) => /^\/api\/v1\/work(\?|$)/.test(c.path) && c.method === 'GET').length > n, before)
+  await page.waitForTimeout(150)
+}
 const titles = (page) => page.locator('[data-testid="work-row"] button.truncate').allTextContents()
 
 await check('list: groups, rows, filters and search', async (page, shot) => {
@@ -283,12 +293,100 @@ await check('task panel: a member who may not edit sees it read-only (admins-onl
   await page.waitForSelector('[data-testid="work-list"]')
   // Not assigned to this member, created by someone else: read-only.
   await page.evaluate(() => window.__work.patchWhere((i) => i.scope === 'workspace' && i.assigneePrincipalId !== 'p-me', { createdBy: 'user-sam' }))
-  await page.evaluate(() => window.dispatchEvent(new Event('overlay:work-updated')))
+  await refreshList(page)
   await page.locator('[data-task-id]', { hasText: 'Fix the pricing table layout' }).click()
   const peek = page.getByTestId('work-peek')
   await peek.waitFor()
   assert.ok(await peek.getByRole('textbox', { name: 'Title', exact: true }).isDisabled())
   assert.ok(await peek.getByRole('button', { name: /^Status:/ }).isDisabled())
+})
+
+const column = (status) => `[data-testid="work-column-${status}"]`
+const cards = (page, status) => page.locator(`${column(status)} [data-testid="work-card"]`).evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
+
+await check('board: five columns, cards, and drag to another column and within a column', async (page, shot) => {
+  await open(page, 'scope=workspace&view=board')
+  await page.waitForSelector('[data-testid="work-board"]')
+  assert.equal(await page.locator('[data-testid^="work-column-"]').count(), 5)
+  await shot('light')
+  await open(page, 'scope=workspace&view=board&theme=dark')
+  await page.waitForSelector('[data-testid="work-board"]')
+  await shot('dark')
+  await open(page, 'scope=workspace&view=board')
+  await page.waitForSelector('[data-testid="work-board"]')
+
+  // To another column: Draft interview questions (Todo) goes to In review.
+  const card = page.locator('[data-card-id]', { hasText: 'Draft interview questions for churned customers' })
+  await card.dragTo(page.locator(`${column('review')} [data-testid="work-card"]`).first(), { targetPosition: { x: 40, y: 4 } })
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.startsWith('Draft interview')).status === 'review')
+  assert.deepEqual((await cards(page, 'review'))[0], 'Draft interview questions for churned customers', 'dropped above the first card')
+
+  // Within a column: move the last In progress card to the top.
+  const progress = await cards(page, 'progress')
+  const last = page.locator(`${column('progress')} [data-testid="work-card"]`).last()
+  await last.dragTo(page.locator(`${column('progress')} [data-testid="work-card"]`).first(), { targetPosition: { x: 40, y: 4 } })
+  await page.waitForFunction(([title]) => {
+    const first = document.querySelector('[data-testid="work-column-progress"] [data-testid="work-card"]')
+    return first?.getAttribute('aria-label') === title
+  }, [progress.at(-1)])
+  // The order is what the server keeps: reload the list and it is the same.
+  await refreshList(page)
+  assert.equal((await cards(page, 'progress'))[0], progress.at(-1))
+
+  // Into an empty column.
+  await page.locator('[data-card-id]', { hasText: 'Billing cleanup' }).dragTo(page.locator(column('backlog')))
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title === 'Billing cleanup').status === 'backlog')
+})
+
+await check('board: a refused move snaps back with a message; the keyboard and the status button move cards too', async (page) => {
+  await open(page, 'scope=workspace&view=board')
+  await page.waitForSelector('[data-testid="work-board"]')
+  await page.evaluate(() => { window.__work.state.failNext = { match: /POST .*\/move$/, status: 400, error: 'That change is not allowed.' } })
+  await page.locator('[data-card-id]', { hasText: 'Migrate legacy plan names' }).dragTo(page.locator(column('done')))
+  await page.getByRole('alert').waitFor()
+  assert.ok((await cards(page, 'todo')).includes('Migrate legacy plan names in Stripe'), 'back in Todo')
+  assert.ok(!(await cards(page, 'done')).includes('Migrate legacy plan names in Stripe'))
+
+  // Keyboard: Alt+Right moves to the next column, Alt+Up reorders, focus stays on the card.
+  const card = page.locator('[data-card-id]', { hasText: 'Summarize competitor changelogs' })
+  await card.focus()
+  await page.keyboard.press('Alt+ArrowRight')
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.startsWith('Summarize competitor')).status === 'progress')
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label')?.startsWith('Summarize competitor'))
+  assert.match(await page.getByRole('status').first().innerText(), /Moved to In progress, position \d+ of \d+/)
+  const before = await cards(page, 'progress')
+  await page.keyboard.press('Alt+ArrowUp')
+  await page.waitForFunction((titles) => {
+    const now = [...document.querySelectorAll('[data-testid="work-column-progress"] [data-testid="work-card"]')].map((n) => n.getAttribute('aria-label'))
+    return now.join('|') !== titles.join('|')
+  }, before)
+  await page.keyboard.press('Enter')
+  await page.getByTestId('work-peek').waitFor()
+  await page.keyboard.press('Escape')
+
+  // The status button on a card is the pointer-free alternative.
+  const stripe = page.locator('[data-card-id]', { hasText: 'Migrate legacy plan names' })
+  await stripe.getByRole('button', { name: /^Status:/ }).click()
+  await page.getByRole('menuitemradio', { name: 'In review' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.startsWith('Migrate legacy')).status === 'review')
+  assert.ok((await cards(page, 'review')).includes('Migrate legacy plan names in Stripe'))
+})
+
+await check('board: filters apply, a card opens the panel, and tasks you cannot edit are not draggable', async (page) => {
+  await open(page, 'scope=workspace&view=board&filter=needs-you')
+  await page.waitForSelector('[data-testid="work-board"]')
+  const all = await page.locator('[data-testid="work-card"]').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('aria-label')))
+  assert.deepEqual(all.sort(), ['Which analytics events can we drop before launch?', 'Write the launch announcement post'].sort())
+  await page.locator('[data-card-id]', { hasText: 'Write the launch announcement' }).click()
+  await page.getByTestId('work-peek').waitFor()
+  assert.match(page.url(), /view=board/)
+
+  await open(page, 'scope=workspace&view=board&role=member&policy=admins')
+  await page.waitForSelector('[data-testid="work-board"]')
+  await page.evaluate(() => window.__work.patchWhere((i) => i.scope === 'workspace' && i.assigneePrincipalId !== 'p-me', { createdBy: 'user-sam' }))
+  await refreshList(page)
+  assert.equal(await page.locator('[data-card-id]', { hasText: 'Fix the pricing table layout' }).getAttribute('draggable'), 'false')
+  assert.equal(await page.locator('[data-card-id]', { hasText: 'Which analytics events' }).getAttribute('draggable'), 'true')
 })
 
 await browser.close()
