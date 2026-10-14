@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
-import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { canWork, loadWorkItem, loadWorkViewer, logWorkEvent } from '../lib/workItems'
 import { WORK_LIMITS } from '../../src/shared/work/status'
@@ -12,9 +12,9 @@ const auth = {
   serverSecret: v.optional(v.string()),
 }
 
-async function authorize(params: { accessToken?: string; serverSecret?: string; userId: string }) {
-  if (validateServerSecret(params.serverSecret)) return
-  await requireAccessToken(params.accessToken ?? '', params.userId)
+/** Trusted server calls only: see `authorize` in `workItems.ts`. */
+async function authorize(params: { serverSecret?: string } & Record<string, unknown>) {
+  if (!validateServerSecret(params.serverSecret)) throw new Error('Unauthorized')
 }
 
 /** A task's activity and comments, oldest first. Empty when the caller cannot see the task. */

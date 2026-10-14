@@ -138,3 +138,7 @@ Phases 1 to 8 landed together on one branch, each as its own commit. Where the b
     applies only the newest answer per task, and reloads once overlapping changes settle (also when a move's answer
     shows the column was renumbered). Tasks opened by link that the list does not hold stay editable.
   - Cmd+K tasks follow the workspace and the Work switch.
+  - The Work Convex functions accept only trusted server calls (the server secret), so `work.use` and the Work switch,
+    which the web routes check, cannot be skipped with a browser token.
+  - A named reviewer can approve (done) or send back (in progress) a task in review without edit rights; nothing else.
+  - The Personal list is cut to `listCap` after the scope filter, so workspace tasks cannot push Personal ones out.

@@ -280,14 +280,17 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
 function useWorkEvents(taskId: string, version: number) {
   const [events, setEvents] = useState<WorkEvent[]>([])
   const [loaded, setLoaded] = useState(false)
+  // Only the newest request may answer: an earlier one that finishes last would hide a just-posted comment.
+  const newest = useRef(0)
   const load = useCallback(async () => {
+    const mine = ++newest.current
     try {
       const response = await overlayAppClient.work.events(taskId)
-      setEvents(response.events)
+      if (mine === newest.current) setEvents(response.events)
     } catch {
       // The panel still works without its log.
     } finally {
-      setLoaded(true)
+      if (mine === newest.current) setLoaded(true)
     }
   }, [taskId])
   useEffect(() => { setLoaded(false); setEvents([]) }, [taskId])

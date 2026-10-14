@@ -529,3 +529,47 @@ describe('archived tasks and long ranks', () => {
     expect(await work.titles('bob', 'archived')).toEqual(['Gone'])
   })
 })
+
+describe('trusted callers, reviewers and batches', () => {
+  test('a browser token alone reaches nothing: Work is served through the web app routes', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const task = await work.create('alice', { title: 'Mine' })
+    const noSecret = { workspaceId, userId: 'alice', accessToken: 'a-browser-token' }
+    expect(await convex.query(q('work/workItems:list'), noSecret)).toEqual([])
+    expect(await convex.query(q('work/workItems:get'), { ...noSecret, id: task._id })).toBeNull()
+    await expect(convex.mutation(m('work/workItems:update'), { ...noSecret, id: task._id, title: 'x' })).rejects.toThrow(/Unauthorized/)
+    await expect(convex.mutation(m('work/workItemEvents:addComment'), { ...noSecret, workItemId: task._id, body: 'x' })).rejects.toThrow(/Unauthorized/)
+  })
+
+  test('a named reviewer can approve or send back a task in review, and nothing else, even when members cannot edit', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex, { workspaceContentEditors: 'admins' })
+    const work = api(convex)
+    const task = await work.create('admin', { title: 'Ship it', scope: 'workspace', status: 'review', reviewerUserId: 'bob' })
+    await expect(work.update('bob', task._id, { title: 'Renamed' })).rejects.toThrow(/Unauthorized/)
+    await expect(work.update('bob', task._id, { status: 'done', priority: 3 })).rejects.toThrow(/Unauthorized/)
+    await expect(work.update('bob', task._id, { status: 'todo' })).rejects.toThrow(/Unauthorized/)
+    await expect(work.update('alice', task._id, { status: 'done' })).rejects.toThrow(/Unauthorized/)
+    expect((await work.move('bob', task._id, { status: 'progress' })).status).toBe('progress')
+    // Only while the task waits in review.
+    await expect(work.update('bob', task._id, { status: 'done' })).rejects.toThrow(/Unauthorized/)
+    await work.update('admin', task._id, { status: 'review' })
+    expect((await work.update('bob', task._id, { status: 'done' })).status).toBe('done')
+  })
+
+  test('Personal tasks are not pushed out of the list by a long run of workspace tasks', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    await work.create('alice', { title: 'Only mine' })
+    await convex.run(async (ctx) => {
+      for (let i = 0; i < 2_010; i += 1) {
+        await ctx.db.insert('workItems', { scope: 'workspace', workspaceId, userId: 'alice', title: `W${i}`, status: 'todo', blocked: false, priority: 2, rank: 'M', createdAt: now + i, updatedAt: now + i })
+      }
+    })
+    expect(await work.titles('alice', 'personal')).toEqual(['Only mine'])
+    expect((await work.list('alice', 'workspace')).length).toBe(2_000)
+  })
+})

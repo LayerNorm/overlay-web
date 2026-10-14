@@ -198,7 +198,8 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
   const archived = item.archivedAt !== null
   const editable = !archived && canWork(item)
   const save = (patch: UpdateWorkItemRequest) => void updateTask(item.id, patch)
-  const needsMyReview = editable && item.status === 'review' && viewer !== null && (item.reviewerUserId ?? item.createdBy) === viewer.userId
+  // A named reviewer can answer a review even where they cannot edit the task.
+  const needsMyReview = !archived && item.status === 'review' && viewer !== null && (item.reviewerUserId ?? item.createdBy) === viewer.userId && (editable || item.reviewerUserId === viewer.userId)
   const scopedItem = { _id: item.id, userId: item.createdBy, scope: item.scope, archivedAt: item.archivedAt ?? undefined, archivedFromScope: item.archivedFromScope ?? undefined }
 
   return (
@@ -232,7 +233,7 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
         ) : null}
         <PeekProperties item={item} editable={editable} save={save} />
         {needsMyReview ? (
-          <ReviewCard item={item} disabled={!editable} onApprove={() => save({ status: 'done' })} onRequestChanges={() => void moveTask(item.id, { status: 'progress' })} />
+          <ReviewCard item={item} disabled={false} onApprove={() => save({ status: 'done' })} onRequestChanges={() => void moveTask(item.id, { status: 'progress' })} />
         ) : null}
         <Section title="Objective" hint="The outcome, not the steps">
           <ObjectiveSection value={item.description} editable={editable} onSave={(description) => save({ description })} />

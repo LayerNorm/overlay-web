@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
-import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { validateServerSecret } from '../lib/auth'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, loadScopeContext, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 import {
@@ -46,9 +46,12 @@ const auth = {
   serverSecret: v.optional(v.string()),
 }
 
-async function authorize(params: { accessToken?: string; serverSecret?: string; userId: string }) {
-  if (validateServerSecret(params.serverSecret)) return
-  await requireAccessToken(params.accessToken ?? '', params.userId)
+/**
+ * Work is reached only through the web app's `/api/v1/work` and `/api/v1/scope` routes, which check `work.use` and the
+ * Work runtime switch. A browser's own token is not accepted here, so those checks cannot be skipped.
+ */
+async function authorize(params: { serverSecret?: string } & Record<string, unknown>) {
+  if (!validateServerSecret(params.serverSecret)) throw new Error('Unauthorized')
 }
 
 /** Ids of everything below a task (children, their children), for moving or archiving them together. */
@@ -141,6 +144,18 @@ export const { setScope, archive, restore } = scopeMutations('workItems', 'conte
   },
 })
 
+/**
+ * A named reviewer may answer a review without being able to edit the task: approve it (done) or send it back
+ * (in progress), and only while it is waiting in review.
+ */
+function mayAnswerReview(row: WorkItemDoc, viewer: Awaited<ReturnType<typeof loadWorkViewer>>, userId: string, status: string | undefined): boolean {
+  if (row.reviewerUserId !== userId || row.status !== 'review' || row.archivedAt !== undefined) return false
+  if (rowScope(row) !== 'workspace') return false
+  const role = viewer.viewer.role
+  if (role !== 'owner' && role !== 'admin' && role !== 'member') return false
+  return status === 'done' || status === 'progress'
+}
+
 /** The people and agents a task in this workspace can be given to, and who is asking. */
 export const context = query({
   args: { ...auth },
@@ -194,7 +209,12 @@ export const list = query({
           const mine = q.eq('workspaceId', workspaceId).eq('userId', userId)
           return archivedView ? mine.gt('archivedAt', 0) : mine.eq('archivedAt', undefined)
         })
-        return await byOwner.take(cap)
+        // The batch is cut after the scope filter, so a long run of workspace tasks cannot push Personal ones out of it.
+        // (A person's own workspace tasks come from the shared read below.)
+        if (archivedView) return await byOwner.take(cap)
+        return await (view === 'workspace'
+          ? byOwner.filter((q) => q.eq(q.field('scope'), 'workspace'))
+          : byOwner.filter((q) => q.neq(q.field('scope'), 'workspace'))).take(cap)
       },
       fetchShared: async (ws) => {
         const shared = ctx.db.query('workItems').withIndex('by_workspaceId_scope_archivedAt', (q) => {
@@ -340,6 +360,9 @@ export const create = mutation({
   },
 })
 
+/** Every field `update` can change except `status`. */
+const UPDATE_FIELDS = ['title', 'description', 'blocked', 'priority', 'assigneePrincipalId', 'reviewerUserId', 'startDate', 'dueDate', 'parentId', 'blockedBy', 'doneWhen', 'context'] as const
+
 export const update = mutation({
   args: {
     ...auth,
@@ -362,7 +385,11 @@ export const update = mutation({
     await authorize(args)
     const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
     const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
-    if (!row || !canWork(row, viewer)) throw new Error('Unauthorized')
+    if (!row) throw new Error('Unauthorized')
+    if (!canWork(row, viewer)) {
+      const onlyStatus = UPDATE_FIELDS.every((field) => (args as Record<string, unknown>)[field] === undefined)
+      if (!onlyStatus || !mayAnswerReview(row, viewer, args.userId, args.status)) throw new Error('Unauthorized')
+    }
     if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
     const scope = rowScope(row)
     const patch: Partial<WorkItemDoc> = {}
@@ -463,7 +490,7 @@ export const move = mutation({
     await authorize(args)
     const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
     const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
-    if (!row || !canWork(row, viewer)) throw new Error('Unauthorized')
+    if (!row || (!canWork(row, viewer) && !mayAnswerReview(row, viewer, args.userId, args.status))) throw new Error('Unauthorized')
     if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
     const status = args.status ?? row.status
 
