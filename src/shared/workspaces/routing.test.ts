@@ -15,6 +15,12 @@ test('workspace routing preserves the current canonical surface', () => {
   assert.equal(buildWorkspaceHref('ws next', '/app/w/ws_old/files'), '/app/w/ws%20next/files')
 })
 
+test('Work is a workspace surface of its own', () => {
+  assert.equal(resolveWorkspaceSurface('/app/work'), 'work')
+  assert.equal(resolveWorkspaceSurface('/app/w/ws_1/work'), 'work')
+  assert.equal(buildWorkspaceHref('ws_1', '/app/work'), '/app/w/ws_1/work')
+})
+
 test('workspace routing falls back to chat for unknown and non-app routes', () => {
   assert.equal(resolveWorkspaceSurface('/pricing'), 'chat')
   assert.equal(resolveWorkspaceSurface('/app/unknown'), 'chat')

@@ -13,6 +13,7 @@ import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { SETTINGS_SECTION_ICONS, chatScopeForView, type SidebarRouteState } from './appSidebarNav'
 import { buildScopedPanelNav } from './scopedPanelNav'
+import { buildWorkPanelNav } from './workPanelNav'
 import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { soloPanelScope } from '@/shared/workspaces/solo-workspace'
 
@@ -400,7 +401,7 @@ export function resolveSecondaryPanelNav({
 }: {
   panelKind: SidebarRouteState['panelKind']
   publicShowcase: boolean
-  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
+  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'notesOpen' | 'canonicalWorkspaceRoute' | 'settingsSection'>
   effectivePendingSecondaryNavId: string | null
   totalUnread: number
   collaborationUnread: { dms: number; channels: number; total: number }
@@ -492,6 +493,21 @@ export function resolveSecondaryPanelNav({
       effectivePendingSecondaryNavId,
       toolsItems,
       publicShowcase,
+      router,
+      closeMobileDrawer,
+      beginSecondaryNavigation,
+      solo,
+    })
+  }
+  if (panelKind === 'work') {
+    return buildWorkPanelNav({
+      scope: routeState.scope,
+      workView: routeState.workView,
+      effectivePendingSecondaryNavId,
+      currentSearchParams,
+      canonicalWorkspaceRoute: routeState.canonicalWorkspaceRoute,
+      activeWorkspaceId,
+      buildWorkspaceHref,
       router,
       closeMobileDrawer,
       beginSecondaryNavigation,

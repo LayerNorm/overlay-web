@@ -13,7 +13,7 @@ export interface ScopedResourceFields {
   archivedFromScope?: ResourceScope
 }
 
-export type ScopedResourceKind = 'files' | 'skills' | 'mcp-servers' | 'connectors' | 'automations'
+export type ScopedResourceKind = 'files' | 'skills' | 'mcp-servers' | 'connectors' | 'automations' | 'work'
 export type ScopedResourceAction = 'move' | 'archive' | 'restore'
 
 export interface ScopeActionRequest {
