@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline.
+
 - Delete owned Convex Preview backends when a PR closes or loses `needs-preview`; settle builds first, confirm backend absence, and reconcile retained backends so abandoned previews release deployment quota.
 
 - Make PR previews opt-in with `needs-preview`, preserve automatic Git production on main, and clean up previews when the label is removed. Run route/gateway tests once, remove stale test references and tautological/duplicate workflow assertions, and classify ten live-only integration suites separately.
