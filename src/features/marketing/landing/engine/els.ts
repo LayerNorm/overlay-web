@@ -18,6 +18,7 @@ export type LandingEls = {
   heroLockup: HTMLElement
   sub: HTMLElement
   subWords: HTMLElement[]
+  heroActions: HTMLElement
   demo: HTMLElement
   rail: HTMLElement
   railBox: HTMLElement
@@ -55,6 +56,7 @@ export function collectEls(root: HTMLElement): LandingEls {
     heroLockup: byLp(root, 'hero-lockup'),
     sub,
     subWords: Array.from(sub.querySelectorAll<HTMLElement>('.w')),
+    heroActions: byLp(root, 'hero-actions'),
     demo: byLp(root, 'demo'),
     rail: byLp(root, 'rail'),
     railBox: byLp(root, 'rail-box'),

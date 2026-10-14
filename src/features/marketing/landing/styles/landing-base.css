@@ -12,7 +12,7 @@
 .lp-track { position: relative; }
 .lp-stage { position: sticky; top: 0; height: 100vh; height: 100dvh; overflow: hidden; }
 /* ---------- logo lockup (orb + serif wordmark) ---------- */
-.lp .lockup { display: inline-flex; align-items: center; gap: 0.4em; font-family: var(--serif); font-weight: 500; letter-spacing: -0.025em; line-height: 1; }
+.lp .lockup { display: inline-flex; align-items: baseline; gap: 0.4em; font-family: var(--serif); font-weight: 500; letter-spacing: -0.025em; line-height: 1; }
 /* ---------- nav ---------- */
 .lp .nav { position: absolute; top: 0; left: 0; right: 0; height: 64px; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; pointer-events: none; }
 .lp .nav.on { pointer-events: auto; }
@@ -31,6 +31,12 @@
 .lp .hero .lockup { font-size: clamp(46px, 6.4vw, 88px); transform-origin: 0 0; }
 /* bigger than the subtitle */
 .lp .sub { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; line-height: 1.4; /* one line, ~92% of the demo's width (the sentence is ~27x its font size wide) */ font-size: max(13px, calc(var(--demo-w) * 0.034)); white-space: nowrap; margin-top: 0.45em; }
+/* get-started row under the subtitle: solid pill + matching ghost pill */
+.lp .hero-actions { display: flex; align-items: center; gap: 10px; }
+.lp .hero-actions .pill { padding: 10px 20px; font-size: 14px; }
+.lp .hero-actions .gh-link { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border: var(--hairline); border-radius: 999px; font-size: 14px; color: var(--foreground); transition: background .2s; }
+.lp .hero-actions .gh-link:hover { background: var(--surface-muted); }
+.lp .hero-actions .gh-link .i { width: 15px; height: 15px; }
 /* the underlined phrases are drawn by the rail items that sit on top of them */
 .lp .sub .k { white-space: nowrap; color: transparent; }
 /* proofreader's insertion mark: "open source" sits above the line, caret points at the gap after "The" */

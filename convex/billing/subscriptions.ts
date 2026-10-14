@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { mutation, internalMutation } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
-// Personal plans are gone (plans belong to workspaces; docs/plans/WORKSPACE_PRICING_PLAN.md). What is left here is
+// Personal plans are gone (plans belong to workspaces). What is left here is
 // billing-provider webhook bookkeeping and the daily usage cleanup; the module keeps its name so the function paths
 // the app calls do not change.
 

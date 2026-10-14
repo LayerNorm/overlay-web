@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { setTimeout } from 'node:timers/promises'
 import test from 'node:test'
 import {
   RedisRateLimiter,
@@ -59,5 +60,42 @@ test('TCP Redis provides a real shared atomic window', {
     assert.equal((await first.check('POST /api/v1/test', [rule])).allowed, false)
   } finally {
     await Promise.all([firstStore.close(), secondStore.close()])
+  }
+})
+
+test('TCP Redis enforces a shared limit under concurrent requests', {
+  skip: process.env.OVERLAY_REDIS_URL ? false : 'OVERLAY_REDIS_URL is required for the Redis integration test',
+}, async () => {
+  const url = process.env.OVERLAY_REDIS_URL
+  if (!url) return
+  const prefix = `overlay:test:${randomUUID()}:`
+  const stores = [new TcpRedisRateLimitStore(url, prefix), new TcpRedisRateLimitStore(url, prefix)]
+  const limiters = stores.map(store => new RedisRateLimiter({ failureMode: 'deny', store }))
+  const rule = { bucket: 'concurrent', key: 'shared-user', limit: 12, windowMs: 60_000 }
+  try {
+    const results = await Promise.all(Array.from({ length: 40 }, (_, i) =>
+      limiters[i % limiters.length].check('POST /api/v1/test', [rule])))
+    assert.equal(results.filter(result => result.allowed).length, 12)
+    assert.equal(results.filter(result => !result.allowed).length, 28)
+  } finally {
+    await Promise.all(stores.map(store => store.close()))
+  }
+})
+
+test('TCP Redis resets the counter after the atomic window expires', {
+  skip: process.env.OVERLAY_REDIS_URL ? false : 'OVERLAY_REDIS_URL is required for the Redis integration test',
+}, async () => {
+  const url = process.env.OVERLAY_REDIS_URL
+  if (!url) return
+  const store = new TcpRedisRateLimitStore(url, `overlay:test:${randomUUID()}:`)
+  try {
+    assert.equal((await store.take('expires', 1_000)).count, 1)
+    assert.equal((await store.take('expires', 1_000)).count, 2)
+    await setTimeout(1_100)
+    const reset = await store.take('expires', 1_000)
+    assert.equal(reset.count, 1)
+    assert.ok(reset.ttlMs > 0 && reset.ttlMs <= 1_000)
+  } finally {
+    await store.close()
   }
 })

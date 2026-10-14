@@ -38,7 +38,7 @@ publishes the Convex capability set and `src/server/app-data/repositories.ts`
 constructs the Convex repositories every domain service consumes. The bespoke
 Postgres repository layer, Drizzle schema, app-data migrations, and parity
 harness were removed; enterprise self-hosting runs the official
-`convex-backend` binary (see `docs/develop/convex-only-self-hosting.md`).
+`convex-backend` binary (see `internal/develop/convex-only-self-hosting.md`).
 
 Connected-agent persistence goes through the Convex-backed
 `ConnectedAgentRepository`. Environment, binding, command, remote-session,
@@ -97,7 +97,7 @@ audited compliance path.
 ### Work (tasks, board, timeline)
 
 `work` is a content domain: tasks that appear in a List, a Board and a Timeline, in Personal or Workspace scope.
-Plan and phases: `docs/plans/WORK_PLAN.md`. Where things live:
+Where things live:
 
 - `src/shared/work/` — the isomorphic rules: statuses and limits (`status.ts`), fractional string ranks
   (`rank.ts`), parent and "blocked by" validation (`graph.ts`) and who may work on a task (`permissions.ts`). Convex

@@ -1,5 +1,5 @@
 /**
- * The room rule (docs/plans/TOOL_SCOPING_PLAN.md, T4): an agent that answers in a room others can read must not bring the
+ * The room rule (internal/plans/TOOL_SCOPING_PLAN.md, T4): an agent that answers in a room others can read must not bring the
  * summoner's private material into it. Its reply is visible to everyone in the room, so a personal memory, personal
  * file, or personal skill the summoner can see must not be loaded for it automatically.
  *

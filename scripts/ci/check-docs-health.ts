@@ -54,13 +54,17 @@ const allowedDocsEntries = new Set([
   'introduction.mdx',
   'legal',
   'openapi',
-  'plans',
   'snippets',
   'start',
   'style.css',
 ])
 
-/** docs/plans/ holds internal point-in-time plans, not public pages. */
+/**
+ * Internal docs live in `internal/` at the repo root, outside docs/. A `plans/`
+ * directory under docs/ is no longer permitted at all; this predicate is kept
+ * only so a leftover docs/plans file is still classified correctly by checks
+ * that ran against older revisions.
+ */
 function isInternalPlanDoc(file: string) {
   return relativeToDocs(file).startsWith('plans/')
 }
