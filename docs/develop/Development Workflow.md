@@ -131,6 +131,14 @@ The build wrapper resolves missing PR-number metadata by public branch/SHA looku
 
 ### 4. Test the preview in the browser
 
+Cloud Builders without a Vercel session require the shared
+`VERCEL_AUTOMATION_BYPASS_SECRET` in their platform's private runtime secret store.
+Use the [cloud browser protection recipe](browser-testing-with-agent-browser.md)
+to authenticate only the exact PR origin and establish the browser's bypass
+cookie. Keep protection enabled, reuse the existing project secret, and keep
+its value out of URLs, logs, screenshots and PR text. GitHub/Vercel secrets do
+not automatically populate a cloud Builder VM. Overlay sandbox login is separate.
+
 Sign in using the configured sandbox QA identity or the [preview login recipe](browser-testing-with-agent-browser.md). Exercise the feature as a user would:
 
 - Complete its main interaction from start to finish.

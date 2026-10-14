@@ -32,6 +32,12 @@ revisions require fresh affected QA. Unlabeled PRs pass “Preview not requested
 and require normal CI. Removing the label cleans resources; manual dispatch
 does not bypass opt-in.
 
+If the cloud VM has no Vercel login, use the shared
+`VERCEL_AUTOMATION_BYPASS_SECRET` from its private runtime secret store with the
+origin-scoped browser cookie recipe in browser-testing-with-agent-browser.md.
+Never paste it into a URL or PR, use global browser headers, disable protection,
+or create a per-feature token. App login remains separate.
+
 Shared Preview web/backend defaults already contain isolated test model and
 storage credentials. Do not copy `.env.local` wholesale: it contains production
 keys. Unsupported providers stay explicitly disabled. Use the same isolated PR preview for sensitive acceptance checks when requested.

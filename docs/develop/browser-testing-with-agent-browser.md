@@ -80,6 +80,50 @@ credentials or the preview-only login route above.
 Do not copy a Production app session into a Preview environment. Each preview
 uses sandbox WorkOS and its own Convex backend.
 
+### Cloud agents without a Vercel login
+
+Provision `VERCEL_AUTOMATION_BYPASS_SECRET` once in the cloud platform's private
+runtime secret store for this repository, using the existing `overlay-landing`
+automation bypass secret. GitHub Actions secrets and Vercel app variables do not
+automatically reach a Builder's VM. The secret must be available during browser
+QA, not just environment setup. Reuse it for every requested PR preview; do not
+create a per-PR bypass token or disable Deployment Protection.
+
+Send `x-vercel-protection-bypass` only to the exact verified PR preview origin.
+For Playwright, bootstrap a host-scoped bypass cookie through the browser
+context's request client, then navigate normally in that same context:
+
+```js
+const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+if (!secret) throw new Error('Missing cloud preview bypass credential')
+const origin = new URL(process.env.PREVIEW_URL).origin
+if (!/^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(origin)) {
+  throw new Error('Expected the canonical PR preview origin')
+}
+// context.request shares its cookie jar with pages in this browser context.
+const response = await context.request.get(origin, {
+  headers: {
+    'x-vercel-protection-bypass': secret,
+    'x-vercel-set-bypass-cookie': 'true',
+  },
+  maxRedirects: 0,
+})
+if (response.status() < 200 || response.status() >= 400) {
+  throw new Error('Preview protection bootstrap failed')
+}
+await page.goto(origin)
+```
+
+For another browser runner, use its origin-scoped request headers or import the
+bypass cookie into its own session. A terminal cookie jar does not authenticate
+an unrelated browser. Never put the secret in a URL, global browser headers,
+screenshots, network traces, logs, PR descriptions or tracked storage-state
+files. The Vercel automation secret is project-scoped, not PR-scoped; restrict
+its distribution to trusted repository agents. It bypasses Vercel's hosting
+gate only; Overlay sandbox login and exact-head/backend verification still apply.
+
+See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
+
 ## Clearing controlled search inputs
 
 For cmdk search, `agent-browser fill <selector> ""` can clear the displayed DOM

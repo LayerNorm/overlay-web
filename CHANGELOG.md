@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Document shared automation bypass access for cloud-agent PR browser QA, with private runtime secret provisioning, exact-origin cookie setup and separate Overlay sandbox login.
+
 - Update CodeQL init, analyze and SARIF upload together to 4.38.2; group future Dependabot updates and enforce matching pins so dependency updates cannot break analysis through version mismatches.
 
 - Restrict preview cleanup to the pinned Overlay project Preview credential and explicitly block the customer production backend, alongside existing project/type/PR ownership checks, to protect production and other products from automation deletion.
