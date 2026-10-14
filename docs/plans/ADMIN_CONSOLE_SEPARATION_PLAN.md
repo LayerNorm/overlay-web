@@ -165,10 +165,10 @@ Tasks:
   - Update `docs/develop/architecture.mdx` with the new `apps/` layer.
   - Add an Unreleased entry to `CHANGELOG.md`.
 
-Builder QA for this stage:
+Builder QA for this stage (these script names are planned and must be added during implementation):
 
-- `npm run admin:typecheck && npm run admin:lint && npm run admin:test && npm run admin:build`.
-- Local smoke: `npm run admin:dev` against the engineer-owned dev Convex backend.
+- the planned `admin:typecheck`, `admin:lint`, `admin:test`, and `admin:build` scripts.
+- Local smoke: the planned `admin:dev` script against the engineer-owned dev Convex backend.
   - Sign in.
   - Each of the four sections loads real dev data.
   - Change a role and see it reflected.

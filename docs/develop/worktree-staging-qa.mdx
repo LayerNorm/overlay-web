@@ -36,6 +36,11 @@ project lookup. Production therefore builds exact GitHub main source and promote
 through project-scoped REST endpoints, verifying the fixed project/team/repository
 and live alias. Install reviewed dependencies and Playwright Chromium before release.
 
+Only when explicitly opting into `--require-staging`, set `VERCEL_STAGING_TOKEN`
+to the separate staging-project credential for acceptance readback. Production
+access stays restricted to the production project; ordinary automatic releases
+do not read or require this token.
+
 When `--require-staging` is selected, the command first validates the successful exact-main candidate artifact and producer. Otherwise it directly builds production web without assigning
 domains, checks provenance, publishes and verifies the canonical web alias,
 synchronizes production Convex only when backend inputs changed, using a private key-only env file, and performs normal

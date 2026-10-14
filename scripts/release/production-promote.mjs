@@ -148,7 +148,7 @@ export function canonicalMain(sha, { cwd = process.cwd(), run = runCommand } = {
 
 /** Independent steps keep web publication ahead of the production backend push. */
 export async function promote({ sha, checkOnly = false, env, github, vercel, verifyCheckout,
-  requireStaging = false, acceptStaging, buildWeb, publishWeb, pushBackend, smoke, record = () => {} }) {
+  stagingVercel = vercel, requireStaging = false, acceptStaging, buildWeb, publishWeb, pushBackend, smoke, record = () => {} }) {
   revision(sha)
   let phase = 'checkout', state = { sha, state: 'pending', backend: PRODUCTION.backend }
   const checkpoint = patch => { state = { ...state, ...patch, phase }; record(state) }
@@ -164,7 +164,7 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     if (requireStaging) {
       phase = 'accepted release candidate evidence'
       evidence = verifiedSmoke(await acceptStaging(sha), sha)
-      await verifyStagingLive({ github, vercel, evidence, sha })
+      await verifyStagingLive({ github, vercel: stagingVercel, evidence, sha })
     }
     const previous = await vercel(`/v4/aliases/${PRODUCTION.hostname}`)
     assert.ok(previous.projectId === PRODUCTION.projectId && /^dpl_[A-Za-z0-9]+$/.test(previous.deployment?.id ?? ''),
@@ -179,7 +179,7 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     checkpoint({ deploymentId: deployment.id, state: 'web-built' })
     phase = 'web publication'
     verifyCheckout()
-    if (evidence) await verifyStagingLive({ github, vercel, evidence, sha })
+    if (evidence) await verifyStagingLive({ github, vercel: stagingVercel, evidence, sha })
     const before = await vercel(`/v4/aliases/${PRODUCTION.hostname}`)
     assert.equal(before.deployment?.id, previous.deployment.id, 'Production changed during build')
     await publishWeb(deployment)
@@ -216,6 +216,10 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     join(homedir(), 'Library/Application Support/com.vercel.cli/auth.json'), 'utf8')).token
   const github = apiClient({ token: githubToken, service: 'GitHub', base: 'https://api.github.com' })
   const vercel = apiClient({ token: vercelToken, service: 'Vercel', base: 'https://api.vercel.com', teamId: PRODUCTION.teamId })
+  const requireStaging = args.includes('--require-staging')
+  if (requireStaging) assert.ok(env.VERCEL_STAGING_TOKEN, 'Optional staging acceptance requires its separate staging-project token')
+  const stagingVercel = requireStaging ? apiClient({ token: env.VERCEL_STAGING_TOKEN,
+    service: 'Vercel', base: 'https://api.vercel.com', teamId: PRODUCTION.teamId }) : undefined
   const directory = mkdtempSync(join(tmpdir(), 'overlay-production-promotion-'))
   const output = join(root, 'artifacts/release-workflow/promotions', sha + '-' + Date.now())
   // Artifacts must be ignored so checkpoints/screenshots cannot dirty main.
@@ -226,7 +230,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   const lock = join(common, 'overlay-production-promotion.lock')
   try {
     mkdirSync(lock); locked = true
-    const result = await promote({ sha, checkOnly, requireStaging: args.includes('--require-staging'), env, github, vercel,
+    const result = await promote({ sha, checkOnly, requireStaging, env, github, vercel, stagingVercel,
       verifyCheckout: () => canonicalMain(sha),
       record: state => writeFileSync(join(output, 'promotion.json'), JSON.stringify(state, null, 2), { mode: 0o600 }),
       acceptStaging: async () => {
