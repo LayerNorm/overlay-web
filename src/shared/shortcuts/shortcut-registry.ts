@@ -9,7 +9,7 @@
  * `mod` modifier in react-hotkeys-hook.
  */
 
-export type ShortcutGroupId = 'global' | 'navigation' | 'chat' | 'composer' | 'search'
+export type ShortcutGroupId = 'global' | 'navigation' | 'work' | 'chat' | 'composer' | 'search'
 
 export interface ShortcutDefinition {
   id: string
@@ -36,6 +36,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   { id: 'global', label: 'Global', description: 'Available anywhere in the app.' },
   { id: 'navigation', label: 'Navigation', description: 'Jump between the main sidebar surfaces.' },
   { id: 'search', label: 'Search', description: 'Inside the command palette (⌘K).' },
+  { id: 'work', label: 'Work', description: 'While the Work page is open.' },
   { id: 'chat', label: 'Chat', description: 'While a chat surface is open.' },
   { id: 'composer', label: 'Composer', description: 'While writing a message.' },
 ] as const
@@ -85,6 +86,35 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
     description: 'Leave the current category, or close the palette when at the top level.',
     group: 'search',
     keys: [['Esc']],
+  },
+  {
+    id: 'work.new',
+    label: 'New task',
+    description: 'Jump to the add-a-task line and type a title.',
+    group: 'work',
+    hotkey: 'c',
+    keys: [['C']],
+  },
+  {
+    id: 'work.close',
+    label: 'Close the task',
+    description: 'Close the task panel (a menu or a text field takes Esc first).',
+    group: 'work',
+    keys: [['Esc']],
+  },
+  {
+    id: 'work.move-card',
+    label: 'Move a board card',
+    description: 'With a card focused: up and down reorder it, left and right move it to another column.',
+    group: 'work',
+    keys: [['Alt', '←'], ['Alt', '→'], ['Alt', '↑'], ['Alt', '↓']],
+  },
+  {
+    id: 'work.move-bar',
+    label: 'Move a timeline bar',
+    description: 'With a bar focused: move it a day earlier or later. Hold Shift to change when it ends.',
+    group: 'work',
+    keys: [['←'], ['→'], ['Shift', '←'], ['Shift', '→']],
   },
   {
     id: 'chat.model-picker',

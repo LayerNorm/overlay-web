@@ -1,4 +1,5 @@
 import type { UpdateWorkItemRequest, WorkItem, WorkStatus } from '@overlay/app-core'
+import { checkParent, descendantsOf } from '@/shared/work/graph'
 import { rankBetween } from '@/shared/work/rank'
 import { sortByRank } from '@/shared/work/query'
 
@@ -109,4 +110,16 @@ export function keyboardMove(
   if (!target) return null
   const slot = Math.min(index, target.items.length)
   return { id, status: target.status, ...neighborsForSlot(target.items, slot), position: slot }
+}
+
+/** The tasks `item` can sit inside: active, same scope, not itself or below it, and nested no deeper than the limit allows. */
+export function eligibleParents(item: WorkItem, items: readonly WorkItem[]): WorkItem[] {
+  const byId = new Map(items.map((other) => [other.id, other]))
+  const childrenOf = (id: string) => items.filter((other) => other.parentId === id).map((other) => other.id)
+  const parentOf = (id: string) => byId.get(id)?.parentId ?? null
+  const below = new Set(descendantsOf(item.id, childrenOf))
+  return items
+    .filter((other) => other.id !== item.id && other.scope === item.scope && other.archivedAt === null && !below.has(other.id)
+      && checkParent({ id: item.id, parentId: other.id, parentOf, childrenOf }).ok)
+    .sort((a, b) => a.title.localeCompare(b.title))
 }

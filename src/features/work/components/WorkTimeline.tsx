@@ -1,12 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useCompactViewport } from '../lib/use-compact-viewport'
 import { ChevronDown } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import { addDays, dayOfWeek, diffDays, formatWorkDate, formatWorkDateRange } from '@/shared/work/dates'
 import {
   TIMELINE_DAY_WIDTH as DAY,
-  TIMELINE_LABEL_WIDTH as LABEL,
+  TIMELINE_LABEL_WIDTH,
+  TIMELINE_LABEL_WIDTH_COMPACT,
   TIMELINE_ROW_HEIGHT as ROW,
   applyDrag,
   barLayout,
@@ -19,12 +21,16 @@ import {
   weekColumns,
   type DragMode,
   type Span,
+  type TimelineRange,
+  type TimelineRow,
 } from '@/shared/work/timeline'
 import { useWorkData } from './WorkDataProvider'
 import { Avatar, STATUS_TEXT, StatusIcon } from './work-ui'
 
 const DAY_LETTERS = 'SMTWTFS'
 const HEADER = 52
+/** Rows drawn above and below what is on screen, so scrolling never shows a gap. */
+const OVERSCAN_ROWS = 12
 const DRAG_THRESHOLD_PX = 3
 
 type DragState = { id: string; mode: DragMode; startX: number; base: Span; moved: boolean }
@@ -32,6 +38,123 @@ type DragState = { id: string; mode: DragMode; startX: number; base: Span; moved
 function progressOf(item: WorkItem): number {
   if (item.status === 'done') return 1
   return item.doneWhen.length > 0 ? item.doneWhen.filter((entry) => entry.checked).length / item.doneWhen.length : 0
+}
+
+type RowViewProps = {
+  row: TimelineRow
+  /** The dates to draw: the task's, or where its bar is while being dragged. */
+  span: Span | null
+  live: boolean
+  range: TimelineRange
+  today: string
+  label: number
+  selected: boolean
+  collapsed: boolean
+  onToggle: () => void
+  onOpen: (id: string) => void
+  beginDrag: (event: PointerEvent, item: WorkItem, span: Span, mode: DragMode) => void
+  keyMove: (event: KeyboardEvent, item: WorkItem, span: Span) => void
+  wasDragged: () => boolean
+}
+
+/** The task name on the left, sticky while the grid scrolls sideways. */
+function RowLabel({ row, label, selected, collapsed, onToggle, onOpen }: Pick<RowViewProps, 'row' | 'label' | 'selected' | 'collapsed' | 'onToggle' | 'onOpen'>) {
+  const { personByPrincipal } = useWorkData()
+  const item = row.item
+  const assignee = item.assigneePrincipalId ? personByPrincipal.get(item.assigneePrincipalId) ?? null : null
+  const indent = row.kind === 'task' && row.indented ? 'pl-9' : 'pl-4'
+  return (
+    <div className={`sticky left-0 z-10 flex shrink-0 items-center gap-2.5 border-r border-(--border) bg-(--background) pr-4 text-[13px] group-hover/row:bg-(--surface-muted) ${indent} ${selected ? 'bg-(--surface-subtle)' : ''}`} style={{ width: label }}>
+      {row.kind === 'objective' ? (
+        <button type="button" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${item.title}`} aria-expanded={!collapsed} onClick={onToggle} className="grid h-4 w-4 place-items-center text-(--muted-light)">
+          <ChevronDown size={13} className={`transition-transform ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
+        </button>
+      ) : <StatusIcon status={item.status} />}
+      <button type="button" onClick={() => onOpen(item.id)} className={`min-w-0 flex-1 truncate text-left text-(--foreground) ${row.kind === 'objective' ? 'font-medium' : ''}`}>
+        {item.title}
+      </button>
+      {row.kind === 'objective' ? <span className="text-xs text-(--muted-light)">{row.childCount}</span> : <Avatar person={assignee} size={20} />}
+    </div>
+  )
+}
+
+/** One task's bar: drag the body to move it, an end to resize it; arrow keys do the same. */
+function TaskBar({ item, span, base, live, layout, selected, editable, today, onOpen, beginDrag, keyMove, wasDragged }: {
+  item: WorkItem
+  span: Span
+  base: Span
+  live: boolean
+  layout: { left: number; width: number }
+  selected: boolean
+  editable: boolean
+  today: string
+} & Pick<RowViewProps, 'onOpen' | 'beginDrag' | 'keyMove' | 'wasDragged'>) {
+  const dates = formatWorkDateRange(span.start, span.end, today)
+  const border = selected || live ? 'border-(--muted-light)' : 'border-(--border)'
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-testid="work-bar"
+      data-task-id={item.id}
+      aria-label={`${item.title}, ${dates}`}
+      aria-keyshortcuts={editable ? 'ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight' : undefined}
+      title={`${item.title}\n${dates}`}
+      onPointerDown={(event) => beginDrag(event, item, base, 'move')}
+      onClick={() => { if (!wasDragged()) onOpen(item.id) }}
+      onKeyDown={(event) => keyMove(event, item, span)}
+      className={`group/bar absolute top-[9px] flex h-[22px] touch-none select-none items-center overflow-hidden whitespace-nowrap rounded-md border bg-(--surface-elevated) text-[11.5px] outline-none transition-[border-color] hover:border-(--muted-light) focus-visible:border-(--muted-light) focus-visible:ring-2 focus-visible:ring-(--border) ${border} ${editable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${STATUS_TEXT[item.status]}`}
+      style={{ left: layout.left, width: Math.max(layout.width, DAY) }}
+    >
+      <span className="absolute inset-0 bg-current opacity-[0.16]" aria-hidden />
+      <span className="absolute inset-y-0 left-0 bg-current opacity-[0.28]" style={{ width: `${progressOf(item) * 100}%` }} aria-hidden />
+      {editable ? (
+        <>
+          <span data-testid="work-bar-start" onPointerDown={(event) => beginDrag(event, item, base, 'start')} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" aria-hidden />
+          <span data-testid="work-bar-end" onPointerDown={(event) => beginDrag(event, item, base, 'end')} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" aria-hidden />
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+function TimelineRowView(props: RowViewProps) {
+  const { row, span, live, range, today, selected } = props
+  const { updateTask, canWork } = useWorkData()
+  const item = row.item
+  const editable = canWork(item)
+  const layout = span ? barLayout(span, range) : null
+  const width = range.days * DAY
+  return (
+    <div data-testid="work-timeline-row" data-task-id={item.id} className="group/row flex border-b border-(--border)/55" style={{ height: ROW }}>
+      <RowLabel {...props} />
+      <div
+        className="relative shrink-0"
+        style={{ width, backgroundImage: 'linear-gradient(to right, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px)', backgroundSize: `${7 * DAY}px 100%` }}
+        onClick={(event) => {
+          // A click on an empty day schedules a task that has no dates.
+          if (row.kind !== 'task' || span || !editable || event.target !== event.currentTarget) return
+          const day = dayAtX(event.nativeEvent.offsetX, range)
+          void updateTask(item.id, { startDate: day, dueDate: day })
+        }}
+      >
+        {layout && row.kind === 'objective' ? (
+          <div className="absolute top-[15px] h-2.5 rounded-[3px] bg-(--foreground)/75" style={{ left: layout.left, width: layout.width }} data-testid="work-objective-bar" aria-hidden>
+            <span className="absolute -bottom-[5px] left-0 h-[7px] w-0.5 bg-(--foreground)" />
+            <span className="absolute -bottom-[5px] right-0 h-[7px] w-0.5 bg-(--foreground)" />
+          </div>
+        ) : null}
+        {layout && span && row.kind === 'task' ? (
+          <TaskBar item={item} span={span} base={row.span ?? span} live={live} layout={layout} selected={selected} editable={editable} today={today} onOpen={props.onOpen} beginDrag={props.beginDrag} keyMove={props.keyMove} wasDragged={props.wasDragged} />
+        ) : null}
+        {!span && row.kind === 'task' ? (
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-(--muted-light) opacity-0 transition-opacity group-hover/row:opacity-100">
+            {editable ? 'No dates. Click a day to schedule it.' : 'No dates'}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -50,6 +173,7 @@ export function WorkTimeline({
   onOpen: (id: string) => void
 }) {
   const { updateTask, canWork, personByPrincipal } = useWorkData()
+  const LABEL = useCompactViewport() ? TIMELINE_LABEL_WIDTH_COMPACT : TIMELINE_LABEL_WIDTH
   const allRows = useMemo(() => buildTimelineRows(items), [items])
   const range = useMemo(() => timelineRange(allRows, today), [allRows, today])
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -63,6 +187,8 @@ export function WorkTimeline({
   const dragged = useRef(false)
   const scroller = useRef<HTMLDivElement>(null)
   const scrolled = useRef(false)
+  // Only the rows near the screen are drawn: a workspace can have thousands of tasks.
+  const [viewport, setViewport] = useState({ top: 0, height: 800 })
   // Rows are ordered by date, so a moved bar can change places; the browser drops focus from a node that moves.
   const refocus = useRef<string | null>(null)
 
@@ -72,6 +198,24 @@ export function WorkTimeline({
     scrolled.current = true
     scroller.current.scrollLeft = Math.max(0, diffDays(range.start, today) * DAY - 120)
   }, [range.start, today])
+
+  useEffect(() => {
+    const node = scroller.current
+    if (!node) return
+    let frame = 0
+    const measure = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => setViewport({ top: node.scrollTop, height: node.clientHeight }))
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    node.addEventListener('scroll', measure, { passive: true })
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+      node.removeEventListener('scroll', measure)
+    }
+  }, [])
 
   useEffect(() => {
     const id = refocus.current
@@ -158,10 +302,13 @@ export function WorkTimeline({
     return lines
   }, [preview, range, rows])
 
+  const firstRow = Math.max(0, Math.floor((viewport.top - HEADER) / ROW) - OVERSCAN_ROWS)
+  const lastRow = Math.min(rows.length, Math.ceil((viewport.top + viewport.height - HEADER) / ROW) + OVERSCAN_ROWS)
+  const drawn = rows.slice(firstRow, lastRow)
+
   const width = range.days * DAY
   const todayX = diffDays(range.start, today) * DAY + DAY / 2
   const weeks = weekColumns(range)
-  const objectiveBar = 'absolute top-[15px] h-2.5 rounded-[3px] bg-(--foreground)/75'
 
   return (
     <div ref={scroller} className="relative h-full overflow-auto" data-testid="work-timeline">
@@ -188,83 +335,27 @@ export function WorkTimeline({
           </div>
         </div>
 
-        {rows.map((row) => {
-          const item = row.item
-          const editable = canWork(item)
-          const live = preview?.id === item.id ? preview.span : null
-          const span = live ?? row.span
-          const assignee = item.assigneePrincipalId ? personByPrincipal.get(item.assigneePrincipalId) ?? null : null
-          const layout = span ? barLayout(span, range) : null
-          const selected = item.id === selectedId
-          return (
-            <div key={item.id} data-testid="work-timeline-row" data-task-id={item.id} className="group/row flex border-b border-(--border)/55" style={{ height: ROW }}>
-              <div className={`sticky left-0 z-10 flex shrink-0 items-center gap-2.5 border-r border-(--border) bg-(--background) pr-4 text-[13px] group-hover/row:bg-(--surface-muted) ${row.kind === 'task' && row.indented ? 'pl-9' : 'pl-4'} ${selected ? 'bg-(--surface-subtle)' : ''}`} style={{ width: LABEL }}>
-                {row.kind === 'objective' ? (
-                  <button
-                    type="button"
-                    aria-label={`${collapsed.has(item.id) ? 'Expand' : 'Collapse'} ${item.title}`}
-                    aria-expanded={!collapsed.has(item.id)}
-                    onClick={() => setCollapsed((current) => { const next = new Set(current); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next })}
-                    className="grid h-4 w-4 place-items-center text-(--muted-light)"
-                  >
-                    <ChevronDown size={13} className={`transition-transform ${collapsed.has(item.id) ? '-rotate-90' : ''}`} aria-hidden />
-                  </button>
-                ) : <StatusIcon status={item.status} />}
-                <button type="button" onClick={() => onOpen(item.id)} className={`min-w-0 flex-1 truncate text-left ${row.kind === 'objective' ? 'font-medium text-(--foreground)' : 'text-(--foreground)'}`}>
-                  {item.title}
-                </button>
-                {row.kind === 'objective' ? <span className="text-xs text-(--muted-light)">{row.childCount}</span> : <Avatar person={assignee} size={20} />}
-              </div>
+        <div style={{ height: firstRow * ROW }} aria-hidden />
+        {drawn.map((row) => (
+          <TimelineRowView
+            key={row.item.id}
+            row={row}
+            span={preview?.id === row.item.id ? preview.span : row.span}
+            live={preview?.id === row.item.id}
+            range={range}
+            today={today}
+            label={LABEL}
+            selected={row.item.id === selectedId}
+            collapsed={collapsed.has(row.item.id)}
+            onToggle={() => setCollapsed((current) => { const next = new Set(current); if (next.has(row.item.id)) next.delete(row.item.id); else next.add(row.item.id); return next })}
+            onOpen={onOpen}
+            beginDrag={beginDrag}
+            keyMove={keyMove}
+            wasDragged={() => dragged.current}
+          />
+        ))}
 
-              <div
-                className="relative shrink-0"
-                style={{ width, backgroundImage: 'linear-gradient(to right, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px)', backgroundSize: `${7 * DAY}px 100%` }}
-                onClick={(event) => {
-                  if (row.kind !== 'task' || span || !editable || event.target !== event.currentTarget) return
-                  const day = dayAtX(event.nativeEvent.offsetX, range)
-                  void updateTask(item.id, { startDate: day, dueDate: day })
-                }}
-              >
-                {layout && row.kind === 'objective' ? (
-                  <div className={objectiveBar} style={{ left: layout.left, width: layout.width }} data-testid="work-objective-bar" aria-hidden>
-                    <span className="absolute -bottom-[5px] left-0 h-[7px] w-0.5 bg-(--foreground)" />
-                    <span className="absolute -bottom-[5px] right-0 h-[7px] w-0.5 bg-(--foreground)" />
-                  </div>
-                ) : null}
-                {layout && row.kind === 'task' && span ? (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    data-testid="work-bar"
-                    data-task-id={item.id}
-                    aria-label={`${item.title}, ${formatWorkDateRange(span.start, span.end, today)}`}
-                    aria-keyshortcuts={editable ? 'ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight' : undefined}
-                    title={`${item.title}\n${formatWorkDateRange(span.start, span.end, today)}`}
-                    onPointerDown={(event) => beginDrag(event, item, row.span ?? span, 'move')}
-                    onClick={() => { if (!dragged.current) onOpen(item.id) }}
-                    onKeyDown={(event) => keyMove(event, item, span)}
-                    className={`group/bar absolute top-[9px] flex h-[22px] touch-none select-none items-center overflow-hidden whitespace-nowrap rounded-md border bg-(--surface-elevated) text-[11.5px] outline-none transition-[border-color] hover:border-(--muted-light) focus-visible:border-(--muted-light) focus-visible:ring-2 focus-visible:ring-(--border) ${selected || live ? 'border-(--muted-light)' : 'border-(--border)'} ${editable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${STATUS_TEXT[item.status]}`}
-                    style={{ left: layout.left, width: Math.max(layout.width, DAY) }}
-                  >
-                    <span className="absolute inset-0 bg-current opacity-[0.16]" aria-hidden />
-                    <span className="absolute inset-y-0 left-0 bg-current opacity-[0.28]" style={{ width: `${progressOf(item) * 100}%` }} aria-hidden />
-                    {editable ? (
-                      <>
-                        <span data-testid="work-bar-start" onPointerDown={(event) => beginDrag(event, item, row.span ?? span, 'start')} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" aria-hidden />
-                        <span data-testid="work-bar-end" onPointerDown={(event) => beginDrag(event, item, row.span ?? span, 'end')} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" aria-hidden />
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-                {!span && row.kind === 'task' ? (
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-(--muted-light) opacity-0 transition-opacity group-hover/row:opacity-100">
-                    {editable ? 'No dates. Click a day to schedule it.' : 'No dates'}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          )
-        })}
+        <div style={{ height: (rows.length - lastRow) * ROW }} aria-hidden />
 
         {arrows.length > 0 ? (
           <svg

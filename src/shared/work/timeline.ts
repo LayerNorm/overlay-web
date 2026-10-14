@@ -9,6 +9,8 @@ import { sortByRank } from './query'
 export const TIMELINE_DAY_WIDTH = 24
 export const TIMELINE_ROW_HEIGHT = 40
 export const TIMELINE_LABEL_WIDTH = 300
+/** The task-name column on a phone-sized screen. */
+export const TIMELINE_LABEL_WIDTH_COMPACT = 132
 
 export type Span = { start: string; end: string }
 

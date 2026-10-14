@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { InlineNavChildren } from '@/components/layout/AppSidebarInlinePanels'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { chatScopeForView, resolveSidebarRouteState, scopePanelAction, type PanelCreateRules } from './appSidebarNav'
-import { workInlineItems } from './appSidebarPanelNav'
+import { workInlineItems } from './workPanelNav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 

@@ -1,12 +1,16 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { Button } from '@overlay/ui/primitives'
 import { ChevronDown } from 'lucide-react'
 import { WORK_STATUS_LABELS } from '@/shared/work/status'
 import { groupByStatus, parentTitle as parentTitleOf } from '@/shared/work/query'
 import type { WorkItem, WorkStatus } from '@overlay/app-core'
 import { WorkRow } from './WorkRow'
 import { StatusIcon } from './work-ui'
+
+/** How many rows a group draws before offering the rest (a workspace can hold thousands). */
+const GROUP_PAGE = 100
 
 /** Tasks grouped by status, what needs attention first. Finished work starts collapsed. */
 export function WorkList({
@@ -24,6 +28,7 @@ export function WorkList({
 }) {
   const groups = useMemo(() => groupByStatus(items), [items])
   const [closed, setClosed] = useState<Partial<Record<WorkStatus, boolean>>>({ done: true })
+  const [shown, setShown] = useState<Partial<Record<WorkStatus, number>>>({})
 
   return (
     <div role="table" aria-label="Tasks" data-testid="work-list" className="pb-10">
@@ -42,7 +47,7 @@ export function WorkList({
               <span>{WORK_STATUS_LABELS[group.status]}</span>
               <span className="font-normal text-(--muted-light)">{group.items.length}</span>
             </button>
-            {collapsed ? null : group.items.map((item) => (
+            {collapsed ? null : group.items.slice(0, shown[group.status] ?? GROUP_PAGE).map((item) => (
               <WorkRow
                 key={item.id}
                 item={item}
@@ -52,6 +57,13 @@ export function WorkList({
                 onOpen={onOpen}
               />
             ))}
+            {!collapsed && group.items.length > (shown[group.status] ?? GROUP_PAGE) ? (
+              <div className="px-6 py-3">
+                <Button variant="secondary" size="sm" onClick={() => setShown((current) => ({ ...current, [group.status]: (current[group.status] ?? GROUP_PAGE) + GROUP_PAGE }))}>
+                  Show {Math.min(GROUP_PAGE, group.items.length - (shown[group.status] ?? GROUP_PAGE))} more
+                </Button>
+              </div>
+            ) : null}
           </section>
         )
       })}

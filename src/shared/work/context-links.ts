@@ -27,3 +27,8 @@ export function hrefForContext(ref: Pick<WorkContextRef, 'type' | 'id'>): string
     default: return null
   }
 }
+
+/** Where a task opens: the Work page with its panel open (the page switches to the task's own scope). */
+export function hrefForTask(id: string): string {
+  return `/app/work?task=${encodeURIComponent(id)}`
+}

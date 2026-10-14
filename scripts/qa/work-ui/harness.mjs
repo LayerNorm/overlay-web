@@ -19,6 +19,8 @@ const SHIMS = {
   '@/contexts/WorkspaceContext': 'shims/workspace-context.ts',
   '@/hooks/use-workspace-create-access': 'shims/use-workspace-create-access.ts',
   '@/hooks/use-solo-workspace': 'shims/use-solo-workspace.ts',
+  '@/components/providers/CapabilitiesProvider': 'shims/capabilities-provider.ts',
+  '@/components/providers/AuthorizationProvider': 'shims/authorization-provider.ts',
 }
 
 function shimPlugin() {

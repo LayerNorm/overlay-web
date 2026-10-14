@@ -130,7 +130,7 @@ export function WorkBoard({
   }
 
   return (
-    <div ref={board} className="flex h-full min-w-min gap-3.5 px-6 pb-6 pt-4" data-testid="work-board">
+    <div ref={board} className="flex h-full min-w-min snap-x snap-mandatory gap-3.5 px-4 pb-6 pt-4 sm:snap-none sm:px-6" data-testid="work-board">
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
       {columns.map((column) => {
         const over = target?.status === column.status
@@ -142,7 +142,7 @@ export function WorkBoard({
             key={column.status}
             data-testid={`work-column-${column.status}`}
             aria-label={`${WORK_STATUS_LABELS[column.status]}, ${column.items.length} tasks`}
-            className="flex min-h-0 max-w-85 flex-1 basis-59 flex-col"
+            className="flex min-h-0 shrink-0 basis-[82vw] snap-start flex-col sm:max-w-85 sm:flex-1 sm:shrink sm:basis-59"
           >
             <header className="flex items-center gap-2 px-1.5 pb-2.5 text-[13px] font-medium text-(--foreground)">
               <StatusIcon status={column.status} />

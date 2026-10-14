@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkPerson } from '@overlay/app-core'
 import { actorName, commentBody, describeEvent, formatAgo, indexPeople } from './activity'
-import { hrefForContext, labelForLink, safeLinkUrl } from './context-links'
+import { hrefForContext, hrefForTask, labelForLink, safeLinkUrl } from './context-links'
 
 const people: WorkPerson[] = [
   { principalId: 'p-me', type: 'human', userId: 'u-me', displayName: 'Mercedes' },
@@ -65,4 +65,9 @@ test('context references open the right page, and links only open web addresses'
   assert.equal(safeLinkUrl('not a url'), null)
   assert.equal(labelForLink('https://www.figma.com/file/1'), 'figma.com')
   assert.equal(labelForLink('plain text'), 'plain text')
+})
+
+test('a task opens on the Work page with its panel open', () => {
+  assert.equal(hrefForTask('abc'), '/app/work?task=abc')
+  assert.equal(hrefForTask('a b/c'), '/app/work?task=a%20b%2Fc')
 })

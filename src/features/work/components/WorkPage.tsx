@@ -1,12 +1,18 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { AlertCircle, ListChecks, Plus, X } from 'lucide-react'
+import type { WorkItem } from '@overlay/app-core'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { Button, HeaderSearch } from '@overlay/ui/primitives'
+import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { toWorkDate } from '@/shared/work/dates'
 import { countOpen, filterWork, needsViewer } from '@/shared/work/query'
-import { WORK_VIEW_LABELS } from '@/shared/work/views'
+import { WORK_LIMITS } from '@/shared/work/status'
+import { WORK_VIEW_LABELS, type WorkView } from '@/shared/work/views'
+import { trackWork } from '../lib/work-analytics'
 import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkUrlState } from '../lib/use-work-url-state'
 import { useWorkData, WorkDataProvider } from './WorkDataProvider'
@@ -55,21 +61,81 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
   )
 }
 
+/** What fills the page under the toolbar: a loading state, a message, or the List, Board, or Timeline. */
+function WorkBody({
+  view,
+  scope,
+  solo,
+  visible,
+  filtering,
+  today,
+  selectedId,
+  onOpen,
+}: {
+  view: WorkView
+  scope: PanelScope
+  solo: boolean
+  visible: WorkItem[]
+  filtering: boolean
+  today: string
+  selectedId: string | null
+  onOpen: (id: string) => void
+}) {
+  const { state, items, byId, refresh } = useWorkData()
+  if (state === 'loading') return <ListSkeleton />
+  if (state === 'error') {
+    return (
+      <EmptyState
+        title="Could not load tasks"
+        description="Check your connection, then try again."
+        action={<Button variant="secondary" size="sm" onClick={() => void refresh()}>Try again</Button>}
+      />
+    )
+  }
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="No tasks yet"
+        description={scope === 'workspace' && !solo ? 'Tasks added to the workspace are shared with its members.' : 'Add a task above. It lands in Todo.'}
+      />
+    )
+  }
+  if (visible.length === 0) return filtering ? <EmptyState title="Nothing matches" description="Try another filter or search." /> : null
+  if (view === 'board') {
+    return (
+      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
+        <WorkBoard items={visible} today={today} selectedId={selectedId} onOpen={onOpen} />
+      </div>
+    )
+  }
+  if (view === 'timeline') {
+    return (
+      <div className="min-h-0 flex-1">
+        <WorkTimeline items={visible} today={today} selectedId={selectedId} onOpen={onOpen} />
+      </div>
+    )
+  }
+  return <WorkList items={visible} byId={byId} today={today} selectedId={selectedId} onOpen={onOpen} />
+}
+
 function WorkScreen() {
   const { scope, view, solo } = useWorkRoute()
   const { filter, taskId, setFilter, openTask, closeTask } = useWorkUrlState()
-  const { state, items, byId, viewer, error, dismissError, refresh } = useWorkData()
+  const { state, items, viewer, error, dismissError, truncated } = useWorkData()
   const [query, setQuery] = useState('')
   const quickAdd = useRef<WorkQuickAddHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
 
+  useEffect(() => { trackWork('work_view_opened', { view, scope }) }, [scope, view])
+  // C starts a new task from anywhere on the page (typing in a field is left alone).
+  useHotkeys(requireShortcutHotkey('work.new'), () => quickAdd.current?.focus(), { preventDefault: true })
+
   const visible = useMemo(() => filterWork(items, { filter, query, viewer }), [filter, items, query, viewer])
   const needsYouCount = useMemo(() => (viewer ? items.filter((item) => needsViewer(item, viewer)).length : 0), [items, viewer])
-  const scopeLabel = scope === 'workspace' ? 'Workspace' : 'Personal'
-  const title = solo ? WORK_VIEW_LABELS[view] : `${scopeLabel} / ${WORK_VIEW_LABELS[view]}`
-
+  const title = solo ? WORK_VIEW_LABELS[view] : `${scope === 'workspace' ? 'Workspace' : 'Personal'} / ${WORK_VIEW_LABELS[view]}`
   const loaded = state === 'ready'
-  const filtering = filter !== 'all' || query.trim() !== ''
+  // The List scrolls the page; the Board and Timeline scroll inside their own area.
+  const pageScrolls = view === 'list' || !loaded || visible.length === 0
 
   return (
     <AppScreenShell
@@ -95,38 +161,19 @@ function WorkScreen() {
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full min-h-0 flex-col" data-testid="work-page">
         <WorkToolbar filter={filter} onChange={setFilter} needsYouCount={needsYouCount} />
         {error && state !== 'error' ? <ErrorBanner message={error} onDismiss={dismissError} /> : null}
+        {truncated ? <p className="mx-6 mt-3 shrink-0 text-xs text-(--muted)" role="note">Showing the first {WORK_LIMITS.listCap.toLocaleString('en-US')} tasks. Archive finished work to see the rest.</p> : null}
         <WorkQuickAdd ref={quickAdd} disabled={!loaded} />
-        <div className={`flex min-h-0 flex-1 flex-col ${view === 'list' || !loaded || visible.length === 0 ? 'overflow-auto' : 'overflow-hidden'}`}>
-          {state === 'loading' ? <ListSkeleton /> : null}
-          {state === 'error' ? (
-            <EmptyState
-              title="Could not load tasks"
-              description="Check your connection, then try again."
-              action={<Button variant="secondary" size="sm" onClick={() => void refresh()}>Try again</Button>}
-            />
-          ) : null}
-          {loaded && items.length === 0 ? (
-            <EmptyState
-              title="No tasks yet"
-              description={scope === 'workspace' && !solo ? 'Tasks added to the workspace are shared with its members.' : 'Add a task above. It lands in Todo.'}
-            />
-          ) : null}
-          {loaded && items.length > 0 && visible.length === 0 && filtering ? (
-            <EmptyState title="Nothing matches" description="Try another filter or search." />
-          ) : null}
-          {loaded && visible.length > 0 && view === 'list' ? (
-            <WorkList items={visible} byId={byId} today={today} selectedId={taskId} onOpen={openTask} />
-          ) : null}
-          {loaded && visible.length > 0 && view === 'board' ? (
-            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
-              <WorkBoard items={visible} today={today} selectedId={taskId} onOpen={openTask} />
-            </div>
-          ) : null}
-          {loaded && visible.length > 0 && view === 'timeline' ? (
-            <div className="min-h-0 flex-1">
-              <WorkTimeline items={visible} today={today} selectedId={taskId} onOpen={openTask} />
-            </div>
-          ) : null}
+        <div className={`flex min-h-0 flex-1 flex-col ${pageScrolls ? 'overflow-auto' : 'overflow-hidden'}`}>
+          <WorkBody
+            view={view}
+            scope={scope}
+            solo={solo}
+            visible={visible}
+            filtering={filter !== 'all' || query.trim() !== ''}
+            today={today}
+            selectedId={taskId}
+            onOpen={openTask}
+          />
         </div>
       </AppScreenBody>
     </AppScreenShell>

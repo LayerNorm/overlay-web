@@ -1,6 +1,6 @@
 # Work: tasks, board, and timeline
 
-Status: planned, not started. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
+Status: implemented in one branch as phases 1 to 8 (see the commits titled `WORK PHASE n`); see [What shipped](#what-shipped) for where it differs from this plan. Mockup approved: [`mockups/work-mockup.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/work-mockup.html).
 
 ## Goal
 
@@ -104,3 +104,22 @@ Browser, flag on, both scopes, light and dark:
 ## After v1: agents (its own plan)
 
 Everything is already in place: the assignee is a principal, events are logged, the brief fields exist. The follow-up plan adds a `workRuns` table, the handoff cards from the mockup (running, needs input, ready for review), a `work` tool group (`buildWorkspaceAgentTooling`, with a `LATER_GROUP_MEMBERS` entry so existing agents do not lose a group), budgets and approvals through `agentApprovalRequests`, and a "Needs you" review queue. Update `tool-catalog.md` and `agent-to-agent.md` when that lands.
+
+## What shipped
+
+Phases 1 to 8 landed together on one branch, each as its own commit. Where the build differs from the plan above:
+
+- **Editing is wider than for most content.** A member can edit a workspace task (status, fields, comments) when the workspace
+  lets members edit workspace content, and the assignee always can; moving between scopes, archiving and restoring stay with the
+  creator and admins (`src/shared/work/permissions.ts`).
+- **Tasks nest up to three levels** (`WORK_LIMITS.maxDepth`) in the backend; the UI shows one level (objective to task). A child
+  must be in the same scope as its parent.
+- **The `work` flag is on by default** (`OVERLAY_FEATURE_WORK=0` is the kill switch) instead of being switched on after PR 5,
+  because all phases land together.
+- **Settings → Archived can delete a task for good** (`DELETE /api/v1/work/[id]`, archived tasks only), as it can for other kinds.
+- **Needs you** means a task in review that you review (the creator when no reviewer is named) or a blocked task that is yours. The
+  mockup's "Agent work" filter and the agent handoff cards are left for the agents plan.
+- **No task keys** (`OVL-142`): the model has no key counter in v1.
+- **Dependencies are set through `update`** (`blockedBy`), not a separate mutation, and are logged with task titles.
+- **Browser coverage without a backend:** `npm run test:work:ui` runs the real UI against an in-page fake API (see
+  `docs/develop/browser-testing-with-agent-browser.md`). Hosted QA on the PR preview is still the acceptance pass.

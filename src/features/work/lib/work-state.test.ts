@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkItem } from '@overlay/app-core'
-import { applyItemPatch, endRankOf, initialsOf, keyboardMove, neighborsForSlot, rankForDrop, removeItem, slotFromPointer, upsertItem } from './work-state'
+import { applyItemPatch, eligibleParents, endRankOf, initialsOf, keyboardMove, neighborsForSlot, rankForDrop, removeItem, slotFromPointer, upsertItem } from './work-state'
 
 function item(overrides: Partial<WorkItem> & { id: string }): WorkItem {
   return {
@@ -102,4 +102,19 @@ test('keyboard moves go up, down, left and right and stop at the edges', () => {
   assert.equal(keyboardMove(COLUMNS, 'e', 'right'), null)
   assert.equal(keyboardMove(COLUMNS, 'e', 'down'), null)
   assert.equal(keyboardMove(COLUMNS, 'ghost', 'up'), null)
+})
+
+test('a task can sit inside active tasks of its own scope, but not itself, its own subtasks, or something too deep', () => {
+  const objective = item({ id: 'obj' })
+  const task = item({ id: 'task', parentId: 'obj' })
+  const sub = item({ id: 'sub', parentId: 'task' })
+  const other = item({ id: 'other', title: 'Other' })
+  const shared = item({ id: 'shared', scope: 'workspace' })
+  const archived = item({ id: 'old', archivedAt: 5 })
+  const items = [objective, task, sub, other, shared, archived]
+  // The objective already has two levels below it, so it fits under nothing; a loose task fits under the objective or its task.
+  assert.deepEqual(eligibleParents(objective, items).map((i) => i.id), [])
+  assert.deepEqual(eligibleParents(other, items).map((i) => i.id).sort(), ['obj', 'task'])
+  // Never itself, another scope, an archived task, or a task already at the deepest level.
+  assert.ok(!eligibleParents(task, items).some((i) => ['task', 'sub', 'shared', 'old'].includes(i.id)))
 })
