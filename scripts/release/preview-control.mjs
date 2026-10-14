@@ -93,27 +93,54 @@ export function apiClient({ token, service, base, teamId, fetchImpl = fetch,
 
 export class PreviewBackends {
   constructor({ api, now = Date.now }) { this.api = api; this.now = now }
+  validate(d, number) {
+    previewAddress(number)
+    if (d.projectId !== CONFIG.convexProjectId || d.deploymentType !== 'preview'
+      || d.reference !== `preview/pr-${number}` || d.previewIdentifier !== `pr-${number}`
+      || !/^[a-z0-9-]+$/.test(d.name)) throw new Error('PR backend identity mismatch')
+    return d
+  }
+  async inventory() {
+    const items = await this.api(`/projects/${CONFIG.convexProjectId}/list_deployments`)
+    return items.flatMap(d => {
+      const match = /^preview\/pr-([1-9]\d*)$/.exec(d.reference ?? '')
+      if (!match) return []
+      const number = Number(match[1])
+      this.validate(d, number)
+      return [number]
+    })
+  }
   async find(number) {
     previewAddress(number)
     const items = await this.api(`/projects/${CONFIG.convexProjectId}/list_deployments`)
     const matches = items.filter(d => d.reference === `preview/pr-${number}`)
     if (matches.length > 1) throw new Error('Ambiguous PR backend')
     const d = matches[0]
-    if (d && (d.projectId !== CONFIG.convexProjectId || d.deploymentType !== 'preview'
-      || d.previewIdentifier !== `pr-${number}` || !/^[a-z0-9-]+$/.test(d.name))) {
-      throw new Error('PR backend identity mismatch')
-    }
+    if (d) this.validate(d, number)
     return d
   }
   async active(number) {
     const d = await this.find(number)
     return !!d && (d.expiresAt === null || d.expiresAt > this.now())
   }
+  async remove(number) {
+    const d = await this.find(number)
+    if (!d) return
+    try {
+      await this.api(`/deployments/${segment(d.name)}/delete`, { method: 'POST', body: {} })
+    } catch (error) {
+      // The deletion may have completed despite a lost response. Inspect
+      // state rather than blindly repeating a destructive request.
+      if (await this.find(number)) throw error
+      return
+    }
+    if (await this.find(number)) throw new Error('Preview backend deletion readback failed')
+  }
   async renew(number) {
     const d = await this.find(number)
     if (!d || (d.expiresAt !== null && d.expiresAt <= this.now())) throw new Error('PR backend is missing or expired')
     // Starter permits five days from now. Renew to four days, safely inside
-    // that entitlement. Closed PRs stop renewing and expire naturally.
+    // that entitlement. Cleanup deletes closed or unrequested PR backends.
     if (d.expiresAt !== null && d.expiresAt > this.now() + 2 * 86400_000) return d
     const expiresAt = this.now() + 4 * 86400_000
     await this.api(`/deployments/${segment(d.name)}`, { method: 'PATCH', body: { expiresAt } })
@@ -213,6 +240,8 @@ export class PreviewController {
     return address
   }
   async cleanup(pr) {
+    // Stop every owned build before deleting the backend it could recreate.
+    await this.settleBranch(pr)
     const address = previewAddress(pr.number)
     const variables = await this.environment(pr)
     if (variables.some(e => e.comment !== address.marker || e.target.some(t => t !== 'preview'))) {
@@ -230,8 +259,9 @@ export class PreviewController {
       || (await this.environment(pr)).some(e => e.comment === address.marker)) {
       throw new Error('Preview cleanup readback failed')
     }
+    await this.backends.remove(pr.number)
     await this.verifyRemoved(address.origin)
-    this.report(`PR ${pr.number}: domain, alias, and branch app URL removed`)
+    this.report(`PR ${pr.number}: domain, alias, branch app URL, and Convex preview backend removed`)
     return { state: 'closed', number: pr.number }
   }
   async settleBuild(pr, id) {
@@ -310,7 +340,6 @@ export class PreviewController {
     }
   }
   async notRequested(pr) {
-    await this.settleBranch(pr)
     await this.cleanup(pr)
     const current = trustedPull(await this.pull(pr.number), { requireMain: false })
     if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
@@ -322,7 +351,7 @@ export class PreviewController {
     previewAddress(number)
     await this.verifyProject()
     const pr = trustedPull(await this.pull(number), { requireMain: false })
-    if (pr.state !== 'open' || pr.base.ref !== 'main') { await this.settleBranch(pr); return this.cleanup(pr) }
+    if (pr.state !== 'open' || pr.base.ref !== 'main') return this.cleanup(pr)
     if (!previewRequested(pr)) return this.notRequested(pr)
     const siblings = await this.github(`${this.repoPath}/pulls`, { query: { state: 'open', head: `LayerNorm:${pr.head.ref}`, base: 'main', per_page: 100 } })
     if (siblings.some(other => other.number !== pr.number)) throw new Error('One PR per source branch is required')
@@ -406,6 +435,8 @@ export class PreviewController {
       const match = /^overlay-preview-control:pr-([1-9]\d*)$/.exec(env.comment ?? '')
       if (match && env.key === 'NEXT_PUBLIC_APP_URL' && env.gitBranch) numbers.add(Number(match[1]))
     }
+    // Find old closed PRs even after all their Vercel resources were removed.
+    for (const number of await this.backends.inventory()) numbers.add(number)
     return [...numbers].sort((a, b) => a - b)
   }
 }

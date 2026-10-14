@@ -42,7 +42,13 @@ The trusted PR controller also holds the project preview key as
 Six-hour reconciliation validates the project, preview type, PR identifier and
 reference before extending a labeled open PR backend to four days from now when fewer
 than two days remain. This is within Starter's five-day retention entitlement
-and preserves data. Unlabeled or closed PRs stop renewing and expire naturally. A missing or
+and preserves data while the PR remains labeled. On PR closure or label removal,
+cleanup settles owned builds before deleting the exact `preview/pr-<number>`
+backend and synthetic data through the scoped Preview key. It validates project,
+Preview type, reference, PR identifier and name, then verifies absence. Unknown
+ownership or failed deletion cannot report successful cleanup. Six-hour inventory
+includes retained Convex backends so leftovers are retried even without Vercel
+resources. Re-adding the label seeds a fresh backend. A missing or
 expired backend forces a fresh web build at the same SHA, with fresh seed data;
 an old READY frontend cannot be reused just because its SHA matches.
 

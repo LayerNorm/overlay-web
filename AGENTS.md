@@ -50,6 +50,8 @@
 
 ## Agentic Development and Main Integration (MUST FOLLOW)
 
+- Preview cleanup: closing a PR or removing `needs-preview` must settle its builds and delete its exact owned Convex Preview backend and synthetic data, with project/type/reference/PR-identifier checks and absence readback. Six-hour reconciliation inventories retained backends too, so closed/unlabeled leftovers do not consume quota. Re-adding the label creates fresh fixtures. Never delete dev, production, cross-project or ambiguous backends.
+
 - CI coverage: keep the parallel static/build/test lanes and both exhaustive ordinary-test shards behind the fail-closed `Required Quality and Security Gates` aggregate. Preserve all nine required contexts on PRs and merge groups. Generate route types before standalone typechecking; skip the duplicate TypeScript pass only in the CI compilation job. Gateway contracts run once in the discovered react-server group and still report `Schema and Routing Contracts`. Classify live-only suites separately with opt-in `test:integration`; mixed unit/live suites stay in ordinary CI. Never replace a failed, cancelled, absent or unexpectedly skipped lane with success. See Development Workflow for details.
 
 - `docs/develop/Development Workflow.md` is the authoritative Builder/Integration/release workflow. Read it before branches, worktrees, PRs or merges; other guides provide implementation details and cannot add mandatory staging gates. One task owns one descriptive `codex/<slug>` feature branch/worktree from latest origin/main. Preserve canonical edits; production uses clean canonical main.
