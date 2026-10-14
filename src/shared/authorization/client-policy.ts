@@ -11,6 +11,7 @@ const NAVIGATION_REQUIREMENTS: Record<string, ClientAuthorizationRequirement> = 
   files: { any: ['files.read', 'notes.read', 'outputs.read'] },
   extensions: { any: ['integrations.use', 'skills.use', 'mcp.use', 'tools.use'] },
   automations: { all: ['automations.use'] },
+  work: { all: ['work.use'] },
 }
 
 const SIDEBAR_ACTION_REQUIREMENTS: Record<string, ClientAuthorizationRequirement> = {
@@ -31,6 +32,7 @@ const ROUTE_REQUIREMENTS: Array<{
 }> = [
   { prefix: '/app/admin', requirement: { all: ['administration.access'] } },
   { prefix: '/app/automations', requirement: { all: ['automations.use'] } },
+  { prefix: '/app/work', requirement: { all: ['work.use'] } },
   { prefix: '/app/memories', requirement: { all: ['memory.use'] } },
   { prefix: '/app/notes', requirement: { all: ['notes.read'] } },
   { prefix: '/app/outputs', requirement: { all: ['outputs.read'] } },

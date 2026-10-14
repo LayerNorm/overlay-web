@@ -1028,6 +1028,11 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/workspaces/[workspaceId]/policies', reason: 'Workspace policy management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/teams', reason: 'Workspace team management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/teams/[teamId]/members', reason: 'Workspace team member management; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/work', reason: 'Work tasks (list and create); boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
+  { routePath: '/api/v1/work/context', reason: 'Work picker context; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/work/[id]', reason: 'Work task detail and update; boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
+  { routePath: '/api/v1/work/[id]/move', reason: 'Work board placement; boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
+  { routePath: '/api/v1/work/[id]/events', reason: 'Work task activity and comments; boundary definition pending. Protected by workspace authorization and Personal / Workspace scoping in Convex.' },
   { routePath: '/api/v1/workspaces/active', reason: 'Active workspace selection; boundary definition pending. Protected by workspace authorization.' },
 ] as const satisfies readonly WebApiExcludedRouteDefinition[]
 

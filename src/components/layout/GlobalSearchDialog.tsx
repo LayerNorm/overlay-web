@@ -16,6 +16,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   Bot,
   FileText,
+  ListChecks,
   MessageSquare,
   Plug,
   Server,
@@ -25,9 +26,13 @@ import {
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useAuthorization } from '@/components/providers/AuthorizationProvider'
+import { hrefForTask } from '@/shared/work/context-links'
+import { WORK_STATUS_LABELS } from '@/shared/work/status'
 
 /** Mention categories plus the search-only categories that have no mention type. */
-type SearchType = MentionType | 'agent'
+type SearchType = MentionType | 'agent' | 'work'
 
 interface SearchItem extends Omit<MentionItem, 'type'> {
   type: SearchType
@@ -38,9 +43,12 @@ interface SearchCategory extends Omit<MentionCategory, 'type' | 'items'> {
   items: SearchItem[]
 }
 
+const EMPTY_SEARCH_ITEMS: SearchItem[] = []
+
 const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; strokeWidth?: number }>> = {
   Bot,
   FileText,
+  ListChecks,
   Plug,
   Zap,
   Sparkles,
@@ -51,6 +59,7 @@ const ICON_MAP: Record<string, React.FC<{ size?: number; className?: string; str
 const CATEGORY_ORDER: Array<{ type: SearchType; label: string; icon: string }> = [
   { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
   { type: 'agent', label: 'Agents', icon: 'Bot' },
+  { type: 'work', label: 'Tasks', icon: 'ListChecks' },
   { type: 'file', label: 'Files', icon: 'FileText' },
   { type: 'automation', label: 'Automations', icon: 'Zap' },
   { type: 'skill', label: 'Skills', icon: 'Sparkles' },
@@ -70,6 +79,8 @@ function hrefForItem(item: SearchItem): string {
       return `/app/chat?id=${encodeURIComponent(item.id)}`
     case 'agent':
       return `/app/agents?agentId=${encodeURIComponent(item.id)}`
+    case 'work':
+      return hrefForTask(item.id)
     case 'file':
       if (item.description === 'note') return `/app/notes?id=${encodeURIComponent(item.id)}`
       return `/app/files?file=${encodeURIComponent(item.id)}`
@@ -111,6 +122,12 @@ export function GlobalSearchDialog({
   const [selectedCategory, setSelectedCategory] = useState<SearchType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const [agents, setAgents] = useState<SearchItem[]>([])
+  // Task results belong to the workspace they were fetched for; another workspace never shows them.
+  const [taskResults, setTaskResults] = useState<{ workspaceId: string | null | undefined; items: SearchItem[] }>({ workspaceId: undefined, items: [] })
+  const tasks = taskResults.workspaceId === workspaceId ? taskResults.items : EMPTY_SEARCH_ITEMS
+  const { capabilities } = useOverlayCapabilities()
+  const { allows } = useAuthorization()
+  const workEnabled = capabilities.work && allows({ all: ['work.use'] })
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -177,6 +194,29 @@ export function GlobalSearchDialog({
     }
   }, [open, workspaceId])
 
+  // Tasks are like agents: a small list the person can see, fetched once per open and filtered here.
+  useEffect(() => {
+    if (!open || !workEnabled) return
+    let cancelled = false
+    void overlayAppClient.work.list()
+      .then(({ items }) => {
+        if (cancelled) return
+        const titles = new Map(items.map((task) => [task.id, task.title]))
+        setTaskResults({
+          workspaceId,
+          items: items.map((task) => ({
+            type: 'work' as const,
+            id: task.id,
+            name: task.title,
+            description: [WORK_STATUS_LABELS[task.status], task.parentId ? titles.get(task.parentId) : null].filter(Boolean).join(' · '),
+            icon: 'ListChecks',
+          })),
+        })
+      })
+      .catch(() => { if (!cancelled) setTaskResults({ workspaceId, items: [] }) })
+    return () => { cancelled = true }
+  }, [open, workEnabled, workspaceId])
+
   const allCategories: SearchCategory[] = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const matches = (item: SearchItem) =>
@@ -186,10 +226,11 @@ export function GlobalSearchDialog({
 
     const extras: SearchCategory[] = [
       { type: 'agent' as const, label: 'Agents', icon: 'Bot', items: agents.filter(matches).slice(0, 10) },
+      { type: 'work' as const, label: 'Tasks', icon: 'ListChecks', items: workEnabled ? tasks.filter(matches).slice(0, 10) : [] },
     ].filter((cat) => cat.items.length > 0)
 
     return [...(categories as SearchCategory[]), ...extras]
-  }, [agents, categories, query])
+  }, [agents, categories, query, tasks, workEnabled])
 
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []

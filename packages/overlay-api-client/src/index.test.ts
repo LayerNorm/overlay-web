@@ -488,3 +488,39 @@ test('mutation helpers send Idempotency-Key when idempotencyKey is set', async (
   assert.equal(new Headers(calls[1]!.init?.headers).get('Idempotency-Key'), 'turn-t1')
   assert.equal(new Headers(calls[2]!.init?.headers).get('Idempotency-Key'), 'file-1')
 })
+
+test('work methods hit the work routes with the right methods, encoded ids, queries, and bodies', async () => {
+  const { calls, client } = createRecordedClient()
+
+  await client.work.list({ view: 'workspace' })
+  await client.work.list()
+  await client.work.context()
+  await client.work.get('item/1')
+  await client.work.create({ title: 'Ship it', scope: 'workspace', dueDate: '2026-03-01' })
+  await client.work.update('item_1', { status: 'review', assigneePrincipalId: null })
+  await client.work.move('item_1', { status: 'done', afterId: 'item_2', beforeId: null })
+  await client.work.events('item_1')
+  await client.work.addComment('item_1', { body: 'Looks good' })
+  await client.scope.archive('work', 'item_1')
+  await client.work.remove('item_1')
+
+  const seen = calls.map((call) => `${call.init?.method ?? 'GET'} ${String(call.input)}`)
+  assert.deepEqual(seen, [
+    'GET https://example.test/api/v1/work?view=workspace',
+    'GET https://example.test/api/v1/work',
+    'GET https://example.test/api/v1/work/context',
+    'GET https://example.test/api/v1/work/item%2F1',
+    'POST https://example.test/api/v1/work',
+    'PATCH https://example.test/api/v1/work/item_1',
+    'POST https://example.test/api/v1/work/item_1/move',
+    'GET https://example.test/api/v1/work/item_1/events',
+    'POST https://example.test/api/v1/work/item_1/events',
+    'POST https://example.test/api/v1/scope',
+    'DELETE https://example.test/api/v1/work/item_1',
+  ])
+  assert.deepEqual(await jsonBody(calls[4]!), { title: 'Ship it', scope: 'workspace', dueDate: '2026-03-01' })
+  assert.deepEqual(await jsonBody(calls[5]!), { status: 'review', assigneePrincipalId: null })
+  assert.deepEqual(await jsonBody(calls[6]!), { status: 'done', afterId: 'item_2', beforeId: null })
+  assert.deepEqual(await jsonBody(calls[8]!), { body: 'Looks good' })
+  assert.deepEqual(await jsonBody(calls[9]!), { resource: 'work', id: 'item_1', action: 'archive' })
+})
