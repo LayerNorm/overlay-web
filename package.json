@@ -119,6 +119,7 @@
     "check:config": "NODE_OPTIONS=--conditions=react-server tsx --test src/shared/config/overlayConfigSchema.test.ts src/server/config/loadOverlayConfig.test.ts src/server/auth/connections/preset-registry.test.ts && NODE_OPTIONS=--conditions=react-server tsx scripts/ci/check-overlay-config.ts",
     "docs:dev": "npm run docs:generate:api && cd docs && node ../scripts/ci/run-mint.mjs dev --no-open",
     "docs:generate:api": "tsx scripts/ci/generate-web-api-openapi.ts",
+    "test:work:ui": "node scripts/qa/work-ui-qa.mjs",
     "docs:health": "NODE_OPTIONS=--conditions=react-server tsx scripts/ci/check-docs-health.ts",
     "docs:update": "npm run docs:generate:api && npm run docs:health",
     "docs:check": "npm run docs:generate:api && npm run docs:health && cd docs && node ../scripts/ci/run-mint.mjs validate && node ../scripts/ci/run-mint.mjs broken-links --check-anchors",

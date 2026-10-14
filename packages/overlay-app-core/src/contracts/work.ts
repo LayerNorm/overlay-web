@@ -116,3 +116,6 @@ export interface AddWorkCommentRequest { body: string }
 export interface WorkItemListResponse { items: WorkItem[] }
 export interface WorkItemResponse { item: WorkItem }
 export interface WorkEventListResponse { events: WorkEvent[] }
+
+/** Dispatched on `window` when tasks changed somewhere else on the page (for example after a restore), so views reload. */
+export const WORK_UPDATED_EVENT = 'overlay:work-updated'
