@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Support project-scoped production automation credentials through exact-main REST builds and promotion, without account-wide Vercel profile access.
+
 - Automatically deploy current main to Vercel and run production smoke; synchronize Convex only when backend inputs change. Make staging optional and Development Workflow the authoritative instructions.
 
 - **The secondary sidebar uses the shadcn Sidebar.** Agents expand into an indented tree under a vertical guide line (threads, automations, New thread); hovering an agent shows a quick New thread button, and hovering a thread shows Archive and Delete. Loading shows row-shaped placeholders instead of a spinner line. Navigation rows (Chats, Files, Work, Settings) share the same menu parts, and a thin handle on the panel's edge hides it. Behavior and routes are unchanged. Quick creation refreshes the tree and rejects stale bundle responses; hover actions stay scoped to their own row, mobile titles reserve action space, and exported actions do not submit forms by default. New `Sidebar*` parts are exported from `@overlay/ui/primitives`.

@@ -32,6 +32,10 @@ legacy branch is frozen. Authorized manual production uses
 Production Release automatically deploys to Vercel itself. Never pass `.env.local`
 or feature-worktree source to production commands.
 
+The Vercel credential is non-expiring and restricted to the production project.
+Remote builds use exact main Git source and project-scoped REST promotion with
+live alias verification; account-wide profile/CLI lookup is not required.
+
 Shared Preview/staging test credentials are configured once per scope, with no
 scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
 calls. Convex's five-day preview retention is renewed while PRs are open and is

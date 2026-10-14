@@ -29,9 +29,12 @@ The prepared file uses mode `0600` in a private directory. Set
 the four environment variables explicitly. Unknown JSON fields are ignored;
 explicit environment values take precedence. This file is never part of a web
 deployment upload and does not replace production provider settings on Vercel.
-The native
-GitHub/Vercel CLI accounts must be `DevelopedByDev`/`developedbydev1`. Install the
-reviewed dependencies and Playwright Chromium before release.
+The GitHub identity must be `DevelopedByDev` (or the trusted main Actions run).
+Use a non-expiring Vercel token restricted to Divyansh's `overlay-landing` project.
+Project-scoped tokens cannot read the account profile or use account-wide CLI
+project lookup. Production therefore builds exact GitHub main source and promotes
+through project-scoped REST endpoints, verifying the fixed project/team/repository
+and live alias. Install reviewed dependencies and Playwright Chromium before release.
 
 When `--require-staging` is selected, the command first validates the successful exact-main candidate artifact and producer. Otherwise it directly builds production web without assigning
 domains, checks provenance, publishes and verifies the canonical web alias,
@@ -254,6 +257,11 @@ baseline is the accepted pre-automation backend at `7578b6914`.
 Root native Git builds remain disabled to prevent a duplicate deployment; Actions
 automatically deploys to Vercel. Disable Production Release to pause auto releases.
 Staging is optional and its separate workflow remains available on demand.
+
+Production REST builds keep custom domains unassigned until the owned exact-SHA
+build is READY. The promotion endpoint is followed by bounded canonical-alias
+readback before Convex synchronization or smoke. No owner-wide Vercel profile
+permission or local source upload is needed.
 
 Closed preview backends can temporarily exhaust the team deployment quota before
 retention expires. Audit exact project/type/PR ownership and closed PR state before

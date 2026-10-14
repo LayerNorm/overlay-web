@@ -60,6 +60,31 @@ export function productionBuildArguments(sha) {
     '--meta', 'githubCommitSha=' + sha, '--meta', 'githubCommitRef=main']
 }
 
+/** Project-scoped credentials can deploy Git source without account-wide CLI calls. */
+export function productionDeploymentRequest(sha) {
+  revision(sha)
+  return { name: PRODUCTION.projectName, project: PRODUCTION.projectId,
+    target: 'production', autoAssignCustomDomains: false,
+    gitSource: { type: 'github', repoId: PRODUCTION.repositoryId, ref: 'main', sha },
+    meta: { overlayReleaseLane: 'production', overlayReleaseSha: sha,
+      overlayConvexBackend: PRODUCTION.backend, githubCommitSha: sha, githubCommitRef: 'main' },
+  }
+}
+
+export async function publishProductionWeb({ vercel, deployment, attempts = 120,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+  assert.equal(deployment.projectId, PRODUCTION.projectId)
+  assert.match(deployment.id ?? '', /^dpl_[A-Za-z0-9]+$/)
+  await vercel(`/v10/projects/${PRODUCTION.projectId}/promote/${deployment.id}`, { method: 'POST', body: {} })
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const alias = await vercel(`/v4/aliases/${PRODUCTION.hostname}`)
+    assert.equal(alias.projectId, PRODUCTION.projectId)
+    if (alias.deployment?.id === deployment.id) return
+    if (attempt + 1 < attempts) await sleep(2000)
+  }
+  throw new Error('Production publication readiness timeout')
+}
+
 /** CLI 63 non-interactive output wraps the native URL in a deployment object. */
 export function productionCliOrigin(stdout) {
   let value
@@ -132,7 +157,8 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     productionCredentials(env)
     phase = 'owner and project'
     await verifyProductionActor(github, env, sha)
-    assert.equal((await vercel('/v2/user')).user?.username, 'developedbydev1', 'Use Divyansh Vercel identity')
+    // Scoped tokens intentionally cannot read /v2/user. Verify the fixed
+    // Divyansh-owned project, team and Git repository instead.
     await verifyProductionProject(vercel)
     let evidence
     if (requireStaging) {
@@ -198,10 +224,6 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   let locked = false
   const common = runCommand('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root })
   const lock = join(common, 'overlay-production-promotion.lock')
-  // Scope the reviewed CLI exception to this child; retain repository dependency age policy.
-  const cliEnv = { ...env, VERCEL_TOKEN: vercelToken, npm_config_min_release_age: '0' }
-  const cli = args => runCommand('npx', ['--yes', 'vercel@63.1.2', ...args,
-    '--scope', PRODUCTION.teamSlug, '--non-interactive'], { cwd: root, env: cliEnv })
   try {
     mkdirSync(lock); locked = true
     const result = await promote({ sha, checkOnly, requireStaging: args.includes('--require-staging'), env, github, vercel,
@@ -222,12 +244,16 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         return promotionEvidence(JSON.parse(readFileSync(join(directory, 'staging-smoke.json'), 'utf8')), sha, run, job)
       },
       buildWeb: async () => {
-        const inspected = JSON.parse(cli(['project', 'inspect', '--format', 'json']))
-        assert.equal(inspected.id, PRODUCTION.projectId, 'CLI project mismatch')
-        const stdout = cli(productionBuildArguments(sha))
-        return waitForProductionBuild({ vercel, origin: productionCliOrigin(stdout), sha })
+        const requested = await vercel('/v13/deployments', { method: 'POST',
+          query: { forceNew: '1' }, body: productionDeploymentRequest(sha) })
+        const deployment = await waitForProductionBuild({ vercel, origin: 'https://' + requested.url, sha })
+        assert.ok(deployment.gitSource?.type === 'github'
+          && Number(deployment.gitSource.repoId) === PRODUCTION.repositoryId
+          && deployment.gitSource.ref === 'main' && deployment.gitSource.sha === sha,
+        'Production Git source mismatch')
+        return deployment
       },
-      publishWeb: async d => { cli(['promote', 'https://' + d.url, '--yes']) },
+      publishWeb: async deployment => publishProductionWeb({ vercel, deployment }),
       pushBackend: async () => synchronizeBackend({ github, sha,
         changed: previousSha => backendInputsChanged({ previousSha, sha, root, run: runCommand }),
         push: async () => {
