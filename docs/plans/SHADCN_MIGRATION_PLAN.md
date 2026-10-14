@@ -198,7 +198,7 @@ Consumer audit:
 | Sidebar account fallback (desktop/mobile) | Popover; usage/storage/apps disclosures and links remain native controls |
 | Workspace/account switcher | Popover; workspace buttons expose pressed state; disclosures, retry and create-dialog handoff remain interactive |
 | Chat/automation header model picker | Popover; generation/selection-mode controls and multi-selection remain native controls; model details use a nested row-anchored Popover |
-| ComprehensiveModelPicker (agent model preferences) | Popover; preserves domain rows, badges, preference callbacks and model order |
+| Exported ComprehensiveModelPicker (no current production callers) | Popover; local real-component fixture covers rows, badges, callbacks and model order |
 | ScopeItemActions / ScopeBulkActions | Inline buttons today, not floating menus; unchanged |
 | MenuSurface story | Standalone surface with native buttons; unchanged API |
 
