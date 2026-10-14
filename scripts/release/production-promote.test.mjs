@@ -148,7 +148,7 @@ function fixture({ fail = '', wrongOwner = false, webNotLive = false } = {}) {
     return deployment
   }
   const step = name => { calls.push(name); if (fail === name) throw new Error('private fixture error') }
-  return { sha, env, github, vercel, calls, states,
+  return { sha, env, github, vercel, calls, states, requireStaging: true,
     verifyCheckout: () => step('checkout'), acceptStaging: async () => { step('staging'); return evidence },
     buildWeb: async () => { step('build'); return deployment },
     publishWeb: async () => { step('publish'); if (!webNotLive) live = deployment.id },

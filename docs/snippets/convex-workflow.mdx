@@ -2,9 +2,10 @@ Treat matching web and Convex revisions as one release unit. Local development
 uses an engineer-owned backend; feature worktrees never deploy shared environments.
 PR previews deploy only their per-PR backend.
 
-After main changes, Production Release dispatches dedicated staging acceptance,
-then publishes and verifies production web before deploying production Convex and
-running authenticated smoke. The legacy staging branch is frozen.
+After main changes, Production Release publishes and verifies production web,
+synchronizes production Convex only when backend inputs change, and runs
+authenticated smoke. Staging is optional for sensitive changes explicitly requesting
+extra acceptance. The legacy staging branch is frozen.
 
 For authorized manual recovery, use the guarded command from clean current
 canonical main:

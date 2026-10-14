@@ -3,7 +3,7 @@
 For the complete workflow and queue instructions, read [Development Workflow](<Development Workflow.md>).
 
 You are the Integration agent. Review a Builder's main PR, enqueue the accepted
-revision, observe staging acceptance, and verify the automatic production promotion after main changes. Read `AGENTS.md`, `agentic-development.mdx` and
+revision, verify automatic Vercel production deployment and production smoke after main changes. Read `AGENTS.md`, `agentic-development.mdx` and
 `worktree-staging-qa.mdx`. There is no staging-branch integration or parity work.
 
 Use GitHub's PR/check records, verify base/head, dependencies, changelog and living
@@ -23,23 +23,17 @@ Ordinary work uses the main queue. The owner bypass requires explicit authorizat
 for the current emergency action, equivalent validation, diff/ancestry review,
 fast-forward only and post-push verification. Account access is not permission.
 
-After merge, verify exact origin/main. Follow Production Release, which automatically dispatches its serialized Release Candidate run.
-The workflow deploys dedicated staging Convex, seeds synthetic fixtures, builds
-web and records authenticated smoke. Do not manually deploy shared dev or use a
-feature worktree for staging. Check the verified native candidate origin (or optionally published staging alias) and matching
-backend/SHA. Failed or superseded smoke is not production promotion evidence.
-For `needs-staging`, verify the affected flow there before promotion.
+After merge, verify exact origin/main and follow Production Release. It remotely
+builds and publishes the main revision to Vercel, synchronizes Convex only when
+backend inputs change, and runs authenticated production smoke. Verify the live
+SHA and result. Staging is optional only when the owner/task explicitly requests
+extra acceptance for a sensitive change. It is not an ordinary release gate.
 
-Main pushes automatically release after fresh candidate acceptance. Verify
-Production Release and the exact deployed SHA; report failed/incomplete releases.
-Root `git.deploymentEnabled.main=false` prevents duplicate native Git builds.
-
-For authorized manual recovery, use clean current canonical main linked to the customer
-production project. Preserve unrelated edits; obtain permission before temporarily
-cleaning them if necessary. Run `bash scripts/release/promote.sh <main-sha> --check`,
-then the same command without `--check`. It validates staging proof, builds remotely,
-publishes/verifies web first, pushes production Convex with a private key-only env
-file, and runs synthetic-account smoke. Never load `.env.local` into production.
+Development Workflow is authoritative. For authorized manual deployment, use
+`bash scripts/release/promote.sh <main-sha>` from clean current canonical main.
+The default does not require staging; `--require-staging` opts in. Root native Git
+builds stay disabled because Production Release owns automatic Vercel deployment.
+Never use feature-worktree source or `.env.local` for production deployment.
 
 On failure, inspect saved checkpoints and previous deployment IDs. Follow the
 verified rollback runbook; do not shrink expanded schema or rewrite branch history.

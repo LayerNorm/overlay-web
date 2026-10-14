@@ -4,6 +4,8 @@ Use multiple Builder threads to develop independent features and one Integration
 
 **The workflow:** assign a feature → implement → local smoke QA → draft PR → Vercel preview interaction QA → ready PR → Integration review → main merge queue.
 
+Production follows **merge to main → automatic Vercel production deployment → production smoke checks**. Convex is synchronized when backend inputs change. Staging is optional for explicitly requested sensitive-change acceptance. This document is the authoritative workflow; supporting guides must not add an ordinary staging prerequisite.
+
 ## How to use this document
 
 Tag this file in a thread and identify the role and task. The agent follows the matching section below and reads the full repository `AGENTS.md` and relevant living docs before working. Existing account access and environment configuration are prerequisites; use the owner's Divyansh accounts and the configured test credentials.
@@ -39,7 +41,7 @@ Process independent ready PRs while others are still being built or fixed.
 Keep using this thread for subsequent PRs. Report blockers with the exact
 failure and the next action. Stop after the available queue is processed;
 use supported wait or notification tools if this session supports them.
-Main pushes automatically release after candidate acceptance; verify the Production Release result.
+Main pushes automatically deploy to Vercel; verify the Production Release and production smoke result.
 ```
 
 ## Builder instructions
@@ -99,7 +101,7 @@ Backend/migration steps: [required steps, or none]
 Limitations: [anything incomplete or unverified, or none]
 ```
 
-Flag `needs-staging` when the feature requires dedicated staging acceptance before production; the PR still targets main. Respond to Integration findings with new commits and refreshed QA. Keep the worktree until Integration confirms merge. The Builder stops at PR readiness and leaves queue entry, merging, and releases to Integration.
+Flag `needs-staging` only when the owner/task explicitly requests optional staging acceptance for a sensitive feature; the PR still targets main. Respond to Integration findings with new commits and refreshed QA. Keep the worktree until Integration confirms merge. The Builder stops at PR readiness and leaves queue entry, merging, and releases to Integration.
 
 ## Integration instructions
 
@@ -125,18 +127,17 @@ Verify the PR is merged, its accepted changes reached `origin/main`, and record 
 
 Report each accepted PR and main SHA, or the concrete blocker and next action. Describe the state accurately: ready, queued, merged, deployed, or verified. Continue processing the available authorized PRs in this Integration thread.
 
-Main changes automatically run candidate acceptance and production promotion. Leave the legacy staging branch frozen.
+Main changes automatically deploy to production and run smoke checks. Leave the legacy staging branch frozen.
 
 ## Automatic production release
 
-Production Release runs after every main push. Integration verifies the outcome:
+1. A main push starts Production Release. It remotely builds and publishes that exact main revision to Vercel.
+2. The workflow verifies the live production deployment and synchronizes Convex only if its source, imported shared code or dependencies changed.
+3. It runs authenticated production smoke and saves the deployed SHA, previous deployment and result. Report live and verified only after smoke passes.
 
-1. Verify Production Release selected current main and dispatched a fresh Release Candidate.
-2. Verify matching web/backend revisions and authenticated staging smoke. Complete any `needs-staging` feature QA.
-3. The workflow runs the guarded promotion command from clean main CI. Authorized manual recovery uses `bash scripts/release/promote.sh <main-sha> --check`, then without `--check`.
-4. Verify production web publication, matching production Convex, and authenticated smoke. Preserve the release and rollback evidence.
+Staging is optional for sensitive changes. Use `needs-staging` and explicitly dispatch its acceptance only when the owner/task calls for it. Ordinary reviewed UI changes deploy directly from main. The legacy staging branch stays frozen.
 
-Follow [Staging and Production Promotion](worktree-staging-qa.mdx) for exact commands and recovery. Report **live and verified** only after production smoke passes; otherwise state the actual merged/building/failed phase.
+For authorized manual deployment, run `bash scripts/release/promote.sh <main-sha>` from clean current canonical main. There is no staging requirement by default; `--require-staging` opts into exact-main candidate proof for a sensitive release. Root `git.deploymentEnabled.main=false` prevents a second native Git build: Production Release performs the automatic Vercel deployment itself. Follow [Production deployment details](worktree-staging-qa.mdx) for credentials and recovery, subject to this workflow.
 
 ## Coordination rules
 

@@ -10,7 +10,7 @@ description: "PR previews, main integration, release candidates, and automatic p
 | Local | Working tree | Engineer-owned dev backend and test credentials |
 | PR preview | Current internal main PR head | Per-PR Convex, synthetic Sandbox identity, shared test credentials |
 | Staging | Accepted main SHA | Dedicated `doting-cuttlefish-819`, Sandbox identity, staging test providers |
-| Customer production | Automatically promoted current main SHA | `colorful-chickadee-419`, production identity/providers |
+| Customer production | Automatically deployed current main SHA | `colorful-chickadee-419`, production identity/providers |
 
 Builder verifies a focused main PR on its isolated preview and stops when ready.
 Integration reviews it, resolves findings and enters the main merge queue once
@@ -19,21 +19,18 @@ candidate against current main and earlier queued changes. Keep approving review
 at zero while the sole maintainer cannot approve his own PR; retain history
 protection and the explicit emergency-only owner bypass.
 
-The legacy staging branch is frozen. Main pushes start Production Release. It
-automatically dispatches the exact current main candidate
-in the existing preview project, reusing its dedicated test backend. The serialized
-build seeds synthetic data and runs authenticated smoke before promotion. `needs-staging` requests stronger hosted QA without
-changing PR base.
+[Development Workflow](<Development Workflow.md>) is authoritative. Main changes
+trigger Production Release: remote Vercel production build/publication, live SHA
+verification, Convex synchronization only when backend inputs change, then
+production smoke. There is no mandatory staging step.
 
-Production Release runs automatically after every main push. It waits for fresh
-candidate acceptance before running the guarded promotion command in clean main CI.
-Root `git.deploymentEnabled.main=false` prevents a duplicate native Git build.
-For authorized manual recovery, run `bash scripts/release/promote.sh <main-sha>` from
-clean current canonical main. It checks successful exact-main release-candidate proof, builds remotely,
-publishes/verifies web, pushes production Convex, then runs synthetic-account
-smoke. Preserve saved checkpoints and verify rollback through actual alias
-readback. Never pass `.env.local`, customer fixtures or feature-worktree source
-to production deployment commands.
+Staging is optional for explicitly requested sensitive-change acceptance. Its
+legacy branch is frozen. Authorized manual production uses
+`bash scripts/release/promote.sh <main-sha>` from clean current canonical main;
+`--require-staging` explicitly opts into candidate proof. Root
+`git.deploymentEnabled.main=false` prevents a duplicate native Git build because
+Production Release automatically deploys to Vercel itself. Never pass `.env.local`
+or feature-worktree source to production commands.
 
 Shared Preview/staging test credentials are configured once per scope, with no
 scheduled expiry. Model budgets remain bounded; exhausting a budget still stops

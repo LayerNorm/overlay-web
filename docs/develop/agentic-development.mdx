@@ -9,11 +9,13 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 
 ## Release model
 
-Every feature reaches `main` through a focused pull request and the merge queue.
-Its isolated preview verifies the feature before integration. Every main push starts Production Release, which dispatches a fresh candidate with
-the dedicated test Convex backend and automatically promotes that exact main SHA
-after authenticated candidate smoke passes. Root `git.deploymentEnabled.main=false`
-prevents duplicate native Git deployments from bypassing this workflow.
+[Development Workflow](<Development Workflow.md>) is the authoritative Builder,
+Integration and release policy. Every feature reaches main through a focused PR
+and the merge queue. Every main push automatically deploys the exact revision to
+Vercel production, synchronizes Convex only when backend inputs change, and runs
+production smoke. Staging is optional for explicitly requested sensitive changes.
+Root `git.deploymentEnabled.main=false` prevents a duplicate native Git build;
+Production Release performs the automatic deployment.
 
 The legacy `staging` branch is frozen. Do not push, target PRs at, align or deploy
 it. Staging is an environment built from main, not an integration branch. See
@@ -81,12 +83,12 @@ in the same commit series. Do not include unrelated cleanup.
 | UI | Targeted lint/checks and visual QA of the affected flow. |
 | Shared contract | Relevant contract checks and typecheck. |
 | Auth, billing, tenant, secrets or data migration | Relevant security/contract checks, rollback and isolated hosted QA. |
-| Convex or runtime | Matching web/backend revision and staging smoke before production. |
+| Convex or runtime | Matching web/backend revision, relevant contracts and production smoke; staging only when explicitly requested. |
 
 Required GitHub checks stay mandatory. The current quality gate includes install,
 lint, typecheck, build, the tracked full suite, and config/boundary checks. A green
 build does not prove authenticated product behavior. `needs-staging` flags flows
-that require dedicated staging QA before production; it does not change PR base.
+for which the owner/task explicitly requests optional staging QA; it does not change PR base.
 
 ### Dark release flags
 
@@ -160,27 +162,18 @@ joins. Ordinary work uses PRs and the queue; a bypass or direct push requires an
 explicit current-task instruction and equivalent validation, ancestry review,
 fast-forward only and post-push verification. Credentials alone are not permission.
 
-## Staging and production
+## Production and optional staging
 
-The automatically or manually dispatched, serialized release-candidate job builds the dedicated backend, guarded synthetic
-fixtures, then web; it verifies the deployment and authenticated smoke for that
-SHA. Superseded builds do not provide promotion evidence. Inspect `Staging Deploy`,
-`Staging Smoke`, screenshots and workflow artifacts for the exact accepted main.
-Preview closure removes its aliases and stops backend renewal.
+Follow [Development Workflow](<Development Workflow.md>). Main changes deploy
+automatically to Vercel production and run authenticated production smoke. The
+release synchronizes production Convex only when backend inputs change. Verify
+the exact SHA, live alias, smoke result and saved rollback checkpoint.
 
-Main pushes automatically start `.github/workflows/production-release.yml`. It
-waits for fresh candidate acceptance, then uses the guarded promotion command in a
-clean main CI checkout. Verify its exact-SHA result and report failures. For
-authorized manual recovery, use
-`bash scripts/release/promote.sh <main-sha>` from clean current canonical main.
-The command requires successful same-run exact-main candidate evidence, remotely builds and publishes
-web, verifies it live, then pushes customer production Convex and runs smoke.
-Never pass `.env.local` to production Convex.
-
-For rollback, verify the saved previous web deployment and follow the rollback
-runbook. Keep schema changes compatible across retained web/backend revisions;
-restore function source through reviewed history without shrinking expanded schema.
-Never reset or force-push release branches.
+For authorized manual deployment, use clean current canonical main and
+`bash scripts/release/promote.sh <main-sha>`. Ordinary releases do not require
+staging. `--require-staging` is an explicit opt-in for sensitive changes after
+manual staging acceptance. Never pass `.env.local` to production or deploy shared
+backends from a feature worktree. The frozen staging branch is not a release lane.
 
 ## Cleanup
 

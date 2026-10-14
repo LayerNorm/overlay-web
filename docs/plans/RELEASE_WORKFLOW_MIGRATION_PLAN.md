@@ -676,13 +676,12 @@ Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including na
 Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
 
 
-## 2026-10-14 automatic production policy
+## 2026-10-14 current workflow
 
-The owner authorized replacing manual-only production with automatic releases on
-main changes. Production Release dispatches fresh exact-main Release Candidate
-acceptance and then uses the existing guarded web-first promotion, production
-Convex and authenticated smoke. Main-only production environment secrets and a
-non-canceling production lock protect this lane. Root Git deployment remains
-disabled to avoid an independent native Vercel build bypassing these checks.
-Historical manual-only checkpoints above describe the migration at acceptance;
-current operating instructions are in `docs/develop/worktree-staging-qa.mdx`.
+The owner superseded manual-only production and mandatory staging.
+`docs/develop/Development Workflow.md` is authoritative: merge to main → automatic
+Vercel production deployment → production smoke. Convex synchronizes when backend
+inputs change. Staging is optional for explicitly requested sensitive acceptance.
+Historical migration checkpoints above describe the old policy, not current release
+prerequisites. Production Release owns automatic Vercel deployment; native Git
+builds remain disabled to avoid duplicate releases.
