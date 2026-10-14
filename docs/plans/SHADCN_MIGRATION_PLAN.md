@@ -265,11 +265,19 @@ Permission/fixture-limited admin, billing and OAuth flows must be reported hones
 
 ## Phase 5 — command (cmdk)
 
-**Restart (2026-10-14):** a fresh Sol 6.1 / High Builder is running from latest
-`origin/main`, which already includes the merged dialogs, tooltips, menus and
-selects. Audit any old Phase 5 branch read-only before reusing work; the prior
-thread exposed no implementation output and no open PR was found. Own a new
-`codex/` feature branch/worktree and stop at a ready main PR.
+**Implementation (2026-10-14):** the replacement Builder owns
+`codex/shadcn-command-palette-restart` from main `7578b6914`. Read-only audit
+found no implementation diff on the old branch. The canonical cmdk primitives
+and retained palette API now compose the merged Radix dialog; application-ranked
+rows bypass cmdk filtering/sorting. Legacy hooks retain their other consumers.
+Current main lacked cmdk in its manifest/lockfile; this PR adds 1.1.1.
+
+UI/app types, targeted lint, UI tests, dialog regression, boundary checks and
+rendered command interactions passed, including 39 presets. [PR #210](https://github.com/LayerNorm/overlay-web/pull/210)
+records exact-head hosted acceptance, checks and readiness. Local fixtures alone
+do not satisfy hosted acceptance. Local production prerender needs configured
+auth/billing/backend env; Storybook has an existing app-core export blocker.
+The scope and acceptance below remain the completion gate.
 
 1. Audit `packages/overlay-ui/src/components/overlays/CommandPalette.tsx`,
    its public types/exports, Storybook and
