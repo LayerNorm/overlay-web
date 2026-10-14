@@ -226,6 +226,11 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-brand-loader-pulse,
+  .app-brand-loader-wsline .animate-spin {
+    animation: none;
+  }
+
   .app-brand-loader-logo,
   .app-brand-loader-word,
   .app-brand-loader-wsline {

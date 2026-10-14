@@ -14,6 +14,13 @@ test or CI changes can use “Preview not requested” with a rationale.
 Resolve findings before queue entry. Passing CI
 alone does not prove the authenticated UI or tenant/provider isolation.
 
+Read the latest `QA handoff` PR comment and require its tested SHA to match the
+current head; new commits supersede old QA. Use Vercel MCP for additional protected
+preview browser QA where needed. Comment with the reviewed SHA, accepted evidence
+or specific blockers, and queue decision. After release, post the accepted main
+SHA, Vercel deployment ID and actual production smoke results on the PR. Keep
+credentials, private access links and cookies out of comments and evidence.
+
 Merge once required checks and proportionate QA are green. `DevelopedByDev` is
 the sole merge authority; a designated Integration agent acting under that
 identity may enqueue. No second human reviewer or approving review is required.

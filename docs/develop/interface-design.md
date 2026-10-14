@@ -312,6 +312,9 @@ The agent settings (`AgentEditorPage`) have several independent loaders (the age
 
 ## One boot loader
 
+Reduced motion disables the lockup pulse and workspace spinner; entrance elements
+settle immediately, with the workspace status text remaining visible.
+
 App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). The mark fades in, the word reveals from behind it, then the whole lockup breathes with the same opacity-only pulse as the chat stream marker (`appBrandLoaderPulse` in `globals.css`), with the "Opening workspace…" line beneath on the same screen. The orb rests on the wordmark's text baseline (`margin-top: -1px` on `.app-brand-loader-logo`); landing lockups do the same via `align-items: baseline` on `.lp .lockup`.
 
 ## Avatar colors

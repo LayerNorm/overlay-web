@@ -32,6 +32,14 @@ revisions require fresh affected QA. Unlabeled PRs pass “Preview not requested
 and require normal CI. Removing the label cleans resources; manual dispatch
 does not bypass opt-in.
 
+If the cloud VM has no Vercel login, first use authenticated Vercel MCP
+`get_access_to_vercel_url` for the canonical PR URL and open the returned private
+link in the QA browser. Return to the clean URL before screenshots/recording.
+Without MCP, use the shared `VERCEL_AUTOMATION_BYPASS_SECRET` from the private
+runtime secret store and the origin-scoped cookie recipe in
+browser-testing-with-agent-browser.md. Keep access links and tokens out of PRs
+and logs; never disable protection or create per-feature keys. App login is separate.
+
 Shared Preview web/backend defaults already contain isolated test model and
 storage credentials. Do not copy `.env.local` wholesale: it contains production
 keys. Unsupported providers stay explicitly disabled. Use the same isolated PR preview for sensitive acceptance checks when requested.
@@ -39,6 +47,13 @@ keys. Unsupported providers stay explicitly disabled. Use the same isolated PR p
 The PR description must state outcome, decisions, touched systems, dependencies,
 risk/rollback, exact checks, preview evidence, migration steps and current SHA.
 Resolve findings with new commits. Do not force-push after review or QA starts.
+
+Post a `QA handoff` PR comment using the Development Workflow template after
+testing. Include the full current tested SHA, clean preview URL, deployment and
+backend identity, actual checks, end-to-end flows/results, sanitized evidence and
+limitations. For CI-only changes, explain why no preview was needed. New pushes
+supersede earlier QA; retest the affected flow and post the new SHA. Keep blocked
+or incomplete work draft; mark ready only after QA and required checks pass.
 
 Stop when the PR is complete and ready for Integration. Do not merge, enqueue,
 deploy production or push release branches. Report the PR URL,
