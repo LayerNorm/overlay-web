@@ -21,7 +21,9 @@ npm run dev
 
 ## Isolated PR preview backends
 
-`scripts/vercel-build.sh` builds PR previews in the `overlay-landing` Vercel project.
+Add `needs-preview` when isolated hosted QA is needed; the trusted controller
+requests the exact PR SHA. Unlabeled PRs create no backend or build.
+`scripts/vercel-build.sh` builds requested PR previews in the `overlay-landing` Vercel project.
 New PR heads use `OVERLAY_RELEASE_LANE=preview`; older open PR heads retain
 the former `staging` value until those branches update. Both values are accepted
 only for Vercel's Preview target. Preview builds require
@@ -38,9 +40,9 @@ inputs, even when the key exists in the parent process; do not use an empty file
 The trusted PR controller also holds the project preview key as
 `CONVEX_PREVIEW_CONTROL_KEY` in the main-only `release-control` environment.
 Six-hour reconciliation validates the project, preview type, PR identifier and
-reference before extending an open PR backend to four days from now when fewer
+reference before extending a labeled open PR backend to four days from now when fewer
 than two days remain. This is within Starter's five-day retention entitlement
-and preserves data. Closed PRs stop renewing and expire naturally. A missing or
+and preserves data. Unlabeled or closed PRs stop renewing and expire naturally. A missing or
 expired backend forces a fresh web build at the same SHA, with fresh seed data;
 an old READY frontend cannot be reused just because its SHA matches.
 

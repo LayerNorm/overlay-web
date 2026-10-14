@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: Internal PR number to provision or clean up
+        description: Internal PR to reconcile (needs-preview label required to deploy)
         required: true
         type: string
   schedule:

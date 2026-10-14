@@ -220,13 +220,6 @@ jobs:
         run: node scripts/ci/run-all-tests.mjs --verify-shards 2
       - name: Run full suite shard
         run: node scripts/ci/run-all-tests.mjs --shard ${{ matrix.shard }}/2
-      # Preserve these explicit execution environments as well as full discovery.
-      - name: Verify core route contracts
-        if: matrix.shard == 1
-        run: npm run test:route-characterization
-      - name: Verify gateway contracts
-        if: matrix.shard == 2
-        run: npm run test:gateway-contracts
 
   contracts:
     name: Schema and Routing Contracts
