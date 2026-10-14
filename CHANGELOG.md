@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Keep model details open when opening their nested reasoning select; verify menu/select migrations together.
+- Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 
 - Wrap open-select Tab/Shift+Tab navigation within dialogs, including when footer actions are disabled.
 

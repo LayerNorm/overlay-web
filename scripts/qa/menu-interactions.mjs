@@ -13,6 +13,10 @@ const { expect } = require('playwright/test')
 const postcss = require('postcss')
 const tailwind = require('@tailwindcss/postcss')
 const output = await build({
+  plugins: [{ name: 'unused-sidebar-dependencies', setup(build) {
+    build.onResolve({filter:/^(next\/(image|link|navigation)|@\/components\/layout\/AppSidebar(InlinePanels|AgentsPanel)|\.\/AppSidebarSecondaryPanel)$/}, args => ({path:args.path, namespace:'sidebar-qa'}))
+    build.onLoad({filter:/.*/,namespace:'sidebar-qa'},()=>({contents:'export default function Unused(){return null};export const useRouter=()=>({});export const FilesInlinePanel=Unused;export const AgentsInlinePanel=Unused;export const SecondaryPanelContent=Unused;',loader:'js'}))
+  }}],
   stdin: {
     contents: `
 import React,{useState,useRef} from 'react';import{createRoot}from'react-dom/client';
@@ -20,9 +24,10 @@ import{FloatingMenu,MenuItem,DialogFrame,Popover,PopoverTrigger,PopoverContent,C
 import{ComprehensiveModelPicker}from'./packages/overlay-chat-react/src/components/ComprehensiveModelPicker';
 import{ChatExperienceHeader}from'./packages/overlay-chat-react/src/components/ChatExperienceHeader';
 import{WorkspaceSwitcherView}from'./src/features/workspaces/components/WorkspaceSwitcherView';
+import{MobileTopBar}from'./src/components/layout/sidebar/AppSidebarChrome';
 const models=Array.from({length:30},(_,i)=>({id:'model-'+i,name:i===0?'Alpha':i===1?'Beta':'Model '+i,provider:'QA',cost:0,supportsReasoning:true,reasoningLevels:[{value:'low',label:'Low'},{value:'high',label:'High'}]}));
-function App(){const [open,setOpen]=useState(false),[dialog,setDialog]=useState(false),[selected,setSelected]=useState('none'),[prefs,setPrefs]=useState({modelId:'model-0'}),[workspaceOpen,setWorkspaceOpen]=useState(false),[createOpen,setCreateOpen]=useState(false),[headerOpen,setHeaderOpen]=useState(false),[hover,setHover]=useState(null),[pos,setPos]=useState(null),[mode,setMode]=useState('text'),[selectionMode,setSelectionMode]=useState('multiple'),[ids,setIds]=useState(['model-0']),[reason,setReason]=useState('low');const anchor=useRef(null),legacy=useRef(null),[legacyOpen,setLegacyOpen]=useState(false),rootRef=useRef(null),menuRef=useRef(null),pickerRef=useRef(null),scrollRef=useRef(null);const no=()=>{};
-return <><button id="outside">Outside</button><output id="selected">{selected}</output><output id="reason">{reason}</output>
+function App(){const [open,setOpen]=useState(false),[dialog,setDialog]=useState(false),[selected,setSelected]=useState('none'),[prefs,setPrefs]=useState({modelId:'model-0'}),[workspaceOpen,setWorkspaceOpen]=useState(false),[createOpen,setCreateOpen]=useState(false),[headerOpen,setHeaderOpen]=useState(false),[hover,setHover]=useState(null),[pos,setPos]=useState(null),[mode,setMode]=useState('text'),[selectionMode,setSelectionMode]=useState('multiple'),[ids,setIds]=useState(['model-0']),[reason,setReason]=useState('low');const anchor=useRef(null),legacy=useRef(null),[legacyOpen,setLegacyOpen]=useState(false),rootRef=useRef(null),menuRef=useRef(null),pickerRef=useRef(null),scrollRef=useRef(null);const no=()=>{};const [mobileFallback,setMobileFallback]=useState(false),[accountOpen,setAccountOpen]=useState(false),accountRef=useRef(null);window.showMobileFallback=()=>setMobileFallback(true);
+return <>{mobileFallback?<MobileTopBar hidden={false} brandLink={<span>Overlay QA</span>} isGuestConfirmed={false} displayName="QA" mobileAccountOpen={accountOpen} onMobileAccountOpenChange={setAccountOpen} accountRef={accountRef} onOpenMenu={no} onCloseMenu={no} accountMenu={<>{["Apps","Usage","Storage"].map(label=><CollapsibleSection key={label} label={label}><button onClick={()=>setSelected(label)}>{label} content</button></CollapsibleSection>)}</>}/>:null}<button id="outside">Outside</button><output id="selected">{selected}</output><output id="reason">{reason}</output>
 <div style={{position:'fixed',bottom:8,right:8}}><FloatingMenu anchorRef={anchor} open={open} onOpenChange={setOpen} kind="menu" trigger={<button id="actions" ref={anchor}>Actions</button>} className="w-48"><MenuItem onClick={()=>setSelected('Alpha')}>Alpha</MenuItem><MenuItem disabled onClick={()=>setSelected('disabled')}>Disabled</MenuItem><MenuItem onClick={()=>setSelected('Beta')}>Beta</MenuItem><MenuItem onClick={()=>setDialog(true)}>Open dialog</MenuItem></FloatingMenu></div>
 <div style={{position:'fixed',top:8,right:8,width:240}}><ComprehensiveModelPicker generationMode="text" preferences={prefs} onPreferencesChange={setPrefs} chatModels={models}/></div>
 <div style={{position:'fixed',top:48,left:8,width:280}}><WorkspaceSwitcherView rootRef={rootRef} menuRef={menuRef} open={workspaceOpen} onOpenChange={setWorkspaceOpen} compact={false} placement="footer" status="ready" workspaces={[{id:'one',name:'Workspace One',humanMemberCount:2},{id:'two',name:'Workspace Two',humanMemberCount:3}]} activeWorkspace={{id:'one',name:'Workspace One'}} activeWorkspaceId="one" switchingWorkspaceId={null} error={null} actionError={null} refresh={no} onSelectWorkspace={id=>{setSelected(id);setWorkspaceOpen(false)}} onCreateRequest={()=>{setWorkspaceOpen(false);setCreateOpen(true)}} createOpen={createOpen} createBusy={false} onCreateOpenChange={setCreateOpen} onCreate={async()=>setCreateOpen(false)} accountMenu={<CollapsibleSection label="Usage"><Toggle checked={true} onCheckedChange={no} aria-label="Example toggle"/></CollapsibleSection>}/></div>
@@ -165,6 +170,12 @@ try {
   await expect.poll(detailsAlignment).toBeLessThan(2)
   await header.locator('.max-h-72.overflow-y-auto').evaluate(el => { el.scrollTop = 15 })
   await expect.poll(detailsAlignment).toBeLessThan(2)
+  await details.getByRole('combobox', { name: 'Reasoning effort' }).click()
+  await page.keyboard.press('Tab')
+  await expect(page.locator('#outside')).toBeFocused()
+  if (await header.count() === 0) await page.getByRole('button', { name: 'Header models', exact: true }).click()
+  await header.getByRole('button', { name: 'Beta', exact: true }).hover()
+  await details.waitFor()
   const reasoningBefore = await page.locator('#reason').textContent()
   await details.getByRole('combobox', { name: 'Reasoning effort' }).click()
   await page.getByRole('listbox').waitFor()
@@ -196,6 +207,20 @@ try {
   await mobile.getByRole('button', { name: 'Alpha', exact: true }).tap()
   await mobile.getByRole('dialog', { name: 'Choose model', exact: true }).getByRole('button', { name: 'Beta', exact: true }).tap()
   await mobile.screenshot({ path: `${out}/mobile-touch.png` })
+  await mobile.keyboard.press('Escape')
+  await mobile.evaluate(()=>window.showMobileFallback())
+  const accountButton=mobile.getByRole('button',{name:'Account menu',exact:true})
+  await accountButton.tap()
+  for(const label of ['Apps','Usage','Storage']){
+    await mobile.getByRole('button',{name:new RegExp('^'+label+'$','i')}).tap()
+    const content=mobile.getByRole('button',{name:label+' content',exact:true})
+    await content.tap()
+    await expect(mobile.getByRole('dialog',{name:'Account',exact:true})).toBeVisible()
+    assert.equal(await mobile.locator('#selected').textContent(),label)
+  }
+  await mobile.keyboard.press('Escape');await expect(accountButton).toBeFocused()
+  await accountButton.tap();await mobile.touchscreen.tap(8,500);await expect(mobile.getByRole('dialog',{name:'Account',exact:true})).toHaveCount(0)
+  console.log('PASS actual mobile account fallback Apps/Usage/Storage disclosures, content clicks, Escape and outside dismissal')
   assert.deepEqual(errors, [])
   console.log(`PASS light/dark/CSS preset tokens and mobile/touch; screenshots: ${out}; no page errors`)
 } finally {

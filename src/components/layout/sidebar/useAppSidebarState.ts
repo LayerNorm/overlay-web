@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type RefObject, type SetStateAction } from 'react'
+import { useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
 import { MessageSquare } from 'lucide-react'
 import {
   resolveOverlayAppShellConfig,
@@ -48,7 +48,6 @@ import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
   useBodyScrollLock,
-  useClickOutside,
   useCollaborationUnread,
   useGlobalSearch,
   useSidebarEntitlements,
@@ -454,7 +453,6 @@ function useSidebarDerivedPanels(args: {
   setMobileAccountOpen: Dispatch<SetStateAction<boolean>>
   setAccountMenuOpen: Dispatch<SetStateAction<boolean>>
   setChatPanelRefreshKey: Dispatch<SetStateAction<number>>
-  mobileAccountRef: RefObject<HTMLDivElement | null>
   mobileMenuOpen: boolean
 }) {
   const {
@@ -495,7 +493,6 @@ function useSidebarDerivedPanels(args: {
     setMobileAccountOpen,
     setAccountMenuOpen,
     setChatPanelRefreshKey,
-    mobileAccountRef,
     mobileMenuOpen,
   } = args
   const savedScope = useSavedPanelScope()
@@ -587,7 +584,6 @@ function useSidebarDerivedPanels(args: {
     setPendingNav,
     closeMobileDrawer,
   })
-  useClickOutside(mobileAccountRef, mobileAccountOpen, setMobileAccountOpen)
   useBodyScrollLock(mobileMenuOpen)
 
   const {
@@ -840,7 +836,6 @@ export function useAppSidebarState({
     setMobileAccountOpen,
     setAccountMenuOpen,
     setChatPanelRefreshKey,
-    mobileAccountRef,
     mobileMenuOpen,
   })
 
