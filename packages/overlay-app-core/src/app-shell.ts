@@ -32,7 +32,7 @@ export const DEFAULT_OVERLAY_BRAND_CONFIG: OverlayBrandConfig = {
   shortName: 'overlay',
   logoSrc: '/assets/overlay-logo.png',
   logoAlt: '',
-  homeHref: '/app/agents',
+  homeHref: '/app/work',
   supportEmail: 'divyansh@layernorm.co',
   organizationName: 'Overlay',
 }

@@ -1,4 +1,5 @@
-export const ROOT_APP_DESTINATION = '/app/agents'
+/** Where a signed-in person lands: Work. (`/app/agents` stays the destination for the public showcase.) */
+export const ROOT_APP_DESTINATION = '/app/work'
 export const ROOT_SHOWCASE_DESTINATION = '/app/agents?showcase=1&id=showcase-agent-welcome'
 
 export type RootSessionResolution =
