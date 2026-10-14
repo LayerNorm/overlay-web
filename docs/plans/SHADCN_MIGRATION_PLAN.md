@@ -93,8 +93,9 @@ This is designed so any agent that knows shadcn can navigate instantly:
   markup in feature code") and add an ESLint `no-restricted-syntax` rule on
   raw elements so new code can't regress. `check:module-boundaries` and
   `check:bundle-budgets` already enforce package edges and JS cost.
-- **Keep bespoke:** `OverlayMark`/Orb (brand rule), `UsageMeterBar`, `Sidebar`
-  primitives, and domain surfaces (`ComprehensiveModelPicker`, composer,
+- **Keep bespoke:** `OverlayMark`/Orb (brand rule), `UsageMeterBar`, the
+  primary rail's chrome (the secondary panel moved to the shadcn Sidebar
+  parts; see `interface-design.md`), and domain surfaces (`ComprehensiveModelPicker`, composer,
   xyflow canvas, TipTap editor). shadcn provides primitives, not product
   surfaces.
 

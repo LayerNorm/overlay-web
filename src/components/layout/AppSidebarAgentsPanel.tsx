@@ -6,9 +6,16 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronRight,
   Loader2,
+  Plus,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import {
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+} from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -34,7 +41,6 @@ import {
   arrayOrEmpty,
   agentHref,
   agentThreadHref,
-  resourceRowClass,
   type AgentsPanelView,
 } from './sidebar-nav'
 import { AgentThreadRows } from './AppSidebarAgentThreads'
@@ -440,40 +446,45 @@ function AgentListRow({
   onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
 }) {
   return (
-    <div>
-      <div className="group/agent relative">
-        <button
-          type="button"
-          disabled={anyOpening}
-          className={`${resourceRowClass} pr-7 ${isActive ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
-          onClick={() => {
-            if (!isExpanded) onToggleExpanded(agent.id)
-            onOpenAgent(agent)
-          }}
-        >
-          {isOpening
-            ? <Loader2 size={13} className="shrink-0 animate-spin" />
-            : <AgentCreature agent={agent} size={16} />}
-          <span className="truncate">{agent.name}</span>
-        </button>
-        <span className="absolute inset-y-0 right-1 flex items-center gap-0.5">
-          <button
-            type="button"
-            aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
-            aria-expanded={isExpanded}
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleExpanded(agent.id)
-            }}
-            className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-(--muted-light) hover:bg-(--surface-subtle) hover:text-(--foreground)"
-          >
-            <ChevronRight
-              size={12}
-              className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-            />
-          </button>
-        </span>
-      </div>
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={isActive}
+        disabled={anyOpening}
+        // Room for the two actions on the right: New thread (on hover) and the chevron.
+        className="group-hover/menu-item:pr-14 group-focus-within/menu-item:pr-14"
+        onClick={() => {
+          if (!isExpanded) onToggleExpanded(agent.id)
+          onOpenAgent(agent)
+        }}
+      >
+        {isOpening
+          ? <Loader2 size={13} className="shrink-0 animate-spin" />
+          : <AgentCreature agent={agent} size={16} />}
+        <span className="truncate">{agent.name}</span>
+      </SidebarMenuButton>
+      <SidebarMenuAction
+        aria-label={`New thread with ${agent.name}`}
+        title="New thread"
+        disabled={creatingThread}
+        className="right-7 md:opacity-0 group-hover/menu-item:opacity-100 group-focus-within/menu-item:opacity-100"
+        onClick={(event) => {
+          event.stopPropagation()
+          if (!isExpanded) onToggleExpanded(agent.id)
+          onCreateThread(agent)
+        }}
+      >
+        {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
+      </SidebarMenuAction>
+      <SidebarMenuAction
+        aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
+        aria-expanded={isExpanded}
+        onClick={(event) => {
+          event.stopPropagation()
+          onToggleExpanded(agent.id)
+        }}
+      >
+        <ChevronRight className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden />
+      </SidebarMenuAction>
       {isExpanded ? (
         <AgentThreadRows
           agent={agent}
@@ -486,7 +497,7 @@ function AgentListRow({
           creatingThread={creatingThread}
         />
       ) : null}
-    </div>
+    </SidebarMenuItem>
   )
 }
 
@@ -607,11 +618,12 @@ export function AgentsInlinePanel({
   }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, solo])
 
   return (
-    <SidebarResourceList>
+    <SidebarMenu>
       {loading ? (
-        <div className="flex items-center gap-2 px-2.5 py-2 text-xs text-(--muted-light)">
-          <Loader2 size={13} className="animate-spin" /> Loading agents...
-        </div>
+        // Placeholders as tall as the rows they replace, so the list does not jump when the agents arrive.
+        [0, 1, 2].map((index) => (
+          <SidebarMenuItem key={index}><SidebarMenuSkeleton index={index} /></SidebarMenuItem>
+        ))
       ) : sortedAgents.length ? (
         sortedAgents.map((agent) => {
           const isExpanded = expanded.has(agent.id)
@@ -640,22 +652,26 @@ export function AgentsInlinePanel({
           )
         })
       ) : (
-        <p className="px-2.5 py-2 text-xs text-(--muted-light)">
-          {solo ? 'No agents yet' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
-        </p>
+        <SidebarMenuItem>
+          <p className="px-2.5 py-2 text-xs text-(--muted-light)">
+            {solo ? 'No agents yet' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
+          </p>
+        </SidebarMenuItem>
       )}
       {openError ? (
-        <div className="px-2.5 py-2">
-          <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
-          <button
-            type="button"
-            onClick={retryOpen}
-            className="mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)"
-          >
-            Retry
-          </button>
-        </div>
+        <SidebarMenuItem>
+          <div className="px-2.5 py-2">
+            <p role="alert" className="text-xs leading-4 text-red-500">{openError}</p>
+            <button
+              type="button"
+              onClick={retryOpen}
+              className="mt-1.5 rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface-subtle)"
+            >
+              Retry
+            </button>
+          </div>
+        </SidebarMenuItem>
       ) : null}
-    </SidebarResourceList>
+    </SidebarMenu>
   )
 }

@@ -18,6 +18,7 @@ export * from './components/primitives/Toggle'
 export * from './components/primitives/Toolbar'
 export * from './components/primitives/UsageMeterBar'
 export * from './components/ui/popover'
+export * from './components/ui/sidebar'
 export * from './components/ui/dropdown-menu'
 
 

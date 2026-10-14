@@ -255,13 +255,26 @@ New + search, then the list. New is never above the scope rows.
   person joins; the owner sees it on the next workspace refresh.
 
 
-## Expandable rows are not indented
+## Secondary sidebar: shadcn Sidebar parts
 
-What an expansion reveals (a scope's sub-rows, an agent's threads, a section's pages) lines up with the row that opened
-it: same left edge, no extra left padding or margin. A chevron on the parent and a smaller type size are what mark the
-children as nested. Hierarchies that are real trees (the files folder tree) are the exception, because depth is the
-content there. `InlineNavChildren` enforces this and its test fails on any `pl-*` or `ml-*` in the nested rows; new
-expandable components follow the same rule.
+The secondary panel is built on the shadcn Sidebar parts in `@overlay/ui/primitives` (`packages/overlay-ui/src/components/ui/sidebar.tsx`):
+`Sidebar` (the in-flow container; the shell owns its width, collapse animation and phone drawer), `SidebarHeader`,
+`SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`, `SidebarMenuAction`, `SidebarMenuBadge`, `SidebarMenuSkeleton`
+and `SidebarMenuSub`. New lists in the panel use these rather than ad-hoc row classes. Only `Sidebar`, `SidebarRail` and
+`SidebarTrigger` read `SidebarProvider`; the menu parts work anywhere, so the same markup renders in the phone drawer.
+The panel's collapsed state is the shell's one `sidebarCollapsed` flag (it hides this panel and shrinks the primary rail
+to icons); the thin handle on the panel's edge (`SidebarRail`) sets it.
+
+### Which expansions are indented
+
+A real tree is indented under a guide line: an agent's threads, automations and "New thread" use `SidebarMenuSub` (a
+vertical line at the left of the group, children inset from it), as do the files folder tree and any other list where
+depth is the content. Row actions (New thread, Archive, Delete) are `SidebarMenuAction`s that appear when that row is
+hovered or focused, scoped to the row's own `group/menu-sub-item`, never the agent that contains it.
+
+What a navigation row reveals (a scope's Personal/Workspace sub-rows, a section's pages) is not indented: it lines up
+with the row that opened it, and a chevron plus the smaller type size mark it as nested. `InlineNavChildren` enforces
+this and its test fails on any `pl-*` or `ml-*` in the nested rows.
 
 ## Agent settings load together
 
