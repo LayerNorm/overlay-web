@@ -20,17 +20,17 @@ at zero while the sole maintainer cannot approve his own PR; retain history
 protection and the explicit emergency-only owner bypass.
 
 [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is authoritative. Main changes
-trigger Production Release: remote Vercel production build/publication, live SHA
-verification, Convex synchronization only when backend inputs change, then
-production smoke. There is no mandatory staging step.
+trigger Vercel’s native Git production deployment. Integration verifies the live
+SHA, synchronizes Convex only for backend changes after matching web is live,
+and runs proportionate production smoke. There is no mandatory staging step.
 
 Staging is optional for explicitly requested sensitive-change acceptance. Its
-legacy branch is frozen. Authorized manual production uses
-`bash scripts/release/promote.sh <main-sha>` from clean current canonical main;
-`--require-staging` explicitly opts into candidate proof. Root
-`git.deploymentEnabled.main=false` prevents a duplicate native Git build because
-Production Release automatically deploys to Vercel itself. Never pass `.env.local`
-or feature-worktree source to production commands.
+legacy branch is frozen. The owner enabled Git as a production deployment source
+for `overlay-landing`, production branch `main`, on 2026-10-14. Keep root
+`git.deploymentEnabled.main=true`. The custom production workflow, promotion
+script and deployment token are retired. Native Git deploys web only; backend
+synchronization and application smoke remain Integration responsibilities.
+Never pass `.env.local` or feature-worktree source to production commands.
 
 Shared Preview/staging test credentials are configured once per scope, with no
 scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
@@ -85,10 +85,13 @@ Cancellation also removes unused paid funding as pre-existing holds release or s
 
 The first complete candidate was `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`. Its recorded evidence remains historical. The final current-main candidate and production/rollback acceptance are recorded in the activation checkpoint above and `docs/plans/release-workflow-evidence/`.
 
-### Production CLI output and readiness
+### Historical production CLI output and readiness
+
+The custom promotion command described below is retired. Native Vercel Git
+deployment is the current release mechanism.
 
 Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including native-hostname inspection output. The command polls the owned exact-SHA deployment until READY, rejecting changed provenance, terminal errors and a bounded timeout. Web publication/live verification precedes production Convex and authenticated smoke. Earlier remote-build capture attempts left unpublished READY builds and preserved the customer alias. Structured CLI parsing/readiness merged through PR #203; asynchronous submission and bounded command capture merged through PR #204. The complete corrected command, production smoke and rollback/restoration passed on the release recorded above.
 
-### Asynchronous production build submission
+### Historical asynchronous production build submission
 
 Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.

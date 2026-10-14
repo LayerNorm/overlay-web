@@ -33,4 +33,4 @@ Stop when the PR is complete and ready for Integration. Do not merge, enqueue,
 deploy staging, promote production, or push release branches. Report the PR URL,
 head SHA, checks and limitations. Keep the feature worktree until Integration
 confirms merge and verification. The Integration agent owns review, queue entry,
-automatic Vercel production deployment and production smoke, following Development Workflow.
+verification of native Vercel Git production deployment and production smoke, following Development Workflow.

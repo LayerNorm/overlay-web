@@ -10,12 +10,14 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 ## Release model
 
 [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is the authoritative Builder,
-Integration and release policy. Every feature reaches main through a focused PR
-and the merge queue. Every main push automatically deploys the exact revision to
-Vercel production, synchronizes Convex only when backend inputs change, and runs
-production smoke. Staging is optional for explicitly requested sensitive changes.
-Root `git.deploymentEnabled.main=false` prevents a duplicate native Git build;
-Production Release performs the automatic deployment.
+Integration and release policy. Cloud Builder features reach main through focused PRs
+and the merge queue. Local laptop agents under DevelopedByDev have standing
+authorization for validated fast-forward direct main pushes, as documented in
+Development Workflow. Every main push automatically deploys the exact revision to
+Vercel production through its native Git integration. Integration synchronizes
+Convex only for backend changes after matching web is live, then runs production smoke. Staging is optional for explicitly requested sensitive changes.
+Keep root `git.deploymentEnabled.main=true`. The owner enabled Git as a production
+deployment source; no custom production workflow or deployment token is needed.
 
 The legacy `staging` branch is frozen. Do not push, target PRs at, align or deploy
 it. Staging is an environment built from main, not an integration branch. See
@@ -29,7 +31,7 @@ for the complete Builder and Integration instructions and copyable role prompts.
 | Role | Responsibility |
 | --- | --- |
 | Builder | Own one feature worktree, implement and validate a coherent change, update living docs and CHANGELOG, verify the current PR preview, and submit the PR to main. Stop at a ready PR. |
-| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, then verify Production Release and authenticated production smoke. |
+| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, then verify the native Git deployment SHA and authenticated production smoke. |
 
 Use [Builder Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/BUILDER_AGENT_PROMPT.md) and
 [Integration Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/INTEGRATION_AGENT_PROMPT.md). No additional
@@ -157,23 +159,23 @@ through `merge_group` workflows. Do not publish a green status based only on the
 original PR head. Prefer merge commits for meaningful history; squash only trivial
 or disposable fixups. Never rebase-merge, force-push, reset or delete main.
 
-The existing owner bypass remains an emergency option until another engineer
-joins. Ordinary work uses PRs and the queue; a bypass or direct push requires an
-explicit current-task instruction and equivalent validation, ancestry review,
-fast-forward only and post-push verification. Credentials alone are not permission.
+The owner authorized local laptop agents under DevelopedByDev to use the existing
+owner bypass for direct main integration after proportionate checks, diff/ancestry
+review and preservation of unrelated edits. Push fast-forward only and verify the
+published SHA and native Vercel deployment. Cloud Builders continue to use PRs
+and the queue. Other bypass use requires explicit authorization.
 
 ## Production and optional staging
 
 Follow [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md). Main changes deploy
-automatically to Vercel production and run authenticated production smoke. The
-release synchronizes production Convex only when backend inputs change. Verify
+automatically through Vercel’s Git integration. Integration runs authenticated
+production smoke and synchronizes Convex only for backend changes. Verify
 the exact SHA, live alias, smoke result and saved rollback checkpoint.
 
-For authorized manual deployment, use clean current canonical main and
-`bash scripts/release/promote.sh <main-sha>`. Ordinary releases do not require
-staging. `--require-staging` is an explicit opt-in for sensitive changes after
-manual staging acceptance. Never pass `.env.local` to production or deploy shared
-backends from a feature worktree. The frozen staging branch is not a release lane.
+Ordinary releases need no staging, custom production deployer or Vercel deployment
+token. Use Vercel deployment history for authorized redeploy/rollback. Backend
+changes use clean current canonical main after matching web is live. Never pass
+`.env.local` to production or deploy shared backends from a feature worktree.
 
 ## Cleanup
 

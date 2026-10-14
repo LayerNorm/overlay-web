@@ -1,7 +1,10 @@
 # Release workflow migration plan
 
 > Current policy (2026-10-14): follow `docs/develop/Development Workflow.md`.
-> Main deploys directly to Vercel production, followed by production smoke.
+> Vercel’s native Git integration deploys main to production. Keep root
+> `git.deploymentEnabled.main=true`; no custom production deployer or token.
+> Integration verifies production, synchronizes Convex only for backend changes,
+> and runs smoke checks.
 > Staging is optional for explicitly requested sensitive acceptance. The migration
 > checkpoints below retain historical policy and do not add release prerequisites.
 

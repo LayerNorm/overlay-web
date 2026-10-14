@@ -1,5 +1,9 @@
 # Target release workflow: previews, trunk, release candidates, production
 
+> Current policy (2026-10-14): follow `docs/develop/Development Workflow.md`.
+> Native Vercel Git deploys main; staging is optional. The custom production
+> workflow and promotion command are retired. The plan below is historical.
+
 **Status: implemented and live verified.**
 
 Migration acceptance completed on 2026-10-13. The native main queue accepted the release; current-main candidate [run 38413217001](https://github.com/LayerNorm/overlay-web/actions/runs/38413217001) passed all ten authenticated checks before publication and again at canonical staging. Release `bee84a33a2d4b101bf85d3b179cd30984b556045` was promoted from clean canonical main: production web `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified live before pushing customer Convex `colorful-chickadee-419`. Normal production sign-in, note CRUD/stale-edit 409, fresh Auto reply and reload persistence, Files, realtime tenant authorization and exact synthetic cleanup passed.
