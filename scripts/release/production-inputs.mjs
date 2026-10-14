@@ -15,7 +15,7 @@ export function backendInputsChanged({ previousSha, sha, root, run }) {
   if (config.error) throw new Error('Cannot inspect Convex build inputs')
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, resolve(root, 'convex'))
   const program = ts.createProgram(parsed.fileNames, parsed.options)
-  const inputs = new Set(), dependencies = new Set(['convex'])
+  const inputs = new Set(['tsconfig.json']), dependencies = new Set(['convex'])
   for (const file of program.getSourceFiles()) {
     const path = relative(root, file.fileName).replaceAll('\\', '/')
     if (!path.startsWith('../') && !path.includes('node_modules/')) inputs.add(path)
@@ -25,6 +25,10 @@ export function backendInputsChanged({ previousSha, sha, root, run }) {
       if (index >= 0 && !file.fileName.includes('/node_modules/')) inputs.add(file.fileName.slice(index + 1))
     }
     for (const match of file.fileName.matchAll(/\/node_modules\/((?:@[^/]+\/)?[^/]+)/g)) dependencies.add(match[1])
+  }
+  for (const path of [...inputs]) {
+    const workspace = path.match(/^(packages\/[^/]+)\//)?.[1]
+    if (workspace) inputs.add(workspace + '/package.json')
   }
   if (changed.some(path => inputs.has(path))) return true
   if (!changed.includes('package-lock.json')) return false
