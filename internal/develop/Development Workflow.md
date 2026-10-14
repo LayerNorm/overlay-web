@@ -179,6 +179,31 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 
 ## Automatic production release
 
+### Required CI checks
+
+`Security Checks` runs lint/types, production compilation and two complete test
+shards in parallel. `next typegen` generates current route validators before the
+required standalone typecheck; only the CI compilation job skips the duplicate
+Next TypeScript pass. Ordinary Vercel builds retain their existing type checks.
+Configuration and Convex boundary checks that depend on generated Workflow routes
+stay after compilation. Runtime-specific boundary, route and gateway test commands
+retain their explicit execution settings.
+
+The full suite discovers every tracked `*.test.{ts,tsx,mts,mjs}` file. Each shard
+verifies complete, disjoint coverage; package test commands that build their own
+outputs stay atomic on one worker. Invalid/empty selections fail. The existing
+`Schema and Routing Contracts` context now reports the test jobs' result from this
+workflow; do not recreate a separate installation-heavy gateway workflow.
+
+`Required Quality and Security Gates` runs even after a prerequisite fails and
+requires every lint/type, build, test, secret-scan, public-env and applicable
+dependency-review lane to succeed. Docs, CodeQL, Semgrep and CLA remain separate
+required contexts. Docs health runs in the complete Docs check on every main push.
+PR and merge-group triggers remain mandatory; no application or dependency change
+is exempted by path filters. Do not treat cancellation, missing output or an
+unexpectedly skipped lane as success. Keep protections synchronized with check
+names. The post-merge main run also protects authorized direct owner pushes.
+
 1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay-web` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
 2. Keep `git.deploymentEnabled.main=true` in root `vercel.json`, production branch `main`, and automatic production domain assignment enabled. No custom GitHub Actions deployer or Vercel deployment token is required.
 3. Integration verifies the exact live SHA. If Convex source, imported shared code or runtime dependencies changed, synchronize the production backend from clean current canonical main after matching web is live; frontend-only releases need no backend push.

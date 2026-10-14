@@ -50,6 +50,8 @@
 
 ## Agentic Development and Main Integration (MUST FOLLOW)
 
+- CI coverage: keep the parallel static/build/test lanes and both exhaustive test shards behind the fail-closed `Required Quality and Security Gates` aggregate. Preserve all nine required contexts on PRs and merge groups. Generate route types before standalone typechecking; skip the duplicate TypeScript pass only in the CI compilation job. Gateway contracts share the test worker and still report `Schema and Routing Contracts`. Never replace a failed, cancelled, absent or unexpectedly skipped lane with success. See Development Workflow for details.
+
 - `internal/develop/Development Workflow.md` is the authoritative Builder/Integration/release workflow. Read it before branches, worktrees, PRs or merges; other guides provide implementation details and cannot add mandatory staging gates. One task owns one descriptive `codex/<slug>` feature branch/worktree from latest origin/main. Preserve canonical edits; production uses clean canonical main.
 - Builder opens a draft main PR, verifies current-head isolated preview and affected behavior, updates living docs/CHANGELOG, marks ready and stops. Integration reviews, resolves findings and enqueues once required checks and proportionate QA pass.
 - Use `overlay-landing` for both hosted environments: isolated PR Preview for feature and sensitive-change QA, and native Git Production from main. The separate staging project, branch and subdomain are retired; do not recreate them as a release prerequisite. Independent Builders can implement and QA in parallel; Integration orders dependent PRs and the main merge queue checks combined revisions. Vercel's per-branch build queue and GitHub's main merge queue serve separate purposes.
