@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Upgrade the Redis client to 6.3 and add real TCP regression cases for concurrent rate-limit enforcement and window expiry.
+
 - Require current-head PR QA comments for Builder handoffs, with Vercel MCP browser access, end-to-end results and explicit Integration review/release evidence.
 
 - Use authenticated Vercel MCP access links as the first choice for cloud-agent PR browser QA across platforms, with private runtime automation secrets as a fallback and separate Overlay sandbox login.
