@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, deploymentMatches, previewAddress, trustedPull, needsHostedPreview } from './preview-control.mjs'
+import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
 
 const sha = 'a'.repeat(40)
 function pull(patch = {}) {
   return { number: 123, state: 'open', base: { ref: 'main', repo: { full_name: CONFIG.repository } },
+    labels: [{ name: 'needs-preview' }],
     head: { ref: 'codex/fixture', sha, repo: { id: CONFIG.repositoryId, full_name: CONFIG.repository } }, ...patch }
 }
 function deployment(patch = {}) {
@@ -13,13 +14,15 @@ function deployment(patch = {}) {
 }
 function fixture({ current = pull(), existing = true, backendActive = true, changeHead = false, failReadback = false,
   failHttps = false, failRemoved = false, buildState = 'READY', cancelError = false, cancelFinishes = true,
+  removeLabelAt = Infinity, wrongCreatedSha = false,
   wildcardBranch = CONFIG.previewWildcardBranch, wildcardAlias = false, files = [{ filename: 'src/runtime.ts' }] } = {}) {
   const calls = []
-  let envs = []; let domain; let alias; let reads = 0; let state = buildState; let deploymentLists = 0
+  let envs = []; let domain; let alias; let reads = 0; let state = buildState
   const github = async (path, options = {}) => {
     calls.push({ service: 'github', path, ...options })
     if (path.endsWith('/pulls/123')) {
       reads++
+      if (reads >= removeLabelAt) current = { ...current, labels: [] }
       return changeHead && reads > 1 ? pull({ head: { ...current.head, sha: 'b'.repeat(40) } }) : current
     }
     if (path.endsWith('/pulls')) return [current]
@@ -53,8 +56,9 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
       if (!domain) throw new ApiError('Vercel', 404)
       return domain
     }
-    if (path === '/v7/deployments') return { deployments: (existing || ++deploymentLists > 1) ? [{ uid: 'dpl_fixture', state: 'READY' }] : [] }
-    if (path === '/v13/deployments' || path === '/v13/deployments/dpl_fixture') return deployment({ readyState: state })
+    if (path === '/v7/deployments') return { deployments: existing ? [{ uid: 'dpl_fixture', state: 'READY' }] : [] }
+    if (path === '/v13/deployments' || path === '/v13/deployments/dpl_fixture') return deployment({ readyState: state,
+      ...(wrongCreatedSha ? { gitSource: { ...deployment().gitSource, sha: 'f'.repeat(40) } } : {}) })
     if (path === '/v12/deployments/dpl_fixture/cancel') {
       if (cancelFinishes) state = 'CANCELED'
       if (cancelError) throw new Error('Lost cancellation response')
@@ -80,41 +84,58 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
     setEnv: values => { envs = values }, setDomain: value => { domain = value } }
 }
 
-test('only complete docs and GitHub metadata diffs avoid a hosted preview', () => {
-  assert.equal(needsHostedPreview([{ filename: 'docs/develop/process.mdx' },
-    { filename: '.github/workflows/codeql.yml' }, { filename: 'README.md' }]), false)
-  for (const files of [[], [{}], [{ filename: 'scripts/release/preview-control.mjs' }],
-    [{ filename: 'package-lock.json' }], [{ filename: 'convex/schema.ts' }],
-    [{ filename: 'docs/moved.ts', previous_filename: 'src/was-runtime.ts' }]]) {
-    assert.equal(needsHostedPreview(files), true)
-  }
-})
-
-test('maintenance PRs pass source checks and cleanup without starting a hosted build', async () => {
-  const f = fixture({ files: [{ filename: '.github/workflows/codeql.yml' }] })
+test('unlabeled PRs skip hosted builds regardless of changed files', async () => {
+  const f = fixture({ current: pull({ labels: [] }) })
   assert.equal((await f.controller.run(123)).state, 'not-required')
   assert.equal(f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'), false)
   assert.equal(f.calls.some(c => c.body?.key === 'NEXT_PUBLIC_APP_URL'), false)
-  assert.match(f.calls.find(c => c.body?.state === 'success').body.description, /not required/)
+  assert.equal(f.calls.find(c => c.body?.state === 'success').body.description, 'Preview not requested; CI still required')
 })
 
-test('manual requests or needs-preview label can build maintenance PRs explicitly', async () => {
-  for (const patch of [{ forcePreview: true }, { label: true }]) {
-    const f = fixture({ existing: false, files: [{ filename: 'README.md' }],
-      current: pull({ labels: patch.label ? [{ name: 'needs-preview' }] : [] }) })
-    assert.equal((await f.controller.run(123, patch)).state, 'ready')
-    assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
-  }
-})
-
-test('incomplete file inventories fail closed into a preview rather than skip one', async () => {
-  const f = fixture({ existing: false, current: pull({ changed_files: 2 }), files: [{ filename: 'README.md' }] })
+test('needs-preview creates the exact requested revision after provisioning its URL', async () => {
+  const f = fixture({ existing: false })
   assert.equal((await f.controller.run(123)).state, 'ready')
+  const created = f.calls.find(c => c.path === '/v13/deployments' && c.method === 'POST')
+  assert.deepEqual(created.body, { name: CONFIG.projectName, project: CONFIG.projectId, autoAssignCustomDomains: false,
+    gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: 'codex/fixture', sha },
+    meta: { overlayPreviewPr: '123' } })
+  assert.ok(f.calls.findIndex(c => c.body?.key === 'NEXT_PUBLIC_APP_URL') < f.calls.indexOf(created))
+  assert.equal(f.calls.filter(c => c.path === '/v13/deployments' && c.method === 'POST').length, 1)
+})
+
+test('removing needs-preview cleans a previously ready preview', async () => {
+  const f = fixture(); await f.controller.run(123)
+  f.setCurrent(pull({ labels: [] }))
+  assert.equal((await f.controller.run(123)).state, 'not-required')
+  assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+})
+
+test('label removal before creation prevents spending build minutes', async () => {
+  const f = fixture({ existing: false, removeLabelAt: 2 })
+  assert.equal((await f.controller.run(123)).state, 'not-required')
   assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
+  assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+})
+
+test('label removal during a build settles it and removes the preview', async () => {
+  const f = fixture({ buildState: 'BUILDING', removeLabelAt: 2 })
+  const delegate = f.controller.vercel
+  f.controller.vercel = async (path, options) => path === '/v7/deployments'
+    ? { deployments: [{ uid: 'dpl_fixture', state: 'BUILDING' }] } : delegate(path, options)
+  assert.equal((await f.controller.run(123)).state, 'not-required')
+  assert.ok(f.calls.some(c => c.path?.endsWith('/cancel')))
+  assert.ok(!f.calls.some(c => c.path?.endsWith('/aliases') && c.method === 'POST'))
+})
+
+test('created deployment must match the requested SHA before any alias assignment', async () => {
+  const f = fixture({ existing: false, wrongCreatedSha: true })
+  await assert.rejects(f.controller.run(123), /provenance mismatch/)
+  assert.ok(!f.calls.some(c => c.path.endsWith('/aliases') && c.method === 'POST'))
+  assert.ok(f.calls.some(c => c.body?.state === 'failure'))
 })
 
 test('an already-running maintenance preview is settled before resources are removed', async () => {
-  const f = fixture({ files: [{ filename: '.github/workflows/docs.yml' }], buildState: 'BUILDING' })
+  const f = fixture({ current: pull({ labels: [] }), buildState: 'BUILDING' })
   const list = f.controller.vercel
   f.controller.vercel = async (path, options) => path === '/v7/deployments'
     ? { deployments: [{ uid: 'dpl_fixture', state: 'BUILDING' }] } : list(path, options)
@@ -158,11 +179,6 @@ test('provisions canonical branch URL before build and reuses current deployment
   assert.equal(f.get().envs[0].gitBranch, 'codex/fixture')
   assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
   assert.equal(f.calls.filter(c => c.body?.state === 'success').length, 1)
-})
-test('waits for the native Git deployment without creating an API deployment', async () => {
-  const f = fixture({ existing: false }); await f.controller.run(123)
-  assert.equal(f.calls.filter(c => c.path === '/v7/deployments').length, 2)
-  assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
 })
 test('new PR head prevents old deployment assignment and success status', async () => {
   const f = fixture({ changeHead: true })
@@ -235,10 +251,10 @@ test('API failures never print credentials, bodies, or attacker-controlled messa
   await assert.rejects(api('/v9/projects/x'), error => error.message === 'Vercel API 403 (forbidden)')
 })
 
-test('an expired backend prevents reuse of a READY frontend at the same SHA', async () => {
+test('an expired backend rebuilds the same SHA rather than reusing a stale frontend', async () => {
   const f = fixture({ backendActive: false })
-  await assert.rejects(f.controller.run(123), /backend is missing or expired/)
-  assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
+  assert.equal((await f.controller.run(123)).state, 'ready')
+  assert.equal(f.calls.filter(c => c.path === '/v13/deployments' && c.method === 'POST').length, 1)
 })
 
 test('API client accepts successful empty bodies without suppressing malformed JSON', async () => {

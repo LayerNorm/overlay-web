@@ -1,22 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  buildAutomationUserMessage,
-  buildAutomationSystemPrompt,
-  type AutomationRunWorkflowInput,
-} from './automation-run'
+import { buildAutomationUserMessage, buildAutomationSystemPrompt } from './automation-prompts'
+import type { AutomationPromptInput } from './automation-prompts'
 
-function createTestInput(overrides: Partial<AutomationRunWorkflowInput> = {}): AutomationRunWorkflowInput {
+function createTestInput(overrides: Partial<AutomationPromptInput> = {}): AutomationPromptInput {
   return {
-    runId: 'run_001',
-    userId: 'user_001',
     automationId: 'auto_001',
     name: 'Daily inbox summary',
     description: 'Summarize my inbox every morning',
     instructions: '1. Check inbox\n2. Summarize mail\n3. Send digest',
-    turnId: 'automation-run_001-1700000000000',
     scheduledFor: 1700000000000,
-    baseUrl: 'http://localhost:3000',
     ...overrides,
   }
 }
@@ -89,38 +82,4 @@ test('buildAutomationSystemPrompt omits description line when empty', () => {
 test('buildAutomationSystemPrompt instructs to end with summary', () => {
   const prompt = buildAutomationSystemPrompt(createTestInput())
   assert.ok(prompt.includes('concise summary of what was completed'))
-})
-
-// ---------------------------------------------------------------------------
-// Input type contract
-// ---------------------------------------------------------------------------
-
-test('AutomationRunWorkflowInput includes all required fields for workflow execution', () => {
-  const input = createTestInput()
-  // Verify all fields that the workflow steps need are present
-  assert.equal(typeof input.runId, 'string')
-  assert.equal(typeof input.userId, 'string')
-  assert.equal(typeof input.automationId, 'string')
-  assert.equal(typeof input.name, 'string')
-  assert.equal(typeof input.instructions, 'string')
-  assert.equal(typeof input.turnId, 'string')
-  assert.equal(typeof input.scheduledFor, 'number')
-  assert.equal(typeof input.baseUrl, 'string')
-  assert.equal('serviceToken' in input, false)
-  assert.equal('actServiceToken' in input, false)
-  assert.equal('finalizeServiceToken' in input, false)
-})
-
-test('AutomationRunWorkflowInput workspaceId is optional', () => {
-  const input = createTestInput()
-  assert.equal(input.workspaceId, undefined)
-  const inputWithWorkspace = createTestInput({ workspaceId: 'ws_001' })
-  assert.equal(inputWithWorkspace.workspaceId, 'ws_001')
-})
-
-test('AutomationRunWorkflowInput conversationId is optional for first run', () => {
-  const input = createTestInput()
-  assert.equal(input.conversationId, undefined)
-  const inputWithConv = createTestInput({ conversationId: 'conv_001' })
-  assert.equal(inputWithConv.conversationId, 'conv_001')
 })

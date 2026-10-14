@@ -16,13 +16,21 @@ docs and root CHANGELOG in the same commit series. Run `git diff --check` and
 record the actual checks and head SHA. Security, auth, billing, tenant, migration
 and runtime changes require their relevant stronger QA.
 
-Open a draft PR against main. Wait for `PR Preview`, verify its reported SHA
+Open a draft PR against main. Add `needs-preview` for browser/UI interactions,
+auth/routing/cookies/uploads/payments/streaming/persistence, isolated backend QA,
+environment/build changes, uncertainty CI cannot resolve or explicit browser QA.
+Ordinarily skip it for well-tested Dependabot patch/minor upgrades, docs, tests,
+CI metadata, formatting/comments and type-only changes; dependency risk can still
+justify a preview. Record the decision and evidence in the PR.
+
+For requested previews, wait for `PR Preview`, verify its reported SHA
 against the current PR head, then test the changed flow on
 `https://pr-<number>.preview.getoverlay.io` using the sandbox QA identity or
 preview-only login recipe. Record rendered UI, persistence and relevant boundary
 checks. Keep credentials and cookies out of tracked files and PR text. New app
-revisions require fresh affected QA. Documentation/GitHub-only changes can use
-the controller's hosted-app exemption; `needs-preview` requests an explicit build.
+revisions require fresh affected QA. Unlabeled PRs pass “Preview not requested”
+and require normal CI. Removing the label cleans resources; manual dispatch
+does not bypass opt-in.
 
 Shared Preview web/backend defaults already contain isolated test model and
 storage credentials. Do not copy `.env.local` wholesale: it contains production

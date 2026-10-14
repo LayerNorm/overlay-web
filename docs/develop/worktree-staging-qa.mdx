@@ -11,9 +11,11 @@ part of the release path. Historical staging drills are preserved in
 
 ## PR preview
 
-1. Open an internal PR against `main`. Vercel’s native Git integration creates a Preview deployment in
-   `overlay-landing`. The trusted `PR Preview` workflow runs from main and
-   manages its custom URL and backend renewal using a project-scoped token.
+1. Open an internal PR against `main` and add `needs-preview` when hosted QA is
+   required under Development Workflow. Automatic non-main Git builds are disabled.
+   The trusted main controller requests the exact SHA through REST API using the
+   existing project token, then manages its URL/backend. Unlabeled PRs pass
+   “Preview not requested” and still require normal CI.
 2. Use `https://pr-<number>.preview.getoverlay.io`. The controller assigns
    the alias only after the deployment is READY at the current PR head SHA and
    its `preview/pr-<number>` Convex backend exists. The wildcard registration
@@ -24,7 +26,7 @@ part of the release path. Historical staging drills are preserved in
 4. Exercise the affected interaction in the browser, including sensitive
    flows when requested. Check authentication, persistence, expected error
    states, relevant permissions, and network failures. Record the tested SHA.
-5. Closing the PR removes the owned alias, domain, and branch app URL. The
+5. Removing `needs-preview` or closing the PR settles builds and removes the owned alias, domain, and branch app URL. The
    backend stops renewing and expires under Convex's preview retention policy.
    Closed and unknown preview hosts must return HTTPS 404.
 

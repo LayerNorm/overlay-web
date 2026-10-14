@@ -7,6 +7,13 @@ import { parse } from 'yaml'
 
 const workflow = name => parse(readFileSync(new URL(`../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'))
 
+test('Git automatically deploys only main; preview label changes trigger trusted reconciliation', () => {
+  const config = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'))
+  assert.deepEqual(config.git.deploymentEnabled, { '*': false, main: true })
+  const events = workflow('pr-preview').on.pull_request_target.types
+  for (const event of ['labeled', 'unlabeled', 'synchronize', 'closed']) assert.ok(events.includes(event))
+})
+
 test('new PR revisions cancel obsolete checks without canceling main releases or merge groups', () => {
   for (const name of ['security', 'docs', 'codeql', 'semgrep']) {
     const config = workflow(name)
@@ -143,8 +150,7 @@ test('parallel lanes preserve complete test discovery, runtime-specific contract
   assert.equal(jobs.tests.strategy['fail-fast'], false)
   assert.ok(jobs.tests.steps.some(s => s.run === 'node scripts/ci/run-all-tests.mjs --verify-shards 2'))
   assert.ok(jobs.tests.steps.some(s => s.run === 'node scripts/ci/run-all-tests.mjs --shard ${{ matrix.shard }}/2'))
-  assert.ok(jobs.tests.steps.some(s => s.run === 'npm run test:gateway-contracts' && s.if === 'matrix.shard == 2'))
-  assert.ok(jobs.tests.steps.some(s => s.run === 'npm run test:route-characterization' && s.if === 'matrix.shard == 1'))
+  assert.ok(!jobs.tests.steps.some(s => /test:(gateway-contracts|route-characterization)/.test(s.run ?? '')), 'contracts run once through discovery')
   const build = jobs.build.steps.map(s => s.run)
   assert.ok(build.includes('npm run build'))
   assert.ok(build.indexOf('npm run build') < build.indexOf('npm run check:on-prem-convex-boundaries'))

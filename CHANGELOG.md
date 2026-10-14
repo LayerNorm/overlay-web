@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make PR previews opt-in with `needs-preview`, preserve automatic Git production on main, and clean up previews when the label is removed. Run route/gateway tests once, remove stale test references and tautological/duplicate workflow assertions, and classify ten live-only integration suites separately.
+
 - Run CI static checks, production compilation and exhaustive test shards in parallel; retain required security and merge-queue coverage, avoid duplicate build typechecking and gateway dependency installation, and repair release-document links.
 
 - Resolve first-push Preview PR identity from exact public Git metadata when Vercel starts before the draft PR opens.
