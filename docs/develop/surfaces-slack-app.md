@@ -11,7 +11,7 @@ tokens resolve through the Chat SDK state store, never a shared env token.
    → **From a manifest** → paste the YAML below.
 2. Set `request_url` / `redirect_urls` to the environment you're wiring:
    - production: `https://www.getoverlay.io`
-   - staging: `https://staging.getoverlay.io`
+   - test: the current isolated `https://pr-<number>.preview.getoverlay.io` URL
    - local dev: a tunnel URL (e.g. `cloudflared tunnel` / `ngrok`) — Slack
      requires a public HTTPS endpoint.
 3. From the app's **Basic Information** page, copy Client ID, Client Secret,

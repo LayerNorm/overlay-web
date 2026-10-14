@@ -25,16 +25,20 @@ merge queue on `main`, on-demand exact-main release candidates, manual productio
   `a99c3aca29d58bf928de01dac0bd67abfbb96681`. Temporarily moved its canonical custom
   hostname and verified HTTPS, preview login, workspace API and Files API (200),
   plus unknown-host HTTPS 404 and Production HTTP 200.
-- Restored existing domain ownership, preview seed identity and native preview
-  settings while the durable controller credential is pending. The old project
-  still serves previews. No staging project or release branch has been deleted.
-- Prepared repository cleanup passed 47 release/workflow checks, 6 auth/environment
-  checks, targeted ESLint and diff whitespace review. No main publication yet.
-- Remaining: create/store the approved project-scoped `VERCEL_PREVIEW_TOKEN`,
-  publish the controller/build/documentation changes, enable native Git Preview,
-  move and verify active PR domains, then retire the old project and staging lane.
-  The browser tool currently cannot start after temporary-file cleanup; its
-  runtime needs restoration before the dashboard token step can complete.
+- Created and stored non-expiring `overlay-landing-preview-control` as
+  `VERCEL_PREVIEW_TOKEN` in GitHub `release-control`; verified access to the new
+  project and denial for the old project. Branch Preview env writes succeeded.
+- Enabled native Git Preview builds and Git deployment-source rules for both
+  environments. The controller now waits for Git builds and manages aliases;
+  it does not create deployments. Production remains Git-only.
+- Seven existing working previews are being recreated in the new project before
+  moving their domains. One-time migration rebuilds temporarily permit CLI/REST
+  in Preview; restore Git-only once those builds finish.
+- Repository cleanup passed 47 release/workflow checks, 6 auth/environment
+  checks, targeted ESLint and diff whitespace review. Publication and final
+  live readback remain pending.
+- Remaining: publish the controller/build/documentation changes, verify all
+  migrated PR aliases, then retire the old project, branch and staging resources.
 
 ## Current acceptance — 2026-10-13
 

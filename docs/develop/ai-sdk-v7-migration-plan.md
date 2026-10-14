@@ -284,7 +284,7 @@ v7 makes telemetry opt-out (enabled by default once an integration is registered
 **Goal:** Verify on staging, then merge to production.
 
 - [ ] **5.1** Merge `codex/ai-sdk-v7` to `staging` worktree
-- [ ] **5.2** Push staging, wait for deploy to `staging.getoverlay.io`
+- [ ] **5.2** Push the feature PR, wait for its current-head `pr-<number>.preview.getoverlay.io` deployment
 - [ ] **5.3** QA checklist:
   - [ ] Send a chat message — verify streaming works, text renders without flicker
   - [ ] Send a message that triggers a tool call — verify tool execution and result display

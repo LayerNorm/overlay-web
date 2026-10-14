@@ -74,7 +74,7 @@ Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant 
 
 ### 3. Open a draft PR to get the preview
 
-Commit and push the feature branch, then open a draft PR against `main`. The existing `PR Preview` workflow creates the hosted environment. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
+Commit and push the feature branch, then open a draft PR against `main`. Vercel’s native Git integration builds the Preview environment. The trusted `PR Preview` workflow assigns the custom URL and renews the isolated backend. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
 
 Use `https://pr-<number>.preview.getoverlay.io` for hosted QA. The preview runs in the `overlay-landing` Vercel project's Preview environment, has its own Convex backend, and inherits the configured shared test credentials. Preview and Production settings are separately scoped. Do not copy `.env.local` wholesale or deploy shared development or production backends from the feature worktree.
 

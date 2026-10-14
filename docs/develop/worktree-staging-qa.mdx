@@ -11,9 +11,9 @@ part of the release path. Historical staging drills are preserved in
 
 ## PR preview
 
-1. Open an internal PR against `main`. The trusted `PR Preview` workflow runs
-   from main and creates a Preview deployment in the `overlay-landing` Vercel
-   project. Its project-scoped token does not deploy Production.
+1. Open an internal PR against `main`. Vercel’s native Git integration creates a Preview deployment in
+   `overlay-landing`. The trusted `PR Preview` workflow runs from main and
+   manages its custom URL and backend renewal using a project-scoped token.
 2. Use `https://pr-<number>.preview.getoverlay.io`. The controller assigns
    the alias only after the deployment is READY at the current PR head SHA and
    its `preview/pr-<number>` Convex backend exists. The wildcard registration

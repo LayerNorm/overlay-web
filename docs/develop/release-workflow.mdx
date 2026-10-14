@@ -41,11 +41,13 @@ independent of credential lifetime. Closure cleans owned aliases and stops renew
 Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
 Preview Deployment Suffix.
 
-The trusted `PR Preview` GitHub workflow deploys an internal main PR head to
-`overlay-landing` using a project-scoped `VERCEL_PREVIEW_TOKEN`. It binds that
-exact READY deployment to the PR hostname after validating its Git SHA and
-per-PR Convex backend. The token is only for Preview automation; native Git
-deploys main to Production. Preview and Production variable targets are separate.
+Vercel’s native Git integration builds internal main PR heads in Preview and
+builds main in Production. Enable Git as a deployment source in both environments.
+The trusted `PR Preview` GitHub workflow uses the project-scoped, non-expiring
+`VERCEL_PREVIEW_TOKEN` to manage branch app URLs and ordinary custom aliases.
+It waits for the exact READY Git deployment and validates its SHA and per-PR
+Convex backend before reporting success. It does not create deployments.
+If an old backend has expired, push a new PR revision to trigger a Git rebuild. Preview and Production variable targets are separate.
 The `codex/preview-unassigned` wildcard branch has no deployment alias, so
 unknown or closed PR hosts return HTTPS 404.
 
