@@ -6,7 +6,7 @@ export function SidebarShell({ className, ...props }: HTMLAttributes<HTMLElement
   return (
     <aside
       className={cn(
-        'flex h-full shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--sidebar-surface)]',
+        'flex h-full shrink-0 flex-col overflow-hidden border-r border-(--border) bg-(--sidebar-surface)',
         className,
       )}
       {...props}
@@ -15,7 +15,7 @@ export function SidebarShell({ className, ...props }: HTMLAttributes<HTMLElement
 }
 
 export function SidebarSection({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('border-t border-[var(--border)] px-2 py-3', className)} {...props} />
+  return <div className={cn('border-t border-(--border) px-2 py-3', className)} {...props} />
 }
 
 export function SidebarNav({ className, ...props }: HTMLAttributes<HTMLElement>) {
@@ -44,13 +44,13 @@ export function SidebarResourceSection({
   className?: string
 }) {
   return (
-    <div className={`flex min-h-0 flex-1 flex-col border-t border-[var(--border)] px-2 py-3${className ? ` ${className}` : ''}`}>
+    <div className={`flex min-h-0 flex-1 flex-col border-t border-(--border) px-2 py-3${className ? ` ${className}` : ''}`}>
       {action && search ? (
         <div className="mb-3 flex items-center gap-1.5">
           <button
             type="button"
             onClick={action.onClick}
-            className="flex flex-1 items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="flex flex-1 items-center gap-2 rounded-md border border-(--border) px-3 py-2 text-sm text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
             <span className="min-w-0 flex-1 text-left text-xs">{action.label}</span>
           </button>
@@ -58,7 +58,7 @@ export function SidebarResourceSection({
             type="button"
             title={search.title}
             onClick={search.onClick}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
             <Search size={13} strokeWidth={1.75} />
           </button>
@@ -67,7 +67,7 @@ export function SidebarResourceSection({
         <button
           type="button"
           onClick={action.onClick}
-          className="mb-3 flex w-full items-center gap-2.5 rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="mb-3 flex w-full items-center gap-2.5 rounded-md border border-(--border) px-3 py-2 text-sm text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <span className="min-w-0 flex-1 text-left">{action.label}</span>
         </button>
@@ -77,7 +77,7 @@ export function SidebarResourceSection({
           type="button"
           title={search.title}
           onClick={search.onClick}
-          className="mb-3 flex w-full items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="mb-3 flex w-full items-center gap-2 rounded-md border border-(--border) px-3 py-2 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <Search size={13} strokeWidth={1.75} />
           <span className="min-w-0 flex-1 truncate text-left">{search.title}</span>
@@ -100,8 +100,8 @@ export function SidebarResourceRow({ active = false, className, children, ...pro
   return (
     <div
       className={cn(
-        'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
-        active ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : undefined,
+        'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)',
+        active ? 'bg-(--surface-subtle) text-(--foreground)' : undefined,
         className,
       )}
       {...props}

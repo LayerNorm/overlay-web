@@ -1,0 +1,17 @@
+{
+  "productionClientId": "client_01KJ9A1AQ3B86ATDRZQ3X8JZ5T",
+  "productionEnvironmentId": "environment_01KJ9A1ABDWGA8S207EJWPSXT3",
+  "qaEmail": "overlay-release-qa@getoverlay.io",
+  "qaUserId": "user_01M4SQKZBXRFDJP0W6VT30D1KE",
+  "syntheticIdentityReadback": true,
+  "workosPasswordAuthentication": true,
+  "appAuthenticationVerified": false,
+  "backend": "colorful-chickadee-419",
+  "projectId": 1649204,
+  "keyScope": "single customer-production deployment",
+  "keyExpiresOn": "2027-01-10",
+  "credentialsStoredPrivately": true,
+  "webDeploymentChanged": false,
+  "convexFunctionsChanged": false,
+  "productionSmokeRun": false
+}

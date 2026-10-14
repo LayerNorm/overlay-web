@@ -60,7 +60,7 @@ function MemoryExpandButton({
     <button
       type="button"
       onClick={onToggle}
-      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
       aria-label={expanded ? 'Collapse saved memories' : 'Expand saved memories'}
     >
       <ChevronDown
@@ -87,13 +87,13 @@ function MemoryDetails({
       }`}
     >
       {show ? (
-        <ul className={`message-appear space-y-1 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} pr-1 [scrollbar-width:thin]`}>
+        <ul className={`message-appear space-y-1 ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} pr-1 scrollbar-thin`}>
           {contents.map((c, i) => (
             // Append-only tool output; index is the stable identity.
             // react-doctor-disable-next-line react-doctor/no-array-index-as-key
             <li
               key={i}
-              className="text-[12px] leading-relaxed text-[var(--muted)]"
+              className="text-[12px] leading-relaxed text-(--muted)"
             >
               {c}
             </li>
@@ -134,7 +134,7 @@ export function MemoryToolBlock({
           <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className={running ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>{label}</span>
+              <span className={running ? 'tool-line-shimmer' : 'text-(--tool-line-label)'}>{label}</span>
               {hasDetails && isDone ? (
                 <MemoryExpandButton
                   expanded={userExpanded}

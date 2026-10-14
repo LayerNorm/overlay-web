@@ -70,7 +70,7 @@ export default function ForgotPasswordPage() {
           <h1 className="text-2xl font-serif mb-2">Check your email</h1>
           <p className={`mb-8 text-sm ${muted}`}>
             If an account exists for{' '}
-            <strong className='text-[var(--foreground)]'>{email}</strong>,
+            <strong className='text-(--foreground)'>{email}</strong>,
             you&apos;ll receive a password reset link shortly.
           </p>
           <Link
@@ -123,7 +123,7 @@ export default function ForgotPasswordPage() {
           Remember your password?{' '}
           <Link
             href="/auth/sign-in"
-            className="text-[var(--foreground)] hover:underline font-medium"
+            className="text-(--foreground) hover:underline font-medium"
           >
             Sign in
           </Link>

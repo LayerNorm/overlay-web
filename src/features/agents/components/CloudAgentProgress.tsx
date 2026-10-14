@@ -12,9 +12,9 @@ export function CloudAgentProgress({ phase }: { phase: CloudAgentPhase }) {
         const done = index < current || phase === 'ready'
         const active = index === current && phase !== 'ready'
         return (
-          <li key={step.phase} className={`flex items-center gap-2.5 text-sm ${done || active ? 'text-[var(--foreground)]' : 'text-[var(--muted)]'}`}>
+          <li key={step.phase} className={`flex items-center gap-2.5 text-sm ${done || active ? 'text-(--foreground)' : 'text-(--muted)'}`}>
             <span className="flex h-5 w-5 items-center justify-center">
-              {done ? <Check size={14} className="text-[var(--muted)]" /> : active ? <Loader2 size={14} className="animate-spin" /> : <span className="h-1.5 w-1.5 rounded-full bg-[var(--border)]" />}
+              {done ? <Check size={14} className="text-(--muted)" /> : active ? <Loader2 size={14} className="animate-spin" /> : <span className="h-1.5 w-1.5 rounded-full bg-(--border)" />}
             </span>
             {step.label}
           </li>

@@ -351,7 +351,7 @@ When the Chat SDK bot is built, it **reuses Phases 1–2 unchanged**:
 2. Phase 2 (DM guard → mention filter → auto-join skip → flip semantics →
    tests).
 3. Phase 3 (editor pages → directory wiring → dialog removal → tests + visual QA).
-4. Open one focused PR per phase against `staging` per
+4. Open one focused PR per phase against `main` per
    `docs/develop/agentic-development.mdx`; each phase independently shippable.
 
 ## 8. Docs and changelog (same PRs, per repo rules)

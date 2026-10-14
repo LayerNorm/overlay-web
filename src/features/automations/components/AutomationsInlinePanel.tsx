@@ -201,7 +201,7 @@ export function AutomationsInlinePanel({
           type="button"
           disabled={loadingMore}
           onClick={() => void loadMoreAutomations()}
-          className="h-7 w-full rounded-md px-2.5 text-left text-xs text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-wait disabled:opacity-60"
+          className="h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
         >
           {loadingMore ? 'Loading...' : 'Load more'}
         </button>

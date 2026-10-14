@@ -8,6 +8,158 @@ description: "Product UI decisions every surface follows: toggles-only controls,
 Product UI decisions that every surface follows. When a new control is needed,
 check here first — the answer is usually "use the existing pattern".
 
+## Tailwind CSS v4 configuration
+
+`postcss.config.mjs` loads `@tailwindcss/postcss`. The app imports `tailwindcss`
+in `src/app/globals.css`; `@theme` defines utility tokens there. The same file
+uses `@source` to scan app code and the UI, chat, and module React packages.
+When adding a package that renders utilities, add its source path there.
+
+`dark:` follows `[data-theme='dark']` through `@custom-variant`, so it follows
+the in-app theme setting. The base semantic palette lives in
+`packages/overlay-ui/src/styles.css`; `globals.css` adds app-specific variables.
+The base border rule preserves the earlier gray default. Use an explicit
+border color for new controls.
+
+Tailwind utility names apply to class names. Literal CSS, including injected
+note-editor styles, uses standard properties such as `flex-shrink: 0`.
+
+## Shared modal dialogs
+
+`DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
+shadcn/Radix primitives. Their consumers open them from ordinary buttons without
+a Radix Trigger, so the wrappers remember the focused opener and restore it on
+close. Radix owns focus trapping and scroll locking while open.
+
+`ConfirmDialog` delegates dismissal to its callbacks. Confirming must not invoke
+Cancel or close an asynchronous operation early; native Radix Action/Cancel
+closure is prevented. While `busy`, confirmation, cancellation and Escape are
+blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
+in isolated Chromium (requires the Playwright Chromium browser).
+
+## Command palette
+
+`CommandPalette` keeps its controlled `@overlay/ui` API over canonical cmdk
+primitives in `components/ui/command.tsx`. The merged Radix dialog owns portal,
+outside/Escape dismissal, focus containment and scroll lock; the existing
+return-focus hook restores controlled openers. The sidebar shortcut registry
+remains the sole Cmd/Ctrl+K owner, including composer and contenteditable inputs.
+
+cmdk owns active-descendant selection, pointer activation, disabled-row skipping
+and list scrolling. `shouldFilter={false}` preserves application-ranked results
+and category order; `vimBindings={false}` leaves Ctrl+K to the shortcut owner.
+The input keeps focus while navigating results. Tab stays within the modal;
+the breadcrumb is its only other Tab stop. Enter on the breadcrumb goes back
+without also activating a result. Escape goes back once in a category, then
+closes at the root. Rows keep stable IDs, callbacks, icons and descriptions.
+`GlobalSearchDialog` still owns async queries, cancellation and real destinations.
+Legacy presence/focus hooks remain for other bespoke dialogs until Phase 1b.
+
+The palette uses the same Overlay tokens, 576px maximum width, 12vh top offset,
+70vh maximum height, 16px mobile gutter and the shared z-10070 dialog layer.
+Descriptions cap at 45% of their row so long agent instructions cannot hide
+the result title or overflow the mobile palette.
+Run `node scripts/qa/command-interactions.mjs` for real palette/search-wrapper
+regressions with deterministic search fixtures, macOS/Windows shortcuts,
+long/grouped lists, CSS presets and mobile sizing. Current-head authenticated
+preview QA remains required; fixture routes are not live-navigation evidence.
+
+## Delayed tooltips
+
+`DelayedTooltip` preserves its layout wrapper and attaches Radix's trigger to
+its child. Container and Fragment children describe the actual focused control
+while open; existing `aria-describedby` tokens are preserved and the tooltip's
+ID is removed on blur, close or unmount. Wrappers add no Tab stop. Radix owns
+positioning, the portal and Escape dismissal. Fine-pointer hover opens after
+450 ms; touch/coarse input suppresses tooltips, including capability changes
+while mounted. Run `node scripts/qa/tooltip-interactions.mjs` for rendered
+association, cleanup, pointer and media-query checks in installed Chrome.
+
+## Menus and rich popovers
+
+Import dropdown/popover primitives from `@overlay/ui` (or its `primitives`
+entry point), never Radix in domain packages. Actions with one selection use
+DropdownMenu; arbitrary controls, disclosures and model multi-selection use
+Popover with normal Tab navigation. Do not label a rich panel as a menu or
+listbox. Selected picker buttons expose `aria-pressed`.
+
+`FloatingMenu` keeps the external `anchorRef` API as a Popover. Prefer its
+optional `trigger` for native expanded state, keyboard opening and focus return;
+action menus opt into `kind="menu"` and supply a trigger. `MenuItem` preserves
+button props and callbacks, using Radix item semantics only inside that action
+menu. Standalone `MenuSurface` remains visual, with no implied role.
+
+Both primitives portal at z-10090, consume Overlay CSS vars directly, use a 6px
+anchor gap and 8px collision padding, and constrain height to the available
+viewport. Rich picker content refs belong on the portalled content, not the
+trigger wrapper; remove document-level outside/Escape listeners when Radix owns
+the layer. The mobile account fallback also delegates dismissal to Radix;
+its old wrapper-ref click listener cannot recognize portalled disclosures.
+Model details are a nested Popover, anchored to the hovered row. Their virtual
+anchor exposes that row as its scroll context and uses Radix continuous updates
+to track the parent pop-in animation; Escape closes the whole model picker.
+Their existing reasoning select stays inline in that panel so its clicks remain
+inside the owning layer; it now uses the Phase 4 Radix select adapter. Keep the
+hover card mounted while that select is open: Radix pointer locking emits a
+synthetic mouse leave to Window, which must not dismiss the owning card.
+
+For a menu-to-dialog handoff, the menu row may unmount. Pass an explicit
+`DialogFrame.onCloseAutoFocus` callback pointing to the surviving trigger, as
+WorkspaceSwitcher does for CreateWorkspaceDialog. Run
+`node scripts/qa/menu-interactions.mjs` for the shared and product-picker
+interaction checks; authenticated current-head preview QA remains required.
+
+## Shared selects
+
+`Select` (option-child API) and generic `ListboxSelect<T>` use the canonical
+`packages/overlay-ui/src/components/ui/select.tsx` Radix primitives. Keep imports
+from `@overlay/ui`; `SelectRoot` exposes the canonical root without colliding
+with the compatibility `Select`. Trigger dimensions, option rows, Overlay CSS
+variables and portalled `z-10090` remain unchanged. `portal=false` stays inline
+at `z-50`, with Radix collision handling in both modes.
+
+Radix forbids empty item values; the adapter uses private index IDs and translates
+back to original public values. Empty options remain selectable (sharing, replay,
+agent defaults/accounts); an unmatched controlled value retains its display text
+(the Slack channel prompt). Groups preserve source order; disabled options/groups
+stay visible and cannot be selected. No domain model-picker ordering changes.
+
+`Select` keeps a visually hidden native select for original FormData values,
+required validation, autofill, real `ChangeEvent<HTMLSelectElement>` callbacks and
+uncontrolled form reset. Labels/IDs and control events belong on the visible
+trigger. Multiple selection or `size > 1` remains narrowly native because Radix
+Select supports neither; no current product consumer requests these modes.
+`ListboxSelect` retains its named hidden input, omitting it when disabled.
+Radix's private form events do not bubble through this adapter.
+
+Radix supplies arrows, typeahead, selection, scroll buttons, Escape/outside
+dismissal and focus return. The adapter closes on Tab/Shift+Tab and advances
+through visible controls, wrapping at the boundaries of an enclosing dialog
+and skipping disabled controls (including busy footer actions). Only actual modal
+dialogs advertise `aria-modal=true`; non-modal popovers traverse the document
+instead of looping on their own select. Run
+`node scripts/qa/select-interactions.mjs` for real-browser adapter/form/keyboard/
+collision/dialog/mobile tests and all 39 preset variable checks. Set
+`SELECT_QA_CHROMIUM` only when using an existing Chromium executable.
+
+## Work: tasks, board, and timeline
+
+The Work page (`src/features/work/`) follows the existing patterns and adds a few of its own:
+
+- **One page, three views.** List, Board and Timeline show the same tasks. Scope (`?scope=`), view (`?view=`), filter
+  (`?filter=`) and the open task (`?task=`) live in the URL, so a link opens where it was copied and Back closes a task.
+  A task link opens in the scope the task lives in.
+- **Edit in place, save at once.** There are no save bars. Every change appears immediately, is confirmed by the
+  server's answer, and rolls back with a plain message in an inline alert if the server refuses.
+- **The task panel is a docked right panel** (`AppScreenSidePanel`), not a modal. Escape closes it unless a picker or a
+  text field has it first.
+- **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
+  one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
+- **The done-when checklist is the one place a box is ticked.** Each condition is a `button role="checkbox"`, not an
+  `<input type="checkbox">`: it is part of a task's content (a list the person writes), not an on/off setting, so the
+  Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.
+- Status is shown as a glyph first (dashed, empty, half, lens, filled with a check), colour second.
+
 ## Toggles are the only on/off control
 
 Nowhere in the web app do we render checkboxes (`<input type="checkbox">`).
@@ -130,13 +282,29 @@ New + search, then the list. New is never above the scope rows.
   person joins; the owner sees it on the next workspace refresh.
 
 
-## Expandable rows are not indented
+## Secondary sidebar: shadcn Sidebar parts
 
-What an expansion reveals (a scope's sub-rows, an agent's threads, a section's pages) lines up with the row that opened
-it: same left edge, no extra left padding or margin. A chevron on the parent and a smaller type size are what mark the
-children as nested. Hierarchies that are real trees (the files folder tree) are the exception, because depth is the
-content there. `InlineNavChildren` enforces this and its test fails on any `pl-*` or `ml-*` in the nested rows; new
-expandable components follow the same rule.
+The secondary panel is built on the shadcn Sidebar parts in `@overlay/ui/primitives` (`packages/overlay-ui/src/components/ui/sidebar.tsx`):
+`Sidebar` (the in-flow container; the shell owns its width, collapse animation and phone drawer), `SidebarHeader`,
+`SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`, `SidebarMenuAction`, `SidebarMenuBadge`, `SidebarMenuSkeleton`
+and `SidebarMenuSub`. New lists in the panel use these rather than ad-hoc row classes. Only `Sidebar`, `SidebarRail` and
+`SidebarTrigger` read `SidebarProvider`; the menu parts work anywhere, so the same markup renders in the phone drawer.
+The panel's collapsed state is the shell's one `sidebarCollapsed` flag (it hides this panel and shrinks the primary rail
+to icons); the thin handle on the panel's edge (`SidebarRail`) sets it.
+
+### Which expansions are indented
+
+A real tree is indented under a guide line: an agent's threads, automations and "New thread" use `SidebarMenuSub` (a
+vertical line at the left of the group, children inset from it), as do the files folder tree and any other list where
+depth is the content. Row actions (New thread, Archive, Delete) are `SidebarMenuAction`s that appear when that row is
+hovered or focused, scoped to the row's own `group/menu-sub-item`, never the agent that contains it.
+Agent header actions use a separate `group/agent-row` so hovering a child cannot reveal its parent action. On touch layouts these actions stay visible; reserve their width in agent/thread rows so long titles cannot render underneath them. Menu/group actions default to `type="button"` unless composed with `asChild`.
+
+Quick thread creation refreshes the bundle after the mutation; only the latest bundle request may publish state, so a slower pre-creation response cannot remove the new row.
+
+What a navigation row reveals (a scope's Personal/Workspace sub-rows, a section's pages) is not indented: it lines up
+with the row that opened it, and a chevron plus the smaller type size mark it as nested. `InlineNavChildren` enforces
+this and its test fails on any `pl-*` or `ml-*` in the nested rows.
 
 ## Agent settings load together
 

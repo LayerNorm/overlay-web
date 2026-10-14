@@ -18,8 +18,8 @@ const METHOD_LABEL: Record<AgentProviderAuthMethod, string> = { subscription: 'S
 function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-1.5 py-0.5 align-middle">
-      <code className="text-[11px] text-[var(--foreground)]">{command}</code>
+    <span className="inline-flex items-center gap-1 rounded-md border border-(--border) bg-(--surface-subtle) px-1.5 py-0.5 align-middle">
+      <code className="text-[11px] text-(--foreground)">{command}</code>
       <button
         type="button"
         aria-label={`Copy ${command}`}
@@ -29,7 +29,7 @@ function CopyCommand({ command }: { command: string }) {
             window.setTimeout(() => setCopied(false), 1_500)
           }).catch(() => undefined)
         }}
-        className="text-[var(--muted)] hover:text-[var(--foreground)]"
+        className="text-(--muted) hover:text-(--foreground)"
       >
         {copied ? <Check size={11} /> : <Copy size={11} />}
       </button>
@@ -96,30 +96,30 @@ function CodexSignIn({ accountId, label, onConnected, onError }: {
     return (
       <div>
         <Button variant="primary" size="sm" onClick={() => void start()} disabled={starting}>{starting ? 'Starting…' : 'Sign in with ChatGPT'}</Button>
-        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+        <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
           You get a one-time code to enter on OpenAI&rsquo;s site. Overlay keeps the sign-in refreshed and gives each run only a short-lived token.
         </p>
       </div>
     )
   }
   return (
-    <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-      <p className="text-xs text-[var(--foreground)]">
+    <div className="space-y-2 rounded-lg border border-(--border) bg-(--surface-subtle) p-3">
+      <p className="text-xs text-(--foreground)">
         1. Open <a href={code.verificationUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{code.verificationUrl.replace('https://', '')}</a> and sign in.
       </p>
-      <div className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+      <div className="flex items-center gap-2 text-xs text-(--foreground)">
         <span>2. Enter this code:</span>
-        <code className="rounded-md border border-[var(--border)] px-2 py-0.5 text-sm font-medium tracking-widest">{code.userCode}</code>
+        <code className="rounded-md border border-(--border) px-2 py-0.5 text-sm font-medium tracking-widest">{code.userCode}</code>
         <button
           type="button"
           aria-label="Copy code"
-          className="text-[var(--muted)] hover:text-[var(--foreground)]"
+          className="text-(--muted) hover:text-(--foreground)"
           onClick={() => { void navigator.clipboard?.writeText(code.userCode).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1_500) }).catch(() => undefined) }}
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
         </button>
       </div>
-      <p className="text-[11px] text-[var(--muted)]" role="status">Waiting for you to approve it on OpenAI&rsquo;s site (the code expires in 15 minutes). Only enter it if you started this here.</p>
+      <p className="text-[11px] text-(--muted)" role="status">Waiting for you to approve it on OpenAI&rsquo;s site (the code expires in 15 minutes). Only enter it if you started this here.</p>
     </div>
   )
 }
@@ -181,7 +181,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
         {!reconnecting ? (
           <>
             <div>
-              <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">Agent</p>
+              <p className="mb-1.5 text-xs font-medium text-(--foreground)">Agent</p>
               <SegmentedControl
                 ariaLabel="Agent"
                 layout="stretch"
@@ -191,7 +191,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
               />
             </div>
             <div>
-              <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">Sign in with</p>
+              <p className="mb-1.5 text-xs font-medium text-(--foreground)">Sign in with</p>
               <SegmentedControl
                 ariaLabel="Sign-in method"
                 layout="stretch"
@@ -208,7 +208,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
         ) : null}
 
         {definition.experimental ? (
-          <p className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2 text-[11px] leading-4 text-[var(--muted)]">
+          <p className="rounded-lg bg-(--surface-subtle) px-3 py-2 text-[11px] leading-4 text-(--muted)">
             {definition.label} is experimental on Overlay Cloud: it runs with your own key and has not been proven with as many accounts as Claude Code and Codex.
           </p>
         ) : null}
@@ -222,7 +222,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
           />
         ) : (
         <div>
-          <label htmlFor="agent-account-secret" className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">
+          <label htmlFor="agent-account-secret" className="mb-1.5 block text-xs font-medium text-(--foreground)">
             {method === 'subscription' ? 'Setup token' : 'API key'}
           </label>
           <Input
@@ -236,7 +236,7 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
             placeholder={method === 'subscription' ? 'sk-ant-oat01-…' : provider === 'codex' ? 'sk-…' : 'sk-ant-api03-…'}
           />
           {help ? (
-            <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted)]">
+            <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
               {method === 'subscription' && provider === 'claude-code'
                 ? <>Run <CopyCommand command="claude setup-token" /> on your own computer and paste the token it prints. Overlay never reads your existing Claude login.</>
                 : help}
@@ -247,14 +247,14 @@ export function AccountDialog({ target, initialProvider, onClose, onSaved }: {
 
         {!reconnecting ? (
           <div>
-            <label htmlFor="agent-account-label" className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">
-              Name <span className="font-normal text-[var(--muted-light)]">optional</span>
+            <label htmlFor="agent-account-label" className="mb-1.5 block text-xs font-medium text-(--foreground)">
+              Name <span className="font-normal text-(--muted-light)">optional</span>
             </label>
             <Input id="agent-account-label" value={label} maxLength={80} onChange={(event) => setLabel(event.target.value)} placeholder={`${definition.label} ${METHOD_LABEL[method].toLowerCase()}`} />
           </div>
         ) : null}
 
-        {!chatgptSignIn && secret && !check.ok ? <p className="text-xs text-[var(--muted)]">{check.reason}</p> : null}
+        {!chatgptSignIn && secret && !check.ok ? <p className="text-xs text-(--muted)">{check.reason}</p> : null}
         {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
       </div>
 

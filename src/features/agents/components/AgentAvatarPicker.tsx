@@ -58,7 +58,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
           if (!open) setCustomOpen(isCustomColor)
           setOpen((current) => !current)
         }}
-        className="group relative rounded-2xl outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+        className="group relative rounded-2xl outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
       >
         <Creature shape={shape} color={color} size={size} label="Agent avatar" />
         <span className="absolute inset-[14%] flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -71,7 +71,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
           <div
             role="dialog"
             aria-label="Avatar"
-            className="overlay-pop-in w-[296px] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5 shadow-xl"
+            className="overlay-pop-in w-[296px] rounded-2xl border border-(--border) bg-(--surface-elevated) p-3.5 shadow-xl"
           >
             <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Avatar shape">
               {CREATURE_SHAPES.map((option) => (
@@ -82,14 +82,14 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
                   aria-checked={shape === option}
                   aria-label={`${option} shape`}
                   onClick={() => onShapeChange(option)}
-                  className={`flex aspect-square items-center justify-center rounded-xl border transition-colors ${shape === option ? 'border-[var(--border)] bg-[var(--surface-subtle)]' : 'border-transparent hover:bg-[var(--surface-subtle)]'}`}
+                  className={`flex aspect-square items-center justify-center rounded-xl border transition-colors ${shape === option ? 'border-(--border) bg-(--surface-subtle)' : 'border-transparent hover:bg-(--surface-subtle)'}`}
                 >
                   <Creature shape={option} color={color} size={40} animated={false} label="" />
                 </button>
               ))}
             </div>
             <div
-              className="mt-3 grid grid-cols-6 justify-items-center gap-2 border-t border-[var(--border)] pt-3"
+              className="mt-3 grid grid-cols-6 justify-items-center gap-2 border-t border-(--border) pt-3"
               role="radiogroup"
               aria-label="Avatar color"
             >
@@ -102,7 +102,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
                   aria-label={`Color ${option}`}
                   onClick={() => onColorChange(option)}
                   style={{ backgroundColor: option }}
-                  className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${color === option ? 'ring-[1.5px] ring-[var(--muted)] ring-offset-2 ring-offset-[var(--surface-elevated)]' : ''}`}
+                  className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${color === option ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`}
                 />
               ))}
               <button
@@ -115,7 +115,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
                 style={isCustomColor
                   ? { backgroundColor: color }
                   : { backgroundImage: 'conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
-                className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${isCustomColor ? 'ring-[1.5px] ring-[var(--muted)] ring-offset-2 ring-offset-[var(--surface-elevated)]' : ''}`}
+                className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${isCustomColor ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`}
               />
             </div>
             {customOpen ? <AvatarColorPicker color={color} onChange={onColorChange} /> : null}

@@ -13,6 +13,23 @@ const update = makeFunctionReference<'mutation'>('files/files:update')
 const get = makeFunctionReference<'query'>('files/files:get')
 
 describe('text kept in object storage', () => {
+  test('canonical updates remove legacy textContent that would mask the saved content', async () => {
+    const convex = convexTest(schema, modules)
+    for (const kind of ['note', 'upload'] as const) {
+      const fileId = await convex.run(ctx => ctx.db.insert('files', {
+        userId: 'user_1', name: 'Legacy ' + kind, type: 'file', kind,
+        content: 'Old content', textContent: 'Legacy text', createdAt: 1, updatedAt: 1,
+      }))
+      await convex.mutation(update, { userId: 'user_1', serverSecret: secret,
+        fileId, content: 'Accepted edit', expectedUpdatedAt: 1 })
+      const stored = await convex.run(ctx => ctx.db.get(fileId))
+      expect(stored?.content).toBe('Accepted edit')
+      expect(stored?.textContent).toBeUndefined()
+      expect(await convex.query(get, { fileId, userId: 'user_1', serverSecret: secret }))
+        .toMatchObject({ content: 'Accepted edit', textContent: 'Accepted edit' })
+    }
+  })
+
   test('its row can move to a new owned file key; other files cannot take one by update', async () => {
     const convex = convexTest(schema, modules)
     const prefix = fileKeyPrefixForUser('user_1')

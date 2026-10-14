@@ -24,10 +24,10 @@ import { KnowledgeRowActionsContext } from './file-views'
 import { FilesCreateUploadControls, OutputFilterMenu } from './toolbar-menus'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
-  'inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
 
 const TOOLBAR_FILLED_BUTTON_CLASS =
-  'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-0 text-xs leading-none text-[var(--foreground)] transition-colors hover:bg-[var(--border)]'
+  'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-2.5 py-0 text-xs leading-none text-(--foreground) transition-colors hover:bg-(--border)'
 
 type KnowledgeLayout = 'list' | 'cards'
 type FilesCategory = 'all' | 'notes' | 'files' | 'outputs'
@@ -52,7 +52,7 @@ function SelectedFileHeader({
         type="button"
         onClick={onClose}
         title="Back to files"
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
       >
         <ArrowLeft size={17} />
       </button>
@@ -62,11 +62,11 @@ function SelectedFileHeader({
         value={fileTitle}
         onChange={(e) => onTitleChange(e.target.value)}
         placeholder="File title..."
-        className="min-w-0 flex-1 bg-transparent font-medium text-xl text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
+        className="min-w-0 flex-1 bg-transparent font-medium text-xl text-(--foreground) outline-hidden placeholder:text-(--muted)"
         style={{ fontFamily: 'var(--font-serif)' }}
       />
       {isSavingFile ? (
-        <span className="shrink-0 text-[11px] text-[var(--muted-light)]">Saving...</span>
+        <span className="shrink-0 text-[11px] text-(--muted-light)">Saving...</span>
       ) : null}
       {renderRowActions ? <span className="flex shrink-0 items-center">{renderRowActions(file)}</span> : null}
     </>
@@ -105,29 +105,29 @@ function FolderHeader({
           moveFileToParent(fileId, activeFolder.parentId)
         }}
         title={activeFolder.parentId ? 'Back to parent folder' : 'Back to all files'}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
       >
         <ArrowLeft size={17} />
       </button>
-      <FolderOpen size={18} className="shrink-0 text-[var(--muted-light)]" />
+      <FolderOpen size={18} className="shrink-0 text-(--muted-light)" />
       <nav aria-label="Folder breadcrumbs" className="flex min-w-0 items-center gap-1 truncate text-sm">
         <button
           type="button"
           onClick={() => navigateToFolder(null)}
-          className="shrink-0 text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+          className="shrink-0 text-(--muted) transition-colors hover:text-(--foreground)"
         >
           Files
         </button>
         {folderBreadcrumb.map((node, i) => (
           <span key={node._id} className="flex min-w-0 items-center gap-1">
-            <ChevronRight size={12} className="shrink-0 text-[var(--muted-light)]" />
+            <ChevronRight size={12} className="shrink-0 text-(--muted-light)" />
             {i === folderBreadcrumb.length - 1 ? (
-              <span aria-current="page" className="truncate font-medium text-[var(--foreground)]">{node.name}</span>
+              <span aria-current="page" className="truncate font-medium text-(--foreground)">{node.name}</span>
             ) : (
               <button
                 type="button"
                 onClick={() => navigateToFolder(node._id)}
-                className="truncate text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                className="truncate text-(--muted) transition-colors hover:text-(--foreground)"
               >
                 {node.name}
               </button>
@@ -136,7 +136,7 @@ function FolderHeader({
         ))}
       </nav>
       {!memorySearchOpen && (
-        <span className="shrink-0 text-xs text-[var(--muted-light)]">{itemCount} items</span>
+        <span className="shrink-0 text-xs text-(--muted-light)">{itemCount} items</span>
       )}
     </div>
   )
@@ -167,11 +167,11 @@ function HeaderTitle({
           : 'Files'
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-3">
-      <h1 className="text-sm font-medium text-[var(--foreground)]">
+      <h1 className="text-sm font-medium text-(--foreground)">
         {mode === 'files' ? filesTitle : activeTab === 'memories' ? 'Memories' : activeTab === 'files' ? 'Files' : 'Outputs'}
       </h1>
       {activeTab !== 'outputs' && !memorySearchOpen && (
-        <span className="text-xs text-[var(--muted-light)]">
+        <span className="text-xs text-(--muted-light)">
           {activeTab === 'memories' ? memoryCount : fileCount} items
         </span>
       )}
@@ -259,7 +259,7 @@ function LayoutControls({
   onUpdateQuery: (updates: Record<string, string | null | undefined>) => void
 }) {
   return (
-    <div className="flex h-8 min-h-8 items-center rounded-md border border-[var(--border)] bg-[var(--surface-muted)] p-0.5">
+    <div className="flex h-8 min-h-8 items-center rounded-md border border-(--border) bg-(--surface-muted) p-0.5">
       <button
         type="button"
         title="List"
@@ -268,8 +268,8 @@ function LayoutControls({
         onClick={() => onUpdateQuery({ layout: 'list' })}
         className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'list'
-            ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-            : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
+            ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
+            : 'text-(--muted-light) hover:text-(--foreground)'
         }`}
       >
         <LayoutList size={14} strokeWidth={1.75} />
@@ -282,8 +282,8 @@ function LayoutControls({
         onClick={() => onUpdateQuery({ layout: 'cards' })}
         className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'cards'
-            ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] shadow-sm'
-            : 'text-[var(--muted-light)] hover:text-[var(--foreground)]'
+            ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
+            : 'text-(--muted-light) hover:text-(--foreground)'
         }`}
       >
         <LayoutGrid size={14} strokeWidth={1.75} />
@@ -515,7 +515,7 @@ function TabToolbar({
   uploadMenuRef: React.RefObject<HTMLDivElement | null>
 }) {
   return (
-    <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] max-sm:order-2 max-sm:w-full sm:ml-auto sm:w-auto sm:overflow-visible [&::-webkit-scrollbar]:hidden">
+    <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto scrollbar-none max-sm:order-2 max-sm:w-full sm:ml-auto sm:w-auto sm:overflow-visible [&::-webkit-scrollbar]:hidden">
       <BulkSelectControls
         activeTab={activeTab}
         bulkDeleting={bulkDeleting}

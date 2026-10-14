@@ -159,11 +159,11 @@ function ExportMenuDropdown({
   onOpenShareDialog,
 }: ExportMenuDropdownProps) {
   return (
-    <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+    <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
       <button
         type="button"
         onClick={onCopy}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors"
+        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
       >
         {copied ? (
           <>
@@ -178,26 +178,26 @@ function ExportMenuDropdown({
         )}
       </button>
 
-      <div className="my-1 border-t border-[var(--border)]" />
+      <div className="my-1 border-t border-(--border)" />
 
       <button
         type="button"
         onClick={onToggleExportSubmenu}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors"
+        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
       >
         <FileDown size={14} />
         <span>Export as...</span>
       </button>
 
       {showExportSubmenu && (
-        <div className="border-t border-[var(--border)] bg-[var(--surface-subtle)] py-1">
+        <div className="border-t border-(--border) bg-(--surface-subtle) py-1">
           {EXPORT_OPTIONS.map(({ format, label, icon: Icon }) => (
             <button
               key={format}
               type="button"
               onClick={() => onExport(format)}
               disabled={isExporting}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors disabled:opacity-50"
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50"
             >
               <Icon size={14} />
               <span>{label}</span>
@@ -208,11 +208,11 @@ function ExportMenuDropdown({
 
       {canShare && (
         <>
-          <div className="my-1 border-t border-[var(--border)]" />
+          <div className="my-1 border-t border-(--border)" />
           <button
             type="button"
             onClick={onToggleShareSubmenu}
-            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors"
+            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
           >
             <Share2 size={14} />
             <span>Share</span>
@@ -320,7 +320,7 @@ export function ExportMenu({
         // Rests transparent like the sibling header actions (delete, assistant) and
         // only fills on hover. A resting background made this one button read as
         // selected next to them.
-        className="inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] transition-[color,background-color,transform] duration-200 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
+        className="inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
         aria-label="Export options"
       >
         <MoreVertical size={16} strokeWidth={1.75} />

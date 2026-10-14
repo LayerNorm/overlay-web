@@ -1,7 +1,7 @@
 import type { ResourceScope } from '@/shared/workspaces/resource-scope'
 
 /** The dropdown on Settings → Archived. `all` shows everything. */
-export const ARCHIVED_CATEGORIES = ['all', 'chats', 'files', 'agents', 'extensions', 'automations'] as const
+export const ARCHIVED_CATEGORIES = ['all', 'chats', 'files', 'agents', 'extensions', 'automations', 'work'] as const
 export type ArchivedCategoryFilter = (typeof ARCHIVED_CATEGORIES)[number]
 export type ArchivedCategory = Exclude<ArchivedCategoryFilter, 'all'>
 
@@ -12,6 +12,7 @@ export const ARCHIVED_CATEGORY_LABELS: Record<ArchivedCategoryFilter, string> = 
   agents: 'Agents',
   extensions: 'Extensions',
   automations: 'Automations',
+  work: 'Tasks',
 }
 
 /**
@@ -28,6 +29,7 @@ export type ArchivedItemKind =
   | 'skill'
   | 'mcp-server'
   | 'automation'
+  | 'work-item'
 
 export interface ArchivedItem {
   /** Unique across kinds (an id alone is not: a thread and its agent are different rows). */
@@ -64,6 +66,7 @@ export const ARCHIVED_KIND_LABELS: Record<ArchivedItemKind, string> = {
   skill: 'Skill',
   'mcp-server': 'MCP server',
   automation: 'Automation',
+  'work-item': 'Task',
 }
 
 /** The dropdown's filter and the search box, applied together. Newest archived first; rows without a date go last. */

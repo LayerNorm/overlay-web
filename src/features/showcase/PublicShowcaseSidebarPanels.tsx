@@ -9,7 +9,7 @@ import {
 } from './showcase-data'
 
 const rowClass =
-  'flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
 
 export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
@@ -22,7 +22,7 @@ export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: ()
         <button
           key={file._id}
           type="button"
-          className={`${rowClass} ${activeId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+          className={`${rowClass} ${activeId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
           onClick={() => {
             router.push(`/app/files?${new URLSearchParams({ showcase: '1', file: file._id }).toString()}`)
             onNavigate?.()
@@ -49,7 +49,7 @@ export function PublicShowcaseAutomationsInlinePanel({ onNavigate }: { onNavigat
           <button
             key={id}
             type="button"
-            className={`${rowClass} ${activeId === id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+            className={`${rowClass} ${activeId === id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
             onClick={() => {
               router.push(`/app/automations?${new URLSearchParams({ showcase: '1', automationId: id }).toString()}`)
               onNavigate?.()

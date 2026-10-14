@@ -24,6 +24,25 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
 - Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
+## Work (tasks)
+
+Work routes (`/api/v1/work`) follow the same layering as other scoped content: thin route files, `WorkService`
+(`src/server/work/`) over a `WorkRepository`, and Convex (`convex/work/`) as the owner of the rules. Convex refuses a
+change with `WORK_INVALID:<reason>`; `src/shared/work/errors.ts` turns the reason into the plain message and status
+the API returns (400, or 409 for an archived task), and `Unauthorized` becomes 403. Moving a task between Personal and
+Workspace, archiving and restoring are not Work routes: use `POST /api/v1/scope` with `resource: 'work'`. The wire types
+(`WorkItem`, `WorkEvent`, `WorkContext`, and the request bodies) live in `@overlay/app-core`; `@overlay/api-client`
+exposes them as `client.work`.
+
+## Expected backend errors
+
+Carry expected Convex failures as `ConvexError` data and preserve `errorData` in
+the server HTTP adapter when `throwOnError` is requested. Production Convex hides
+developer error messages; string matching alone cannot enforce an HTTP contract.
+Note revision conflicts carry `NOTE_REVISION_CONFLICT`, mapped to the existing
+`409` response without exposing internal failures. Legacy message matching remains
+for web-first deployment overlap with older backends.
+
 ## Bootstrap
 
 `/api/v1/bootstrap` returns the canonical serializable frontend registry:
@@ -103,6 +122,9 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
+- Reactive handlers receive the short-lived BFF HMAC token as an explicit
+  `accessToken` argument. This token does not configure Convex platform `setAuth`;
+  the handler verifies it and binds it to the requested account.
 - Personal chat creation is deferred until the first send. Newly created DMs and
   channels are client-side drafts until their first message succeeds: they are not
   inserted into the sidebar list, and navigating away removes the current member

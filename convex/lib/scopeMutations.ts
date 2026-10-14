@@ -41,6 +41,8 @@ export function scopeMutations(
     onArchive?: Record<string, unknown>
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
+    /** Runs after a move, archive, or restore was written (an activity log, for example). */
+    afterApply?: (ctx: unknown, change: { action: 'scope' | 'archived' | 'restored'; id: string; row: ScopedDoc; userId: string; to?: 'personal' | 'workspace'; moved?: string[] }) => Promise<void>
   },
 ) {
   const common = {
@@ -69,11 +71,13 @@ export function scopeMutations(
       const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
       await db.patch(id, plan.patch)
+      const moved = [id]
       // A folder's contents go with it: only the creator's own, not-archived rows.
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
-        if (child && !child.archivedAt && child.userId === row?.userId) await db.patch(childId, plan.patch)
+        if (child && !child.archivedAt && child.userId === row?.userId) { await db.patch(childId, plan.patch); moved.push(childId) }
       }
+      if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, to: args.to, moved })
       return { ok: true }
     },
   })
@@ -92,6 +96,7 @@ export function scopeMutations(
           await db.patch(childId, { archivedAt: plan.patch.archivedAt, archivedBy: plan.patch.archivedBy, archivedFromScope: rowScopeOf(child), ...(options?.onArchive ?? {}) })
         }
       }
+      if (row) await options?.afterApply?.(ctx, { action: 'archived', id, row, userId: args.userId })
       return { ok: true }
     },
   })
@@ -112,6 +117,7 @@ export function scopeMutations(
           await db.patch(childId, { scope: child.archivedFromScope ?? child.scope ?? 'personal', archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
         }
       }
+      if (row) await options?.afterApply?.(ctx, { action: 'restored', id, row, userId: args.userId })
       return { ok: true }
     },
   })

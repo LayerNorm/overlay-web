@@ -73,13 +73,13 @@ export function AuthorizationAdminPanel({
     return <AccessDenied />
   }
   if (loading) {
-    return <p className="py-12 text-sm text-[var(--muted)]">Loading authorization settings...</p>
+    return <p className="py-12 text-sm text-(--muted)">Loading authorization settings...</p>
   }
 
   return (
     <div data-testid={`admin-authorization-${view}`}>
       <div className="mb-5 flex items-center justify-between gap-3">
-        <p className="text-sm text-[var(--muted)]">
+        <p className="text-sm text-(--muted)">
           {view === 'roles' ? 'Define reusable capability sets and assign them to users.' : 'Organize users and assign roles to groups.'}
         </p>
         <button type="button" aria-label="Refresh authorization" className={iconButtonClass} onClick={() => void load()}>
@@ -214,14 +214,14 @@ function RoleListItem({
   return (
     <button
       type="button"
-      className={`w-full px-2 py-3 text-left text-sm ${selected ? 'bg-[var(--surface)]' : ''}`}
+      className={`w-full px-2 py-3 text-left text-sm ${selected ? 'bg-(--surface)' : ''}`}
       onClick={() => onSelect(role.id)}
     >
       <span className="flex items-center justify-between gap-2 font-medium">
         {role.name}
         {role.isSystem ? <span className={badgeClass}>System</span> : null}
       </span>
-      <span className="mt-1 block text-xs text-[var(--muted)]">{role.capabilities.length} capabilities</span>
+      <span className="mt-1 block text-xs text-(--muted)">{role.capabilities.length} capabilities</span>
     </button>
   )
 }
@@ -268,7 +268,7 @@ function RoleEditor({
           </button>
         ) : null}
       </div>
-      {selected?.isSystem ? <p className="mt-3 text-xs text-[var(--muted)]">System roles are managed by Overlay and cannot be changed.</p> : null}
+      {selected?.isSystem ? <p className="mt-3 text-xs text-(--muted)">System roles are managed by Overlay and cannot be changed.</p> : null}
       {error ? <ErrorMessage value={error} /> : null}
       <div className="mt-5 grid gap-3">
         <label className={labelClass}>
@@ -314,11 +314,11 @@ function RolesPanel({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="border-r-0 border-[var(--border)] lg:border-r lg:pr-5">
+      <aside className="border-r-0 border-(--border) lg:border-r lg:pr-5">
         {canManage ? <button type="button" className={`${secondaryButtonClass} w-full justify-center`} onClick={startCreate}>
           <Plus size={15} /> New role
         </button> : null}
-        <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
           {roles.map((role) => (
             <RoleListItem
               key={role.id}
@@ -327,7 +327,7 @@ function RolesPanel({
               onSelect={select}
             />
           ))}
-          {roles.length === 0 ? <p className="px-2 py-4 text-sm text-[var(--muted)]">No roles yet.</p> : null}
+          {roles.length === 0 ? <p className="px-2 py-4 text-sm text-(--muted)">No roles yet.</p> : null}
         </div>
       </aside>
 
@@ -367,10 +367,10 @@ function CapabilityPicker({
       <div className="mt-3 grid gap-x-8 gap-y-5 md:grid-cols-2">
         {sections.map((section) => (
           <fieldset key={section.category} disabled={disabled}>
-            <legend className="mb-2 text-xs font-medium text-[var(--muted)]">{section.label}</legend>
+            <legend className="mb-2 text-xs font-medium text-(--muted)">{section.label}</legend>
             <div className="space-y-2">
               {section.capabilities.map((capability) => (
-                <div key={capability.key} className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0">
+                <div key={capability.key} className="flex items-center gap-3 border-b border-(--border) py-1.5 last:border-b-0">
                   <span className="flex-1 text-sm">{capability.label}</span>
                   <Toggle
                     checked={selectedSet.has(capability.key)}
@@ -470,7 +470,7 @@ function UserRoleAssignments({
   }
 
   return (
-    <section className="mt-8 border-t border-[var(--border)] pt-6">
+    <section className="mt-8 border-t border-(--border) pt-6">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Assigned users</h3>
         <span className={badgeClass}>{users.length}</span>
@@ -487,16 +487,16 @@ function UserRoleAssignments({
           <UserPlus size={15} /> Assign
         </button>
       </div> : null}
-      <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
-        {loading ? <p className="py-4 text-sm text-[var(--muted)]">Loading assigned users...</p> : null}
-        {!loading && users.length === 0 ? <p className="py-4 text-sm text-[var(--muted)]">No users are assigned directly to this role.</p> : null}
+      <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
+        {loading ? <p className="py-4 text-sm text-(--muted)">Loading assigned users...</p> : null}
+        {!loading && users.length === 0 ? <p className="py-4 text-sm text-(--muted)">No users are assigned directly to this role.</p> : null}
         {!loading ? users.map((assignment) => {
           const user = userDirectory.find(({ userId: candidate }) => candidate === assignment.userId)
           return (
             <div key={assignment.userId} className="flex min-w-0 items-center justify-between gap-3 py-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{user?.email || assignment.userId}</p>
-                <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                <p className="mt-0.5 truncate text-xs text-(--muted)">
                   {user?.email ? `${assignment.userId} · ` : ''}Assigned {new Date(assignment.createdAt).toLocaleDateString()}
                 </p>
               </div>
@@ -515,7 +515,7 @@ function UserRoleAssignments({
       </div>
       {groups.length > 0 ? (
         <div className="mt-5">
-          <h4 className="text-xs font-medium text-[var(--muted)]">Assigned groups</h4>
+          <h4 className="text-xs font-medium text-(--muted)">Assigned groups</h4>
           <div className="mt-2 flex flex-wrap gap-2">
             {groups.map((assignment) => <span key={assignment.groupId} className={badgeClass}>{assignment.groupId}</span>)}
           </div>
@@ -629,14 +629,14 @@ function GroupListItem({
   return (
     <button
       type="button"
-      className={`w-full px-2 py-3 text-left text-sm ${selected ? 'bg-[var(--surface)]' : ''}`}
+      className={`w-full px-2 py-3 text-left text-sm ${selected ? 'bg-(--surface)' : ''}`}
       onClick={() => onSelect(group.id)}
     >
       <span className="flex items-center justify-between gap-2 font-medium">
         {group.name}
         <span className={badgeClass}>{group.source}</span>
       </span>
-      {group.description ? <span className="mt-1 block truncate text-xs text-[var(--muted)]">{group.description}</span> : null}
+      {group.description ? <span className="mt-1 block truncate text-xs text-(--muted)">{group.description}</span> : null}
     </button>
   )
 }
@@ -682,7 +682,7 @@ function GroupEditor({
         ) : null}
       </div>
       {selected?.source === 'external' ? (
-        <p className="mt-3 text-xs text-[var(--muted)]">This group is synchronized by an external identity provider and is read-only.</p>
+        <p className="mt-3 text-xs text-(--muted)">This group is synchronized by an external identity provider and is read-only.</p>
       ) : null}
       {error ? <ErrorMessage value={error} /> : null}
       <div className="mt-5 grid gap-3">
@@ -724,7 +724,7 @@ function GroupsPanel({ canManage, canManageRoles, canReadRoles, groups, roles, o
 
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="border-r-0 border-[var(--border)] lg:border-r lg:pr-5">
+      <aside className="border-r-0 border-(--border) lg:border-r lg:pr-5">
         {canManage ? <button
           type="button"
           className={`${secondaryButtonClass} w-full justify-center`}
@@ -732,7 +732,7 @@ function GroupsPanel({ canManage, canManageRoles, canReadRoles, groups, roles, o
         >
           <Plus size={15} /> New group
         </button> : null}
-        <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
           {groups.map((group) => (
             <GroupListItem
               key={group.id}
@@ -741,7 +741,7 @@ function GroupsPanel({ canManage, canManageRoles, canReadRoles, groups, roles, o
               onSelect={select}
             />
           ))}
-          {groups.length === 0 ? <p className="px-2 py-4 text-sm text-[var(--muted)]">No groups yet.</p> : null}
+          {groups.length === 0 ? <p className="px-2 py-4 text-sm text-(--muted)">No groups yet.</p> : null}
         </div>
       </aside>
       <div>
@@ -805,7 +805,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
   }
 
   return (
-    <div className="mt-8 grid gap-8 border-t border-[var(--border)] pt-6 md:grid-cols-2">
+    <div className="mt-8 grid gap-8 border-t border-(--border) pt-6 md:grid-cols-2">
       <section>
         <h3 className="text-sm font-semibold">Members</h3>
         {canManageGroup ? (
@@ -837,7 +837,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
             </button>
           </div>
         ) : null}
-        <div className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        <div className="mt-3 divide-y divide-(--border) border-y border-(--border)">
           {memberships.map((membership) => (
             <div key={membership.userId} className="flex items-center justify-between gap-2 py-2 text-sm">
               <span className="min-w-0 truncate">{membership.userId}</span>
@@ -845,7 +845,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
                 <button
                   type="button"
                   aria-label={`Remove ${membership.userId}`}
-                  className="text-[var(--muted)]"
+                  className="text-(--muted)"
                   onClick={() =>
                     void mutate(
                       overlayAppClient.adminAuthorization.removeMembershipResponse({ groupId: group.id, userId: membership.userId }),
@@ -860,7 +860,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
               )}
             </div>
           ))}
-          {memberships.length === 0 ? <p className="py-3 text-sm text-[var(--muted)]">No members.</p> : null}
+          {memberships.length === 0 ? <p className="py-3 text-sm text-(--muted)">No members.</p> : null}
         </div>
       </section>
       <section>
@@ -899,7 +899,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
             </button>
           </div>
         ) : null}
-        <div className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        <div className="mt-3 divide-y divide-(--border) border-y border-(--border)">
           {assignments.map((assignment) => (
             <div key={assignment.roleId} className="flex items-center justify-between gap-2 py-2 text-sm">
               <span>{roles.find((role) => role.id === assignment.roleId)?.name ?? assignment.roleId}</span>
@@ -907,7 +907,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
                 <button
                   type="button"
                   aria-label="Revoke group role"
-                  className="text-[var(--muted)]"
+                  className="text-(--muted)"
                   onClick={() =>
                     void mutate(
                       overlayAppClient.adminAuthorization.revokeRoleResponse({
@@ -924,7 +924,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
               ) : null}
             </div>
           ))}
-          {assignments.length === 0 ? <p className="py-3 text-sm text-[var(--muted)]">No assigned roles.</p> : null}
+          {assignments.length === 0 ? <p className="py-3 text-sm text-(--muted)">No assigned roles.</p> : null}
         </div>
       </section>
       {error ? (
@@ -938,7 +938,7 @@ function GroupAccess({ canManageGroup, canManageRoleAssignments, canReadRoles, g
 
 function EmptyState({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
-    <div className="flex min-h-48 flex-col items-center justify-center gap-3 border-y border-[var(--border)] text-sm text-[var(--muted)]">
+    <div className="flex min-h-48 flex-col items-center justify-center gap-3 border-y border-(--border) text-sm text-(--muted)">
       {icon}
       <p>{title}</p>
     </div>
@@ -950,7 +950,7 @@ function AccessDenied() {
     <div className="py-12" data-testid="authorization-forbidden">
       <Shield size={20} />
       <h2 className="mt-3 text-base font-semibold">Role administration access required</h2>
-      <p className="mt-1 text-sm text-[var(--muted)]">Your account cannot manage roles or groups.</p>
+      <p className="mt-1 text-sm text-(--muted)">Your account cannot manage roles or groups.</p>
     </div>
   )
 }
@@ -982,10 +982,10 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Authorization request failed'
 }
 
-const inputClass = 'mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60'
-const labelClass = 'text-xs font-medium text-[var(--muted)]'
+const inputClass = 'mt-1 h-9 w-full rounded-md border border-(--border) bg-(--surface) px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60'
+const labelClass = 'text-xs font-medium text-(--muted)'
 const primaryButtonClass =
-  'inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] disabled:opacity-50'
-const secondaryButtonClass = 'inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] px-3 text-sm disabled:opacity-50'
-const iconButtonClass = 'inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-[var(--border)] disabled:opacity-50'
-const badgeClass = 'inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-[var(--muted)]'
+  'inline-flex h-9 items-center justify-center gap-2 rounded-md bg-(--foreground) px-4 text-sm font-medium text-(--background) disabled:opacity-50'
+const secondaryButtonClass = 'inline-flex h-9 items-center gap-2 rounded-md border border-(--border) px-3 text-sm disabled:opacity-50'
+const iconButtonClass = 'inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-(--border) disabled:opacity-50'
+const badgeClass = 'inline-flex rounded-sm border border-(--border) px-1.5 py-0.5 text-[10px] font-medium uppercase text-(--muted)'

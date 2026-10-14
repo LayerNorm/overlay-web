@@ -112,12 +112,12 @@ export function SidebarRailBrand({
       <button
         type="button"
         onClick={onExpand}
-        className="group inline-flex h-10 w-full items-center justify-center rounded-md transition-colors hover:bg-[var(--surface-subtle)]"
+        className="group inline-flex h-10 w-full items-center justify-center rounded-md transition-colors hover:bg-(--surface-subtle)"
         aria-label="Expand sidebar"
         title="Expand sidebar"
       >
         <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={10} className="shrink-0 group-hover:hidden" />
-        <ChevronRight size={16} className="hidden text-[var(--foreground)] group-hover:block" />
+        <ChevronRight size={16} className="hidden text-(--foreground) group-hover:block" />
       </button>
     )
   }
@@ -125,13 +125,13 @@ export function SidebarRailBrand({
     <>
       <Link
         href={homeHref}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-3 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-3 py-1.5 transition-colors hover:bg-(--surface-subtle)"
         aria-label="Home"
         title="Home"
       >
         <BrandMark logoSrc={logoSrc} logoAlt={logoAlt} size={10} className="shrink-0" />
         <span
-          className="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
+          className="truncate text-lg font-medium tracking-tight text-(--foreground)"
           style={{ fontFamily: 'var(--font-serif)' }}
         >
           {label}
@@ -140,7 +140,7 @@ export function SidebarRailBrand({
       <button
         type="button"
         onClick={onCollapse}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
         aria-label="Collapse sidebar"
         title="Collapse sidebar"
       >
@@ -274,7 +274,7 @@ function DesktopAccountFallback({
   accountMenu: ReactNode
   onSignIn: () => void
 }) {
-  const rowClass = `flex h-9 w-full items-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] ${
+  const rowClass = `flex h-9 w-full items-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
     railExpanded ? 'gap-2.5 px-3' : 'justify-center'
   }`
   const label = railExpanded ? (
@@ -284,6 +284,19 @@ function DesktopAccountFallback({
     return (
       <>
         <FloatingMenu
+          aria-label="Account"
+          trigger={
+            <button
+              type="button"
+              className={rowClass}
+              aria-label="Account menu"
+              aria-expanded={accountMenuOpen}
+              title={displayName}
+            >
+              <User size={15} className="shrink-0" />
+              {label}
+            </button>
+          }
           anchorRef={menuRef}
           open={accountMenuOpen}
           onOpenChange={onAccountMenuOpenChange}
@@ -292,24 +305,21 @@ function DesktopAccountFallback({
         >
           {accountMenu}
         </FloatingMenu>
-        <button
-          type="button"
-          onClick={() => onAccountMenuOpenChange(!accountMenuOpen)}
-          className={rowClass}
-          aria-label="Account menu"
-          aria-expanded={accountMenuOpen}
-          title={displayName}
-        >
-          <User size={15} className="shrink-0" />
-          {label}
-        </button>
       </>
     )
   }
   return (
-    <button type="button" onClick={onSignIn} className={rowClass} aria-label="Sign in" title="Sign in">
+    <button
+      type="button"
+      onClick={onSignIn}
+      className={rowClass}
+      aria-label="Sign in"
+      title="Sign in"
+    >
       <User size={15} className="shrink-0" />
-      {railExpanded ? <span className="min-w-0 flex-1 truncate text-left text-sm">Sign in</span> : null}
+      {railExpanded ? (
+        <span className="min-w-0 flex-1 truncate text-left text-sm">Sign in</span>
+      ) : null}
     </button>
   )
 }
@@ -340,15 +350,17 @@ export function MobileTopBar({
   onCloseMenu: () => void
 }) {
   return (
-    <div className={`fixed inset-x-0 top-0 z-40 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:hidden ${
-      hidden ? 'pointer-events-none -translate-y-full opacity-0' : 'translate-y-0 opacity-100'
-    }`}>
+    <div
+      className={`fixed inset-x-0 top-0 z-40 border-b border-(--border) bg-[color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur-sm transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:hidden ${
+        hidden ? 'pointer-events-none -translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+      }`}
+    >
       <div className="flex h-14 items-center justify-between gap-2 px-3">
         <button
           type="button"
           onClick={onOpenMenu}
           aria-label="Open app navigation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted)"
         >
           <Menu size={16} />
         </button>
@@ -368,25 +380,26 @@ export function MobileTopBar({
               })}
             </div>
           ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => onMobileAccountOpenChange(!mobileAccountOpen)}
-                aria-label="Account menu"
-                aria-expanded={mobileAccountOpen}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <User size={16} />
-              </button>
-              {mobileAccountOpen && (
-                <div
-                  className="overlay-pop-in absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-                  onMouseDown={(event) => event.stopPropagation()}
+            <FloatingMenu
+              anchorRef={accountRef}
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Account menu"
+                  aria-expanded={mobileAccountOpen}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 >
-                  {accountMenu}
-                </div>
-              )}
-            </>
+                  <User size={16} />
+                </button>
+              }
+              open={mobileAccountOpen}
+              onOpenChange={onMobileAccountOpenChange}
+              align="end"
+              aria-label="Account"
+              className="w-60 rounded-lg"
+            >
+              {accountMenu}
+            </FloatingMenu>
           )}
         </div>
       </div>
@@ -430,31 +443,35 @@ export function MobileAccountFooter({
             accountMenu,
           })
         ) : !isGuestConfirmed ? (
-          <>
-            {accountMenuOpen ? (
-              <div
-                className="overlay-fade-in absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
-                onMouseDown={(event) => event.stopPropagation()}
+          <FloatingMenu
+            anchorRef={menuRef}
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+                aria-label="Account menu"
               >
-                {accountMenu}
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => onAccountMenuOpenChange(!accountMenuOpen)}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              aria-label="Account menu"
-            >
-              <User size={13} />
-              <span className="flex-1 truncate text-left">{displayName}</span>
-              <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} />
-            </button>
-          </>
+                <User size={13} />
+                <span className="flex-1 truncate text-left">{displayName}</span>
+                <ChevronUp
+                  size={11}
+                  className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`}
+                />
+              </button>
+            }
+            open={accountMenuOpen}
+            onOpenChange={onAccountMenuOpenChange}
+            side="top"
+            aria-label="Account"
+            className="w-64 rounded-lg"
+          >
+            {accountMenu}
+          </FloatingMenu>
         ) : (
           <button
             type="button"
             onClick={onSignIn}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
             aria-label="Sign in"
           >
             <User size={13} />
@@ -496,10 +513,10 @@ export function MobileNavRow({
       aria-current={active ? 'page' : undefined}
       className={`group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
         disabled
-          ? 'cursor-not-allowed text-[var(--muted-light)]'
+          ? 'cursor-not-allowed text-(--muted-light)'
           : active
-            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-            : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+            ? 'bg-(--surface-subtle) text-(--foreground)'
+            : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
       }`}
     >
       <Icon size={15} />
@@ -520,16 +537,16 @@ function MobileNavRowAccessory({
   opensPanel: boolean
   disabled?: boolean
 }) {
-  if (pending) return <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
+  if (pending) return <Loader2 size={14} className="shrink-0 animate-spin text-(--muted)" aria-hidden />
   if (unreadCount > 0) {
     return (
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium text-[var(--foreground)]">
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--border) text-[9px] font-medium text-(--foreground)">
         {unreadCount > 9 ? '9+' : unreadCount}
       </span>
     )
   }
   if (opensPanel && !disabled) {
-    return <ChevronRight size={13} className="shrink-0 text-[var(--muted-light)]" aria-hidden />
+    return <ChevronRight size={13} className="shrink-0 text-(--muted-light)" aria-hidden />
   }
   return null
 }
@@ -574,7 +591,7 @@ export function MobileNavStep({
 }) {
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-(--border) px-4">
         <div className="min-w-0 flex-1">
           {brandLink}
         </div>
@@ -582,7 +599,7 @@ export function MobileNavStep({
           type="button"
           onClick={onClose}
           aria-label="Close app navigation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted)"
         >
           <X size={16} />
         </button>
@@ -597,8 +614,8 @@ export function MobileNavStep({
               aria-current={adminOpen ? 'page' : undefined}
               className={`group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
                 adminOpen
-                  ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                  ? 'bg-(--surface-subtle) text-(--foreground)'
+                  : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
               }`}
             >
               <ShieldCheck size={15} />
@@ -619,7 +636,7 @@ export function MobileNavStep({
             />
           ))}
           {showcaseLinks.length ? (
-            <div className="mt-0.5 border-t border-[var(--border)] pt-1">
+            <div className="mt-0.5 border-t border-(--border) pt-1">
               {showcaseLinks.map((link) => {
                 const Icon = link.icon
                 return (
@@ -628,7 +645,7 @@ export function MobileNavStep({
                     type="button"
                     onClick={() => onShowcaseSelect(link)}
                     aria-label={link.label}
-                    className="group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                    className="group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                   >
                     <Icon size={15} />
                     <div className="min-w-0 flex-1 text-left">{link.label}</div>
@@ -663,17 +680,17 @@ export function MobilePanelStep({
 }) {
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2">
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b border-(--border) px-2">
         <button
           type="button"
           onClick={onBack}
           aria-label="Back to app navigation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <ChevronLeft size={16} />
         </button>
         <span
-          className="min-w-0 flex-1 truncate px-1 text-lg font-medium lowercase tracking-tight text-[var(--foreground)]"
+          className="min-w-0 flex-1 truncate px-1 text-lg font-medium lowercase tracking-tight text-(--foreground)"
           style={{ fontFamily: 'var(--font-serif)' }}
         >
           {panelTitle}
@@ -682,7 +699,7 @@ export function MobilePanelStep({
           type="button"
           onClick={onClose}
           aria-label="Close app navigation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)]"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted)"
         >
           <X size={16} />
         </button>
@@ -827,7 +844,7 @@ export function MobileDrawer({
         className={`absolute inset-0 bg-black/30 transition-opacity ${visible ? 'opacity-100' : 'opacity-0'}`}
       />
       <SidebarShell
-        className={`absolute inset-y-0 left-0 w-[82vw] max-w-[320px] border-r border-[var(--border)] bg-[var(--sidebar-surface)] shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
+        className={`absolute inset-y-0 left-0 w-[82vw] max-w-[320px] border-r border-(--border) bg-(--sidebar-surface) shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
           visible ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

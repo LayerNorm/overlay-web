@@ -179,7 +179,7 @@ For complete environment setup, see [`docs/start/quickstart.mdx`](docs/start/qui
 
 ### Convex Workflow
 
-Convex deployments are environment-specific. Use `npm run convex:push:dev` only from the dedicated staging worktree. Use `npm run convex:push:prod` only from a clean canonical `main` worktree after its matching web deployment is live. Feature worktrees must not deploy Convex.
+Convex deployments are environment-specific. Use `npm run convex:push:dev` only with an explicitly selected engineer-owned dev backend. Use `npm run convex:push:prod` only from a clean canonical `main` worktree after its matching web deployment is live. Feature worktrees must not deploy shared dev or customer production Convex; hosted PR builds deploy only their scoped preview backend.
 
 ## Available Commands
 

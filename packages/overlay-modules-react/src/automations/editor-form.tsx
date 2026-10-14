@@ -137,7 +137,7 @@ export function AutomationEditorForm({
         />
 
         <SettingsCard title="Instructions">
-          <div className="text-[var(--foreground)]">
+          <div className="text-(--foreground)">
             {renderInstructionsEditor({ value: instructions, onChange: onInstructionsChange })}
           </div>
         </SettingsCard>
@@ -169,14 +169,14 @@ function AutomationEditorHeader({
   return (
     <div className="flex items-center justify-between gap-3">
       <div>
-        <p className="text-sm font-medium text-[var(--foreground)]">Automation editor</p>
-        <p className="text-xs text-[var(--muted)]">Configure and test this automation.</p>
+        <p className="text-sm font-medium text-(--foreground)">Automation editor</p>
+        <p className="text-xs text-(--muted)">Configure and test this automation.</p>
       </div>
       <button
         type="button"
         onClick={onSave}
         disabled={saveState === 'saving' || !name.trim() || !instructions.trim()}
-        className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save changes'}
       </button>
@@ -205,36 +205,36 @@ function AutomationConfigurationCard({
     <SettingsCard title="Configuration">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Name
             <input
               value={name}
               onChange={(event) => onNameChange(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
             />
           </label>
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Description
             <input
               value={description}
               onChange={(event) => onDescriptionChange(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
             />
           </label>
         </div>
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-[var(--foreground)]">Enabled</p>
-            <p className="text-xs text-[var(--muted)]">Run this automation on its schedule.</p>
+            <p className="text-sm font-medium text-(--foreground)">Enabled</p>
+            <p className="text-xs text-(--muted)">Run this automation on its schedule.</p>
           </div>
           <SettingsToggle checked={enabled} onChange={() => onEnabledChange(!enabled)} />
         </div>
       </div>
-      <div className="mt-4 flex items-center justify-between border-t border-[var(--border)] pt-4">
+      <div className="mt-4 flex items-center justify-between border-t border-(--border) pt-4">
         {saveState === 'error' ? (
           <p className="text-xs text-red-500">Could not save automation. Please try again.</p>
         ) : (
-          <span className="text-xs text-[var(--muted)]">Changes are saved manually.</span>
+          <span className="text-xs text-(--muted)">Changes are saved manually.</span>
         )}
       </div>
     </SettingsCard>
@@ -286,12 +286,12 @@ function AutomationScheduleCard({
   return (
     <SettingsCard title="Schedule">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="block text-sm font-medium text-[var(--foreground)]">
+        <label className="block text-sm font-medium text-(--foreground)">
           Frequency
           <Select
             value={scheduleKind}
             onChange={(event) => onScheduleKindChange(event.target.value as AutomationSchedule['kind'])}
-            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+            className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-12 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
           >
             {SCHEDULE_KIND_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -299,34 +299,34 @@ function AutomationScheduleCard({
           </Select>
         </label>
         {scheduleKind === 'interval' ? (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Every N minutes
             <input
               type="number"
               min={MIN_AUTOMATION_INTERVAL_MINUTES}
               value={intervalMinutes}
               onChange={(event) => onIntervalMinutesChange(Number(event.target.value))}
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden"
             />
           </label>
         ) : (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Time
             <input
               type="time"
               value={time}
               onChange={(event) => onTimeChange(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-8 text-sm text-[var(--foreground)] outline-none"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-8 text-sm text-(--foreground) outline-hidden"
             />
           </label>
         )}
         {scheduleKind === 'weekly' && (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Day of week
             <Select
               value={dayOfWeek}
               onChange={(event) => onDayOfWeekChange(Number(event.target.value))}
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-12 text-sm text-(--foreground) outline-hidden"
             >
               {WEEKDAY_LABELS.map((day, index) => (
                 <option key={day} value={index}>{day}</option>
@@ -335,7 +335,7 @@ function AutomationScheduleCard({
           </label>
         )}
         {scheduleKind === 'monthly' && (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Day of month
             <input
               type="number"
@@ -343,28 +343,28 @@ function AutomationScheduleCard({
               max={31}
               value={dayOfMonth}
               onChange={(event) => onDayOfMonthChange(Number(event.target.value))}
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-8 text-sm text-[var(--foreground)] outline-none"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-8 text-sm text-(--foreground) outline-hidden"
             />
           </label>
         )}
-        <label className="block text-sm font-medium text-[var(--foreground)]">
+        <label className="block text-sm font-medium text-(--foreground)">
           Time zone
           <Select
             value={timezone}
             onChange={(event) => onTimezoneChange(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
+            className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-12 text-sm text-(--foreground) outline-hidden"
           >
             {timeZoneOptions.map((zone) => (
               <option key={zone.value} value={zone.value}>{zone.label}</option>
             ))}
           </Select>
         </label>
-        <label className="block text-sm font-medium text-[var(--foreground)]">
+        <label className="block text-sm font-medium text-(--foreground)">
           Model
           <Select
             value={modelId}
             onChange={(event) => onModelIdChange(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 pr-12 text-sm text-[var(--foreground)] outline-none"
+            className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 pr-12 text-sm text-(--foreground) outline-hidden"
           >
             {modelOptions.map((model) => (
               <option key={model.id} value={model.id}>{model.name}</option>
@@ -394,7 +394,7 @@ function AutomationFlowCard({
       {renderFlow ? renderFlow() : (
         <Suspense
           fallback={
-            <div className="h-80 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
+            <div className="h-80 animate-pulse rounded-lg border border-(--border) bg-(--surface-subtle)" />
           }
         >
           <AutomationGraphCanvas graph={graph!} onGraphChange={onGraphChange} />
@@ -419,20 +419,20 @@ function AutomationTestCard({
     <SettingsCard title="Test">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-[var(--foreground)]">Run once</p>
-          <p className="text-xs text-[var(--muted)]">Executes the automation now and writes the result to the automation chat.</p>
+          <p className="text-sm font-medium text-(--foreground)">Run once</p>
+          <p className="text-xs text-(--muted)">Executes the automation now and writes the result to the automation chat.</p>
         </div>
         <button
           type="button"
           onClick={onTest}
           disabled={testState === 'running' || !instructions.trim()}
-          className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+          className="rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
         >
           {testState === 'running' ? 'Running...' : 'Test automation'}
         </button>
       </div>
       {testMessage ? (
-        <p className={`mt-3 text-xs ${testState === 'error' ? 'text-red-500' : 'text-[var(--muted)]'}`}>
+        <p className={`mt-3 text-xs ${testState === 'error' ? 'text-red-500' : 'text-(--muted)'}`}>
           {testMessage}
         </p>
       ) : null}

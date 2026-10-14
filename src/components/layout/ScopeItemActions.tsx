@@ -13,9 +13,9 @@ export type ScopeChange =
   | { action: 'restore' }
 
 const ICON_BUTTON =
-  'shrink-0 rounded p-1 text-[var(--muted-light)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:opacity-50'
+  'shrink-0 rounded-sm p-1 text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50'
 const TEXT_BUTTON =
-  'inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-50'
+  'inline-flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-50'
 
 /**
  * Move to Workspace/Personal, Archive, and Restore for one item. Only what the person may do is shown (the server

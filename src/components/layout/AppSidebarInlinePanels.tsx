@@ -26,7 +26,8 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarResourceList } from '@overlay/ui/primitives'
+import { cn } from '@overlay/ui'
 
 import { arrayOrEmpty } from './sidebar-nav'
 const nextSidebarMutation = createKnowledgeMutationPublisher(
@@ -213,7 +214,7 @@ export function InlineNavChildren({
   activeChildId,
   pendingId,
   onSelect,
-  className = 'mt-1 space-y-0.5',
+  className = 'mt-1',
 }: {
   id?: string
   items: ReadonlyArray<InlineNavItem>
@@ -229,13 +230,13 @@ export function InlineNavChildren({
   className?: string
 }) {
   function renderRow(item: InlineNavItem, active: boolean, nested: boolean) {
-    const itemClass = `flex ${nested ? 'h-8' : 'h-9'} w-full items-center gap-2.5 rounded-md px-3 ${nested ? 'text-[13px]' : 'text-sm'} transition-colors ${
-      item.locked
-        ? 'cursor-default text-[var(--muted-light)]'
-        : active
-          ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-    }`
+    // Top-level rows are the large menu button; revealed rows are the compact one. Neither is indented (see
+    // interface-design.md), so the row classes set size only, never a left offset.
+    const rowClass = cn(
+      'gap-2.5 px-3',
+      nested ? 'h-8 text-[13px]' : undefined,
+      item.locked ? 'cursor-default text-(--muted-light) hover:bg-transparent hover:text-(--muted-light)' : undefined,
+    )
     const content = (
       <>
         {pendingId === item.id ? (
@@ -244,61 +245,68 @@ export function InlineNavChildren({
         <span className="flex-1 text-left">{item.label}</span>
         {item.badgeCount ? (
           <span
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium leading-none text-[var(--foreground)]"
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--border) text-[9px] font-medium leading-none text-(--foreground)"
             aria-label={`${item.badgeCount} unread`}
           >
             {item.badgeCount > 9 ? '9+' : item.badgeCount}
           </span>
         ) : null}
-        {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
+        {item.locked ? <span className="text-[10px] text-(--muted-light)">Soon</span> : null}
         {item.expanded && item.children?.length ? (
-          <ChevronRight size={13} className="shrink-0 rotate-90 text-[var(--muted-light)]" aria-hidden />
+          <ChevronRight size={13} className="shrink-0 rotate-90 text-(--muted-light)" aria-hidden />
         ) : null}
       </>
     )
     if (item.href && !item.locked) {
       return (
-        <Link
-          key={item.id}
-          href={item.href}
-          onClick={(event) => {
-            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-            onSelect(item.id)
-          }}
-          className={itemClass}
+        <SidebarMenuButton
+          asChild
+          size={nested ? 'default' : 'lg'}
+          isActive={active}
+          className={rowClass}
         >
-          {content}
-        </Link>
+          <Link
+            href={item.href}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+              onSelect(item.id)
+            }}
+          >
+            {content}
+          </Link>
+        </SidebarMenuButton>
       )
     }
     return (
-      <button
-        key={item.id}
-        type="button"
+      <SidebarMenuButton
+        size={nested ? 'default' : 'lg'}
+        isActive={active && !item.locked}
         aria-expanded={item.children?.length ? Boolean(item.expanded) : undefined}
         onClick={() => {
           if (!item.locked) onSelect(item.id)
         }}
-        className={itemClass}
+        className={rowClass}
       >
         {content}
-      </button>
+      </SidebarMenuButton>
     )
   }
 
   return (
-    <div id={id} className={className}>
+    <SidebarMenu id={id} className={className}>
       {items.map((item) => (
-        <div key={item.id}>
+        <SidebarMenuItem key={item.id}>
           {renderRow(item, activeId === item.id, false)}
           {item.expanded && item.children?.length ? (
             // Not indented: what an expansion reveals lines up with the row that opened it (see interface-design.md).
-            <div className="space-y-0.5 pb-1 pt-0.5">
-              {item.children.map((child) => renderRow(child, activeChildId === child.id, true))}
-            </div>
+            <SidebarMenu className="pb-1 pt-0.5">
+              {item.children.map((child) => (
+                <SidebarMenuItem key={child.id}>{renderRow(child, activeChildId === child.id, true)}</SidebarMenuItem>
+              ))}
+            </SidebarMenu>
           ) : null}
-        </div>
+        </SidebarMenuItem>
       ))}
-    </div>
+    </SidebarMenu>
   )
 }

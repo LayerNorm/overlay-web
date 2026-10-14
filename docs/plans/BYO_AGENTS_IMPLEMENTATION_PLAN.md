@@ -376,12 +376,12 @@ inventory enforcement, and schema-version rollback checks. The phase remains ope
 Convex and PostgreSQL browser matrices, managed-provider conformance, invoice reconciliation,
 and production soak satisfy the exit gate; do not mark it ✅ from local tests.
 
-Release rehearsal on 2026-08-25 established the current runtime baseline at staging commit
+Historical release rehearsal on 2026-08-25 established the then-current runtime baseline at staging commit
 `c0e56958e`:
 
 - The complete release gate, runtime configuration suite, TypeScript check, isomorphic-boundary
   check, bounded load rehearsal, and deterministic sandbox conformance suite passed.
-- Convex dev `different-caiman-77` and `staging.getoverlay.io` serve the allowlisted internal
+- Convex dev `different-caiman-77` and the now-retired `staging.getoverlay.io` served the allowlisted internal
   workspace. Authenticated Chrome QA loaded the environment inventory without fresh console errors.
 - GitHub Actions run `32828571507` passed the host protocol, tests, and typecheck on macOS 14,
   Ubuntu 24.04, and Windows Server 2022.

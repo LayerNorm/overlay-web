@@ -14,6 +14,7 @@ test('isolated previews and dedicated staging never select the shared dev backen
   for (const lane of [
     { OVERLAY_DEPLOYMENT_ENV: 'preview' }, { CONVEX_PREVIEW: '1' },
     { OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_RELEASE_LANE: 'staging' },
+    { OVERLAY_DEPLOYMENT_ENV: 'staging' },
   ]) {
     const env = { ...lane, VERCEL_ENV: 'preview',
       DEV_NEXT_PUBLIC_CONVEX_URL: DEPLOYMENT,
@@ -106,26 +107,15 @@ test('development prefers the dev deployment and falls back to the shared one', 
   assert.deepEqual(production, { source: 'unset' })
 })
 
-test('dual-project staging prefers the development Convex deployment', () => {
-  // overlay-web-staging deploys staging.getoverlay.io with VERCEL_ENV=production.
-  assert.equal(
-    prefersDevConvexUrl({
-      NODE_ENV: 'production',
-      VERCEL_ENV: 'production',
-      NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io',
-    }),
-    true,
-  )
-
-  const resolved = resolveConvexUrl({
-    NODE_ENV: 'production',
-    VERCEL_ENV: 'production',
+test('staging hostnames do not select the shared development backend', () => {
+  const env = {
+    NODE_ENV: 'production', VERCEL_ENV: 'production',
     NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io',
     DEV_NEXT_PUBLIC_CONVEX_URL: DEPLOYMENT,
-    NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
-  })
-  assert.equal(resolved.url, DEPLOYMENT)
-  assert.equal(resolved.source, 'DEV_NEXT_PUBLIC_CONVEX_URL')
+    NEXT_PUBLIC_CONVEX_URL: 'https://doting-cuttlefish-819.convex.cloud',
+  }
+  assert.equal(prefersDevConvexUrl(env), false)
+  assert.equal(resolveConvexUrl(env).url, env.NEXT_PUBLIC_CONVEX_URL)
 })
 
 test('www production still prefers the production Convex deployment', () => {

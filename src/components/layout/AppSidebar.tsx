@@ -124,7 +124,7 @@ export default function AppSidebar({
             label={brandLabel}
             onNavigate={s.closeMobileDrawer}
             className="flex min-w-0 max-w-[calc(100vw-8rem)] items-center gap-2"
-            labelClassName="truncate text-lg font-medium tracking-tight text-[var(--foreground)]"
+            labelClassName="truncate text-lg font-medium tracking-tight text-(--foreground)"
           />
         }
         isGuestConfirmed={s.isGuestConfirmed}
@@ -174,6 +174,11 @@ export default function AppSidebar({
           nav={s.panelNav}
           action={s.panelAction}
           search={s.panelSearch}
+          open={!s.sidebarCollapsed}
+          onOpenChange={(open) => {
+            s.setAccountMenuOpen(false)
+            s.setSidebarCollapsed(!open)
+          }}
           className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
             s.sidebarCollapsed || s.hideTemporaryChatChrome
               ? 'w-0 border-transparent opacity-0 pointer-events-none invisible'

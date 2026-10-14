@@ -307,23 +307,6 @@ export function useGlobalSearch(): {
   }
 }
 
-export function useClickOutside(
-  ref: { current: HTMLElement | null },
-  open: boolean,
-  onOpenChange: Dispatch<SetStateAction<boolean>>,
-) {
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onOpenChange(false)
-      }
-    }
-    document.addEventListener('click', handleClick)
-    return () => document.removeEventListener('click', handleClick)
-  }, [open, ref, onOpenChange])
-}
-
 export function useBodyScrollLock(locked: boolean) {
   useEffect(() => {
     if (!locked) return

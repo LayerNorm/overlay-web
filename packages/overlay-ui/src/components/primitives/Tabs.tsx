@@ -5,7 +5,7 @@ export function TabsList({ className, ...props }: HTMLAttributes<HTMLDivElement>
   return (
     <div
       role="tablist"
-      className={cn('inline-flex rounded-lg bg-[var(--surface-subtle)] p-0.5', className)}
+      className={cn('inline-flex rounded-lg bg-(--surface-subtle) p-0.5', className)}
       {...props}
     />
   )
@@ -29,8 +29,8 @@ export function TabButton({
       className={cn(
         'inline-flex items-center justify-center rounded-md px-2.5 py-1 text-xs transition-colors',
         active
-          ? 'bg-[var(--surface-elevated)] font-medium text-[var(--foreground)] shadow-sm'
-          : 'text-[var(--muted)] hover:text-[var(--foreground)]',
+          ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs'
+          : 'text-(--muted) hover:text-(--foreground)',
         className,
       )}
       {...props}

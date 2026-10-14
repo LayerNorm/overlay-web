@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 export const CONFIG = Object.freeze({
   repository: 'LayerNorm/overlay-web', repositoryId: 1133644268,
   teamId: 'team_VT3uNspuyAOwicxedhtG4SMe',
-  projectId: 'prj_IKvugqekF8qLP14p7Rg4ilWErXPr', projectName: 'overlay-web-staging',
+  projectId: 'prj_wucEZdZyA2xKUurHLXSuQNcS1YPy', projectName: 'overlay-landing',
   convexProjectId: 1649204,
   previewWildcardDomain: '*.preview.getoverlay.io',
   previewWildcardBranch: 'codex/preview-unassigned',
@@ -41,6 +41,15 @@ export function deploymentMatches(deployment, pr, { ready = false } = {}) {
     && (!meta.githubCommitSha || meta.githubCommitSha === pr.head.sha)
     && (!meta.githubCommitRef || meta.githubCommitRef === pr.head.ref)
     && (!ready || (deployment.readyState ?? deployment.state) === 'READY')
+}
+
+/** Docs and GitHub metadata have their own checks; they do not change the app. */
+export function needsHostedPreview(files) {
+  if (!files.length) return true // Unknown/incomplete diffs fail closed into a build.
+  const maintenance = path => typeof path === 'string' && path.length > 0
+    && (path.startsWith('docs/') || path.startsWith('.github/') || /^[^/]+\.mdx?$/.test(path))
+  return files.some(file => !maintenance(file.filename)
+    || (file.previous_filename && !maintenance(file.previous_filename)))
 }
 
 export class ApiError extends Error {
@@ -163,7 +172,7 @@ export class PreviewController {
     const p = await this.vercel(this.projectPath)
     if (p.id !== CONFIG.projectId || p.name !== CONFIG.projectName || p.link?.type !== 'github'
       || Number(p.link.repoId) !== CONFIG.repositoryId || p.link.org !== 'LayerNorm' || p.link.repo !== 'overlay-web') {
-      throw new Error('Staging project repository identity mismatch')
+      throw new Error('Preview project repository identity mismatch')
     }
     const wildcard = await this.vercel(`${this.projectPath}/domains/${segment(CONFIG.previewWildcardDomain)}`)
     if (wildcard.name !== CONFIG.previewWildcardDomain || wildcard.verified !== true
@@ -258,46 +267,82 @@ export class PreviewController {
     throw new Error('Preview cancellation readiness timeout')
   }
   async start(pr) {
-    const backendActive = await this.backends.active(pr.number)
-    const results = await this.vercel('/v7/deployments', { query: {
-      projectId: CONFIG.projectId, branch: pr.head.ref, limit: 100,
-    } })
-    // Settle abandoned older builds before the new backend deploy can start.
-    // List records omit gitSource; inspect candidates before reuse/cancellation.
-    const candidates = []
-    for (const candidate of results.deployments) {
-      if (!['READY', 'QUEUED', 'INITIALIZING', 'BUILDING'].includes(candidate.readyState ?? candidate.state)) continue
-      if ((candidate.readyState ?? candidate.state) === 'READY' && !backendActive) continue
-      const d = await this.vercel(`/v13/deployments/${segment(candidate.uid ?? candidate.id)}`)
-      if (deploymentMatches(d, pr)) { candidates.push(d); continue }
-      if (['QUEUED', 'INITIALIZING', 'BUILDING'].includes(d.readyState ?? d.state)) {
-        const old = { ...pr, head: { ...pr.head, sha: d.gitSource?.sha } }
-        if (!/^[a-f0-9]{40}$/.test(old.head.sha ?? '') || !deploymentMatches(d, old)) {
-          throw new Error('Running preview deployment provenance mismatch')
+    // Vercel's Git integration starts builds. This controller only waits for
+    // the exact revision, manages its custom URL, and renews its backend.
+    const deadline = this.now() + 180_000
+    do {
+      const results = await this.vercel('/v7/deployments', { query: {
+        projectId: CONFIG.projectId, branch: pr.head.ref, limit: 100,
+      } })
+      const candidates = []
+      for (const candidate of results.deployments) {
+        const d = await this.vercel(`/v13/deployments/${segment(candidate.uid ?? candidate.id)}`)
+        if (deploymentMatches(d, pr)) { candidates.push(d); continue }
+        if (['QUEUED', 'INITIALIZING', 'BUILDING'].includes(d.readyState ?? d.state)) {
+          const old = { ...pr, head: { ...pr.head, sha: d.gitSource?.sha } }
+          if (!/^[a-f0-9]{40}$/.test(old.head.sha ?? '') || !deploymentMatches(d, old)) {
+            throw new Error('Running preview deployment provenance mismatch')
+          }
+          await this.settleBuild(old, d.id)
         }
-        await this.settleBuild(old, d.id)
       }
-    }
-    if (candidates.length) return candidates[0]
-    return this.vercel('/v13/deployments', { method: 'POST', query: { forceNew: '1' }, body: {
-      name: CONFIG.projectName, project: CONFIG.projectId,
-      // The controller owns canonical assignment; native branch aliases must
-      // not assign an older deployment before provenance checks run.
-      autoAssignCustomDomains: false,
-      projectSettings: { buildCommand: 'bash scripts/vercel-build.sh' },
-      gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: pr.head.ref, sha: pr.head.sha },
-      meta: { overlayPreviewPr: String(pr.number), overlayPreviewSha: pr.head.sha },
-    } })
+      if (candidates.length) {
+        const d = candidates[0]
+        if ((d.readyState ?? d.state) === 'READY' && !await this.backends.active(pr.number)) {
+          throw new Error('Preview backend is missing or expired; push a new PR revision to rebuild through Git')
+        }
+        return d
+      }
+      await this.sleep(10_000)
+    } while (this.now() < deadline)
+    throw new Error('No current-head native Git preview found; check Vercel Git settings and push the PR branch')
   }
-  async run(number) {
+  async files(pr) {
+    if (pr.changed_files > 3000) return null // GitHub caps this endpoint at 3000.
+    const files = []
+    for (let page = 1; ; page++) {
+      const batch = await this.github(`${this.repoPath}/pulls/${pr.number}/files`, { query: { per_page: 100, page } })
+      files.push(...batch)
+      if (batch.length < 100) break
+    }
+    if (pr.changed_files !== undefined && files.length !== pr.changed_files) return null
+    return files
+  }
+  async settleBranch(pr) {
+    const builds = await pages(this.vercel, '/v7/deployments', 'deployments', {
+      projectId: CONFIG.projectId, branch: pr.head.ref,
+    })
+    for (const candidate of builds) {
+      if (!['QUEUED', 'INITIALIZING', 'BUILDING'].includes(candidate.readyState ?? candidate.state)) continue
+      const d = await this.vercel(`/v13/deployments/${segment(candidate.uid ?? candidate.id)}`)
+      const old = { ...pr, head: { ...pr.head, sha: d.gitSource?.sha } }
+      if (!/^[a-f0-9]{40}$/.test(old.head.sha ?? '') || !deploymentMatches(d, old)) {
+        throw new Error('Refusing to settle an unrelated maintenance preview')
+      }
+      await this.settleBuild(old, d.id)
+    }
+  }
+  async run(number, { forcePreview = false } = {}) {
     previewAddress(number)
     await this.verifyProject()
     const pr = trustedPull(await this.pull(number), { requireMain: false })
     if (pr.state !== 'open' || pr.base.ref !== 'main') return this.cleanup(pr)
     const siblings = await this.github(`${this.repoPath}/pulls`, { query: { state: 'open', head: `LayerNorm:${pr.head.ref}`, base: 'main', per_page: 100 } })
     if (siblings.some(other => other.number !== pr.number)) throw new Error('One PR per source branch is required')
+    if (!forcePreview && !pr.labels?.some(label => label.name === 'needs-preview')) {
+      const files = await this.files(pr)
+      if (files && !needsHostedPreview(files)) {
+        await this.settleBranch(pr)
+        await this.cleanup(pr)
+        const current = trustedPull(await this.pull(number), { requireMain: false })
+        if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
+        if (current.head.sha !== pr.head.sha) return { state: 'superseded', number }
+        await this.status(pr, 'success', 'Docs/GitHub metadata only; hosted app preview not required')
+        return { state: 'not-required', number, sha: pr.head.sha }
+      }
+    }
     const address = await this.provision(pr)
-    await this.status(pr, 'pending', `Building ${pr.head.sha.slice(0, 12)} at canonical PR URL`)
+    await this.status(pr, 'pending', `Waiting for Git preview ${pr.head.sha.slice(0, 12)}`)
     let deployment
     try {
       deployment = await this.start(pr)
@@ -375,7 +420,7 @@ export async function main(env = process.env, args = process.argv.slice(2)) {
   if (env.GITHUB_REPOSITORY && env.GITHUB_REPOSITORY !== CONFIG.repository) throw new Error('Unexpected workflow repository')
   const controller = new PreviewController({
     github: apiClient({ token: env.GITHUB_TOKEN, service: 'GitHub', base: 'https://api.github.com' }),
-    vercel: apiClient({ token: env.VERCEL_STAGING_TOKEN, service: 'Vercel', base: 'https://api.vercel.com', teamId: CONFIG.teamId }),
+    vercel: apiClient({ token: env.VERCEL_PREVIEW_TOKEN, service: 'Vercel', base: 'https://api.vercel.com', teamId: CONFIG.teamId }),
     backends: new PreviewBackends({ api: apiClient({ token: env.CONVEX_PREVIEW_CONTROL_KEY,
       service: 'Convex', base: 'https://api.convex.dev/v1' }) }),
   })
@@ -387,7 +432,7 @@ export async function main(env = process.env, args = process.argv.slice(2)) {
   }
   const event = env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')) : {}
   const number = args[0] || event.pull_request?.number || event.inputs?.pr_number
-  await controller.run(number)
+  await controller.run(number, { forcePreview: env.GITHUB_EVENT_NAME === 'workflow_dispatch' })
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch(error => { console.error(error.message); process.exitCode = 1 })

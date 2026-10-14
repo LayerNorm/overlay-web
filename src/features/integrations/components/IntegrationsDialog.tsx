@@ -24,7 +24,7 @@ interface PickerItem {
 const SEARCH_DEBOUNCE_MS = 300
 
 const DEFAULT_OVERLAY_CLASS =
-  'fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-5'
+  'fixed inset-0 z-50 flex items-center justify-center bg-(--overlay-scrim) p-5'
 
 export function IntegrationsDialog({
   connectedSlugs,
@@ -211,7 +211,7 @@ export function IntegrationsDialog({
     // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close control.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
-      className={`${overlayClassName} transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+      className={`${overlayClassName} transition-opacity duration-200 ease-(--overlay-ease) ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
@@ -223,16 +223,16 @@ export function IntegrationsDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="integrations-dialog-title"
-        className={`flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+        className={`flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease) ${
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
           <div>
-            <p id="integrations-dialog-title" className='text-sm font-semibold text-[var(--foreground)]'>
+            <p id="integrations-dialog-title" className='text-sm font-semibold text-(--foreground)'>
               Add Integration
             </p>
-            <p className='mt-0.5 text-xs text-[var(--muted)]'>
+            <p className='mt-0.5 text-xs text-(--muted)'>
               Search integrations available from the configured provider
             </p>
           </div>
@@ -240,15 +240,15 @@ export function IntegrationsDialog({
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className='rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+            className='rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="border-b border-[var(--border)] px-5 py-3">
-          <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2">
-            <Search size={13} className="shrink-0 text-[var(--muted-light)]" />
+        <div className="border-b border-(--border) px-5 py-3">
+          <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2">
+            <Search size={13} className="shrink-0 text-(--muted-light)" />
             <input
               type="text"
               aria-label="Search integrations"
@@ -256,20 +256,20 @@ export function IntegrationsDialog({
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="Search integrations..."
               data-autofocus
-              className="flex-1 bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted-light)]"
+              className="flex-1 bg-transparent text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
             />
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto" onScroll={handleScroll}>
           {error && (
-            <div className='mx-4 my-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 text-xs text-[var(--foreground)]'>
+            <div className='mx-4 my-2 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-xs text-(--foreground)'>
               {error}
             </div>
           )}
           {isSearching && <IntegrationDialogRowSkeleton rows={8} />}
           {!isSearching && visibleItems.length === 0 && (
-            <div className='py-10 text-center text-xs text-[var(--muted)]'>
+            <div className='py-10 text-center text-xs text-(--muted)'>
               No integrations found.
             </div>
           )}
@@ -282,10 +282,10 @@ export function IntegrationsDialog({
             return (
               <div
                 key={item.slug}
-                className='flex items-center gap-3 border-b border-[var(--border)] px-5 py-3 last:border-0'
+                className='flex items-center gap-3 border-b border-(--border) px-5 py-3 last:border-0'
               >
                 <span
-                  className="inline-flex flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]"
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-elevated)"
                   style={{ width: 32, height: 32 }}
                 >
                   {item.logoUrl ? (
@@ -298,16 +298,16 @@ export function IntegrationsDialog({
                       className="object-contain"
                     />
                   ) : (
-                    <span className='text-sm font-bold text-[var(--foreground)]'>
+                    <span className='text-sm font-bold text-(--foreground)'>
                       {item.name.charAt(0).toUpperCase()}
                     </span>
                   )}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className='text-xs font-medium text-[var(--foreground)]'>
+                  <p className='text-xs font-medium text-(--foreground)'>
                     {item.name}
                   </p>
-                  <p className='truncate text-xs text-[var(--muted)]'>
+                  <p className='truncate text-xs text-(--muted)'>
                     {truncateIntegrationDescription(
                       item.description || item.slug,
                     )}
@@ -318,7 +318,7 @@ export function IntegrationsDialog({
                     type="button"
                     onClick={() => void handleDisconnect(item.slug)}
                     disabled={isActing || disconnectUnavailable}
-                    className="flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+                    className="shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
                   >
                     {isActing ? (
                       <Loader2 size={11} className='animate-spin' />
@@ -331,7 +331,7 @@ export function IntegrationsDialog({
                     type="button"
                     onClick={() => void handleConnect(item.slug)}
                     disabled={isActing}
-                    className="flex-shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50"
+                    className="shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
                   >
                     {isActing ? (
                       <Loader2 size={11} className='animate-spin' />

@@ -348,7 +348,7 @@ function DesktopAppSection({
   return (
     <section className={`${panelClass} flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between`}>
       <div>
-        <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
+        <div className="flex items-center gap-2 text-sm font-medium text-(--foreground)">
           <MonitorDown size={16} strokeWidth={1.8} />
           Desktop app
         </div>
@@ -358,14 +358,14 @@ function DesktopAppSection({
         <button
           onClick={onOpenInApp}
           disabled={opening}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-(--button-secondary-border) bg-(--button-secondary-bg) px-3 py-2 text-sm font-medium text-(--button-secondary-text) transition-colors hover:bg-(--surface-muted) disabled:opacity-50"
         >
           {opening ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
           {opening ? 'Opening…' : 'Open app'}
         </button>
         <Link
           href="/download"
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-2 text-sm font-medium text-[var(--button-secondary-text)] transition-colors hover:bg-[var(--surface-muted)]"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-(--button-secondary-border) bg-(--button-secondary-bg) px-3 py-2 text-sm font-medium text-(--button-secondary-text) transition-colors hover:bg-(--surface-muted)"
         >
           <Download className="h-4 w-4" />
           Download
@@ -414,7 +414,7 @@ function AuthenticatedAccountPanels({
             <button
               onClick={onSignOut}
               disabled={signingOut}
-              className="rounded-md px-2 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+              className="rounded-md px-2 py-1.5 text-xs font-medium text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50"
             >
               {signingOut ? 'Signing out…' : 'Sign out'}
             </button>
@@ -440,7 +440,7 @@ function AuthenticatedAccountPanels({
           </p>
           <Link
             href="/app/settings?section=workspace&workspace_tab=billing"
-            className="mt-3 inline-flex rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
+            className="mt-3 inline-flex rounded-md border border-(--border) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-muted)"
           >
             Workspace billing
           </Link>
@@ -508,9 +508,9 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
   const panel = minimalPanel() + ' p-5'
   const panelLg = 'mx-auto max-w-md ' + minimalPanel() + ' p-8'
   const t = {
-    title: 'font-serif text-[var(--foreground)]',
-    h: 'text-[var(--foreground)]',
-    muted: 'text-[var(--muted)]',
+    title: 'font-serif text-(--foreground)',
+    h: 'text-(--foreground)',
+    muted: 'text-(--muted)',
     body: minimalBody(),
   }
   const router = useRouter()
@@ -571,7 +571,7 @@ export function AccountPageContent({ embedded = false }: { embedded?: boolean })
               action={
                 <Link
                   href={accountSignInHref}
-                  className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90 bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]"
+                  className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90 bg-(--button-primary-bg) text-(--button-primary-text)"
                 >
                   Sign in
                   <ArrowRight className="w-4 h-4" />
@@ -627,10 +627,10 @@ function AccountPageRedirect() {
   redirect(`/app/settings?${params.toString()}`)
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex min-h-screen items-center justify-center bg-(--background) text-(--foreground)">
       <div className="relative z-10 text-center">
-        <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[var(--muted)]" />
-        <p className="mt-4 text-[var(--muted)]">Opening account settings…</p>
+        <RefreshCw className="mx-auto h-8 w-8 animate-spin text-(--muted)" />
+        <p className="mt-4 text-(--muted)">Opening account settings…</p>
       </div>
     </div>
   )
@@ -640,10 +640,10 @@ export default function AccountPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
+        <div className="flex min-h-screen items-center justify-center bg-(--background) text-(--foreground)">
           <div className="relative z-10 text-center">
-            <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[var(--muted)]" />
-            <p className="mt-4 text-[var(--muted)]">Loading...</p>
+            <RefreshCw className="mx-auto h-8 w-8 animate-spin text-(--muted)" />
+            <p className="mt-4 text-(--muted)">Loading...</p>
           </div>
         </div>
       }

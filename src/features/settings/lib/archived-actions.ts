@@ -2,6 +2,7 @@ import {
   EXTENSIONS_CHANGED_EVENT,
   KNOWLEDGE_RECONCILE_EVENT,
   AUTOMATIONS_UPDATED_EVENT,
+  WORK_UPDATED_EVENT,
   MCPS_CHANGED_EVENT,
   SKILLS_CHANGED_EVENT,
   automationHref,
@@ -12,6 +13,7 @@ import {
   type McpServerSummary,
   type NoteDoc,
   type SkillSummary,
+  type WorkItem,
 } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem, WorkspaceArchivedAgentThread } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -146,6 +148,27 @@ async function loadAutomations(): Promise<ArchivedItem[]> {
   }))
 }
 
+/** Archived tasks. A task archived together with its parent shows only under that parent's row. */
+export async function loadArchivedWork(): Promise<ArchivedItem[]> {
+  const { items } = await overlayAppClient.work.list({ view: 'archived' })
+  const archived = asArray<WorkItem>(items)
+  const byId = new Map(archived.map((task) => [task.id, task]))
+  return archived
+    .filter((task) => {
+      const parent = task.parentId ? byId.get(task.parentId) : undefined
+      return !parent || parent.archivedAt !== task.archivedAt
+    })
+    .map((task): ArchivedItem => ({
+      key: archivedItemKey('work-item', task.id),
+      kind: 'work-item',
+      category: 'work',
+      id: task.id,
+      name: task.title,
+      scope: task.archivedFromScope ?? task.scope,
+      archivedAt: task.archivedAt ?? undefined,
+    }))
+}
+
 /** Archived agents, and the threads archived on their own (an agent stays live when only a thread is archived). */
 async function loadAgents(workspaceId: string): Promise<ArchivedItem[]> {
   const response = await overlayAppClient.agents.list(workspaceId, { includeArchived: true })
@@ -186,6 +209,7 @@ export async function loadArchivedItems(workspaceId: string | null): Promise<Arc
     ['files', loadFiles()],
     ['extensions', loadExtensions()],
     ['automations', loadAutomations()],
+    ['work', loadArchivedWork()],
     ['agents', workspaceId ? loadAgents(workspaceId) : Promise.resolve([])],
   ]
   const settled = await Promise.allSettled(sources.map(([, promise]) => promise))
@@ -236,6 +260,10 @@ export async function restoreArchivedItem(item: ArchivedItem, workspaceId: strin
       await overlayAppClient.scope.restore('automations', item.id)
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
+    case 'work-item':
+      await overlayAppClient.scope.restore('work', item.id)
+      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
+      return
     case 'agent':
       if (!workspaceId) throw new Error('No workspace')
       await overlayAppClient.agents.restore(workspaceId, item.id)
@@ -284,6 +312,11 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
       window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
     }
+    case 'work-item':
+      // The task and whatever was archived under it. The server refuses a task that is not archived.
+      await overlayAppClient.work.remove(item.id)
+      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
+      return
     case 'agent':
       // Deletes the archived agent and its threads. A live agent has no row here, and the server refuses it.
       if (!workspaceId) throw new Error('No workspace')

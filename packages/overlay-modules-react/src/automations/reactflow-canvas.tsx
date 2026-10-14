@@ -91,15 +91,15 @@ const NODE_STATUS_CONFIG: Record<
 > = {
   pending: {
     icon: null,
-    borderClass: 'border-[var(--border)]',
-    bgClass: 'bg-[var(--surface-elevated)]',
-    iconColor: 'text-[var(--muted)]',
+    borderClass: 'border-(--border)',
+    bgClass: 'bg-(--surface-elevated)',
+    iconColor: 'text-(--muted)',
     label: '',
   },
   running: {
     icon: Loader2,
     borderClass: 'border-blue-500 ring-1 ring-blue-500/30',
-    bgClass: 'bg-[var(--surface-elevated)]',
+    bgClass: 'bg-(--surface-elevated)',
     iconColor: 'text-blue-500',
     label: 'Running',
   },
@@ -119,9 +119,9 @@ const NODE_STATUS_CONFIG: Record<
   },
   skipped: {
     icon: SkipForward,
-    borderClass: 'border-[var(--border)] opacity-60',
-    bgClass: 'bg-[var(--surface-elevated)]',
-    iconColor: 'text-[var(--muted)]',
+    borderClass: 'border-(--border) opacity-60',
+    bgClass: 'bg-(--surface-elevated)',
+    iconColor: 'text-(--muted)',
     label: 'Skipped',
   },
 }
@@ -150,29 +150,29 @@ function AutomationNode({ data, selected }: NodeProps) {
   const borderClass = statusConfig
     ? statusConfig.borderClass
     : selected
-      ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]'
-      : 'border-[var(--border)]'
+      ? 'border-(--foreground) ring-1 ring-(--foreground)'
+      : 'border-(--border)'
 
   return (
     <div
-      className={`relative flex items-center gap-3 rounded-xl border ${borderClass} ${statusConfig?.bgClass ?? 'bg-[var(--surface-elevated)]'} px-3 py-2.5 shadow-sm transition-shadow`}
+      className={`relative flex items-center gap-3 rounded-xl border ${borderClass} ${statusConfig?.bgClass ?? 'bg-(--surface-elevated)'} px-3 py-2.5 shadow-xs transition-shadow`}
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
     >
       {!isTrigger && (
         <Handle
           type="target"
           position={Position.Top}
-          className="!h-2 !w-2 !border-0 !bg-[var(--border)]"
+          className="h-2! w-2! border-0! bg-(--border)!"
         />
       )}
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
-        <Icon size={16} strokeWidth={1.75} className="text-[var(--foreground)]" />
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle)">
+        <Icon size={16} strokeWidth={1.75} className="text-(--foreground)" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--muted)]">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-(--muted)">
           {config.label}
         </p>
-        <p className="truncate text-sm font-medium text-[var(--foreground)]">
+        <p className="truncate text-sm font-medium text-(--foreground)">
           {node.label}
         </p>
       </div>
@@ -189,13 +189,13 @@ function AutomationNode({ data, selected }: NodeProps) {
         <Handle
           type="source"
           position={Position.Bottom}
-          className="!h-2 !w-2 !border-0 !bg-[var(--border)]"
+          className="h-2! w-2! border-0! bg-(--border)!"
         />
       )}
       {/* Error overlay tooltip */}
       {runStatus === 'failed' && errorMessage && (
         <div
-          className='absolute -bottom-1 left-2 right-2 translate-y-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-600 shadow-sm'
+          className='absolute -bottom-1 left-2 right-2 translate-y-full rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-600 shadow-xs'
           style={{ zIndex: 10 }}
         >
           <p className="truncate">{errorMessage}</p>
@@ -245,15 +245,15 @@ function NodeConfigPanel({
   }
 
   return (
-    <div className="flex w-72 flex-col border-l border-[var(--border)] bg-[var(--surface-elevated)]">
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+    <div className="flex w-72 flex-col border-l border-(--border) bg-(--surface-elevated)">
+      <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
         <div className="flex items-center gap-2">
           <Icon
             size={14}
             strokeWidth={1.75}
-            className='text-[var(--foreground)]'
+            className='text-(--foreground)'
           />
-          <span className='text-sm font-medium text-[var(--foreground)]'>
+          <span className='text-sm font-medium text-(--foreground)'>
             Node settings
           </span>
         </div>
@@ -261,61 +261,61 @@ function NodeConfigPanel({
           type="button"
           aria-label="Close node settings"
           onClick={onClose}
-          className="rounded-md p-1 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+          className="rounded-md p-1 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
         >
           <X size={14} strokeWidth={1.75} />
         </button>
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <label className="block text-sm font-medium text-[var(--foreground)]">
+        <label className="block text-sm font-medium text-(--foreground)">
           Label
           <input
             value={label}
             onChange={(e) => commitLabel(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+            className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
           />
         </label>
         {node.kind === 'prompt' && (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Prompt text
             <textarea
               value={text}
               onChange={(e) => commitText(e.target.value)}
               rows={4}
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
             />
           </label>
         )}
         {node.kind === 'condition' && (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Condition expression
             <input
               value={condition}
               onChange={(e) => commitCondition(e.target.value)}
               placeholder="e.g. result.success === true"
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
             />
           </label>
         )}
         {node.kind === 'tool' && (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Tool ID
             <input
               value={node.config.toolId ?? ''}
               onChange={(e) => onUpdate({ config: { toolId: e.target.value } })}
               placeholder="e.g. web_search"
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
             />
           </label>
         )}
         {node.kind === 'output' && (
-          <label className="block text-sm font-medium text-[var(--foreground)]">
+          <label className="block text-sm font-medium text-(--foreground)">
             Output kind
             <input
               value={node.config.outputKind ?? ''}
               onChange={(e) => onUpdate({ config: { outputKind: e.target.value } })}
               placeholder="e.g. chat"
-              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--foreground)]"
+              className="mt-1 w-full rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
             />
           </label>
         )}
@@ -341,7 +341,7 @@ function AddNodeButton({
     <button
       type="button"
       onClick={() => onAdd(kind)}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)]"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border)"
     >
       <Icon size={12} strokeWidth={1.75} />
       {config.label}
@@ -837,10 +837,10 @@ function useGraphKeyboard({
 
 function EmptyGraphNotice() {
   return (
-    <div className="flex min-h-72 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
+    <div className="flex min-h-72 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle)">
       <div className="flex max-w-md flex-col items-center gap-2 text-center">
-        <GitBranch size={18} strokeWidth={1.75} className="text-[var(--muted)]" />
-        <p className="text-sm text-[var(--muted)]">
+        <GitBranch size={18} strokeWidth={1.75} className="text-(--muted)" />
+        <p className="text-sm text-(--muted)">
           No automation steps defined yet.
         </p>
       </div>
@@ -878,7 +878,7 @@ function GraphCanvasToolbar({
           aria-label="Undo"
           onClick={onUndo}
           disabled={!canUndo}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border) disabled:opacity-40"
         >
           <Undo2 size={12} strokeWidth={1.75} />
         </button>
@@ -887,14 +887,14 @@ function GraphCanvasToolbar({
           aria-label="Redo"
           onClick={onRedo}
           disabled={!canRedo}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)] disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border) disabled:opacity-40"
         >
           <Redo2 size={12} strokeWidth={1.75} />
         </button>
         <button
           type="button"
           onClick={onTidyUp}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--border)]"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs font-medium text-(--foreground) shadow-xs transition-colors hover:bg-(--border)"
         >
           <LayoutGrid size={12} strokeWidth={1.75} />
           Tidy up
@@ -903,7 +903,7 @@ function GraphCanvasToolbar({
 
       {/* Validation errors */}
       {validationErrors.length > 0 && (
-        <div className="absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-red-500/30 bg-[var(--surface-elevated)] px-3 py-2 text-xs text-red-500 shadow-sm">
+        <div className="absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-red-500/30 bg-(--surface-elevated) px-3 py-2 text-xs text-red-500 shadow-xs">
           {validationErrors[0].message}
         </div>
       )}
@@ -927,7 +927,7 @@ function GraphFlowView({
   onConnect: (connection: Connection) => void
 }) {
   return (
-    <div className="h-96 overflow-hidden bg-[var(--surface-subtle)]">
+    <div className="h-96 overflow-hidden bg-(--surface-subtle)">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -955,7 +955,7 @@ function GraphFlowView({
         />
         <Controls
           showInteractive={false}
-          className="!border-[var(--border)] !bg-[var(--surface-elevated)] !shadow-sm"
+          className="border-(--border)! bg-(--surface-elevated)! shadow-xs!"
         />
       </ReactFlow>
     </div>
@@ -1011,7 +1011,7 @@ function GraphCanvasInner({
   }
 
   return (
-    <div className="flex overflow-hidden rounded-lg border border-[var(--border)]">
+    <div className="flex overflow-hidden rounded-lg border border-(--border)">
       <div className="relative flex-1">
         {/* Toolbar (hidden in read-only / run-viewer mode) */}
         {!readOnly && (
@@ -1078,7 +1078,7 @@ export function AutomationGraphCanvas({
   return (
     <div className="space-y-3">
       {!isRunViewer && (
-        <p className="text-xs text-[var(--muted)]">
+        <p className="text-xs text-(--muted)">
           Drag to rearrange, click to select, connect nodes by dragging from handles. Use Tidy up to reset layout. Delete/Backspace removes the selected node. Cmd+Z / Cmd+Shift+Z for undo/redo.
         </p>
       )}

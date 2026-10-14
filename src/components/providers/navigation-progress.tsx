@@ -119,7 +119,7 @@ export function NavigationProgressBar() {
 
   return (
     <div
-      className={`pointer-events-none fixed top-16 right-0 z-[80] h-[3px] overflow-hidden transition-opacity duration-200 ${
+      className={`pointer-events-none fixed top-16 right-0 z-80 h-[3px] overflow-hidden transition-opacity duration-200 ${
         state.active ? 'opacity-100' : 'opacity-0'
       } ${state.scope === 'primary' ? 'left-0' : 'left-56'}`}
       aria-hidden="true"

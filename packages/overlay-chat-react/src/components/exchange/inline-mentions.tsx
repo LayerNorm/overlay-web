@@ -41,7 +41,7 @@ export function renderInlineMentions(
     parts.push(
       <span
         key={match.index}
-        className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-muted)] border border-[var(--border)] px-1.5 py-0.5 text-xs font-medium text-[var(--foreground)] align-middle mx-0.5"
+        className="inline-flex items-center gap-1 rounded-md bg-(--surface-muted) border border-(--border) px-1.5 py-0.5 text-xs font-medium text-(--foreground) align-middle mx-0.5"
       >
         {(() => {
           const mention = sorted.find((item) => item.name === match?.[1])

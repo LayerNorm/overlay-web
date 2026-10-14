@@ -80,16 +80,16 @@ export function buildChatDerivedView({
 
   const greetingLine = composerMode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
   const automationChatIntro = showCenteredEmptyChat && selectedAutomation && !automationConversationId ? (
-    <div className="mx-auto mt-5 w-full max-w-[36rem] rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3 text-left shadow-sm">
-      <p className="text-sm font-medium text-[var(--foreground)]">{selectedAutomation.name || selectedAutomation.title || 'Saved automation'}</p>
+    <div className="mx-auto mt-5 w-full max-w-xl rounded-2xl border border-(--border) bg-(--surface-elevated) px-4 py-3 text-left shadow-xs">
+      <p className="text-sm font-medium text-(--foreground)">{selectedAutomation.name || selectedAutomation.title || 'Saved automation'}</p>
       {selectedAutomation.description ? (
-        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{selectedAutomation.description}</p>
+        <p className="mt-1 text-xs leading-5 text-(--muted)">{selectedAutomation.description}</p>
       ) : null}
-      <div className="mt-3 border-t border-[var(--border)] pt-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-light)]">Saved instructions</p>
-        <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[var(--foreground)]">{selectedAutomation.instructions}</p>
+      <div className="mt-3 border-t border-(--border) pt-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-(--muted-light)">Saved instructions</p>
+        <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-(--foreground)">{selectedAutomation.instructions}</p>
       </div>
-      <p className="mt-3 text-xs text-[var(--muted)]">Send a message below to continue this automation conversation.</p>
+      <p className="mt-3 text-xs text-(--muted)">Send a message below to continue this automation conversation.</p>
     </div>
   ) : null
   const emptyComposerContent = (

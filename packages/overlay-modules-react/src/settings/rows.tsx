@@ -22,12 +22,12 @@ export function SettingsToggle({ checked, disabled, onChange, 'aria-label': aria
       onClick={onChange}
       className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${
         checked
-          ? 'border-[var(--muted)] bg-[var(--muted)]'
-          : 'border-[var(--border)] bg-[var(--surface-subtle)]'
+          ? 'border-(--muted) bg-(--muted)'
+          : 'border-(--border) bg-(--surface-subtle)'
       } ${disabled ? 'cursor-wait opacity-70' : ''}`}
     >
       <span
-        className={`inline-block h-5 w-5 rounded-full bg-[var(--surface-elevated)] transition-transform ${
+        className={`inline-block h-5 w-5 rounded-full bg-(--surface-elevated) transition-transform ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
@@ -46,12 +46,12 @@ export interface SettingRowProps {
 
 export function SettingRow({ icon, title, description, checked, disabled, onChange }: SettingRowProps) {
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-[var(--surface-muted)]">
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-(--surface-muted)">
       <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span>
+        <span className="mt-0.5 shrink-0 text-(--muted)">{icon}</span>
         <div className="min-w-0">
-          <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
+          <h2 className="text-sm font-medium text-(--foreground)">{title}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-(--muted)">{description}</p>
         </div>
       </div>
       <SettingsToggle checked={checked} disabled={disabled} onChange={onChange} />
@@ -68,12 +68,12 @@ export interface SettingsActionRowProps {
 
 export function SettingsActionRow({ icon, title, description, action }: SettingsActionRowProps) {
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-[var(--surface-muted)]">
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-(--surface-muted)">
       <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span>
+        <span className="mt-0.5 shrink-0 text-(--muted)">{icon}</span>
         <div className="min-w-0">
-          <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
+          <h2 className="text-sm font-medium text-(--foreground)">{title}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-(--muted)">{description}</p>
         </div>
       </div>
       {action}
@@ -108,28 +108,29 @@ export function ThemePresetRow({
 }: ThemePresetRowProps) {
   const active = presets.find((preset) => preset.id === value)
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-[var(--surface-muted)]">
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-(--surface-muted)">
       <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-0.5 shrink-0 text-[var(--muted)]">{icon}</span>
+        <span className="mt-0.5 shrink-0 text-(--muted)">{icon}</span>
         <div className="min-w-0">
-          <h2 className="text-sm font-medium text-[var(--foreground)]">{label}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{description}</p>
+          <h2 className="text-sm font-medium text-(--foreground)">{label}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-(--muted)">{description}</p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {active ? (
-          <div className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2 py-1.5">
+          <div className="flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-2 py-1.5">
             <span
-              className="inline-block h-3.5 w-3.5 rounded-full border border-[var(--border)]"
+              className="inline-block h-3.5 w-3.5 rounded-full border border-(--border)"
               style={{ backgroundColor: active.previewColors.background }}
             />
             <span
-              className="inline-block h-3.5 w-3.5 rounded-full border border-[var(--border)]"
+              className="inline-block h-3.5 w-3.5 rounded-full border border-(--border)"
               style={{ backgroundColor: active.previewColors.accent }}
             />
           </div>
         ) : null}
         <ListboxSelect
+          aria-label="Theme preset"
           disabled={disabled}
           value={value}
           onChange={(nextValue) => onChange(nextValue as ThemePresetId)}

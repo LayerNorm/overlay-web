@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import test from 'node:test'
-import { buildPlan, deploymentEnvFile, runBuild } from './vercel-build.mjs'
+import { buildPlan, deploymentEnvFile, runBuild, previewBuildEnvironment } from './vercel-build.mjs'
 
 const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
@@ -35,6 +33,24 @@ test('production builds never push Convex as part of the web build', () => {
   assert.deepEqual(plan.args, ['run', 'build'])
 })
 
+test('native Git builds derive their canonical PR origin before branch provisioning', () => {
+  for (const appUrl of [undefined, 'https://preview-unassigned.invalid']) {
+    const plan = buildPlan({ ...preview, NEXT_PUBLIC_APP_URL: appUrl })
+    assert.equal(plan.env.NEXT_PUBLIC_APP_URL, 'https://pr-123.preview.getoverlay.io')
+  }
+  assert.throws(() => buildPlan({ ...preview, NEXT_PUBLIC_APP_URL: 'https://pr-124.preview.getoverlay.io' }))
+})
+
+test('release builds cannot advertise a disabled provider as an enabled capability', () => {
+  for (const [provider, feature] of [['INTEGRATIONS', 'INTEGRATIONS'],
+    ['BROWSER', 'BROWSER_USE'], ['SANDBOX', 'SANDBOXES'], ['WEB_SEARCH', 'WEB_SEARCH']]) {
+    const disabled = { ...preview, ['OVERLAY_PROVIDER_' + provider]: 'none' }
+    assert.throws(() => buildPlan(disabled), /requires its feature flag/)
+    assert.throws(() => buildPlan({ ...disabled, ['OVERLAY_FEATURE_' + feature]: 'true' }))
+    assert.equal(buildPlan({ ...disabled, ['OVERLAY_FEATURE_' + feature]: 'false' }).target, 'preview pr-123')
+  }
+})
+
 test('preview build isolates selectors and reuses only that PR backend', () => {
   const plan = buildPlan({ ...preview, CONVEX_DEPLOYMENT: 'prod:wrong',
     DEV_NEXT_PUBLIC_CONVEX_URL: 'https://shared.convex.cloud',
@@ -46,6 +62,7 @@ test('preview build isolates selectors and reuses only that PR backend', () => {
   assert.ok(plan.args.includes('--preview-name'))
   assert.ok(plan.args.includes('pr-123'))
   assert.ok(!plan.args.includes('--preview-create'))
+  assert.deepEqual(plan.after[0].args, ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
 })
 
 test('a preview cannot deploy with a production key, shared origin, or missing PR', () => {
@@ -59,31 +76,45 @@ test('a preview cannot deploy with a production key, shared origin, or missing P
   ]) assert.throws(() => buildPlan({ ...preview, ...patch }))
 })
 
-test('staging refuses a production backend or mismatched key', () => {
-  const staging = { OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
-    OVERLAY_DEPLOYMENT_ENV: 'staging', OVERLAY_STAGING_CONVEX_DEPLOYMENT: 'stage-fixture',
-    CONVEX_DEPLOY_KEY: 'prod:stage-fixture|key' }
-  assert.equal(buildPlan(staging).target, 'staging stage-fixture')
-  assert.throws(() => buildPlan({ ...staging, CONVEX_DEPLOY_KEY: 'prod:wrong|key' }))
-  assert.throws(() => buildPlan({ ...staging,
-    OVERLAY_STAGING_CONVEX_DEPLOYMENT: 'colorful-chickadee-419',
-    CONVEX_DEPLOY_KEY: 'prod:colorful-chickadee-419|key' }))
+test('retired staging builds cannot deploy a shared backend', () => {
+  assert.throws(() => buildPlan({ OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'production',
+    OVERLAY_DEPLOYMENT_ENV: 'staging', CONVEX_DEPLOY_KEY: 'prod:doting-cuttlefish-819|fixture' }), /Unsupported preview/)
 })
 
-test('ignored-build gate runs only provisioned PRs in the staging project', () => {
-  const script = fileURLToPath(new URL('../vercel-ignore-build.sh', import.meta.url))
-  function exit(patch) {
-    return spawnSync('bash', [script], { env: { PATH: process.env.PATH,
-      ...preview, PREVIEW_BUILDS: 'pr', DEPLOY_BRANCH: 'staging',
-      VERCEL_GIT_COMMIT_REF: 'codex/example', ...patch } }).status
+test('preview rebuild repairs missing fixtures after deploy and never seeds a failed build', () => {
+  for (const failAt of [0, 1, 2]) {
+    const calls = []
+    const status = runBuild(preview, (command, args) => {
+      calls.push({ command, args: [...args] })
+      return { status: calls.length - 1 === failAt ? 1 : 0 }
+    })
+    assert.equal(status, failAt === 2 ? 0 : 1)
+    assert.equal(calls.length, Math.min(failAt + 1, 2))
+    if (calls[1]) assert.deepEqual(calls[1].args.slice(0, 5), ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
   }
-  assert.equal(exit({}), 1)
-  for (const patch of [
-    { OVERLAY_RELEASE_LANE: 'production' }, { PREVIEW_BUILDS: '' },
-    { VERCEL_GIT_PULL_REQUEST_ID: '' }, { VERCEL_GIT_PULL_REQUEST_ID: 'abc' },
-    { NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io' }, { DEPLOY_BRANCH: '' },
-    { VERCEL_GIT_REPO_OWNER: 'outside' }, { VERCEL_GIT_REPO_SLUG: 'fork' },
-  ]) assert.equal(exit(patch), 0)
-  assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: 'staging' }), 1)
-  assert.equal(exit({ VERCEL_ENV: 'production', VERCEL_GIT_COMMIT_REF: '' }), 0)
+})
+
+
+test('Git first-push lookup accepts only the exact open internal main PR', async () => {
+  const env = { ...preview, VERCEL_GIT_PULL_REQUEST_ID: '', VERCEL_GIT_COMMIT_REF: 'codex/probe',
+    VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }
+  const pr = { number: 219, state: 'open', base: { ref: 'main', repo: { full_name: 'LayerNorm/overlay-web' } },
+    head: { ref: 'codex/probe', sha: 'a'.repeat(40), repo: { full_name: 'LayerNorm/overlay-web' } } }
+  let time = 0, calls = 0
+  const resolved = await previewBuildEnvironment(env, { now: () => time, sleep: async ms => { time += ms },
+    fetchImpl: async (url, options) => {
+      assert.equal(url.searchParams.get('head'), 'LayerNorm:codex/probe')
+      assert.equal(options.headers.authorization, undefined)
+      return { ok: true, json: async () => ++calls === 1 ? [] : [pr] }
+    } })
+  assert.equal(resolved.VERCEL_GIT_PULL_REQUEST_ID, '219')
+  assert.equal(env.VERCEL_GIT_PULL_REQUEST_ID, '')
+  for (const candidate of [{ ...pr, state: 'closed' }, { ...pr, base: { ...pr.base, ref: 'other' } },
+    { ...pr, head: { ...pr.head, sha: 'b'.repeat(40) } },
+    { ...pr, head: { ...pr.head, repo: { full_name: 'outside/fork' } } }]) {
+    time = 0
+    await assert.rejects(previewBuildEnvironment(env, { now: () => time, sleep: async ms => { time += ms },
+      fetchImpl: async () => ({ ok: true, json: async () => [candidate] }) }), /Open a main PR/)
+  }
+  assert.equal(await previewBuildEnvironment(preview, { fetchImpl: () => { throw Error('unexpected lookup') } }), preview)
 })

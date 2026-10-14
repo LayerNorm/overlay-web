@@ -57,15 +57,15 @@ export default function MobileCompletePage() {
   }, [])
 
   return (
-    <main className="flex min-h-full items-center justify-center bg-[var(--background)] px-6 py-12">
+    <main className="flex min-h-full items-center justify-center bg-(--background) px-6 py-12">
       <div className="glass-dark rounded-2xl p-8 w-full max-w-md text-center">
-        <p className="text-xs uppercase tracking-[0.24em] text-[var(--muted)] mb-3">
+        <p className="text-xs uppercase tracking-[0.24em] text-(--muted) mb-3">
           Mobile Auth
         </p>
         <h1 className="text-2xl font-serif mb-3">
           {status === 'loading' ? 'Opening Overlay' : 'Could not open the app'}
         </h1>
-        <p className="text-sm text-[var(--muted)] mb-6">
+        <p className="text-sm text-(--muted) mb-6">
           {status === 'loading'
             ? 'Your session is being transferred back into the mobile app.'
             : error || 'Return to sign in and try again.'}
@@ -75,19 +75,19 @@ export default function MobileCompletePage() {
           <div className="flex flex-col gap-3">
             <Link
               href="/auth/sign-in?redirect=%2Fauth%2Fmobile-complete&force=true"
-              className="w-full py-3 px-4 bg-[var(--foreground)] text-[var(--background)] rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
+              className="w-full py-3 px-4 bg-(--foreground) text-(--background) rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
             >
               Try again
             </Link>
             <Link
               href="/app/settings?section=account"
-              className="w-full py-3 px-4 border border-[var(--border)] rounded-xl text-sm font-medium hover:bg-white/5 transition-colors"
+              className="w-full py-3 px-4 border border-(--border) rounded-xl text-sm font-medium hover:bg-white/5 transition-colors"
             >
               Go to account
             </Link>
           </div>
         ) : (
-          <div className="text-sm text-[var(--muted)]">You can return here if the app does not open automatically.</div>
+          <div className="text-sm text-(--muted)">You can return here if the app does not open automatically.</div>
         )}
       </div>
     </main>

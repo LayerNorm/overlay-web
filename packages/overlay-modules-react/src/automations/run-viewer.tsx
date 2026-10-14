@@ -104,8 +104,8 @@ function RunModeSelector({
         disabled={liveDisabled}
         className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
           mode === 'live'
-            ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-            : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
+            ? 'bg-(--surface-muted) text-(--foreground)'
+            : 'border border-(--border) bg-(--surface-elevated) text-(--foreground) hover:bg-(--border)'
         } disabled:opacity-40`}
       >
         Live
@@ -115,8 +115,8 @@ function RunModeSelector({
         onClick={() => onSelectMode('replay')}
         className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
           mode === 'replay'
-            ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-            : 'border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:bg-[var(--border)]'
+            ? 'bg-(--surface-muted) text-(--foreground)'
+            : 'border border-(--border) bg-(--surface-elevated) text-(--foreground) hover:bg-(--border)'
         }`}
       >
         Replay
@@ -142,6 +142,7 @@ function ReplayRunPicker({
   return (
     <>
       <Select
+        aria-label="Run to replay"
         value={selectedRunId ?? ''}
         onChange={(e) => onSelectRun(e.target.value || null)}
         className="text-xs"
@@ -159,7 +160,7 @@ function ReplayRunPicker({
         ))}
       </Select>
       {!runs.some((r) => r.workflowRunId) && (
-        <span className="text-xs text-[var(--muted)]">
+        <span className="text-xs text-(--muted)">
           No replayable runs yet — trigger a test run first.
         </span>
       )}
@@ -184,7 +185,7 @@ function RunViewerCanvas({
 }) {
   if (graph.nodes.length === 0) {
     return (
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-8 text-center text-sm text-[var(--muted)]">
+      <div className="rounded-lg border border-(--border) bg-(--surface-subtle) p-8 text-center text-sm text-(--muted)">
         No automation steps to visualize.
       </div>
     )
@@ -192,7 +193,7 @@ function RunViewerCanvas({
   return (
     <Suspense
       fallback={
-        <div className="h-96 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]" />
+        <div className="h-96 animate-pulse rounded-lg border border-(--border) bg-(--surface-subtle)" />
       }
     >
       {isLive && selectedRunId ? (
@@ -217,17 +218,17 @@ function LiveCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workflow
     <div className="space-y-3">
       <div className="flex items-center gap-3 text-xs">
         <span
-          className={`flex items-center gap-1.5 ${isConnected ? 'text-green-500' : 'text-[var(--muted)]'}`}
+          className={`flex items-center gap-1.5 ${isConnected ? 'text-green-500' : 'text-(--muted)'}`}
         >
           <span
-            className={`size-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-[var(--muted)]'}`}
+            className={`size-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-(--muted)'}`}
           />
           {isConnected ? 'Connected' : 'Disconnected'}
         </span>
         {snapshot && (
-          <span className="text-[var(--muted)]">
+          <span className="text-(--muted)">
             Run status:{' '}
-            <span className='font-medium text-[var(--foreground)]'>
+            <span className='font-medium text-(--foreground)'>
               {snapshot.runStatus}
             </span>
           </span>
@@ -258,15 +259,15 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
 
   if (isLoading) {
     return (
-      <div className="flex h-96 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
-        <p className="text-sm text-[var(--muted)]">Loading run events…</p>
+      <div className="flex h-96 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle)">
+        <p className="text-sm text-(--muted)">Loading run events…</p>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex h-96 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
+      <div className="flex h-96 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle)">
         <p className="text-sm text-red-500">{error}</p>
       </div>
     )
@@ -274,8 +275,8 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
 
   if (events.length === 0) {
     return (
-      <div className="flex h-96 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]">
-        <p className='text-sm text-[var(--muted)]'>
+      <div className="flex h-96 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle)">
+        <p className='text-sm text-(--muted)'>
           No events found for this run.
         </p>
       </div>
@@ -294,7 +295,7 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
 
       {/* Scrubber */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+        <div className="flex items-center justify-between text-xs text-(--muted)">
           <span>
             Step {currentIndex} of {events.length}
           </span>
@@ -307,7 +308,7 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
           max={events.length}
           value={currentIndex}
           onChange={(e) => setCurrentIndex(Number(e.target.value))}
-          className="w-full accent-[var(--foreground)]"
+          className="w-full accent-(--foreground)"
         />
         {/* Event timeline */}
         <div className="flex flex-wrap gap-1">
@@ -318,8 +319,8 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
               onClick={() => setCurrentIndex(i + 1)}
               className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                 i < currentIndex
-                  ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-                  : 'bg-[var(--surface-subtle)] text-[var(--muted)] hover:bg-[var(--border)]'
+                  ? 'bg-(--surface-muted) text-(--foreground)'
+                  : 'bg-(--surface-subtle) text-(--muted) hover:bg-(--border)'
               }`}
               title={`${event.eventType}${event.stepName ? `: ${event.stepName}` : ''}`}
             >

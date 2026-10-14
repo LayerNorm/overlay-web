@@ -29,15 +29,15 @@ export function MarketingPlaceholderPage({
           >
             {title}
           </h1>
-          <p className="mt-6 text-base leading-8 text-[var(--muted)] md:text-lg">
+          <p className="mt-6 text-base leading-8 text-(--muted) md:text-lg">
             {description}
           </p>
-          <p className="mt-4 text-sm text-[var(--muted-light)]">
+          <p className="mt-4 text-sm text-(--muted-light)">
             Nothing here yet — this page is on its way.
           </p>
           <Link
             href="/home"
-            className="mt-10 inline-flex items-center gap-2 text-sm font-medium text-[var(--foreground)] underline decoration-[var(--border)] underline-offset-4 transition-colors hover:decoration-[var(--foreground)]"
+            className="mt-10 inline-flex items-center gap-2 text-sm font-medium text-(--foreground) underline decoration-(--border) underline-offset-4 transition-colors hover:decoration-(--foreground)"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.6} />
             Back to home

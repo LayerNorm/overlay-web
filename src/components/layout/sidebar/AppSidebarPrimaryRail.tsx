@@ -28,17 +28,17 @@ function railButtonClassName(item: PrimaryRailItem, expanded: boolean) {
         expanded ? 'gap-2.5 px-3' : 'justify-center px-0'
       } ${
         disabled
-          ? 'cursor-not-allowed text-[var(--muted-light)]'
+          ? 'cursor-not-allowed text-(--muted-light)'
           : active
-            ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-            : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+            ? 'bg-(--surface-subtle) text-(--foreground)'
+            : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
       }`
 }
 
 function RailBadge({ count, expanded }: { count: number; expanded: boolean }) {
   return (
     <span
-      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--border)] px-0.5 text-[9px] font-medium text-[var(--foreground)] ${
+      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-(--border) px-0.5 text-[9px] font-medium text-(--foreground) ${
         expanded ? 'shrink-0' : 'absolute right-0.5 top-0.5 h-3.5 min-w-3.5 text-[8px]'
       }`}
       aria-hidden
@@ -53,7 +53,7 @@ function RailButtonContent({ item, expanded }: { item: PrimaryRailItem; expanded
   return (
     <>
       {pending ? (
-        <Loader2 size={14} className="shrink-0 animate-spin text-[var(--muted)]" aria-hidden />
+        <Loader2 size={14} className="shrink-0 animate-spin text-(--muted)" aria-hidden />
       ) : (
         <Icon size={15} className="shrink-0" />
       )}
@@ -163,7 +163,7 @@ export function AppSidebarPrimaryRail({
   return (
     <SidebarShell className={className}>
       <div
-        className={`flex h-16 min-h-16 shrink-0 items-center border-b border-[var(--border)] ${
+        className={`flex h-16 min-h-16 shrink-0 items-center border-b border-(--border) ${
           // Match nav `px-2` so the brand mark lines up with rail icons (same
           // inset as SidebarNav + button `px-3` on main).
           expanded ? 'justify-between gap-2 px-2' : 'justify-center'
@@ -182,14 +182,14 @@ export function AppSidebarPrimaryRail({
         ))}
         {showSectionItems ? (
           <>
-            <div className="my-2 border-t border-[var(--border)]" role="presentation" />
+            <div className="my-2 border-t border-(--border)" role="presentation" />
             {sectionItems.map((item) => (
               <RailButton key={`section-${item.id}`} item={item} expanded={expanded} />
             ))}
           </>
         ) : null}
       </nav>
-      <div className={`shrink-0 space-y-0.5 border-t border-[var(--border)] py-3 ${expanded ? 'px-2' : 'px-2'}`}>
+      <div className={`shrink-0 space-y-0.5 border-t border-(--border) py-3 ${expanded ? 'px-2' : 'px-2'}`}>
         {footerItems.map((item) => (
           <RailButton key={item.id} item={item} expanded={expanded} />
         ))}

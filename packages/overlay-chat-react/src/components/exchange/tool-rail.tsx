@@ -27,7 +27,7 @@ export function ToolLogoColumn({
     <div className="relative flex w-2 shrink-0 flex-col items-center self-stretch">
       {showLine && (
         <div
-          className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-[var(--surface-subtle)]"
+          className="absolute left-1/2 z-0 w-px -translate-x-1/2 bg-(--surface-subtle)"
           aria-hidden
           style={
             connectTop && connectBottom
@@ -38,7 +38,7 @@ export function ToolLogoColumn({
           }
         />
       )}
-      <div className="relative z-[1] shrink-0 rounded-full bg-[var(--background)]">
+      <div className="relative z-1 shrink-0 rounded-full bg-(--background)">
         <ToolLineLogo />
       </div>
       <div className="min-h-0 flex-1" />

@@ -6,6 +6,18 @@ import { parse } from 'yaml'
 
 const workflow = name => parse(readFileSync(new URL(`../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'))
 
+test('new PR revisions cancel obsolete checks without canceling main releases or merge groups', () => {
+  for (const name of ['security', 'docs', 'gateway-contracts', 'codeql', 'semgrep']) {
+    const config = workflow(name)
+    assert.equal(config.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}")
+    assert.match(config.concurrency.group, /github\.workflow/)
+    assert.match(config.concurrency.group, /github\.event_name/)
+    assert.match(config.concurrency.group, /github\.event\.pull_request\.number \|\| github\.ref/)
+  }
+  // Deployment controllers must settle remote builds before releasing their locks.
+  assert.equal(workflow('pr-preview').jobs.preview.concurrency['cancel-in-progress'], false)
+})
+
 test('every required workflow reports on merge groups; required PR checks have no paths filter', () => {
   for (const name of ['security', 'docs', 'gateway-contracts', 'codeql', 'semgrep', 'cla']) {
     const config = workflow(name)
@@ -17,6 +29,19 @@ test('every required workflow reports on merge groups; required PR checks have n
   const action = review.steps.find(s => s.uses?.startsWith('actions/dependency-review-action@'))
   assert.match(action.with['base-ref'], /merge_group.base_sha/)
   assert.match(action.with['head-ref'], /merge_group.head_sha/)
+  assert.equal(action.if, undefined, 'dependency comparison must run rather than trust an absent repository field')
+  assert.equal(review.steps.some(s => /Skip dependency review/.test(s.name ?? '')), false)
+})
+
+test('unrelated deployment events cannot overwrite required contract checks with skipped results', () => {
+  assert.equal(workflow('gateway-contracts').on.deployment_status, undefined)
+  assert.equal(workflow('gateway-contracts').jobs.contracts.if, undefined)
+  const canary = workflow('paid-gateway-canary')
+  assert.ok(Object.hasOwn(canary.on, 'deployment_status'))
+  assert.match(canary.jobs['paid-gateway-canary'].if, /overlay-landing/)
+  const checkout = canary.jobs['paid-gateway-canary'].steps.find(s => s.uses?.startsWith('actions/checkout@'))
+  assert.equal(checkout.with.ref, 'main', 'canary credentials must never execute a deployment-supplied unreviewed SHA')
+  assert.equal(checkout.with['persist-credentials'], false)
 })
 test('preview management never checks out PR code, installs packages, or interpolates input into shell', () => {
   const config = workflow('pr-preview')

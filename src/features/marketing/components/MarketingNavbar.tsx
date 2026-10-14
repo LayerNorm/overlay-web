@@ -40,10 +40,10 @@ const PRIMARY_LINKS: Array<{
   { href: "/pricing", label: "Pricing", match: (p) => p === "/pricing" },
 ];
 
-const mutedLink = "text-[var(--muted)] hover:text-[var(--foreground)]";
+const mutedLink = "text-(--muted) hover:text-(--foreground)";
 
 function activeLinkClass(active: boolean) {
-  return active ? "text-[var(--foreground)]" : mutedLink;
+  return active ? "text-(--foreground)" : mutedLink;
 }
 
 type LandingTheme = ReturnType<typeof useLandingThemeOptional>;
@@ -106,7 +106,7 @@ function DesktopActions({
           type="button"
           onClick={landing.toggleLandingTheme}
           aria-label="Toggle theme"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
         >
           {landing.landingTheme === "dark" ? (
             <SunMedium className="h-4 w-4" />
@@ -120,13 +120,13 @@ function DesktopActions({
         target="_blank"
         rel="noopener noreferrer"
         aria-label="GitHub"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
       >
         <Github className="h-4 w-4" />
       </a>
       <Link
         href={appHref}
-        className={`inline-flex items-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
+        className={`inline-flex items-center rounded-full bg-(--button-primary-bg) px-4 py-2 ${navText} text-(--button-primary-text) transition-opacity hover:opacity-90`}
         style={serif}
       >
         Get Started
@@ -163,7 +163,7 @@ function MobileNavMenu({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
-          className="overflow-hidden border-t border-[var(--border)] bg-[var(--sidebar-surface)] px-4 py-3 md:hidden"
+          className="overflow-hidden border-t border-(--border) bg-(--sidebar-surface) px-4 py-3 md:hidden"
         >
           <div className="grid gap-2">
             {PRIMARY_LINKS.map((item) =>
@@ -186,7 +186,7 @@ function MobileNavMenu({
                   onClick={onClose}
                   className={`rounded-xl px-4 py-3 ${navText} transition-colors ${
                     item.match(pathname)
-                      ? "bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                      ? "bg-(--surface-subtle) text-(--foreground)"
                       : mutedLink
                   }`}
                   style={serif}
@@ -221,7 +221,7 @@ function MobileNavMenu({
                 <button
                   type="button"
                   onClick={landing.toggleLandingTheme}
-                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[var(--border)] px-4 py-2.5 ${navText} text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]`}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-(--border) px-4 py-2.5 ${navText} text-(--foreground) transition-colors hover:bg-(--surface-muted)`}
                   style={serif}
                 >
                   {landing.landingTheme === "dark" ? (
@@ -237,7 +237,7 @@ function MobileNavMenu({
               <Link
                 href={appHref}
                 onClick={onClose}
-                className={`inline-flex flex-1 items-center justify-center rounded-full bg-[var(--button-primary-bg)] px-4 py-2.5 ${navText} text-[var(--button-primary-text)] transition-opacity hover:opacity-90`}
+                className={`inline-flex flex-1 items-center justify-center rounded-full bg-(--button-primary-bg) px-4 py-2.5 ${navText} text-(--button-primary-text) transition-opacity hover:opacity-90`}
                 style={serif}
               >
                 Get Started
@@ -270,7 +270,7 @@ export function MarketingNavbar() {
   const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
-    <header className="sticky top-0 z-50 bg-[color:color-mix(in_srgb,var(--background)_88%,transparent)] backdrop-blur-md">
+    <header className="sticky top-0 z-50 bg-[color-mix(in_srgb,var(--background)_88%,transparent)] backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-4 md:px-8">
         <nav className="relative flex h-14 items-center justify-between gap-4">
           <Link
@@ -303,7 +303,7 @@ export function MarketingNavbar() {
               mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
             }
             onClick={() => setMobileMenuOpen((v) => !v)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] md:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--foreground) md:hidden"
           >
             {mobileMenuOpen ? (
               <X className="h-4 w-4" />

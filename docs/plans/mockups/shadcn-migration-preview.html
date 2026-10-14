@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>overlay · shadcn/ui migration preview</title>
+<style>
+/* ============================================================
+   Overlay tokens → shadcn semantic mapping (the actual plan)
+   Values lifted verbatim from src/app/globals.css +
+   packages/overlay-ui/src/styles.css
+   ============================================================ */
+@font-face {
+  font-family: 'Libre Baskerville';
+  src: url('../../../public/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+:root {
+  --background: #fafafa;
+  --foreground: #0a0a0a;
+  --muted-fg: #71717a;
+  --muted-light: #a1a1aa;
+  --border: #e4e4e7;
+  --surface-elevated: #ffffff;
+  --surface-muted: #f5f5f5;
+  --surface-subtle: #f0f0f0;
+  --overlay-scrim: rgba(0,0,0,.4);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  /* shadcn semantic aliases — what init adds */
+  --card: var(--surface-elevated);
+  --popover: var(--surface-elevated);
+  --primary: var(--foreground);
+  --primary-fg: var(--background);
+  --secondary: var(--surface-subtle);
+  --secondary-fg: var(--foreground);
+  --accent: var(--surface-subtle);
+  --muted: var(--surface-muted);
+  --destructive: var(--danger);
+  --input-bg: var(--surface-elevated);
+  --ring: rgba(161,161,170,.45);
+
+  --radius-sm: .375rem; --radius-md: .5rem; --radius-lg: .75rem;
+  --font-sans: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-serif: 'Libre Baskerville', Georgia, serif;
+  --font-mono: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --ease: cubic-bezier(.16,1,.3,1);
+}
+
+[data-theme='dark'] {
+  --background: #09090b;
+  --foreground: #f5f5f5;
+  --muted-fg: #a1a1aa;
+  --muted-light: #71717a;
+  --border: #27272a;
+  --surface-elevated: #111113;
+  --surface-muted: #151518;
+  --surface-subtle: #1c1c20;
+  --overlay-scrim: rgba(0,0,0,.58);
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --input-bg: var(--surface-elevated);
+  --ring: rgba(212,212,216,.35);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  transition: background .25s ease, color .25s ease;
+}
+::selection { background: rgba(161,161,170,.3); }
+
+svg.icon { width: 16px; height: 16px; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+svg.icon.sm { width: 13px; height: 13px; }
+svg.icon.lg { width: 18px; height: 18px; }
+
+/* ---------------- chrome ---------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 28px;
+  background: color-mix(in srgb, var(--background) 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar .wordmark { font-family: var(--font-serif); font-size: 15px; letter-spacing: .01em; }
+.topbar .crumb { color: var(--muted-fg); font-size: 13px; }
+.topbar .spacer { flex: 1; }
+
+.orb { display: inline-flex; border-radius: 9999px; overflow: hidden; flex-shrink: 0; }
+.orb svg { display: block; }
+
+.wrap { max-width: 1120px; margin: 0 auto; padding: 40px 28px 96px; }
+
+.hero h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; }
+.hero p { color: var(--muted-fg); margin-top: 8px; max-width: 640px; font-size: 14.5px; }
+.hero .stats { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.stat-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px; border-radius: 9999px;
+  border: 1px solid var(--border); background: var(--surface-muted);
+  font-size: 12px; color: var(--muted-fg);
+}
+.stat-chip b { color: var(--foreground); font-weight: 600; }
+.stat-chip .old { text-decoration: line-through; text-decoration-color: var(--danger); text-decoration-thickness: 1.5px; }
+
+/* ---------------- section chrome ---------------- */
+section.block { margin-top: 48px; }
+.block > .block-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.block h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.block .replaces { font-size: 12px; color: var(--muted-fg); }
+.block .replaces code { font-family: var(--font-mono); font-size: 11px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.block .desc { font-size: 13px; color: var(--muted-fg); margin-bottom: 16px; }
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  padding: 24px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
+}
+[data-theme='dark'] .panel { box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+.grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+@media (max-width: 800px) { .grid3 { grid-template-columns: 1fr; } }
+
+.label-col { display: flex; flex-direction: column; gap: 8px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* ---------------- button ---------------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 36px; padding: 0 15px;
+  border-radius: var(--radius-md);
+  font: inherit; font-size: 13.5px; font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer; white-space: nowrap; user-select: none;
+  transition: background .15s ease, opacity .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease;
+  color: var(--foreground);
+}
+.btn:focus-visible, .icon-btn:focus-visible, .menu-item:focus-visible, .tab:focus-visible, .sel-trigger:focus-visible, .cmd-item:focus-visible {
+  outline: none; box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+.btn:active { opacity: .85; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.btn-primary { background: var(--primary); color: var(--primary-fg); }
+.btn-primary:hover { opacity: .88; }
+.btn-secondary { background: var(--card); border-color: var(--border); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.btn-secondary:hover { background: var(--surface-muted); }
+.btn-ghost { background: transparent; color: var(--muted-fg); }
+.btn-ghost:hover { background: var(--surface-subtle); color: var(--foreground); }
+.btn-destructive { background: var(--destructive); color: #fff; }
+[data-theme='dark'] .btn-destructive { color: #09090b; font-weight: 600; }
+.btn-destructive:hover { opacity: .88; }
+.btn-outline { background: transparent; border-color: var(--border); }
+.btn-outline:hover { background: var(--surface-subtle); }
+.btn-link { background: none; color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; height: auto; padding: 0 4px; }
+.btn-sm { height: 30px; padding: 0 11px; font-size: 12.5px; border-radius: var(--radius-sm); }
+.btn-lg { height: 42px; padding: 0 20px; font-size: 14px; border-radius: var(--radius-md); }
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: var(--radius-md);
+  border: 1px solid transparent; background: transparent; color: var(--muted-fg);
+  cursor: pointer; transition: background .15s ease, color .15s ease;
+}
+.icon-btn:hover { background: var(--surface-subtle); color: var(--foreground); }
+.icon-btn.border { border-color: var(--border); background: var(--card); color: var(--foreground); }
+
+/* ---------------- badge / kbd ---------------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 9px; border-radius: 9999px;
+  font-size: 11.5px; font-weight: 500; border: 1px solid transparent;
+}
+.badge-default { background: var(--primary); color: var(--primary-fg); }
+.badge-secondary { background: var(--surface-subtle); color: var(--foreground); border-color: var(--border); }
+.badge-outline { background: transparent; color: var(--muted-fg); border-color: var(--border); }
+.badge-success { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); border-color: color-mix(in srgb, var(--success) 30%, transparent); }
+.badge-warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+.badge-danger { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 28%, transparent); }
+
+kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-fg);
+  background: var(--surface-muted); border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 5px;
+}
+
+/* ---------------- form controls ---------------- */
+.label { font-size: 13px; font-weight: 500; }
+.label .hint { font-weight: 400; color: var(--muted-fg); margin-left: 6px; font-size: 12px; }
+.input, .textarea, .sel-trigger {
+  width: 100%; height: 36px; padding: 0 11px;
+  font: inherit; font-size: 13.5px; color: var(--foreground);
+  background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-md);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.input::placeholder, .textarea::placeholder { color: var(--muted-light); }
+.input:focus, .textarea:focus, .sel-trigger:focus { outline: none; border-color: var(--muted-light); box-shadow: 0 0 0 3px var(--ring); }
+.input:disabled { opacity: .5; cursor: not-allowed; }
+.input.mono { font-family: var(--font-mono); font-size: 12.5px; }
+.textarea { height: auto; min-height: 78px; padding: 9px 11px; resize: vertical; line-height: 1.55; }
+.input-group { position: relative; }
+.input-group svg.icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted-light); pointer-events: none; }
+.input-group .input { padding-left: 33px; }
+
+.switch {
+  position: relative; width: 36px; height: 20px; border-radius: 9999px;
+  background: var(--surface-subtle); border: 1px solid var(--border);
+  cursor: pointer; transition: background .18s var(--ease); flex-shrink: 0;
+}
+.switch::after {
+  content: ''; position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
+  width: 14px; height: 14px; border-radius: 9999px; background: var(--muted-fg);
+  transition: transform .18s var(--ease), background .18s ease;
+}
+.switch[aria-checked='true'] { background: var(--primary); border-color: var(--primary); }
+.switch[aria-checked='true']::after { transform: translate(15px,-50%); background: var(--primary-fg); }
+
+.checkbox {
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--card);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s ease; color: transparent; flex-shrink: 0;
+}
+.checkbox[aria-checked='true'] { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+.checkbox svg { width: 11px; height: 11px; }
+.check-row { display: flex; align-items: center; gap: 9px; font-size: 13.5px; cursor: pointer; }
+.check-row .sub { display: block; font-size: 12px; color: var(--muted-fg); }
+
+/* select */
+.select-wrap { position: relative; }
+.sel-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  cursor: pointer; text-align: left;
+}
+.sel-trigger .placeholder { color: var(--muted-light); }
+.sel-trigger svg { color: var(--muted-light); }
+
+/* ---------------- overlays ---------------- */
+.scrim {
+  position: fixed; inset: 0; z-index: 80;
+  background: var(--overlay-scrim);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  opacity: 0; pointer-events: none; transition: opacity .2s var(--ease);
+}
+.scrim.open { opacity: 1; pointer-events: auto; }
+
+.dialog {
+  width: min(430px, 94vw);
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: 0 24px 64px rgba(0,0,0,.28);
+  padding: 20px;
+  transform: scale(.96) translateY(6px); transition: transform .2s var(--ease);
+}
+.scrim.open .dialog { transform: scale(1) translateY(0); }
+.dialog h3 { font-size: 15px; font-weight: 600; }
+.dialog .dsub { font-size: 13px; color: var(--muted-fg); margin-top: 6px; line-height: 1.55; }
+.dialog .dfoot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.dialog .dclose { position: absolute; }
+.dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+
+/* sheet */
+.sheet-scrim { align-items: stretch; justify-content: flex-end; padding: 0; }
+.sheet {
+  width: min(400px, 92vw); height: 100%;
+  background: var(--surface-elevated); border-left: 1px solid var(--border);
+  padding: 22px; transform: translateX(28px); transition: transform .24s var(--ease);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.scrim.open .sheet { transform: translateX(0); }
+.sheet h3 { font-size: 15px; font-weight: 600; }
+.sheet .dsub { font-size: 13px; color: var(--muted-fg); }
+.sheet-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.sheet-row .sub { font-size: 12px; color: var(--muted-fg); }
+
+/* dropdown menu + popover + select list */
+.menu {
+  position: absolute; z-index: 90; min-width: 190px;
+  background: var(--popover); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 4px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.12);
+  opacity: 0; transform: scale(.97) translateY(-3px); pointer-events: none;
+  transition: opacity .14s var(--ease), transform .14s var(--ease);
+  transform-origin: top;
+}
+.menu.open { opacity: 1; transform: none; pointer-events: auto; }
+.menu-item {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 6px 9px; border-radius: 5px; font-size: 13px; text-align: left;
+  background: none; border: none; color: var(--foreground); cursor: pointer;
+}
+.menu-item:hover, .menu-item.focused { background: var(--surface-subtle); }
+.menu-item svg { color: var(--muted-fg); }
+.menu-item .grow { flex: 1; }
+.menu-item.destructive { color: var(--danger); }
+.menu-item.destructive svg { color: var(--danger); }
+.menu-sep { height: 1px; background: var(--border); margin: 4px -4px; }
+.menu-label { padding: 5px 9px 3px; font-size: 11px; font-weight: 500; color: var(--muted-fg); }
+
+.popover {
+  position: absolute; z-index: 90; width: 270px;
+  background: var(--popover); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.2);
+  opacity: 0; transform: scale(.97) translateY(-3px); pointer-events: none;
+  transition: opacity .14s var(--ease), transform .14s var(--ease);
+}
+.popover.open { opacity: 1; transform: none; pointer-events: auto; }
+.popover h4 { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.popover p { font-size: 12.5px; color: var(--muted-fg); line-height: 1.5; }
+
+/* tooltip */
+.tip { position: relative; display: inline-flex; }
+.tip::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%) scale(.96);
+  background: var(--foreground); color: var(--background);
+  font-size: 11.5px; font-weight: 500; padding: 5px 9px; border-radius: 6px;
+  white-space: nowrap; opacity: 0; pointer-events: none;
+  transition: opacity .12s ease .35s, transform .12s var(--ease) .35s;
+  z-index: 95;
+}
+.tip:hover::after { opacity: 1; transform: translateX(-50%) scale(1); }
+
+/* ---------------- tabs ---------------- */
+.tabs { display: inline-flex; background: var(--surface-muted); border-radius: var(--radius-md); padding: 3px; gap: 2px; }
+.tab {
+  border: none; background: none; font: inherit; font-size: 13px; font-weight: 500;
+  padding: 5px 13px; border-radius: 6px; color: var(--muted-fg); cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.tab[aria-selected='true'] { background: var(--surface-elevated); color: var(--foreground); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.tab-panel { margin-top: 14px; font-size: 13.5px; color: var(--muted-fg); }
+
+/* ---------------- command palette ---------------- */
+.cmd {
+  width: min(520px, 94vw);
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.35);
+  transform: scale(.97) translateY(-8px); transition: transform .18s var(--ease);
+}
+.scrim.open .cmd { transform: none; }
+.cmd-input-row { display: flex; align-items: center; gap: 10px; padding: 13px 15px; border-bottom: 1px solid var(--border); }
+.cmd-input-row svg { color: var(--muted-light); }
+.cmd-input { flex: 1; border: none; background: none; font: inherit; font-size: 14px; color: var(--foreground); }
+.cmd-input:focus { outline: none; }
+.cmd-list { max-height: 290px; overflow-y: auto; padding: 6px; }
+.cmd-group { padding: 7px 10px 4px; font-size: 11px; font-weight: 500; color: var(--muted-fg); }
+.cmd-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; border-radius: 7px; border: none; background: none;
+  font-size: 13.5px; color: var(--foreground); cursor: pointer; text-align: left;
+}
+.cmd-item svg { color: var(--muted-fg); }
+.cmd-item.active { background: var(--surface-subtle); }
+.cmd-item .grow { flex: 1; }
+.cmd-empty { padding: 26px; text-align: center; color: var(--muted-fg); font-size: 13px; }
+
+/* ---------------- card / table / misc ---------------- */
+.card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); overflow: hidden; }
+.card-head { padding: 16px 18px 0; }
+.card-head h3 { font-size: 14.5px; font-weight: 600; }
+.card-head p { font-size: 12.5px; color: var(--muted-fg); margin-top: 3px; }
+.card-body { padding: 16px 18px 18px; }
+.card-foot { border-top: 1px solid var(--border); padding: 12px 18px; display: flex; justify-content: flex-end; gap: 8px; background: var(--surface-muted); }
+
+table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { text-align: left; font-size: 11.5px; font-weight: 500; color: var(--muted-fg); padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.tbl td { padding: 10px; border-bottom: 1px solid var(--border); }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: var(--surface-muted); }
+.tbl .num { font-family: var(--font-mono); font-size: 12px; text-align: right; }
+.tbl td.num, .tbl th.num { text-align: right; }
+
+.avatar {
+  width: 32px; height: 32px; border-radius: 9999px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 600; color: #fff; background: #52525b;
+  border: 2px solid var(--card);
+}
+.avatar.stack { margin-left: -9px; }
+.avatar.g1 { background: #6366f1; } .avatar.g2 { background: #0ea5e9; }
+.avatar.g3 { background: #10b981; } .avatar.g4 { background: #f59e0b; }
+.avatar.lg { width: 40px; height: 40px; font-size: 13px; }
+
+.skel { border-radius: 6px; background: var(--surface-subtle); position: relative; overflow: hidden; }
+.skel::after { content:''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--foreground) 6%, transparent), transparent); animation: shimmer 1.5s infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
+
+.alert {
+  display: flex; gap: 11px; padding: 13px 15px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--card); font-size: 13px;
+}
+.alert svg { color: var(--muted-fg); margin-top: 1px; }
+.alert b { font-weight: 600; display: block; margin-bottom: 2px; }
+.alert .sub { color: var(--muted-fg); font-size: 12.5px; }
+.alert.danger { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.alert.danger svg { color: var(--danger); }
+
+.sep { height: 1px; background: var(--border); border: none; margin: 18px 0; }
+.sep-v { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
+
+.scrollarea {
+  height: 168px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--card); padding: 4px;
+}
+.scrollarea::-webkit-scrollbar { width: 8px; }
+.scrollarea::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.scrollarea::-webkit-scrollbar-thumb:hover { background: var(--muted-light); }
+.scroll-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+.scroll-item:hover { background: var(--surface-subtle); }
+.scroll-item svg { color: var(--muted-fg); }
+.scroll-item .sub { margin-left: auto; font-size: 11.5px; color: var(--muted-light); font-family: var(--font-mono); }
+
+.meter { height: 6px; border-radius: 999px; background: var(--surface-subtle); overflow: hidden; }
+.meter > div { height: 100%; border-radius: 999px; background: var(--foreground); }
+.meter.warn > div { background: var(--warning); }
+
+/* toast */
+.toasts { position: fixed; bottom: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  display: flex; align-items: center; gap: 10px; min-width: 290px;
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.24);
+  font-size: 13px;
+  animation: toastIn .25s var(--ease) both;
+}
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+.toast svg { color: var(--success); }
+.toast .sub { color: var(--muted-fg); font-size: 12px; margin-top: 1px; }
+.toast.leaving { transition: opacity .2s, transform .2s; opacity: 0; transform: translateX(12px); }
+
+/* in-context composites */
+.settings-card-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.settings-card-row:last-child { border-bottom: none; }
+.settings-card-row .t { font-size: 13.5px; font-weight: 500; }
+.settings-card-row .s { font-size: 12px; color: var(--muted-fg); margin-top: 2px; max-width: 380px; }
+
+.composer {
+  border: 1px solid var(--border); border-radius: 14px; background: var(--card);
+  padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.composer textarea { border: none; background: none; min-height: 44px; padding: 2px 4px; width: 100%; font: inherit; font-size: 14px; color: var(--foreground); resize: none; }
+.composer textarea:focus { outline: none; }
+.composer-bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.composer-bar .grow { flex: 1; }
+.send-btn { width: 32px; height: 32px; border-radius: 9999px; background: var(--primary); color: var(--primary-fg); border: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.send-btn:hover { opacity: .85; }
+
+.msg-row { display: flex; gap: 10px; padding: 10px 0; }
+.msg-row .bubble { max-width: 78%; padding: 9px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.55; }
+.msg-row.user { justify-content: flex-end; }
+.msg-row.user .bubble { background: var(--surface-subtle); }
+.msg-row.agent .bubble { background: transparent; padding-left: 0; }
+.msg-row.agent .orb { margin-top: 2px; }
+
+.section-tag {
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted-light); margin-bottom: 10px;
+}
+.footnote { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted-fg); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.footnote code { font-family: var(--font-mono); font-size: 11px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<!-- ======================= top bar ======================= -->
+<div class="topbar">
+  <span class="orb" style="width:20px;height:20px">
+    <svg width="20" height="20" viewBox="0 0 200 200" aria-hidden="true">
+      <defs>
+        <radialGradient id="mbody" cx="38%" cy="28%" r="78%">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="22%" stop-color="#eceef1"/>
+          <stop offset="46%" stop-color="#a8adb5"/><stop offset="72%" stop-color="#4c5158"/>
+          <stop offset="100%" stop-color="#17191d"/>
+        </radialGradient>
+        <linearGradient id="mrim" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="52%" stop-color="#ffffff" stop-opacity="0"/><stop offset="80%" stop-color="#ffffff" stop-opacity=".75"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="ms6" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>
+        <filter id="ms2" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2"/></filter>
+        <filter id="ms14" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14"/></filter>
+        <clipPath id="mclip"><circle cx="100" cy="100" r="96"/></clipPath>
+      </defs>
+      <g clip-path="url(#mclip)">
+        <circle cx="100" cy="100" r="96" fill="url(#mbody)"/>
+        <ellipse cx="138" cy="142" rx="44" ry="34" fill="#000" opacity=".22" filter="url(#ms14)"/>
+        <ellipse cx="80" cy="72" rx="54" ry="42" fill="#fff" opacity=".26" filter="url(#ms14)" transform="rotate(-20 80 72)"/>
+        <circle cx="100" cy="100" r="88" fill="none" stroke="url(#mrim)" stroke-width="7" filter="url(#ms6)"/>
+        <ellipse cx="100" cy="168" rx="54" ry="13" fill="#fff" opacity=".3" filter="url(#ms6)"/>
+        <ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity=".9" filter="url(#ms6)" transform="rotate(-24 73 59)"/>
+        <ellipse cx="67" cy="51" rx="10" ry="7" fill="#fff" opacity=".95" filter="url(#ms2)" transform="rotate(-24 67 51)"/>
+      </g>
+    </svg>
+  </span>
+  <span class="wordmark">overlay</span>
+  <span class="crumb">/ shadcn/ui migration preview</span>
+  <div class="spacer"></div>
+  <button class="icon-btn" id="paletteBtn" data-tip-btn title="Search">
+    <span data-icon="search"></span>
+  </button>
+  <button class="icon-btn" id="themeToggle" title="Toggle theme">
+    <span data-icon="sun"></span>
+  </button>
+</div>
+
+<div class="wrap">
+
+  <!-- ======================= hero ======================= -->
+  <div class="hero">
+    <h1>The component system, rebuilt on shadcn/ui</h1>
+    <p>Every component below is a shadcn/Radix primitive themed with Overlay's existing tokens — same palette, same radii, same feel. The styling is identical to what ships; what changes is the machinery underneath.</p>
+    <div class="stats">
+      <span class="stat-chip"><b>~17</b> dialog implementations <span class="old">→</span> <b>1</b></span>
+      <span class="stat-chip"><b>319</b> raw <code style="font-family:var(--font-mono);font-size:11px">&lt;button&gt;</code> → <b>&lt;Button&gt;</b></span>
+      <span class="stat-chip"><b>0</b> → <b>30+</b> accessible primitives</span>
+      <span class="stat-chip"><b>251</b>-line CommandPalette → <b>cmdk</b></span>
+    </div>
+  </div>
+
+  <!-- ======================= in context ======================= -->
+  <section class="block">
+    <div class="block-head"><h2>In context</h2><span class="replaces">replaces bespoke rows in <code>settings</code> · <code>chat composer</code></span></div>
+    <p class="desc">What migrated components look like inside real product surfaces — a settings panel and the chat composer.</p>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><h3>Model &amp; generation</h3><p>shadcn <code style="font-family:var(--font-mono);font-size:11px">Card + Label + Select + Switch + Button</code></p></div>
+        <div class="card-body">
+          <div class="field" style="margin-bottom:14px">
+            <span class="label">Default chat model</span>
+            <div class="select-wrap">
+              <button class="sel-trigger" data-select>
+                <span data-sel-value>Auto <span style="color:var(--muted-light)">· free</span></span>
+                <span data-icon="chevrons-up-down"></span>
+              </button>
+              <div class="menu" data-select-menu style="width:100%">
+                <button class="menu-item" data-sel-option="Auto · free"><span data-icon="sparkles"></span><span class="grow">Auto <span style="color:var(--muted-light)">· free</span></span><span data-icon="check" class="sel-check"></span></button>
+                <button class="menu-item" data-sel-option="Claude Sonnet 4.6"><span data-icon="scan-eye"></span><span class="grow">Claude Sonnet 4.6</span><span data-icon="check" class="sel-check" style="visibility:hidden"></span></button>
+                <button class="menu-item" data-sel-option="GPT-5.2"><span data-icon="zap"></span><span class="grow">GPT-5.2</span><span data-icon="check" class="sel-check" style="visibility:hidden"></span></button>
+                <button class="menu-item" data-sel-option="Gemini 3 Pro"><span data-icon="scan-eye"></span><span class="grow">Gemini 3 Pro</span><span data-icon="check" class="sel-check" style="visibility:hidden"></span></button>
+              </div>
+            </div>
+          </div>
+          <div class="settings-card-row">
+            <div><div class="t">Reasoning effort</div><div class="s">Higher effort improves quality on hard tasks.</div></div>
+            <button class="switch" role="switch" aria-checked="true" data-switch></button>
+          </div>
+          <div class="settings-card-row">
+            <div><div class="t">Web search</div><div class="s">Let agents search the web for current facts.</div></div>
+            <button class="switch" role="switch" aria-checked="false" data-switch></button>
+          </div>
+        </div>
+        <div class="card-foot"><button class="btn btn-ghost">Reset</button><button class="btn btn-primary" data-toast="Settings saved">Save changes</button></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Chat</h3><p>composer → <code style="font-family:var(--font-mono);font-size:11px">Textarea + Select + Button(icon)</code></p></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+          <div class="msg-row agent"><span class="orb" style="width:22px;height:22px"><svg width="22" height="22" viewBox="0 0 200 200"><circle cx="100" cy="100" r="96" fill="url(#mbody)"/><ellipse cx="73" cy="59" rx="27" ry="17" fill="#fff" opacity=".9" filter="url(#ms6)" transform="rotate(-24 73 59)"/></svg></span><div class="bubble">I traced the dropdown drift to FloatingMenu's manual positioning — it re-measures on scroll but ignores container clipping.</div></div>
+          <div class="msg-row user"><div class="bubble">Can you swap it for the Radix version?</div></div>
+          <div class="composer">
+            <textarea placeholder="Message overlay…" rows="2"></textarea>
+            <div class="composer-bar">
+              <span class="tip" data-tip="Attach files"><button class="icon-btn"><span data-icon="paperclip"></span></button></span>
+              <button class="btn btn-secondary btn-sm"><span data-icon="sparkles" class="sm"></span>Sonnet 4.6<span data-icon="chevron-down" class="sm"></span></button>
+              <div class="grow"></div>
+              <kbd>↵</kbd>
+              <button class="send-btn" data-toast="Message sent"><span data-icon="send-horizontal"></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= actions ======================= -->
+  <section class="block">
+    <div class="block-head"><h2>Actions</h2><span class="replaces">replaces <code>Button</code> · <code>IconButton</code> · <code>Badge</code> + 319 raw <code>&lt;button&gt;</code></span></div>
+    <p class="desc">Variants map one-to-one onto the current system: primary (inverted), secondary (bordered), ghost, danger — plus outline and link, which Overlay lacks today.</p>
+    <div class="panel">
+      <div class="row" style="margin-bottom:14px">
+        <button class="btn btn-primary">Create agent</button>
+        <button class="btn btn-secondary">Invite member</button>
+        <button class="btn btn-outline">Export</button>
+        <button class="btn btn-ghost">Cancel</button>
+        <button class="btn btn-destructive"><span data-icon="trash-2"></span>Delete</button>
+        <button class="btn btn-link">View docs</button>
+        <button class="btn btn-secondary" disabled>Disabled</button>
+      </div>
+      <div class="row" style="margin-bottom:16px">
+        <button class="btn btn-primary btn-sm">Small</button>
+        <button class="btn btn-primary">Default</button>
+        <button class="btn btn-primary btn-lg">Large</button>
+        <span class="sep-v"></span>
+        <button class="icon-btn border"><span data-icon="plus"></span></button>
+        <button class="icon-btn border"><span data-icon="settings"></span></button>
+        <button class="icon-btn"><span data-icon="ellipsis"></span></button>
+        <span class="sep-v"></span>
+        <button class="btn btn-secondary"><span data-icon="download"></span>Download</button>
+      </div>
+      <hr class="sep">
+      <div class="row">
+        <span class="badge badge-default">Production</span>
+        <span class="badge badge-secondary">staging</span>
+        <span class="badge badge-outline">Draft</span>
+        <span class="badge badge-success"><span data-icon="circle-check" class="sm"></span>Connected</span>
+        <span class="badge badge-warn"><span data-icon="clock" class="sm"></span>Pending</span>
+        <span class="badge badge-danger"><span data-icon="triangle-alert" class="sm"></span>Failing</span>
+        <span class="sep-v"></span>
+        <kbd>⌘</kbd><kbd>K</kbd><span style="font-size:12px;color:var(--muted-fg)">keyboard-first surfaces get proper kbd hints</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= forms ======================= -->
+  <section class="block">
+    <div class="block-head"><h2>Forms</h2><span class="replaces">replaces <code>Input</code> · <code>Textarea</code> · <code>Select/ListboxSelect</code> · <code>Toggle</code> + raw inputs</span></div>
+    <p class="desc">Select becomes a real Radix listbox — typeahead, arrow keys, portal positioning. Switches and checkboxes gain proper roles.</p>
+    <div class="panel grid2">
+      <div class="label-col">
+        <div class="field">
+          <span class="label">Workspace name</span>
+          <input class="input" placeholder="e.g. Acme production" value="LayerNorm">
+        </div>
+        <div class="field">
+          <span class="label">API key <span class="hint">stored encrypted</span></span>
+          <div class="input-group"><span data-icon="key-round"></span><input class="input mono" placeholder="ov-…" value="ov-live-••••••••••" ></div>
+        </div>
+        <div class="field">
+          <span class="label">Endpoint</span>
+          <input class="input" placeholder="https://…" disabled>
+        </div>
+        <div class="field">
+          <span class="label">System prompt <span class="hint">optional</span></span>
+          <textarea class="textarea" placeholder="You are a helpful assistant…"></textarea>
+        </div>
+      </div>
+      <div class="label-col">
+        <div class="field">
+          <span class="label">Provider</span>
+          <div class="select-wrap">
+            <button class="sel-trigger" data-select>
+              <span data-sel-value>OpenRouter</span><span data-icon="chevrons-up-down"></span>
+            </button>
+            <div class="menu" data-select-menu style="width:100%">
+              <div class="menu-label">Providers</div>
+              <button class="menu-item" data-sel-option="OpenRouter"><span data-icon="globe"></span><span class="grow">OpenRouter</span><span data-icon="check" class="sel-check"></span></button>
+              <button class="menu-item" data-sel-option="Anthropic"><span data-icon="zap"></span><span class="grow">Anthropic</span><span data-icon="check" class="sel-check" style="visibility:hidden"></span></button>
+              <button class="menu-item" data-sel-option="OpenAI"><span data-icon="bot"></span><span class="grow">OpenAI</span><span data-icon="check" class="sel-check" style="visibility:hidden"></span></button>
+              <div class="menu-sep"></div>
+              <button class="menu-item" data-sel-option="Self-hosted"><span data-icon="server"></span><span class="grow">Self-hosted</span><span data-icon="check" class="sel-check" style="visibility:hidden"></span></button>
+            </div>
+          </div>
+        </div>
+        <div class="label-col" style="gap:12px;margin-top:4px">
+          <label class="check-row"><button class="checkbox" aria-checked="true" data-check><span data-icon="check"></span></button><span>Auto-approve low-risk tool calls<span class="sub">Reads and searches run without asking.</span></span></label>
+          <label class="check-row"><button class="checkbox" aria-checked="false" data-check><span data-icon="check"></span></button><span>Require approval for writes<span class="sub">File edits pause for confirmation.</span></span></label>
+          <label class="check-row"><button class="checkbox" aria-checked="true" data-check><span data-icon="check"></span></button><span>Usage alerts</span></label>
+        </div>
+        <hr class="sep" style="margin:8px 0">
+        <div class="settings-card-row" style="padding:6px 0">
+          <div><div class="t">Telemetry</div><div class="s">Anonymous usage events.</div></div>
+          <button class="switch" role="switch" aria-checked="true" data-switch></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= overlays ======================= -->
+  <section class="block">
+    <div class="block-head"><h2>Overlays</h2><span class="replaces">replaces <code>DialogFrame</code> + 7 hand-rolled dialogs · <code>FloatingMenu</code> · <code>DelayedTooltip</code> · <code>ConfirmDialog</code></span></div>
+    <p class="desc">Radix owns focus trap, scroll lock, escape, portals, and collision-aware positioning — the code Overlay maintains by hand today. Hover the icon for a tooltip; click the rest.</p>
+    <div class="panel row" style="position:relative">
+      <button class="btn btn-primary" data-open-dialog>Open dialog</button>
+      <button class="btn btn-destructive" data-open-alert>Delete workspace</button>
+      <button class="btn btn-secondary" data-open-sheet>Open panel</button>
+      <div class="select-wrap">
+        <button class="btn btn-secondary" data-menu-trigger><span data-icon="user"></span>Account<span data-icon="chevron-down" class="sm"></span></button>
+        <div class="menu" data-menu style="top:calc(100% + 6px);left:0">
+          <div class="menu-label">dlalwan1@jhu.edu</div>
+          <button class="menu-item"><span data-icon="user"></span><span class="grow">Profile</span><kbd>⇧P</kbd></button>
+          <button class="menu-item"><span data-icon="credit-card"></span><span class="grow">Billing</span></button>
+          <button class="menu-item"><span data-icon="settings"></span><span class="grow">Settings</span><kbd>⌘,</kbd></button>
+          <div class="menu-sep"></div>
+          <button class="menu-item"><span data-icon="keyboard"></span><span class="grow">Shortcuts</span></button>
+          <button class="menu-item destructive"><span data-icon="log-out"></span><span class="grow">Sign out</span></button>
+        </div>
+      </div>
+      <div class="select-wrap">
+        <button class="btn btn-outline" data-popover-trigger><span data-icon="info"></span>Popover</button>
+        <div class="popover" data-popover style="top:calc(100% + 8px);left:0">
+          <h4>Usage meter</h4>
+          <p>Popover is anchored, collision-aware, and dismisses on outside click — no manual getBoundingClientRect math like FloatingMenu today.</p>
+          <div class="meter" style="margin-top:10px"><div style="width:64%"></div></div>
+        </div>
+      </div>
+      <span class="tip" data-tip="Saved 2 minutes ago"><button class="icon-btn border"><span data-icon="history"></span></button></span>
+      <span class="tip" data-tip="Copy invite link"><button class="icon-btn border"><span data-icon="link"></span></button></span>
+    </div>
+  </section>
+
+  <!-- ======================= navigation ======================= -->
+  <section class="block">
+    <div class="block-head"><h2>Navigation</h2><span class="replaces">replaces <code>Tabs</code> · <code>CommandPalette</code> (251 hand-rolled lines)</span></div>
+    <p class="desc">The palette below is a working cmdk-style surface — press <kbd>⌘</kbd>+<kbd>K</kbd> anywhere in this page, type to filter, arrow + enter to run.</p>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true" data-tab="t1">Overview</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="t2">Members</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="t3">Billing</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="t4">Danger</button>
+        </div>
+        <button class="btn btn-secondary" data-open-palette><span data-icon="search"></span>Search or command…<kbd style="margin-left:8px">⌘K</kbd></button>
+      </div>
+      <div class="tab-panel" data-tab-panel="t1">Workspace overview — recent activity, pinned files, and active agents surface here.</div>
+      <div class="tab-panel" data-tab-panel="t2" hidden>3 members · Divyansh (owner), 2 invited collaborators. Roles come from the share contract.</div>
+      <div class="tab-panel" data-tab-panel="t3" hidden>Pro plan · next invoice Nov 1 · usage-based agent compute billed monthly.</div>
+      <div class="tab-panel" data-tab-panel="t4" hidden>Destructive actions get <b>AlertDialog</b>, not a plain Dialog — a real constraint the current codebase doesn't encode.</div>
+    </div>
+  </section>
+
+  <!-- ======================= data + feedback ======================= -->
+  <section class="block">
+    <div class="block-head"><h2>Data &amp; feedback</h2><span class="replaces">replaces <code>Table</code>-shaped markup · <code>Skeleton</code> · <code>EmptyState</code> · <code>UsageMeterBar</code> · ad-hoc notices</span></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head" style="display:flex;align-items:center;justify-content:space-between">
+          <div><h3>Agent runs</h3><p>Card + Table + Avatar + Badge</p></div>
+          <div style="display:flex">
+            <span class="avatar g1">DL</span><span class="avatar g2 stack">AK</span><span class="avatar g3 stack">JT</span><span class="avatar g4 stack">+2</span>
+          </div>
+        </div>
+        <div class="card-body" style="padding-top:8px">
+          <table class="tbl">
+            <thead><tr><th>Run</th><th>Status</th><th class="num">Cost</th></tr></thead>
+            <tbody>
+              <tr><td><span style="font-family:var(--font-mono);font-size:12px">agent-host#214</span></td><td><span class="badge badge-success">Done</span></td><td class="num">$0.42</td></tr>
+              <tr><td><span style="font-family:var(--font-mono);font-size:12px">slack-ingest#96</span></td><td><span class="badge badge-secondary">Queued</span></td><td class="num">—</td></tr>
+              <tr><td><span style="font-family:var(--font-mono);font-size:12px">nightly-scan#31</span></td><td><span class="badge badge-danger">Failed</span></td><td class="num">$1.18</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:14px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted-fg);margin-bottom:6px"><span>Monthly compute</span><span class="num" style="font-family:var(--font-mono)">64%</span></div>
+            <div class="meter"><div style="width:64%"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="label-col">
+        <div class="alert"><span data-icon="info"></span><div><b>Migrations run automatically</b><span class="sub">New columns ship expand-first; contract happens in a follow-up.</span></div></div>
+        <div class="alert danger"><span data-icon="triangle-alert"></span><div><b>2 failed runs this week</b><span class="sub">nightly-scan hit the sandbox memory ceiling twice.</span></div></div>
+        <div class="card"><div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+          <div class="skel" style="height:14px;width:62%"></div>
+          <div class="skel" style="height:14px;width:88%"></div>
+          <div class="skel" style="height:14px;width:41%"></div>
+          <div style="display:flex;gap:8px;margin-top:4px"><div class="skel" style="height:30px;width:86px"></div><div class="skel" style="height:30px;width:110px"></div></div>
+        </div></div>
+        <div class="row"><button class="btn btn-secondary" data-toast="Copied to clipboard"><span data-icon="copy"></span>Fire a toast</button>
+        <span style="font-size:12.5px;color:var(--muted-fg)">→ sonner-style toasts replace hand-rendered notices</span></div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:24px">
+      <div class="scrollarea">
+        <div class="scroll-item"><span data-icon="file-text"></span>roadmap.md<span class="sub">2d</span></div>
+        <div class="scroll-item"><span data-icon="folder"></span>agents/<span class="sub">12 files</span></div>
+        <div class="scroll-item"><span data-icon="file-text"></span>pricing-notes.md<span class="sub">5d</span></div>
+        <div class="scroll-item"><span data-icon="git-branch"></span>release/0.9<span class="sub">1w</span></div>
+        <div class="scroll-item"><span data-icon="file-text"></span>incident-review.md<span class="sub">2w</span></div>
+        <div class="scroll-item"><span data-icon="folder"></span>contracts/<span class="sub">31 files</span></div>
+        <div class="scroll-item"><span data-icon="file-text"></span>design-tokens.md<span class="sub">3w</span></div>
+        <div class="scroll-item"><span data-icon="terminal"></span>deploy-log.txt<span class="sub">1mo</span></div>
+        <div class="scroll-item"><span data-icon="file-text"></span>onboarding.md<span class="sub">1mo</span></div>
+        <div class="scroll-item"><span data-icon="archive"></span>archive/2025<span class="sub">2mo</span></div>
+      </div>
+      <div class="card" style="display:flex;align-items:center;justify-content:center;padding:34px;text-align:center">
+        <div>
+          <div style="display:inline-flex;padding:11px;border-radius:12px;border:1px solid var(--border);background:var(--surface-muted);margin-bottom:12px"><span data-icon="inbox" class="lg" style="color:var(--muted-fg)"></span></div>
+          <div style="font-weight:600;font-size:14px">No outputs yet</div>
+          <div style="font-size:12.5px;color:var(--muted-fg);margin-top:4px;max-width:230px">Generated files land here when an agent finishes a run.</div>
+          <button class="btn btn-secondary btn-sm" style="margin-top:14px"><span data-icon="plus"></span>Run an agent</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footnote">
+    <span>shadcn/ui (Radix, new-york style) · themed with Overlay tokens from <code>packages/overlay-ui/styles.css</code></span>
+    <span>kept bespoke: <code>OverlayMark</code> · <code>UsageMeterBar</code> shape · domain surfaces</span>
+  </div>
+</div>
+
+<!-- ======================= overlays (portalled) ======================= -->
+<div class="scrim" id="dialogScrim">
+  <div class="dialog" role="dialog" aria-modal="true">
+    <div class="dialog-head"><h3>New agent</h3><button class="icon-btn" data-close style="margin:-4px -6px 0 0"><span data-icon="x"></span></button></div>
+    <p class="dsub">Agents get workspace tools through the same MCP pipeline as native agents — names and descriptions are what the model sees.</p>
+    <div class="field" style="margin-top:14px"><span class="label">Name</span><input class="input" placeholder="e.g. triage-bot" id="dialogInput"></div>
+    <div class="dfoot"><button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" data-close data-toast="Agent created">Create agent</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="alertScrim">
+  <div class="dialog" role="alertdialog" aria-modal="true">
+    <div class="dialog-head"><h3>Delete workspace?</h3></div>
+    <p class="dsub">This permanently removes <b>LayerNorm</b> — conversations, files, and agent config. Members lose access immediately. This can't be undone.</p>
+    <div class="dfoot"><button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-destructive" data-close data-toast="Workspace deleted">Delete workspace</button></div>
+  </div>
+</div>
+
+<div class="scrim sheet-scrim" id="sheetScrim">
+  <div class="sheet">
+    <div class="dialog-head"><h3>Run details</h3><button class="icon-btn" data-close style="margin:-4px -6px 0 0"><span data-icon="x"></span></button></div>
+    <p class="dsub">Sheet slides in from the edge — the pattern for the inline panels the sidebar hand-builds today.</p>
+    <div style="margin-top:16px">
+      <div class="sheet-row"><div><div class="t">Duration</div><div class="sub">wall clock</div></div><span style="font-family:var(--font-mono);font-size:12px">4m 12s</span></div>
+      <div class="sheet-row"><div><div class="t">Tool calls</div><div class="sub">reads + writes</div></div><span style="font-family:var(--font-mono);font-size:12px">18</span></div>
+      <div class="sheet-row"><div><div class="t">Model</div></div><span class="badge badge-secondary">Sonnet 4.6</span></div>
+      <div class="sheet-row"><div><div class="t">Cost</div><div class="sub">input + output tokens</div></div><span style="font-family:var(--font-mono);font-size:12px">$0.42</span></div>
+    </div>
+    <div style="margin-top:auto;display:flex;gap:8px"><button class="btn btn-secondary" style="flex:1" data-close>Close</button><button class="btn btn-primary" style="flex:1" data-toast="Run replayed" data-close>Replay</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="paletteScrim" style="align-items:flex-start;padding-top:14vh">
+  <div class="cmd">
+    <div class="cmd-input-row"><span data-icon="search"></span><input class="cmd-input" id="cmdInput" placeholder="Search files, agents, actions…" autocomplete="off"><kbd>esc</kbd></div>
+    <div class="cmd-list" id="cmdList"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+const ICONS = {"sun": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2\"/><path d=\"M12 20v2\"/><path d=\"m4.93 4.93 1.41 1.41\"/><path d=\"m17.66 17.66 1.41 1.41\"/><path d=\"M2 12h2\"/><path d=\"M20 12h2\"/><path d=\"m6.34 17.66-1.41 1.41\"/><path d=\"m19.07 4.93-1.41 1.41\"/></svg>", "moon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></svg>", "search": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m21 21-4.34-4.34\"/><circle cx=\"11\" cy=\"11\" r=\"8\"/></svg>", "plus": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg>", "x": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg>", "check": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>", "chevron-down": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m6 9 6 6 6-6\"/></svg>", "chevrons-up-down": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m7 15 5 5 5-5\"/><path d=\"m7 9 5-5 5 5\"/></svg>", "ellipsis": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"19\" cy=\"12\" r=\"1\"/><circle cx=\"5\" cy=\"12\" r=\"1\"/></svg>", "settings": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>", "user": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>", "users": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/><path d=\"M16 3.128a4 4 0 0 1 0 7.744\"/><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/></svg>", "log-out": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m16 17 5-5-5-5\"/><path d=\"M21 12H9\"/><path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"/></svg>", "credit-card": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"14\" x=\"2\" y=\"5\" rx=\"2\"/><line x1=\"2\" x2=\"22\" y1=\"10\" y2=\"10\"/></svg>", "keyboard": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 8h.01\"/><path d=\"M12 12h.01\"/><path d=\"M14 8h.01\"/><path d=\"M16 12h.01\"/><path d=\"M18 8h.01\"/><path d=\"M6 8h.01\"/><path d=\"M7 16h10\"/><path d=\"M8 12h.01\"/><rect width=\"20\" height=\"16\" x=\"2\" y=\"4\" rx=\"2\"/></svg>", "command": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></svg>", "send-horizontal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 12h16\"/></svg>", "paperclip": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></svg>", "sparkles": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 2v4\"/><path d=\"M22 4h-4\"/><circle cx=\"4\" cy=\"20\" r=\"2\"/></svg>", "scan-eye": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 7V5a2 2 0 0 1 2-2h2\"/><path d=\"M17 3h2a2 2 0 0 1 2 2v2\"/><path d=\"M21 17v2a2 2 0 0 1-2 2h-2\"/><path d=\"M7 21H5a2 2 0 0 1-2-2v-2\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/></svg>", "globe": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"/><path d=\"M2 12h20\"/></svg>", "lock": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/></svg>", "bell": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10.268 21a2 2 0 0 0 3.464 0\"/></svg>", "info": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 16v-4\"/><path d=\"M12 8h.01\"/></svg>", "triangle-alert": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/></svg>", "circle-check": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m9 12 2 2 4-4\"/></svg>", "copy": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>", "trash-2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 11v6\"/><path d=\"M14 11v6\"/><path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\"/><path d=\"M3 6h18\"/><path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"/></svg>", "mail": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7\"/><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/></svg>", "folder": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></svg>", "file-text": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2v5a1 1 0 0 0 1 1h5\"/><path d=\"M10 9H8\"/><path d=\"M16 13H8\"/><path d=\"M16 17H8\"/></svg>", "git-branch": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 6a9 9 0 0 0-9 9V3\"/><circle cx=\"18\" cy=\"6\" r=\"3\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/></svg>", "terminal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 19h8\"/><path d=\"m4 17 6-6-6-6\"/></svg>", "zap": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></svg>", "shield": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></svg>", "clock": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 6v6l4 2\"/></svg>", "history": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5\"/><path d=\"M12 7v5l4 2\"/></svg>", "inbox": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"22 12 16 12 14 15 10 15 8 12 2 12\"/></svg>", "archive": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\"/><path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\"/><path d=\"M10 12h4\"/></svg>", "panel-left": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/></svg>", "bot": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 8V4H8\"/><rect width=\"16\" height=\"12\" x=\"4\" y=\"8\" rx=\"2\"/><path d=\"M2 14h2\"/><path d=\"M20 14h2\"/><path d=\"M15 13v2\"/><path d=\"M9 13v2\"/></svg>", "eye": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>", "eye-off": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14.084 14.158a3 3 0 0 1-4.242-4.242\"/><path d=\"m2 2 20 20\"/></svg>", "download": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 15V3\"/><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><path d=\"m7 10 5 5 5-5\"/></svg>", "key-round": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"16.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/></svg>", "link": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71\"/><path d=\"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71\"/></svg>", "server": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\"/><rect width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\"/><line x1=\"6\" x2=\"6.01\" y1=\"6\" y2=\"6\"/><line x1=\"6\" x2=\"6.01\" y1=\"18\" y2=\"18\"/></svg>", "layout-dashboard": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\"/></svg>", "palette": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/></svg>"};
+</script>
+<script>
+/* stamp icons */
+document.querySelectorAll('[data-icon]').forEach(el => {
+  const name = el.getAttribute('data-icon');
+  if (ICONS[name]) { el.innerHTML = ICONS[name]; el.firstElementChild.classList.add('icon'); if (el.classList.contains('sm') || el.getAttribute('data-icon-sm')) el.firstElementChild.classList.add('sm'); if (el.classList.contains('lg')) el.firstElementChild.classList.add('lg'); }
+});
+
+/* theme */
+const root = document.documentElement;
+const themeBtn = document.getElementById('themeToggle');
+function paintThemeIcon(){ themeBtn.querySelector('[data-icon]').innerHTML = ICONS[root.dataset.theme === 'dark' ? 'sun' : 'moon']; themeBtn.querySelector('svg').classList.add('icon'); }
+themeBtn.addEventListener('click', () => { root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark'; paintThemeIcon(); });
+
+/* scrim helper */
+function openScrim(id){ const s = document.getElementById(id); s.classList.add('open'); document.body.style.overflow = 'hidden'; const f = s.querySelector('input, .cmd-input'); if (f) setTimeout(()=>f.focus(), 60); }
+function closeScrim(s){ s.classList.remove('open'); document.body.style.overflow = ''; }
+document.querySelectorAll('[data-open-dialog]').forEach(b => b.addEventListener('click', () => openScrim('dialogScrim')));
+document.querySelectorAll('[data-open-alert]').forEach(b => b.addEventListener('click', () => openScrim('alertScrim')));
+document.querySelectorAll('[data-open-sheet]').forEach(b => b.addEventListener('click', () => openScrim('sheetScrim')));
+document.querySelectorAll('.scrim').forEach(s => {
+  s.addEventListener('click', e => { if (e.target === s) closeScrim(s); });
+  s.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => closeScrim(s)));
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.scrim.open').forEach(closeScrim);
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openScrim('paletteScrim'); renderCmd(''); }
+});
+
+/* dropdown menu */
+function wireMenu(triggerSel, menuSel, pop){
+  const trig = document.querySelector(triggerSel); const menu = document.querySelector(menuSel);
+  if (!trig || !menu) return;
+  trig.addEventListener('click', e => { e.stopPropagation(); const was = menu.classList.contains('open'); document.querySelectorAll('.menu.open,.popover.open').forEach(m=>m.classList.remove('open')); if (!was) menu.classList.add('open'); });
+  document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.classList.remove('open'); });
+}
+wireMenu('[data-menu-trigger]', '[data-menu]');
+wireMenu('[data-popover-trigger]', '[data-popover]');
+
+/* selects */
+document.querySelectorAll('[data-select]').forEach(trig => {
+  const menu = trig.parentElement.querySelector('[data-select-menu]');
+  trig.addEventListener('click', e => { e.stopPropagation(); const was = menu.classList.contains('open'); document.querySelectorAll('.menu.open,.popover.open').forEach(m=>m.classList.remove('open')); if (!was) menu.classList.add('open'); });
+  document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.classList.remove('open'); });
+  menu.querySelectorAll('[data-sel-option]').forEach(opt => {
+    opt.addEventListener('click', () => {
+      trig.querySelector('[data-sel-value]').innerHTML = opt.dataset.selOption;
+      menu.querySelectorAll('.sel-check').forEach(c => c.style.visibility = 'hidden');
+      opt.querySelector('.sel-check').style.visibility = 'visible';
+      menu.classList.remove('open');
+    });
+  });
+});
+
+/* switch + checkbox */
+document.querySelectorAll('[data-switch]').forEach(s => s.addEventListener('click', () => s.setAttribute('aria-checked', s.getAttribute('aria-checked') !== 'true')));
+document.querySelectorAll('[data-check]').forEach(c => c.addEventListener('click', e => { e.preventDefault(); c.setAttribute('aria-checked', c.getAttribute('aria-checked') !== 'true'); }));
+
+/* tabs */
+const tabs = document.querySelectorAll('[data-tab]');
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(x => x.setAttribute('aria-selected', 'false'));
+  t.setAttribute('aria-selected', 'true');
+  document.querySelectorAll('[data-tab-panel]').forEach(p => p.hidden = p.dataset.tabPanel !== t.dataset.tab);
+}));
+
+/* toasts */
+function toast(title, sub){
+  const box = document.getElementById('toasts');
+  const el = document.createElement('div'); el.className = 'toast';
+  el.innerHTML = ICONS['circle-check'] + '<div><b style="font-weight:600">' + title + '</b>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  el.querySelector('svg').classList.add('icon');
+  box.appendChild(el);
+  setTimeout(() => { el.classList.add('leaving'); setTimeout(() => el.remove(), 220); }, 2600);
+}
+document.querySelectorAll('[data-toast]').forEach(b => b.addEventListener('click', () => toast(b.dataset.toast)));
+
+/* command palette */
+const CMD = [
+  { g: 'Actions', items: [
+    ['plus', 'Create new agent', 'agent created'],
+    ['send-horizontal', 'New conversation', 'new conversation'],
+    ['users', 'Invite member', 'invite sent'],
+    ['palette', 'Toggle theme', 'theme toggled'],
+  ]},
+  { g: 'Go to', items: [
+    ['layout-dashboard', 'Dashboard', 'navigated'],
+    ['folder', 'Files', 'navigated'],
+    ['bot', 'Agents', 'navigated'],
+    ['settings', 'Settings', 'navigated'],
+    ['credit-card', 'Billing', 'navigated'],
+  ]},
+  { g: 'Recent', items: [
+    ['file-text', 'roadmap.md', 'opened'],
+    ['git-branch', 'release/0.9', 'opened'],
+    ['terminal', 'deploy-log.txt', 'opened'],
+  ]},
+];
+let cmdIndex = 0;
+function renderCmd(q){
+  const list = document.getElementById('cmdList'); list.innerHTML = '';
+  const ql = q.toLowerCase(); cmdIndex = 0;
+  let any = false;
+  CMD.forEach(g => {
+    const items = g.items.filter(i => i[1].toLowerCase().includes(ql));
+    if (!items.length) return;
+    any = true;
+    const gh = document.createElement('div'); gh.className = 'cmd-group'; gh.textContent = g.g; list.appendChild(gh);
+    items.forEach(i => {
+      const b = document.createElement('button'); b.className = 'cmd-item';
+      b.innerHTML = ICONS[i[0]] + '<span class="grow">' + i[1] + '</span>';
+      b.querySelector('svg').classList.add('icon');
+      b.addEventListener('click', () => { closeScrim(document.getElementById('paletteScrim')); toast(i[1], i[2]); });
+      b.addEventListener('mousemove', () => { list.querySelectorAll('.cmd-item').forEach(x=>x.classList.remove('active')); b.classList.add('active'); });
+      list.appendChild(b);
+    });
+  });
+  if (!any) { const e = document.createElement('div'); e.className = 'cmd-empty'; e.textContent = 'No results for “' + q + '”'; list.appendChild(e); return; }
+  const first = list.querySelector('.cmd-item'); if (first) first.classList.add('active');
+}
+const cmdInput = document.getElementById('cmdInput');
+cmdInput.addEventListener('input', () => renderCmd(cmdInput.value));
+cmdInput.addEventListener('keydown', e => {
+  const items = [...document.querySelectorAll('#cmdList .cmd-item')]; if (!items.length) return;
+  const cur = items.findIndex(i => i.classList.contains('active'));
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const next = e.key === 'ArrowDown' ? (cur + 1) % items.length : (cur - 1 + items.length) % items.length;
+    items.forEach(i => i.classList.remove('active')); items[next].classList.add('active'); items[next].scrollIntoView({ block: 'nearest' });
+  }
+  if (e.key === 'Enter' && cur >= 0) items[cur].click();
+});
+document.querySelector('[data-open-palette]').addEventListener('click', () => { openScrim('paletteScrim'); renderCmd(''); });
+document.getElementById('paletteBtn').addEventListener('click', () => { openScrim('paletteScrim'); renderCmd(''); });
+
+paintThemeIcon();
+</script>
+</body>
+</html>

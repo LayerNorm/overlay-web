@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 function DownloadFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-      <p role="status" className="text-sm text-[var(--muted)]">
+      <p role="status" className="text-sm text-(--muted)">
         Loading download…
       </p>
     </div>

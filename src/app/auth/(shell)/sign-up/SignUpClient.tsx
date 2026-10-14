@@ -212,21 +212,21 @@ function CheckEmailScreen({
           </button>
         </form>
 
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-[var(--muted)]">
+        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-(--muted)">
           <span>Didn&apos;t receive the code?</span>
           <button
             onClick={onResend}
             disabled={resending}
-            className="text-[var(--foreground)] hover:underline font-medium disabled:opacity-50"
+            className="text-(--foreground) hover:underline font-medium disabled:opacity-50"
           >
             {resending ? 'Sending...' : 'Resend'}
           </button>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-[var(--border)] text-center">
+        <div className="mt-6 pt-4 border-t border-(--border) text-center">
           <Link
             href="/auth/sign-in"
-            className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+            className="text-sm text-(--muted) hover:text-(--foreground)"
           >
             Back to sign in
           </Link>
@@ -386,13 +386,13 @@ function EmailPasswordSignUpForm({
 
 function LegalFinePrint() {
   return (
-    <p className="mt-8 text-center text-xs leading-5 text-[var(--muted-light)]">
+    <p className="mt-8 text-center text-xs leading-5 text-(--muted-light)">
       By continuing, you agree to the{' '}
-      <Link href={LEGAL_DOCUMENTS.terms.href} className="underline hover:text-[var(--foreground)]">
+      <Link href={LEGAL_DOCUMENTS.terms.href} className="underline hover:text-(--foreground)">
         Terms of Service
       </Link>{' '}
       and acknowledge the{' '}
-      <Link href={LEGAL_DOCUMENTS.privacy.href} className="underline hover:text-[var(--foreground)]">
+      <Link href={LEGAL_DOCUMENTS.privacy.href} className="underline hover:text-(--foreground)">
         Privacy Policy
       </Link>
       .
@@ -411,8 +411,8 @@ export function SignUpClient({
   const sso = marketingSsoButton()
   const field = marketingPrimaryField()
   const submit = marketingSubmitButton()
-  const labelText = 'text-[var(--foreground)]'
-  const createLink = 'text-[var(--foreground)] hover:underline font-medium'
+  const labelText = 'text-(--foreground)'
+  const createLink = 'text-(--foreground) hover:underline font-medium'
   const searchParams = useSearchParams()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -592,10 +592,10 @@ export function SignUpClient({
         {showSso && showPasswordSignUp ? (
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-[var(--border)]" />
+            <div className="w-full border-t border-(--border)" />
           </div>
           <div className="relative flex justify-center text-xs">
-              <span className='bg-[var(--background)] px-4 text-[var(--muted)]'>
+              <span className='bg-(--background) px-4 text-(--muted)'>
                 or create with email
               </span>
           </div>

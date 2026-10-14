@@ -38,9 +38,9 @@ test('opening a section from elsewhere selects nothing on the person behalf', ()
   const html = renderToStaticMarkup(
     <InlineNavChildren items={CHAT_VIEWS} activeId="" onSelect={() => undefined} />,
   )
-  // Only the selected row carries the surface class unprefixed; every row has a
-  // hover: variant of it, so the assertion has to exclude the hover form.
-  const selected = /transition-colors bg-\[var\(--surface-subtle\)\]/
+  // Only the selected row is marked active (every row carries the active styling
+  // as a data-[active=true] variant, so the assertion looks at the attribute).
+  const selected = /data-active="true"/
   assert.doesNotMatch(html, selected)
 
   const onRoute = renderToStaticMarkup(

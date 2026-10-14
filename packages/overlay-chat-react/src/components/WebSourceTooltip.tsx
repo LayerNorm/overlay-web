@@ -120,9 +120,9 @@ export function WebSourceTooltip({
               width: 'min(calc(100vw - 16px), 22rem)',
             }}
             data-overlay-link-scope=""
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-lg"
+            className="rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-lg"
           >
-            <div className="px-2 pb-1.5 pt-0.5 text-[11px] font-medium text-[var(--muted)]">
+            <div className="px-2 pb-1.5 pt-0.5 text-[11px] font-medium text-(--muted)">
               {sources.length === 1 ? '1 source' : `${sources.length} sources`}
             </div>
             <ul className="flex flex-col gap-0.5">
@@ -146,30 +146,30 @@ export function WebSourceTooltip({
                     <a
                       href={internal ? (source.internalHref ?? source.url) : source.url}
                       {...(internal ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
-                      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--surface-subtle)]"
+                      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-(--surface-subtle)"
                     >
-                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-[var(--surface-subtle)] ring-1 ring-[var(--border)]">
+                      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-(--surface-subtle) ring-1 ring-(--border)">
                         {internal ? (
                           source.internalKind === 'memory' ? (
-                            <Brain size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                            <Brain size={12} strokeWidth={1.75} className="text-(--muted)" />
                           ) : source.internalKind === 'message' ? (
-                            <MessageSquare size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                            <MessageSquare size={12} strokeWidth={1.75} className="text-(--muted)" />
                           ) : (
-                            <FileText size={12} strokeWidth={1.75} className="text-[var(--muted)]" />
+                            <FileText size={12} strokeWidth={1.75} className="text-(--muted)" />
                           )
                         ) : fav ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={fav} alt="" className="h-3.5 w-3.5" width={14} height={14} />
                         ) : (
-                          <span className="text-[9px] font-semibold text-[var(--muted)]">
+                          <span className="text-[9px] font-semibold text-(--muted)">
                             {shortHost.charAt(0).toUpperCase()}
                           </span>
                         )}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-(--foreground)">
                         {titleText}
                       </span>
-                      <span className="shrink-0 truncate text-[11px] text-[var(--muted)]" style={{ maxWidth: '40%' }}>
+                      <span className="shrink-0 truncate text-[11px] text-(--muted)" style={{ maxWidth: '40%' }}>
                         {internal ? (source.internalKind === 'memory' ? 'Memories' : source.internalKind === 'message' ? 'Chat' : 'Files') : shortHost}
                       </span>
                     </a>

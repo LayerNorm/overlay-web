@@ -166,7 +166,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   if (!status) {
     return error
       ? <p role="alert" className="text-xs text-red-500">{error}</p>
-      : <p className="text-xs text-[var(--muted)]">Loading the machine…</p>
+      : <p className="text-xs text-(--muted)">Loading the machine…</p>
   }
 
   const phase = status.provision?.phase
@@ -176,20 +176,20 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
     <div className="space-y-3">
       <div>
         <FieldLabel info="This agent runs on a machine Overlay manages. It pauses itself when idle and wakes when you message it.">Machine</FieldLabel>
-        <div className="rounded-xl border border-[var(--border)] p-3">
+        <div className="rounded-xl border border-(--border) p-3">
           <div className="flex items-center gap-2">
             <span
               aria-hidden
-              className={`h-2 w-2 rounded-full ${status.state === 'ready' ? 'bg-emerald-500' : status.state === 'failed' || status.state === 'needs_sign_in' ? 'bg-amber-500' : 'bg-[var(--muted-light)]'}`}
+              className={`h-2 w-2 rounded-full ${status.state === 'ready' ? 'bg-emerald-500' : status.state === 'failed' || status.state === 'needs_sign_in' ? 'bg-amber-500' : 'bg-(--muted-light)'}`}
             />
             <span className="text-sm font-medium" role="status">{CLOUD_AGENT_STATE_LABEL[status.state]}</span>
-            <span className="min-w-0 flex-1 truncate text-right text-xs text-[var(--muted)]">{adapterLabel}</span>
+            <span className="min-w-0 flex-1 truncate text-right text-xs text-(--muted)">{adapterLabel}</span>
           </div>
 
           {phase && isCloudAgentStarting(phase) ? <CloudAgentProgress phase={phase} /> : null}
 
           {status.state === 'unavailable' && !isCloudAgentStarting(phase) ? (
-            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+            <p className="mt-2 text-xs leading-5 text-(--muted)">
               This agent&rsquo;s machine is gone, usually because your credit ran low. Messages will not be answered until you start a new one (it needs at least $1 of credit).
             </p>
           ) : null}
@@ -198,14 +198,14 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
             <p role="alert" className="mt-2 text-xs text-red-500">{status.provision?.error ?? 'Could not start the machine.'}</p>
           ) : null}
 
-          <dl className="mt-2.5 space-y-1 text-xs text-[var(--muted)]">
-            {status.machine?.size ? <div className="flex justify-between gap-3"><dt>Size</dt><dd className="text-[var(--foreground)]">{SIZE_LABEL[status.machine.size] ?? status.machine.size}</dd></div> : null}
-            {status.account ? <div className="flex justify-between gap-3"><dt>Account</dt><dd className="truncate text-[var(--foreground)]">{status.account.label}</dd></div> : null}
+          <dl className="mt-2.5 space-y-1 text-xs text-(--muted)">
+            {status.machine?.size ? <div className="flex justify-between gap-3"><dt>Size</dt><dd className="text-(--foreground)">{SIZE_LABEL[status.machine.size] ?? status.machine.size}</dd></div> : null}
+            {status.account ? <div className="flex justify-between gap-3"><dt>Account</dt><dd className="truncate text-(--foreground)">{status.account.label}</dd></div> : null}
           </dl>
 
           {status.state === 'needs_sign_in' ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-[var(--surface-subtle)] px-3 py-2">
-              <p className="text-xs text-[var(--foreground)]">{adapterLabel} could not sign in. Reconnect the account to continue.</p>
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-(--surface-subtle) px-3 py-2">
+              <p className="text-xs text-(--foreground)">{adapterLabel} could not sign in. Reconnect the account to continue.</p>
               <Button variant="primary" size="sm" onClick={() => void openReconnect()}>Reconnect</Button>
             </div>
           ) : null}
