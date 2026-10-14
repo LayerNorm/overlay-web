@@ -219,6 +219,7 @@ required contexts. Docs health runs in the complete Docs check on every main pus
 Update CodeQL init, analyze and SARIF upload pins together; mixed action versions
 fail when reading the generated CodeQL configuration. Workflow contract tests
 enforce a shared commit pin.
+Dependabot groups these action updates into one PR.
 PR and merge-group triggers remain mandatory; no application or dependency change
 is exempted by path filters. Do not treat cancellation, missing output or an
 unexpectedly skipped lane as success. Keep protections synchronized with check

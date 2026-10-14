@@ -18,6 +18,9 @@ test('CodeQL initialization, analysis and SARIF upload share one pinned version'
   const pins = uses.map(use => use.split('@')[1])
   assert.ok(pins.every(pin => /^[a-f0-9]{40}$/.test(pin)))
   assert.equal(new Set(pins).size, 1, 'mixed action versions cannot share CodeQL configuration')
+  const dependabot = parse(readFileSync(new URL('../../.github/dependabot.yml', import.meta.url), 'utf8'))
+  const actions = dependabot.updates.find(update => update['package-ecosystem'] === 'github-actions')
+  assert.deepEqual(actions.groups['codeql-actions'].patterns, ['github/codeql-action*'])
 })
 
 test('Git automatically deploys only main; preview label changes trigger trusted reconciliation', () => {
