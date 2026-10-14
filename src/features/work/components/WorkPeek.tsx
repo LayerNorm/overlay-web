@@ -45,6 +45,7 @@ export function WorkPeek({
   workspaceId,
   people,
   items,
+  showScopeActions,
   canEdit,
   onUpdate,
   onClose,
@@ -54,6 +55,7 @@ export function WorkPeek({
   workspaceId: string
   people: WorkPerson[]
   items: WorkItem[]
+  showScopeActions: boolean
   canEdit: (item: WorkItem) => boolean
   onUpdate: (item: WorkItem, patch: WorkPatch) => Promise<WorkItem>
   onClose: () => void
@@ -160,6 +162,7 @@ export function WorkPeek({
               initialEvents={result.events}
               people={people}
               items={items}
+              showScopeActions={showScopeActions}
               editable={canEdit(result.item)}
               onUpdate={onUpdate}
               onClose={onClose}
@@ -197,6 +200,7 @@ function WorkBrief({
   initialEvents,
   people,
   items,
+  showScopeActions,
   editable,
   onUpdate,
   onClose,
@@ -207,6 +211,7 @@ function WorkBrief({
   initialEvents: WorkEvent[]
   people: WorkPerson[]
   items: WorkItem[]
+  showScopeActions: boolean
   editable: boolean
   onUpdate: (item: WorkItem, patch: WorkPatch) => Promise<WorkItem>
   onClose: () => void
@@ -372,17 +377,19 @@ function WorkBrief({
       />
       {editable && item.archivedAt === undefined ? (
         <div className="flex flex-wrap gap-4 border-t border-(--border) pt-4 text-xs text-(--muted)">
-          <button
-            disabled={busy || dirty}
-            onClick={() => {
-              void action({
-                action: 'scope',
-                to: item.scope === 'personal' ? 'workspace' : 'personal',
-              })
-            }}
-          >
-            Move to {item.scope === 'personal' ? 'Workspace' : 'Personal'}
-          </button>
+          {showScopeActions ? (
+            <button
+              disabled={busy || dirty}
+              onClick={() => {
+                void action({
+                  action: 'scope',
+                  to: item.scope === 'personal' ? 'workspace' : 'personal',
+                })
+              }}
+            >
+              Move to {item.scope === 'personal' ? 'Workspace' : 'Personal'}
+            </button>
+          ) : null}
           <button
             disabled={busy || dirty}
             onClick={() => {

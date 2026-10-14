@@ -100,6 +100,7 @@ export default function WorkScreen() {
             workspaceId={activeWorkspaceId}
             people={people.people}
             items={data.items}
+            showScopeActions={!solo}
             canEdit={editable}
             onUpdate={data.update}
             onClose={close}
