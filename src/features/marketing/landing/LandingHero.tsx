@@ -29,7 +29,7 @@ export const LandingHero = memo(function LandingHero({ appHref }: { appHref: str
         <span className="w">for</span>{' '}
         <span className="k" data-k="ai">AI employees</span>
       </h1>
-      <div className="hero-actions">
+      <div className="hero-actions" data-lp="hero-actions">
         <Link className="pill" href={appHref}>Get Started</Link>
         <a className="gh-link" href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer">
           <Github className="i" />
