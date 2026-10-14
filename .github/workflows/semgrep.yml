@@ -46,10 +46,10 @@ jobs:
             --config p/nodejs \
             --config p/react \
             --error \
-            --sarif \
-            --output semgrep.sarif
+            --sarif-output semgrep.sarif
 
       - name: Upload Semgrep results
+        if: ${{ !cancelled() && hashFiles('semgrep.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # github/codeql-action/upload-sarif v4.38.1
         with:
           sarif_file: semgrep.sarif
