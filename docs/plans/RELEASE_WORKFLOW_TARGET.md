@@ -13,8 +13,8 @@ is authoritative. Historical migration drills remain in
 | Production | Native Git deployment of main, `www.getoverlay.io` | Customer Convex `colorful-chickadee-419` and live providers |
 
 Both hosted environments belong to Vercel `overlay-landing`. The old staging
-project, branch, and subdomain are being retired; see the migration checkpoint
-for live cutover progress. Sensitive changes use expanded QA on the same PR
+project, branch, and subdomain are retired; see the migration checkpoint for
+acceptance evidence and the status of older PR rebuilds. Sensitive changes use expanded QA on the same PR
 preview. There is no staging release gate or staging-to-main promotion.
 
 ## Builder and Integration
@@ -36,7 +36,8 @@ edits. Cloud Builders use PRs and the merge queue. Never force-push main.
 
 ## Preview implementation
 
-- Enable Git deployment sources for Preview and Production. Keep
+- Enable Git deployment sources for Preview and Production. Keep Basic build
+  machines with on-demand concurrency and one active build per branch. Keep
   `git.deploymentEnabled.main=true`; do not create a custom Production deployer.
 - Use ordinary custom aliases, without purchasing Preview Deployment Suffix.
   Reserve `codex/preview-unassigned` only for wildcard certificate registration;

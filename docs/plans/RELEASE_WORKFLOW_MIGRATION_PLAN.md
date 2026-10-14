@@ -6,16 +6,16 @@
 > Integration verifies production, synchronizes Convex only for backend changes,
 > and runs smoke checks.
 > PR previews supply sensitive acceptance testing too. Consolidation onto the
-> `overlay-landing` project is in progress; the historical staging checkpoints
+> `overlay-landing` project is configured and its fresh-PR lifecycle verified; the historical staging checkpoints
 > below do not add release prerequisites.
 
 
-Moves Overlay from direct pushes to `main` plus an optional branch-based staging
-lane, using one shared dev Convex, to the target workflow in
-[`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
-merge queue on `main`, on-demand exact-main release candidates, manual production promotion.
+The original migration history below records the retired staging/candidate lane.
+The current target is [`RELEASE_WORKFLOW_TARGET.md`](RELEASE_WORKFLOW_TARGET.md):
+per-PR previews and automatic Git production in one project, main merge queue
+for cloud Builders, and the authorized local owner integration path.
 
-## Single-project consolidation checkpoint — 2026-10-14
+## Single-project consolidation acceptance — 2026-10-14
 
 - Copied all 70 shared Preview settings to `overlay-landing`, using sandbox WorkOS,
   test Stripe/model/storage credentials, matching preview backend secrets and a
@@ -37,8 +37,10 @@ merge queue on `main`, on-demand exact-main release candidates, manual productio
   nine focused build checks passed. No credentials go to that lookup.
 - Four existing previews (#125, #127, #167, #217) have moved to the new project;
   each passed sandbox login, workspace API and Files API. The three remaining
-  existing previews (#161, #168, #177) are still rebuilding on Basic and remain
-  available through the old project until those builds finish.
+  existing previews (#161, #168, #177) are still rebuilding on Basic. Their
+  domain configurations have moved to the new project; trusted completion
+  controllers are running to assign the READY deployments. These three URLs
+  are pending during the rebuilds; they are not recorded as accepted live QA.
 - Deleted the staging branch after preserving its history at
   `archive/staging-retired-20261014`; main history protections remain. Removed
   the obsolete staging ruleset, label and GitHub deployment environments.
@@ -46,16 +48,28 @@ merge queue on `main`, on-demand exact-main release candidates, manual productio
   `overlay-release-staging`, its test Stripe webhook, the old Vercel controller
   token and old GitHub staging secrets. Removed `staging.getoverlay.io` alias
   and domain registration. Customer production and shared Preview resources remain.
-- Native Production `dpl_75QwbufXbdh9QVXA28vmUy1vzcj8` serves main `84648020b`;
+- Native Production `dpl_DWEbNZiPyHJY4MvFvtJFqhWYtxaY` serves main `05318e1a2`;
   normal synthetic production sign-in, workspace API and Files API passed.
 - Owner selected Basic builds. Keep on-demand concurrency enabled with one
   active build per branch; independent PRs build in parallel. Do not restore
   the earlier globally serial configuration or upgrade slow builds automatically.
-- Remaining: finish the three Basic rebuilds and verify their migrated aliases,
-  verify disposable probe closure, delete `overlay-web-staging`, restore Git-only
-  Preview sources after migration rebuilds, and verify the final main deployment.
+- Deleted Vercel `overlay-web-staging` after moving every remaining domain
+  configuration. Preview and Production now both allow Git-only deployment
+  sources. The temporary migration API source allowance has been removed.
+- Probe #219 passed its native Git build, sandbox login, workspace and Files
+  checks, then closure cleanup (workflow `38606755367`). Closed probe,
+  unknown PR and retired staging hosts all returned HTTPS 404. Its disposable
+  branch, worktree and backend were removed without merging the probe.
+- The controller uses the same non-expiring project-scoped Preview key as builds;
+  management discovery/renewal and workflow `38607103472` passed. The old
+  Preview deploy key is revoked. No controller credential is exposed in web env.
+- Configuration migration and the fresh-PR lifecycle are accepted. The three
+  older Basic rebuilds remain pending independently; consult their `PR Preview`
+  workflows and Vercel builds for final readiness. A pending or failed build is
+  not feature QA. The new workflow requires no staging resource or custom
+  production deployment token.
 
-## Current acceptance — 2026-10-13
+## Historical acceptance — 2026-10-13
 
 Migration acceptance completed on 2026-10-13. The native main queue accepted the release; current-main candidate [run 38413217001](https://github.com/LayerNorm/overlay-web/actions/runs/38413217001) passed all ten authenticated checks before publication and again at canonical staging. Release `bee84a33a2d4b101bf85d3b179cd30984b556045` was promoted from clean canonical main: production web `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified live before pushing customer Convex `colorful-chickadee-419`. Normal production sign-in, note CRUD/stale-edit 409, fresh Auto reply and reload persistence, Files, realtime tenant authorization and exact synthetic cleanup passed.
 
