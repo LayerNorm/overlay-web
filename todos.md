@@ -2,7 +2,7 @@
 
 ## Harness implementation
 
-Owner interventions needed for `docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`:
+Owner interventions needed for the (since removed) managed harness agents rollout:
 
 - [x] **Set Vercel Sandbox env credentials** — done for **staging**:
   `VERCEL_TOKEN` (from the local Vercel CLI auth token), `VERCEL_TEAM_ID`,
@@ -178,7 +178,7 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 
 ## Workspace billing (deferred)
 
-- [ ] **Per-agent spend caps** (deferred 2026-10-06). A workspace with a plan draws every run from one shared pool; per-member limits already exist (`configureSpendLimit`). A cap per agent or automation would stop one runaway resource from draining the pool. Not in the first version of workspace billing: build it when a pool is actually shared by several people. Needs: a limit keyed by resource id beside the member limit, checked in the same reservation path as `reserveWorkspace`, and a row on the workspace billing tab. Plan: `docs/plans/UNIFIED_SCOPES_PLAN.md` (5b).
+- [ ] **Per-agent spend caps** (deferred 2026-10-06). A workspace with a plan draws every run from one shared pool; per-member limits already exist (`configureSpendLimit`). A cap per agent or automation would stop one runaway resource from draining the pool. Not in the first version of workspace billing: build it when a pool is actually shared by several people. Needs: a limit keyed by resource id beside the member limit, checked in the same reservation path as `reserveWorkspace`, and a row on the workspace billing tab.
 
 ## Admin console
 

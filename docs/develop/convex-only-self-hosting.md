@@ -1,6 +1,6 @@
 # Convex-only backend & enterprise self-hosting strategy
 
-Status: implemented (2026-09-18). Supersedes the dual Convex/Postgres direction flagged in `codebase-complexity-audit.md`. Convex is the only app-data provider; the bespoke Postgres repository layer is deleted.
+Status: implemented (2026-09-18). Supersedes the earlier dual Convex/Postgres direction. Convex is the only app-data provider; the bespoke Postgres repository layer is deleted.
 
 ## Decision
 

@@ -1,7 +1,6 @@
 # Surfaces: Slack app setup
 
-Slack is the first external surface for Overlay agents (see
-`docs/plans/SURFACES_PLAN.md`). We run in **multi-workspace OAuth mode** — one
+Slack is the first external surface for Overlay agents. We run in **multi-workspace OAuth mode** — one
 Slack app, installable into any customer's Slack workspace; per-team bot
 tokens resolve through the Chat SDK state store, never a shared env token.
 

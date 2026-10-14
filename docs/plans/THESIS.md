@@ -30,3 +30,11 @@ The product should reduce the time from describing a job to receiving the first 
 A user describes a recurring job, creates or connects an agent, grants the required resources, and chooses where results should appear. The agent completes the work, exposes its progress and evidence, asks for approval when necessary, and returns on schedule to do it again.
 
 Research, monitoring, and operational workflows are the first proving grounds because together they test synthesis, persistent observation, and real-world action.
+
+## Creation and surfaces (from the agent-first plan)
+
+Creating an agent should be a tool call away from any chat: a person describes an outcome in ordinary language, and the creation conversation shapes the job, proposes name and cadence, discovers the minimum tools and access, asks for grants when they are needed, and offers recurrence only after a first outcome is verified. The structured editor remains for inspection and precise changes.
+
+Agents are the primary navigation item; selecting one opens its conversation, and the surface grows over time toward that agent's work, routines, knowledge, access, runtime health, activity, cost, and outcomes. Chats, channels, files, and projects remain as the places humans and agents coordinate. External chat platforms are interaction endpoints reached through narrow, explicit bridges — not migrations, and never an imported workspace.
+
+The near-term bar: for every active agent we can answer what outcome it owns, what it is doing now, what it can access, what it produced, what it cost, where it is blocked, and how much value it returned.

@@ -1,6 +1,6 @@
 # Tool scoping and search: Personal and Workspace
 
-Status: plan, written 2026-10-05. Nothing in it is built yet except where marked "done". It builds on `docs/plans/UNIFIED_SCOPES_PLAN.md` (the Personal / Workspace / Archived model for files, notes, outputs, skills, MCP servers, connectors, and automations) and `docs/develop/tool-catalog.md`.
+Status: plan, written 2026-10-05. Nothing in it is built yet except where marked "done". It builds on the unified Personal / Workspace / Archived scope model for files, notes, outputs, skills, MCP servers, connectors, and automations, and on `docs/develop/tool-catalog.md`.
 
 ## The question
 

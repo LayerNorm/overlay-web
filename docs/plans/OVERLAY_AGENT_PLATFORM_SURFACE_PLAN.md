@@ -5,10 +5,10 @@
 >
 > Last reviewed: 2026-09-24.
 >
-> Continuation of [`OVERLAY_AGENT_PLATFORM_PLAN.md`](./OVERLAY_AGENT_PLATFORM_PLAN.md)
-> (Phases 0–5: box billing, boat hosts, ephemeral exec hardening,
-> metaharness v1, harness grandfathering, computers consolidation — all
-> landed). Completion legend: ✅ landed; 🚧 designed, not built.
+> Continuation of the agent-platform sequence (Phases 0–5: box billing,
+> boat hosts, ephemeral exec hardening, metaharness v1, harness
+> grandfathering, computers consolidation — all landed). Completion
+> legend: ✅ landed; 🚧 designed, not built.
 
 ## Context
 

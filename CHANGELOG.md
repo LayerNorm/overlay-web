@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+### Removed
+
+- Removed 34 internal Markdown files: completed plans and one-time audits (`docs/plans/` history for shipped work — managed harness, workspace scoping, surfaces, sandbox consolidation, work, workspace pricing, agent visibility/creation, BYO agents implementation, release-workflow migration, AI SDK v7, automation durability, complexity and optimization baselines, vision delta), twelve boilerplate or corrupted `packages/*/README.md`, `docs/develop/mcp-servers-overview.md` (folded into `mcp-access.md`), `docs/plans/AGENT_PLAN.md` (folded into `THESIS.md`), and two thin example READMEs (folded into `examples/customer-deployment/README.md`). Living docs in `docs/develop/`, active plans in `docs/plans/`, and all public `.mdx` documentation are unchanged.
+
 - Authorize local laptop agents under DevelopedByDev to integrate directly into main with validated fast-forward pushes; cloud Builder threads retain PR previews and the merge queue.
 
 - Use Vercel’s native Git integration for automatic production deployment from main. Retire the custom production workflow, promotion script and deployment token; Integration verifies production and synchronizes Convex only for backend changes. Staging remains optional and Development Workflow is authoritative.

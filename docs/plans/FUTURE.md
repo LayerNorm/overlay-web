@@ -520,7 +520,6 @@ Do not cut over until all applicable gates pass:
 - [Self-hosting and PostgreSQL runtime](../deploy-operate/self-hosting.mdx)
 - Application architecture (`docs../develop/architecture.mdx`)
 - API source of truth (`docs../develop/api-source-of-truth.mdx`)
-- Automation durability (`docs../develop/automation-durability-and-visual-editor.md`)
 - Workspace agent contracts (`../../packages/overlay-workspace-contracts/src/types.ts`)
 - Agent run state machine (`../../src/shared/agents/agent-run.ts`)
 - Workspace agent invocation (`../../src/server/agents/workspace-agent-invocation.ts`)

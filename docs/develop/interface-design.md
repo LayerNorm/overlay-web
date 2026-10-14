@@ -226,8 +226,8 @@ never remounts form state.
 
 ## The secondary panel: Personal, Workspace
 
-Chats, Files, Extensions, Automations, and Agents share one panel anatomy (see
-`docs/plans/UNIFIED_SCOPES_PLAN.md`): page title, then the scope rows, then
+Chats, Files, Extensions, Automations, and Agents share one panel anatomy:
+page title, then the scope rows, then
 New + search, then the list. New is never above the scope rows.
 
 - **Scope rows** are Personal (mine within this workspace) and Workspace
