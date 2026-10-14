@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Restrict preview cleanup to the pinned Overlay project Preview credential and explicitly block the customer production backend, alongside existing project/type/PR ownership checks, to protect production and other products from automation deletion.
+
 - Delete owned Convex Preview backends when a PR closes or loses `needs-preview`; settle builds first, confirm backend absence, and reconcile retained backends so abandoned previews release deployment quota.
 
 - Make PR previews opt-in with `needs-preview`, preserve automatic Git production on main, and clean up previews when the label is removed. Run route/gateway tests once, remove stale test references and tautological/duplicate workflow assertions, and classify ten live-only integration suites separately.

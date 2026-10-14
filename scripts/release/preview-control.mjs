@@ -8,6 +8,8 @@ export const CONFIG = Object.freeze({
   teamId: 'team_VT3uNspuyAOwicxedhtG4SMe',
   projectId: 'prj_wucEZdZyA2xKUurHLXSuQNcS1YPy', projectName: 'overlay-landing',
   convexProjectId: 1649204,
+  convexPreviewKeyScope: 'preview:divyansh-lalwani-37bb7:overlay',
+  convexProductionName: 'colorful-chickadee-419',
   previewWildcardDomain: '*.preview.getoverlay.io',
   previewWildcardBranch: 'codex/preview-unassigned',
 })
@@ -91,11 +93,23 @@ export function apiClient({ token, service, base, teamId, fetchImpl = fetch,
   }
 }
 
+export function previewBackendClient(token, options = {}) {
+  // Never accept a personal, team, production, dev or other project's key.
+  // Scope is pinned independently of API responses and workflow inputs.
+  const prefix = `${CONFIG.convexPreviewKeyScope}|`
+  if (typeof token !== 'string' || !token.startsWith(prefix)
+    || token.length === prefix.length || /[\s|]/.test(token.slice(prefix.length))) {
+    throw new Error('Convex control requires the pinned Overlay project Preview key')
+  }
+  return apiClient({ ...options, token, service: 'Convex', base: 'https://api.convex.dev/v1' })
+}
+
 export class PreviewBackends {
   constructor({ api, now = Date.now }) { this.api = api; this.now = now }
   validate(d, number) {
     previewAddress(number)
-    if (d.projectId !== CONFIG.convexProjectId || d.deploymentType !== 'preview'
+    if (d.name === CONFIG.convexProductionName
+      || d.projectId !== CONFIG.convexProjectId || d.deploymentType !== 'preview'
       || d.reference !== `preview/pr-${number}` || d.previewIdentifier !== `pr-${number}`
       || !/^[a-z0-9-]+$/.test(d.name)) throw new Error('PR backend identity mismatch')
     return d
@@ -443,11 +457,11 @@ export class PreviewController {
 
 export async function main(env = process.env, args = process.argv.slice(2)) {
   if (env.GITHUB_REPOSITORY && env.GITHUB_REPOSITORY !== CONFIG.repository) throw new Error('Unexpected workflow repository')
+  const convex = previewBackendClient(env.CONVEX_PREVIEW_CONTROL_KEY)
   const controller = new PreviewController({
     github: apiClient({ token: env.GITHUB_TOKEN, service: 'GitHub', base: 'https://api.github.com' }),
     vercel: apiClient({ token: env.VERCEL_PREVIEW_TOKEN, service: 'Vercel', base: 'https://api.vercel.com', teamId: CONFIG.teamId }),
-    backends: new PreviewBackends({ api: apiClient({ token: env.CONVEX_PREVIEW_CONTROL_KEY,
-      service: 'Convex', base: 'https://api.convex.dev/v1' }) }),
+    backends: new PreviewBackends({ api: convex }),
   })
   if (args[0] === 'inventory') {
     const numbers = await controller.inventory()

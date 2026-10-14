@@ -32,6 +32,13 @@ the hostname returning HTTPS 404. Re-adding the label creates fresh fixtures.
 Six-hour reconciliation also discovers leftover backends for closed/unlabeled
 PRs, even when their Vercel resources are already gone. Credential lifetime is separate.
 
+Backend cleanup accepts only the pinned Overlay project Preview credential and
+exact PR ownership in project `1649204`. Broader account/team credentials and
+keys for other products fail before API access. Production backend
+`colorful-chickadee-419` is explicitly blocked even if API metadata misidentifies
+it. Dev, production, foreign-project and ambiguous backends cannot be deleted by
+this controller. Account administrators retain their manual Convex permissions.
+
 Assign independent features to separate Builders so implementation, builds and
 browser QA can proceed in parallel. Each Builder owns one branch and PR. Share
 foundations through declared PR dependencies and land them before dependent work.
