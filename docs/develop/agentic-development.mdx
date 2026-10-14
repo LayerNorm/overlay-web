@@ -9,7 +9,7 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 
 ## Release model
 
-[Development Workflow](<Development Workflow.md>) is the authoritative Builder,
+[Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is the authoritative Builder,
 Integration and release policy. Every feature reaches main through a focused PR
 and the merge queue. Every main push automatically deploys the exact revision to
 Vercel production, synchronizes Convex only when backend inputs change, and runs
@@ -164,7 +164,7 @@ fast-forward only and post-push verification. Credentials alone are not permissi
 
 ## Production and optional staging
 
-Follow [Development Workflow](<Development Workflow.md>). Main changes deploy
+Follow [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md). Main changes deploy
 automatically to Vercel production and run authenticated production smoke. The
 release synchronizes production Convex only when backend inputs change. Verify
 the exact SHA, live alias, smoke result and saved rollback checkpoint.
