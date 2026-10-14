@@ -39,7 +39,7 @@ const output = await build({
         b.onResolve(
           {
             filter:
-              /^(next\/navigation|@\/shared\/app\/overlay-app-client|@\/components\/mentions\/mention-search)$/,
+              /^(next\/navigation|@\/shared\/app\/overlay-app-client|@\/components\/mentions\/mention-search|@\/components\/providers\/(CapabilitiesProvider|AuthorizationProvider))$/,
           },
           (args) => ({ path: args.path, namespace: 'fixture' }),
         )
@@ -49,8 +49,12 @@ const output = await build({
             args.path === 'next/navigation'
               ? `export const useRouter=()=>({push:path=>window.destinations.push(path)});`
               : args.path.includes('overlay-app-client')
-                ? `export const overlayAppClient={agents:{list:async()=>({agents:[{id:'agent',name:'Fixture Agent',description:'description-match'}]})}};`
-                : `export function invalidateMentionCache(){};export async function searchMentions(query){await new Promise(r=>setTimeout(r,query==='slow'?300:20));if(query==='missing'||query==='slow')return [];const types=['chat','file','automation','skill','mcp','connector'];return types.map(type=>({type,label:type,icon:'FileText',items:[{type,id:type,name:'Recent '+type,description:type==='file'?'note':type}]}));}`,
+                ? `export const overlayAppClient={agents:{list:async()=>({agents:[{id:'agent',name:'Fixture Agent',description:'description-match'}]})},work:{list:async()=>({items:[{id:'task',title:'Fixture Task description-match',status:'todo'}]})}};`
+                : args.path.endsWith('CapabilitiesProvider')
+                  ? `export const useOverlayCapabilities=()=>({capabilities:{work:true}});`
+                  : args.path.endsWith('AuthorizationProvider')
+                    ? `export const useAuthorization=()=>({allows:()=>true});`
+                    : `export function invalidateMentionCache(){};export async function searchMentions(query){await new Promise(r=>setTimeout(r,query==='slow'?300:20));if(query==='missing'||query==='slow')return [];const types=['chat','file','automation','skill','mcp','connector'];return types.map(type=>({type,label:type,icon:'FileText',items:[{type,id:type,name:'Recent '+type,description:type==='file'?'note':type}]}));}`,
         }))
       },
     },
@@ -113,7 +117,7 @@ try {
   await input.fill('')
   await expect(dialog.getByRole('option', { name: 'Chats', exact: true })).toBeVisible()
   await input.fill('description-match')
-  await expect(dialog.getByRole('option')).toHaveCount(7) // already-ranked results have no label match
+  await expect(dialog.getByRole('option')).toHaveCount(8) // already-ranked results have no label match
   for (const [label, href] of [
     ['Recent chat chat', '/app/chat?id=chat'],
     ['Recent file note', '/app/notes?id=file'],
@@ -122,6 +126,7 @@ try {
     ['Recent mcp mcp', '/app/tools?view=mcps&id=mcp'],
     ['Recent connector connector', '/app/tools?view=apps&slug=connector'],
     ['Fixture Agent description-match', '/app/agents?agentId=agent'],
+    ['Fixture Task description-match Todo', '/app/work?task=task'],
   ]) {
     if (await dialog.isHidden()) {
       await open()
@@ -140,7 +145,7 @@ try {
   await expect(dialog.getByRole('option', { name: 'Chats', exact: true })).toBeVisible()
   await close()
   console.log(
-    'PASS real GlobalSearchDialog: recent categories, drill/back, Tab breadcrumb, query/clear/empty/loading race, 7 destinations',
+    'PASS real GlobalSearchDialog: recent categories, drill/back, Tab breadcrumb, query/clear/empty/loading race, 8 destinations (including enabled Work tasks)',
   )
   await page.evaluate(() => window.fixture('palette'))
   await open()
@@ -253,7 +258,10 @@ try {
   await expect(grouped.getByRole('group')).toHaveCount(2)
   await grouped.getByRole('combobox').fill('unmatched')
   assert.deepEqual(await grouped.getByRole('option').allTextContents(), ['Zulu', 'Alpha'])
-  const windows = await browser.newPage({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36' })
+  const windows = await browser.newPage({
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36',
+  })
   await windows.addInitScript(() =>
     Object.defineProperty(navigator, 'platform', { get: () => 'Win32' }),
   )
