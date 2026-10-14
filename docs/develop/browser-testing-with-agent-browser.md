@@ -314,3 +314,10 @@ runner may set `CHROMIUM_EXECUTABLE_PATH` to an installed Chromium executable or
 `CHROMIUM_RUNTIME_MODULE` to an npm-packaged Chromium runtime module exposing
 `executablePath()` and `args`. No browser dependency is added to the application.
 Never put credentials or auth-state files in the fixture or its screenshots.
+
+The menu fixture also renders the actual mobile account fallback and verifies
+Apps/Usage/Storage disclosure taps, content clicks, Escape and outside dismissal.
+Unused Next/sidebar dependencies are stubbed; it does not render the complete
+sidebar state hook. The hook must not add a second wrapper-ref dismissal listener
+for portalled account content. Nested reasoning-select Tab must leave its
+non-modal popover, while actual modal dialogs retain boundary wrapping.

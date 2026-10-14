@@ -6,7 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 
-- Wrap open-select Tab/Shift+Tab navigation within dialogs, including when footer actions are disabled.
+- Wrap open-select Tab/Shift+Tab navigation within actual modal dialogs, including disabled footer actions; non-modal popovers advance outside their panel.
 
 - **Selects use Radix with Overlay's existing appearance (shadcn Phase 4).** Shared Select/ListboxSelect now provide keyboard selection/typeahead, collision-aware lists and focus return. Existing generic values, selectable empty options, groups, native form events/reset and import APIs remain intact; dropdown-menu/popover migration stays separate.
 

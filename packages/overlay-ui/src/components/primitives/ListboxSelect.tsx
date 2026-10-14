@@ -86,13 +86,13 @@ export function ListboxSelect<T extends string>({
             if (event.key !== 'Tab' || !triggerRef.current) return
             event.preventDefault()
             const trigger = triggerRef.current
-            const dialog = trigger.closest('[role="dialog"]')
+            const dialog = trigger.closest('[aria-modal="true"]')
             const scope = dialog ?? document
             const controls = Array.from(scope.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
               .filter((node) => node.tabIndex >= 0 && !node.matches(':disabled') && !node.hasAttribute('data-radix-focus-guard') && !event.currentTarget.contains(node) && node.getClientRects().length > 0)
             const index = controls.indexOf(trigger)
             const adjacent = controls[index + (event.shiftKey ? -1 : 1)]
-            const wrapped = dialog ? controls[event.shiftKey ? controls.length - 1 : 0] : undefined
+            const wrapped = controls[event.shiftKey ? controls.length - 1 : 0]
             tabTarget.current = adjacent ?? wrapped ?? trigger
             setOpen(false)
           }}
