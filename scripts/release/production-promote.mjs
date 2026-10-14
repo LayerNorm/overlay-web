@@ -227,20 +227,15 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         return waitForProductionBuild({ vercel, origin: productionCliOrigin(stdout), sha })
       },
       publishWeb: async d => { cli(['promote', 'https://' + d.url, '--yes']) },
-      pushBackend: async ({ previousDeploymentId }) => {
-        const previous = await vercel(`/v13/deployments/${previousDeploymentId}`)
-        let previousSha = previous.meta?.githubCommitSha ?? previous.meta?.gitCommitSha
-        if (env.GITHUB_ACTIONS === 'true') {
-          // A failed release can leave newer web live with an older backend.
-          // Compare against the last completed release, never that failed web.
-          const releases = await github(`${repo}/actions/workflows/production-release.yml/runs`, {
-            query: { status: 'success', branch: 'main', per_page: 100 } })
-          previousSha = releases.workflow_runs.find(run => run.head_branch === 'main'
-            && run.path === '.github/workflows/production-release.yml'
-            && run.conclusion === 'success')?.head_sha
-            // Last accepted production backend before automation was enabled.
-            ?? '7578b691417a992060901f53908683297c4cef43'
-        }
+      pushBackend: async () => {
+        // Both CI and manual retries must ignore a newer, incomplete web release.
+        const releases = await github(`${repo}/actions/workflows/production-release.yml/runs`, {
+          query: { status: 'success', branch: 'main', per_page: 100 } })
+        const previousSha = releases.workflow_runs.find(run => run.head_branch === 'main'
+          && run.path === '.github/workflows/production-release.yml'
+          && run.conclusion === 'success')?.head_sha
+          // Last accepted production backend before automation was enabled.
+          ?? '7578b691417a992060901f53908683297c4cef43'
         if (!backendInputsChanged({ previousSha, sha, root, run: runCommand })) {
           console.log('Production Convex unchanged: no backend inputs changed')
           return false
