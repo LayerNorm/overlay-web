@@ -302,9 +302,10 @@ Agent header actions use a separate `group/agent-row` so hovering a child cannot
 
 Quick thread creation refreshes the bundle after the mutation; only the latest bundle request may publish state, so a slower pre-creation response cannot remove the new row.
 
-What a navigation row reveals (a scope's Personal/Workspace sub-rows, a section's pages) is not indented: it lines up
-with the row that opened it, and a chevron plus the smaller type size mark it as nested. `InlineNavChildren` enforces
-this and its test fails on any `pl-*` or `ml-*` in the nested rows.
+What a navigation row reveals (a scope's Personal/Workspace sub-rows, a section's pages) nests the same way:
+`InlineNavChildren` renders expanded `children` inside `SidebarMenuSub`, so every grouped set of rows — scope
+sub-pages, folder children, threads — shares the one guide-line treatment, and the chevron plus the smaller type size
+still mark the row that opened it.
 
 ## Agent settings load together
 
