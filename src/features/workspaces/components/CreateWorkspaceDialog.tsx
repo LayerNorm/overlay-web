@@ -9,12 +9,14 @@ export function CreateWorkspaceDialog({
   error,
   onOpenChange,
   onCreate,
+  onCloseAutoFocus,
 }: {
   open: boolean
   busy?: boolean
   error?: string | null
   onOpenChange(open: boolean): void
   onCreate(name: string): Promise<void>
+  onCloseAutoFocus?: (event: Event) => void
 }) {
   const [name, setName] = useState('')
 
@@ -24,6 +26,7 @@ export function CreateWorkspaceDialog({
     <DialogFrame
       open={open}
       onOpenChange={onOpenChange}
+      onCloseAutoFocus={onCloseAutoFocus}
       title="Create a workspace"
       description="Workspaces keep your team, chats, agents, and shared resources together."
       footer={(

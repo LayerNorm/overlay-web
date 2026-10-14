@@ -17,6 +17,7 @@ const CAPABILITY_FEATURE: Partial<Record<AuthorizationCapability, keyof Capabili
   'models.use': 'modelRouting',
   'skills.use': 'skills',
   'tools.use': 'chat',
+  'work.use': 'work',
   'web_search.use': 'webSearch',
 }
 

@@ -4,6 +4,48 @@ Use multiple Builder threads to develop independent features and one Integration
 
 **The workflow:** assign a feature → implement → local smoke QA → draft PR → Vercel preview interaction QA → ready PR → Integration review → main merge queue.
 
+Production follows **merge to main → automatic Vercel Git production deployment → production smoke checks**. Integration synchronizes Convex when backend changes require it, after matching production web is live. PR previews provide the acceptance environment for sensitive changes too. This document is the authoritative workflow.
+
+## Shared hosting and parallel work
+
+| Setting | Development rule |
+| --- | --- |
+| Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
+| Build source | Keep Git allowed for both environments. Vercel starts builds automatically when branches/main change. |
+| Build machine | Keep **Basic**. Let slow builds finish; inspect concrete failures before changing configuration. |
+| Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
+| Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
+| Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
+
+The trusted `PR Preview` workflow uses the existing `VERCEL_PREVIEW_TOKEN` in
+GitHub's `release-control` environment for ordinary custom URL assignment and
+cleanup, plus the existing scoped Convex Preview credential for backend renewal.
+The Git deployment-source rule permits builds; these credentials support URL and
+backend management. Reuse them across PRs. Builders do not create tokens or copy
+shared settings for each feature. No Production deployment token or purchased
+Preview Deployment Suffix is needed.
+
+Open PR backends renew within Convex's retention limits. Closing a PR removes its
+owned URL and branch app setting, stops backend renewal, and leaves the hostname
+returning HTTPS 404. Credential lifetime and backend retention are separate.
+
+Assign independent features to separate Builders so implementation, builds and
+browser QA can proceed in parallel. Each Builder owns one branch and PR. Share
+foundations through declared PR dependencies and land them before dependent work.
+Integration reviews ready PRs in dependency order and uses GitHub's main merge
+queue to check combined revisions. Vercel's build concurrency does not replace
+that integration check.
+
+## Local laptop owner path
+
+The owner explicitly authorized local laptop agents acting as `DevelopedByDev`
+to push directly to main. Run proportionate checks, review the diff and ancestry,
+preserve unrelated edits, and use fast-forward pushes only. Verify origin/main,
+the exact native Vercel production deployment and affected behavior afterward.
+No PR, merge queue or repeated permission request is required for this local path.
+The owner bypass is authorized for this purpose. Never force-push or delete release
+branches that are still in use. Cloud Builder threads still follow the PR/preview/merge-queue path below.
+
 ## How to use this document
 
 Tag this file in a thread and identify the role and task. The agent follows the matching section below and reads the full repository `AGENTS.md` and relevant living docs before working. Existing account access and environment configuration are prerequisites; use the owner's Divyansh accounts and the configured test credentials.
@@ -39,7 +81,7 @@ Process independent ready PRs while others are still being built or fixed.
 Keep using this thread for subsequent PRs. Report blockers with the exact
 failure and the next action. Stop after the available queue is processed;
 use supported wait or notification tools if this session supports them.
-Production deployment requires separate owner authorization.
+Main pushes automatically deploy to Vercel; verify the native Vercel deployment SHA and production smoke result.
 ```
 
 ## Builder instructions
@@ -62,9 +104,17 @@ Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant 
 
 ### 3. Open a draft PR to get the preview
 
-Commit and push the feature branch, then open a draft PR against `main`. The existing `PR Preview` workflow creates the hosted environment. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
+Commit and push the feature branch, then promptly open a draft PR against `main`. Vercel’s native Git integration builds the Preview environment. The trusted `PR Preview` workflow assigns the custom URL and renews the isolated backend. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
 
-Use `https://pr-<number>.preview.getoverlay.io` for hosted QA. The preview has its own Convex backend and inherits the configured shared test credentials. Do not copy `.env.local` wholesale or deploy shared development, staging, or production backends from the feature worktree.
+Use the shared hosting settings above. Do not copy `.env.local` wholesale or deploy shared development or production backends from the feature worktree.
+
+Vercel can start a first build before the draft PR exists. The build wrapper
+briefly looks up the public repository's open internal main PR, verifying its
+exact branch and SHA when Vercel's PR-number metadata is missing. It sends no
+credentials to this lookup. A missing PR number is a metadata/timing problem;
+keep concurrent builds enabled and inspect the failed build and `PR Preview`
+workflow logs. If the lookup times out, ensure the PR is open against main and
+push a new revision. Never test an older deployment as evidence for the new head.
 
 Documentation/GitHub-only changes may receive the controller's hosted-app exemption. Review the docs and required checks; use `needs-preview` if an app preview is needed.
 
@@ -99,7 +149,7 @@ Backend/migration steps: [required steps, or none]
 Limitations: [anything incomplete or unverified, or none]
 ```
 
-Flag `needs-staging` when the feature requires dedicated staging acceptance before production; the PR still targets main. Respond to Integration findings with new commits and refreshed QA. Keep the worktree until Integration confirms merge. The Builder stops at PR readiness and leaves queue entry, merging, and releases to Integration.
+For sensitive changes, expand acceptance checks on the same isolated PR preview. Respond to Integration findings with new commits and refreshed QA. Keep the worktree until Integration confirms merge. The Builder stops at PR readiness and leaves queue entry, merging, and releases to Integration.
 
 ## Integration instructions
 
@@ -117,26 +167,24 @@ Once required checks and proportionate QA pass and conversations are resolved, e
 
 The native merge queue runs required checks on the combined revision containing current main and earlier queued changes. If that combined revision fails, investigate the interaction and fix it before retrying.
 
-Preserve meaningful commits with merge merging; squash only trivial or noisy history. Ordinary changes go through PRs and the queue. Never force-push, reset, or delete release branches. The emergency bypass requires explicit authorization for that action.
+Preserve meaningful commits with merge merging; squash only trivial or noisy history. Cloud Builder changes go through PRs and the queue; local DevelopedByDev integration may use the authorized direct-push path. Never force-push or reset release branches. Other bypass use requires explicit authorization.
 
-Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Confirm that merging did not create a customer production deployment. Preserve needed work and evidence before archiving a completed feature worktree.
+Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Verify the native Vercel deployment serves the accepted main SHA, synchronize Convex if this release changes the backend, and check production smoke. Preserve needed work and evidence before archiving a completed feature worktree.
 
 ### 3. Report and continue
 
 Report each accepted PR and main SHA, or the concrete blocker and next action. Describe the state accurately: ready, queued, merged, deployed, or verified. Continue processing the available authorized PRs in this Integration thread.
 
-Main merges do not deploy staging or customer production. Leave the legacy staging branch frozen.
+Main changes automatically deploy to production through Vercel’s Git integration; Integration then runs proportionate smoke checks.
 
-## Production release, when authorized
+## Automatic production release
 
-Integration owns the release after the owner authorizes it:
+1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay-web` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
+2. Keep `git.deploymentEnabled.main=true` in root `vercel.json`, production branch `main`, and automatic production domain assignment enabled. No custom GitHub Actions deployer or Vercel deployment token is required.
+3. Integration verifies the exact live SHA. If Convex source, imported shared code or runtime dependencies changed, synchronize the production backend from clean current canonical main after matching web is live; frontend-only releases need no backend push.
+4. Integration runs proportionate authenticated production smoke and records the deployed SHA and result. Vercel Git deployment does not itself synchronize Convex or run these application checks. Report live and verified only after the relevant checks pass.
 
-1. Select the exact current main SHA and dispatch its on-demand Release Candidate workflow.
-2. Verify matching web/backend revisions and authenticated staging smoke. Complete any `needs-staging` feature QA.
-3. From clean current canonical main, run `bash scripts/release/promote.sh <main-sha> --check`, then the same command without `--check`.
-4. Verify production web publication, matching production Convex, and authenticated smoke. Preserve the release and rollback evidence.
-
-Follow [Staging and Production Promotion](worktree-staging-qa.mdx) for exact commands and recovery. Without production authorization, report the accepted SHA as **merged but not deployed**.
+The former custom Production Release workflow, promotion script and production deployment token have been retired. Do not recreate them for ordinary releases. Use Vercel’s deployment history for authorized redeploy/rollback, and follow [Production deployment details](worktree-staging-qa.mdx) for backend safety and recovery.
 
 ## Coordination rules
 

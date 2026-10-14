@@ -142,6 +142,7 @@ function ReplayRunPicker({
   return (
     <>
       <Select
+        aria-label="Run to replay"
         value={selectedRunId ?? ''}
         onChange={(e) => onSelectRun(e.target.value || null)}
         className="text-xs"

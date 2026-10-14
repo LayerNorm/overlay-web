@@ -17,12 +17,14 @@ For ordinary local web work against the development Convex backend, run Next.js 
 npm run dev
 ```
 
-`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Manually dispatched main release-candidate CI owns dedicated staging; the frozen legacy staging branch/worktree is not a deploy lane.
+`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Native Vercel production deployment does not push Convex.
 
 ## Isolated PR preview backends
 
-The migration adds `scripts/vercel-build.sh` for the staging Vercel project.
-Preview builds require `OVERLAY_RELEASE_LANE=staging`,
+`scripts/vercel-build.sh` builds PR previews in the `overlay-landing` Vercel project.
+New PR heads use `OVERLAY_RELEASE_LANE=preview`; older open PR heads retain
+the former `staging` value until those branches update. Both values are accepted
+only for Vercel's Preview target. Preview builds require
 `OVERLAY_DEPLOYMENT_ENV=preview`, a canonical PR app origin, and a project-scoped
 `preview:<team>:<project>|…` deploy key. The script clears conflicting backend
 selectors and dev URL overrides, then runs `convex deploy --preview-name
@@ -49,7 +51,7 @@ crons are not registered, and email/webhook delivery actions return without
 sending. Project preview defaults contain matching internal API/service secrets,
 the sandbox client ID and seed identity; passwords stay on the web app only.
 
-Provider credentials are configured once in Vercel's unscoped Preview settings
+Provider credentials are configured once in `overlay-landing`'s unscoped Preview settings
 and this project's **preview** defaults. New backends inherit the defaults;
 existing backends do not synchronize automatically. A key rotation therefore
 updates both defaults and each still-open backend. Reuse verified development
@@ -63,31 +65,9 @@ Pair a `none` integration, browser, sandbox or web-search provider with its
 `OVERLAY_FEATURE_*` flag set to `false`. Provider selection alone does not change
 capabilities. Release builds reject the mismatch before deploying functions;
 otherwise chat can try to load the disabled integration provider and fail before
-calling its model. The Preview defaults now contain these four disabled flags,
-with readback and preservation of legacy Production settings verified. Dedicated
-staging web configuration must use the same pairing until its providers are ready.
-
-## Dedicated staging backend
-
-The dedicated staging backend is `doting-cuttlefish-819` in separate
-project `overlay-staging` (`3199896`). Convex classifies this persistent backend
-as `prod`; it is not Overlay's customer production `colorful-chickadee-419`.
-The hosted staging build accepts only `prod:doting-cuttlefish-819|…` and requires
-the trusted controller's exact main SHA, internal repository and staging origin.
-Sandbox auth/internal configuration and shared test Stripe/Gateway credentials
-have been set and read back; app functions and synthetic fixtures are deployed.
-Canonical staging serves an accepted current-main candidate after full native and canonical smoke passed. Do not run
-production scripts from feature worktrees to initialize it. The staging cutover
-must supply matching sandbox auth/internal secrets and dedicated test providers,
-plus authenticated staging smoke, before any optional canonical publication. Candidates remain on demand.
-
-Internal `dev/seed:initStaging` prepares synthetic fixtures for the configured
-sandbox QA identity. It requires `OVERLAY_DEPLOYMENT_ENV=staging`, the sandbox
-client, the fixed QA identity and Convex's platform-supplied
-`CONVEX_CLOUD_URL=https://doting-cuttlefish-819.convex.cloud`; a customer production
-or shared dev backend refuses it before writing. It preserves edited fixtures
-on repeat calls and creates only a paused automation. Preview `dev/seed:init`
-retains its separate preview-only guard and fixture identifiers.
+calling its model. The Preview defaults contain these four disabled flags.
+Preview and Production variables have separate Vercel targets, and the
+corresponding Convex preview defaults remain separate from customer Production.
 
 ## Expand, migrate, then contract
 
@@ -106,7 +86,7 @@ does not change the current schema).
 2. **Backfill.** Use an internal mutation that advances through bounded pages,
    copying each current `name` into missing `displayName`. Save the returned
    cursor, repeat until `isDone`, and count missing fields. Do not export customer
-   data into preview fixtures. Rehearse against synthetic staging data first.
+   data into preview fixtures. Rehearse against synthetic PR preview data first.
 3. **Switch reads.** In a later compatible revision, read
    `displayName ?? name` only once every active and retained rollback backend
    dual-writes. Until then read `name`: an older backend can rename a file while
@@ -147,7 +127,7 @@ Use the production script only from the clean canonical `main` worktree after th
 npm run convex:push:prod
 ```
 
-For the full worktree, staging QA, and promotion process, see [Worktree Staging QA](/develop/worktree-staging-qa).
+For Preview and Production checks, see [Preview and Production QA](/develop/worktree-staging-qa).
 
 ## Runtime inventory during release changes
 
@@ -197,7 +177,7 @@ Maintenance jobs and user-facing lists must advance through indexed, bounded pag
 ## Chat-delta retirement migration
 
 Removing `conversationMessageDeltas` requires a two-revision Convex rollout.
-Through an accepted main staging build, deploy the phase-5 migration revision and
+On the explicitly selected deployment, deploy the compatible migration revision and
 run `internal.chat.conversations.collapseLegacyConversationPersistence` once.
 Its scheduled batches fold every remaining delta into its assistant message and
 mark generating messages without an active AgentRun as interrupted. Confirm the
@@ -205,19 +185,9 @@ scheduled chain has finished before deploying the following phase-5 cleanup
 revision, which removes the table, queries, and crons. Never skip directly to
 the cleanup revision on a deployment that may still contain delta rows.
 
-### Prepared staging build order
-
-The installed Convex CLI runs `deploy --cmd` before pushing functions. The gated
-main staging build therefore runs three commands sequentially with an explicit,
-private deployment-key env file: backend deploy, `dev/seed:initStaging`, then
-`build-web.mjs`. Any failure stops the remaining steps. The web build receives
-the pinned staging URL; production web builds still do not deploy Convex. This
-on-demand path requires an owner dispatch and complete authenticated smoke.
-
 ### Expected errors on production-type deployments
 
-Use `ConvexError` data for expected revision conflicts. Production-type Convex
-(including dedicated staging) redacts ordinary developer error messages. The
+Use `ConvexError` data for expected revision conflicts. Production-type Convex redacts ordinary developer error messages. The
 server HTTP adapter preserves application `errorData`, so stale note edits return
 HTTP 409 in all lanes. Generic internal failures remain redacted and fail closed.
 

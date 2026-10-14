@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { Button } from '../components/primitives/Button'
 import { ConfirmDialog } from '../components/overlays/ConfirmDialog'
+import { DelayedTooltip } from '../components/overlays/DelayedTooltip'
 import { DialogFrame } from '../components/primitives/Dialog'
 
 function DialogFrameDemo() {
@@ -69,4 +70,20 @@ export const Dialog: StoryObj = {
 
 export const AlertDialog: StoryObj = {
   render: () => <ConfirmDialogDemo />,
+}
+
+export const Tooltip: StoryObj = {
+  render: () => (
+    <div className="flex items-center gap-4 p-8">
+      <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
+        <Button variant="primary">Hover me</Button>
+      </DelayedTooltip>
+      <DelayedTooltip label="Opens in the right-hand panel" side="bottom">
+        <Button variant="secondary">Bottom side</Button>
+      </DelayedTooltip>
+      <DelayedTooltip label="Left-side tooltip" side="left">
+        <Button variant="ghost">Left side</Button>
+      </DelayedTooltip>
+    </div>
+  ),
 }

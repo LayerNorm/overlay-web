@@ -1,11 +1,14 @@
-Treat each web deployment and its Convex deployment as one release unit. Push the development deployment from the dedicated `staging` worktree for staging QA, then push production from the clean `main` worktree after the matching web deployment is live:
+Treat matching web and Convex revisions as one release unit. Local development
+uses an engineer-owned backend; feature worktrees never deploy shared environments.
+PR previews deploy only their per-PR backend.
 
-```bash
-# staging worktree only
-npm run convex:push:dev
+Vercel’s native Git integration deploys main to production. Integration verifies
+the exact live web SHA, synchronizes customer Convex only for backend changes from
+clean current canonical main, and runs proportionate authenticated smoke.
+Frontend-only releases need no backend push. Use the production-scoped key through
+a private key-only env file; never pass .env.local or use convex:push:all.
 
-# clean main worktree only
-npm run convex:push:prod
-```
-
-Do not use `convex:push:all` in a worktree workflow. Never pass `.env.local` to a production Convex deploy; use the dedicated production script instead.
+Staging is optional for sensitive changes explicitly requesting extra acceptance.
+There is no custom production deployment
+workflow or Vercel deployment token requirement. See
+[Preview and Production QA](/develop/worktree-staging-qa) for recovery.

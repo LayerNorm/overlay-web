@@ -246,9 +246,9 @@ computers: defineTable({
 - `NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/computers/ComputerService.test.ts`
 - `npm run test:app-data-contracts:convex` (full suite incl. new computers block)
 - `npm run check:on-prem-convex-boundaries` (route inventory + Convex runtime tracking)
-- `npm run convex:push:dev` **only from the dedicated staging worktree** — the
-  schema change must reach the shared dev deployment before the Convex
-  contract test runs locally (per `docs/develop/convex-workflow.mdx`).
+- `npm run convex:push:dev` only with the explicitly selected engineer-owned
+  development backend. Hosted PR builds deploy their isolated preview backend;
+  verify contracts there per `docs/develop/convex-workflow.mdx`.
 
 Exit: both backends pass the contract-suite computers block; unique owner
 binding holds on both; `repositories.computers` resolves in both branches.

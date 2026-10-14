@@ -1,0 +1,93 @@
+{
+  "configurationAccepted": true,
+  "oldVercelProjectDeleted": true,
+  "oldBranchArchive": "archive/staging-retired-20261014",
+  "deploymentSources": {
+    "preview": [
+      "git"
+    ],
+    "production": [
+      "git"
+    ]
+  },
+  "buildMachine": "basic",
+  "concurrency": "WAIT_FOR_NAMESPACE_QUEUE",
+  "previewHttpChecks": [
+    {
+      "pr": 217,
+      "sha": "a99c3aca29d58bf928de01dac0bd67abfbb96681",
+      "deploymentId": "dpl_FwpCET3endFXPcfxzuSP9ZWxPuag",
+      "url": "https://pr-217.preview.getoverlay.io",
+      "checks": {
+        "/api/auth/preview-login": "200",
+        "/api/v1/workspaces": "200",
+        "/api/v1/files?limit=1": "200"
+      }
+    },
+    {
+      "pr": 167,
+      "sha": "038a66157ba3c838050bea40f7a22316c5e13a08",
+      "deploymentId": "dpl_9JmyaxYjkPx9oU1gLFZK4uLe2Ey4",
+      "url": "https://pr-167.preview.getoverlay.io",
+      "checks": {
+        "/api/auth/preview-login": "200",
+        "/api/v1/workspaces": "200",
+        "/api/v1/files?limit=1": "200"
+      }
+    },
+    {
+      "pr": 127,
+      "sha": "deea6c9e198f9bf1b1ba4b916666ff7b4e02a4d3",
+      "deploymentId": "dpl_Anxp1DcW4oHPNA7s9MoGZK5oMdVH",
+      "url": "https://pr-127.preview.getoverlay.io",
+      "checks": {
+        "/api/auth/preview-login": "200",
+        "/api/v1/workspaces": "200",
+        "/api/v1/files?limit=1": "200"
+      }
+    },
+    {
+      "pr": 125,
+      "sha": "60798ad682ddafeb74e1ab38a92a9559d6c97582",
+      "deploymentId": "dpl_7awnjGvXvBnG6JLTfXTNJPurJnQf",
+      "url": "https://pr-125.preview.getoverlay.io",
+      "checks": {
+        "/api/auth/preview-login": "200",
+        "/api/v1/workspaces": "200",
+        "/api/v1/files?limit=1": "200"
+      }
+    }
+  ],
+  "freshPrProbe": [
+    {
+      "pr": 219,
+      "sha": "fed505c9495f68aa0688e1b845806baaf1cc37ca",
+      "deploymentId": "dpl_2HBFiXgGTFB5cYRT9bgZ7tJbkEkv",
+      "url": "https://pr-219.preview.getoverlay.io",
+      "checks": {
+        "/api/auth/preview-login": "200",
+        "/api/v1/workspaces": "200",
+        "/api/v1/files?limit=1": "200"
+      }
+    }
+  ],
+  "probeClosureWorkflow": 38606755367,
+  "closedAndUnknownHttps404": true,
+  "production": {
+    "sha": "05318e1a212fb1051e79d7c10a243dd941afc76c",
+    "deploymentId": "dpl_DWEbNZiPyHJY4MvFvtJFqhWYtxaY",
+    "nativeGit": true,
+    "status": "READY",
+    "checks": [
+      "normal synthetic production sign-in",
+      "authenticated workspaces API",
+      "authenticated Files API"
+    ],
+    "backendDeployed": false
+  },
+  "olderBuildsStillPending": [
+    161,
+    168,
+    177
+  ]
+}

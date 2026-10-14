@@ -32,7 +32,7 @@ export const DEFAULT_OVERLAY_BRAND_CONFIG: OverlayBrandConfig = {
   shortName: 'overlay',
   logoSrc: '/assets/overlay-logo.png',
   logoAlt: '',
-  homeHref: '/app/agents',
+  homeHref: '/app/work',
   supportEmail: 'divyansh@layernorm.co',
   organizationName: 'Overlay',
 }
@@ -93,6 +93,14 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
 ] as const
 
 export const DEFAULT_OVERLAY_NAVIGATION: readonly OverlayNavigationItem[] = [
+  {
+    id: 'work',
+    href: '/app/work',
+    label: 'Work',
+    icon: 'list-checks',
+    requiredCapabilities: ['work'],
+    subviews: ['list', 'board', 'timeline'],
+  },
   {
     id: 'agents',
     href: '/app/agents',

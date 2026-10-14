@@ -1,11 +1,75 @@
 # Release workflow migration plan
 
-Moves Overlay from direct pushes to `main` plus an optional branch-based staging
-lane, using one shared dev Convex, to the target workflow in
-[`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
-merge queue on `main`, on-demand exact-main release candidates, manual production promotion.
+> Current policy (2026-10-14): follow `docs/develop/Development Workflow.md`.
+> Vercel’s native Git integration deploys main to production. Keep root
+> `git.deploymentEnabled.main=true`; no custom production deployer or token.
+> Integration verifies production, synchronizes Convex only for backend changes,
+> and runs smoke checks.
+> PR previews supply sensitive acceptance testing too. Consolidation onto the
+> `overlay-landing` project is configured and its fresh-PR lifecycle verified; the historical staging checkpoints
+> below do not add release prerequisites.
 
-## Current acceptance — 2026-10-13
+
+The original migration history below records the retired staging/candidate lane.
+The current target is [`RELEASE_WORKFLOW_TARGET.md`](RELEASE_WORKFLOW_TARGET.md):
+per-PR previews and automatic Git production in one project, main merge queue
+for cloud Builders, and the authorized local owner integration path.
+
+## Single-project consolidation acceptance — 2026-10-14
+
+- Copied all 70 shared Preview settings to `overlay-landing`, using sandbox WorkOS,
+  test Stripe/model/storage credentials, matching preview backend secrets and a
+  non-expiring Convex preview deploy key. Production values have Production-only
+  targets; no target variable is shared between Preview and Production.
+- New-project PR #217 deployment `dpl_FwpCET3endFXPcfxzuSP9ZWxPuag` reached READY at
+  `a99c3aca29d58bf928de01dac0bd67abfbb96681`. Temporarily moved its canonical custom
+  hostname and verified HTTPS, preview login, workspace API and Files API (200),
+  plus unknown-host HTTPS 404 and Production HTTP 200.
+- Created and stored non-expiring `overlay-landing-preview-control` as
+  `VERCEL_PREVIEW_TOKEN` in GitHub `release-control`; verified access to the new
+  project and denial for the old project. Branch Preview env writes succeeded.
+- Enabled native Git Preview builds and Git deployment-source rules for both
+  environments. The controller now waits for Git builds and manages aliases;
+  it does not create deployments. Production remains Git-only.
+- Native Git acceptance probe PR #219 reached READY at
+  `fed505c94` in deployment `dpl_2HBFiXgGTFB5cYRT9bgZ7tJbkEkv`. The first-push
+  missing-PR-metadata case is fixed with exact public GitHub branch/SHA lookup;
+  nine focused build checks passed. No credentials go to that lookup.
+- Four existing previews (#125, #127, #167, #217) have moved to the new project;
+  each passed sandbox login, workspace API and Files API. The three remaining
+  existing previews (#161, #168, #177) are still rebuilding on Basic. Their
+  domain configurations have moved to the new project; trusted completion
+  controllers are running to assign the READY deployments. These three URLs
+  are pending during the rebuilds; they are not recorded as accepted live QA.
+- Deleted the staging branch after preserving its history at
+  `archive/staging-retired-20261014`; main history protections remain. Removed
+  the obsolete staging ruleset, label and GitHub deployment environments.
+- Deleted dedicated Convex project `3199896`, empty R2 bucket
+  `overlay-release-staging`, its test Stripe webhook, the old Vercel controller
+  token and old GitHub staging secrets. Removed `staging.getoverlay.io` alias
+  and domain registration. Customer production and shared Preview resources remain.
+- Native Production `dpl_DWEbNZiPyHJY4MvFvtJFqhWYtxaY` serves main `05318e1a2`;
+  normal synthetic production sign-in, workspace API and Files API passed.
+- Owner selected Basic builds. Keep on-demand concurrency enabled with one
+  active build per branch; independent PRs build in parallel. Do not restore
+  the earlier globally serial configuration or upgrade slow builds automatically.
+- Deleted Vercel `overlay-web-staging` after moving every remaining domain
+  configuration. Preview and Production now both allow Git-only deployment
+  sources. The temporary migration API source allowance has been removed.
+- Probe #219 passed its native Git build, sandbox login, workspace and Files
+  checks, then closure cleanup (workflow `38606755367`). Closed probe,
+  unknown PR and retired staging hosts all returned HTTPS 404. Its disposable
+  branch, worktree and backend were removed without merging the probe.
+- The controller uses the same non-expiring project-scoped Preview key as builds;
+  management discovery/renewal and workflow `38607103472` passed. The old
+  Preview deploy key is revoked. No controller credential is exposed in web env.
+- Configuration migration and the fresh-PR lifecycle are accepted. The three
+  older Basic rebuilds remain pending independently; consult their `PR Preview`
+  workflows and Vercel builds for final readiness. A pending or failed build is
+  not feature QA. The new workflow requires no staging resource or custom
+  production deployment token.
+
+## Historical acceptance — 2026-10-13
 
 Migration acceptance completed on 2026-10-13. The native main queue accepted the release; current-main candidate [run 38413217001](https://github.com/LayerNorm/overlay-web/actions/runs/38413217001) passed all ten authenticated checks before publication and again at canonical staging. Release `bee84a33a2d4b101bf85d3b179cd30984b556045` was promoted from clean canonical main: production web `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified live before pushing customer Convex `colorful-chickadee-419`. Normal production sign-in, note CRUD/stale-edit 409, fresh Auto reply and reload persistence, Files, realtime tenant authorization and exact synthetic cleanup passed.
 
@@ -674,3 +738,14 @@ Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including na
 ### Asynchronous production build submission
 
 Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
+
+
+## 2026-10-14 current workflow
+
+The owner superseded manual-only production and mandatory staging.
+`docs/develop/Development Workflow.md` is authoritative: merge to main → automatic
+Vercel production deployment → production smoke. Convex synchronizes when backend
+inputs change. Staging is optional for explicitly requested sensitive acceptance.
+Historical migration checkpoints above describe the old policy, not current release
+prerequisites. Production Release owns automatic Vercel deployment; native Git
+builds remain disabled to avoid duplicate releases.

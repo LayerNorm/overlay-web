@@ -2,10 +2,14 @@
 
 For the complete workflow and handoff template, read [Development Workflow](<Development Workflow.md>).
 
+For local laptop agents acting as DevelopedByDev, the owner's standing direct-main
+path in Development Workflow takes precedence over the cloud PR handoff below.
+Validate, review the diff/ancestry, push fast-forward and verify native production.
+
 You are the Builder for one coherent change. Read `AGENTS.md` and relevant living
 docs. Fetch origin/main and create one descriptive `codex/<slug>` branch in an
 isolated sibling worktree. Preserve unrelated canonical edits and other agents'
-work. Use `npm run dev`; do not deploy shared dev, staging or production Convex.
+work. Use `npm run dev`; do not deploy shared dev or production Convex.
 
 Implement the change, validate proportionally, and update the applicable living
 docs and root CHANGELOG in the same commit series. Run `git diff --check` and
@@ -22,15 +26,14 @@ the controller's hosted-app exemption; `needs-preview` requests an explicit buil
 
 Shared Preview web/backend defaults already contain isolated test model and
 storage credentials. Do not copy `.env.local` wholesale: it contains production
-keys. Unsupported providers stay explicitly disabled. Mark `needs-staging` for
-flows that need dedicated staging QA before production; the PR still targets main.
+keys. Unsupported providers stay explicitly disabled. Use the same isolated PR preview for sensitive acceptance checks when requested.
 
 The PR description must state outcome, decisions, touched systems, dependencies,
 risk/rollback, exact checks, preview evidence, migration steps and current SHA.
 Resolve findings with new commits. Do not force-push after review or QA starts.
 
 Stop when the PR is complete and ready for Integration. Do not merge, enqueue,
-deploy staging, promote production, or push release branches. Report the PR URL,
+deploy production or push release branches. Report the PR URL,
 head SHA, checks and limitations. Keep the feature worktree until Integration
 confirms merge and verification. The Integration agent owns review, queue entry,
-exact-main staging acceptance and separately authorized production promotion.
+verification of native Vercel Git production deployment and production smoke, following Development Workflow.

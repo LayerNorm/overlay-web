@@ -1,6 +1,7 @@
 import {
   AUTOMATIONS_UPDATED_EVENT,
   EXTENSIONS_CHANGED_EVENT,
+  WORK_UPDATED_EVENT,
   KNOWLEDGE_RECONCILE_EVENT,
   MCPS_CHANGED_EVENT,
   SKILLS_CHANGED_EVENT,
@@ -33,6 +34,7 @@ export function refreshAfterRestore(resource: ScopedResourceKind): void {
   if (typeof window === 'undefined') return
   if (resource === 'files') window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))
   else if (resource === 'automations') window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
+  else if (resource === 'work') window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
   else if (resource === 'skills') {
     window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
     window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))

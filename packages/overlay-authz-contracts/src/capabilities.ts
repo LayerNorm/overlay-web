@@ -24,6 +24,7 @@ export const AUTHORIZATION_CAPABILITY_DEFINITIONS = [
   { key: 'notes.read', category: 'content', label: 'View notes' },
   { key: 'notes.edit', category: 'content', label: 'Edit notes' },
   { key: 'notes.delete', category: 'content', label: 'Delete notes' },
+  { key: 'work.use', category: 'content', label: 'Use work (tasks, board, timeline)' },
   { key: 'outputs.read', category: 'content', label: 'View generated outputs' },
   { key: 'outputs.delete', category: 'content', label: 'Delete generated outputs' },
   { key: 'models.use', category: 'ai', label: 'Use models' },

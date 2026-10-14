@@ -29,6 +29,7 @@ import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
 import { SurfacesClient } from './surfaces/client'
 import { WebhooksClient } from './webhooks/client'
+import { WorkClient } from './work/client'
 import { WorkspacesClient } from './workspaces/client'
 import { createHttpContext } from './shared/http'
 import type { CreateOverlayAppClientOptions } from './shared/types'
@@ -71,6 +72,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     agentProfiles: new AgentProfilesClient(http),
     mcpAccess: new McpAccessClient(http),
     surfaces: new SurfacesClient(http),
+    work: new WorkClient(http),
   }
 }
 

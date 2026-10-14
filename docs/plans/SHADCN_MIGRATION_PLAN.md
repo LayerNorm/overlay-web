@@ -1,15 +1,28 @@
 # shadcn/ui migration plan
 
-_Dated 2026-10-13. Companion visual mockup:
-`docs/plans/mockups/shadcn-migration-preview.html`._
+_Started 2026-10-13. Progress verified 2026-10-14 against GitHub and
+`origin/main` at `6a5218fe9510e3df37ec0d4698b3af328112851f`. Companion visual
+mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/shadcn-migration-preview.html)._
 
 ## Progress
 
-| Phase | Status | PR |
+| Phase | Status | PR / next action |
 |---|---|---|
-| 0a Tailwind v4 | Merged and live in production at `4698f8347caf0bc44b3a0fab29781ff744fc6629`; required CI, candidate acceptance and production smoke passed | [#198](https://github.com/LayerNorm/overlay-web/pull/198) (merged, base `main`) |
-| 0b shadcn foundation | Implemented, folded into the phase-1 PR (deps + `components.json` + real `cn()` land with the first component) | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
-| 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
+| 0a Tailwind v4 | Merged; production acceptance recorded for `4698f8347caf0bc44b3a0fab29781ff744fc6629` | [#198](https://github.com/LayerNorm/overlay-web/pull/198) |
+| 0b shadcn foundation | Merged with Phase 1: dependencies, `components.json`, canonical primitives and `cn()` | [#200](https://github.com/LayerNorm/overlay-web/pull/200) |
+| 1 dialog + alert-dialog | Shared `DialogFrame`/`ConfirmDialog` shims merged. Phase 1b remains: audit and migrate the remaining bespoke dialog consumers and retire hooks only when unused. | [#200](https://github.com/LayerNorm/overlay-web/pull/200); remaining scope below |
+| 2 dropdown-menu + popover | Merged at `7578b6914`; authenticated current-head preview QA and all nine required merge-queue checks passed, including combined menu/select regressions | [#209](https://github.com/LayerNorm/overlay-web/pull/209), [final QA](https://github.com/LayerNorm/overlay-web/pull/209#issuecomment-6161698065) |
+| 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
+| 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
+| 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Not promoted to production. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
+| 6 core form primitives | Not started | Separate 6a, 6b and 6c PRs |
+| 7 niche fills | Not started | After the relevant foundations |
+| 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
+
+Phases 2 and 4 passed preview QA before merging; this does not constitute
+production promotion. Production remains a separately authorized release.
+The baseline inventory below is historical, not the current dependency or
+consumer count. GitHub PRs and their checks remain the integration record.
 
 One scope note vs the original plan: phase 0b's semantic shadcn token
 aliasing (`--card`/`--primary`/…) is deferred — the components consume
@@ -90,8 +103,9 @@ This is designed so any agent that knows shadcn can navigate instantly:
   markup in feature code") and add an ESLint `no-restricted-syntax` rule on
   raw elements so new code can't regress. `check:module-boundaries` and
   `check:bundle-budgets` already enforce package edges and JS cost.
-- **Keep bespoke:** `OverlayMark`/Orb (brand rule), `UsageMeterBar`, `Sidebar`
-  primitives, and domain surfaces (`ComprehensiveModelPicker`, composer,
+- **Keep bespoke:** `OverlayMark`/Orb (brand rule), `UsageMeterBar`, the
+  primary rail's chrome (the secondary panel moved to the shadcn Sidebar
+  parts; see `interface-design.md`), and domain surfaces (`ComprehensiveModelPicker`, composer,
   xyflow canvas, TipTap editor). shadcn provides primitives, not product
   surfaces.
 
@@ -178,10 +192,42 @@ checks of the highest-traffic routes: chat, settings, workspaces).
 
 ## Phase 2 — dropdown-menu + popover
 
-Reimplement `FloatingMenu`/`MenuSurface` internals on Radix (account menu,
-scope actions, model pickers). Free wins: collision-aware positioning,
-typeahead, arrow-key nav, portals. Kills the manual `getBoundingClientRect`
-math — the most fragile code in the current system.
+Canonical `ui/dropdown-menu.tsx` and `ui/popover.tsx` own portals, dismissal,
+focus and collision-aware positioning on the existing z-10090 scale.
+`MenuSurface` retains its standalone visual API and shares the same surface
+classes; it does not invent menu semantics for arbitrary children.
+`FloatingMenu` retains external `anchorRef` support as a Popover and adds an
+optional native `trigger`; action menus use `kind="menu"` with a trigger.
+`MenuItem` retains button props/callbacks and becomes a Radix item only in that
+action-menu context.
+
+Consumer audit:
+
+| Consumer | Semantics / decision |
+|---|---|
+| Direct-message/channel conversation options | DropdownMenu; arrows, Home/End, disabled-item skipping and typeahead |
+| Sidebar account fallback (desktop/mobile) | Popover; usage/storage/apps disclosures and links remain native controls |
+| Workspace/account switcher | Popover; workspace buttons expose pressed state; disclosures, retry and create-dialog handoff remain interactive |
+| Chat/automation header model picker | Popover; generation/selection-mode controls and multi-selection remain native controls; model details use a nested row-anchored Popover |
+| Exported ComprehensiveModelPicker (no current production callers) | Popover; local real-component fixture covers rows, badges, callbacks and model order |
+| ScopeItemActions / ScopeBulkActions | Inline buttons today, not floating menus; unchanged |
+| MenuSurface story | Standalone surface with native buttons; unchanged API |
+
+Integration dependency: #209 includes #208 so the final preview verifies menus
+and selects together. Model-details hover dismissal stays suspended while its
+nested Radix reasoning select is open; pointer locking must not unmount it.
+
+Affected routes: all authenticated app routes with sidebar workspace/account
+chrome; collaboration chats/channels, chat and automation chat headers, and
+agent model settings. No selects, command palette, remaining dialogs or
+app-wide markup sweep are migrated here. The workspace create dialog receives
+an explicit close-focus callback because its original menu item unmounts.
+
+Run `node scripts/qa/menu-interactions.mjs` for real-wrapper and product-picker
+Chromium interaction regressions. Its fixture covers action keyboard/mouse,
+rich controls, legacy anchors, collisions, scrolling, nested dialogs, focus,
+CSS-variable themes and touch. This is independent component evidence, not a
+substitute for current-head authenticated PR-preview QA or all real presets.
 
 ## Phase 3 — tooltip
 
@@ -190,15 +236,74 @@ wrapper (~6 files / ~22 callsites). Smallest PR; instant consistency.
 
 ## Phase 4 — select
 
-`Select`/`ListboxSelect` → Radix Select (14 files), keeping the
-`ListboxSelect` API — everything already funnels through it. Model pickers
-gain real listbox semantics + collision handling.
+`Select`/`ListboxSelect` use canonical Radix Select primitives, preserving the
+option-child and generic APIs. Audit found 24 production consumer files plus
+one chat compatibility re-export and Storybook. Plain-string option rendering
+and source/group order remain unchanged; comprehensive model pickers are outside
+this phase (Phase 2 owns their floating machinery).
+
+Affected surfaces: Settings (link preference, theme preset, default model,
+archived category, MCP token workspace/expiry); Agents (new/editor model,
+reasoning, computer size, provider account, Slack channel, environment); chat
+model qualities (reasoning); Memories (member/type/importance); Extensions MCP
+transport/auth/tool policy; Automations schedule/model/time zone and run replay;
+workspace roles/invites and automatic top-up; ShareDialog target/group/permission;
+authorization/catalog admin; `/oauth/authorize` workspace consent.
+
+Selectable empty options in ShareDialog, run replay, catalog principals and
+agent defaults/accounts cannot be Radix empty item values. A private ID adapter
+preserves them without product changes; original values stay in callbacks/forms.
+Unknown values retain their prompt text. Native `multiple`/`size > 1` is a narrow
+compatibility fallback (no current consumer); native form bridge preserves
+validation, autofill, reset and real change events. Tab closes/advances rather
+than inheriting Radix's Tab trap. See Interface Design for the contract and
+`scripts/qa/select-interactions.mjs` for local browser checks.
+
+Local checks do not replace current-head isolated-preview consumer QA. Required
+coverage includes persisted settings, agent dialogs/scroll containers, sharing
+groups/empty targets, automation time zones/replay, mobile and theme presets.
+Permission/fixture-limited admin, billing and OAuth flows must be reported honestly.
 
 ## Phase 5 — command (cmdk)
 
-Replace `CommandPalette.tsx` (251 lines) internals with cmdk; keep `⌘K`,
-group headers, recent items, arrow+enter. Rewire `GlobalSearchDialog` (its
-only consumer) — also retires a second hand-rolled overlay.
+**Done (2026-10-14, [PR #210](https://github.com/LayerNorm/overlay-web/pull/210)):**
+canonical cmdk primitives live in `packages/overlay-ui/src/components/ui/command.tsx`
+and compose the merged Radix dialog; `CommandPalette` keeps its API and
+`GlobalSearchDialog` is unchanged for consumers. Application-ranked rows bypass
+cmdk filtering (`shouldFilter={false}`). Legacy dialog hooks keep their other
+consumers. cmdk 1.1.1 was added to the manifest/lockfile. Known limits
+carried from the PR: Storybook has an existing app-core export blocker and
+local production prerender needs configured env. Production promotion is a
+separate authorization. The scope and acceptance below are kept as the record.
+
+1. Audit `packages/overlay-ui/src/components/overlays/CommandPalette.tsx`,
+   its public types/exports, Storybook and
+   `src/components/layout/GlobalSearchDialog.tsx` plus actual shortcut owners.
+2. Add canonical cmdk primitives at
+   `packages/overlay-ui/src/components/ui/command.tsx`; keep `@overlay/ui`
+   imports and existing consumer contracts where feasible.
+3. Replace the palette internals and adapt `GlobalSearchDialog` using the
+   merged dialog primitives. Give dismissal, focus trapping/return, scroll
+   locking and keyboard selection one owner each; retire only superseded
+   palette-specific hooks.
+4. Preserve search results/ranking, async behavior, grouping, recent items,
+   breadcrumbs/drill-in where present, loading/empty states, disabled rows,
+   callbacks and destinations. Avoid cmdk filtering or reordering results
+   already filtered/ranked by the app. Preserve Cmd/Ctrl+K, arrows, Enter,
+   Escape, Tab behavior and normal typing outside the palette.
+5. Preserve Overlay dimensions, CSS variables/presets, portal stacking and
+   responsive styling. Do not broaden into menus/selects, Phase 1b, forms,
+   the markup sweep or search-backend redesign.
+
+**Acceptance:** proportionate type/lint/boundary and interaction checks, then
+current-head authenticated QA on `pr-<number>.preview.getoverlay.io`: shortcut
+open/close and reopen, recent/search/clear/no-results/loading, grouped and
+long lists, mouse/keyboard activation and real destinations, focus trap and
+return, outside dismissal, mobile, light/dark and preset themes. Include exact
+preview SHA, screenshots, commands and honest fixture/permission limitations
+in the PR. A new app revision requires fresh affected preview QA. Update
+applicable living docs, this progress section and root CHANGELOG in the same
+PR. Integration owns merge and any separately authorized production release.
 
 ## Phase 6 — core form primitives (split to keep diffs reviewable)
 

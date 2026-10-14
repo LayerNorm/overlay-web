@@ -24,3 +24,13 @@ import { Button } from '@overlay/ui'
 ## License
 
 AGPL-3.0-only
+
+### Floating surfaces
+
+`FloatingMenu` preserves the external `anchorRef` API for rich popovers; use its
+optional `trigger` for native focus/expanded-state handling. Action-only menus
+use `kind="menu"` plus a trigger and `MenuItem` children. Rich controls use
+`Popover` / `PopoverTrigger` / `PopoverContent` from `@overlay/ui/primitives`.
+`MenuSurface` is a standalone styled surface, without implied menu semantics.
+Radix owns positioning, portals and dismissal; do not add document dismissal
+listeners in consumers.

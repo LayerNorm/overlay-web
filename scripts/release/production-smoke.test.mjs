@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { productionSmoke } from './production-smoke.mjs'
-import { PRODUCTION } from './production-control.mjs'
+import { PRODUCTION, productionDeploymentMatches } from './production-control.mjs'
 
 const sha = 'a'.repeat(40)
 function fixture({ badLogin = false, badConflict = false, badChat = false, badCleanup = false, badNavigation = false } = {}) {
@@ -9,8 +9,7 @@ function fixture({ badLogin = false, badConflict = false, badChat = false, badCl
   const env = { PRODUCTION_SMOKE_EMAIL: 'overlay-release-qa@getoverlay.io',
     PRODUCTION_SMOKE_PASSWORD: 'private-fixture', PRODUCTION_SMOKE_USER_ID: 'user_productionQA' }
   const deployment = { id: 'dpl_prod', projectId: PRODUCTION.projectId, target: 'production', readyState: 'READY',
-    url: 'proof.vercel.app', meta: { overlayReleaseLane: 'production', overlayReleaseSha: sha,
-      overlayConvexBackend: PRODUCTION.backend, githubCommitSha: sha, githubCommitRef: 'main' } }
+    url: 'proof.vercel.app', meta: { githubCommitSha: sha, githubCommitRef: 'main' } }
   const response = (status, body = {}) => ({ status: () => status, json: async () => body })
   let edited = false, rejectResponse
   const page = { on: () => {}, locator: selector => {
@@ -80,5 +79,15 @@ test('production smoke refuses a sandbox identity or unpublished web before send
       deployment: { id: 'dpl_other' } } : fixture().vercel(path)
     await assert.rejects(productionSmoke(f))
     assert.equal(f.calls.length, 0)
+  }
+})
+
+test('native Git production requires the accepted main SHA and production target', () => {
+  const d = fixture().deployment
+  assert.equal(productionDeploymentMatches(d, sha), true)
+  for (const patch of [{ target: null }, { readyState: 'ERROR' },
+    { meta: { githubCommitSha: 'b'.repeat(40), githubCommitRef: 'main' } },
+    { meta: { githubCommitSha: sha, githubCommitRef: 'codex/feature' } }]) {
+    assert.equal(productionDeploymentMatches({ ...d, ...patch }, sha), false)
   }
 })
