@@ -174,6 +174,11 @@ export default function AppSidebar({
           nav={s.panelNav}
           action={s.panelAction}
           search={s.panelSearch}
+          open={!s.sidebarCollapsed}
+          onOpenChange={(open) => {
+            s.setAccountMenuOpen(false)
+            s.setSidebarCollapsed(!open)
+          }}
           className={`hidden h-full transition-[width,opacity,border-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
             s.sidebarCollapsed || s.hideTemporaryChatChrome
               ? 'w-0 border-transparent opacity-0 pointer-events-none invisible'
