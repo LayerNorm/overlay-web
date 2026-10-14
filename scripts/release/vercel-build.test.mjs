@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import test from 'node:test'
-import { buildPlan, deploymentEnvFile, runBuild } from './vercel-build.mjs'
+import { buildPlan, deploymentEnvFile, runBuild, previewBuildEnvironment } from './vercel-build.mjs'
 
 const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
@@ -92,4 +92,29 @@ test('preview rebuild repairs missing fixtures after deploy and never seeds a fa
     assert.equal(calls.length, Math.min(failAt + 1, 2))
     if (calls[1]) assert.deepEqual(calls[1].args.slice(0, 5), ['run', 'dev/seed:init', '{}', '--deployment', 'preview/pr-123'])
   }
+})
+
+
+test('Git first-push lookup accepts only the exact open internal main PR', async () => {
+  const env = { ...preview, VERCEL_GIT_PULL_REQUEST_ID: '', VERCEL_GIT_COMMIT_REF: 'codex/probe',
+    VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }
+  const pr = { number: 219, state: 'open', base: { ref: 'main', repo: { full_name: 'LayerNorm/overlay-web' } },
+    head: { ref: 'codex/probe', sha: 'a'.repeat(40), repo: { full_name: 'LayerNorm/overlay-web' } } }
+  let time = 0, calls = 0
+  const resolved = await previewBuildEnvironment(env, { now: () => time, sleep: async ms => { time += ms },
+    fetchImpl: async (url, options) => {
+      assert.equal(url.searchParams.get('head'), 'LayerNorm:codex/probe')
+      assert.equal(options.headers.authorization, undefined)
+      return { ok: true, json: async () => ++calls === 1 ? [] : [pr] }
+    } })
+  assert.equal(resolved.VERCEL_GIT_PULL_REQUEST_ID, '219')
+  assert.equal(env.VERCEL_GIT_PULL_REQUEST_ID, '')
+  for (const candidate of [{ ...pr, state: 'closed' }, { ...pr, base: { ...pr.base, ref: 'other' } },
+    { ...pr, head: { ...pr.head, sha: 'b'.repeat(40) } },
+    { ...pr, head: { ...pr.head, repo: { full_name: 'outside/fork' } } }]) {
+    time = 0
+    await assert.rejects(previewBuildEnvironment(env, { now: () => time, sleep: async ms => { time += ms },
+      fetchImpl: async () => ({ ok: true, json: async () => [candidate] }) }), /Open a main PR/)
+  }
+  assert.equal(await previewBuildEnvironment(preview, { fetchImpl: () => { throw Error('unexpected lookup') } }), preview)
 })
