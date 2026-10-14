@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- **Command search uses cmdk and the shared modal primitives (shadcn Phase 5).** Preserve category drill-in, application-ranked async results, destinations and Overlay themes; keyboard selection, disabled rows, focus containment/return and scroll locking now share canonical owners.
+- **Command search uses cmdk and the shared modal primitives (shadcn Phase 5).** Preserve category drill-in, application-ranked async results, destinations and Overlay themes; keyboard selection, disabled rows, focus containment/return and scroll locking now share canonical owners. Long result descriptions leave their titles visible on mobile.
 
 - Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 

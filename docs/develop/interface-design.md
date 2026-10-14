@@ -57,6 +57,8 @@ Legacy presence/focus hooks remain for other bespoke dialogs until Phase 1b.
 
 The palette uses the same Overlay tokens, 576px maximum width, 12vh top offset,
 70vh maximum height, 16px mobile gutter and the shared z-10070 dialog layer.
+Descriptions cap at 45% of their row so long agent instructions cannot hide
+the result title or overflow the mobile palette.
 Run `node scripts/qa/command-interactions.mjs` for real palette/search-wrapper
 regressions with deterministic search fixtures, macOS/Windows shortcuts,
 long/grouped lists, CSS presets and mobile sizing. Current-head authenticated

@@ -162,7 +162,15 @@ export function CommandPalette({
                     className="h-4 w-4 shrink-0 rounded-sm object-contain"
                   />
                 ) : row.icon ? (
-                  <span className="shrink-0 opacity-70 [&_svg]:h-4 [&_svg]:w-4">{row.icon}</span>
+                  <span
+                    className={
+                      row.kind === 'action'
+                        ? 'shrink-0 [&_svg]:h-4 [&_svg]:w-4'
+                        : 'shrink-0 opacity-70 [&_svg]:h-4 [&_svg]:w-4'
+                    }
+                  >
+                    {row.icon}
+                  </span>
                 ) : null}
                 <span
                   className={
@@ -184,7 +192,7 @@ export function CommandPalette({
                   />
                 ) : null}
                 {row.kind === 'item' && row.description ? (
-                  <span className="ml-2 shrink-0 truncate text-[11px] text-(--muted-light)">
+                  <span className="ml-2 max-w-[45%] shrink-0 truncate text-[11px] text-(--muted-light)">
                     {row.description}
                   </span>
                 ) : null}

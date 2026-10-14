@@ -20,7 +20,7 @@ import{GlobalSearchDialog}from'./src/components/layout/GlobalSearchDialog';
 import{PRESETS}from'./packages/overlay-app-core/src/theme/presets';window.presets=PRESETS;window.activations=[];window.destinations=[];
 function App(){const[open,setOpen]=useState(false),[query,setQuery]=useState(''),[crumb,setCrumb]=useState(false),[mode,setMode]=useState('product'),[loading,setLoading]=useState(false),[empty,setEmpty]=useState(false);window.fixture=(next)=>{setMode(next);setQuery('');setCrumb(false);setLoading(next==='loading');setEmpty(next==='empty')};
 useHotkeys(requireShortcutHotkey('global.search'),()=>setOpen(v=>!v),{preventDefault:true,enableOnFormTags:true,enableOnContentEditable:true});
-const rows=mode==='long'?Array.from({length:80},(_,i)=>({kind:'item',id:'item-'+i,label:'Result '+i,description:'Long result description'})):mode==='loading'||mode==='empty'?[]:[{kind:'action',id:'z',label:'Zulu',emphasized:true},{kind:'item',id:'disabled',label:'Disabled',disabled:true},{kind:'category',id:'a',label:'Alpha'},{kind:'item',id:'b',label:'Beta',description:'Description'}];
+const rows=mode==='description'?[{kind:'item',id:'described',label:'Overlay',description:'Master workspace agent with full access to workspace context, memory, files, notes, automations, and all tools.'}]:mode==='long'?Array.from({length:80},(_,i)=>({kind:'item',id:'item-'+i,label:'Result '+i,description:'Long result description'})):mode==='loading'||mode==='empty'?[]:[{kind:'action',id:'z',label:'Zulu',emphasized:true},{kind:'item',id:'disabled',label:'Disabled',disabled:true},{kind:'category',id:'a',label:'Alpha'},{kind:'item',id:'b',label:'Beta',description:'Description'}];
 return <><button id="opener" onClick={()=>setOpen(true)}>Open search</button><input id="outside" aria-label="Outside input"/><div contentEditable suppressContentEditableWarning id="editor">Editor</div>{mode==='product'?<GlobalSearchDialog open={open} onClose={()=>setOpen(false)} workspaceId="fixture" onNewChat={()=>window.activations.push('new-chat')}/>:<CommandPalette open={open} onClose={()=>setOpen(false)} query={query} onQueryChange={setQuery} rows={rows} loading={loading} emptyState={empty?'No results':undefined} breadcrumb={crumb?{label:'Chats'}:null} onBreadcrumbBack={()=>setCrumb(false)} onActivateRow={row=>{window.activations.push(row.id);if(row.kind==='category')setCrumb(true);else setOpen(false)}}/>}
 {mode==='groups'?<Command shouldFilter={false} label="Grouped fixture"><CommandInput/><CommandList><CommandGroup heading="First"><CommandItem value="zulu">Zulu</CommandItem></CommandGroup><CommandGroup heading="Second"><CommandItem value="alpha">Alpha</CommandItem></CommandGroup></CommandList></Command>:null}</>}
 createRoot(document.getElementById('root')).render(<App/>);
@@ -252,6 +252,16 @@ try {
   const mobile = await dialog.boundingBox()
   assert.ok(mobile.x >= 15 && mobile.x + mobile.width <= 375 && mobile.y + mobile.height <= 844)
   await page.screenshot({ path: path.join(evidence, 'mobile.png') })
+  await close()
+  await page.evaluate(() => window.fixture('description'))
+  await open()
+  const described = dialog.locator('[cmdk-item]')
+  const rowWidth = (await described.boundingBox()).width
+  const labelWidth = (await described.locator('span').first().boundingBox()).width
+  const descriptionWidth = (await described.locator('span').last().boundingBox()).width
+  assert.ok(labelWidth >= 50, 'Long descriptions must leave the agent name visible')
+  assert.ok(descriptionWidth <= rowWidth * 0.45 + 1)
+  await page.screenshot({ path: path.join(evidence, 'mobile-long-description.png') })
   await close()
   await page.evaluate(() => window.fixture('groups'))
   const grouped = page.locator('[cmdk-root]').filter({ has: page.getByRole('group') })
