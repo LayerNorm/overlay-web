@@ -1,5 +1,11 @@
 # Release workflow migration plan
 
+> Current policy (2026-10-14): follow `docs/develop/Development Workflow.md`.
+> Main deploys directly to Vercel production, followed by production smoke.
+> Staging is optional for explicitly requested sensitive acceptance. The migration
+> checkpoints below retain historical policy and do not add release prerequisites.
+
+
 Moves Overlay from direct pushes to `main` plus an optional branch-based staging
 lane, using one shared dev Convex, to the target workflow in
 [`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
