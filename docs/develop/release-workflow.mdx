@@ -47,7 +47,13 @@ The trusted `PR Preview` GitHub workflow uses the project-scoped, non-expiring
 `VERCEL_PREVIEW_TOKEN` to manage branch app URLs and ordinary custom aliases.
 It waits for the exact READY Git deployment and validates its SHA and per-PR
 Convex backend before reporting success. It does not create deployments.
-If an old backend has expired, push a new PR revision to trigger a Git rebuild. Preview and Production variable targets are separate.
+If an old backend has expired, push a new PR revision to trigger a Git rebuild.
+For a first push that starts before PR creation, the build wrapper briefly looks
+up the public repository’s open internal main PR and verifies its exact branch
+and SHA. This lookup sends no credentials. Vercel PR metadata remains the normal path.
+Keep project on-demand concurrency enabled in `WAIT_FOR_NAMESPACE_QUEUE` mode
+(**Run up to one build per branch**). Different PRs build in parallel; pushes
+sharing one per-PR backend remain sequential. Concurrency does not supply PR identity. Preview and Production variable targets are separate.
 The `codex/preview-unassigned` wildcard branch has no deployment alias, so
 unknown or closed PR hosts return HTTPS 404.
 
@@ -72,8 +78,10 @@ Main protection is consolidated in ruleset `21959970`: PRs, conversation
 resolution, nine required GitHub Actions checks and the native merge queue.
 The duplicate classic owner-only push protection was retired; queue publication
 is governed by these rules. History ruleset `16007495` separately blocks force
-pushes and deletion for main/staging with no bypass. Legacy staging is frozen by
-`24986525`. Owner emergency bypass and zero sole-author approvals remain.
+pushes and deletion for main with no bypass. The staging freeze ruleset was
+removed when the retired branch was deleted; its history is preserved at
+`archive/staging-retired-20261014`. The authorized local owner path and zero
+sole-author approvals remain.
 Queue interaction probes #196/#197 passed individually but their combined tree
 was marked UNMERGEABLE; both closed without merging and the temporary check was
 removed. PR #195 merged through the native queue at

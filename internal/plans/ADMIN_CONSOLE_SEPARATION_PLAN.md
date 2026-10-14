@@ -82,7 +82,7 @@ Operator and workspace admin are two different jobs:
          │ (no admin writes, no admin reads)                 + operator's WorkOS token, checked again in Convex
          ▼                                                                   ▼
    ┌─────────────────────────────────────────────────────────────────────────────────────┐
-   │ Convex (same deployments: per-PR preview / staging / colorful-chickadee-419)         │
+   │ Convex (same deployments: per-PR preview / colorful-chickadee-419)         │
    │  admin functions        → ADMIN_API_SECRET + active administrativePrincipals row    │
    │  permission-check reads → still INTERNAL_API_SECRET (web app needs them)             │
    │  appendAuditByServer    → still INTERNAL_API_SECRET (append-only)                    │
@@ -274,7 +274,7 @@ runs.
 
 ### Checking IP allowlisting
 
-Having `staging.getoverlay.io` on Vercel only shows that you can add custom domains. It doesn't tell you anything about IP
+Having a custom Vercel domain only shows that you can add custom domains. It doesn't tell you anything about IP
 allowlisting. Two ways to check:
 
 1. **Trusted IPs** (Deployment Protection): open Project → Settings → Deployment Protection. If the Trusted IPs section

@@ -442,9 +442,9 @@ Test at multiples of current peak rather than only with one browser session:
 - Confirm that billing and usage cannot duplicate under retries.
 - Compare latency, error rate, and total cost with the measured Convex baseline.
 
-### Phase 4: move staging and soak
+### Phase 4: isolated PR acceptance and soak
 
-Switch `staging.getoverlay.io` only after the isolated environment passes.
+Use the current `pr-<number>.preview.getoverlay.io` deployment after its isolated environment passes.
 Exercise the complete product surface for a sustained period:
 
 - Personal Chat and Work mode.

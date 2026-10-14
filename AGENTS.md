@@ -24,6 +24,8 @@
 - Streaming text must render in complete, markdown-formatted chunks without per-character diffs that cause visible flickering. Agent loading should use bottom-placed dots, not parallel "Thinking..." text. Tool-call/action UIs should be minimal, collapsed, and sequential by default.
 - For quick UI prototypes, visual mockups, or throwaway demos, create a standalone HTML file and preview it in the browser—don't scaffold app code or routes until the design is approved. Before creating the file, ask the user where to place it. The default is `internal/plans/mockups/` (tracked in git, so the mockup can be committed); the alternative is `artifacts/` at the repo root (gitignored, for scratch work that should not be committed). Don't force-add files from `artifacts/`.
 
+- Vercel build preference (2026-10-14): keep the Basic build machine and on-demand concurrency enabled with one active build per branch (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel. Let Basic builds finish; do not upgrade the machine merely because a build is slow.
+
 ## Learned Workspace Facts
 
 - This Next.js app selects Convex URL from env: development commonly uses `DEV_NEXT_PUBLIC_CONVEX_URL` for a separate dev backend from production `NEXT_PUBLIC_CONVEX_URL`.

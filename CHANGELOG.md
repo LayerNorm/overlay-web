@@ -9,6 +9,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Internal documentation now lives in `internal/` at the repo root (`internal/develop/` living docs, `internal/plans/` point-in-time plans), so `docs/` contains only the public Mintlify site. Public pages must not link to internal docs; `docs:health` and the preview-build maintenance predicate were updated accordingly.
 - Merged three doc pairs: the computers web-wiring record into `COMPUTERS_PLAN`, the playwright-cli guide into `browser-testing-with-agent-browser.md`, and the connected-agent architecture diagrams into `bring-your-own-agents.md`. Slimmed `traversing-agent-conversations.md` (removed unused Grok Build/Windsurf session formats) and trimmed `todos.md` (removed the completed managed-harness rollout history).
 - Added a documentation lifecycle rule to `AGENTS.md`: plans carry a `Status:` line and are deleted by the PR that lands their last phase; dated audits and baselines never live in the repo; no production metrics, customer names, or infra internals in committed docs.
+- Resolve first-push Preview PR identity from exact public Git metadata when Vercel starts before the draft PR opens.
 - Consolidate PR previews and native Git production deployments in `overlay-landing`, retaining custom PR URLs, isolated Convex backends and shared Preview test credentials. Retire the separate staging release lane.
 
 ### Removed

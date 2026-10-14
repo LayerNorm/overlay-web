@@ -87,17 +87,12 @@ lint, shared-isomorphic, docs health, on-prem baseline, complexity
 ratchet all green. Deploy ordering is web-first safe: old Convex
 functions simply don't write `agentId`.
 
-### Known gap — dev/staging lane
+### Historical dev deployment gap
 
-Dev Convex (`different-caiman-77`) does **not** have the Phase B
-functions (`agentThreads:*`, migrations). `convex codegen` uploads
-component defs for typegen only — not a function deploy. The dedicated
-staging worktree (`overlay-landing-staging`) holds
-`staging@08e87864a`, which predates Phase B. To put Phase B on
-`staging.getoverlay.io`/dev: update `staging` to include the Phase B
-commits in that worktree, then `npm run convex:push:dev`, then run the
-same two-phase migration against dev. This is an owner-approved
-decision, not a default step.
+The earlier dev deployment lacked Phase B functions and migrations. Revalidate
+an explicitly selected engineer-owned dev backend before applying those migrations;
+`convex codegen` alone does not deploy functions. Hosted acceptance now uses the
+isolated main PR preview. The old staging branch and worktree are retired.
 
 ## Phase C — environment contention prompt 🚧
 
@@ -183,16 +178,13 @@ anyway and asks you — wait / browser+sandbox / temporary computer."
 
 ## Operating rules that bind this work
 
-- `npm run convex:push:dev` runs **only** from the dedicated
-  `overlay-landing-staging` worktree (staging lane); production pushes
-  only from clean canonical `main` with explicit authorization. Never
-  `convex:push:all`/`convex:push:prod`/`convex:deploy` from a feature
-  worktree.
-- Production Vercel deploys are manual (`vercel.json` keeps
-  `git.deploymentEnabled.main=false` — preserve it).
-- Builder implements + opens PR against `staging`; Integration owns
-  merge/staging QA/promotion — unless the owner requests the direct
-  fast-forward path.
+- Local dev deploys only to an explicitly selected engineer-owned backend.
+  Hosted PR builds deploy only their scoped Preview backend. Customer Convex
+  deploys only from clean current canonical main after matching web is live.
+- Vercel Git automatically deploys main; keep `git.deploymentEnabled.main=true`.
+- Builder opens a main PR and verifies its isolated preview; Integration reviews,
+  enqueues it, and verifies automatic Production. Follow Development Workflow,
+  including the standing local owner path. There is no staging promotion.
 - Maintain root `CHANGELOG.md` for user-visible changes reaching main.
 
 ## Open questions
