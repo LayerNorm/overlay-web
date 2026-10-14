@@ -211,5 +211,5 @@ test('staging workflow remains gated, serialized and main-only with no package i
     if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/)
   }
   const vercel = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url)))
-  assert.equal(vercel.git.deploymentEnabled.main, false)
+  assert.equal(vercel.git.deploymentEnabled.main, true, 'Native Vercel Git owns customer production; staging remains manually dispatched')
 })
