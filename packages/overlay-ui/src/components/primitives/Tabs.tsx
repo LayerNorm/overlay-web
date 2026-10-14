@@ -1,39 +1,45 @@
-import type { ButtonHTMLAttributes, HTMLAttributes } from 'react'
+import { useId, type ButtonHTMLAttributes, type HTMLAttributes } from 'react'
+
+import {
+  Tabs as TabsPrimitiveRoot,
+  TabsList as TabsPrimitiveList,
+  TabsTrigger,
+} from '../ui/tabs'
 import { cn } from '../../utils/cn'
 
 export function TabsList({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      role="tablist"
-      className={cn('inline-flex rounded-lg bg-(--surface-subtle) p-0.5', className)}
-      {...props}
-    />
+    <TabsPrimitiveRoot className="contents">
+      <TabsPrimitiveList className={className} {...props} />
+    </TabsPrimitiveRoot>
   )
 }
 
 export interface TabButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   active?: boolean
+  value?: string
 }
 
 export function TabButton({
   active,
   type = 'button',
   className,
+  value,
+  children,
   ...props
 }: TabButtonProps) {
+  const generatedValue = useId()
   return (
-    <button
+    <TabsTrigger
       type={type}
-      role="tab"
-      aria-selected={active}
+      value={value ?? generatedValue}
       className={cn(
-        'inline-flex items-center justify-center rounded-md px-2.5 py-1 text-xs transition-colors',
-        active
-          ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs'
-          : 'text-(--muted) hover:text-(--foreground)',
+        active && 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs',
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+    </TabsTrigger>
   )
 }
