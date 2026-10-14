@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resolve first-push Preview PR identity from exact public Git metadata when Vercel starts before the draft PR opens.
+
 - Consolidate PR previews and native Git production deployments in `overlay-landing`, retaining custom PR URLs, isolated Convex backends and shared Preview test credentials. Retire the separate staging release lane.
 
 - Authorize local laptop agents under DevelopedByDev to integrate directly into main with validated fast-forward pushes; cloud Builder threads retain PR previews and the merge queue.

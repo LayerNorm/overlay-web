@@ -4,6 +4,37 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+/** A Git push can start building before the draft PR is opened. */
+export async function previewBuildEnvironment(env, { fetchImpl = fetch,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
+  if (env.VERCEL_ENV !== 'preview' || /^[1-9]\d*$/.test(env.VERCEL_GIT_PULL_REQUEST_ID ?? '')) return env
+  if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_SLUG !== 'overlay-web'
+    || !env.VERCEL_GIT_COMMIT_REF || !/^[a-f0-9]{40}$/.test(env.VERCEL_GIT_COMMIT_SHA ?? '')) {
+    throw new Error('Missing trusted Git metadata for PR lookup')
+  }
+  // This repository is public. Never send provider or deployment credentials
+  // to GitHub, and accept only an open internal main PR at this exact revision.
+  const url = new URL('https://api.github.com/repos/LayerNorm/overlay-web/pulls')
+  url.search = new URLSearchParams({ state: 'open', base: 'main',
+    head: 'LayerNorm:' + env.VERCEL_GIT_COMMIT_REF, per_page: '100' }).toString()
+  const deadline = now() + 120_000
+  do {
+    const response = await fetchImpl(url, { headers: { accept: 'application/vnd.github+json' },
+      redirect: 'error', signal: AbortSignal.timeout(15_000) })
+    if (!response.ok) throw new Error('Public PR lookup failed: HTTP ' + response.status)
+    const matches = (await response.json()).filter(pr => pr.state === 'open'
+      && pr.base?.ref === 'main' && pr.base?.repo?.full_name === 'LayerNorm/overlay-web'
+      && pr.head?.repo?.full_name === 'LayerNorm/overlay-web'
+      && pr.head?.ref === env.VERCEL_GIT_COMMIT_REF && pr.head?.sha === env.VERCEL_GIT_COMMIT_SHA)
+    if (matches.length > 1) throw new Error('Ambiguous preview PR source')
+    if (matches.length === 1 && Number.isSafeInteger(matches[0].number) && matches[0].number > 0) {
+      return { ...env, VERCEL_GIT_PULL_REQUEST_ID: String(matches[0].number) }
+    }
+    await sleep(10_000)
+  } while (now() < deadline)
+  throw new Error('Open a main PR for this exact revision before building its preview')
+}
+
 /** Select the lane before starting a command that can deploy Convex. */
 export function buildPlan(env) {
   // Existing PR heads still expect the old lane name. New heads use preview.
@@ -101,7 +132,7 @@ export function runBuild(env = process.env, spawn = spawnSync) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { process.exitCode = runBuild() } catch (error) {
+  try { process.exitCode = runBuild(await previewBuildEnvironment(process.env)) } catch (error) {
     console.error(error.message)
     process.exitCode = 1
   }
