@@ -65,7 +65,7 @@ export function AgentThreadRows({
               isActive={active}
               aria-current={active ? 'page' : undefined}
               onClick={() => onOpenThread(agent, thread.conversationId)}
-              className="group-hover/menu-sub-item:pr-14 group-focus-within/menu-sub-item:pr-14"
+              className="pr-14"
             >
               <MessageSquare aria-hidden />
               <span className="flex-1 truncate">{thread.title}</span>

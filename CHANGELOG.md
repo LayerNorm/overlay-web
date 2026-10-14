@@ -5,6 +5,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - **The secondary sidebar uses the shadcn Sidebar.** Agents expand into an indented tree under a vertical guide line (threads, automations, New thread); hovering an agent shows a quick New thread button, and hovering a thread shows Archive and Delete. Loading shows row-shaped placeholders instead of a spinner line. Navigation rows (Chats, Files, Work, Settings) share the same menu parts, and a thin handle on the panel's edge hides it. Behavior and routes are unchanged. New `Sidebar*` parts are exported from `@overlay/ui/primitives`.
+
+- **Command search uses cmdk and the shared modal primitives (shadcn Phase 5).** Preserve category drill-in, application-ranked async results, destinations and Overlay themes; keyboard selection, disabled rows, focus containment/return and scroll locking now share canonical owners. Long result descriptions leave their titles visible on mobile.
+
 - Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 
 - Wrap open-select Tab/Shift+Tab navigation within actual modal dialogs, including disabled footer actions; non-modal popovers advance outside their panel.

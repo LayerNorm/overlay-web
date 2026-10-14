@@ -450,8 +450,8 @@ function AgentListRow({
       <SidebarMenuButton
         isActive={isActive}
         disabled={anyOpening}
-        // Room for the two actions on the right: New thread (on hover) and the chevron.
-        className="group-hover/menu-item:pr-14 group-focus-within/menu-item:pr-14"
+        // Reserve both actions on touch too; they are always visible below md.
+        className="group-has-data-[sidebar=menu-action]/menu-item:pr-14"
         onClick={() => {
           if (!isExpanded) onToggleExpanded(agent.id)
           onOpenAgent(agent)

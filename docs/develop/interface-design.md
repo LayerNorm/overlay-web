@@ -37,6 +37,33 @@ closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
 in isolated Chromium (requires the Playwright Chromium browser).
 
+## Command palette
+
+`CommandPalette` keeps its controlled `@overlay/ui` API over canonical cmdk
+primitives in `components/ui/command.tsx`. The merged Radix dialog owns portal,
+outside/Escape dismissal, focus containment and scroll lock; the existing
+return-focus hook restores controlled openers. The sidebar shortcut registry
+remains the sole Cmd/Ctrl+K owner, including composer and contenteditable inputs.
+
+cmdk owns active-descendant selection, pointer activation, disabled-row skipping
+and list scrolling. `shouldFilter={false}` preserves application-ranked results
+and category order; `vimBindings={false}` leaves Ctrl+K to the shortcut owner.
+The input keeps focus while navigating results. Tab stays within the modal;
+the breadcrumb is its only other Tab stop. Enter on the breadcrumb goes back
+without also activating a result. Escape goes back once in a category, then
+closes at the root. Rows keep stable IDs, callbacks, icons and descriptions.
+`GlobalSearchDialog` still owns async queries, cancellation and real destinations.
+Legacy presence/focus hooks remain for other bespoke dialogs until Phase 1b.
+
+The palette uses the same Overlay tokens, 576px maximum width, 12vh top offset,
+70vh maximum height, 16px mobile gutter and the shared z-10070 dialog layer.
+Descriptions cap at 45% of their row so long agent instructions cannot hide
+the result title or overflow the mobile palette.
+Run `node scripts/qa/command-interactions.mjs` for real palette/search-wrapper
+regressions with deterministic search fixtures, macOS/Windows shortcuts,
+long/grouped lists, CSS presets and mobile sizing. Current-head authenticated
+preview QA remains required; fixture routes are not live-navigation evidence.
+
 ## Delayed tooltips
 
 `DelayedTooltip` preserves its layout wrapper and attaches Radix's trigger to
@@ -271,6 +298,7 @@ A real tree is indented under a guide line: an agent's threads, automations and 
 vertical line at the left of the group, children inset from it), as do the files folder tree and any other list where
 depth is the content. Row actions (New thread, Archive, Delete) are `SidebarMenuAction`s that appear when that row is
 hovered or focused, scoped to the row's own `group/menu-sub-item`, never the agent that contains it.
+On touch layouts these actions stay visible; reserve their width in agent/thread rows so long titles cannot render underneath them.
 
 What a navigation row reveals (a scope's Personal/Workspace sub-rows, a section's pages) is not indented: it lines up
 with the row that opened it, and a chevron plus the smaller type size mark it as nested. `InlineNavChildren` enforces
