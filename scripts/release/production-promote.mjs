@@ -13,6 +13,7 @@ import { PRODUCTION, promotionEvidence, productionCredentials, productionDeploym
 import { productionSmoke } from './production-smoke.mjs'
 import { verifiedSmoke } from './staging-publish.mjs'
 import { backendInputsChanged } from './production-inputs.mjs'
+import { synchronizeBackend } from './production-backend.mjs'
 
 const repo = `/repos/${PRODUCTION.repository}`
 export const RELEASE_CREDENTIAL_NAMES = Object.freeze(['PRODUCTION_SMOKE_EMAIL',
@@ -227,28 +228,18 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         return waitForProductionBuild({ vercel, origin: productionCliOrigin(stdout), sha })
       },
       publishWeb: async d => { cli(['promote', 'https://' + d.url, '--yes']) },
-      pushBackend: async () => {
-        // Both CI and manual retries must ignore a newer, incomplete web release.
-        const releases = await github(`${repo}/actions/workflows/production-release.yml/runs`, {
-          query: { status: 'success', branch: 'main', per_page: 100 } })
-        const previousSha = releases.workflow_runs.find(run => run.head_branch === 'main'
-          && run.path === '.github/workflows/production-release.yml'
-          && run.conclusion === 'success')?.head_sha
-          // Last accepted production backend before automation was enabled.
-          ?? '7578b691417a992060901f53908683297c4cef43'
-        if (!backendInputsChanged({ previousSha, sha, root, run: runCommand })) {
-          console.log('Production Convex unchanged: no backend inputs changed')
-          return false
-        }
-        console.log('release target: customer production Convex ' + PRODUCTION.backend + ' at ' + sha)
-        const path = join(directory, 'production.env')
-        writeFileSync(path, deploymentEnvFile({ CONVEX_DEPLOY_KEY: env.CONVEX_PRODUCTION_DEPLOY_KEY }), { mode: 0o600 })
-        const child = { ...env }
-        for (const key of ['CONVEX_DEPLOY_KEY', 'CONVEX_DEPLOYMENT', 'CONVEX_DEPLOYMENT_TOKEN',
-          'CONVEX_SELF_HOSTED_URL', 'CONVEX_SELF_HOSTED_ADMIN_KEY', 'DEV_NEXT_PUBLIC_CONVEX_URL']) delete child[key]
-        runCommand('npm', ['run', 'convex:push:prod', '--', '--env-file', path, '--typecheck', 'enable'], { cwd: root, env: child })
-        return true
-      },
+      pushBackend: async () => synchronizeBackend({ github, sha,
+        changed: previousSha => backendInputsChanged({ previousSha, sha, root, run: runCommand }),
+        push: async () => {
+          console.log('release target: customer production Convex ' + PRODUCTION.backend + ' at ' + sha)
+          const path = join(directory, 'production.env')
+          writeFileSync(path, deploymentEnvFile({ CONVEX_DEPLOY_KEY: env.CONVEX_PRODUCTION_DEPLOY_KEY }), { mode: 0o600 })
+          const child = { ...env }
+          for (const key of ['CONVEX_DEPLOY_KEY', 'CONVEX_DEPLOYMENT', 'CONVEX_DEPLOYMENT_TOKEN',
+            'CONVEX_SELF_HOSTED_URL', 'CONVEX_SELF_HOSTED_ADMIN_KEY', 'DEV_NEXT_PUBLIC_CONVEX_URL']) delete child[key]
+          runCommand('npm', ['run', 'convex:push:prod', '--', '--env-file', path, '--typecheck', 'enable'], { cwd: root, env: child })
+        },
+      }),
       smoke: async deployment => {
         const { chromium } = await import('playwright')
         return productionSmoke({ env, vercel, deployment, sha, evidenceDirectory: output,

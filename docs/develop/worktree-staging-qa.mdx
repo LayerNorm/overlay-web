@@ -243,6 +243,14 @@ release secrets. GitHub uses an ephemeral Actions token and verifies the active
 main release run. Evidence is saved as `production-release-<sha>`, including the
 previous deployment and last completed phase. Inspect that checkpoint on failure.
 
+Backend synchronization records its own GitHub deployment state under
+`overlay-convex-production-sync`, before and immediately after the Convex push.
+It does not infer backend state from web publication or the later smoke result.
+Manual and CI releases use the same marker; an incomplete/failed push forces
+repair. A successful push followed by failed smoke still records the actual
+backend source, so a revert synchronizes the reverted functions. The initial
+baseline is the accepted pre-automation backend at `7578b6914`.
+
 Root native Git builds remain disabled to prevent a duplicate deployment; Actions
 automatically deploys to Vercel. Disable Production Release to pause auto releases.
 Staging is optional and its separate workflow remains available on demand.
