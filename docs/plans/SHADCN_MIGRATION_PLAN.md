@@ -1,18 +1,28 @@
 # shadcn/ui migration plan
 
-_Dated 2026-10-13. Companion visual mockup:
-`docs/plans/mockups/shadcn-migration-preview.html`._
+_Started 2026-10-13. Progress verified 2026-10-14 against GitHub and
+`origin/main` at `7578b691417a992060901f53908683297c4cef43`. Companion visual
+mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/shadcn-migration-preview.html)._
 
 ## Progress
 
-| Phase | Status | PR |
+| Phase | Status | PR / next action |
 |---|---|---|
-| 0a Tailwind v4 | Merged and live in production at `4698f8347caf0bc44b3a0fab29781ff744fc6629`; required CI, candidate acceptance and production smoke passed | [#198](https://github.com/LayerNorm/overlay-web/pull/198) (merged, base `main`) |
-| 0b shadcn foundation | Merged with the phase-1 PR (deps + `components.json` + real `cn()` land with the first component) | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (merged, base `main`) |
-| 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (merged, base `main`) |
-| 2 dropdown-menu + popover | Implemented with action menus on DropdownMenu and rich account/workspace/model controls on Popover. The linked PR records current checks, preview QA and integration status. | [#209](https://github.com/LayerNorm/overlay-web/pull/209) (base `main`) |
-| 3 tooltip | Implemented: canonical `ui/tooltip.tsx`; `DelayedTooltip` reimplemented on Radix Tooltip with unchanged `{label, side}` API (all callsites upgraded untouched); 450 ms delay + hover-only gating preserved | [#202](https://github.com/LayerNorm/overlay-web/pull/202) (merged, base `main`) |
-| 4 select | Implemented with native-form compatibility and modal-aware keyboard traversal. The linked PR records current checks, preview QA and integration status. | [#208](https://github.com/LayerNorm/overlay-web/pull/208) (base `main`) |
+| 0a Tailwind v4 | Merged; production acceptance recorded for `4698f8347caf0bc44b3a0fab29781ff744fc6629` | [#198](https://github.com/LayerNorm/overlay-web/pull/198) |
+| 0b shadcn foundation | Merged with Phase 1: dependencies, `components.json`, canonical primitives and `cn()` | [#200](https://github.com/LayerNorm/overlay-web/pull/200) |
+| 1 dialog + alert-dialog | Shared `DialogFrame`/`ConfirmDialog` shims merged. Phase 1b remains: audit and migrate the remaining bespoke dialog consumers and retire hooks only when unused. | [#200](https://github.com/LayerNorm/overlay-web/pull/200); remaining scope below |
+| 2 dropdown-menu + popover | Merged at `7578b6914`; authenticated current-head preview QA and all nine required merge-queue checks passed, including combined menu/select regressions | [#209](https://github.com/LayerNorm/overlay-web/pull/209), [final QA](https://github.com/LayerNorm/overlay-web/pull/209#issuecomment-6161698065) |
+| 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
+| 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
+| 5 command (cmdk) | Implementation complete; local real-component QA passed (39 presets, mobile, platform shortcuts and search destinations). Current-head hosted acceptance/checks are recorded in the PR; not merged. | [#210](https://github.com/LayerNorm/overlay-web/pull/210); scoped acceptance below |
+| 6 core form primitives | Not started | Separate 6a, 6b and 6c PRs |
+| 7 niche fills | Not started | After the relevant foundations |
+| 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
+
+Phases 2 and 4 passed preview QA before merging; this does not constitute
+production promotion. Production remains a separately authorized release.
+The baseline inventory below is historical, not the current dependency or
+consumer count. GitHub PRs and their checks remain the integration record.
 
 One scope note vs the original plan: phase 0b's semantic shadcn token
 aliasing (`--card`/`--primary`/…) is deferred — the components consume
@@ -255,9 +265,48 @@ Permission/fixture-limited admin, billing and OAuth flows must be reported hones
 
 ## Phase 5 — command (cmdk)
 
-Replace `CommandPalette.tsx` (251 lines) internals with cmdk; keep `⌘K`,
-group headers, recent items, arrow+enter. Rewire `GlobalSearchDialog` (its
-only consumer) — also retires a second hand-rolled overlay.
+**Implementation (2026-10-14):** the replacement Builder owns
+`codex/shadcn-command-palette-restart` from main `7578b6914`. Read-only audit
+found no implementation diff on the old branch. The canonical cmdk primitives
+and retained palette API now compose the merged Radix dialog; application-ranked
+rows bypass cmdk filtering/sorting. Legacy hooks retain their other consumers.
+Current main lacked cmdk in its manifest/lockfile; this PR adds 1.1.1.
+
+UI/app types, targeted lint, UI tests, dialog regression, boundary checks and
+rendered command interactions passed, including 39 presets. [PR #210](https://github.com/LayerNorm/overlay-web/pull/210)
+records exact-head hosted acceptance, checks and readiness. Local fixtures alone
+do not satisfy hosted acceptance. Local production prerender needs configured
+auth/billing/backend env; Storybook has an existing app-core export blocker.
+The scope and acceptance below remain the completion gate.
+
+1. Audit `packages/overlay-ui/src/components/overlays/CommandPalette.tsx`,
+   its public types/exports, Storybook and
+   `src/components/layout/GlobalSearchDialog.tsx` plus actual shortcut owners.
+2. Add canonical cmdk primitives at
+   `packages/overlay-ui/src/components/ui/command.tsx`; keep `@overlay/ui`
+   imports and existing consumer contracts where feasible.
+3. Replace the palette internals and adapt `GlobalSearchDialog` using the
+   merged dialog primitives. Give dismissal, focus trapping/return, scroll
+   locking and keyboard selection one owner each; retire only superseded
+   palette-specific hooks.
+4. Preserve search results/ranking, async behavior, grouping, recent items,
+   breadcrumbs/drill-in where present, loading/empty states, disabled rows,
+   callbacks and destinations. Avoid cmdk filtering or reordering results
+   already filtered/ranked by the app. Preserve Cmd/Ctrl+K, arrows, Enter,
+   Escape, Tab behavior and normal typing outside the palette.
+5. Preserve Overlay dimensions, CSS variables/presets, portal stacking and
+   responsive styling. Do not broaden into menus/selects, Phase 1b, forms,
+   the markup sweep or search-backend redesign.
+
+**Acceptance:** proportionate type/lint/boundary and interaction checks, then
+current-head authenticated QA on `pr-<number>.preview.getoverlay.io`: shortcut
+open/close and reopen, recent/search/clear/no-results/loading, grouped and
+long lists, mouse/keyboard activation and real destinations, focus trap and
+return, outside dismissal, mobile, light/dark and preset themes. Include exact
+preview SHA, screenshots, commands and honest fixture/permission limitations
+in the PR. A new app revision requires fresh affected preview QA. Update
+applicable living docs, this progress section and root CHANGELOG in the same
+PR. Integration owns merge and any separately authorized production release.
 
 ## Phase 6 — core form primitives (split to keep diffs reviewable)
 

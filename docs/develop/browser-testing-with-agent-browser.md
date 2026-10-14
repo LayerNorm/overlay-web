@@ -182,6 +182,18 @@ agent-browser --session member --state ~/.config/devin/agent-browser-overlay-mem
 If the page redirects to a Vercel auth page, the saved state has expired. Re-extract
 cookies from the Chrome profile (see above) and re-save the state.
 
+## Clearing controlled search inputs
+
+For cmdk search, `agent-browser fill <selector> ""` can clear the displayed DOM
+value without firing the React state change. Focus the input, select its text
+and press `Backspace`, then assert both the input value and returned rows.
+CDP may omit the native Select All editing command even when the modifier/key
+events fire; verify `selectionStart`/`selectionEnd`, or call the input's native
+`select()` before a trusted Backspace. This changes selection only, not React
+state. A screenshot of an empty input alone does not prove the query cleared.
+Use sanitized network summaries; raw request inventories can include
+deployment-protection bypass URLs.
+
 ## Core workflow
 
 ```bash

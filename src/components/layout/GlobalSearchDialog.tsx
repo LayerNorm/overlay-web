@@ -2,7 +2,8 @@
 
 /**
  * Global search (Cmd+K) container. Search + navigation wiring stays here;
- * presentation lives in @overlay/ui CommandPalette.
+ * presentation and modal lifecycle live in @overlay/ui CommandPalette.
+ * The sidebar alone owns Cmd/Ctrl+K; cmdk must not filter these ranked rows.
  *
  * Chats, files, automations, skills, MCP servers, and connectors come from
  * the shared mention index. Agents are not mentionable, so they are fetched
@@ -310,8 +311,8 @@ export function GlobalSearchDialog({
         return
       }
       if (row.kind === 'category') {
-        const type = row.id.replace(/^cat-/, '') as SearchType
-        setSelectedCategory(type)
+        const source = rowSources.find(candidate => candidate.kind === 'category' && `cat-${candidate.type}` === row.id)
+        if (source?.kind === 'category') setSelectedCategory(source.type)
         return
       }
       const source = rowSources.find(
