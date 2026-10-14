@@ -1,0 +1,59 @@
+name: Production Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: overlay-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'LayerNorm/overlay-web' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production-release
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install reviewed release dependencies
+        run: npm ci --ignore-scripts
+      - name: Install release browser
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Link the fixed production project
+        run: |
+          mkdir -p .vercel
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { PRODUCTION } from "./scripts/release/production-control.mjs"; writeFileSync(".vercel/project.json", JSON.stringify({projectId: PRODUCTION.projectId, orgId: PRODUCTION.teamId}));'
+      - name: Accept candidate and release exact main
+        run: node scripts/release/automatic-production.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          CONVEX_PRODUCTION_DEPLOY_KEY: ${{ secrets.CONVEX_PRODUCTION_DEPLOY_KEY }}
+          PRODUCTION_SMOKE_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL }}
+          PRODUCTION_SMOKE_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD }}
+          PRODUCTION_SMOKE_USER_ID: ${{ secrets.PRODUCTION_SMOKE_USER_ID }}
+      - name: Save production release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-release-${{ github.sha }}
+          path: artifacts/release-workflow/promotions/
+          if-no-files-found: warn
+          retention-days: 30

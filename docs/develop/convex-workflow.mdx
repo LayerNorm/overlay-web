@@ -17,7 +17,7 @@ For ordinary local web work against the development Convex backend, run Next.js 
 npm run dev
 ```
 
-`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Manually dispatched main release-candidate CI owns dedicated staging; the frozen legacy staging branch/worktree is not a deploy lane.
+`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Serialized main release-candidate CI, dispatched by automatic production or manually, owns dedicated staging; the frozen legacy staging branch/worktree is not a deploy lane.
 
 ## Isolated PR preview backends
 

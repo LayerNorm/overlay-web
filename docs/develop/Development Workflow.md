@@ -39,7 +39,7 @@ Process independent ready PRs while others are still being built or fixed.
 Keep using this thread for subsequent PRs. Report blockers with the exact
 failure and the next action. Stop after the available queue is processed;
 use supported wait or notification tools if this session supports them.
-Production deployment requires separate owner authorization.
+Main pushes automatically release after candidate acceptance; verify the Production Release result.
 ```
 
 ## Builder instructions
@@ -119,24 +119,24 @@ The native merge queue runs required checks on the combined revision containing 
 
 Preserve meaningful commits with merge merging; squash only trivial or noisy history. Ordinary changes go through PRs and the queue. Never force-push, reset, or delete release branches. The emergency bypass requires explicit authorization for that action.
 
-Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Confirm that merging did not create a customer production deployment. Preserve needed work and evidence before archiving a completed feature worktree.
+Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Follow Production Release and verify its accepted main SHA, production deployment and smoke result. Preserve needed work and evidence before archiving a completed feature worktree.
 
 ### 3. Report and continue
 
 Report each accepted PR and main SHA, or the concrete blocker and next action. Describe the state accurately: ready, queued, merged, deployed, or verified. Continue processing the available authorized PRs in this Integration thread.
 
-Main merges do not deploy staging or customer production. Leave the legacy staging branch frozen.
+Main changes automatically run candidate acceptance and production promotion. Leave the legacy staging branch frozen.
 
-## Production release, when authorized
+## Automatic production release
 
-Integration owns the release after the owner authorizes it:
+Production Release runs after every main push. Integration verifies the outcome:
 
-1. Select the exact current main SHA and dispatch its on-demand Release Candidate workflow.
+1. Verify Production Release selected current main and dispatched a fresh Release Candidate.
 2. Verify matching web/backend revisions and authenticated staging smoke. Complete any `needs-staging` feature QA.
-3. From clean current canonical main, run `bash scripts/release/promote.sh <main-sha> --check`, then the same command without `--check`.
+3. The workflow runs the guarded promotion command from clean main CI. Authorized manual recovery uses `bash scripts/release/promote.sh <main-sha> --check`, then without `--check`.
 4. Verify production web publication, matching production Convex, and authenticated smoke. Preserve the release and rollback evidence.
 
-Follow [Staging and Production Promotion](worktree-staging-qa.mdx) for exact commands and recovery. Without production authorization, report the accepted SHA as **merged but not deployed**.
+Follow [Staging and Production Promotion](worktree-staging-qa.mdx) for exact commands and recovery. Report **live and verified** only after production smoke passes; otherwise state the actual merged/building/failed phase.
 
 ## Coordination rules
 

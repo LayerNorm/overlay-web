@@ -1,6 +1,6 @@
 ---
 title: "Release Workflow"
-description: "PR previews, main integration, on-demand release candidates, and manual production."
+description: "PR previews, main integration, release candidates, and automatic production."
 ---
 
 ## Operating contract
@@ -10,7 +10,7 @@ description: "PR previews, main integration, on-demand release candidates, and m
 | Local | Working tree | Engineer-owned dev backend and test credentials |
 | PR preview | Current internal main PR head | Per-PR Convex, synthetic Sandbox identity, shared test credentials |
 | Staging | Accepted main SHA | Dedicated `doting-cuttlefish-819`, Sandbox identity, staging test providers |
-| Customer production | Manually promoted current main SHA | `colorful-chickadee-419`, production identity/providers |
+| Customer production | Automatically promoted current main SHA | `colorful-chickadee-419`, production identity/providers |
 
 Builder verifies a focused main PR on its isolated preview and stops when ready.
 Integration reviews it, resolves findings and enters the main merge queue once
@@ -19,14 +19,16 @@ candidate against current main and earlier queued changes. Keep approving review
 at zero while the sole maintainer cannot approve his own PR; retain history
 protection and the explicit emergency-only owner bypass.
 
-The legacy staging branch is frozen. Main merges do not deploy staging. When
-preparing a production release, manually dispatch the exact current main candidate
+The legacy staging branch is frozen. Main pushes start Production Release. It
+automatically dispatches the exact current main candidate
 in the existing preview project, reusing its dedicated test backend. The serialized
 build seeds synthetic data and runs authenticated smoke before promotion. `needs-staging` requests stronger hosted QA without
 changing PR base.
 
-Production remains manual with root `git.deploymentEnabled.main=false`.
-With owner authorization, run `bash scripts/release/promote.sh <main-sha>` from
+Production Release runs automatically after every main push. It waits for fresh
+candidate acceptance before running the guarded promotion command in clean main CI.
+Root `git.deploymentEnabled.main=false` prevents a duplicate native Git build.
+For authorized manual recovery, run `bash scripts/release/promote.sh <main-sha>` from
 clean current canonical main. It checks successful exact-main release-candidate proof, builds remotely,
 publishes/verifies web, pushes production Convex, then runs synthetic-account
 smoke. Preserve saved checkpoints and verify rollback through actual alias

@@ -10,7 +10,8 @@ This guide covers hosted QA and release promotion only. Follow [Agentic Developm
 `bash scripts/release/promote.sh <40-character-main-sha> --check` performs
 preflight only. Omitting `--check` manually releases that exact current `main`.
 The command requires a successful on-demand release candidate for current main.
-Merges trigger no staging deployment. Canonical staging publication is optional.
+Production Release dispatches this candidate automatically after main changes.
+Canonical staging alias publication remains optional.
 
 Run it from clean canonical `main`, linked to Divyansh's production project.
 Provide `CONVEX_PRODUCTION_DEPLOY_KEY` scoped to `colorful-chickadee-419`, and
@@ -43,7 +44,8 @@ sign-in, note CRUD/conflict/cleanup, persisted chat, Files and realtime QA.
 Files checks target the accessible named file button; scope the locator to the
 main Files region when the sidebar exposes a button with the same name.
 The chat composer is the accessible `Ask anything` combobox, not a textarea.
-No production seed runs. Root `git.deploymentEnabled.main=false` remains required.
+No production seed runs. Root `git.deploymentEnabled.main=false` prevents a
+duplicate native Git deployment bypassing the automatic release gates.
 
 The production Convex target is announced before its push. Neither `.env.local`
 nor conflicting development selectors authorize that push. Failure stops later
@@ -108,7 +110,7 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 | --- | --- | --- | --- |
 | Preview | Internal main PR head | `pr-<number>.preview.getoverlay.io` | Per-PR preview, synthetic sandbox fixtures |
 | Staging | Accepted main SHA | `staging.getoverlay.io` | `doting-cuttlefish-819`, dedicated sandbox/test providers |
-| Customer production | Manually promoted current main SHA | `getoverlay.io` | `colorful-chickadee-419`, production identity/providers |
+| Customer production | Automatically promoted current main SHA | `getoverlay.io` | `colorful-chickadee-419`, production identity/providers |
 
 The legacy staging branch is frozen. There is no staging-to-main release PR or
 branch-parity work. Local development uses an engineer-owned development backend.
@@ -128,8 +130,8 @@ limit, independent of the non-expiring shared credentials.
 
 ### On-demand release candidate
 
-Dispatch `staging-release.yml` on main only when preparing a release. It has no
-push trigger. All candidates share one serialized lock. The staging project's Production
+Production Release dispatches `staging-release.yml` after main pushes. Manual
+staging-only dispatch remains available. The candidate workflow itself has no push trigger. All candidates share one serialized lock. The staging project's Production
 branch is main; Production and Preview deployment sources permit controller REST
 API builds only. Root Git main deployments remain disabled. The ignore/build
 guards accept an exact trusted-main SHA override and reject unrelated refs,
@@ -151,7 +153,7 @@ Canonical smoke runs again if publication is requested. A successful unpublished
 candidate also qualifies for promotion: the command verifies its native origin,
 ready deployment provenance, successful trusted manual producer and current main.
 The persistent staging project/backend are reused for these checks and PR previews;
-there is no staging branch workflow or mandatory deployment after each merge.
+there is no staging branch workflow. Automatic releases test a fresh candidate after each main push.
 
 ```bash
 gh run list --repo LayerNorm/overlay-web --workflow staging-release.yml
@@ -175,10 +177,10 @@ and retained web rollback against the expanded schema. See
 
 1. Review exact PR head, resolved findings, required checks and affected preview QA.
 2. Enqueue through main's merge queue; verify accepted main SHA after merge.
-3. Verify no automatic customer production build. Dispatch exact-main candidate smoke when preparing a release.
+3. Follow Production Release for exact-main candidate smoke and automatic production publication.
 4. For `needs-staging`, verify the affected flow before production promotion.
-5. With explicit production authorization, use clean current canonical main and
-   the guarded promotion command. Verify web live before production Convex.
+5. Verify the automatic guarded promotion used clean current main and published web before production Convex.
+   Manual recovery requires authorization and the same promotion command.
 6. Preserve checkpoints and previous deployment IDs; run authenticated QA and
    verify any rollback through actual alias readback. Report incomplete work clearly.
 
@@ -215,7 +217,7 @@ Both suites clean their own synthetic conversations after success or failure.
 
 ### Canonical submodule checkout
 
-The primary Overlay checkout is a submodule: its Git directory is under the parent repository’s `.git/modules/overlay-landing`. Production validation compares the checkout’s actual Git directory with its common Git directory. Primary standalone and submodule checkouts pass; linked feature worktrees have distinct Git directories and remain rejected. Clean current main, the fixed production project and manual deployment rules still apply.
+The primary Overlay checkout is a submodule: its Git directory is under the parent repository’s `.git/modules/overlay-landing`. Production validation compares the checkout’s actual Git directory with its common Git directory. Primary standalone and submodule checkouts pass; linked feature worktrees have distinct Git directories and remain rejected. Clean current main, the fixed production project and guarded deployment rules still apply.
 
 The first complete exact-main candidate passed both native and published smoke at `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`, deployment `dpl_D689Hs8AwHUo1Fqu3phfupyRveBQ`. Browser staging upload, exact-byte download, image rendering and metadata/object cleanup also passed. The canonical submodule guard correction merged through PR #201 and passed the actual clean-main production preflight, promotion and rollback drill.
 
@@ -230,3 +232,28 @@ Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exa
 ### Generated type output after production deploy
 
 The Convex CLI may regenerate `convex/_generated/api.d.ts` during a production push. The accepted release added only type entries for existing preview/staging helper modules. Preserve that generated output in ignored release evidence, inspect its diff, and restore only the deploy-generated changes to the accepted tracked version before the clean-main rollback drill. Preserve all pre-existing edits separately. No second backend deployment is needed for that local type-file restoration.
+
+
+### Automatic production after main changes
+
+The owner enabled automatic releases on 2026-10-14. `production-release.yml` runs
+on every main push and supports manual retry on main. Its non-canceling production
+concurrency lock covers candidate dispatch, acceptance and promotion. It dispatches
+the existing Release Candidate workflow and accepts only a new successful run for
+the exact SHA. If main advances, publication stops; the latest queued release
+handles the new main. Failed candidate acceptance leaves customer production alone.
+
+The `production-release` GitHub environment permits only main. Its secrets are the
+existing production Vercel token, exact production Convex key, and three synthetic
+production smoke settings. Dependency installation receives none of these secrets.
+GitHub uses the ephemeral Actions token; the promotion command verifies its active
+main workflow run instead of requiring a personal GitHub token. Web is built remotely,
+published and verified before customer Convex changes; authenticated smoke follows.
+Evidence is uploaded as `production-release-<sha>`, including previous deployment
+IDs and the last completed phase. A failed post-publication step may leave web or
+backend live: inspect the checkpoint before retrying or authorizing rollback.
+
+`git.deploymentEnabled.main=false` remains intentional: the Actions workflow
+automatically deploys to Vercel; native Git builds would bypass candidate acceptance
+and race the production backend. No paid preview suffix or staging branch is used.
+Disable the Production Release workflow to pause automatic releases.

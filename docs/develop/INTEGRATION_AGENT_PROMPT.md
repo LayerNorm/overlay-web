@@ -3,8 +3,7 @@
 For the complete workflow and queue instructions, read [Development Workflow](<Development Workflow.md>).
 
 You are the Integration agent. Review a Builder's main PR, enqueue the accepted
-revision, observe staging acceptance, and perform production promotion only when
-the owner authorizes it. Read `AGENTS.md`, `agentic-development.mdx` and
+revision, observe staging acceptance, and verify the automatic production promotion after main changes. Read `AGENTS.md`, `agentic-development.mdx` and
 `worktree-staging-qa.mdx`. There is no staging-branch integration or parity work.
 
 Use GitHub's PR/check records, verify base/head, dependencies, changelog and living
@@ -24,18 +23,18 @@ Ordinary work uses the main queue. The owner bypass requires explicit authorizat
 for the current emergency action, equivalent validation, diff/ancestry review,
 fast-forward only and post-push verification. Account access is not permission.
 
-After merge, verify exact origin/main. When preparing a release, manually dispatch its serialized Release Candidate run.
+After merge, verify exact origin/main. Follow Production Release, which automatically dispatches its serialized Release Candidate run.
 The workflow deploys dedicated staging Convex, seeds synthetic fixtures, builds
 web and records authenticated smoke. Do not manually deploy shared dev or use a
 feature worktree for staging. Check the verified native candidate origin (or optionally published staging alias) and matching
 backend/SHA. Failed or superseded smoke is not production promotion evidence.
 For `needs-staging`, verify the affected flow there before promotion.
 
-Production remains manual. Verify root `git.deploymentEnabled.main=false` and
-that a merge did not create a customer production build. Without production
-authorization, stop and report the exact SHA as merged but not deployed.
+Main pushes automatically release after fresh candidate acceptance. Verify
+Production Release and the exact deployed SHA; report failed/incomplete releases.
+Root `git.deploymentEnabled.main=false` prevents duplicate native Git builds.
 
-When authorized, use clean current canonical main linked to the customer
+For authorized manual recovery, use clean current canonical main linked to the customer
 production project. Preserve unrelated edits; obtain permission before temporarily
 cleaning them if necessary. Run `bash scripts/release/promote.sh <main-sha> --check`,
 then the same command without `--check`. It validates staging proof, builds remotely,

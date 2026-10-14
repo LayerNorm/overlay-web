@@ -17,6 +17,23 @@ const repo = `/repos/${PRODUCTION.repository}`
 export const RELEASE_CREDENTIAL_NAMES = Object.freeze(['PRODUCTION_SMOKE_EMAIL',
   'PRODUCTION_SMOKE_PASSWORD', 'PRODUCTION_SMOKE_USER_ID', 'CONVEX_PRODUCTION_DEPLOY_KEY'])
 
+/** Installation tokens have no /user identity; verify the trusted main run instead. */
+export async function verifyProductionActor(github, env, sha) {
+  if (env.GITHUB_ACTIONS !== 'true') {
+    assert.equal((await github('/user')).login, 'DevelopedByDev', 'Use Divyansh GitHub identity')
+    return
+  }
+  assert.equal(env.GITHUB_REPOSITORY, PRODUCTION.repository)
+  assert.equal(env.GITHUB_REF, 'refs/heads/main')
+  assert.equal(env.GITHUB_SHA, sha)
+  assert.match(env.GITHUB_RUN_ID ?? '', /^\d+$/)
+  const run = await github(`${repo}/actions/runs/${env.GITHUB_RUN_ID}`)
+  assert.ok(run.repository?.id === PRODUCTION.repositoryId && run.head_sha === sha
+    && run.head_branch === 'main' && ['push', 'workflow_dispatch'].includes(run.event)
+    && run.path === '.github/workflows/production-release.yml' && run.status === 'in_progress',
+  'Production automation requires the active trusted main release workflow')
+}
+
 /** Called only after canonical checkout validation. Never loads .env.local. */
 export function productionEnvironment(env, file = env.OVERLAY_PRODUCTION_RELEASE_CONFIG
   || join(homedir(), '.config/overlay/release/production.json')) {
@@ -98,7 +115,7 @@ export function canonicalMain(sha, { cwd = process.cwd(), run = runCommand } = {
   assert.ok(project.projectId === PRODUCTION.projectId && project.orgId === PRODUCTION.teamId,
     'Canonical checkout is not linked to the production project')
   const config = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8'))
-  assert.equal(config.git?.deploymentEnabled?.main, false, 'Automatic main deployment must remain disabled')
+  assert.equal(config.git?.deploymentEnabled?.main, false, 'Native Git deployment must remain disabled; Production Release owns automatic promotion')
   return root
 }
 
@@ -112,7 +129,7 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     verifyCheckout()
     productionCredentials(env)
     phase = 'owner and project'
-    assert.equal((await github('/user')).login, 'DevelopedByDev', 'Use Divyansh GitHub identity')
+    await verifyProductionActor(github, env, sha)
     assert.equal((await vercel('/v2/user')).user?.username, 'developedbydev1', 'Use Divyansh Vercel identity')
     await verifyProductionProject(vercel)
     phase = 'accepted release candidate evidence'

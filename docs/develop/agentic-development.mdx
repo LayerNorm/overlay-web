@@ -1,6 +1,6 @@
 ---
 title: "Agentic Development"
-description: "Feature PRs, isolated previews, the main merge queue, and deliberate production releases."
+description: "Feature PRs, isolated previews, the main merge queue, and automatic production releases."
 ---
 
 ## Activation checkpoint
@@ -10,11 +10,10 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 ## Release model
 
 Every feature reaches `main` through a focused pull request and the merge queue.
-Its isolated preview verifies the feature before integration. When preparing a
-production release, dispatch an on-demand candidate of current main with the
-dedicated test Convex backend. Production is a separate, owner-authorized
-promotion of that exact main SHA after authenticated candidate smoke passes. Root `git.deploymentEnabled.main=false`
-keeps customer production manual.
+Its isolated preview verifies the feature before integration. Every main push starts Production Release, which dispatches a fresh candidate with
+the dedicated test Convex backend and automatically promotes that exact main SHA
+after authenticated candidate smoke passes. Root `git.deploymentEnabled.main=false`
+prevents duplicate native Git deployments from bypassing this workflow.
 
 The legacy `staging` branch is frozen. Do not push, target PRs at, align or deploy
 it. Staging is an environment built from main, not an integration branch. See
@@ -28,7 +27,7 @@ for the complete Builder and Integration instructions and copyable role prompts.
 | Role | Responsibility |
 | --- | --- |
 | Builder | Own one feature worktree, implement and validate a coherent change, update living docs and CHANGELOG, verify the current PR preview, and submit the PR to main. Stop at a ready PR. |
-| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, verify the on-demand exact-main release candidate, and handle an explicitly authorized production promotion and verification. |
+| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, verify the automatic exact-main release candidate and production promotion. |
 
 Use [Builder Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/BUILDER_AGENT_PROMPT.md) and
 [Integration Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/INTEGRATION_AGENT_PROMPT.md). No additional
@@ -163,14 +162,16 @@ fast-forward only and post-push verification. Credentials alone are not permissi
 
 ## Staging and production
 
-The owner-dispatched, serialized release-candidate job builds the dedicated backend, guarded synthetic
+The automatically or manually dispatched, serialized release-candidate job builds the dedicated backend, guarded synthetic
 fixtures, then web; it verifies the deployment and authenticated smoke for that
 SHA. Superseded builds do not provide promotion evidence. Inspect `Staging Deploy`,
 `Staging Smoke`, screenshots and workflow artifacts for the exact accepted main.
 Preview closure removes its aliases and stops backend renewal.
 
-Production authorization is separate from merging. Without it, verify no customer
-production build appeared and report merged but not deployed. With it, use
+Main pushes automatically start `.github/workflows/production-release.yml`. It
+waits for fresh candidate acceptance, then uses the guarded promotion command in a
+clean main CI checkout. Verify its exact-SHA result and report failures. For
+authorized manual recovery, use
 `bash scripts/release/promote.sh <main-sha>` from clean current canonical main.
 The command requires successful same-run exact-main candidate evidence, remotely builds and publishes
 web, verifies it live, then pushes customer production Convex and runs smoke.

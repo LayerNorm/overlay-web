@@ -1,11 +1,18 @@
-Treat each web deployment and its Convex deployment as one release unit. Push the development deployment from the dedicated `staging` worktree for staging QA, then push production from the clean `main` worktree after the matching web deployment is live:
+Treat matching web and Convex revisions as one release unit. Local development
+uses an engineer-owned backend; feature worktrees never deploy shared environments.
+PR previews deploy only their per-PR backend.
+
+After main changes, Production Release dispatches dedicated staging acceptance,
+then publishes and verifies production web before deploying production Convex and
+running authenticated smoke. The legacy staging branch is frozen.
+
+For authorized manual recovery, use the guarded command from clean current
+canonical main:
 
 ```bash
-# staging worktree only
-npm run convex:push:dev
-
-# clean main worktree only
-npm run convex:push:prod
+bash scripts/release/promote.sh <exact-main-sha>
 ```
 
-Do not use `convex:push:all` in a worktree workflow. Never pass `.env.local` to a production Convex deploy; use the dedicated production script instead.
+Never use `convex:push:all` or pass `.env.local` to production. See
+[Staging and Production Promotion](/develop/worktree-staging-qa) for credentials,
+exact-SHA acceptance and rollback.
