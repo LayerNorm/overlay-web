@@ -46,7 +46,7 @@ This is why the plan is mostly wiring and not invention.
 
 `workItemEvents` (activity log and comments): `workItemId`, `workspaceId`, `actorPrincipalId`, `kind` (`created`, `status`, `assignee`, `comment`, ...), `data`, `createdAt`. Agent runs write here later.
 
-Indexes: `by_workspaceId_scope_archivedAt`, `by_workspaceId_userId_archivedAt`, `by_parentId`, `by_workspaceId_assignee` and one on `(workspaceId, status, rank)` for the Board.
+Indexes: `by_workspaceId_scope_archivedAt`, `by_workspaceId_userId_archivedAt`, `by_workspaceId_userId_scope_archivedAt` (the Personal list read, so it never scans workspace tasks), `by_parentId`, `by_workspaceId_assignee` and one on `(workspaceId, status, rank)` for the Board.
 
 ## PR plan
 

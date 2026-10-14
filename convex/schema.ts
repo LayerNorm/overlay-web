@@ -807,6 +807,7 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt'])
     .index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
+    .index('by_workspaceId_userId_scope_archivedAt', ['workspaceId', 'userId', 'scope', 'archivedAt'])
     .index('by_parentId', ['parentId'])
     .index('by_workspaceId_assignee', ['workspaceId', 'assigneePrincipalId'])
     .index('by_workspaceId_status_rank', ['workspaceId', 'status', 'rank']),

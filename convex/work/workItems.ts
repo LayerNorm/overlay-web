@@ -205,16 +205,17 @@ export const list = query({
     const rows = await listScopedRows(ctx, {
       userId, workspaceId, view,
       fetchMine: async () => {
-        const byOwner = ctx.db.query('workItems').withIndex('by_workspaceId_userId_archivedAt', (q) => {
-          const mine = q.eq('workspaceId', workspaceId).eq('userId', userId)
-          return archivedView ? mine.gt('archivedAt', 0) : mine.eq('archivedAt', undefined)
-        })
-        // The batch is cut after the scope filter, so a long run of workspace tasks cannot push Personal ones out of it.
-        // (A person's own workspace tasks come from the shared read below.)
-        if (archivedView) return await byOwner.take(cap)
-        return await (view === 'workspace'
-          ? byOwner.filter((q) => q.eq(q.field('scope'), 'workspace'))
-          : byOwner.filter((q) => q.neq(q.field('scope'), 'workspace'))).take(cap)
+        // Archived rows of either scope; otherwise only the scope the view needs, read straight from an index that
+        // includes it. (A person's own workspace tasks also arrive with the shared read below.)
+        if (archivedView) {
+          return await ctx.db.query('workItems')
+            .withIndex('by_workspaceId_userId_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId).gt('archivedAt', 0))
+            .take(cap)
+        }
+        const wanted = view === 'workspace' ? 'workspace' : 'personal'
+        return await ctx.db.query('workItems')
+          .withIndex('by_workspaceId_userId_scope_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId).eq('scope', wanted).eq('archivedAt', undefined))
+          .take(cap)
       },
       fetchShared: async (ws) => {
         const shared = ctx.db.query('workItems').withIndex('by_workspaceId_scope_archivedAt', (q) => {
