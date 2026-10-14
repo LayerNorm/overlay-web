@@ -19,9 +19,11 @@ The merge queue runs required `merge_group` checks on the combined candidate.
 Preserve meaningful commits with merge merging; squash only trivial/noisy history.
 Never rebase-merge, force-push, reset or delete release branches.
 
-Ordinary work uses the main queue. The owner bypass requires explicit authorization
-for the current emergency action, equivalent validation, diff/ancestry review,
-fast-forward only and post-push verification. Account access is not permission.
+Cloud Builder integration uses the main queue. Local laptop agents acting as
+DevelopedByDev have standing owner authorization for direct fast-forward main
+pushes after proportionate checks, diff/ancestry review and preservation of unrelated
+edits. Verify the published SHA and native deployment. Other bypass use requires
+explicit authorization.
 
 After merge, verify exact origin/main and the native Vercel Git production
 deployment in Divyansh's overlay-landing project. Verify its live SHA. Synchronize

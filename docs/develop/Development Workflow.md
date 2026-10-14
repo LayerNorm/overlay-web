@@ -6,6 +6,16 @@ Use multiple Builder threads to develop independent features and one Integration
 
 Production follows **merge to main → automatic Vercel Git production deployment → production smoke checks**. Integration synchronizes Convex when backend changes require it, after matching production web is live. Staging is optional for explicitly requested sensitive-change acceptance. This document is the authoritative workflow; supporting guides must not add an ordinary staging prerequisite.
 
+## Local laptop owner path
+
+The owner explicitly authorized local laptop agents acting as `DevelopedByDev`
+to push directly to main. Run proportionate checks, review the diff and ancestry,
+preserve unrelated edits, and use fast-forward pushes only. Verify origin/main,
+the exact native Vercel production deployment and affected behavior afterward.
+No PR, merge queue or repeated permission request is required for this local path.
+The owner bypass is authorized for this purpose. Never force-push or delete release
+branches. Cloud Builder threads still follow the PR/preview/merge-queue path below.
+
 ## How to use this document
 
 Tag this file in a thread and identify the role and task. The agent follows the matching section below and reads the full repository `AGENTS.md` and relevant living docs before working. Existing account access and environment configuration are prerequisites; use the owner's Divyansh accounts and the configured test credentials.
@@ -119,7 +129,7 @@ Once required checks and proportionate QA pass and conversations are resolved, e
 
 The native merge queue runs required checks on the combined revision containing current main and earlier queued changes. If that combined revision fails, investigate the interaction and fix it before retrying.
 
-Preserve meaningful commits with merge merging; squash only trivial or noisy history. Ordinary changes go through PRs and the queue. Never force-push, reset, or delete release branches. The emergency bypass requires explicit authorization for that action.
+Preserve meaningful commits with merge merging; squash only trivial or noisy history. Cloud Builder changes go through PRs and the queue; local DevelopedByDev integration may use the authorized direct-push path. Never force-push, reset, or delete release branches. Other bypass use requires explicit authorization.
 
 Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Verify the native Vercel deployment serves the accepted main SHA, synchronize Convex if this release changes the backend, and check production smoke. Preserve needed work and evidence before archiving a completed feature worktree.
 

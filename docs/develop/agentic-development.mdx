@@ -10,8 +10,10 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 ## Release model
 
 [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is the authoritative Builder,
-Integration and release policy. Every feature reaches main through a focused PR
-and the merge queue. Every main push automatically deploys the exact revision to
+Integration and release policy. Cloud Builder features reach main through focused PRs
+and the merge queue. Local laptop agents under DevelopedByDev have standing
+authorization for validated fast-forward direct main pushes, as documented in
+Development Workflow. Every main push automatically deploys the exact revision to
 Vercel production through its native Git integration. Integration synchronizes
 Convex only for backend changes after matching web is live, then runs production smoke. Staging is optional for explicitly requested sensitive changes.
 Keep root `git.deploymentEnabled.main=true`. The owner enabled Git as a production
@@ -157,10 +159,11 @@ through `merge_group` workflows. Do not publish a green status based only on the
 original PR head. Prefer merge commits for meaningful history; squash only trivial
 or disposable fixups. Never rebase-merge, force-push, reset or delete main.
 
-The existing owner bypass remains an emergency option until another engineer
-joins. Ordinary work uses PRs and the queue; a bypass or direct push requires an
-explicit current-task instruction and equivalent validation, ancestry review,
-fast-forward only and post-push verification. Credentials alone are not permission.
+The owner authorized local laptop agents under DevelopedByDev to use the existing
+owner bypass for direct main integration after proportionate checks, diff/ancestry
+review and preservation of unrelated edits. Push fast-forward only and verify the
+published SHA and native Vercel deployment. Cloud Builders continue to use PRs
+and the queue. Other bypass use requires explicit authorization.
 
 ## Production and optional staging
 

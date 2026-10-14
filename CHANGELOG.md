@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Authorize local laptop agents under DevelopedByDev to integrate directly into main with validated fast-forward pushes; cloud Builder threads retain PR previews and the merge queue.
+
 - Use Vercel’s native Git integration for automatic production deployment from main. Retire the custom production workflow, promotion script and deployment token; Integration verifies production and synchronizes Convex only for backend changes. Staging remains optional and Development Workflow is authoritative.
 
 - **The secondary sidebar uses the shadcn Sidebar.** Agents expand into an indented tree under a vertical guide line (threads, automations, New thread); hovering an agent shows a quick New thread button, and hovering a thread shows Archive and Delete. Loading shows row-shaped placeholders instead of a spinner line. Navigation rows (Chats, Files, Work, Settings) share the same menu parts, and a thin handle on the panel's edge hides it. Behavior and routes are unchanged. Quick creation refreshes the tree and rejects stale bundle responses; hover actions stay scoped to their own row, mobile titles reserve action space, and exported actions do not submit forms by default. New `Sidebar*` parts are exported from `@overlay/ui/primitives`.
