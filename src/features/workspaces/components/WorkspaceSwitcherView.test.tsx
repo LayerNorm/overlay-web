@@ -28,8 +28,7 @@ function render(status: 'idle' | 'loading' | 'ready') {
       refresh={noop}
       onSelectWorkspace={noop}
       onCreateRequest={noop}
-      onToggle={noop}
-      menuPosition={null}
+      onOpenChange={noop}
       createOpen={false}
       createBusy={false}
       onCreateOpenChange={noop}

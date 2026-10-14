@@ -48,6 +48,40 @@ positioning, the portal and Escape dismissal. Fine-pointer hover opens after
 while mounted. Run `node scripts/qa/tooltip-interactions.mjs` for rendered
 association, cleanup, pointer and media-query checks in installed Chrome.
 
+## Menus and rich popovers
+
+Import dropdown/popover primitives from `@overlay/ui` (or its `primitives`
+entry point), never Radix in domain packages. Actions with one selection use
+DropdownMenu; arbitrary controls, disclosures and model multi-selection use
+Popover with normal Tab navigation. Do not label a rich panel as a menu or
+listbox. Selected picker buttons expose `aria-pressed`.
+
+`FloatingMenu` keeps the external `anchorRef` API as a Popover. Prefer its
+optional `trigger` for native expanded state, keyboard opening and focus return;
+action menus opt into `kind="menu"` and supply a trigger. `MenuItem` preserves
+button props and callbacks, using Radix item semantics only inside that action
+menu. Standalone `MenuSurface` remains visual, with no implied role.
+
+Both primitives portal at z-10090, consume Overlay CSS vars directly, use a 6px
+anchor gap and 8px collision padding, and constrain height to the available
+viewport. Rich picker content refs belong on the portalled content, not the
+trigger wrapper; remove document-level outside/Escape listeners when Radix owns
+the layer. The mobile account fallback also delegates dismissal to Radix;
+its old wrapper-ref click listener cannot recognize portalled disclosures.
+Model details are a nested Popover, anchored to the hovered row. Their virtual
+anchor exposes that row as its scroll context and uses Radix continuous updates
+to track the parent pop-in animation; Escape closes the whole model picker.
+Their existing reasoning select stays inline in that panel so its clicks remain
+inside the owning layer; it now uses the Phase 4 Radix select adapter. Keep the
+hover card mounted while that select is open: Radix pointer locking emits a
+synthetic mouse leave to Window, which must not dismiss the owning card.
+
+For a menu-to-dialog handoff, the menu row may unmount. Pass an explicit
+`DialogFrame.onCloseAutoFocus` callback pointing to the surviving trigger, as
+WorkspaceSwitcher does for CreateWorkspaceDialog. Run
+`node scripts/qa/menu-interactions.mjs` for the shared and product-picker
+interaction checks; authenticated current-head preview QA remains required.
+
 ## Shared selects
 
 `Select` (option-child API) and generic `ListboxSelect<T>` use the canonical

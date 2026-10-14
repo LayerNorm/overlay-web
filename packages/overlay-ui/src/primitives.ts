@@ -17,6 +17,9 @@ export * from './components/primitives/Tile'
 export * from './components/primitives/Toggle'
 export * from './components/primitives/Toolbar'
 export * from './components/primitives/UsageMeterBar'
+export * from './components/ui/popover'
+export * from './components/ui/dropdown-menu'
+
 
 // The option-child Select keeps its public name; canonical Root has an alias.
 export { Select as SelectRoot, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectPortal, SelectScrollDownButton, SelectScrollUpButton, SelectSeparator, SelectTrigger, SelectValue } from './components/ui/select'

@@ -2,25 +2,17 @@
 
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { type ReactNode, type RefObject } from 'react'
-import { createPortal } from 'react-dom'
+import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
 import {
-  Check,
-  ChevronDown,
-  Loader2,
-  Plus,
-  RefreshCw,
-} from 'lucide-react'
-import { CollapsibleSection, MenuItem, MenuSurface } from '@overlay/ui/primitives'
+  CollapsibleSection,
+  MenuItem,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@overlay/ui/primitives'
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
 import { WorkspaceAvatar } from './WorkspaceAvatar'
 import type { WorkspaceLifecycleStatus, WorkspaceSummary } from '@/shared/workspaces/types'
-
-export type WorkspaceSwitcherMenuPosition = {
-  left: number
-  bottom?: number
-  top?: number
-  width: number
-}
 
 type WorkspaceListProps = {
   status: WorkspaceLifecycleStatus
@@ -76,43 +68,40 @@ function WorkspaceList({
         </div>
       ) : null}
 
-      {status === 'ready' ? workspaces.map((workspace) => {
-        const selected = workspace.id === activeWorkspaceId
-        const switching = workspace.id === switchingWorkspaceId
-        // Every workspace reads the same: a name and how many people are in it.
-        const memberLabel = workspaceMemberLabel(workspace) ?? '1 member'
-        return (
-          <MenuItem
-            key={workspace.id}
-            role="menuitemradio"
-            aria-checked={selected}
-            disabled={Boolean(switchingWorkspaceId)}
-            className="rounded-lg py-2"
-            onClick={() => onSelectWorkspace(workspace.id)}
-          >
-            <WorkspaceAvatar workspace={workspace} size="sm" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-(--foreground)">
-                {workspace.name}
-              </span>
-              <span className="block truncate text-[10px] capitalize text-(--muted-light)">
-                {memberLabel}
-              </span>
-            </span>
-            {switching ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : selected ? (
-              <Check size={13} className="text-(--foreground)" />
-            ) : null}
-          </MenuItem>
-        )
-      }) : null}
+      {status === 'ready'
+        ? workspaces.map((workspace) => {
+            const selected = workspace.id === activeWorkspaceId
+            const switching = workspace.id === switchingWorkspaceId
+            // Every workspace reads the same: a name and how many people are in it.
+            const memberLabel = workspaceMemberLabel(workspace) ?? '1 member'
+            return (
+              <MenuItem
+                key={workspace.id}
+                aria-pressed={selected}
+                disabled={Boolean(switchingWorkspaceId)}
+                className="rounded-lg py-2"
+                onClick={() => onSelectWorkspace(workspace.id)}
+              >
+                <WorkspaceAvatar workspace={workspace} size="sm" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-(--foreground)">
+                    {workspace.name}
+                  </span>
+                  <span className="block truncate text-[10px] capitalize text-(--muted-light)">
+                    {memberLabel}
+                  </span>
+                </span>
+                {switching ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : selected ? (
+                  <Check size={13} className="text-(--foreground)" />
+                ) : null}
+              </MenuItem>
+            )
+          })
+        : null}
 
-      <MenuItem
-        role="menuitem"
-        className="rounded-lg"
-        onClick={onCreateRequest}
-      >
+      <MenuItem className="rounded-lg" onClick={onCreateRequest}>
         <Plus size={14} />
         Create workspace
       </MenuItem>
@@ -121,11 +110,8 @@ function WorkspaceList({
 }
 
 type WorkspaceSwitcherMenuProps = WorkspaceListProps & {
-  open: boolean
-  compact: boolean
-  portalMenu: boolean
   isFooter: boolean
-  menuPosition: WorkspaceSwitcherMenuPosition | null
+  compact: boolean
   menuRef: RefObject<HTMLDivElement | null>
   activeWorkspaceName?: string
   actionError: string | null
@@ -133,72 +119,39 @@ type WorkspaceSwitcherMenuProps = WorkspaceListProps & {
 }
 
 function WorkspaceSwitcherMenu({
-  open,
-  compact,
-  portalMenu,
   isFooter,
-  menuPosition,
+  compact,
   menuRef,
   activeWorkspaceName,
   actionError,
   accountMenu,
   ...workspaceListProps
 }: WorkspaceSwitcherMenuProps) {
-  if (!open) return null
-
-  const menu = (
-    <div
+  return (
+    <PopoverContent
       ref={menuRef}
-      className={`overlay-pop-in z-10080 ${
-        portalMenu
-          ? 'fixed'
-          : `absolute w-[min(280px,calc(100vw-2rem))] ${
-            isFooter
-              ? 'bottom-full left-0 mb-1.5'
-              : compact
-                ? 'right-0 top-full mt-1.5'
-                : 'left-0 top-full mt-1.5 -translate-x-1'
-          }`
-      }`}
-      style={portalMenu
-        ? {
-            left: menuPosition?.left,
-            bottom: menuPosition?.bottom,
-            top: menuPosition?.top,
-            width: menuPosition?.width,
-            visibility: menuPosition ? 'visible' : 'hidden',
-          }
-        : undefined}
+      side={isFooter ? 'top' : 'bottom'}
+      align={compact && !isFooter ? 'end' : 'start'}
+      aria-label={isFooter ? 'Workspace and account' : 'Workspaces'}
+      className="w-[min(280px,calc(100vw-16px))] p-1"
     >
-      <MenuSurface
-        role="menu"
-        aria-label={isFooter ? 'Workspace and account' : 'Workspaces'}
-        className="overflow-hidden p-1"
+      <CollapsibleSection
+        label="Workspaces"
+        defaultOpen
+        headerClassName="px-2 py-1.5 tracking-[0.08em]"
+        contentClassName="pb-0"
+        collapsedSummary={activeWorkspaceName}
       >
-        <CollapsibleSection
-          label="Workspaces"
-          defaultOpen
-          headerClassName="px-2 py-1.5 tracking-[0.08em]"
-          contentClassName="pb-0"
-          collapsedSummary={activeWorkspaceName}
-        >
-          <WorkspaceList {...workspaceListProps} />
-        </CollapsibleSection>
-
-        {actionError ? (
-          <p role="alert" className="px-3 pb-2 pt-1 text-[11px] text-red-500">
-            {actionError}
-          </p>
-        ) : null}
-
-        {accountMenu}
-      </MenuSurface>
-    </div>
+        <WorkspaceList {...workspaceListProps} />
+      </CollapsibleSection>
+      {actionError ? (
+        <p role="alert" className="px-3 pb-2 pt-1 text-[11px] text-red-500">
+          {actionError}
+        </p>
+      ) : null}
+      {accountMenu}
+    </PopoverContent>
   )
-
-  return portalMenu && typeof document !== 'undefined'
-    ? createPortal(menu, document.body)
-    : menu
 }
 
 type WorkspaceSwitcherTriggerProps = {
@@ -208,7 +161,6 @@ type WorkspaceSwitcherTriggerProps = {
   status: WorkspaceLifecycleStatus
   activeWorkspace: WorkspaceSummary | null
   userLabel?: string
-  onToggle(): void
 }
 
 function triggerButtonClassName(isFooter: boolean, compact: boolean): string {
@@ -285,36 +237,35 @@ function WorkspaceSwitcherTrigger({
   status,
   activeWorkspace,
   userLabel,
-  onToggle,
 }: WorkspaceSwitcherTriggerProps) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-label={isFooter ? 'Workspace and account menu' : 'Switch workspace'}
-      aria-haspopup="menu"
-      aria-expanded={open}
-      className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-(--surface-subtle) ${triggerButtonClassName(isFooter, compact)}`}
-    >
-      <WorkspaceSwitcherTriggerAvatar
-        compact={compact}
-        isFooter={isFooter}
-        activeWorkspace={activeWorkspace}
-      />
-      {!compact ? (
-        <WorkspaceSwitcherTriggerLabels
+    <PopoverTrigger asChild>
+      <button
+        type="button"
+        aria-label={isFooter ? 'Workspace and account menu' : 'Switch workspace'}
+        aria-expanded={open}
+        className={`group flex min-w-0 items-center rounded-lg text-left transition-colors hover:bg-(--surface-subtle) ${triggerButtonClassName(isFooter, compact)}`}
+      >
+        <WorkspaceSwitcherTriggerAvatar
+          compact={compact}
           isFooter={isFooter}
-          workspaceLabel={triggerWorkspaceLabel(status, activeWorkspace)}
-          secondaryLabel={triggerSecondaryLabel(compact, isFooter, userLabel, activeWorkspace)}
+          activeWorkspace={activeWorkspace}
         />
-      ) : null}
-      {!compact ? (
-        <ChevronDown
-          size={13}
-          className={`shrink-0 text-(--muted-light) transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      ) : null}
-    </button>
+        {!compact ? (
+          <WorkspaceSwitcherTriggerLabels
+            isFooter={isFooter}
+            workspaceLabel={triggerWorkspaceLabel(status, activeWorkspace)}
+            secondaryLabel={triggerSecondaryLabel(compact, isFooter, userLabel, activeWorkspace)}
+          />
+        ) : null}
+        {!compact ? (
+          <ChevronDown
+            size={13}
+            className={`shrink-0 text-(--muted-light) transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        ) : null}
+      </button>
+    </PopoverTrigger>
   )
 }
 
@@ -336,8 +287,7 @@ export type WorkspaceSwitcherViewProps = {
   refresh(): void
   onSelectWorkspace(workspaceId: string): void
   onCreateRequest(): void
-  onToggle(): void
-  menuPosition: WorkspaceSwitcherMenuPosition | null
+  onOpenChange(open: boolean): void
   createOpen: boolean
   createBusy: boolean
   onCreateOpenChange(open: boolean): void
@@ -362,15 +312,13 @@ export function WorkspaceSwitcherView({
   refresh,
   onSelectWorkspace,
   onCreateRequest,
-  onToggle,
-  menuPosition,
+  onOpenChange,
   createOpen,
   createBusy,
   onCreateOpenChange,
   onCreate,
 }: WorkspaceSwitcherViewProps) {
   const isFooter = placement === 'footer'
-  const portalMenu = isFooter || compact
 
   // Footer hosts the account control. Never unmount it while workspaces are idle
   // (first paint before the client session enables the workspace provider).
@@ -378,36 +326,34 @@ export function WorkspaceSwitcherView({
 
   return (
     <>
-      <div ref={rootRef} className="relative min-w-0">
-        <WorkspaceSwitcherTrigger
-          open={open}
-          compact={compact}
-          isFooter={isFooter}
-          status={status}
-          activeWorkspace={activeWorkspace}
-          userLabel={userLabel}
-          onToggle={onToggle}
-        />
-        <WorkspaceSwitcherMenu
-          open={open}
-          compact={compact}
-          portalMenu={portalMenu}
-          isFooter={isFooter}
-          menuPosition={menuPosition}
-          menuRef={menuRef}
-          activeWorkspaceName={activeWorkspace?.name}
-          actionError={actionError}
-          accountMenu={accountMenu}
-          status={status}
-          workspaces={workspaces}
-          activeWorkspaceId={activeWorkspaceId}
-          switchingWorkspaceId={switchingWorkspaceId}
-          error={error}
-          onRetry={refresh}
-          onSelectWorkspace={onSelectWorkspace}
-          onCreateRequest={onCreateRequest}
-        />
-      </div>
+      <Popover open={open} onOpenChange={onOpenChange}>
+        <div ref={rootRef} className="relative min-w-0">
+          <WorkspaceSwitcherTrigger
+            open={open}
+            compact={compact}
+            isFooter={isFooter}
+            status={status}
+            activeWorkspace={activeWorkspace}
+            userLabel={userLabel}
+          />
+          <WorkspaceSwitcherMenu
+            compact={compact}
+            isFooter={isFooter}
+            menuRef={menuRef}
+            activeWorkspaceName={activeWorkspace?.name}
+            actionError={actionError}
+            accountMenu={accountMenu}
+            status={status}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            switchingWorkspaceId={switchingWorkspaceId}
+            error={error}
+            onRetry={refresh}
+            onSelectWorkspace={onSelectWorkspace}
+            onCreateRequest={onCreateRequest}
+          />
+        </div>
+      </Popover>
       {createOpen ? (
         <CreateWorkspaceDialog
           open
@@ -415,6 +361,10 @@ export function WorkspaceSwitcherView({
           error={actionError}
           onOpenChange={onCreateOpenChange}
           onCreate={onCreate}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+          }}
         />
       ) : null}
     </>

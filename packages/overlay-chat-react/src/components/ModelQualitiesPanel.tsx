@@ -62,7 +62,9 @@ function ReasoningRow({
   levels,
   reasoning,
   onChange,
+  portal,
 }: {
+  portal: boolean
   levels: { value: ReasoningLevel; label: string }[]
   reasoning?: ReasoningLevel
   onChange?: (level: ReasoningLevel | undefined) => void
@@ -74,7 +76,7 @@ function ReasoningRow({
   const selectedReasoning = reasoning ?? 'provider-default'
   const selectedLevel = levels.some(({ value }) => value === selectedReasoning)
     ? selectedReasoning
-    : levels[0]?.value ?? 'provider-default'
+    : (levels[0]?.value ?? 'provider-default')
 
   return (
     <div className="flex min-h-6 min-w-0 items-center justify-between gap-2 py-0.5">
@@ -87,7 +89,7 @@ function ReasoningRow({
         value={selectedLevel}
         options={levels}
         onChange={(next) => onChange(next === 'provider-default' ? undefined : next)}
-        portal
+        portal={portal}
         className="min-w-0 max-w-33 flex-1"
         // Reads like the metric values above it — no box, no fill, same
         // 11px muted text, right-aligned with a small chevron. The
@@ -104,7 +106,9 @@ export function ModelQualitiesPanel({
   model,
   reasoning,
   onReasoningChange,
+  reasoningPortal = true,
 }: {
+  reasoningPortal?: boolean
   model: ChatModelIndicatorModel | null | undefined
   reasoning?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
@@ -124,22 +128,19 @@ export function ModelQualitiesPanel({
         label="Provider"
         value={<span className="block max-w-27 truncate">{model.provider ?? 'Unknown'}</span>}
       />
-      <MetricRow
-        icon={DollarSign}
-        label="Cost"
-        value={costLabel(model)}
-      />
-      <MetricRow
-        icon={Zap}
-        label="Speed"
-        value={speedLabel(model)}
-      />
+      <MetricRow icon={DollarSign} label="Cost" value={costLabel(model)} />
+      <MetricRow icon={Zap} label="Speed" value={speedLabel(model)} />
       <MetricRow
         icon={ShieldCheck}
         label="ZDR"
         value={<ZdrValue supported={model.supportsZeroDataRetention} />}
       />
-      <ReasoningRow levels={reasoningLevels} reasoning={reasoning} onChange={onReasoningChange} />
+      <ReasoningRow
+        portal={reasoningPortal}
+        levels={reasoningLevels}
+        reasoning={reasoning}
+        onChange={onReasoningChange}
+      />
     </div>
   )
 }
