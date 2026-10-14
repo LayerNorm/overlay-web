@@ -52,6 +52,15 @@ resources. Re-adding the label seeds a fresh backend. A missing or
 expired backend forces a fresh web build at the same SHA, with fresh seed data;
 an old READY frontend cannot be reused just because its SHA matches.
 
+The controller rejects credentials unless their scope is exactly
+`preview:divyansh-lalwani-37bb7:overlay` before making API requests. Never replace
+this key with a personal/team token or another product's key. Backend ownership
+must match project `1649204` and the exact PR reference and identifier; dev,
+production and cross-project targets fail closed. `colorful-chickadee-419` is
+also denied by name, independently of metadata. Regression tests exercise these
+refusals without sending deletion requests. This protects automation, not manual
+deletion by an administrator in the Convex dashboard.
+
 Convex injects the preview URL into the web build. `deploymentEnv()` keeps
 server configuration on the same captured URL as the browser; generic runtime
 `process.env` lookups must not recover an old shared dashboard URL. Preview

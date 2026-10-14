@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
+import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, previewBackendClient, main, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
 
 const sha = 'a'.repeat(40)
 function pull(patch = {}) {
@@ -342,16 +342,43 @@ test('backend deletion rejects production, dev, cross-project, ambiguous and mis
   const owned = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
     reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview' }
   for (const patch of [{ deploymentType: 'prod' }, { deploymentType: 'dev' }, { projectId: 1 },
-    { previewIdentifier: 'pr-124' }, { name: '../production' }]) {
+    { previewIdentifier: 'pr-124' }, { name: '../production' },
+    { name: CONFIG.convexProductionName }]) {
     const b = new PreviewBackends({ api: async (path, options = {}) => {
       assert.equal(options.method, undefined, 'invalid ownership must never mutate')
       return [{ ...owned, ...patch }]
     } })
     await assert.rejects(b.remove(123), /identity mismatch/)
     await assert.rejects(b.inventory(), /identity mismatch/)
+    await assert.rejects(b.renew(123), /identity mismatch/)
   }
   const duplicate = new PreviewBackends({ api: async () => [owned, owned] })
   await assert.rejects(duplicate.remove(123), /Ambiguous/)
+})
+
+test('control rejects broad and foreign credentials before any API access', async () => {
+  let calls = 0
+  const fetchImpl = async () => { calls++; throw new Error('Unexpected API access') }
+  for (const token of [undefined, '', 'personal-token', 'team:example|secret',
+    'prod:colorful-chickadee-419|secret', 'dev:example|secret',
+    'preview:other-team:overlay|secret', 'preview:divyansh-lalwani-37bb7:other-product|secret',
+    `${CONFIG.convexPreviewKeyScope}|`, `${CONFIG.convexPreviewKeyScope}|secret|extra`,
+    `${CONFIG.convexPreviewKeyScope}|secret\n`]) {
+    assert.throws(() => previewBackendClient(token, { fetchImpl }), /pinned Overlay project Preview key/)
+    // Entry point validates Convex credentials before constructing other clients.
+    await assert.rejects(main({ CONVEX_PREVIEW_CONTROL_KEY: token }, ['inventory']), /pinned Overlay project Preview key/)
+  }
+  assert.equal(calls, 0)
+})
+
+test('pinned Preview credential authenticates only against the fixed Convex API', async () => {
+  const token = `${CONFIG.convexPreviewKeyScope}|fixture-secret`
+  const api = previewBackendClient(token, { fetchImpl: async (url, options) => {
+    assert.equal(String(url), `https://api.convex.dev/v1/projects/${CONFIG.convexProjectId}/list_deployments`)
+    assert.equal(options.headers.authorization, `Bearer ${token}`)
+    return new Response('[]', { status: 200 })
+  } })
+  assert.deepEqual(await new PreviewBackends({ api }).inventory(), [])
 })
 
 test('backend deletion requires confirmed absence and propagates retained-backend failures', async () => {
