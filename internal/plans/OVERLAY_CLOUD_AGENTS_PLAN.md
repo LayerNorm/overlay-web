@@ -14,7 +14,7 @@ Pick "Other agent → Overlay Cloud" in the new-agent dialog, choose Claude Code
 
 ## Principles
 
-- **One host, everywhere.** An Overlay Cloud agent is the same Agent Host + ACP adapter that runs on a laptop, started inside a Box machine Overlay provisions. No second runtime. (This is already the design in `bring-your-own-agents-architecture.md`: the `overlay_cloud` environment kind.)
+- **One host, everywhere.** An Overlay Cloud agent is the same Agent Host + ACP adapter that runs on a laptop, started inside a Box machine Overlay provisions. No second runtime. (This is already the design in `internal/develop/bring-your-own-agents.md` → Architecture: the `overlay_cloud` environment kind.)
 - **The machine is the agent's computer.** One Box machine per agent. Computer tools, the desktop viewer, and the harness all see the same disk (`environment-machine.ts` already treats them as one).
 - **Overlay is the control plane and the record.** Runs, transcripts, approvals, billing, and lifecycle live in Overlay. The machine is cattle with a persistent disk.
 - **Credentials are personal and never on the image.** Images are credential-free. Subscription tokens are delivered per run, in memory.
@@ -317,7 +317,7 @@ Known gaps:
 
 **Phase 3 status (2026-10-02): done and verified on production (getoverlay.io), with a real Claude Code subscription.**
 
-- [x] **Overlay MCP for other AI apps** (added to the scope at the owner's request): `/api/mcp` with OAuth 2.1 (dynamic registration, PKCE, rotating refresh), a consent page, personal tokens, `mcpGrants`, and Settings → Connected apps. Three access levels (read, write, everything) that only narrow what the workspace allows. See `docs/develop/mcp-access.md`.
+- [x] **Overlay MCP for other AI apps** (added to the scope at the owner's request): `/api/mcp` with OAuth 2.1 (dynamic registration, PKCE, rotating refresh), a consent page, personal tokens, `mcpGrants`, and Settings → Connected apps. Three access levels (read, write, everything) that only narrow what the workspace allows. See `internal/develop/mcp-access.md`.
 - [x] **Coverage audit**: every tool an outside app or connected agent can hold was called against the dev backend; the audit found and fixed `list_notes` (broke on the notes API's page envelope) and `update_automation` / `pause_automation` / `delete_automation` (the tool's own id was erased by an empty one). Not executed because they spend money or need a third party: web search/fetch, image/video, the browser, `call_mcp_tool` (the one configured server's catalog is stale; a "test connection" refreshes it), Composio execution. Contract test `mcp-coverage.test.ts` fails when a tool group is added without an MCP decision.
 - [x] **Skills**: offered as MCP prompts to every client that shows prompts (verified with the official SDK). Writing into the harness's own skill folder was not needed and was left out.
 - [x] **Approvals**: a connected agent's MCP call that needs approval shows an approval card in the conversation and gets the answer (short wait, then "call again"); denial and run end refuse. Verified by Convex tests (card, authorization, option check, no host command, run end closes it) and gate unit tests, not by a live run.
@@ -338,7 +338,7 @@ Bugs found by that run, all fixed and deployed:
 
 Known gaps:
 
-- ~~Budget holds stuck in `reconcile_required` made remaining credit read far below allowance minus spend.~~ Fixed 2026-10-02: an hourly sweep settles holds older than 6 hours (overruns charged what was held, failed calls released); see `docs/develop/billing-holds-and-machine-metering.md`. The failures that create holds (memory-profile schema errors, billing write conflicts, a provider path) are tracked in a separate task.
+- ~~Budget holds stuck in `reconcile_required` made remaining credit read far below allowance minus spend.~~ Fixed 2026-10-02: an hourly sweep settles holds older than 6 hours (overruns charged what was held, failed calls released); see `internal/develop/billing-holds-and-machine-metering.md`. The failures that create holds (memory-profile schema errors, billing write conflicts, a provider path) are tracked in a separate task.
 - An approval is remembered per run: if the person answers after the agent has given up waiting (25 s), the next turn asks again.
 - Strict OAuth clients must use the `www` address (the apex redirects).
 - No "run now" automation tool: agents can create, update, pause, and delete automations (verified), but an automation runs on its schedule.
@@ -361,7 +361,7 @@ Phases 3 and 5 don't depend on 0–2 for native agents and can start in parallel
 - [x] Shared sanitizer in `@layernorm/overlay-agent-bridge-protocol` (allowlist, secret placeholders, hooks held back), run on the computer, on upload, and when a stored bundle is read.
 - [x] `export-config <claude-code|codex> --server --code [--dry-run] [--home]` in `@layernorm/overlay-agent-host`; folder upload in the agent page (Config section); one-time `ovprof_` codes; staged preview with counts, left-out items with reasons, needed values, and hooks.
 - [x] Apply writes `~/.claude` (or `~/.codex`), merges MCP servers into `~/.claude.json`, tracks what it owns, and rolls back to any of the last 10 versions. Needed values live in the credential vault and reach the agent per run.
-- [x] Exit criterion met on production: a real `~/.claude` imported and its skill invoked on the cloud agent, no secrets copied. Details in `docs/develop/agent-profiles.md`.
+- [x] Exit criterion met on production: a real `~/.claude` imported and its skill invoked on the cloud agent, no secrets copied. Details in `internal/develop/agent-profiles.md`.
 
 Found by the live run: acpx ignores `~/.claude` unless `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1` (now set where the host starts; the earlier assumption that config lives under `~/.overlay` was wrong for Claude Code); a run cut off by a pause or restart blocked the machine until the sweep learned to fail abandoned cloud runs after 15 minutes; the export command needs Node 24 (the copied command pins it).
 
@@ -379,7 +379,7 @@ Known gaps: Codex import untested live (needs a Codex API key). Restarting a hos
 
 - [x] `post_message` (post into a room the agent is in, mention agents there), a per-chain token budget, "see where it came from" links, outside apps asking agents as the person, and agent conversations opening in the room view from a plain link.
 
-Details and what the live runs found: `docs/develop/agent-to-agent.md`. Not built: a spend limit in money (tokens only), and posting into a room the agent is not already in.
+Details and what the live runs found: `internal/develop/agent-to-agent.md`. Not built: a spend limit in money (tokens only), and posting into a room the agent is not already in.
 
 **Phase 6 status (2026-10-03): built and deployed (web, Convex, host 0.3.8 on npm); Codex and experimental agents not yet verified live.**
 
@@ -388,7 +388,7 @@ Details and what the live runs found: `docs/develop/agent-to-agent.md`. Not buil
 - [x] E2B sandbox adapter, billing rates, and template build script (tested against a fake SDK only).
 - [ ] Exit criterion (two Codex agents on one ChatGPT account) needs a live run with the owner's device-code approval.
 
-Details: `docs/develop/codex-subscription.md`.
+Details: `internal/develop/codex-subscription.md`.
 
 ## Decisions (2026-10-01)
 

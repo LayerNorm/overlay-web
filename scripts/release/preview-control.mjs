@@ -47,7 +47,7 @@ export function deploymentMatches(deployment, pr, { ready = false } = {}) {
 export function needsHostedPreview(files) {
   if (!files.length) return true // Unknown/incomplete diffs fail closed into a build.
   const maintenance = path => typeof path === 'string' && path.length > 0
-    && (path.startsWith('docs/') || path.startsWith('.github/') || /^[^/]+\.mdx?$/.test(path))
+    && (path.startsWith('docs/') || path.startsWith('internal/') || path.startsWith('.github/') || /^[^/]+\.mdx?$/.test(path))
   return files.some(file => !maintenance(file.filename)
     || (file.previous_filename && !maintenance(file.previous_filename)))
 }

@@ -1,6 +1,6 @@
 # Agents asking agents
 
-Workstream 4 of `docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`. An agent can ask another agent in the workspace for help and read its answer. It works the same for Overlay agents (native tools) and Claude Code / Codex agents on Overlay Cloud (the same tools over the Overlay MCP server).
+Workstream 4 of `internal/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`. An agent can ask another agent in the workspace for help and read its answer. It works the same for Overlay agents (native tools) and Claude Code / Codex agents on Overlay Cloud (the same tools over the Overlay MCP server).
 
 ## Tools (group `agent_chat`, "Ask other agents")
 

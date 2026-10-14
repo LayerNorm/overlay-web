@@ -1,6 +1,6 @@
 # Agent profiles (imported Claude Code / Codex config)
 
-An **agent profile** is a versioned, cleaned copy of a person's Claude Code or Codex setup, applied to an Overlay Cloud agent's machine. It is workstream 3 of `docs/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`.
+An **agent profile** is a versioned, cleaned copy of a person's Claude Code or Codex setup, applied to an Overlay Cloud agent's machine. It is workstream 3 of `internal/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`.
 
 ## What is imported
 

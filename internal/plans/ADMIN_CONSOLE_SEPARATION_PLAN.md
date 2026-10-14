@@ -2,7 +2,7 @@
 
 Status: approved direction (2026-10-14); Stage 1 not started
 Owner: DevelopedByDev
-Workflow: [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
+Workflow: [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
 ready PR; the Integration thread reviews and merges.
 
 ## Summary
@@ -160,7 +160,7 @@ Tasks:
   - The secret module is never imported into client code.
   - The ported service tests from `src/server/admin/AdministrativeService.test.ts`.
 - [ ] Docs:
-  - Add `docs/develop/admin-console.md`: what the console is, local setup, env vars, the operator/workspace split.
+  - Add `internal/develop/admin-console.md`: what the console is, local setup, env vars, the operator/workspace split.
   - Add it to the living-docs table in `AGENTS.md`.
   - Update `docs/develop/architecture.mdx` with the new `apps/` layer.
   - Add an Unreleased entry to `CHANGELOG.md`.
@@ -207,7 +207,7 @@ Tasks:
 - [ ] Switch `apps/admin/src/server/convex-admin.ts` to the new functions. Rename its env var to `ADMIN_API_SECRET` and
       forward the operator's access token for `requireOperator`.
 - [ ] Add a break-glass CLI path. It is an internal mutation, run with `npx convex run` by someone with deployment access,
-      that grants the first `admin` principal and writes an audit event. Document it in `docs/develop/admin-console.md`.
+      that grants the first `admin` principal and writes an audit event. Document it in `internal/develop/admin-console.md`.
 - [ ] Convex tests (`*.convex.test.ts`):
   - The internal secret is rejected by every new function.
   - The admin secret with no operator identity is rejected.
@@ -216,7 +216,7 @@ Tasks:
   - Each write produces an audit row.
 - [ ] Set `ADMIN_API_SECRET` on the engineer dev backend for local QA. Each PR's preview backend needs it too: extend
       `scripts/release/preview-control.mjs`, or document the step.
-- [ ] Docs: update `docs/develop/convex-workflow.mdx` and `docs/develop/admin-console.md`, and add a `CHANGELOG.md` entry.
+- [ ] Docs: update `docs/develop/convex-workflow.mdx` and `internal/develop/admin-console.md`, and add a `CHANGELOG.md` entry.
 
 Builder QA: Convex tests; the local admin app against the dev backend with the new functions; the web PR preview still
 signs in, and permission checks still work there (create a chat, upload a file).
@@ -270,7 +270,7 @@ runs.
    - Verify `admin.getoverlay.io` serves it.
    - Run an authenticated admin smoke test.
 
-   Update `docs/develop/release-workflow.mdx` and `docs/develop/Development Workflow.md`.
+   Update `docs/develop/release-workflow.mdx` and `internal/develop/Development Workflow.md`.
 
 ### Checking IP allowlisting
 

@@ -23,7 +23,7 @@
 - For verification, run the smallest check that covers the change. In this repo, targeted ESLint on changed files is acceptable when full `npm run lint` is blocked by unrelated generated or mobile issues.
 - Model dropdowns: order by intelligence/quality (`CHAT_MODEL_QUALITY_PRIORITY`), not provider grouping or alphabetical order; keep free-tier "Auto" at the top. Capability badges are small chips (`inline-flex w-4 h-4 rounded bg-[#f0f0f0]`) with thin Lucide icons (`ScanEye` vision, `Sparkles` reasoning)—only when the model supports the capability. Reveal secondary info (e.g. cost) on row hover via `group/row` + `group-hover/row:hidden` / `hidden group-hover/row:flex`.
 - Streaming text must render in complete, markdown-formatted chunks without per-character diffs that cause visible flickering. Agent loading should use bottom-placed dots, not parallel "Thinking..." text. Tool-call/action UIs should be minimal, collapsed, and sequential by default.
-- For quick UI prototypes, visual mockups, or throwaway demos, create a standalone HTML file and preview it in the browser—don't scaffold app code or routes until the design is approved. Before creating the file, ask the user where to place it. The default is `docs/plans/mockups/` (tracked in git, so the mockup can be committed); the alternative is `artifacts/` at the repo root (gitignored, for scratch work that should not be committed). Don't force-add files from `artifacts/`.
+- For quick UI prototypes, visual mockups, or throwaway demos, create a standalone HTML file and preview it in the browser—don't scaffold app code or routes until the design is approved. Before creating the file, ask the user where to place it. The default is `internal/plans/mockups/` (tracked in git, so the mockup can be committed); the alternative is `artifacts/` at the repo root (gitignored, for scratch work that should not be committed). Don't force-add files from `artifacts/`.
 
 ## Learned Workspace Facts
 
@@ -47,26 +47,25 @@
 
 ## Agentic Development and Main Integration (MUST FOLLOW)
 
-- `docs/develop/Development Workflow.md` is the authoritative Builder/Integration/release workflow. Read it before branches, worktrees, PRs or merges; other guides provide implementation details and cannot add mandatory staging gates. One task owns one descriptive `codex/<slug>` feature branch/worktree from latest origin/main. Preserve canonical edits; production uses clean canonical main.
+- `internal/develop/Development Workflow.md` is the authoritative Builder/Integration/release workflow. Read it before branches, worktrees, PRs or merges; other guides provide implementation details and cannot add mandatory staging gates. One task owns one descriptive `codex/<slug>` feature branch/worktree from latest origin/main. Preserve canonical edits; production uses clean canonical main.
 - Builder opens a draft main PR, verifies current-head isolated preview and affected behavior, updates living docs/CHANGELOG, marks ready and stops. Integration reviews, resolves findings and enqueues once required checks and proportionate QA pass.
 - The main merge queue runs required merge_group CI against combined candidates. Main changes automatically deploy to Vercel production, followed by authenticated smoke. Use staging only when explicitly requested for sensitive changes.
 - Vercel’s native Git integration automatically deploys main. Verify its exact deployment SHA and production smoke; synchronize Convex only when backend changes require it, after matching web is live. No custom production deploy workflow or Vercel deployment token is required. Never use feature worktrees or `.env.local` for production. Keep root `git.deploymentEnabled.main=true`.
 - Freeze legacy staging; do not integrate, deploy, align or push that branch. Keep sole-author approving reviews at zero. Local DevelopedByDev integration may use the standing direct-push authorization above; other bypass use requires explicit authorization. Never rebase-merge, force-push, reset or delete release branches.
 - GitHub PRs/checks/history are the integration record. Maintain concise root CHANGELOG for operational/user-visible changes; no second PR ledger. Match QA to risk.
-- Reusable Builder and Integration prompts remain in `docs/develop/BUILDER_AGENT_PROMPT.md` and `docs/develop/INTEGRATION_AGENT_PROMPT.md`. No extra development roles are required.
+- Reusable Builder and Integration prompts remain in `internal/develop/BUILDER_AGENT_PROMPT.md` and `internal/develop/INTEGRATION_AGENT_PROMPT.md`. No extra development roles are required.
 
 ## Self-Updating Documentation (MUST READ)
 
-The `docs/develop/` directory contains living documentation that coding agents **must keep up to date** when their work touches the relevant area. These are not static reference files — they are the source of truth for decisions, patterns, and status. If you implement a change that falls under one of these docs, you **must** update the doc in the same commit/PR.
+The `internal/develop/` directory contains living documentation that coding agents **must keep up to date** when their work touches the relevant area. These are not static reference files — they are the source of truth for decisions, patterns, and status. If you implement a change that falls under one of these docs, you **must** update the doc in the same commit/PR.
 
 | Doc | When to update |
 | --- | --- |
-| `docs/develop/Development Workflow.md` | Any change to the shared Builder/Integration instructions, preview QA handoff, or integration order. |
+| `internal/develop/Development Workflow.md` | Any change to the shared Builder/Integration instructions, preview QA handoff, or integration order. |
 | `docs/develop/release-workflow.mdx` | Any change to the preview/main queue/staging/automatic production contract or activation checkpoint. |
 | `docs/develop/agentic-development.mdx` | Any change to feature worktrees, branch ownership, pull request contracts, integration roles, merge methods, changelog policy, or main-branch workflow. |
-| `docs/develop/cache-components-design-decisions.md` | Any change to `instant = false` opt-outs, `<Suspense>` boundaries in routes, `cacheComponents`/`partialPrefetching` config, or route-level PPR status. Add the route to the converted list or update its opt-out reason. |
-| `docs/develop/browser-testing-with-agent-browser.md` | Any change to the agent-browser setup, tool usage patterns, or QA workflow. Add new workflow patterns or gotchas discovered during testing. |
-| `docs/develop/browser-use-with-playwright-cli.md` | Any change to driving the user's Chrome (LayerNorm Profile 6) via the Playwright extension + `pw-chrome` wrapper: tab-group consent, trusted-input quirks, Slack console internal-API fallbacks, or cross-project browser use. |
+| `internal/develop/cache-components-design-decisions.md` | Any change to `instant = false` opt-outs, `<Suspense>` boundaries in routes, `cacheComponents`/`partialPrefetching` config, or route-level PPR status. Add the route to the converted list or update its opt-out reason. |
+| `internal/develop/browser-testing-with-agent-browser.md` | Any change to browser QA tooling — agent-browser for testing passes, or driving the user's Chrome (LayerNorm Profile 6) via the Playwright extension + `pw-chrome`/`pw-bg` wrappers (the "Alternative" section): tab-group consent, trusted-input quirks, Slack console internal-API fallbacks, or cross-project browser use. |
 | `docs/develop/worktree-staging-qa.mdx` | Any change to staging integration, hosted QA, production promotion, or Convex deploy lanes. |
 | `docs/develop/convex-workflow.mdx` | Any change to Convex deploy commands, environment selection, or boundary rules. |
 | `docs/develop/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
@@ -75,27 +74,32 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/api-route-catalog.mdx` | Any change to a web API route's existence, methods, behavior, authentication boundary, or implementation files. Keep the exhaustive route descriptions current. |
 | `docs/develop/compact-api-route-catalog.mdx` | Any change to a web API route's existence or exported HTTP methods. Keep it synchronized with the full route catalog. |
 | `docs/develop/customization.mdx` | Any change to theming, settings panels, or workspace configuration. |
-| `docs/develop/interface-design.md` | Any change to shared UI controls, selection layouts, or editor save patterns. |
+| `internal/develop/interface-design.md` | Any change to shared UI controls, selection layouts, or editor save patterns. |
 | `docs/develop/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
-| `docs/develop/external-imports.md` | Any change to the external import architecture, canonical import model, adapter interface, or Slack/Teams/Discord/Telegram import implementation. |
-| `docs/develop/traversing-agent-conversations.md` | Any change to how Devin CLI, Codex, or Grok Build sessions are stored/queried, or new query patterns for extracting conversation data from `sessions.db`, Codex JSONL, or Grok `chat_history.jsonl` files. |
-| `docs/develop/bring-your-own-agents.md` | Any change to connected-agent contracts, host protocol, enrollment, remote execution, managed environments, or rollout policy. |
-| `docs/develop/bring-your-own-agents-architecture.md` | Any change to the connected-agent topology, protocol layering, enrollment flow, Agent Host loop, ACP adapters, memory flow, or public package boundaries. |
-| `docs/develop/billing-holds-and-machine-metering.md` | Any change to budget reservations and holds, the stale-hold sweep, machine metering or its credit floor, `OVERLAY_AGENT_PUBLIC_URL`, or the production environment for Overlay Cloud agents. |
-| `docs/develop/tool-catalog.md` | Any change to Overlay's tool ids, tool groups, who gets which tools (chat, native agents, connected agents, outside apps), or the outside-app access levels. |
-| `docs/develop/agent-to-agent.md` | Any change to agents asking agents: the `agent_chat` tools, `/api/v1/agent-asks`, lineage and limits, the budget counters, or how an asked agent's turn is started. |
-| `docs/develop/agent-profiles.md` | Any change to importing Claude Code / Codex config into Overlay Cloud agents: the allowlist and cleaning rules, the export-config host command, upload/apply flow, versions, or needed-value (secret) handling. |
-| `docs/develop/agent-machine-idle.md` | Any change to when an agent machine goes idle: the idle window, the Convex idle timer and token, the `idleCheck` BFF path, the meter sweep fallback, or the "a run is going" check. |
-| `docs/develop/codex-subscription.md` | Any change to Codex ChatGPT sign-in, the token broker and refresh lock, per-run `auth.json` delivery, experimental OpenCode/Hermes/Cursor agents, or the E2B sandbox adapter. |
-| `docs/develop/mcp-access.md` | Any change to Overlay's MCP server for other AI apps: OAuth endpoints, grants, access levels, token formats, consent page, or Settings → Connected apps. |
-| `docs/develop/convex-only-self-hosting.md` | Any change to the Convex-only backend decision, the Postgres-layer deletion plan, self-hosted Convex topology/scaling, the data-mirror/Data Sync integration path, or the big-brain control-plane plan. |
+| `internal/develop/external-imports.md` | Any change to the external import architecture, canonical import model, adapter interface, or Slack/Teams/Discord/Telegram import implementation. |
+| `internal/develop/traversing-agent-conversations.md` | Any change to how Devin CLI or Codex sessions are stored/queried, or new query patterns for extracting conversation data from `sessions.db` or Codex JSONL files. |
+| `internal/develop/bring-your-own-agents.md` | Any change to connected-agent contracts, host protocol, enrollment, remote execution, managed environments, rollout policy, or the architecture section (topology, protocol layering, Agent Host loop, ACP adapters, memory flow, public package boundaries). |
+| `internal/develop/billing-holds-and-machine-metering.md` | Any change to budget reservations and holds, the stale-hold sweep, machine metering or its credit floor, `OVERLAY_AGENT_PUBLIC_URL`, or the production environment for Overlay Cloud agents. |
+| `internal/develop/tool-catalog.md` | Any change to Overlay's tool ids, tool groups, who gets which tools (chat, native agents, connected agents, outside apps), or the outside-app access levels. |
+| `internal/develop/agent-to-agent.md` | Any change to agents asking agents: the `agent_chat` tools, `/api/v1/agent-asks`, lineage and limits, the budget counters, or how an asked agent's turn is started. |
+| `internal/develop/agent-profiles.md` | Any change to importing Claude Code / Codex config into Overlay Cloud agents: the allowlist and cleaning rules, the export-config host command, upload/apply flow, versions, or needed-value (secret) handling. |
+| `internal/develop/agent-machine-idle.md` | Any change to when an agent machine goes idle: the idle window, the Convex idle timer and token, the `idleCheck` BFF path, the meter sweep fallback, or the "a run is going" check. |
+| `internal/develop/codex-subscription.md` | Any change to Codex ChatGPT sign-in, the token broker and refresh lock, per-run `auth.json` delivery, experimental OpenCode/Hermes/Cursor agents, or the E2B sandbox adapter. |
+| `internal/develop/mcp-access.md` | Any change to Overlay's MCP server for other AI apps: OAuth endpoints, grants, access levels, token formats, consent page, or Settings → Connected apps. |
+| `internal/develop/convex-only-self-hosting.md` | Any change to the Convex-only backend decision, the Postgres-layer deletion plan, self-hosted Convex topology/scaling, the data-mirror/Data Sync integration path, or the big-brain control-plane plan. |
 
 **Rules:**
 1. Read the relevant doc(s) before starting work in a new area.
 2. Update the doc in the same commit as your code changes — not as a follow-up.
-3. If you create a new living doc in `docs/develop/`, add it to the table above.
+3. If you create a new living doc in `internal/develop/`, add it to the table above.
 4. Keep entries concise: decisions and their reasons, not narratives.
 5. If a doc becomes stale (references deleted code, wrong patterns), fix it when you notice — even if the current task is unrelated.
+
+**Documentation lifecycle (prevents re-accumulation):**
+1. `internal/develop/` holds living docs only. Anything point-in-time — a plan, an audit, a baseline — is a plan and belongs in `internal/plans/`. `docs/` holds only the public Mintlify site.
+2. Plans get a `Status:` line. When a plan's last phase lands, the PR that lands it also deletes the plan doc; CHANGELOG and git history keep the record.
+3. Dated audits, baselines, and one-time evidence never live in the repo — they go in the PR description or a private store (per `internal/README.md`).
+4. This repository is public: no production metrics, customer names, or infrastructure internals in committed docs — including under `internal/` (moving files there does not make them private).
 
 <!-- BEGIN:nextjs-agent-rules -->
 

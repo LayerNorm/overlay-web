@@ -1,8 +1,15 @@
 # Overlay Docs
 
-`docs/` is the Mintlify site root and contains publishable documentation for
-Overlay across **web**, **desktop**, self-hosting, operator, API, and legal
-topics.
+Documentation is split in two:
+
+- `docs/` is the Mintlify site root and contains publishable documentation for
+  Overlay across **web**, **desktop**, self-hosting, operator, API, and legal
+  topics.
+- `internal/` (this directory) holds repo-facing documentation:
+  `internal/develop/` for living docs that stay current with the code, and
+  `internal/plans/` for point-in-time plans. Internal docs are not rendered on
+  the docs site and public pages must not link to them — but this repository is
+  public, so they are not private either.
 
 ## Edit Model
 

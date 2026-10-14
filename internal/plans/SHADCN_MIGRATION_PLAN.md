@@ -2,7 +2,7 @@
 
 _Started 2026-10-13. Progress verified 2026-10-14 against GitHub and
 `origin/main` at `6a5218fe9510e3df37ec0d4698b3af328112851f`. Companion visual
-mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/mockups/shadcn-migration-preview.html)._
+mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/internal/plans/mockups/shadcn-migration-preview.html)._
 
 ## Progress
 

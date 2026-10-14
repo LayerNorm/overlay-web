@@ -187,8 +187,8 @@ computer-host) can come later without touching the entity or the UI.
 
 ## Phasing
 
-File-by-file implementation sequence for phases 1–2 lives in
-[`COMPUTERS_WIRING_PLAN.md`](./COMPUTERS_WIRING_PLAN.md).
+The file-by-file implementation sequence for the web wiring is recorded in
+"Web wiring — implementation record" below.
 
 0. **Logic layer (done)**: `DesktopSandboxInstance` port + `desktop`
    capability in `contracts.ts`; `BoxSandboxRuntime` in
@@ -248,3 +248,51 @@ File-by-file implementation sequence for phases 1–2 lives in
   (same machine runs agent-host) or stays parallel to environments — leaning
   toward: a computer CAN enroll an agent-host, which is what makes Phase 4
   a configuration rather than a new substrate.
+
+## Web wiring — implementation record
+
+The file-by-file sequence that wired the Phase 0 logic layer into the web app
+lived in a companion doc (removed once its phases landed). Phases 1–5.5 all
+landed and are marked done there; git history keeps the detail. What remains
+from it:
+
+### Verified conventions (kept — still the patterns new wiring should follow)
+
+| Concern | Pattern | Reference |
+| --- | --- | --- |
+| Route shell | `handleBffRoute(request, context, domainService.GET as BffDomainService)`; 4th arg `{ sensitiveResponse: true }` skips idempotency-body persistence for secrets | `src/app/api/v1/agent-environments/route.ts`, `src/app/api/v1/_utils/bff.ts` |
+| Domain handler | `(request: Request, context: AppApiRouteContext)`; auth via `context.auth.userId`, workspace via `context.workspace.workspace.id`, member role via `context.workspace.membership.role`, body via `context.parsedJson`, params via `await context.params` | `src/server/app-api/v1/agent-environments/route.ts`, `src/server/app-api/bff-context.ts` |
+| Repository trio | `XRepository.ts` interface + `PostgresXRepository` + `ConvexXRepository` per domain under `src/server/<domain>/` | `src/server/projects/` |
+| Repo registration | `AppDataRepositories` interface + both branches of `createAppDataContext` | `src/server/app-data/repositories.ts` |
+| Contract suite | `AppDataRepositoryContractBackend` + `runAppDataRepositoryContractSuite`; run by `postgres-contract.test.ts` / `convex-contract.test.ts` | `src/server/app-data/contracts/` |
+| Postgres table | `migrations/app-data/NNNN_x.sql` (`--> statement-breakpoint` separators) + `pgTable` in `src/server/database/postgres/schema.ts` | `migrations/app-data/0070_byok_provider_connections.sql`, `0074_agent_avatar_shape.sql` |
+| Convex table+handlers | `defineTable` in `convex/schema.ts`; handlers in `convex/<domain>/<domain>.ts` reached as `'<domain>/<domain>:<fn>'`; server-secret gate via `validateServerSecret`; no `index.ts` barrels | `convex/projects/projects.ts`, `convex/lib/auth.ts` |
+| Convex repo calls | `lazyConvex` + `getInternalApiSecret()` + `serverSecret` arg | `src/server/projects/ConvexProjectRepository.ts` |
+| Route capability gate | `getRequiredCapabilityForRoute` prefix map; labels in `CAPABILITY_LABELS`; flag in `CapabilityCheck` | `src/server/capabilities-core.ts`, `packages/overlay-app-core/src/capabilities.ts` |
+| Capability derivation | feature flag from `OverlayFeatureFlagsSchema` + `defaultOverlayRuntimeConfig.ts`; computed in `withObservabilityProviderCapabilities` | `src/server/capabilities.ts:69` (`connectedAgents` precedent) |
+| Postgres route support | `POSTGRES_APP_DATA_ROUTE_SUPPORT_RULES`; every rule id must be owned by `ON_PREM_PARITY_MATRIX[].routeRuleIds` (enforced by `parity-matrix.test.ts`) | `src/server/app-data/route-support.ts`, `parity-matrix.ts` |
+| API client | `<domain>/client.ts` class over `HttpContext`; `x-overlay-workspace-id` header via `workspaceInit`; export in `index.ts`; instantiate in `create-overlay-app-client.ts` | `packages/overlay-api-client/src/agent-environments/client.ts` |
+| Service registration | field on `OverlayServerContext` + construct + return in `createOverlayServerContext`; handlers reach it via `getOverlayServerContext()` | `src/server/bootstrap.ts:131-162, 298, 469` |
+| Per-backend tests | Postgres: `tsx --test` gated on `OVERLAY_DATABASE_URL`; Convex: gated on `*_CONVEX=1` + Convex URL + `INTERNAL_API_SECRET` | `src/server/agents/{postgres,convex}-workspace-agents.test.ts` |
+
+Open decision points are marked **[decide]** with a recommended default.
+
+---
+
+### Still open
+
+- **Automation wiring (optional).** Scheduled agent runs could wake the
+  agent's computer and attach a desktop at run start
+  (`convex/automations/automationRunner.ts` → service call). Underspecified on
+  purpose: needs a decision on whether automation time counts against the
+  workspace computer quota and how stream access is audited. Revisit once real
+  usage exists.
+
+### Standing rules carried forward
+
+- `src/server/**` files start with `import 'server-only'`; `convex/` imports
+  `@/shared/*` only; packages never import `src/`; no `index.ts` barrels under
+  `convex/`.
+- `src/shared/` stays isomorphic.
+- Stream tickets are bearer secrets: `sensitiveResponse`, `no-store`, never
+  logged, never persisted.

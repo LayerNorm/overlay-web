@@ -1,148 +1,23 @@
 # Todos
 
-## Harness implementation
+## Editor
 
-Owner interventions needed for the (since removed) managed harness agents rollout:
-
-- [x] **Set Vercel Sandbox env credentials** — done for **staging**:
-  `VERCEL_TOKEN` (from the local Vercel CLI auth token), `VERCEL_TEAM_ID`,
-  `VERCEL_PROJECT_ID`, and `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true` are on
-  the `overlay-web-staging` Vercel project (Production env). Still needed for
-  **local dev** (`.env.local`) and **production** when promoting.
-- [ ] **Run the Phase 1 exit gate live** — with credentials set, POST
-  `/api/v1/agent-environments/managed` with
-  `{mode:'harness', harnessId:'claude-code'}`; verify the `overlay_cloud`
-  environment (approved, `adapters:[{id:'claude-code',protocol:'harness'}]`),
-  lease, and audit event in Convex; then repeat against Postgres
-  (`OVERLAY_DATABASE_URL` / `npm run app-db:migrate` for migration 0076).
-- [x] **Apply migration 0076 + Convex schema** — `agentHarnessSessions` table +
-  indexes pushed to the shared dev deployment (`different-caiman-77`) via
-  `convex:push:dev` from the staging worktree. Postgres path still needs
-  `app-db:up && app-db:migrate` for Postgres-backed deployments.
-- [x] **Run the Phase 2 exit gate live** — verified on staging 2026-09-16: a DM
-  to a managed `claude-code` agent streamed through
-  `managedHarnessAgentTurnWorkflow` (reply + tool calls rendered in the normal
-  transcript), a second message answered with prior-turn context, and the
-  "Stop response" button renders mid-turn. Caveats: `agentHarnessSessions`
-  persisted no `resumeState` (the claude-code adapter emitted none — context
-  carried via room history instead), and mid-turn stop-click could not be
-  verified because turns finished before the click landed.
-- [x] **Managed Claude Code turn debugged on staging** — first attempts failed
-  `owner_funded_budget_declined` (sandbox reservation needs ~$15.30/turn; grant
-  test credit via `platform/usage:adjustAdministrativeBudgetByServer`, NOT
-  `recordTopUpByServer` — the canonical-balance top-up is silently reverted by
-  `syncPersonalBillingShadows`, which rewrites `billingAccountBalances` from
-  the legacy `subscriptions` row on every billing mutation; **fixed
-  2026-10-06**: account-level writes (`recordTopUpByServer`, `upsertByServer`,
-  `reverseTopUpByServer`, the Stripe account mutations) now refuse a personal
-  account with `billing_account_balance_is_legacy_synced`, and the sync refuses
-  a non-personal account; use `billing/subscriptions:recordBudgetTopUpByServer`
-  or `adjustAdministrativeBudgetByServer` for personal accounts). Then turns failed inside the workflow with Vercel
-  rejecting the `x-api-key` injection rule: `AI_GATEWAY_API_KEY` was set but
-  EMPTY on `overlay-web-staging`, so the adapter fell back to the runtime's
-  `VERCEL_OIDC_TOKEN` JWT as the injection value. Set the real `vck_…` key on
-  the project (Production env) — also required on production before launch.
-- [x] **Production rollout (2026-09-16)** — `846d41f43` deployed to
-  `overlay-landing` (www.getoverlay.io) via `deploy --prod --skip-domain` +
-  `promote`; `convex:push:prod` deployed clean (added `agentHarnessSessions`
-  indexes). Prod env had the same rot as staging: `VERCEL_TOKEN` dead
-  (`invalidToken`), `AI_GATEWAY_API_KEY` empty, `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=0`.
-  Replaced token/team/project ids with clean values, set the real `vck_` key,
-  `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=1`,
-  `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`,
-  `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE=general` (owner chose everyone), and
-  redeployed (`mrccau3l3`). Verified authenticated on prod: picker returns
-  claude-code/codex/opencode/pi/hermes with providers vercel+daytona; OpenCode
-  provisioning 201 (test sandbox destroyed via reset-harness; orphan env row
-  `overlay-harness-dc2ff13a` left for reconcile).
-- [x] **Set the managed-harness feature flags** — `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`
-  is set on staging. `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE` defaults to
-  `general`, so every staging workspace passes the rollout gate; narrow it to
-  `dogfood` later if you want dogfood-only exposure.
-- [x] **Run the Phase 3 exit gate** — verified on staging 2026-09-16 via the
-  Playwright-attached Chrome session: the Hosted on Overlay Cloud runtime
-  picker lists Overlay + Claude Code/Codex/OpenCode/Pi/Hermes, Claude Code was
-  created through the UI, and 6 DMs ran end-to-end in its sandbox. Not covered:
-  the other five runtimes' creation, both-theme screenshots, directory/mention
-  rendering. Two cosmetic notes: the editor's Sandbox status shows "offline"
-  even while turns work (reconcile treats `overlay_cloud` envs as connected
-  hosts), and a `/workspace` working dir resolves to the sandbox's real
-  `/vercel/workspace` root.
-- [x] **Reset-session e2e** — `POST …/reset-harness` returns 200 with
-  `sandboxDestroyed: true` and clears `agentHarnessSessions` (the Convex-arg
-  fix in `276be8c39` landed). The UI confirm dialog races the Playwright tab
-  group, so the click itself is unverified — the endpoint is proven.
-- [x] **Post-reset stale-sandbox turn failures** — root cause found and fixed
-  in `149eaa8bd`: reset/expiry leaves the lease `running` with a destroyed
-  `providerReference`; `ManagedAgentSandboxBilling.reserve()` reconnected
-  unconditionally → every turn threw at dispatch ("could not start this turn"),
-  and `settle()` rethrew inside `finalizeManagedHarnessTurn` AFTER the reply
-  was persisted → the workflow catch ran `failManagedHarnessTurn`, marking the
-  written message failed (that's why responses rendered no text) and the run
-  `model_failed`. Fix: reserve tolerates a dead ref (fresh sandbox bills from
-  zero baseline), settle reads the lease's CURRENT providerReference (the
-  acquire step repoints it on recreate), and every settle call site is
-  .catch-guarded — `markForReconcile` recovers the cents without failing the
-  turn. Regression test asserts settle calls in finalize are guarded.
-- [x] **Provisioning 500s + turn failures (second root cause)** — the staging
-  project's stored `VERCEL_TOKEN` was rotated/dead: raw `Sandbox.create`
-  returned `403 Not authorized` while the current CLI token succeeded.
-  Replaced `VERCEL_TOKEN`/`VERCEL_TEAM_ID`/`VERCEL_PROJECT_ID` on
-  `overlay-web-staging` with clean values (the earlier ones also carried a
-  literal `\n` suffix — app `.trim()`s it, but stored values are now clean).
-  Verified: OpenCode provisioning 201, local smoke test creates sandbox +
-  HarnessAgent session + real `hi.txt` write.
-- [x] **Runtime picker locked after creation** — a hosted agent's harness is
-  its identity (environment, binding, sessions are all per-harness), so the
-  editor renders a read-only row on edit instead of the switchable selector
-  (`149eaa8bd`). Switching = archive + recreate.
-- [x] **Verify reply text renders post-fix** — verified on staging 2026-09-16:
-  a post-reset turn recreated the sandbox (`overlay-harness-e6eb2e03`,
-  repointing lease `9e251862`), completed with `reset-proof.txt` written and
-  read back, and the settled reply renders its text in the transcript.
-  Second root cause found + fixed in `08eb8e1cc`: the transcript writable
-  kept reply text in `content` and never emitted a `text` part, while the
-  settled UI renders from `parts` — tool-using replies persisted content but
-  rendered textless. Finalize now appends a text part when none exists.
-- [x] **Agent save 500 on non-Claude runtimes** — `PATCH /api/v1/agents/{id}`
-  with `harness:'opencode'` (or codex/pi/hermes) returned a bare 500 because
-  the Convex `harness` union in `collaboration/agents` + `schema.ts` only
-  allowed `overlay`/`claude-code`; arg validation rejected the runtime
-  before the handler. Widened to the full `WORKSPACE_AGENT_HARNESSES` list
-  (`2ef6ccb44`) and mapped `WorkspaceServiceError` in `agentErrorResponse`
-  (policy denial → 403, not 500). Dev Convex push also unblocked by adding
-  optional compat fields (`cancelAtPeriodEnd`, `externalPlatform`/
-  `externalChannelId`/`externalThreadId`/`surfaceBindingId`, `platforms`)
-  for rows written by other releases on the shared backend (`6157576e5`,
-  `e95eb63d4`). Verified live: PATCH `harness:'opencode'` → 200.
-- [x] **Runtime picker missing on fresh drafts** — create flow inserts the
-  draft row then opens edit mode, so the edit-mode lock hid the picker for
-  new agents too (`ea69682b5`): `freshAgentRef` now marks the draft and
-  keeps the picker editable until first save.
 - [ ] **Editor "Agent not found" on expired sessions** — the side-panel editor
   renders "Agent not found" (not a re-auth prompt) when the WorkOS token
   lapses mid-session: `agents.get` 401s → `loadFailed` → not-found copy.
   Consider distinguishing auth failure from genuinely missing agents.
-- [ ] **Exercise a managed tool approval end-to-end** — DM a managed agent a
-  prompt that triggers an approval-gated tool; confirm the run flips to
-  `waiting_for_approval`, the card renders the requested tool names, approving
-  resumes the same workflow (check the reply continues on the same turn), and
-  denying produces a `tool-output-denied` part in the transcript. Also verify
-  stop-button cancellation while the workflow is parked.
-- [ ] **Mobile parity in `overlay-mobile`** — the sibling app needs the managed
-  capability bootstrap plus harness/provider labels in the agents roster and
-  editor parity with the web pickers (runtime, model, model access).
-- [ ] **Box stays excluded for managed harnesses** — no action; the provider
-  seam rejects it until egress allowlisting and safe credential forwarding
-  exist. Revisit only with a Box rate card (`computeBoxRuntimeCost`) if it's
-  ever offered.
+
+## Harness implementation (archived)
+
+The managed harness agents rollout (Vercel Sandbox) was completed and then the
+feature was removed; the rollout history lives in git history.
 
 ## Self-hosting roadmap
 
 Context: Convex is the only app-data provider (Phase 3 done). Enterprise
 self-hosting runs the official `convex-backend` (`examples/customer-deployment/`),
 and the SQL read mirror ships in `docker-compose.mirror.yml` (Phase 4 done).
-Architecture + rationale: `docs/develop/convex-only-self-hosting.md`.
+Architecture + rationale: `internal/develop/convex-only-self-hosting.md`.
 Frozen escape hatch: `postgres-self-host` branch pinned at `63cf2edb4` — the
 last commit with the full bespoke Postgres provider (deleted on `main`); only
 touch it if a customer explicitly requires a Postgres app-data backend.
@@ -171,7 +46,7 @@ touch it if a customer explicitly requires a Postgres app-data backend.
   `OVERLAY_CLOUD_AGENT_IMAGE=overlay-agent:v5`, run `npx tsx infra/agent-image/build-e2b.mts`,
   then create a cloud agent and check: create, wake after idle, pause, delete, `writeFiles`
   (Codex `auth.json`), and the E2B rate card in `ManagedAgentSandboxBilling.ts`.
-  See `docs/develop/codex-subscription.md`.
+  See `internal/develop/codex-subscription.md`.
 - [x] **Hermes on Overlay Cloud — dropped (2026-10-03).** Boat's lazy Hermes install fails, and pre-installing with `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` on the real disk did not help: the base layer's filesystem drops files while uv unpacks (`EXTERNALLY-MANAGED`, `_sysconfigdata_`, wheel `.dist-info` errors). Hermes stays hidden from the pickers (`SELECTABLE_AGENT_PROVIDER_IDS`); retry only if Boat's base layer changes.
 - [ ] **Cursor agent live test** — needs a `CURSOR_API_KEY`.
 - [ ] **Codex live test** — needs an approved ChatGPT device code; then two Codex agents on one account.
@@ -182,7 +57,7 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 
 ## Admin console
 
-- [ ] **Separate WorkOS environment for the admin console** (added 2026-10-14). Today the owner is the only operator, so `apps/admin` signs in through the existing WorkOS environment, gated by `ADMIN_ALLOWED_USER_IDS` and `administrativePrincipals`. Before anyone else gets operator access, move admin sign-in to its own WorkOS environment: SSO through company Google Workspace, MFA required, no password or magic link. Plan: `docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`.
+- [ ] **Separate WorkOS environment for the admin console** (added 2026-10-14). Today the owner is the only operator, so `apps/admin` signs in through the existing WorkOS environment, gated by `ADMIN_ALLOWED_USER_IDS` and `administrativePrincipals`. Before anyone else gets operator access, move admin sign-in to its own WorkOS environment: SSO through company Google Workspace, MFA required, no password or magic link. Plan: `internal/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`.
 - [ ] **Staff environment for other team members** (added 2026-10-14). When more people join, give them their own staff setup (accounts, roles in `administrativePrincipals`, access to the `overlay-admin` Vercel project) instead of sharing the owner's.
 
 ## Agent permission cards

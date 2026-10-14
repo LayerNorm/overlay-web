@@ -82,7 +82,8 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
 
 test('only complete docs and GitHub metadata diffs avoid a hosted preview', () => {
   assert.equal(needsHostedPreview([{ filename: 'docs/develop/process.mdx' },
-    { filename: '.github/workflows/codeql.yml' }, { filename: 'README.md' }]), false)
+    { filename: '.github/workflows/codeql.yml' }, { filename: 'README.md' },
+    { filename: 'internal/plans/NEW_PLAN.md' }]), false)
   for (const files of [[], [{}], [{ filename: 'scripts/release/preview-control.mjs' }],
     [{ filename: 'package-lock.json' }], [{ filename: 'convex/schema.ts' }],
     [{ filename: 'docs/moved.ts', previous_filename: 'src/was-runtime.ts' }]]) {

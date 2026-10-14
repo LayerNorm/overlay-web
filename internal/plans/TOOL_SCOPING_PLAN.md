@@ -1,6 +1,6 @@
 # Tool scoping and search: Personal and Workspace
 
-Status: plan, written 2026-10-05. Nothing in it is built yet except where marked "done". It builds on the unified Personal / Workspace / Archived scope model for files, notes, outputs, skills, MCP servers, connectors, and automations, and on `docs/develop/tool-catalog.md`.
+Status: in progress, written 2026-10-05. The P0 privacy leak (T0) shipped 2026-10-06 — personal chats and DMs are no longer searchable by teammates, and new memories default to `owner`. Two T4 slices also landed (room-context and called-tool scoping in shared rooms). Open: T1–T3 (scope fields on search results and writes), the rest of T4 (reads by id, write tools, computer/browser tools, agent-asks, per-message opt-in), and re-scoping existing memory rows. It builds on the unified Personal / Workspace / Archived scope model for files, notes, outputs, skills, MCP servers, connectors, and automations, and on `internal/develop/tool-catalog.md`.
 
 ## The question
 
@@ -108,7 +108,7 @@ Each phase is shippable alone and ends with the checks listed.
 - Global search dialog scope chips and tags.
 - Exit: shared notes and files are found by content; nothing private is; latency within the current budget (the filter is an index field, not a join).
 
-**T4: rooms and grants.** *First slice done 2026-10-06 (`src/shared/agents/room-access.ts`): in a shared room (more than one person, or a channel anyone in the workspace can read) the automatically loaded context for an agent no longer includes the summoner's personal memory, memory profile, retrieval, or personal skills. Second slice done 2026-10-06: the tools the agent calls in a shared room are limited too (searches `workspaceOnly`, lists Workspace scope, `list_chats`/`read_chat`/`search_in_files` withheld, workspace connectors and shared MCP servers only; `docs/develop/tool-catalog.md`, "Rooms others can read"). Still open: reads by id, write tools, computer/browser tools, agents asking agents, and a per-message "include this" opt-in.*
+**T4: rooms and grants.** *First slice done 2026-10-06 (`src/shared/agents/room-access.ts`): in a shared room (more than one person, or a channel anyone in the workspace can read) the automatically loaded context for an agent no longer includes the summoner's personal memory, memory profile, retrieval, or personal skills. Second slice done 2026-10-06: the tools the agent calls in a shared room are limited too (searches `workspaceOnly`, lists Workspace scope, `list_chats`/`read_chat`/`search_in_files` withheld, workspace connectors and shared MCP servers only; `internal/develop/tool-catalog.md`, "Rooms others can read"). Still open: reads by id, write tools, computer/browser tools, agents asking agents, and a per-message "include this" opt-in.*
 - The room rule (workspace-only default, explicit include), scope-limited tool grants, and the same limit on outside-app access levels.
 - Connector account choice: label both account sets in the prompt, `account` argument on connector calls.
 - Exit: an agent summoned in a channel by someone with private files cannot quote them; including a Personal item on purpose still works.
