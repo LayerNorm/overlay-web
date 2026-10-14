@@ -2,6 +2,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
+import Placeholder from '@tiptap/extension-placeholder'
 import { Bold, Italic, List, ListOrdered, Quote } from 'lucide-react'
 import { noteMarkdownToEditorHtml, editorHtmlToNoteMarkdown } from '@overlay/app-core/note-markdown'
 export function WorkObjectiveEditor({
@@ -23,6 +24,7 @@ export function WorkObjectiveEditor({
         protocols: ['http', 'https'],
         autolink: true,
       }),
+      Placeholder.configure({ placeholder: 'Describe the outcome…' }),
     ],
     content: noteMarkdownToEditorHtml(value),
     editorProps: {
@@ -31,7 +33,7 @@ export function WorkObjectiveEditor({
         role: 'textbox',
         'aria-multiline': 'true',
         class:
-          'min-h-20 px-2 py-2 text-sm leading-relaxed outline-none [&_p]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_a]:underline',
+          'min-h-20 px-2 py-2 text-sm leading-relaxed outline-none [&_p]:mb-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-5 [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_a]:underline [&_p.is-editor-empty:first-child]:before:content-[attr(data-placeholder)] [&_p.is-editor-empty:first-child]:before:text-(--muted-light) [&_p.is-editor-empty:first-child]:before:float-left [&_p.is-editor-empty:first-child]:before:h-0 [&_p.is-editor-empty:first-child]:before:pointer-events-none',
       },
     },
     onUpdate: ({ editor: current }) => onChange(editorHtmlToNoteMarkdown(current.getHTML())),

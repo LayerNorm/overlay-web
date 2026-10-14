@@ -195,7 +195,7 @@ request, optimistic feedback and rollback on failure. Personal tasks offer only
 their creator as owner; workspace tasks offer active human members. Filters and
 search apply together; groups keep the fixed workflow order.
 
-Everything / Needs you / Assigned to me use one shared `SegmentedControl` in the page header. Work follows the shared solo-workspace convention: hide Personal/Workspace and list all active tasks when there is one human member.
+Everything / Needs you / Assigned to me use one shared `SegmentedControl` in the page header. Header actions compact to icons beside a docked brief; mobile places the filter below the title/actions within the header. Work follows the shared solo-workspace convention: hide Personal/Workspace and list all active tasks when there is one human member.
 
 The Work brief uses the shared `AppScreenShell` docked right panel (380px), matching chat Sources: it reduces the desktop content width and slides from the right. Narrow screens use the shell overlay with a focus trap. Status, Owner and Due date stay visible; secondary metadata lives under More properties. Pickers use the shared `ListboxSelect`, and empty context link fields appear only on request. Save changes / Cancel changes stay in the form flow. Objective Markdown converts only through `@overlay/app-core/note-markdown`; checklist completion uses the shared Toggle. Comments save independently. Dirty dismissal or switching to another task asks before discarding, and a stale revision requires an explicit reload.
 

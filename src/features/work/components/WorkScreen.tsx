@@ -107,9 +107,9 @@ export default function WorkScreen() {
         ) : null
       }
       header={
-        <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-(--border) px-4 py-3">
+        <header className="@container flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-b border-(--border) px-4 py-3">
           <h1
-            className="text-lg font-medium lowercase tracking-tight"
+            className="order-1 text-lg font-medium lowercase tracking-tight"
             style={{ fontFamily: 'var(--font-serif)' }}
           >
             work
@@ -123,8 +123,9 @@ export default function WorkScreen() {
             ]}
             onChange={setFilter}
             ariaLabel="Task filters"
+            className="order-3 basis-full justify-center @min-[25rem]:order-2 @min-[25rem]:basis-auto"
           />
-          <div className="ml-auto flex items-center gap-2">
+          <div className="order-2 ml-auto flex items-center gap-2 @min-[25rem]:order-3">
             <HeaderSearch
               value={query}
               onChange={setQuery}
@@ -132,12 +133,13 @@ export default function WorkScreen() {
               placeholder="Search tasks…"
             />
             <button
+              aria-label="New task"
               onClick={() => input.current?.focus()}
               disabled={!canCreate('content', scope)}
               className="inline-flex h-8 items-center gap-1.5 rounded-md bg-(--surface-subtle) px-3 text-xs font-medium disabled:opacity-50"
             >
               <Plus size={14} />
-              New task
+              <span className="hidden @lg:inline">New task</span>
             </button>
           </div>
         </header>
