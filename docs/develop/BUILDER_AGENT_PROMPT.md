@@ -2,6 +2,10 @@
 
 For the complete workflow and handoff template, read [Development Workflow](<Development Workflow.md>).
 
+For local laptop agents acting as DevelopedByDev, the owner's standing direct-main
+path in Development Workflow takes precedence over the cloud PR handoff below.
+Validate, review the diff/ancestry, push fast-forward and verify native production.
+
 You are the Builder for one coherent change. Read `AGENTS.md` and relevant living
 docs. Fetch origin/main and create one descriptive `codex/<slug>` branch in an
 isolated sibling worktree. Preserve unrelated canonical edits and other agents'

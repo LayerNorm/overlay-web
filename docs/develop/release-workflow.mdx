@@ -12,12 +12,15 @@ description: "PR previews, main integration, release candidates, and automatic p
 | Staging | Accepted main SHA | Dedicated `doting-cuttlefish-819`, Sandbox identity, staging test providers |
 | Customer production | Automatically deployed current main SHA | `colorful-chickadee-419`, production identity/providers |
 
-Builder verifies a focused main PR on its isolated preview and stops when ready.
+Cloud Builder verifies a focused main PR on its isolated preview and stops when ready.
 Integration reviews it, resolves findings and enters the main merge queue once
 required checks and proportionate QA pass. Queue workflows verify the combined
 candidate against current main and earlier queued changes. Keep approving reviews
 at zero while the sole maintainer cannot approve his own PR; retain history
-protection and the explicit emergency-only owner bypass.
+protection. Local laptop agents under DevelopedByDev have standing authorization
+for validated fast-forward direct main pushes using the existing owner bypass,
+without a PR/queue or repeated permission request. Other bypass use requires
+explicit authorization. Follow the local owner path in Development Workflow.
 
 [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is authoritative. Main changes
 trigger Vercel’s native Git production deployment. Integration verifies the live
