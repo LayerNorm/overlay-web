@@ -10,16 +10,17 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 ## Release model
 
 [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is the authoritative Builder,
-Integration and release policy. Every feature reaches main through a focused PR
-and the merge queue. Every main push automatically deploys the exact revision to
-Vercel production, synchronizes Convex only when backend inputs change, and runs
-production smoke. Staging is optional for explicitly requested sensitive changes.
-Root `git.deploymentEnabled.main=false` prevents a duplicate native Git build;
-Production Release performs the automatic deployment.
+Integration and release policy. Cloud Builder features reach main through focused PRs
+and the merge queue. Local laptop agents under DevelopedByDev have standing
+authorization for validated fast-forward direct main pushes, as documented in
+Development Workflow. Every main push automatically deploys the exact revision to
+Vercel production through its native Git integration. Integration synchronizes
+Convex only for backend changes after matching web is live, then runs production smoke. Sensitive changes use expanded QA on their isolated PR previews.
+Keep root `git.deploymentEnabled.main=true`. The owner enabled Git as a production
+deployment source; no custom production workflow or deployment token is needed.
 
-The legacy `staging` branch is frozen. Do not push, target PRs at, align or deploy
-it. Staging is an environment built from main, not an integration branch. See
-[Staging and Production Promotion](/develop/worktree-staging-qa).
+The retired staging branch and project are not development or release lanes. See
+[Preview and Production QA](/develop/worktree-staging-qa).
 
 ## Two roles
 
@@ -29,7 +30,7 @@ for the complete Builder and Integration instructions and copyable role prompts.
 | Role | Responsibility |
 | --- | --- |
 | Builder | Own one feature worktree, implement and validate a coherent change, update living docs and CHANGELOG, verify the current PR preview, and submit the PR to main. Stop at a ready PR. |
-| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, then verify Production Release and authenticated production smoke. |
+| Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, then verify the native Git deployment SHA and authenticated production smoke. |
 
 Use [Builder Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/BUILDER_AGENT_PROMPT.md) and
 [Integration Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/INTEGRATION_AGENT_PROMPT.md). No additional
@@ -50,14 +51,19 @@ canonical edits. Keep canonical `main` clean for production. Do not share featur
 branches or use the canonical checkout as implementation scratch space.
 
 Use `npm run dev` for local web work with an engineer's own dev backend.
-Do not deploy shared dev, staging or production Convex from a feature worktree.
+Do not deploy shared dev or production Convex from a feature worktree.
 Hosted PR builds provision a separate backend and seed synthetic data. Shared
 Preview settings are inherited; agents do not copy production credentials or
 customer data and do not need domain-management secrets.
 
 ## PR evidence
 
-Open a draft PR against `main`, then wait for `PR Preview`. Verify its SHA equals
+Open a draft PR against `main`. Add `needs-preview` when hosted browser or isolated
+end-to-end QA is needed under Development Workflow: UI/interactions, sensitive
+auth/billing/data flows, environment/build changes or uncertainty CI cannot resolve.
+Ordinary well-tested patch/minor dependency upgrades, docs, tests, CI metadata,
+formatting/comments and type-only changes can use CI alone. Record the rationale.
+For requested previews, wait for `PR Preview`. Verify its SHA equals
 the current PR head before using `https://pr-<number>.preview.getoverlay.io`.
 Sign in with the sandbox QA identity or the preview-only login recipe in
 [Browser Testing](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/browser-testing-with-agent-browser.md). Keep secrets and
@@ -65,10 +71,9 @@ cookies outside tracked files and PR text.
 
 Verify the changed flow, rendered UI and persistence as applicable. Record the
 preview URL, exact deployed SHA, screenshots, checks and limitations in the PR.
-A new app revision invalidates earlier evidence. Complete docs/root-Markdown/
-GitHub-only diffs receive a hosted-app exemption; required CI still runs.
-`needs-preview` or a manual dispatch requests a full preview for those diffs.
-Unknown, runtime, dependency and build changes provision a full preview.
+A new app revision invalidates earlier evidence. Unlabeled PRs receive successful
+“Preview not requested” status; required CI still runs. Label removal cleans the
+preview. Manual dispatch reconciles the label policy rather than overriding it.
 
 The PR must state outcome, important decisions, touched systems, dependencies,
 rollback, exact validation, backend/migration steps and current head SHA.
@@ -83,12 +88,12 @@ in the same commit series. Do not include unrelated cleanup.
 | UI | Targeted lint/checks and visual QA of the affected flow. |
 | Shared contract | Relevant contract checks and typecheck. |
 | Auth, billing, tenant, secrets or data migration | Relevant security/contract checks, rollback and isolated hosted QA. |
-| Convex or runtime | Matching web/backend revision, relevant contracts and production smoke; staging only when explicitly requested. |
+| Convex or runtime | Matching web/backend revision, relevant contracts, isolated Preview QA and production smoke. |
 
 Required GitHub checks stay mandatory. The current quality gate includes install,
 lint, typecheck, build, the tracked full suite, and config/boundary checks. A green
-build does not prove authenticated product behavior. `needs-staging` flags flows
-for which the owner/task explicitly requests optional staging QA; it does not change PR base.
+build does not prove authenticated product behavior. Expand Preview QA for
+sensitive flows; every feature PR still targets main.
 
 ### Dark release flags
 
@@ -125,12 +130,11 @@ would not solve the wait. Inspect job/step timing before changing coverage.
 
 Required workflows cancel obsolete PR check runs when a new revision arrives;
 main push and merge-group checks remain independent. Deployment controllers
-retain their locks until remote builds are settled. Diffs confined to `docs/`,
-root Markdown and `.github/` do not automatically build the unchanged app.
-They still run required CI and docs previews. A `needs-preview` label or manual
-PR Preview dispatch requests a hosted app preview. Unknown/truncated inventories,
-runtime changes, dependency locks, build scripts and runtime-to-docs renames
-always require one. Cleanup and ownership checks also apply to no-preview PRs.
+retain their locks until remote builds are settled. All non-main automatic Git
+deployments are disabled; only `needs-preview` requests a hosted app build.
+Main retains automatic production deployment. Required CI and docs previews
+still run. Manual PR Preview dispatch reconciles the label policy. Cleanup and
+ownership checks also apply to PRs without a preview.
 
 Dependency Review always runs the actual base/head comparison; missing
 repository metadata must not turn a required security check into a no-op.
@@ -157,23 +161,23 @@ through `merge_group` workflows. Do not publish a green status based only on the
 original PR head. Prefer merge commits for meaningful history; squash only trivial
 or disposable fixups. Never rebase-merge, force-push, reset or delete main.
 
-The existing owner bypass remains an emergency option until another engineer
-joins. Ordinary work uses PRs and the queue; a bypass or direct push requires an
-explicit current-task instruction and equivalent validation, ancestry review,
-fast-forward only and post-push verification. Credentials alone are not permission.
+The owner authorized local laptop agents under DevelopedByDev to use the existing
+owner bypass for direct main integration after proportionate checks, diff/ancestry
+review and preservation of unrelated edits. Push fast-forward only and verify the
+published SHA and native Vercel deployment. Cloud Builders continue to use PRs
+and the queue. Other bypass use requires explicit authorization.
 
-## Production and optional staging
+## Production
 
 Follow [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md). Main changes deploy
-automatically to Vercel production and run authenticated production smoke. The
-release synchronizes production Convex only when backend inputs change. Verify
+automatically through Vercel’s Git integration. Integration runs authenticated
+production smoke and synchronizes Convex only for backend changes. Verify
 the exact SHA, live alias, smoke result and saved rollback checkpoint.
 
-For authorized manual deployment, use clean current canonical main and
-`bash scripts/release/promote.sh <main-sha>`. Ordinary releases do not require
-staging. `--require-staging` is an explicit opt-in for sensitive changes after
-manual staging acceptance. Never pass `.env.local` to production or deploy shared
-backends from a feature worktree. The frozen staging branch is not a release lane.
+Releases need no staging, custom production deployer or Production Vercel deployment
+token. Use Vercel deployment history for authorized redeploy/rollback. Backend
+changes use clean current canonical main after matching web is live. Never pass
+`.env.local` to production or deploy shared backends from a feature worktree.
 
 ## Cleanup
 

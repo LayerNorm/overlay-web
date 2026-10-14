@@ -64,123 +64,85 @@ files. Validate the session and `/api/auth/convex-token`, then use a real browse
 to check the rendered workspace, sample conversation, note, and text file.
 
 The server chooses the seeded QA identity; callers cannot supply an arbitrary
-user ID. This route returns 404 on staging and production. Real human OAuth uses
+user ID. This route returns 404 outside Preview. Real human OAuth uses
 the same canonical preview origin with the WorkOS sandbox wildcard callback.
 
 ### Deployment protection
 
-`staging.getoverlay.io` and `www.getoverlay.io` are behind Vercel Deployment Protection
-(SSO). agent-browser's bundled Chrome has no session cookies, so we need to extract them
-from an authenticated Chrome profile and inject them.
+PR previews run in the `overlay-landing` project's Preview environment. Use the
+caller's existing Vercel authentication to access a protected preview. For HTTP
+checks, use `vercel curl` with an explicit deployment URL. For a supported browser
+runner, use the same project's short-lived development OIDC token as an
+origin-scoped `x-vercel-trusted-oidc-idp-token` header. Keep tokens and cookies
+outside tracked files. Authenticate to the app separately using sandbox QA
+credentials or the preview-only login route above.
 
-### One-time: extract cookies from Chrome profile
+Do not copy a Production app session into a Preview environment. Each preview
+uses sandbox WorkOS and its own Convex backend.
 
-Chrome encrypts cookies with a key stored in the macOS Keychain. Use this Python script to
-decrypt and extract them:
+### Cloud agents without a Vercel login
 
-```bash
-python3 << 'PYEOF'
-import sqlite3, os, json, subprocess
-from Crypto.Cipher import AES
-from Crypto.Protocol.KDF import PBKDF2
+**First choice: Vercel MCP, independent of agent platform.** Connect the agent
+to `https://mcp.vercel.com` and authorize the Divyansh account that has access to
+`overlay-landing`. Call `get_access_to_vercel_url` with the current canonical PR
+URL and team `team_VT3uNspuyAOwicxedhtG4SMe`. Open the returned shareable URL in
+the actual QA browser; its redirect establishes that browser's access cookie.
+Continue using the ordinary canonical PR URL in the same browser session, then
+sign into Overlay separately. A terminal fetch does not authenticate a separate
+browser. For HTTP-only checks, `web_fetch_vercel_url` handles protected fetches.
 
-# Install pycryptodome first: pip3 install --break-system-packages pycryptodome
+New MCP links expire after 23 hours; existing links retain their own expiry.
+Request access again if it expires. Treat `_vercel_share` links as credentials:
+keep them out of PR text, logs, screenshots and recordings; return to the clean
+canonical URL before capturing evidence. MCP must be connected and authorized
+in each agent platform; adding instructions to this repo cannot install it into
+an arbitrary VM. Agents without MCP need the fallback below. Never post a shared
+access link in a public PR to give every agent access.
 
-result = subprocess.run(
-    ['security', 'find-generic-password', '-w', '-s', 'Chrome Safe Storage', '-a', 'Chrome'],
-    capture_output=True, text=True
-)
-password = result.stdout.strip()
-key = PBKDF2(password.encode(), b'saltysalt', dkLen=16, count=1003)
+**Fallback for runners without Vercel MCP:**
 
-# Change Profile 6 to the profile that has the session you need
-cookie_db = os.path.expanduser("~/Library/Application Support/Google/Chrome/Profile 6/Cookies")
-conn = sqlite3.connect(cookie_db)
-cursor = conn.cursor()
+Provision `VERCEL_AUTOMATION_BYPASS_SECRET` once in the cloud platform's private
+runtime secret store for this repository, using the existing `overlay-landing`
+automation bypass secret. GitHub Actions secrets and Vercel app variables do not
+automatically reach a Builder's VM. The secret must be available during browser
+QA, not just environment setup. Reuse it for every requested PR preview; do not
+create a per-PR bypass token or disable Deployment Protection.
 
-cookies = []
-seen = set()
-for host in ['staging.getoverlay.io', '.getoverlay.io', 'getoverlay.io', 'www.getoverlay.io']:
-    cursor.execute(
-        "SELECT host_key, name, encrypted_value, path, is_secure, is_httponly, expires_utc, samesite FROM cookies WHERE host_key LIKE ?",
-        (f'%{host}%',)
-    )
-    for row in cursor.fetchall():
-        host_key, name, enc_value, path, is_secure, is_httponly, expires_utc, samesite = row
-        if not enc_value or enc_value[:3] != b'v10':
-            continue
-        dedupe_key = (host_key, name, path)
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
-        iv = b' ' * 16
-        cipher = AES.new(key, AES.MODE_CBC, iv)
-        decrypted = cipher.decrypt(enc_value[3:])
-        pad_len = decrypted[-1]
-        if 1 <= pad_len <= 16:
-            decrypted = decrypted[:-pad_len]
-        # Chrome v10 on macOS prepends a 32-byte SHA256 hash
-        value = decrypted[32:].decode('utf-8', errors='replace') if len(decrypted) > 32 else decrypted.decode('utf-8', errors='replace')
-        if expires_utc > 0:
-            unix_expires = (expires_utc - 11644473600000000) // 1000000
-        else:
-            unix_expires = 0
-        samesite_map = {0: 'None', 1: 'Lax', 2: 'Strict'}
-        cookies.append({
-            'name': name, 'value': value, 'domain': host_key, 'path': path,
-            'secure': bool(is_secure), 'httpOnly': bool(is_httponly),
-            'expires': unix_expires if unix_expires > 0 else None,
-            'sameSite': samesite_map.get(samesite, 'None'),
-        })
-conn.close()
-with open('/tmp/overlay-cookies.json', 'w') as f:
-    json.dump(cookies, f, indent=2)
-print(f"{len(cookies)} cookies extracted")
-PYEOF
+Send `x-vercel-protection-bypass` only to the exact verified PR preview origin.
+For Playwright, bootstrap a host-scoped bypass cookie through the browser
+context's request client, then navigate normally in that same context:
+
+```js
+const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+if (!secret) throw new Error('Missing cloud preview bypass credential')
+const origin = new URL(process.env.PREVIEW_URL).origin
+if (!/^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(origin)) {
+  throw new Error('Expected the canonical PR preview origin')
+}
+// context.request shares its cookie jar with pages in this browser context.
+const response = await context.request.get(origin, {
+  headers: {
+    'x-vercel-protection-bypass': secret,
+    'x-vercel-set-bypass-cookie': 'true',
+  },
+  maxRedirects: 0,
+})
+if (response.status() < 200 || response.status() >= 400) {
+  throw new Error('Preview protection bootstrap failed')
+}
+await page.goto(origin)
 ```
 
-### Inject cookies into agent-browser
+For another browser runner, use its origin-scoped request headers or import the
+bypass cookie into its own session. A terminal cookie jar does not authenticate
+an unrelated browser. Never put the secret in a URL, global browser headers,
+screenshots, network traces, logs, PR descriptions or tracked storage-state
+files. The Vercel automation secret is project-scoped, not PR-scoped; restrict
+its distribution to trusted repository agents. It bypasses Vercel's hosting
+gate only; Overlay sandbox login and exact-head/backend verification still apply.
 
-```bash
-# Open a page on the target domain first
-agent-browser open "https://staging.getoverlay.io"
-
-# Set each cookie (only staging.getoverlay.io domain needed for staging)
-python3 << 'PYEOF'
-import json, subprocess
-with open('/tmp/overlay-cookies.json') as f:
-    cookies = json.load(f)
-for c in cookies:
-    if c['domain'] not in ['staging.getoverlay.io', '.getoverlay.io']:
-        continue
-    args = ['agent-browser', 'cookies', 'set', c['name'], c['value'],
-            '--domain', c['domain'], '--path', c['path']]
-    if c['secure']: args.append('--secure')
-    if c['httpOnly']: args.append('--httpOnly')
-    if c['sameSite']: args.extend(['--sameSite', c['sameSite']])
-    if c['expires']: args.extend(['--expires', str(c['expires'])])
-    subprocess.run(args, capture_output=True)
-print("Cookies injected")
-PYEOF
-
-# Save the authenticated state for future runs
-agent-browser state save ~/.config/devin/agent-browser-overlay-auth.json
-```
-
-### Future runs: restore saved state
-
-```bash
-# Owner account (Profile 6 / LayerNorm)
-agent-browser --state ~/.config/devin/agent-browser-overlay-auth.json open "https://staging.getoverlay.io/app/w/<workspace-id>/chat"
-
-# Member account (Profile 10)
-agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://staging.getoverlay.io/app/w/<workspace-id>/chat"
-```
-
-### When SSO cookies expire
-
-If the page redirects to a Vercel auth page, the saved state has expired. Re-extract
-cookies from the Chrome profile (see above) and re-save the state.
+See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
+See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).
 
 ## Clearing controlled search inputs
 
@@ -198,7 +160,7 @@ deployment-protection bypass URLs.
 
 ```bash
 # Open a page
-agent-browser open "https://staging.getoverlay.io/app/w/<workspace-id>/chat?view=channels"
+agent-browser open "https://pr-123.preview.getoverlay.io/app/w/<workspace-id>/chat?view=channels"
 
 # Wait for it to load
 agent-browser wait --load networkidle
@@ -225,12 +187,12 @@ Use `--session` to run isolated browser sessions for different accounts:
 
 ```bash
 # Owner session
-agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://staging.getoverlay.io/app/w/<id>/chat?view=channels"
+agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://pr-123.preview.getoverlay.io/app/w/<id>/chat?view=channels"
 agent-browser --session owner wait --load networkidle
 agent-browser --session owner get text "body"
 
 # Member session
-agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://staging.getoverlay.io/app/w/<id>/chat?view=channels"
+agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://pr-123.preview.getoverlay.io/app/w/<id>/chat?view=channels"
 agent-browser --session member wait --load networkidle
 agent-browser --session member get text "body"
 
@@ -252,8 +214,8 @@ agent-browser close --all
   Always re-snapshot after clicks, navigation, or dynamic re-renders.
 - **Use `--session` for multi-account testing.** Each session is an isolated browser with
   its own cookies. Never mix accounts in the same session.
-- **Prefer staging over local dev.** Browser testing should run against staging after
-  deployment. Use `npm run dev` for local development, not for agent-driven QA.
+- **Use the PR preview for final acceptance.** Run local smoke with `npm run dev`,
+  then verify affected behavior on the current-head hosted preview.
 
 ## Work UI harness (no backend needed)
 

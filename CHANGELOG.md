@@ -6,7 +6,27 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - **Sidebar sub-rows share the agent tree's guide-line indent.** Scope sub-rows in the secondary panel (Personal/Workspace's pages such as List/Board/Timeline, All/Notes/Files/Outputs, Connectors/Skills/MCPs, and chat subviews) and folders in the Files tree now nest inside the same `SidebarMenuSub` vertical-line list as an agent's threads, instead of sitting flush or using per-row padding. Behavior and routes are unchanged.
 
-- Automatically deploy current main to Vercel and run production smoke; synchronize Convex only when backend inputs change. Make staging optional and Development Workflow the authoritative instructions.
+- Require current-head PR QA comments for Builder handoffs, with Vercel MCP browser access, end-to-end results and explicit Integration review/release evidence.
+
+- Use authenticated Vercel MCP access links as the first choice for cloud-agent PR browser QA across platforms, with private runtime automation secrets as a fallback and separate Overlay sandbox login.
+
+- Update CodeQL init, analyze and SARIF upload together to 4.38.2; group future Dependabot updates and enforce matching pins so dependency updates cannot break analysis through version mismatches.
+
+- Restrict preview cleanup to the pinned Overlay project Preview credential and explicitly block the customer production backend, alongside existing project/type/PR ownership checks, to protect production and other products from automation deletion.
+
+- Delete owned Convex Preview backends when a PR closes or loses `needs-preview`; settle builds first, confirm backend absence, and reconcile retained backends so abandoned previews release deployment quota.
+
+- Make PR previews opt-in with `needs-preview`, preserve automatic Git production on main, and clean up previews when the label is removed. Run route/gateway tests once, remove stale test references and tautological/duplicate workflow assertions, and classify ten live-only integration suites separately.
+
+- Run CI static checks, production compilation and exhaustive test shards in parallel; retain required security and merge-queue coverage, avoid duplicate build typechecking and gateway dependency installation, and repair release-document links.
+
+- Resolve first-push Preview PR identity from exact public Git metadata when Vercel starts before the draft PR opens.
+
+- Consolidate PR previews and native Git production deployments in `overlay-landing`, retaining custom PR URLs, isolated Convex backends and shared Preview test credentials. Retire the separate staging release lane.
+
+- Authorize local laptop agents under DevelopedByDev to integrate directly into main with validated fast-forward pushes; cloud Builder threads retain PR previews and the merge queue.
+
+- Use Vercel’s native Git integration for automatic production deployment from main. Retire the custom production workflow, promotion script and deployment token; Integration verifies production and synchronizes Convex only for backend changes. Staging remains optional and Development Workflow is authoritative.
 
 - **The secondary sidebar uses the shadcn Sidebar.** Agents expand into an indented tree under a vertical guide line (threads, automations, New thread); hovering an agent shows a quick New thread button, and hovering a thread shows Archive and Delete. Loading shows row-shaped placeholders instead of a spinner line. Navigation rows (Chats, Files, Work, Settings) share the same menu parts, and a thin handle on the panel's edge hides it. Behavior and routes are unchanged. Quick creation refreshes the tree and rejects stale bundle responses; hover actions stay scoped to their own row, mobile titles reserve action space, and exported actions do not submit forms by default. New `Sidebar*` parts are exported from `@overlay/ui/primitives`.
 

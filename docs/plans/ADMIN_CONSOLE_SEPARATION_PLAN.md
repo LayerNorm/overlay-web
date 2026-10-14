@@ -2,7 +2,7 @@
 
 Status: approved direction (2026-10-14); Stage 1 not started
 Owner: DevelopedByDev
-Workflow: [Development Workflow](../develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
+Workflow: [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
 ready PR; the Integration thread reviews and merges.
 
 ## Summary
@@ -82,7 +82,7 @@ Operator and workspace admin are two different jobs:
          │ (no admin writes, no admin reads)                 + operator's WorkOS token, checked again in Convex
          ▼                                                                   ▼
    ┌─────────────────────────────────────────────────────────────────────────────────────┐
-   │ Convex (same deployments: per-PR preview / staging / colorful-chickadee-419)         │
+   │ Convex (same deployments: per-PR preview / colorful-chickadee-419)         │
    │  admin functions        → ADMIN_API_SECRET + active administrativePrincipals row    │
    │  permission-check reads → still INTERNAL_API_SECRET (web app needs them)             │
    │  appendAuditByServer    → still INTERNAL_API_SECRET (append-only)                    │
@@ -165,10 +165,10 @@ Tasks:
   - Update `docs/develop/architecture.mdx` with the new `apps/` layer.
   - Add an Unreleased entry to `CHANGELOG.md`.
 
-Builder QA for this stage:
+Builder QA for this stage (these scripts are planned and must be added during implementation):
 
-- `npm run admin:typecheck && npm run admin:lint && npm run admin:test && npm run admin:build`.
-- Local smoke: `npm run admin:dev` against the engineer-owned dev Convex backend.
+- the planned `admin:typecheck`, `admin:lint`, `admin:test`, and `admin:build` scripts.
+- Local smoke: the planned `admin:dev` script against the engineer-owned dev Convex backend.
   - Sign in.
   - Each of the four sections loads real dev data.
   - Change a role and see it reflected.
@@ -265,8 +265,7 @@ runs.
    owner account has MFA turned on.
 7. Domain: add `admin.getoverlay.io` to `overlay-admin` and create a CNAME to Vercel. Confirm the web app's
    `*.preview.getoverlay.io` wildcard doesn't cover it.
-8. Release: Production Release only deploys the web app. Either add an admin job that runs when admin inputs change, or
-   add `--project admin` to `scripts/release/promote.sh` for a manual promote. Either way:
+8. Release: configure native Vercel Git deployments from main for the separate admin project, with the correct root/build settings. Then:
    - Deploy the exact main SHA.
    - Verify `admin.getoverlay.io` serves it.
    - Run an authenticated admin smoke test.
@@ -275,7 +274,7 @@ runs.
 
 ### Checking IP allowlisting
 
-Having `staging.getoverlay.io` on Vercel only shows that you can add custom domains. It doesn't tell you anything about IP
+Having a custom Vercel domain only shows that you can add custom domains. It doesn't tell you anything about IP
 allowlisting. Two ways to check:
 
 1. **Trusted IPs** (Deployment Protection): open Project → Settings → Deployment Protection. If the Trusted IPs section

@@ -2,9 +2,62 @@
 
 Use multiple Builder threads to develop independent features and one Integration thread to review and merge ready PRs. Each Builder has its own computer or VM, browser, repository access, and configured test environments.
 
-**The workflow:** assign a feature → implement → local smoke QA → draft PR → Vercel preview interaction QA → ready PR → Integration review → main merge queue.
+**The workflow:** assign a feature → implement and validate locally → commit/push
+the feature branch → draft main PR → `needs-preview` when needed → current-head
+Vercel Preview → browser QA end to end → post QA comment → ready PR → Integration
+review → main merge queue → automatic production deployment and smoke.
 
-Production follows **merge to main → automatic Vercel production deployment → production smoke checks**. Convex is synchronized when backend inputs change. Staging is optional for explicitly requested sensitive-change acceptance. This document is the authoritative workflow; supporting guides must not add an ordinary staging prerequisite.
+Production follows **merge to main → automatic Vercel Git production deployment → production smoke checks**. Integration synchronizes Convex when backend changes require it, after matching production web is live. PR previews provide the acceptance environment for sensitive changes too. This document is the authoritative workflow.
+
+## Shared hosting and parallel work
+
+| Setting | Development rule |
+| --- | --- |
+| Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
+| Build source | Main deploys automatically through Git. Root `git.deploymentEnabled` sets `"*": false, "main": true`. The trusted controller creates Preview deployments only for `needs-preview` PRs; Preview allows REST API only, also blocking automatic builds from older branches. |
+| Build machine | Keep **Basic**. Let slow builds finish; inspect concrete failures before changing configuration. |
+| Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
+| Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
+| Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
+
+The trusted `PR Preview` workflow uses the existing `VERCEL_PREVIEW_TOKEN` in
+GitHub's `release-control` environment for ordinary custom URL assignment and
+cleanup, plus the existing scoped Convex Preview credential for backend renewal.
+The token creates requested Preview builds from exact Git SHAs and manages URL
+and backend resources. Production stays on native Git. Reuse credentials across PRs. Builders do not create tokens or copy
+shared settings for each feature. No Production deployment token or purchased
+Preview Deployment Suffix is needed.
+
+Labeled open PR backends renew within Convex's retention limits. Closing a PR or
+removing `needs-preview` settles running builds, removes its owned URL and branch
+app setting, deletes its isolated Convex backend and synthetic data, and leaves
+the hostname returning HTTPS 404. Re-adding the label creates fresh fixtures.
+Six-hour reconciliation also discovers leftover backends for closed/unlabeled
+PRs, even when their Vercel resources are already gone. Credential lifetime is separate.
+
+Backend cleanup accepts only the pinned Overlay project Preview credential and
+exact PR ownership in project `1649204`. Broader account/team credentials and
+keys for other products fail before API access. Production backend
+`colorful-chickadee-419` is explicitly blocked even if API metadata misidentifies
+it. Dev, production, foreign-project and ambiguous backends cannot be deleted by
+this controller. Account administrators retain their manual Convex permissions.
+
+Assign independent features to separate Builders so implementation, builds and
+browser QA can proceed in parallel. Each Builder owns one branch and PR. Share
+foundations through declared PR dependencies and land them before dependent work.
+Integration reviews ready PRs in dependency order and uses GitHub's main merge
+queue to check combined revisions. Vercel's build concurrency does not replace
+that integration check.
+
+## Local laptop owner path
+
+The owner explicitly authorized local laptop agents acting as `DevelopedByDev`
+to push directly to main. Run proportionate checks, review the diff and ancestry,
+preserve unrelated edits, and use fast-forward pushes only. Verify origin/main,
+the exact native Vercel production deployment and affected behavior afterward.
+No PR, merge queue or repeated permission request is required for this local path.
+The owner bypass is authorized for this purpose. Never force-push or delete release
+branches that are still in use. Cloud Builder threads still follow the PR/preview/merge-queue path below.
 
 ## How to use this document
 
@@ -22,7 +75,9 @@ Dependencies: [PRs that must land first, or none]
 
 Implement, run focused checks and local smoke QA, open a draft PR against
 main, then test the changed flow in the browser on its Vercel preview.
-Fix any issues and mark the PR ready when the current revision passes QA.
+Fix any issues, push updates and repeat affected QA on the new preview.
+Post the QA handoff comment on the PR and mark ready when current-head QA
+and required checks pass.
 Return the PR, preview URL, exact tested SHA, checks, and limitations.
 Stop at the ready PR; Integration handles merging and releases.
 ```
@@ -41,7 +96,7 @@ Process independent ready PRs while others are still being built or fixed.
 Keep using this thread for subsequent PRs. Report blockers with the exact
 failure and the next action. Stop after the available queue is processed;
 use supported wait or notification tools if this session supports them.
-Main pushes automatically deploy to Vercel; verify the Production Release and production smoke result.
+Main pushes automatically deploy to Vercel; verify the native Vercel deployment SHA and production smoke result.
 ```
 
 ## Builder instructions
@@ -64,17 +119,42 @@ Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant 
 
 ### 3. Open a draft PR to get the preview
 
-Commit and push the feature branch, then open a draft PR against `main`. The existing `PR Preview` workflow creates the hosted environment. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
+Commit and push the feature branch and open a draft PR against `main`. Opening
+the draft PR starts normal CI; adding `needs-preview` requests the hosted build.
+Keep the PR draft while implementation or QA is incomplete. Later commits go to
+the same branch and PR. PR previews require `needs-preview`. Record the decision
+and evidence in the PR:
 
-Use `https://pr-<number>.preview.getoverlay.io` for hosted QA. The preview has its own Convex backend and inherits the configured shared test credentials. Do not copy `.env.local` wholesale or deploy shared development, staging, or production backends from the feature worktree.
+- Request a preview for UI/interactions; auth, routing, cookies, uploads, payments, streaming or persistence; isolated backend QA; environment/build changes; uncertainty CI cannot resolve; or explicit browser QA.
+- Ordinarily use CI alone for well-tested Dependabot patch/minor upgrades, documentation, tests/fixtures, CI metadata, formatting/comments and type-only changes. Dependency risk can still justify a preview.
 
-Documentation/GitHub-only changes may receive the controller's hosted-app exemption. Review the docs and required checks; use `needs-preview` if an app preview is needed.
+The trusted controller runs protected main code, validates the internal PR, provisions its branch app URL, then requests an exact-SHA Vercel Preview using the existing token. The build deploys/seeds only `preview/pr-<number>`. The controller assigns `pr-<number>.preview.getoverlay.io` only after READY and backend verification. While labeled, new commits request the new head. Reconciliation reuses healthy current builds and renews the backend; a missing/expired backend requires a fresh build.
+
+Removing the label or closing the PR settles running builds, removes its alias/domain/app-URL override and deletes the owned Convex preview backend and its synthetic data. Cleanup verifies absence before reporting success; a failure remains visible for retry. Unlabeled PRs receive successful “Preview not requested” status and still require normal CI. Manual workflow dispatch reconciles this policy; it does not bypass the label. Forks receive no Preview credentials.
+
+Wait for the deployment result and verify that its SHA matches the current PR head before browser QA.
+
+Use the shared hosting settings above. Do not copy `.env.local` wholesale or deploy shared development or production backends from the feature worktree.
+
+The build wrapper resolves missing PR-number metadata by public branch/SHA lookup without sending credentials. Inspect controller/build logs for failures. Never test an older deployment as evidence for the new head.
 
 ### 4. Test the preview in the browser
+
+Cloud Builders without a Vercel session should use the authenticated Vercel MCP
+`get_access_to_vercel_url` tool for the exact canonical PR URL and open its result
+in their QA browser. This works across agent platforms that support Vercel MCP;
+connect it once per platform under the authorized Divyansh account. Keep temporary
+share links private and return to the clean PR URL before capturing evidence.
+Runners without MCP can use `VERCEL_AUTOMATION_BYPASS_SECRET` from their private
+runtime secret store. Follow the [cloud browser protection recipe](browser-testing-with-agent-browser.md).
+Keep protection enabled. GitHub/Vercel secrets do not automatically populate a
+cloud Builder VM. Overlay sandbox login is separate.
 
 Sign in using the configured sandbox QA identity or the [preview login recipe](browser-testing-with-agent-browser.md). Exercise the feature as a user would:
 
 - Complete its main interaction from start to finish.
+- Test the changed journey in the deployed app, including sign-in and navigation
+  where relevant. An HTTP fetch or a READY deployment alone is not browser QA.
 - Check that the rendered UI matches the existing app design.
 - Reload and verify persistence when the feature stores data.
 - Exercise relevant errors, permissions, and tenant boundaries.
@@ -86,13 +166,45 @@ Fix findings, commit, and push. Wait for the updated deployment and repeat the a
 
 ### 5. Submit the ready PR and stop
 
-Mark the draft PR ready when the feature meets its acceptance criteria, current-revision QA passes, and required checks pass. Include this handoff in the PR description and your thread response:
+After testing, post a **QA handoff** comment on the PR so Integration can read the
+result without opening the Builder thread. Also keep the PR description and thread
+summary current. Match the full tested SHA to the current PR head immediately
+before posting. Use the clean preview URL, never the private MCP access link.
+
+```markdown
+## QA handoff
+
+Result: PASS / BLOCKED
+Tested PR head: <full SHA>
+Preview: https://pr-<number>.preview.getoverlay.io
+Deployment/backend: <deployment ID and isolated Convex backend>
+Access: Vercel MCP / existing browser session / automation bypass
+Checks: <commands and actual results; required CI status>
+End-to-end flows: <actions, expected outcomes and observed results>
+Persistence/error/permission cases: <results where relevant>
+Evidence: <sanitized screenshots or recording links, if useful>
+Dependencies/backend steps: <required steps, or none>
+Limitations/blockers: <anything unverified, or none>
+```
+
+For changes that do not need a preview, use the same comment with
+`Preview: Not requested — <rationale>` and omit deployment/browser-only fields.
+If browser access, CI or acceptance checks fail, report `BLOCKED` with the concrete
+failure and keep the PR draft. Separate QA results from pending CI; do not claim
+readiness while required checks are pending. New commits supersede older QA
+comments: push the fix, rerun affected QA and post a new comment with the new SHA.
+Post comments using a structured API or `gh pr comment <number> --body-file
+<qa-file>`; keep secrets and browser state out of both the comment and attachments.
+
+Mark the draft PR ready when the feature meets its acceptance criteria,
+current-revision QA passes, the QA comment is posted, and required checks pass.
+Include this concise handoff in your thread response:
 
 ```text
 Outcome: [what now works]
 PR: [URL]
 Head and tested preview SHA: [SHA]
-Preview: [URL, or hosted-app exemption]
+Preview: [URL and SHA, or reason preview was not requested]
 Checks: [commands and actual results; required CI status]
 Browser QA: [flows exercised and evidence links]
 Dependencies: [PRs, or none]
@@ -101,7 +213,7 @@ Backend/migration steps: [required steps, or none]
 Limitations: [anything incomplete or unverified, or none]
 ```
 
-Flag `needs-staging` only when the owner/task explicitly requests optional staging acceptance for a sensitive feature; the PR still targets main. Respond to Integration findings with new commits and refreshed QA. Keep the worktree until Integration confirms merge. The Builder stops at PR readiness and leaves queue entry, merging, and releases to Integration.
+For sensitive changes, expand acceptance checks on the same isolated PR preview. Respond to Integration findings with new commits and refreshed QA. Keep the worktree until Integration confirms merge. The Builder stops at PR readiness and leaves queue entry, merging, and releases to Integration.
 
 ## Integration instructions
 
@@ -109,7 +221,12 @@ Flag `needs-staging` only when the owner/task explicitly requests optional stagi
 
 Use GitHub PRs and checks as the queue and detailed record. Process dependencies first, then follow the owner's priority order; use ready time when no priority is specified. Continue with independent ready PRs when another PR is blocked.
 
-Read the full diff and relevant implementation. Verify the base is main, the scope matches the assignment, dependencies are satisfied, and docs/CHANGELOG are updated. Confirm the preview evidence matches the current head and covers the acceptance criteria. Perform additional QA where the evidence or risk calls for it.
+Read the full diff and relevant implementation. Verify the base is main, the scope matches the assignment, dependencies are satisfied, and docs/CHANGELOG are updated. Read the latest QA handoff comment: confirm its tested SHA matches the current head and its preview evidence covers the acceptance criteria. Older QA is superseded after a push. Perform additional QA where the evidence or risk calls for it, using Vercel MCP for protected browser access when needed.
+
+Post a concise Integration review comment with the reviewed SHA, accepted QA or
+specific blockers, and queue decision. After release, add the accepted main SHA,
+Vercel deployment ID and actual production smoke result to the same PR. Keep
+ready, queued, merged, deployed and verified states distinct.
 
 Review while CI runs. If a check fails, inspect the failed job and concrete logs. Return actionable findings through the PR; send a follow-up to the Builder thread when the owner has authorized messaging it. Resolve findings before merging.
 
@@ -119,25 +236,59 @@ Once required checks and proportionate QA pass and conversations are resolved, e
 
 The native merge queue runs required checks on the combined revision containing current main and earlier queued changes. If that combined revision fails, investigate the interaction and fix it before retrying.
 
-Preserve meaningful commits with merge merging; squash only trivial or noisy history. Ordinary changes go through PRs and the queue. Never force-push, reset, or delete release branches. The emergency bypass requires explicit authorization for that action.
+Preserve meaningful commits with merge merging; squash only trivial or noisy history. Cloud Builder changes go through PRs and the queue; local DevelopedByDev integration may use the authorized direct-push path. Never force-push or reset release branches. Other bypass use requires explicit authorization.
 
-Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Follow Production Release and verify its accepted main SHA, production deployment and smoke result. Preserve needed work and evidence before archiving a completed feature worktree.
+Verify the PR is merged, its accepted changes reached `origin/main`, and record the accepted main SHA. Verify the native Vercel deployment serves the accepted main SHA, synchronize Convex if this release changes the backend, and check production smoke. Preserve needed work and evidence before archiving a completed feature worktree.
 
 ### 3. Report and continue
 
 Report each accepted PR and main SHA, or the concrete blocker and next action. Describe the state accurately: ready, queued, merged, deployed, or verified. Continue processing the available authorized PRs in this Integration thread.
 
-Main changes automatically deploy to production and run smoke checks. Leave the legacy staging branch frozen.
+Main changes automatically deploy to production through Vercel’s Git integration; Integration then runs proportionate smoke checks.
 
 ## Automatic production release
 
-1. A main push starts Production Release. It remotely builds and publishes that exact main revision to Vercel.
-2. The workflow verifies the live production deployment and synchronizes Convex only if its source, imported shared code or dependencies changed.
-3. It runs authenticated production smoke and saves the deployed SHA, previous deployment and result. Report live and verified only after smoke passes.
+### Required CI checks
 
-Staging is optional for sensitive changes. Use `needs-staging` and explicitly dispatch its acceptance only when the owner/task calls for it. Ordinary reviewed UI changes deploy directly from main. The legacy staging branch stays frozen.
+`Security Checks` runs lint/types, production compilation and two complete test
+shards in parallel. `next typegen` generates current route validators before the
+required standalone typecheck; only the CI compilation job skips the duplicate
+Next TypeScript pass. Ordinary Vercel builds retain their existing type checks.
+Configuration and Convex boundary checks that depend on generated Workflow routes
+stay after compilation. Gateway tests retain their react-server condition in a
+dedicated discovered group; route and gateway suites run once through the shards.
 
-For authorized manual deployment, run `bash scripts/release/promote.sh <main-sha>` from clean current canonical main. There is no staging requirement by default; `--require-staging` opts into exact-main candidate proof for a sensitive release. Root `git.deploymentEnabled.main=false` prevents a second native Git build: Production Release performs the automatic Vercel deployment itself. Follow [Production deployment details](worktree-staging-qa.mdx) for credentials and recovery, subject to this workflow.
+The runner inventories every tracked `*.test.{ts,tsx,mts,mjs}` file and classifies
+the ten live-only suites in `scripts/ci/integration-tests.mjs` separately.
+`npm run test:all` runs all ordinary suites, including mixed unit/live files.
+`npm run test:integration -- --list` lists opt-in live suites;
+`npm run test:integration -- --only <group>` runs explicitly configured ones.
+Select service credentials explicitly; never point CI at production.
+Package groups build once and execute only their selected files. Each shard
+verifies complete, disjoint coverage; package test commands that build their own
+outputs stay atomic on one worker. Invalid/empty selections fail. The existing
+`Schema and Routing Contracts` context now reports the test jobs' result from this
+workflow; do not recreate a separate installation-heavy gateway workflow.
+
+`Required Quality and Security Gates` runs even after a prerequisite fails and
+requires every lint/type, build, test, secret-scan, public-env and applicable
+dependency-review lane to succeed. Docs, CodeQL, Semgrep and CLA remain separate
+required contexts. Docs health runs in the complete Docs check on every main push.
+Update CodeQL init, analyze and SARIF upload pins together; mixed action versions
+fail when reading the generated CodeQL configuration. Workflow contract tests
+enforce a shared commit pin.
+Dependabot groups these action updates into one PR.
+PR and merge-group triggers remain mandatory; no application or dependency change
+is exempted by path filters. Do not treat cancellation, missing output or an
+unexpectedly skipped lane as success. Keep protections synchronized with check
+names. The post-merge main run also protects authorized direct owner pushes.
+
+1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay-web` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
+2. Keep `git.deploymentEnabled.main=true` in root `vercel.json`, production branch `main`, and automatic production domain assignment enabled. No custom GitHub Actions deployer or Vercel deployment token is required.
+3. Integration verifies the exact live SHA. If Convex source, imported shared code or runtime dependencies changed, synchronize the production backend from clean current canonical main after matching web is live; frontend-only releases need no backend push.
+4. Integration runs proportionate authenticated production smoke and records the deployed SHA and result. Vercel Git deployment does not itself synchronize Convex or run these application checks. Report live and verified only after the relevant checks pass.
+
+The former custom Production Release workflow, promotion script and production deployment token have been retired. Do not recreate them for ordinary releases. Use Vercel’s deployment history for authorized redeploy/rollback, and follow [Production deployment details](worktree-staging-qa.mdx) for backend safety and recovery.
 
 ## Coordination rules
 
