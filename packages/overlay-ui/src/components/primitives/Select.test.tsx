@@ -57,3 +57,32 @@ test('caller classes style the control once, not the wrapper and the button', ()
   assert.equal(boxed.length, 1, `expected the caller box on one element, saw ${boxed.length}`)
   assert.equal(markup.includes('<button'), true)
 })
+
+test('native form bridge retains name, form, required, disabled and original empty values', () => {
+  const markup = renderToStaticMarkup(
+    <Select id="target" name="target" form="external" required disabled value="" aria-labelledby="target-label">
+      <option value="">Choose target</option>
+      <optgroup label="People" disabled><option value="a">Alpha</option></optgroup>
+    </Select>,
+  )
+  assert.match(markup, /role="combobox"[^>]*aria-labelledby="target-label"/)
+  assert.match(markup, /<select[^>]*name="target"[^>]*form="external"[^>]*required=""[^>]*disabled=""/)
+  assert.match(markup, /<option value="" selected="">Choose target<\/option>/)
+  assert.equal(markup.includes('name="target" value="option-'), false)
+})
+
+test('native option text supplies omitted values and label attributes supply visible labels', () => {
+  const markup = renderToStaticMarkup(
+    <Select aria-label="Plan" value="Pro plan"><option label="Professional">Pro plan</option></Select>,
+  )
+  assert.match(markup, /Professional/)
+})
+
+test('multi-select and visible native listboxes retain native semantics', () => {
+  const multi = renderToStaticMarkup(<Select multiple name="plans" onChange={() => {}} value={['a', 'b']}><option value="a">Alpha</option><option value="b">Beta</option></Select>)
+  assert.match(multi, /<select[^>]*multiple=""/)
+  assert.equal((multi.match(/selected=""/g) ?? []).length, 2)
+  assert.equal(multi.includes('role="combobox"'), false)
+  const list = renderToStaticMarkup(<Select size={4}><option value="a">Alpha</option></Select>)
+  assert.match(list, /<select[^>]*size="4"/)
+})

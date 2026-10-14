@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- **Selects use Radix with Overlay's existing appearance (shadcn Phase 4).** Shared Select/ListboxSelect now provide keyboard selection/typeahead, collision-aware lists and focus return. Existing generic values, selectable empty options, groups, native form events/reset and import APIs remain intact; dropdown-menu/popover migration stays separate.
+
 ### Added
 
 - Added a taggable **Development Workflow** guide with Builder and Integration prompts, preview QA, PR handoff, merge ordering, and authorized release steps.

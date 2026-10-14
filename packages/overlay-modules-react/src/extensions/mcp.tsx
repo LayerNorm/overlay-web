@@ -222,7 +222,7 @@ function McpServerFormFields({ values, update }: { values: McpServerFormValues; 
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Transport">
-          <ListboxSelect value={values.transport} onChange={(value) => update('transport', value as McpTransport)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'streamable-http', label: 'Streamable HTTP' }, { value: 'sse', label: 'SSE' }]} />
+          <ListboxSelect aria-label="Transport" value={values.transport} onChange={(value) => update('transport', value as McpTransport)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'streamable-http', label: 'Streamable HTTP' }, { value: 'sse', label: 'SSE' }]} />
         </Field>
         <Field label="Timeout (ms)">
           <input type="number" aria-label="Timeout (ms)" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
@@ -233,10 +233,10 @@ function McpServerFormFields({ values, update }: { values: McpServerFormValues; 
         <p className="text-[10px] text-(--muted-light)">HTTPS required in production. HTTP allowed for localhost only.</p>
       </Field>
       <Field label="Authentication">
-        <ListboxSelect value={values.authType} onChange={(value) => update('authType', value as McpAuthType)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'none', label: 'None' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'header', label: 'Custom Header' }, { value: 'oauth', label: 'OAuth (sign in with browser)' }]} />
+        <ListboxSelect aria-label="Authentication" value={values.authType} onChange={(value) => update('authType', value as McpAuthType)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'none', label: 'None' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'header', label: 'Custom Header' }, { value: 'oauth', label: 'OAuth (sign in with browser)' }]} />
       </Field>
       <Field label="Tool execution policy">
-        <ListboxSelect value={values.defaultToolPolicy} onChange={(value) => update('defaultToolPolicy', value as McpToolPolicyMode)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'allow', label: 'Allow tools' }, { value: 'approval_required', label: 'Require approval' }, { value: 'deny', label: 'Deny tools' }]} />
+        <ListboxSelect aria-label="Tool execution policy" value={values.defaultToolPolicy} onChange={(value) => update('defaultToolPolicy', value as McpToolPolicyMode)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'allow', label: 'Allow tools' }, { value: 'approval_required', label: 'Require approval' }, { value: 'deny', label: 'Deny tools' }]} />
       </Field>
     </>
   )
