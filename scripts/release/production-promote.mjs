@@ -12,10 +12,29 @@ import { PRODUCTION, promotionEvidence, productionCredentials, productionDeploym
   verifyProductionProject, verifyProductionLive, verifyStagingLive } from './production-control.mjs'
 import { productionSmoke } from './production-smoke.mjs'
 import { verifiedSmoke } from './staging-publish.mjs'
+import { backendInputsChanged } from './production-inputs.mjs'
+import { synchronizeBackend } from './production-backend.mjs'
 
 const repo = `/repos/${PRODUCTION.repository}`
 export const RELEASE_CREDENTIAL_NAMES = Object.freeze(['PRODUCTION_SMOKE_EMAIL',
   'PRODUCTION_SMOKE_PASSWORD', 'PRODUCTION_SMOKE_USER_ID', 'CONVEX_PRODUCTION_DEPLOY_KEY'])
+
+/** Installation tokens have no /user identity; verify the trusted main run instead. */
+export async function verifyProductionActor(github, env, sha) {
+  if (env.GITHUB_ACTIONS !== 'true') {
+    assert.equal((await github('/user')).login, 'DevelopedByDev', 'Use Divyansh GitHub identity')
+    return
+  }
+  assert.equal(env.GITHUB_REPOSITORY, PRODUCTION.repository)
+  assert.equal(env.GITHUB_REF, 'refs/heads/main')
+  assert.equal(env.GITHUB_SHA, sha)
+  assert.match(env.GITHUB_RUN_ID ?? '', /^\d+$/)
+  const run = await github(`${repo}/actions/runs/${env.GITHUB_RUN_ID}`)
+  assert.ok(run.repository?.id === PRODUCTION.repositoryId && run.head_sha === sha
+    && run.head_branch === 'main' && ['push', 'workflow_dispatch'].includes(run.event)
+    && run.path === '.github/workflows/production-release.yml' && run.status === 'in_progress',
+  'Production automation requires the active trusted main release workflow')
+}
 
 /** Called only after canonical checkout validation. Never loads .env.local. */
 export function productionEnvironment(env, file = env.OVERLAY_PRODUCTION_RELEASE_CONFIG
@@ -98,13 +117,13 @@ export function canonicalMain(sha, { cwd = process.cwd(), run = runCommand } = {
   assert.ok(project.projectId === PRODUCTION.projectId && project.orgId === PRODUCTION.teamId,
     'Canonical checkout is not linked to the production project')
   const config = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8'))
-  assert.equal(config.git?.deploymentEnabled?.main, false, 'Automatic main deployment must remain disabled')
+  assert.equal(config.git?.deploymentEnabled?.main, false, 'Native Git deployment must remain disabled; Production Release owns automatic promotion')
   return root
 }
 
 /** Independent steps keep web publication ahead of the production backend push. */
 export async function promote({ sha, checkOnly = false, env, github, vercel, verifyCheckout,
-  acceptStaging, buildWeb, publishWeb, pushBackend, smoke, record = () => {} }) {
+  requireStaging = false, acceptStaging, buildWeb, publishWeb, pushBackend, smoke, record = () => {} }) {
   revision(sha)
   let phase = 'checkout', state = { sha, state: 'pending', backend: PRODUCTION.backend }
   const checkpoint = patch => { state = { ...state, ...patch, phase }; record(state) }
@@ -112,16 +131,20 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     verifyCheckout()
     productionCredentials(env)
     phase = 'owner and project'
-    assert.equal((await github('/user')).login, 'DevelopedByDev', 'Use Divyansh GitHub identity')
+    await verifyProductionActor(github, env, sha)
     assert.equal((await vercel('/v2/user')).user?.username, 'developedbydev1', 'Use Divyansh Vercel identity')
     await verifyProductionProject(vercel)
-    phase = 'accepted release candidate evidence'
-    const evidence = verifiedSmoke(await acceptStaging(sha), sha)
-    await verifyStagingLive({ github, vercel, evidence, sha })
+    let evidence
+    if (requireStaging) {
+      phase = 'accepted release candidate evidence'
+      evidence = verifiedSmoke(await acceptStaging(sha), sha)
+      await verifyStagingLive({ github, vercel, evidence, sha })
+    }
     const previous = await vercel(`/v4/aliases/${PRODUCTION.hostname}`)
     assert.ok(previous.projectId === PRODUCTION.projectId && /^dpl_[A-Za-z0-9]+$/.test(previous.deployment?.id ?? ''),
       'Cannot identify the current production deployment')
-    checkpoint({ stagingRunId: evidence.runId, stagingDeploymentId: evidence.deploymentId,
+    checkpoint({ stagingRequired: requireStaging, ...(evidence ? {
+      stagingRunId: evidence.runId, stagingDeploymentId: evidence.deploymentId } : {}),
       previousDeploymentId: previous.deployment.id, state: checkOnly ? 'preflight-passed' : 'accepted' })
     if (checkOnly) return state
     phase = 'remote web build'
@@ -130,7 +153,7 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     checkpoint({ deploymentId: deployment.id, state: 'web-built' })
     phase = 'web publication'
     verifyCheckout()
-    await verifyStagingLive({ github, vercel, evidence, sha })
+    if (evidence) await verifyStagingLive({ github, vercel, evidence, sha })
     const before = await vercel(`/v4/aliases/${PRODUCTION.hostname}`)
     assert.equal(before.deployment?.id, previous.deployment.id, 'Production changed during build')
     await publishWeb(deployment)
@@ -139,8 +162,8 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
     phase = 'production Convex push'
     verifyCheckout()
     await verifyProductionLive(vercel, await vercel(`/v13/deployments/${deployment.id}`), sha)
-    await pushBackend()
-    checkpoint({ state: 'web-and-backend-live' })
+    const backendDeployed = await pushBackend({ previousDeploymentId: previous.deployment.id })
+    checkpoint({ state: 'web-and-backend-live', backendDeployed: backendDeployed !== false })
     phase = 'authenticated production smoke'
     const checks = await smoke(deployment)
     for (const name of ['authenticatedIdentity', 'noteCrudAndStaleEdit', 'realChatReplyAndPersistence',
@@ -155,9 +178,10 @@ export async function promote({ sha, checkOnly = false, env, github, vercel, ver
 }
 
 export async function main(args = process.argv.slice(2), env = process.env) {
-  assert.ok(args.length === 1 || (args.length === 2 && args[1] === '--check'),
-    'Usage: bash scripts/release/promote.sh <40-character main SHA> [--check]')
-  const sha = revision(args[0]), checkOnly = args[1] === '--check'
+  assert.ok(args.length >= 1 && args.length <= 3
+    && args.slice(1).every(arg => ['--check', '--require-staging'].includes(arg)),
+  'Usage: bash scripts/release/promote.sh <40-character main SHA> [--check] [--require-staging]')
+  const sha = revision(args[0]), checkOnly = args.includes('--check')
   const root = canonicalMain(sha)
   env = productionEnvironment(env)
   productionCredentials(env)
@@ -180,7 +204,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     '--scope', PRODUCTION.teamSlug, '--non-interactive'], { cwd: root, env: cliEnv })
   try {
     mkdirSync(lock); locked = true
-    const result = await promote({ sha, checkOnly, env, github, vercel,
+    const result = await promote({ sha, checkOnly, requireStaging: args.includes('--require-staging'), env, github, vercel,
       verifyCheckout: () => canonicalMain(sha),
       record: state => writeFileSync(join(output, 'promotion.json'), JSON.stringify(state, null, 2), { mode: 0o600 }),
       acceptStaging: async () => {
@@ -204,15 +228,18 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         return waitForProductionBuild({ vercel, origin: productionCliOrigin(stdout), sha })
       },
       publishWeb: async d => { cli(['promote', 'https://' + d.url, '--yes']) },
-      pushBackend: async () => {
-        console.log('release target: customer production Convex ' + PRODUCTION.backend + ' at ' + sha)
-        const path = join(directory, 'production.env')
-        writeFileSync(path, deploymentEnvFile({ CONVEX_DEPLOY_KEY: env.CONVEX_PRODUCTION_DEPLOY_KEY }), { mode: 0o600 })
-        const child = { ...env }
-        for (const key of ['CONVEX_DEPLOY_KEY', 'CONVEX_DEPLOYMENT', 'CONVEX_DEPLOYMENT_TOKEN',
-          'CONVEX_SELF_HOSTED_URL', 'CONVEX_SELF_HOSTED_ADMIN_KEY', 'DEV_NEXT_PUBLIC_CONVEX_URL']) delete child[key]
-        runCommand('npm', ['run', 'convex:push:prod', '--', '--env-file', path, '--typecheck', 'enable'], { cwd: root, env: child })
-      },
+      pushBackend: async () => synchronizeBackend({ github, sha,
+        changed: previousSha => backendInputsChanged({ previousSha, sha, root, run: runCommand }),
+        push: async () => {
+          console.log('release target: customer production Convex ' + PRODUCTION.backend + ' at ' + sha)
+          const path = join(directory, 'production.env')
+          writeFileSync(path, deploymentEnvFile({ CONVEX_DEPLOY_KEY: env.CONVEX_PRODUCTION_DEPLOY_KEY }), { mode: 0o600 })
+          const child = { ...env }
+          for (const key of ['CONVEX_DEPLOY_KEY', 'CONVEX_DEPLOYMENT', 'CONVEX_DEPLOYMENT_TOKEN',
+            'CONVEX_SELF_HOSTED_URL', 'CONVEX_SELF_HOSTED_ADMIN_KEY', 'DEV_NEXT_PUBLIC_CONVEX_URL']) delete child[key]
+          runCommand('npm', ['run', 'convex:push:prod', '--', '--env-file', path, '--typecheck', 'enable'], { cwd: root, env: child })
+        },
+      }),
       smoke: async deployment => {
         const { chromium } = await import('playwright')
         return productionSmoke({ env, vercel, deployment, sha, evidenceDirectory: output,

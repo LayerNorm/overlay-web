@@ -1,5 +1,11 @@
 # Release workflow migration plan
 
+> Current policy (2026-10-14): follow `docs/develop/Development Workflow.md`.
+> Main deploys directly to Vercel production, followed by production smoke.
+> Staging is optional for explicitly requested sensitive acceptance. The migration
+> checkpoints below retain historical policy and do not add release prerequisites.
+
+
 Moves Overlay from direct pushes to `main` plus an optional branch-based staging
 lane, using one shared dev Convex, to the target workflow in
 [`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
@@ -674,3 +680,14 @@ Vercel CLI 63 non-interactive deployment JSON is parsed explicitly, including na
 ### Asynchronous production build submission
 
 Production uses `vercel deploy --prod --skip-domain --no-wait` and the owned exact-SHA READY poll. Other release commands retain a bounded 16 MiB capture. The earlier synchronous attempt stopped at local ENOBUFS while its remote build continued, preserving the customer alias and backend. The corrected complete command passed on the release recorded above; both unpublished earlier builds remain historical.
+
+
+## 2026-10-14 current workflow
+
+The owner superseded manual-only production and mandatory staging.
+`docs/develop/Development Workflow.md` is authoritative: merge to main → automatic
+Vercel production deployment → production smoke. Convex synchronizes when backend
+inputs change. Staging is optional for explicitly requested sensitive acceptance.
+Historical migration checkpoints above describe the old policy, not current release
+prerequisites. Production Release owns automatic Vercel deployment; native Git
+builds remain disabled to avoid duplicate releases.

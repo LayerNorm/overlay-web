@@ -23,7 +23,7 @@ the controller's hosted-app exemption; `needs-preview` requests an explicit buil
 Shared Preview web/backend defaults already contain isolated test model and
 storage credentials. Do not copy `.env.local` wholesale: it contains production
 keys. Unsupported providers stay explicitly disabled. Mark `needs-staging` for
-flows that need dedicated staging QA before production; the PR still targets main.
+sensitive flows for which the owner/task explicitly requests optional staging QA; the PR still targets main.
 
 The PR description must state outcome, decisions, touched systems, dependencies,
 risk/rollback, exact checks, preview evidence, migration steps and current SHA.
@@ -33,4 +33,4 @@ Stop when the PR is complete and ready for Integration. Do not merge, enqueue,
 deploy staging, promote production, or push release branches. Report the PR URL,
 head SHA, checks and limitations. Keep the feature worktree until Integration
 confirms merge and verification. The Integration agent owns review, queue entry,
-exact-main staging acceptance and separately authorized production promotion.
+automatic Vercel production deployment and production smoke, following Development Workflow.
