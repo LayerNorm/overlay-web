@@ -12,7 +12,7 @@ export const GET = adminRoute(async (request, context) => {
     throw new AdministrativeAuthorizationError()
   }
   const usage = await adminConvexQuery<Array<{ email?: string; userId: string }>>(
-    'auth/users:listUserDirectoryByServer',
+    'admin/console:listUserDirectory',
     {
       limit: optionalNumber(query.limit),
       userId: optionalString(query.userId),

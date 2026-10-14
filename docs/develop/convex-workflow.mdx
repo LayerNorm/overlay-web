@@ -172,6 +172,8 @@ Browser→Convex subscriptions must use short-lived **HS256** tokens:
 
 `INTERNAL_API_SECRET` must match between the Next app env and the Convex deployment. Do not send the raw WorkOS access token into reactive queries.
 
+The standalone admin console (`apps/admin`) uses a separate secret, `ADMIN_API_SECRET`, plus `convex/auth.config.ts` WorkOS `customJwt` providers: `admin/console:*` functions call `requireAdminSecret` (constant-time compare, fails closed when unset) then `requireOperator` (native `ctx.auth` identity + active `administrativePrincipals` role). Set it per deployment with `npx convex env set ADMIN_API_SECRET <value>`; preview provisioning does not set it. Break-glass grants run via `npx convex run admin/breakGlass:grantFirstAdmin`. See `docs/develop/admin-console.md`.
+
 Do not call the client's native `setAuth` with these handler tokens. Convex's
 platform verifier expects a configured native identity provider; it rejects the
 internal HMAC token and interrupts subscriptions. Handler authorization still

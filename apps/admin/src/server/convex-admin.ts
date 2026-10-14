@@ -1,6 +1,20 @@
 import 'server-only'
 
-import { adminConvexSecret, convexHttpUrl } from './env'
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+import { adminApiSecret, convexHttpUrl } from './env'
+
+/**
+ * Carries the authenticated operator's WorkOS access token through the
+ * request lifecycle so Convex `admin/console:*` functions can verify it via
+ * `requireOperator` (Convex auth + JWKS). Routes run inside
+ * `runWithOperatorAccessToken`.
+ */
+const operatorTokenStore = new AsyncLocalStorage<{ accessToken: string }>()
+
+export function runWithOperatorAccessToken<T>(accessToken: string, run: () => T): T {
+  return operatorTokenStore.run({ accessToken }, run)
+}
 
 export class ConvexAdminError extends Error {
   constructor(
@@ -22,8 +36,9 @@ type ConvexResponse<T> = {
 
 /**
  * The ONLY module in this app that talks to Convex. Every call injects
- * `serverSecret` from `ADMIN_CONVEX_SECRET`; callers never handle the secret.
- * Stage 2 swaps the function paths/secret name behind this file's API.
+ * `serverSecret` from `ADMIN_API_SECRET`; callers never handle the secret.
+ * Calls target the `admin/console:*` functions, which also verify the
+ * forwarded operator WorkOS token (requireOperator).
  */
 async function post<T>(
   type: ConvexPostType,
@@ -32,14 +47,18 @@ async function post<T>(
 ): Promise<T> {
   const sanitized = { ...args }
   delete sanitized.serverSecret
+  const accessToken = operatorTokenStore.getStore()?.accessToken
   const response = await fetch(`${convexHttpUrl()}/api/${type}`, {
     body: JSON.stringify({
-      args: { ...sanitized, serverSecret: adminConvexSecret() },
+      args: { ...sanitized, serverSecret: adminApiSecret() },
       format: 'json',
       path,
     }),
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     method: 'POST',
   })
   if (!response.ok) {

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
 import type { AdministrativePrincipal } from '@/server/admin/AdministrativeRepository'
-import { adminConvexQuery } from '@/server/convex-admin'
+import { adminConvexQuery, runWithOperatorAccessToken } from '@/server/convex-admin'
 import { allowedUserIds } from '@/server/env'
 import {
   ADMIN_AUTH_STATE_COOKIE,
@@ -48,9 +48,11 @@ export async function GET(request: NextRequest) {
   if (!allowedUserIds().has(tokens.user.id)) {
     return redirectWithCookies('/denied?reason=allowlist', request, [clearAuthStateCookie()])
   }
-  const principal = await adminConvexQuery<AdministrativePrincipal | null>(
-    'admin/administration:getPrincipalByServer',
-    { userId: tokens.user.id },
+  const principal = await runWithOperatorAccessToken(tokens.accessToken, async () =>
+    await adminConvexQuery<AdministrativePrincipal | null>(
+      'admin/console:getPrincipal',
+      { userId: tokens.user.id },
+    ),
   ).catch(() => null)
   if (!principal || principal.revokedAt) {
     return redirectWithCookies('/denied?reason=principal', request, [clearAuthStateCookie()])

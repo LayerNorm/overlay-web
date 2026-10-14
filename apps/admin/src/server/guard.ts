@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { AdministrativeAuthorizationError } from './admin/AdministrativeService'
 import { AuthorizationDeniedError } from './authorization/AuthorizationService'
 import { getAdminServerContext } from './context'
+import { runWithOperatorAccessToken } from './convex-admin'
 import { resolveOperator, type OperatorResolution } from './operator'
 import {
   ADMIN_SESSION_COOKIE,
@@ -106,7 +107,10 @@ export function adminRoute(
     }
 
     try {
-      const response = await handler(request, context)
+      const response = await runWithOperatorAccessToken(
+        outcome.session.accessToken,
+        async () => await handler(request, context),
+      )
       return applyRefreshedSession(response, outcome.session, outcome.sessionMutated)
     } catch (error) {
       return adminErrorResponse(error, request, context, options)

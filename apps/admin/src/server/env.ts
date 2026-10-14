@@ -27,10 +27,10 @@ export function convexHttpUrl(): string {
  * it. Until then local dev should point this at the dev backend's internal
  * secret.
  */
-export function adminConvexSecret(): string {
-  const secret = (process.env.ADMIN_CONVEX_SECRET ?? '').trim()
+export function adminApiSecret(): string {
+  const secret = (process.env.ADMIN_API_SECRET ?? '').trim()
   if (!secret) {
-    throw new Error('ADMIN_CONVEX_SECRET is not configured')
+    throw new Error('ADMIN_API_SECRET is not configured')
   }
   return secret
 }

@@ -45,8 +45,11 @@ Required env (same values the web app uses locally):
 - `DEV_NEXT_PUBLIC_CONVEX_URL` (or `ADMIN_CONVEX_URL`/`NEXT_PUBLIC_CONVEX_URL`)
 - `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY` (non-prefixed names also work)
 - `ADMIN_SESSION_SECRET` — any random 32+ char secret for local dev
-- `ADMIN_CONVEX_SECRET` — the dev backend's `INTERNAL_API_SECRET` value
-  (renamed `ADMIN_API_SECRET` in Stage 2)
+- `ADMIN_API_SECRET` — the dev backend's `ADMIN_API_SECRET` value (set on the
+  Convex deployment; distinct from `INTERNAL_API_SECRET` so the web app's
+  secret cannot call the operator surface). Each PR preview/dev backend needs
+  it set via `npx convex env set ADMIN_API_SECRET <value>` — preview
+  provisioning does not set it automatically.
 - `ADMIN_ALLOWED_USER_IDS` — your WorkOS user id
 - `COMPOSIO_API_KEY` — optional; powers the live third-party catalog list
 
@@ -58,9 +61,20 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
 ## Architecture
 
 - `src/server/convex-admin.ts` is the **only** module that talks to Convex. It
-  injects `ADMIN_CONVEX_SECRET` as `serverSecret` on every call and calls the
-  existing `admin/administration:*`, `admin/authorization:*`, and
-  `auth/users:listUserDirectoryByServer` functions over the Convex HTTP API.
+  injects `ADMIN_API_SECRET` as `serverSecret` on every call, forwards the
+  operator's WorkOS access token as `Authorization: Bearer`, and calls the
+  `admin/console:*` functions over the Convex HTTP API.
+- Convex-side gate (`convex/admin/console.ts`): every function runs
+  `requireAdminSecret` (constant-time `ADMIN_API_SECRET` compare, fails closed
+  when unset) plus `requireOperator` (`convex/lib/auth.ts`), which resolves the
+  caller's WorkOS identity via Convex auth (`convex/auth.config.ts`, WorkOS
+  JWKS customJwt providers) and requires an active `administrativePrincipals`
+  row with a permitted role — writes require `admin`, reads any active
+  operator, audit list `admin`/`auditor`, user directory `admin`/`support`.
+  Every write records its own `auditEvents` row in the same transaction.
+  `admin/administration:*`, `admin/authorization:*`, and
+  `auth/users:listUserDirectoryByServer` stay on `INTERNAL_API_SECRET` for the
+  web app until Stage 3.
 - `src/server/operator.ts` `resolveOperator()` is the single gate (session →
   allowlist → principal row); every API route wraps `adminRoute()` in
   `src/server/guard.ts` which maps it to 401/403 and re-mints the idle cookie.
@@ -76,10 +90,22 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
 - `src/**` may not import `apps/admin/**`.
 - `apps/admin/**` may not import `src/**` — shared code is copied or moved to
   `packages/`.
-- `ADMIN_CONVEX_SECRET`/`ADMIN_API_SECRET` may only be referenced inside
-  `apps/admin/src/server/convex-admin.ts`.
+- `ADMIN_API_SECRET` may only be referenced inside
+  `apps/admin/src/server/env.ts` (asserted by `client-boundary.test.ts`).
 - No `'use client'` module may import `src/server/**` or `convex-admin`
   (also covered by `src/client-boundary.test.ts`).
+
+## Break-glass recovery
+
+When no active `admin` principal exists (first operator, accidental mass
+revoke), grant one directly with deployment access:
+
+```bash
+npx convex run admin/breakGlass:grantFirstAdmin '{"userId": "user_..."}'
+```
+
+`grantFirstAdmin` is an internal mutation — unreachable by app secrets — and
+records an `administration.principal.break_glass_grant` audit event.
 
 ## Security headers
 
