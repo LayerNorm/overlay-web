@@ -6,6 +6,36 @@ Use multiple Builder threads to develop independent features and one Integration
 
 Production follows **merge to main → automatic Vercel Git production deployment → production smoke checks**. Integration synchronizes Convex when backend changes require it, after matching production web is live. PR previews provide the acceptance environment for sensitive changes too. This document is the authoritative workflow.
 
+## Shared hosting and parallel work
+
+| Setting | Development rule |
+| --- | --- |
+| Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
+| Build source | Keep Git allowed for both environments. Vercel starts builds automatically when branches/main change. |
+| Build machine | Keep **Basic**. Let slow builds finish; inspect concrete failures before changing configuration. |
+| Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
+| Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
+| Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
+
+The trusted `PR Preview` workflow uses the existing `VERCEL_PREVIEW_TOKEN` in
+GitHub's `release-control` environment for ordinary custom URL assignment and
+cleanup, plus the existing scoped Convex Preview credential for backend renewal.
+The Git deployment-source rule permits builds; these credentials support URL and
+backend management. Reuse them across PRs. Builders do not create tokens or copy
+shared settings for each feature. No Production deployment token or purchased
+Preview Deployment Suffix is needed.
+
+Open PR backends renew within Convex's retention limits. Closing a PR removes its
+owned URL and branch app setting, stops backend renewal, and leaves the hostname
+returning HTTPS 404. Credential lifetime and backend retention are separate.
+
+Assign independent features to separate Builders so implementation, builds and
+browser QA can proceed in parallel. Each Builder owns one branch and PR. Share
+foundations through declared PR dependencies and land them before dependent work.
+Integration reviews ready PRs in dependency order and uses GitHub's main merge
+queue to check combined revisions. Vercel's build concurrency does not replace
+that integration check.
+
 ## Local laptop owner path
 
 The owner explicitly authorized local laptop agents acting as `DevelopedByDev`
@@ -74,9 +104,17 @@ Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant 
 
 ### 3. Open a draft PR to get the preview
 
-Commit and push the feature branch, then open a draft PR against `main`. Vercel’s native Git integration builds the Preview environment. The trusted `PR Preview` workflow assigns the custom URL and renews the isolated backend. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
+Commit and push the feature branch, then promptly open a draft PR against `main`. Vercel’s native Git integration builds the Preview environment. The trusted `PR Preview` workflow assigns the custom URL and renews the isolated backend. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
 
-Use `https://pr-<number>.preview.getoverlay.io` for hosted QA. The preview runs in the `overlay-landing` Vercel project's Preview environment, has its own Convex backend, and inherits the configured shared test credentials. Preview and Production settings are separately scoped. Keep on-demand concurrent builds enabled with **Run up to one build per branch**: independent PRs build in parallel, while revisions sharing one backend build sequentially. Do not copy `.env.local` wholesale or deploy shared development or production backends from the feature worktree.
+Use the shared hosting settings above. Do not copy `.env.local` wholesale or deploy shared development or production backends from the feature worktree.
+
+Vercel can start a first build before the draft PR exists. The build wrapper
+briefly looks up the public repository's open internal main PR, verifying its
+exact branch and SHA when Vercel's PR-number metadata is missing. It sends no
+credentials to this lookup. A missing PR number is a metadata/timing problem;
+keep concurrent builds enabled and inspect the failed build and `PR Preview`
+workflow logs. If the lookup times out, ensure the PR is open against main and
+push a new revision. Never test an older deployment as evidence for the new head.
 
 Documentation/GitHub-only changes may receive the controller's hosted-app exemption. Review the docs and required checks; use `needs-preview` if an app preview is needed.
 
