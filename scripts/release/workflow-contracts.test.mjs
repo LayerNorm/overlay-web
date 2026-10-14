@@ -7,6 +7,22 @@ import { parse } from 'yaml'
 
 const workflow = name => parse(readFileSync(new URL(`../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'))
 
+test('CodeQL initialization, analysis and SARIF upload share one pinned version', () => {
+  const uses = ['codeql', 'semgrep'].flatMap(name => Object.values(workflow(name).jobs)
+    .flatMap(job => job.steps ?? []).map(step => step.uses)
+    .filter(use => use?.startsWith('github/codeql-action/')))
+  assert.equal(uses.length, 3)
+  assert.deepEqual(new Set(uses.map(use => use.split('@')[0])), new Set([
+    'github/codeql-action/init', 'github/codeql-action/analyze', 'github/codeql-action/upload-sarif',
+  ]))
+  const pins = uses.map(use => use.split('@')[1])
+  assert.ok(pins.every(pin => /^[a-f0-9]{40}$/.test(pin)))
+  assert.equal(new Set(pins).size, 1, 'mixed action versions cannot share CodeQL configuration')
+  const dependabot = parse(readFileSync(new URL('../../.github/dependabot.yml', import.meta.url), 'utf8'))
+  const actions = dependabot.updates.find(update => update['package-ecosystem'] === 'github-actions')
+  assert.deepEqual(actions.groups['codeql-actions'].patterns, ['github/codeql-action*'])
+})
+
 test('Git automatically deploys only main; preview label changes trigger trusted reconciliation', () => {
   const config = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'))
   assert.deepEqual(config.git.deploymentEnabled, { '*': false, main: true })
