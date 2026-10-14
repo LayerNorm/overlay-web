@@ -82,6 +82,25 @@ uses sandbox WorkOS and its own Convex backend.
 
 ### Cloud agents without a Vercel login
 
+**First choice: Vercel MCP, independent of agent platform.** Connect the agent
+to `https://mcp.vercel.com` and authorize the Divyansh account that has access to
+`overlay-landing`. Call `get_access_to_vercel_url` with the current canonical PR
+URL and team `team_VT3uNspuyAOwicxedhtG4SMe`. Open the returned shareable URL in
+the actual QA browser; its redirect establishes that browser's access cookie.
+Continue using the ordinary canonical PR URL in the same browser session, then
+sign into Overlay separately. A terminal fetch does not authenticate a separate
+browser. For HTTP-only checks, `web_fetch_vercel_url` handles protected fetches.
+
+New MCP links expire after 23 hours; existing links retain their own expiry.
+Request access again if it expires. Treat `_vercel_share` links as credentials:
+keep them out of PR text, logs, screenshots and recordings; return to the clean
+canonical URL before capturing evidence. MCP must be connected and authorized
+in each agent platform; adding instructions to this repo cannot install it into
+an arbitrary VM. Agents without MCP need the fallback below. Never post a shared
+access link in a public PR to give every agent access.
+
+**Fallback for runners without Vercel MCP:**
+
 Provision `VERCEL_AUTOMATION_BYPASS_SECRET` once in the cloud platform's private
 runtime secret store for this repository, using the existing `overlay-landing`
 automation bypass secret. GitHub Actions secrets and Vercel app variables do not
@@ -123,6 +142,7 @@ its distribution to trusted repository agents. It bypasses Vercel's hosting
 gate only; Overlay sandbox login and exact-head/backend verification still apply.
 
 See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
+See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).
 
 ## Clearing controlled search inputs
 

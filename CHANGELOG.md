@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Document shared automation bypass access for cloud-agent PR browser QA, with private runtime secret provisioning, exact-origin cookie setup and separate Overlay sandbox login.
+- Use authenticated Vercel MCP access links as the first choice for cloud-agent PR browser QA across platforms, with private runtime automation secrets as a fallback and separate Overlay sandbox login.
 
 - Update CodeQL init, analyze and SARIF upload together to 4.38.2; group future Dependabot updates and enforce matching pins so dependency updates cannot break analysis through version mismatches.
 
