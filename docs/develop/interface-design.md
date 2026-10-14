@@ -73,7 +73,8 @@ Radix's private form events do not bubble through this adapter.
 
 Radix supplies arrows, typeahead, selection, scroll buttons, Escape/outside
 dismissal and focus return. The adapter closes on Tab/Shift+Tab and advances
-through visible controls, remaining within an enclosing dialog. Run
+through visible controls, wrapping at the boundaries of an enclosing dialog
+and skipping disabled controls (including busy footer actions). Run
 `node scripts/qa/select-interactions.mjs` for real-browser adapter/form/keyboard/
 collision/dialog/mobile tests and all 39 preset variable checks. Set
 `SELECT_QA_CHROMIUM` only when using an existing Chromium executable.

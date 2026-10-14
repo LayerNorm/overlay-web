@@ -7,6 +7,7 @@ import { build } from 'esbuild'
 import postcss from 'postcss'
 import tailwind from '@tailwindcss/postcss'
 import { chromium } from 'playwright'
+import { expect } from 'playwright/test'
 
 const root = process.cwd()
 const evidence = path.join(root, 'artifacts/select-qa')
@@ -36,7 +37,7 @@ function App(){
  <ListboxSelect aria-label="Unknown" value="Select a channel" options={[{value:'c',label:'# channel'}]} onChange={()=>{}}/>
  <ListboxSelect aria-label="Inline" value="a" options={options.slice(0,4)} portal={false} onChange={()=>{}}/>
  <button onClick={()=>setDialog(true)}>Open dialog</button>
- <DialogFrame open={dialog} onOpenChange={setDialog} title="Select fixture" description="Select in a scroll container"><div style={{height:200,overflow:'auto'}}><div style={{height:100}}/><ListboxSelect aria-label="Dialog account" value={value} options={options} onChange={record}/><div style={{height:400}}/></div></DialogFrame>
+ <DialogFrame open={dialog} onOpenChange={setDialog} title="Select fixture" description="Select in a scroll container"><ListboxSelect aria-label="First dialog account" value={value} options={options} onChange={record}/><div style={{height:200,overflow:'auto'}}><div style={{height:100}}/><ListboxSelect aria-label="Dialog account" value={value} options={options} onChange={record}/><div style={{height:400}}/></div><button disabled>Busy action</button></DialogFrame>
  <div style={{position:'fixed',bottom:8,right:8,width:180}}><ListboxSelect aria-label="Edge account" value={value} options={options} onChange={record}/></div>
  </main>
 }
@@ -67,11 +68,11 @@ try {
  assert.equal(await native.textContent(),'Zulu')
  assert.equal(await page.evaluate(()=>window.formEvent),'z')
  assert.equal(await page.evaluate(()=>new FormData(document.getElementById('form')).get('target')),'z')
- assert.equal(await native.evaluate(el=>el===document.activeElement),true)
+ await expect(native).toBeFocused()
  await native.click();await page.getByRole('option',{name:'Choose target',exact:true}).click();await closed()
  assert.equal(await page.evaluate(()=>window.events.at(-1)),'')
  await page.getByRole('button',{name:'Submit form'}).click();assert.equal(await page.evaluate(()=>!!window.submitted),false)
- assert.equal(await native.evaluate(el=>el===document.activeElement),true)
+ await expect(native).toBeFocused()
  console.log('native event target/currentTarget, FormData, empty reselection, disabled groups and required focus: PASS')
  const plan=page.getByRole('combobox',{name:'Uncontrolled plan',exact:true})
  await plan.click();await page.getByRole('option',{name:'$20/month',exact:true}).click();await closed()
@@ -82,10 +83,10 @@ try {
  await account.focus();await page.keyboard.press('ArrowDown');await page.getByRole('listbox').waitFor();await page.keyboard.press('a');await page.waitForFunction(()=>document.activeElement?.textContent==='Alpha');await page.keyboard.press('Enter');await closed()
  assert.equal(await account.textContent(),'Alpha')
  await account.click();await page.keyboard.press('ArrowDown');await page.waitForFunction(()=>document.activeElement?.textContent==='Zulu');await page.keyboard.press('Enter');await closed();assert.equal(await account.textContent(),'Zulu')
- await account.click();await page.keyboard.press('Escape');await closed();assert.equal(await account.evaluate(el=>el===document.activeElement),true)
+ await account.click();await page.keyboard.press('Escape');await closed();await expect(account).toBeFocused()
  await account.click();await page.mouse.click(650,500);await closed()
- await account.click();await page.keyboard.press('Tab');await closed();assert.equal(await page.locator('#next').evaluate(el=>el===document.activeElement),true)
- await account.click();await page.keyboard.press('Shift+Tab');await closed();assert.equal(await page.getByRole('button',{name:'Submit form'}).evaluate(el=>el===document.activeElement),true)
+ await account.click();await page.keyboard.press('Tab');await closed();await expect(page.locator('#next')).toBeFocused()
+ await account.click();await page.keyboard.press('Shift+Tab');await closed();await expect(page.getByRole('button',{name:'Submit form'})).toBeFocused()
  await account.click();await page.evaluate(()=>window.setBlocked(true));await closed();assert.equal(await account.isDisabled(),true);await page.evaluate(()=>window.setBlocked(false));assert.equal(await page.getByRole('listbox').count(),0)
  console.log('arrows skip disabled, typeahead, Enter, Escape, outside/Tab and disable-while-open dismissal: PASS')
  assert.equal(await page.getByRole('combobox',{name:'Disabled',exact:true}).isDisabled(),true)
@@ -99,7 +100,10 @@ try {
  console.log('long-list keyboard scroll and bottom/right collision: PASS')
  await page.getByRole('button',{name:'Open dialog'}).click();await page.getByRole('combobox',{name:'Dialog account',exact:true}).click();await page.getByRole('option',{name:'Alpha',exact:true}).click();await closed()
  assert.equal(await page.getByRole('dialog').count(),1);await page.getByRole('combobox',{name:'Dialog account',exact:true}).click();await page.keyboard.press('Escape');await closed();assert.equal(await page.getByRole('dialog').count(),1)
- assert.equal(await page.getByRole('combobox',{name:'Dialog account',exact:true}).evaluate(el=>el===document.activeElement),true)
+ await expect(page.getByRole('combobox',{name:'Dialog account',exact:true})).toBeFocused()
+ await page.getByRole('combobox',{name:'Dialog account',exact:true}).click();await page.keyboard.press('Tab');await closed();await expect(page.getByRole('combobox',{name:'First dialog account',exact:true})).toBeFocused()
+ await page.getByRole('combobox',{name:'First dialog account',exact:true}).click();await page.keyboard.press('Shift+Tab');await closed();await expect(page.getByRole('combobox',{name:'Dialog account',exact:true})).toBeFocused()
+ console.log('dialog boundary Tab/Shift+Tab wraps past disabled footer controls: PASS')
  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'detached'})
  console.log('select in dialog/scroll container, selection, Escape layering and focus return: PASS')
  const presets=await page.evaluate(()=>window.presets)

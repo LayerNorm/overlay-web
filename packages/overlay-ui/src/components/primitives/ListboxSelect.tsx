@@ -86,11 +86,14 @@ export function ListboxSelect<T extends string>({
             if (event.key !== 'Tab' || !triggerRef.current) return
             event.preventDefault()
             const trigger = triggerRef.current
-            const scope = trigger.closest('[role="dialog"]') ?? document
+            const dialog = trigger.closest('[role="dialog"]')
+            const scope = dialog ?? document
             const controls = Array.from(scope.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
               .filter((node) => node.tabIndex >= 0 && !node.matches(':disabled') && !node.hasAttribute('data-radix-focus-guard') && !event.currentTarget.contains(node) && node.getClientRects().length > 0)
             const index = controls.indexOf(trigger)
-            tabTarget.current = controls[index + (event.shiftKey ? -1 : 1)] ?? trigger
+            const adjacent = controls[index + (event.shiftKey ? -1 : 1)]
+            const wrapped = dialog ? controls[event.shiftKey ? controls.length - 1 : 0] : undefined
+            tabTarget.current = adjacent ?? wrapped ?? trigger
             setOpen(false)
           }}
           onCloseAutoFocus={(event) => {
