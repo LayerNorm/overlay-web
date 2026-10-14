@@ -22,7 +22,9 @@ customer production. See [Convex Workflow](/develop/convex-workflow).
 
 Use the synthetic production QA account for sign-in, note CRUD/conflict/cleanup,
 chat reply and reload persistence, Files and realtime checks when relevant.
-The existing production smoke helper remains available; it does not deploy web.
+Use normal browser/application QA for native Git deployments. The older production
+smoke helper expects custom promotion metadata and is retained only for historical
+release evidence; do not use it to certify a native Git deployment.
 A Git deployment alone does not prove backend synchronization or application QA.
 
 ### Hosted model acceptance
