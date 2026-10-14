@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
-import { assertCanCreateInScope, getReadableRow, listScopedRows, loadScopeContext } from '../lib/resourceScope'
+import { assertCanCreateInScope, getReadableRow, listScopedRows, loadScopeContext, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 import {
   assertAssignable,
@@ -365,3 +365,42 @@ export const move = mutation({
 })
 
 export type WorkItemId = Id<'workItems'>
+
+/**
+ * Deletes an archived task for good (from Settings → Archived): the task and whatever was archived under it, their
+ * activity, and any other task's link to them. Only whoever may archive it can; an active task must be archived first.
+ */
+export const remove = mutation({
+  args: { ...auth, id: v.string() },
+  handler: async (ctx, args): Promise<{ ok: true } | { ok: false; reason: 'not_found' | 'not_archived' | 'forbidden' }> => {
+    await authorize(args)
+    const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
+    if (!row) return { ok: false, reason: 'not_found' }
+    if (row.archivedAt === undefined) return { ok: false, reason: 'not_archived' }
+    if (!(await scopeContextLoader(ctx, args.userId).canEdit(row))) return { ok: false, reason: 'forbidden' }
+
+    // What goes with it: its archived subtree (archived together), never a task someone kept active.
+    const doomed = new Set<string>([String(row._id)])
+    for (const childId of await descendantIds(ctx.db, String(row._id))) {
+      const child = await ctx.db.get(childId as Id<'workItems'>)
+      if (child && child.archivedAt === row.archivedAt) doomed.add(String(child._id))
+    }
+    for (const id of doomed) {
+      const events = await ctx.db.query('workItemEvents').withIndex('by_workItemId_createdAt', (q) => q.eq('workItemId', id as Id<'workItems'>)).collect()
+      for (const event of events) await ctx.db.delete(event._id)
+    }
+    // Tasks that stay: forget a parent or a blocker that no longer exists.
+    const everything = await ctx.db.query('workItems').withIndex('by_workspaceId_status_rank', (q) => q.eq('workspaceId', row.workspaceId)).collect()
+    for (const other of everything) {
+      if (doomed.has(String(other._id))) continue
+      const parentGone = other.parentId !== undefined && doomed.has(String(other.parentId))
+      const blockers = other.blockedBy?.filter((id) => !doomed.has(String(id)))
+      const blockersChanged = blockers !== undefined && blockers.length !== other.blockedBy?.length
+      if (parentGone || blockersChanged) {
+        await ctx.db.patch(other._id, { ...(parentGone ? { parentId: undefined } : {}), ...(blockersChanged ? { blockedBy: blockers } : {}) })
+      }
+    }
+    for (const id of doomed) await ctx.db.delete(id as Id<'workItems'>)
+    return { ok: true }
+  },
+})

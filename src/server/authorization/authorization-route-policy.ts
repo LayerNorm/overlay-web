@@ -564,7 +564,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/work/context', methods: { GET: capability('work.use') } },
   {
     path: '/api/v1/work/:id',
-    methods: { GET: capability('work.use'), PATCH: capability('work.use') },
+    methods: { GET: capability('work.use'), PATCH: capability('work.use'), DELETE: capability('work.use') },
   },
   { path: '/api/v1/work/:id/move', methods: { POST: capability('work.use') } },
   {

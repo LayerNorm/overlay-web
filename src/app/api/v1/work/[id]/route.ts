@@ -9,3 +9,7 @@ export async function GET(request: NextRequest, context: BffRouteContext) {
 export async function PATCH(request: NextRequest, context: BffRouteContext) {
   return handleBffRoute(request, context, domainService.PATCH as BffDomainService)
 }
+
+export async function DELETE(request: NextRequest, context: BffRouteContext) {
+  return handleBffRoute(request, context, domainService.DELETE as BffDomainService)
+}

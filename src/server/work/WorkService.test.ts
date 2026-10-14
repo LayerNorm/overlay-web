@@ -17,6 +17,7 @@ function repository(overrides: Partial<WorkRepository> = {}): WorkRepository {
     move: async () => item,
     listEvents: async () => [],
     addComment: async () => undefined,
+    remove: async () => ({ ok: true }),
     ...overrides,
   }
 }
@@ -63,4 +64,12 @@ test('reads pass through', async () => {
   assert.deepEqual(await service.list({ ...actor, view: 'workspace' }), [item])
   assert.deepEqual(await service.get({ ...actor, id: 'i1' }), item)
   assert.deepEqual(await service.listEvents({ ...actor, id: 'i1' }), [])
+})
+
+test('deleting reports why it was refused', async () => {
+  const outcome = (reason: 'not_found' | 'not_archived' | 'forbidden') => new WorkService(repository({ remove: async () => ({ ok: false, reason }) }))
+  await assert.doesNotReject(new WorkService(repository()).remove({ ...actor, id: 'i' }))
+  await assert.rejects(outcome('not_found').remove({ ...actor, id: 'i' }), (e: unknown) => e instanceof WorkServiceError && e.statusCode === 404)
+  await assert.rejects(outcome('not_archived').remove({ ...actor, id: 'i' }), (e: unknown) => e instanceof WorkServiceError && e.statusCode === 409 && /Archive the task/.test(e.message))
+  await assert.rejects(outcome('forbidden').remove({ ...actor, id: 'i' }), (e: unknown) => e instanceof WorkServiceError && e.statusCode === 403)
 })

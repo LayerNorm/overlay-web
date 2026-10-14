@@ -11,6 +11,7 @@ import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkUrlState } from '../lib/use-work-url-state'
 import { useWorkData, WorkDataProvider } from './WorkDataProvider'
 import { WorkList } from './WorkList'
+import { WorkPeek } from './WorkPeek'
 import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
 import { WorkToolbar } from './WorkToolbar'
 
@@ -54,7 +55,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
 
 function WorkScreen() {
   const { scope, view, solo } = useWorkRoute()
-  const { filter, taskId, setFilter, openTask } = useWorkUrlState()
+  const { filter, taskId, setFilter, openTask, closeTask } = useWorkUrlState()
   const { state, items, byId, viewer, error, dismissError, refresh } = useWorkData()
   const [query, setQuery] = useState('')
   const quickAdd = useRef<WorkQuickAddHandle>(null)
@@ -70,6 +71,11 @@ function WorkScreen() {
 
   return (
     <AppScreenShell
+      rightPanel={taskId ? <WorkPeek key={taskId} taskId={taskId} onClose={closeTask} /> : null}
+      rightPanelOpen={Boolean(taskId)}
+      rightPanelWidth={520}
+      onRightPanelClose={closeTask}
+      rightPanelOverlayLabel="Close task"
       header={(
         <AppScreenHeader
           title={title}

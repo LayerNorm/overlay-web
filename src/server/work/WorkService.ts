@@ -75,6 +75,15 @@ export class WorkService {
   addComment(args: Actor & { id: string; body: string }): Promise<void> {
     return this.guard(() => this.repository.addComment(args))
   }
+
+  /** Deletes an archived task for good. An active task has to be archived first. */
+  async remove(args: Actor & { id: string }): Promise<void> {
+    const outcome = await this.guard(() => this.repository.remove(args))
+    if (outcome.ok) return
+    if (outcome.reason === 'not_found') throw new WorkServiceError('Task not found.', 404, 'work_not_found')
+    if (outcome.reason === 'not_archived') throw new WorkServiceError('Archive the task before deleting it.', 409, 'work_not_archived')
+    throw new WorkServiceError('You do not have access to delete this task.', 403, 'work_forbidden')
+  }
 }
 
 export function translateWorkError(error: unknown): Error {

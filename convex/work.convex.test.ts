@@ -48,6 +48,7 @@ function api(convex: Convex) {
     archive: (userId: string, id: string) => convex.mutation(m('work/workItems:archive'), { ...auth(userId), id }),
     restore: (userId: string, id: string) => convex.mutation(m('work/workItems:restore'), { ...auth(userId), id }),
     events: async (userId: string, workItemId: string) => (await convex.query(q('work/workItemEvents:list'), { ...auth(userId), workItemId })) as Array<{ kind: string; data?: Record<string, unknown>; actorPrincipalId: string }>,
+    remove: (userId: string, id: string) => convex.mutation(m('work/workItems:remove'), { ...auth(userId), id }),
     comment: (userId: string, workItemId: string, body: string) => convex.mutation(m('work/workItemEvents:addComment'), { ...auth(userId), workItemId, body }),
   }
 }
@@ -151,6 +152,38 @@ describe('move, archive and restore', () => {
     expect(events.map((e) => e.kind)).toEqual(['created', 'scope', 'archived', 'restored'])
     expect(events[1].data).toEqual({ from: 'personal', to: 'workspace' })
     expect(events.every((e) => e.actorPrincipalId === 'p-alice')).toBe(true)
+  })
+})
+
+describe('deleting an archived task', () => {
+  test('only an archived task, only by whoever may archive it; its subtree, log, and links go with it', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const objective = await work.create('alice', { title: 'Objective', scope: 'workspace' })
+    const child = await work.create('alice', { title: 'Child', scope: 'workspace', parentId: objective._id })
+    const bobsChild = await work.create('bob', { title: 'Bobs child', scope: 'workspace', parentId: objective._id })
+    const other = await work.create('alice', { title: 'Other', scope: 'workspace' })
+    await convex.run(async (ctx) => { await ctx.db.patch(other._id as never, { blockedBy: [objective._id, child._id] as never }) })
+    await work.comment('alice', objective._id, 'note')
+
+    expect(await work.remove('alice', objective._id)).toEqual({ ok: false, reason: 'not_archived' })
+    expect(await work.archive('alice', objective._id)).toEqual({ ok: true })
+    expect(await work.remove('bob', objective._id)).toEqual({ ok: false, reason: 'forbidden' })
+    expect(await work.remove('gus', objective._id)).toEqual({ ok: false, reason: 'not_found' })
+    expect(await work.remove('alice', objective._id)).toEqual({ ok: true })
+
+    expect(await work.get('alice', objective._id)).toBeNull()
+    expect(await work.get('alice', child._id)).toBeNull()
+    // Bob's task was not archived with it, so it stays, now top level.
+    expect(await work.get('bob', bobsChild._id)).toMatchObject({ title: 'Bobs child' })
+    expect((await work.get('bob', bobsChild._id))?.parentId).toBeUndefined()
+    // Links to deleted tasks are forgotten, and their log is gone.
+    const kept = await convex.run(async (ctx) => await ctx.db.get(other._id as never)) as { blockedBy?: string[] }
+    expect(kept.blockedBy).toEqual([])
+    const leftovers = await convex.run(async (ctx) => await ctx.db.query('workItemEvents').collect())
+    expect(leftovers.every((event) => event.workItemId !== objective._id)).toBe(true)
+    expect(await work.remove('alice', objective._id)).toEqual({ ok: false, reason: 'not_found' })
   })
 })
 

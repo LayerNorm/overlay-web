@@ -502,6 +502,7 @@ test('work methods hit the work routes with the right methods, encoded ids, quer
   await client.work.events('item_1')
   await client.work.addComment('item_1', { body: 'Looks good' })
   await client.scope.archive('work', 'item_1')
+  await client.work.remove('item_1')
 
   const seen = calls.map((call) => `${call.init?.method ?? 'GET'} ${String(call.input)}`)
   assert.deepEqual(seen, [
@@ -515,6 +516,7 @@ test('work methods hit the work routes with the right methods, encoded ids, quer
     'GET https://example.test/api/v1/work/item_1/events',
     'POST https://example.test/api/v1/work/item_1/events',
     'POST https://example.test/api/v1/scope',
+    'DELETE https://example.test/api/v1/work/item_1',
   ])
   assert.deepEqual(await jsonBody(calls[4]!), { title: 'Ship it', scope: 'workspace', dueDate: '2026-03-01' })
   assert.deepEqual(await jsonBody(calls[5]!), { status: 'review', assigneePrincipalId: null })

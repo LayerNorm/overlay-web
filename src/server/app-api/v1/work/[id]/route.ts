@@ -14,6 +14,16 @@ export async function GET(_request: NextRequest, context: AppApiRouteContext) {
   }
 }
 
+/** DELETE /api/v1/work/{id}: deletes an archived task for good (Settings → Archived). Active tasks are archived first. */
+export async function DELETE(_request: NextRequest, context: AppApiRouteContext) {
+  try {
+    await workService().remove({ ...actorOf(context), id: await workIdFrom(context) })
+    return NextResponse.json({ success: true }, { headers: NO_STORE })
+  } catch (error) {
+    return workErrorResponse(error)
+  }
+}
+
 /** PATCH /api/v1/work/{id}: change fields (null clears one). Moving between scopes and archiving use /api/v1/scope. */
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {

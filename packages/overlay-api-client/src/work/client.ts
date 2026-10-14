@@ -41,6 +41,11 @@ export class WorkClient {
     return this.http.json<WorkItemResponse>(this.itemPath(id), this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
+  /** Deletes an archived task for good. */
+  remove(id: string, init?: RequestInit) {
+    return this.http.json<MutationSuccessResponse>(this.itemPath(id), { ...init, method: 'DELETE' })
+  }
+
   move(id: string, body: MoveWorkItemRequest, init?: RequestInit) {
     return this.http.json<WorkItemResponse>(this.itemPath(id, '/move'), this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }

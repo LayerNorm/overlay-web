@@ -36,8 +36,10 @@ function shimPlugin() {
 async function compileCss() {
   const source = path.join(root, 'src/app/globals.css')
   const css = await readFile(source, 'utf8')
+  // The root layout imports the chat surface styles globally; Markdown (the task objective) relies on them.
+  const chat = await readFile(path.join(root, 'packages/overlay-chat-react/src/styles/chat-surface.css'), 'utf8')
   const result = await postcss([tailwind()]).process(css, { from: source })
-  return result.css
+  return `${result.css}\n${chat}`
 }
 
 export async function startWorkHarness() {
@@ -53,7 +55,7 @@ export async function startWorkHarness() {
       tsconfig: path.join(root, 'tsconfig.json'),
       plugins: [shimPlugin()],
       define: { 'process.env.NODE_ENV': '"production"', 'process.env.NEXT_PUBLIC_APP_ENV': '"qa"' },
-      loader: { '.svg': 'dataurl', '.png': 'dataurl' },
+      loader: { '.svg': 'dataurl', '.png': 'dataurl', '.css': 'empty' },
       logLevel: 'error',
     }),
   ])

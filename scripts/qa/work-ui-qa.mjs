@@ -38,6 +38,8 @@ const open = async (page, query = '') => {
   await page.goto(`${harness.url}/?${query}`)
   await page.waitForSelector('[data-testid="work-page"]')
 }
+/** Navigates inside the page, keeping the fake API's state (a full load starts it over). */
+const go = (page, query) => page.evaluate((q) => { window.history.pushState(null, '', `/?${q}`); window.dispatchEvent(new PopStateEvent('popstate')) }, query)
 const titles = (page) => page.locator('[data-testid="work-row"] button.truncate').allTextContents()
 
 await check('list: groups, rows, filters and search', async (page, shot) => {
@@ -142,6 +144,151 @@ await check('empty and error states', async (page, shot) => {
   await shot('load-error')
   await page.getByRole('button', { name: 'Try again' }).click()
   await page.waitForSelector('[data-testid="work-list"]')
+})
+
+await check('task panel: open from the list, edit every field, and each change saves', async (page, shot) => {
+  await open(page, 'scope=workspace')
+  await page.waitForSelector('[data-testid="work-list"]')
+  await page.locator('[data-task-id]', { hasText: 'Record the 60 second product walkthrough' }).click()
+  await page.getByTestId('work-peek').waitFor()
+  assert.match(page.url(), /task=t\d+/)
+  assert.equal(await page.getByRole('textbox', { name: 'Title', exact: true }).inputValue(), 'Record the 60 second product walkthrough')
+  await page.waitForTimeout(400)
+  await shot('light')
+
+  const peek = page.getByTestId('work-peek')
+  const saved = () => page.evaluate(() => window.__work.dump().find((i) => i.title.includes('walkthrough')))
+
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Record the 90 second walkthrough')
+  await page.getByRole('textbox', { name: 'Title', exact: true }).press('Enter')
+  await page.waitForFunction(() => window.__work.dump().some((i) => i.title === 'Record the 90 second walkthrough'))
+
+  await peek.getByRole('button', { name: /^Priority:/ }).click()
+  await page.getByRole('menuitemradio', { name: 'High' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).priority === 3)
+
+  await peek.getByRole('button', { name: /^Reviewer:/ }).click()
+  await page.getByRole('menuitemradio', { name: 'Priya Nair' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).reviewerUserId === 'user-priya')
+
+  await peek.getByLabel('Due date').fill('2026-01-01')
+  await page.waitForSelector('[role="alert"]:has-text("on or before")')
+  const before = await saved()
+  assert.notEqual(before.dueDate, '2026-01-01')
+  const future = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 20); return d.toISOString().slice(0, 10) })
+  await peek.getByLabel('Due date').fill(future)
+  await page.waitForFunction((value) => window.__work.dump().find((i) => i.title.includes('90 second')).dueDate === value, future)
+
+  await peek.getByRole('switch', { name: 'Blocked' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).blocked === true)
+
+  await peek.getByRole('button', { name: /^Inside:/ }).click()
+  await page.getByRole('menuitemradio', { name: 'Q4 customer research' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).parentId !== null)
+  await peek.getByRole('button', { name: /^Inside:/ }).click()
+  await page.getByRole('menuitem', { name: 'Not inside another task' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).parentId === null)
+
+  // The objective is Markdown: formatted when read, plain text when edited.
+  await peek.getByRole('button', { name: 'Edit objective' }).click()
+  await peek.getByRole('textbox', { name: 'Objective' }).fill('One take, **no cuts**.\n\n- screen\n- voice')
+  await peek.getByRole('textbox', { name: 'Objective' }).blur()
+  await peek.locator('[data-testid="work-objective"] strong').waitFor()
+  assert.equal(await peek.locator('[data-testid="work-objective"] li').count(), 2)
+
+  // Context: a link, and something found by search.
+  await peek.getByRole('button', { name: 'Add file, note, chat or link' }).click()
+  await page.getByLabel('Search files, notes and chats, or paste a link').fill('https://www.figma.com/file/abc')
+  await page.getByRole('button', { name: /Add link figma.com/ }).click()
+  await peek.getByRole('button', { name: 'Add file, note, chat or link' }).click()
+  await page.getByLabel('Search files, notes and chats, or paste a link').fill('launch')
+  await page.getByRole('button', { name: 'launch-brief.pdf' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).context.length === 2)
+  assert.equal(await peek.locator('a[href="https://www.figma.com/file/abc"]').getAttribute('target'), '_blank')
+  assert.equal(await peek.locator('a[href="/app/files?file=f1"]').count(), 1)
+
+  // Done when: add, tick, rename, remove.
+  await peek.getByRole('textbox', { name: 'Add a condition' }).fill('Under 90 seconds')
+  await peek.getByRole('textbox', { name: 'Add a condition' }).press('Enter')
+  await peek.getByRole('textbox', { name: 'Add a condition' }).fill('Captions exported')
+  await peek.getByRole('textbox', { name: 'Add a condition' }).press('Enter')
+  await peek.getByRole('checkbox', { name: 'Under 90 seconds' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).doneWhen.filter((d) => d.checked).length === 1)
+  assert.match(await peek.innerText(), /1 of 2/)
+  await peek.getByRole('button', { name: /Remove “Captions exported”/ }).click({ force: true })
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.includes('90 second')).doneWhen.length === 1)
+
+  // Comment and activity.
+  await peek.getByRole('textbox', { name: 'Leave a comment' }).fill('Script is in the launch note')
+  await peek.getByRole('textbox', { name: 'Leave a comment' }).press('Enter')
+  await peek.getByText('Script is in the launch note').waitFor()
+  const log = await peek.getByTestId('work-activity').innerText()
+  assert.match(log, /set the priority to High/)
+  assert.match(log, /asked Priya Nair to review/)
+  assert.match(log, /marked this as blocked/)
+  await shot('edited')
+
+  // Esc closes the panel and clears ?task=.
+  await page.keyboard.press('Escape')
+  await page.waitForSelector('[data-testid="work-peek"]', { state: 'detached' })
+  assert.doesNotMatch(page.url(), /task=/)
+})
+
+await check('task panel: reviewer approves, archive closes it, restore brings it back, and a link opens in its own scope', async (page) => {
+  await open(page, 'scope=workspace')
+  await page.waitForSelector('[data-testid="work-list"]')
+  await page.locator('[data-task-id]', { hasText: 'Write the launch announcement post' }).click()
+  const peek = page.getByTestId('work-peek')
+  await peek.getByTestId('work-review-card').waitFor()
+  await peek.getByRole('button', { name: 'Approve' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.startsWith('Write the launch')).status === 'done')
+  await page.waitForSelector('[data-testid="work-review-card"]', { state: 'detached' })
+
+  await peek.getByRole('button', { name: 'Archive' }).click()
+  await page.waitForSelector('[data-testid="work-peek"]', { state: 'detached' })
+  assert.ok(!(await titles(page)).includes('Write the launch announcement post'))
+  assert.ok(await page.evaluate(() => window.__work.dump().find((i) => i.title.startsWith('Write the launch')).archivedAt !== null))
+
+  // Opening a personal task from a link while on Workspace switches to Personal.
+  const personalId = await page.evaluate(() => window.__work.dump().find((i) => i.title.startsWith('Renew the domain')).id)
+  await open(page, `scope=workspace&task=${personalId}`)
+  await page.getByTestId('work-peek').waitFor()
+  await page.waitForFunction(() => /scope=personal/.test(location.search))
+  await page.waitForSelector('[data-testid="work-list"] [data-task-id]:has-text("Renew the domain names")')
+})
+
+await check('task panel: an archived task is read-only with Restore; a person without access sees a plain message', async (page) => {
+  await open(page, 'scope=workspace')
+  await page.waitForSelector('[data-testid="work-list"]')
+  const id = await page.evaluate(() => {
+    window.__work.patchWhere((i) => i.title.startsWith('Reconcile September'), { archivedAt: Date.now(), archivedFromScope: 'workspace' })
+    window.dispatchEvent(new Event('overlay:work-updated'))
+    return window.__work.dump().find((i) => i.title.startsWith('Reconcile September')).id
+  })
+  await page.waitForSelector('[data-task-id]:has-text("Reconcile September")', { state: 'detached' })
+  await go(page, `scope=workspace&task=${id}`)
+  const peek = page.getByTestId('work-peek')
+  await peek.getByTestId('work-archived-note').waitFor()
+  assert.ok(await peek.getByRole('textbox', { name: 'Title', exact: true }).isDisabled())
+  assert.equal(await peek.getByRole('textbox', { name: 'Leave a comment' }).count(), 0)
+  await peek.getByRole('button', { name: 'Restore' }).click()
+  await page.waitForFunction(() => window.__work.dump().find((i) => i.title.startsWith('Reconcile')).archivedAt === null)
+
+  await go(page, 'scope=workspace&task=nope')
+  await page.getByText('This task is not available').waitFor()
+})
+
+await check('task panel: a member who may not edit sees it read-only (admins-only policy)', async (page) => {
+  await open(page, 'scope=workspace&role=member&policy=admins')
+  await page.waitForSelector('[data-testid="work-list"]')
+  // Not assigned to this member, created by someone else: read-only.
+  await page.evaluate(() => window.__work.patchWhere((i) => i.scope === 'workspace' && i.assigneePrincipalId !== 'p-me', { createdBy: 'user-sam' }))
+  await page.evaluate(() => window.dispatchEvent(new Event('overlay:work-updated')))
+  await page.locator('[data-task-id]', { hasText: 'Fix the pricing table layout' }).click()
+  const peek = page.getByTestId('work-peek')
+  await peek.waitFor()
+  assert.ok(await peek.getByRole('textbox', { name: 'Title', exact: true }).isDisabled())
+  assert.ok(await peek.getByRole('button', { name: /^Status:/ }).isDisabled())
 })
 
 await browser.close()

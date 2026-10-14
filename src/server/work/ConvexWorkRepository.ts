@@ -118,6 +118,12 @@ export class ConvexWorkRepository implements WorkRepository {
     return (rows ?? []).map(mapWorkEventDoc)
   }
 
+  async remove(args: { userId: string; workspaceId: string; id: string }): Promise<{ ok: true } | { ok: false; reason: 'not_found' | 'not_archived' | 'forbidden' }> {
+    const outcome = await convex.mutation<{ ok: true } | { ok: false; reason: 'not_found' | 'not_archived' | 'forbidden' }>('work/workItems:remove', { ...this.base(args), id: args.id }, { throwOnError: true })
+    if (!outcome) throw new Error('Failed to delete task')
+    return outcome
+  }
+
   async addComment(args: { userId: string; workspaceId: string; id: string; body: string }): Promise<void> {
     await convex.mutation('work/workItemEvents:addComment', { ...this.base(args), workItemId: args.id, body: args.body }, { throwOnError: true })
   }

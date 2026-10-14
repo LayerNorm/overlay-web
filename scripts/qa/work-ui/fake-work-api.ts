@@ -113,6 +113,10 @@ export function installFakeWorkApi() {
         if (item.archivedAt !== null) return json({ error: 'Restore the task first.', code: 'work_archived' }, 409)
         if ('status' in body && body.status !== item.status) { log(item, 'status', { from: item.status, to: body.status }); item.rank = endRank(body.status, item.id) }
         if ('assigneePrincipalId' in body && body.assigneePrincipalId !== item.assigneePrincipalId) log(item, 'assignee', { from: item.assigneePrincipalId, to: body.assigneePrincipalId })
+        if ('priority' in body && body.priority !== item.priority) log(item, 'priority', { from: item.priority, to: body.priority })
+        if ('blocked' in body && body.blocked !== item.blocked) log(item, 'blocked', { to: body.blocked })
+        if ('reviewerUserId' in body && body.reviewerUserId !== item.reviewerUserId) log(item, 'reviewer', { from: item.reviewerUserId, to: body.reviewerUserId })
+        if ('title' in body && String(body.title).trim() && String(body.title).trim() !== item.title) log(item, 'title', { from: item.title, to: String(body.title).trim() })
         if ('title' in body) { if (!String(body.title).trim()) return json({ error: 'Give the task a title.', code: 'work_title_required' }, 400); body.title = String(body.title).trim() }
         if ('dueDate' in body || 'startDate' in body) {
           const start = 'startDate' in body ? body.startDate : item.startDate
@@ -155,6 +159,15 @@ export function installFakeWorkApi() {
         return json({ success: true }, 201)
       }
     }
+    if (path === '/api/v1/mention-search' && method === 'GET') {
+      const q = (url.searchParams.get('q') ?? '').toLowerCase()
+      const pick = <T extends { name?: string; title?: string }>(rows: T[]) => rows.filter((row) => (row.name ?? row.title ?? '').toLowerCase().includes(q))
+      return json({
+        files: pick([{ _id: 'f1', name: 'launch-brief.pdf' }, { _id: 'f2', name: 'sales-calls-oct.zip' }]),
+        notes: pick([{ _id: 'n1', title: 'Positioning v3' }]),
+        conversations: pick([{ _id: 'c1', title: '#launch thread' }]),
+      })
+    }
     if (path === '/api/v1/scope' && method === 'POST') {
       const item = items.find((candidate) => candidate.id === body.id)
       if (!item || !visible(item)) return json({ error: 'Not found.', reason: 'not_found' }, 404)
@@ -176,7 +189,7 @@ export function installFakeWorkApi() {
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, window.location.origin)
-    if (!url.pathname.startsWith('/api/v1/work') && url.pathname !== '/api/v1/scope') return original(input, init)
+    if (!url.pathname.startsWith('/api/v1/work') && url.pathname !== '/api/v1/scope' && url.pathname !== '/api/v1/mention-search') return original(input, init)
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
     const body = typeof init?.body === 'string' && init.body ? JSON.parse(init.body) : {}
     state.calls.push({ method, path: url.pathname + url.search, body })
@@ -196,6 +209,8 @@ export function installFakeWorkApi() {
     events: () => events,
     reset: () => { items = seed(); events = [] },
     clear: () => { items = [] },
+    /** Changes the stored tasks directly (`dump` returns copies). */
+    patchWhere: (match: (item: Item) => boolean, patch: Item) => { for (const item of items) if (match(item)) Object.assign(item, patch) },
     add: (partial: Item) => { const item = make(partial); items.push(item); return item },
   }
 }

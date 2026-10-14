@@ -73,6 +73,9 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   // The newest load wins, and a load never overwrites a change that is still waiting for the server.
   const loadId = useRef(0)
   const pending = useRef(0)
+  // Changes to one task that the server has not answered yet. While several are waiting, only the last answer is
+  // applied, so an earlier answer never flashes over a newer edit.
+  const inflight = useRef(new Map<string, number>())
 
   const load = useCallback(async () => {
     const id = ++loadId.current
@@ -112,6 +115,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
 
   /** Runs `request` with the screen already updated by `optimistic`; rolls back to `previous` when it fails. */
   const mutate = useCallback(async (
+    id: string,
     optimistic: (current: WorkItem[]) => WorkItem[],
     request: () => Promise<WorkItem>,
     fallback: string,
@@ -119,19 +123,25 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     const previous = itemsRef.current
     setError(null)
     pending.current += 1
+    inflight.current.set(id, (inflight.current.get(id) ?? 0) + 1)
     setItems(optimistic)
     try {
       const item = await request()
-      setItems((current) => upsertItem(current, item))
+      if (inflight.current.get(id) === 1) setItems((current) => upsertItem(current, item))
       return item
     } catch (caught) {
-      setItems(previous)
+      // With a newer edit still waiting, rolling back would undo it too: ask the server what is true instead.
+      if (inflight.current.get(id) === 1) setItems(previous)
       setError(messageOf(caught, fallback))
       return null
     } finally {
+      const left = (inflight.current.get(id) ?? 1) - 1
+      if (left <= 0) inflight.current.delete(id)
+      else inflight.current.set(id, left)
       pending.current -= 1
+      if (pending.current === 0 && left > 0) void load()
     }
-  }, [])
+  }, [load])
 
   const createTask = useCallback<WorkData['createTask']>(async (input) => {
     const scopeToSend = newItemScope(solo ? 'personal' : scope)
@@ -154,6 +164,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     if (!target) return Promise.resolve(null)
     const endRank = patch.status && patch.status !== target.status ? endRankOf(itemsRef.current, patch.status, id) : undefined
     return mutate(
+      id,
       (current) => current.map((item) => (item.id === id ? applyItemPatch(item, patch, { now: Date.now(), endRank }) : item)),
       async () => (await overlayAppClient.work.update(id, patch)).item,
       'Could not save that change.',
@@ -166,6 +177,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     const status = input.status ?? target.status
     const rank = rankForDrop(itemsRef.current, { id, status, afterId: input.afterId, beforeId: input.beforeId })
     return mutate(
+      id,
       (current) => current.map((item) => (item.id === id ? { ...item, status, rank, updatedAt: Date.now() } : item)),
       async () => (await overlayAppClient.work.move(id, input)).item,
       'Could not move the task.',

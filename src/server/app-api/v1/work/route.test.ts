@@ -167,6 +167,24 @@ test('GET and PATCH /api/v1/work/{id}', async (t) => {
   assert.equal(bad.status, 400)
 })
 
+test('DELETE /api/v1/work/{id} removes an archived task and explains a refusal', async (t) => {
+  const outcomes: Record<string, unknown> = {
+    gone: { ok: true },
+    active: { ok: false, reason: 'not_archived' },
+    other: { ok: false, reason: 'forbidden' },
+    missing: { ok: false, reason: 'not_found' },
+  }
+  mockConvex(t, { 'work/workItems:remove': (args) => outcomes[String(args.id)] })
+  const route = await import('./[id]/route')
+  const remove = (id: string) => route.DELETE(request(`/api/v1/work/${id}`, { method: 'DELETE' }), context({ id }))
+  assert.equal((await remove('gone')).status, 200)
+  const active = await remove('active')
+  assert.equal(active.status, 409)
+  assert.match((await active.json() as { error: string }).error, /Archive the task/)
+  assert.equal((await remove('other')).status, 403)
+  assert.equal((await remove('missing')).status, 404)
+})
+
 test('POST /api/v1/work/{id}/move places a task between neighbours', async (t) => {
   const calls = mockConvex(t, { 'work/workItems:move': () => ({ ...doc, status: 'review', rank: 'T' }) })
   const route = await import('./[id]/move/route')
@@ -225,10 +243,10 @@ test('GET /api/v1/work/context returns the picker context, or 403 outside the wo
 test('every Work route requires the work.use capability', () => {
   for (const [method, path] of [
     ['GET', '/api/v1/work'], ['POST', '/api/v1/work'], ['GET', '/api/v1/work/context'],
-    ['GET', '/api/v1/work/abc'], ['PATCH', '/api/v1/work/abc'], ['POST', '/api/v1/work/abc/move'],
+    ['GET', '/api/v1/work/abc'], ['PATCH', '/api/v1/work/abc'], ['DELETE', '/api/v1/work/abc'], ['POST', '/api/v1/work/abc/move'],
     ['GET', '/api/v1/work/abc/events'], ['POST', '/api/v1/work/abc/events'],
   ] as const) {
     assert.deepEqual(getAuthorizationRoutePolicy(method, path), { access: 'capability', capabilities: ['work.use'] }, `${method} ${path}`)
   }
-  assert.equal(getAuthorizationRoutePolicy('DELETE', '/api/v1/work/abc'), null)
+  assert.equal(getAuthorizationRoutePolicy('PUT', '/api/v1/work/abc'), null)
 })
