@@ -161,6 +161,7 @@ function SidebarGroupAction({
   return (
     <Comp
       data-slot="sidebar-group-action"
+      {...(!asChild ? { type: 'button' as const } : {})}
       className={cn(
         'absolute right-3 top-1.5 flex size-5 items-center justify-center rounded-md text-(--muted) outline-none transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:ring-1 focus-visible:ring-(--muted-light) [&>svg]:size-3.5 [&>svg]:shrink-0',
         className,
@@ -231,6 +232,7 @@ function SidebarMenuAction({
     <Comp
       data-slot="sidebar-menu-action"
       data-sidebar="menu-action"
+      {...(!asChild ? { type: 'button' as const } : {})}
       className={cn(
         'absolute right-1 top-1.5 flex size-5 items-center justify-center rounded-md text-(--muted-light) outline-none transition-colors hover:bg-(--surface-elevated) hover:text-(--foreground) focus-visible:ring-1 focus-visible:ring-(--muted-light) peer-data-[size=lg]/menu-button:top-2 [&>svg]:size-3.5 [&>svg]:shrink-0',
         showOnHover &&

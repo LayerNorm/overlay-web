@@ -1,7 +1,7 @@
 'use client'
 
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronRight,
@@ -54,14 +54,19 @@ function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversat
 
 function useAgentBundles(workspaceId: string | null) {
   const [bundles, setBundles] = useState<AgentBundleMap>({})
+  const bundleRequests = useRef(new Map<string, symbol>())
 
   const loadBundle = useCallback(async (agentId: string) => {
     if (!workspaceId) return
+    const request = Symbol(agentId)
+    bundleRequests.current.set(agentId, request)
     setBundles((current) => ({ ...current, [agentId]: 'loading' }))
     try {
       const bundle = await overlayAppClient.agents.bundle(workspaceId, agentId)
+      if (bundleRequests.current.get(agentId) !== request) return
       setBundles((current) => ({ ...current, [agentId]: bundle }))
     } catch {
+      if (bundleRequests.current.get(agentId) !== request) return
       setBundles((current) => ({ ...current, [agentId]: 'error' }))
     }
   }, [workspaceId])
@@ -296,12 +301,15 @@ function useAgentActions({
           },
         }
       })
+      // A collapsed row may still have a bundle request in flight. Refresh after
+      // the mutation; only the newest request may publish the resulting tree.
+      await loadBundle(agent.id)
       router.push(agentThreadHref(baseHref, agent.id, thread.conversationId, view))
       onNavigate?.()
     } finally {
       setCreatingThreadFor(null)
     }
-  }, [baseHref, creatingThreadFor, onNavigate, router, setBundles, view, workspaceId])
+  }, [baseHref, creatingThreadFor, loadBundle, onNavigate, router, setBundles, view, workspaceId])
 
   const archiveThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -447,44 +455,46 @@ function AgentListRow({
 }) {
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton
-        isActive={isActive}
-        disabled={anyOpening}
-        // Reserve both actions on touch too; they are always visible below md.
-        className="group-has-data-[sidebar=menu-action]/menu-item:pr-14"
-        onClick={() => {
-          if (!isExpanded) onToggleExpanded(agent.id)
-          onOpenAgent(agent)
-        }}
-      >
-        {isOpening
-          ? <Loader2 size={13} className="shrink-0 animate-spin" />
-          : <AgentCreature agent={agent} size={16} />}
-        <span className="truncate">{agent.name}</span>
-      </SidebarMenuButton>
-      <SidebarMenuAction
-        aria-label={`New thread with ${agent.name}`}
-        title="New thread"
-        disabled={creatingThread}
-        className="right-7 md:opacity-0 group-hover/menu-item:opacity-100 group-focus-within/menu-item:opacity-100"
-        onClick={(event) => {
-          event.stopPropagation()
-          if (!isExpanded) onToggleExpanded(agent.id)
-          onCreateThread(agent)
-        }}
-      >
-        {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
-      </SidebarMenuAction>
-      <SidebarMenuAction
-        aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
-        aria-expanded={isExpanded}
-        onClick={(event) => {
-          event.stopPropagation()
-          onToggleExpanded(agent.id)
-        }}
-      >
-        <ChevronRight className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden />
-      </SidebarMenuAction>
+      <div className="group/agent-row relative">
+        <SidebarMenuButton
+          isActive={isActive}
+          disabled={anyOpening}
+          // Reserve both actions on touch too; they are always visible below md.
+          className="group-has-data-[sidebar=menu-action]/menu-item:pr-14"
+          onClick={() => {
+            if (!isExpanded) onToggleExpanded(agent.id)
+            onOpenAgent(agent)
+          }}
+        >
+          {isOpening
+            ? <Loader2 size={13} className="shrink-0 animate-spin" />
+            : <AgentCreature agent={agent} size={16} />}
+          <span className="truncate">{agent.name}</span>
+        </SidebarMenuButton>
+        <SidebarMenuAction
+          aria-label={`New thread with ${agent.name}`}
+          title="New thread"
+          disabled={creatingThread}
+          className="right-7 md:opacity-0 group-hover/agent-row:opacity-100 group-focus-within/agent-row:opacity-100"
+          onClick={(event) => {
+            event.stopPropagation()
+            if (!isExpanded) onToggleExpanded(agent.id)
+            onCreateThread(agent)
+          }}
+        >
+          {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
+        </SidebarMenuAction>
+        <SidebarMenuAction
+          aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
+          aria-expanded={isExpanded}
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleExpanded(agent.id)
+          }}
+        >
+          <ChevronRight className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden />
+        </SidebarMenuAction>
+      </div>
       {isExpanded ? (
         <AgentThreadRows
           agent={agent}

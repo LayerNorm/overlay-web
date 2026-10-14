@@ -6,6 +6,7 @@ import {
   Sidebar,
   SidebarMenu,
   SidebarMenuAction,
+  SidebarGroupAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
@@ -67,4 +68,13 @@ test('skeleton rows keep the row height and a deterministic width', () => {
   assert.equal(a, b)
   assert.match(a, /h-8/)
   assert.match(a, /role="status"/)
+})
+
+
+test('menu and group actions default to non-submit buttons and preserve asChild', () => {
+  const html = renderToStaticMarkup(<form><SidebarMenuAction>Menu</SidebarMenuAction><SidebarGroupAction>Group</SidebarGroupAction></form>)
+  assert.equal(html.match(/type="button"/g)?.length, 2)
+  const link = renderToStaticMarkup(<SidebarMenuAction asChild><a href="/app/agents">Open</a></SidebarMenuAction>)
+  assert.match(link, /^<a /)
+  assert.doesNotMatch(link, /type="button"/)
 })
