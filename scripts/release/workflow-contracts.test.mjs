@@ -156,3 +156,16 @@ test('parallel lanes preserve complete test discovery, runtime-specific contract
   assert.ok(jobs.build.steps.some(s => s.run === 'npm run check:config && npm run test:release-safety'))
   assert.equal(workflow('docs').on.push.paths, undefined, 'docs health must still run for every main push')
 })
+
+test('scanner findings stay blocking and publish diagnostics; dependency updates retain their cooldown', () => {
+  const steps = workflow('semgrep').jobs.semgrep.steps
+  const scan = steps.find(step => step.name === 'Run Semgrep')
+  assert.match(scan.run, /--error/)
+  assert.match(scan.run, /--sarif-output semgrep\.sarif/)
+  assert.equal(scan['continue-on-error'], undefined)
+  const upload = steps.find(step => step.name === 'Upload Semgrep results')
+  assert.match(upload.if, /!cancelled\(\)/)
+  assert.match(upload.if, /hashFiles\('semgrep\.sarif'\)/)
+  const dependabot = parse(readFileSync(new URL('../../.github/dependabot.yml', import.meta.url), 'utf8'))
+  for (const update of dependabot.updates) assert.equal(update.cooldown['default-days'], 7)
+})
