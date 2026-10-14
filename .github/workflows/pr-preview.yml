@@ -32,7 +32,7 @@ jobs:
         run: node scripts/release/preview-control.mjs inventory
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
+          VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
           CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
 
   preview:
@@ -58,7 +58,7 @@ jobs:
       - run: node scripts/release/preview-control.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
+          VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
           CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
 
   reconcile:
@@ -87,5 +87,5 @@ jobs:
         env:
           PREVIEW_PR_NUMBER: ${{ matrix.pr }}
           GITHUB_TOKEN: ${{ github.token }}
-          VERCEL_STAGING_TOKEN: ${{ secrets.VERCEL_STAGING_TOKEN }}
+          VERCEL_PREVIEW_TOKEN: ${{ secrets.VERCEL_PREVIEW_TOKEN }}
           CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Consolidate PR previews and native Git production deployments in `overlay-landing`, retaining custom PR URLs, isolated Convex backends and shared Preview test credentials. Retire the separate staging release lane.
+
 - Authorize local laptop agents under DevelopedByDev to integrate directly into main with validated fast-forward pushes; cloud Builder threads retain PR previews and the merge queue.
 
 - Use Vercel’s native Git integration for automatic production deployment from main. Retire the custom production workflow, promotion script and deployment token; Integration verifies production and synchronizes Convex only for backend changes. Staging remains optional and Development Workflow is authoritative.

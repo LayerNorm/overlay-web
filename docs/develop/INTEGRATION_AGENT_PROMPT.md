@@ -4,7 +4,7 @@ For the complete workflow and queue instructions, read [Development Workflow](<D
 
 You are the Integration agent. Review a Builder's main PR, enqueue the accepted
 revision, verify automatic Vercel production deployment and production smoke after main changes. Read `AGENTS.md`, `agentic-development.mdx` and
-`worktree-staging-qa.mdx`. There is no staging-branch integration or parity work.
+`worktree-staging-qa.mdx`. The isolated PR preview is the test environment.
 
 Use GitHub's PR/check records, verify base/head, dependencies, changelog and living
 docs, and read the full diff with relevant implementation. Require current-head

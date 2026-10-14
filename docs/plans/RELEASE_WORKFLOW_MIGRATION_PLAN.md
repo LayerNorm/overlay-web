@@ -5,14 +5,36 @@
 > `git.deploymentEnabled.main=true`; no custom production deployer or token.
 > Integration verifies production, synchronizes Convex only for backend changes,
 > and runs smoke checks.
-> Staging is optional for explicitly requested sensitive acceptance. The migration
-> checkpoints below retain historical policy and do not add release prerequisites.
+> PR previews supply sensitive acceptance testing too. Consolidation onto the
+> `overlay-landing` project is in progress; the historical staging checkpoints
+> below do not add release prerequisites.
 
 
 Moves Overlay from direct pushes to `main` plus an optional branch-based staging
 lane, using one shared dev Convex, to the target workflow in
 [`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md): per-PR previews,
 merge queue on `main`, on-demand exact-main release candidates, manual production promotion.
+
+## Single-project consolidation checkpoint — 2026-10-14
+
+- Copied all 70 shared Preview settings to `overlay-landing`, using sandbox WorkOS,
+  test Stripe/model/storage credentials, matching preview backend secrets and a
+  non-expiring Convex preview deploy key. Production values have Production-only
+  targets; no target variable is shared between Preview and Production.
+- New-project PR #217 deployment `dpl_FwpCET3endFXPcfxzuSP9ZWxPuag` reached READY at
+  `a99c3aca29d58bf928de01dac0bd67abfbb96681`. Temporarily moved its canonical custom
+  hostname and verified HTTPS, preview login, workspace API and Files API (200),
+  plus unknown-host HTTPS 404 and Production HTTP 200.
+- Restored existing domain ownership, preview seed identity and native preview
+  settings while the durable controller credential is pending. The old project
+  still serves previews. No staging project or release branch has been deleted.
+- Prepared repository cleanup passed 47 release/workflow checks, 6 auth/environment
+  checks, targeted ESLint and diff whitespace review. No main publication yet.
+- Remaining: create/store the approved project-scoped `VERCEL_PREVIEW_TOKEN`,
+  publish the controller/build/documentation changes, enable native Git Preview,
+  move and verify active PR domains, then retire the old project and staging lane.
+  The browser tool currently cannot start after temporary-file cleanup; its
+  runtime needs restoration before the dashboard token step can complete.
 
 ## Current acceptance — 2026-10-13
 

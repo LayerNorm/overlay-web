@@ -16,7 +16,6 @@ test('new PR revisions cancel obsolete checks without canceling main releases or
   }
   // Deployment controllers must settle remote builds before releasing their locks.
   assert.equal(workflow('pr-preview').jobs.preview.concurrency['cancel-in-progress'], false)
-  assert.equal(workflow('staging-release').jobs.deploy.concurrency['cancel-in-progress'], false)
 })
 
 test('every required workflow reports on merge groups; required PR checks have no paths filter', () => {
