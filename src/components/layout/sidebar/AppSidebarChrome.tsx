@@ -284,6 +284,19 @@ function DesktopAccountFallback({
     return (
       <>
         <FloatingMenu
+          aria-label="Account"
+          trigger={
+            <button
+              type="button"
+              className={rowClass}
+              aria-label="Account menu"
+              aria-expanded={accountMenuOpen}
+              title={displayName}
+            >
+              <User size={15} className="shrink-0" />
+              {label}
+            </button>
+          }
           anchorRef={menuRef}
           open={accountMenuOpen}
           onOpenChange={onAccountMenuOpenChange}
@@ -292,24 +305,21 @@ function DesktopAccountFallback({
         >
           {accountMenu}
         </FloatingMenu>
-        <button
-          type="button"
-          onClick={() => onAccountMenuOpenChange(!accountMenuOpen)}
-          className={rowClass}
-          aria-label="Account menu"
-          aria-expanded={accountMenuOpen}
-          title={displayName}
-        >
-          <User size={15} className="shrink-0" />
-          {label}
-        </button>
       </>
     )
   }
   return (
-    <button type="button" onClick={onSignIn} className={rowClass} aria-label="Sign in" title="Sign in">
+    <button
+      type="button"
+      onClick={onSignIn}
+      className={rowClass}
+      aria-label="Sign in"
+      title="Sign in"
+    >
       <User size={15} className="shrink-0" />
-      {railExpanded ? <span className="min-w-0 flex-1 truncate text-left text-sm">Sign in</span> : null}
+      {railExpanded ? (
+        <span className="min-w-0 flex-1 truncate text-left text-sm">Sign in</span>
+      ) : null}
     </button>
   )
 }
@@ -340,9 +350,11 @@ export function MobileTopBar({
   onCloseMenu: () => void
 }) {
   return (
-    <div className={`fixed inset-x-0 top-0 z-40 border-b border-(--border) bg-[color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur-sm transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:hidden ${
-      hidden ? 'pointer-events-none -translate-y-full opacity-0' : 'translate-y-0 opacity-100'
-    }`}>
+    <div
+      className={`fixed inset-x-0 top-0 z-40 border-b border-(--border) bg-[color-mix(in_srgb,var(--sidebar-surface)_95%,transparent)] backdrop-blur-sm transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:hidden ${
+        hidden ? 'pointer-events-none -translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+      }`}
+    >
       <div className="flex h-14 items-center justify-between gap-2 px-3">
         <button
           type="button"
@@ -368,25 +380,26 @@ export function MobileTopBar({
               })}
             </div>
           ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => onMobileAccountOpenChange(!mobileAccountOpen)}
-                aria-label="Account menu"
-                aria-expanded={mobileAccountOpen}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-              >
-                <User size={16} />
-              </button>
-              {mobileAccountOpen && (
-                <div
-                  className="overlay-pop-in absolute right-0 top-full z-50 mt-1.5 w-60 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg"
-                  onMouseDown={(event) => event.stopPropagation()}
+            <FloatingMenu
+              anchorRef={accountRef}
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Account menu"
+                  aria-expanded={mobileAccountOpen}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 >
-                  {accountMenu}
-                </div>
-              )}
-            </>
+                  <User size={16} />
+                </button>
+              }
+              open={mobileAccountOpen}
+              onOpenChange={onMobileAccountOpenChange}
+              align="end"
+              aria-label="Account"
+              className="w-60 rounded-lg"
+            >
+              {accountMenu}
+            </FloatingMenu>
           )}
         </div>
       </div>
@@ -430,26 +443,30 @@ export function MobileAccountFooter({
             accountMenu,
           })
         ) : !isGuestConfirmed ? (
-          <>
-            {accountMenuOpen ? (
-              <div
-                className="overlay-fade-in absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg"
-                onMouseDown={(event) => event.stopPropagation()}
+          <FloatingMenu
+            anchorRef={menuRef}
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+                aria-label="Account menu"
               >
-                {accountMenu}
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => onAccountMenuOpenChange(!accountMenuOpen)}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-              aria-label="Account menu"
-            >
-              <User size={13} />
-              <span className="flex-1 truncate text-left">{displayName}</span>
-              <ChevronUp size={11} className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`} />
-            </button>
-          </>
+                <User size={13} />
+                <span className="flex-1 truncate text-left">{displayName}</span>
+                <ChevronUp
+                  size={11}
+                  className={`shrink-0 transition-transform ${accountMenuOpen ? '' : 'rotate-180'}`}
+                />
+              </button>
+            }
+            open={accountMenuOpen}
+            onOpenChange={onAccountMenuOpenChange}
+            side="top"
+            aria-label="Account"
+            className="w-64 rounded-lg"
+          >
+            {accountMenu}
+          </FloatingMenu>
         ) : (
           <button
             type="button"

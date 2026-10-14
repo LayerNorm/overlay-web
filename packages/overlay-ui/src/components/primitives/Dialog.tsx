@@ -16,6 +16,8 @@ export interface DialogFrameProps extends Omit<HTMLAttributes<HTMLDivElement>, '
   footer?: ReactNode
   actions?: ReactNode
   onOpenChange?: (open: boolean) => void
+  /** Override the default opener when it is removed by a menu-to-dialog handoff. */
+  onCloseAutoFocus?: (event: Event) => void
 }
 
 export function DialogFrame({
@@ -25,6 +27,7 @@ export function DialogFrame({
   footer,
   actions,
   onOpenChange,
+  onCloseAutoFocus,
   children,
   className,
   ...props
@@ -32,7 +35,7 @@ export function DialogFrame({
   const returnFocus = useDialogReturnFocus()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} className={className} {...returnFocus} {...props}>
+      <DialogContent showCloseButton={false} className={className} {...returnFocus} onCloseAutoFocus={onCloseAutoFocus ?? returnFocus.onCloseAutoFocus} {...props}>
         {title || actions ? (
           <DialogHeader>
             {title ? <DialogTitle>{title}</DialogTitle> : <span />}

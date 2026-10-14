@@ -1,11 +1,6 @@
 'use client'
 
-import {
-  Suspense,
-  type MouseEventHandler,
-  type ReactNode,
-  type RefObject,
-} from 'react'
+import { Suspense, useMemo, type MouseEventHandler, type ReactNode, type RefObject } from 'react'
 import {
   Check,
   ChevronDown,
@@ -29,6 +24,7 @@ import {
   PersonalChatModeToggle,
   type PersonalChatMode,
 } from '@overlay/ui/chat'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '@overlay/ui/overlays'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { ModelBadges } from './ModelIndicators'
@@ -267,6 +263,8 @@ function HeaderTitleSection({
 function ModelQualitiesHoverCard({
   modelId,
   position,
+  modelPickerRef,
+  onClosePicker,
   resolveModel,
   reasoning,
   onReasoningChange,
@@ -274,30 +272,63 @@ function ModelQualitiesHoverCard({
 }: {
   modelId: string
   position: ModelQualitiesPosition
+  modelPickerRef: RefObject<HTMLDivElement | null>
+  onClosePicker: () => void
   resolveModel: (modelId: string) => ChatModel | undefined
   reasoning?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
   onHoveredModelChange: (modelId: string | null, position: ModelQualitiesPosition | null) => void
 }) {
+  const virtualRef = useMemo(
+    () => ({
+      current: {
+        getBoundingClientRect: () =>
+          modelPickerRef.current
+            ?.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)
+            ?.getBoundingClientRect() ?? new DOMRect(),
+        get contextElement() {
+          return modelPickerRef.current ?? undefined
+        },
+      },
+    }),
+    [modelId, modelPickerRef],
+  )
   return (
-    <div
-      className="fixed z-100 hidden w-56 rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2 shadow-md md:block"
-      style={{
-        left: position.x,
-        top: position.y,
-        transform: 'translate(calc(-100% - 8px), -50%)',
+    <Popover
+      open
+      onOpenChange={(open) => {
+        if (!open) onHoveredModelChange(null, null)
       }}
-      onMouseEnter={() => onHoveredModelChange(modelId, position)}
-      onMouseLeave={() => onHoveredModelChange(null, null)}
     >
-      <Suspense fallback={null}>
-        <ModelQualitiesPanel
-          model={resolveModel(modelId)}
-          reasoning={reasoning}
-          onReasoningChange={onReasoningChange}
-        />
-      </Suspense>
-    </div>
+      <PopoverAnchor virtualRef={virtualRef} />
+      <PopoverContent
+        side="left"
+        align="center"
+        aria-label="Model details"
+        className="hidden w-56 overflow-visible rounded-lg px-3 py-2 shadow-md md:block"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => {
+          event.preventDefault()
+          onClosePicker()
+          onHoveredModelChange(null, null)
+        }}
+        onInteractOutside={(event) => {
+          if (modelPickerRef.current?.contains(event.target as Node)) event.preventDefault()
+        }}
+        onMouseEnter={() => onHoveredModelChange(modelId, position)}
+        onMouseLeave={() => onHoveredModelChange(null, null)}
+      >
+        <Suspense fallback={null}>
+          <ModelQualitiesPanel
+            model={resolveModel(modelId)}
+            reasoning={reasoning}
+            onReasoningChange={onReasoningChange}
+            reasoningPortal={false}
+          />
+        </Suspense>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -355,6 +386,7 @@ function ModelPickerRow({
       data-model-row={onHoverStart ? modelId : undefined}
       disabled={disabled}
       onClick={onSelect}
+      aria-pressed={selected}
       onMouseEnter={onHoverStart}
       className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
         disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-(--surface-muted)'
@@ -490,7 +522,6 @@ function ModelSelectionModeButtons({
 
 function AutomationModelPicker({
   modelPickerRef,
-  onToggleModelPicker,
   getChatModelDisplayName,
   automationHeaderModelId,
   showModelPicker,
@@ -507,7 +538,8 @@ function AutomationModelPicker({
   isFreeTierChatModelId,
   onSaveAutomationHeaderModel,
   onSetShowModelPicker,
-}: Pick<ChatExperienceHeaderProps,
+}: Pick<
+  ChatExperienceHeaderProps,
   | 'modelPickerRef'
   | 'onToggleModelPicker'
   | 'getChatModelDisplayName'
@@ -528,22 +560,33 @@ function AutomationModelPicker({
   | 'onSetShowModelPicker'
 >) {
   return (
-    <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-      <DelayedTooltip label="Choose automation model" side="bottom">
-        <button
-          type="button"
-          onClick={onToggleModelPicker}
-          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-52"
-          aria-label="Automation model"
+    <Popover open={showModelPicker} onOpenChange={onSetShowModelPicker}>
+      <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
+        <DelayedTooltip label="Choose automation model" side="bottom">
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-52"
+              aria-label="Automation model"
+            >
+              <span className="min-w-0 truncate">
+                {getChatModelDisplayName(automationHeaderModelId) || 'Select model'}
+              </span>
+              <ChevronDown size={11} className="shrink-0" />
+            </button>
+          </PopoverTrigger>
+        </DelayedTooltip>
+        <PopoverContent
+          ref={modelPickerRef}
+          align="end"
+          aria-label="Choose automation model"
+          data-tour="model-picker"
+          className="w-[var(--radix-popover-trigger-width)] rounded-lg md:w-64"
         >
-          <span className="min-w-0 truncate">{getChatModelDisplayName(automationHeaderModelId) || 'Select model'}</span>
-          <ChevronDown size={11} className="shrink-0" />
-        </button>
-      </DelayedTooltip>
-      {showModelPicker ? (
-        <>
           {hoveredModelId && modelQualitiesPos ? (
             <ModelQualitiesHoverCard
+              onClosePicker={() => onSetShowModelPicker(false)}
+              modelPickerRef={modelPickerRef}
               modelId={hoveredModelId}
               position={modelQualitiesPos}
               resolveModel={resolveModel}
@@ -552,10 +595,7 @@ function AutomationModelPicker({
               onHoveredModelChange={onHoveredModelChange}
             />
           ) : null}
-          <div
-            data-tour="model-picker"
-            className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-          >
+          <div>
             <div ref={modelPickerListScrollRef} className="max-h-72 overflow-y-auto">
               {textModelsLoading && !isFreeTier ? <PremiumModelsLoadingRows /> : null}
               <TextModelRows
@@ -574,9 +614,9 @@ function AutomationModelPicker({
               {textModelsLoading && isFreeTier ? <PremiumModelsLoadingRows divider /> : null}
             </div>
           </div>
-        </>
-      ) : null}
-    </div>
+        </PopoverContent>
+      </div>
+    </Popover>
   )
 }
 
@@ -720,7 +760,8 @@ function ChatModelPickerDropdown({
   isFreeTierChatModelId,
   onHoveredModelChange,
   hasAutomationContext,
-}: Pick<ChatExperienceHeaderProps,
+}: Pick<
+  ChatExperienceHeaderProps,
   | 'generationMode'
   | 'onGenerationModeChange'
   | 'isActiveLoading'
@@ -749,10 +790,7 @@ function ChatModelPickerDropdown({
 >) {
   const selectedModelSet = new Set(selectedModels)
   return (
-    <div
-      data-tour="model-picker"
-      className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 max-w-[calc(100vw-1.5rem)] rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg md:left-auto md:right-0 md:w-64 md:max-w-none"
-    >
+    <div data-tour="model-picker" className="min-w-0">
       <div className="border-b border-(--border) px-2 pb-2 pt-1">
         <DelayedTooltip
           label="Cycle text / image / video (⇧⌘.)"
@@ -836,16 +874,15 @@ function ChatModelPickerDropdown({
           />
         </div>
       ) : null}
-
     </div>
   )
 }
 
 function ChatModelPicker({
   modelPickerRef,
-  onToggleModelPicker,
   modelPickerLabel,
   showModelPicker,
+  onSetShowModelPicker,
   generationMode,
   hoveredModelId,
   modelQualitiesPos,
@@ -876,11 +913,13 @@ function ChatModelPicker({
   onTextModelSelectionModeChange,
   isFreeTierChatModelId,
   hasAutomationContext,
-}: Pick<ChatExperienceHeaderProps,
+}: Pick<
+  ChatExperienceHeaderProps,
   | 'modelPickerRef'
   | 'onToggleModelPicker'
   | 'modelPickerLabel'
   | 'showModelPicker'
+  | 'onSetShowModelPicker'
   | 'generationMode'
   | 'hoveredModelId'
   | 'modelQualitiesPos'
@@ -913,21 +952,30 @@ function ChatModelPicker({
   | 'hasAutomationContext'
 >) {
   return (
-    <div ref={modelPickerRef} data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-      <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
-        <button
-          type="button"
-          onClick={onToggleModelPicker}
-          className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) md:w-auto md:max-w-52"
+    <Popover open={showModelPicker} onOpenChange={onSetShowModelPicker}>
+      <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
+        <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) md:w-auto md:max-w-52"
+            >
+              <span className="min-w-0 truncate">{modelPickerLabel}</span>
+              <ChevronDown size={11} className="shrink-0" />
+            </button>
+          </PopoverTrigger>
+        </DelayedTooltip>
+        <PopoverContent
+          ref={modelPickerRef}
+          align="end"
+          aria-label="Choose model"
+          data-tour="model-picker"
+          className="w-[var(--radix-popover-trigger-width)] rounded-lg md:w-64"
         >
-          <span className="min-w-0 truncate">{modelPickerLabel}</span>
-          <ChevronDown size={11} className="shrink-0" />
-        </button>
-      </DelayedTooltip>
-      {showModelPicker ? (
-        <>
           {generationMode === 'text' && hoveredModelId && modelQualitiesPos ? (
             <ModelQualitiesHoverCard
+              onClosePicker={() => onSetShowModelPicker(false)}
+              modelPickerRef={modelPickerRef}
               modelId={hoveredModelId}
               position={modelQualitiesPos}
               resolveModel={resolveModel}
@@ -963,9 +1011,9 @@ function ChatModelPicker({
             onHoveredModelChange={onHoveredModelChange}
             hasAutomationContext={hasAutomationContext}
           />
-        </>
-      ) : null}
-    </div>
+        </PopoverContent>
+      </div>
+    </Popover>
   )
 }
 

@@ -283,7 +283,8 @@ export function RoomHeaderActions({
             roomPanel === 'pinned' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
           }`}
         >
-          <Pin size={13} />{collab.pins.length}
+          <Pin size={13} />
+          {collab.pins.length}
         </button>
       ) : null}
       {!showcase && currentParticipant?.role === 'moderator' ? (
@@ -308,45 +309,53 @@ export function RoomHeaderActions({
         <UsersRound size={14} />
         {roster.participants.length}
       </button>
-      <button
-        ref={menuTriggerRef}
-        type="button"
-        aria-label="Conversation options"
-        onClick={() => setMenuOpen((open) => !open)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
-      >
-        <MoreHorizontal size={15} />
-      </button>
       <FloatingMenu
+        kind="menu"
+        trigger={
+          <button
+            ref={menuTriggerRef}
+            type="button"
+            aria-label="Conversation options"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          >
+            <MoreHorizontal size={15} />
+          </button>
+        }
         anchorRef={menuTriggerRef}
         open={menuOpen}
         onOpenChange={setMenuOpen}
         align="end"
         className="w-48 p-1"
       >
-          <MenuButton
-            icon={currentParticipant?.notificationLevel === 'muted' ? Bell : BellOff}
-            label={currentParticipant?.notificationLevel === 'muted' ? 'Unmute' : 'Mute'}
-            onClick={() => {
-              setMenuOpen(false)
-              void onUpdateState({
-                notificationLevel: currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
-              }, currentParticipant?.notificationLevel === 'muted' ? 'Notifications on' : 'Conversation muted')
-            }}
-          />
-          <MenuButton
-            icon={Bell}
-            label="Mark unread"
-            onClick={() => {
-              setMenuOpen(false)
-              void onUpdateState({ markUnread: true }, 'Marked unread')
-            }}
-          />
-          <MenuButton
-            icon={Archive}
-            label={currentParticipant?.archivedAt ? 'Restore' : 'Archive'}
-            onClick={onArchive}
-          />
+        <MenuButton
+          icon={currentParticipant?.notificationLevel === 'muted' ? Bell : BellOff}
+          label={currentParticipant?.notificationLevel === 'muted' ? 'Unmute' : 'Mute'}
+          onClick={() => {
+            setMenuOpen(false)
+            void onUpdateState(
+              {
+                notificationLevel:
+                  currentParticipant?.notificationLevel === 'muted' ? 'all' : 'muted',
+              },
+              currentParticipant?.notificationLevel === 'muted'
+                ? 'Notifications on'
+                : 'Conversation muted',
+            )
+          }}
+        />
+        <MenuButton
+          icon={Bell}
+          label="Mark unread"
+          onClick={() => {
+            setMenuOpen(false)
+            void onUpdateState({ markUnread: true }, 'Marked unread')
+          }}
+        />
+        <MenuButton
+          icon={Archive}
+          label={currentParticipant?.archivedAt ? 'Restore' : 'Archive'}
+          onClick={onArchive}
+        />
       </FloatingMenu>
     </div>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import {
   cloneOrphanModelThreadsMap,
   cloneUiMessageThread,
@@ -44,13 +44,7 @@ type GatewayModel = {
   name?: string
 }
 
-function useModelPickerState({
-  generationMode,
-  hasAutomationContext,
-}: {
-  generationMode: GenerationMode
-  hasAutomationContext: boolean
-}) {
+function useModelPickerState() {
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showVideoSubModePicker, setShowVideoSubModePicker] = useState(false)
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null)
@@ -63,70 +57,13 @@ function useModelPickerState({
     if (showModelPicker) void import('@overlay/chat-react/model-qualities-panel')
   }, [showModelPicker])
 
-  const syncModelQualitiesPosition = useCallback((modelId: string | null) => {
-    if (typeof document === 'undefined' || !modelId || !modelPickerRef.current) {
-      setModelQualitiesPos(null)
-      return
-    }
-    const row = modelPickerRef.current.querySelector(`[data-model-row="${CSS.escape(modelId)}"]`)
-    if (!row || !(row instanceof HTMLElement)) {
-      setModelQualitiesPos(null)
-      return
-    }
-    const rect = row.getBoundingClientRect()
-    setModelQualitiesPos({ x: rect.left - 8, y: rect.top + rect.height / 2 })
-  }, [])
-
   useEffect(() => {
     if (!showModelPicker) {
       setHoveredModelId(null)
       setModelQualitiesPos(null)
       return
     }
-    function handleOutside(event: MouseEvent) {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(event.target as Node)) {
-        setShowModelPicker(false)
-      }
-    }
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setShowModelPicker(false)
-    }
-    document.addEventListener('mousedown', handleOutside, true)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleOutside, true)
-      document.removeEventListener('keydown', handleEscape)
-    }
   }, [showModelPicker])
-
-  useLayoutEffect(() => {
-    if (!showModelPicker || (!hasAutomationContext && generationMode !== 'text') || !hoveredModelId) {
-      setModelQualitiesPos(null)
-      return
-    }
-    syncModelQualitiesPosition(hoveredModelId)
-  }, [
-    generationMode,
-    hasAutomationContext,
-    hoveredModelId,
-    showModelPicker,
-    syncModelQualitiesPosition,
-  ])
-
-  useEffect(() => {
-    const element = modelPickerListScrollRef.current
-    if (!element || !showModelPicker || !hoveredModelId) return
-    const handleScroll = () => syncModelQualitiesPosition(hoveredModelId)
-    element.addEventListener('scroll', handleScroll, { passive: true })
-    return () => element.removeEventListener('scroll', handleScroll)
-  }, [hoveredModelId, showModelPicker, syncModelQualitiesPosition])
-
-  useEffect(() => {
-    if (!showModelPicker || !hoveredModelId) return
-    const handleResize = () => syncModelQualitiesPosition(hoveredModelId)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [hoveredModelId, showModelPicker, syncModelQualitiesPosition])
 
   useEffect(() => {
     function openPicker() { setShowModelPicker(true) }
@@ -648,7 +585,7 @@ export function useChatModelSelectionController({
     showModelPicker,
     showVideoSubModePicker,
     videoSubModePickerRef,
-  } = useModelPickerState({ generationMode, hasAutomationContext })
+  } = useModelPickerState()
 
   const handleModeChange = useCallback((mode: GenerationMode) => {
     setGenerationMode(mode)

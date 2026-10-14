@@ -8,9 +8,10 @@ _Dated 2026-10-13. Companion visual mockup:
 | Phase | Status | PR |
 |---|---|---|
 | 0a Tailwind v4 | Merged and live in production at `4698f8347caf0bc44b3a0fab29781ff744fc6629`; required CI, candidate acceptance and production smoke passed | [#198](https://github.com/LayerNorm/overlay-web/pull/198) (merged, base `main`) |
-| 0b shadcn foundation | Implemented, folded into the phase-1 PR (deps + `components.json` + real `cn()` land with the first component) | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
-| 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (open, base `main`) |
-| 3 tooltip | Implemented: canonical `ui/tooltip.tsx`; `DelayedTooltip` reimplemented on Radix Tooltip with unchanged `{label, side}` API (all callsites upgraded untouched); 450 ms delay + hover-only gating preserved | [#202](https://github.com/LayerNorm/overlay-web/pull/202) (open, base `main`) |
+| 0b shadcn foundation | Merged with the phase-1 PR (deps + `components.json` + real `cn()` land with the first component) | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (merged, base `main`) |
+| 1 dialog + alert-dialog | Implemented: canonical `ui/dialog.tsx` + `ui/alert-dialog.tsx`; `DialogFrame`/`ConfirmDialog` reimplemented as Radix shims with unchanged APIs (10 DialogFrame + 6 ConfirmDialog callsites upgraded untouched). Remaining: the ~5 hand-rolled dialogs (`ShareDialog` ×2, `IntegrationsDialog`, `SignInFullScreenModal`, `OnboardingTour`/`NameWorkspace`) → phase 1b. | [#200](https://github.com/LayerNorm/overlay-web/pull/200) (merged, base `main`) |
+| 2 dropdown-menu + popover | Implemented; current-head hosted QA pending. Action menus use DropdownMenu; account/workspace and model controls use Popover. Public shims and Overlay tokens retained. | This PR (`codex/shadcn-menus-popovers`, base `main`) |
+| 3 tooltip | Implemented: canonical `ui/tooltip.tsx`; `DelayedTooltip` reimplemented on Radix Tooltip with unchanged `{label, side}` API (all callsites upgraded untouched); 450 ms delay + hover-only gating preserved | [#202](https://github.com/LayerNorm/overlay-web/pull/202) (merged, base `main`) |
 
 One scope note vs the original plan: phase 0b's semantic shadcn token
 aliasing (`--card`/`--primary`/…) is deferred — the components consume
@@ -179,10 +180,38 @@ checks of the highest-traffic routes: chat, settings, workspaces).
 
 ## Phase 2 — dropdown-menu + popover
 
-Reimplement `FloatingMenu`/`MenuSurface` internals on Radix (account menu,
-scope actions, model pickers). Free wins: collision-aware positioning,
-typeahead, arrow-key nav, portals. Kills the manual `getBoundingClientRect`
-math — the most fragile code in the current system.
+Canonical `ui/dropdown-menu.tsx` and `ui/popover.tsx` own portals, dismissal,
+focus and collision-aware positioning on the existing z-10090 scale.
+`MenuSurface` retains its standalone visual API and shares the same surface
+classes; it does not invent menu semantics for arbitrary children.
+`FloatingMenu` retains external `anchorRef` support as a Popover and adds an
+optional native `trigger`; action menus use `kind="menu"` with a trigger.
+`MenuItem` retains button props/callbacks and becomes a Radix item only in that
+action-menu context.
+
+Consumer audit:
+
+| Consumer | Semantics / decision |
+|---|---|
+| Direct-message/channel conversation options | DropdownMenu; arrows, Home/End, disabled-item skipping and typeahead |
+| Sidebar account fallback (desktop/mobile) | Popover; usage/storage/apps disclosures and links remain native controls |
+| Workspace/account switcher | Popover; workspace buttons expose pressed state; disclosures, retry and create-dialog handoff remain interactive |
+| Chat/automation header model picker | Popover; generation/selection-mode controls and multi-selection remain native controls; model details use a nested row-anchored Popover |
+| ComprehensiveModelPicker (agent model preferences) | Popover; preserves domain rows, badges, preference callbacks and model order |
+| ScopeItemActions / ScopeBulkActions | Inline buttons today, not floating menus; unchanged |
+| MenuSurface story | Standalone surface with native buttons; unchanged API |
+
+Affected routes: all authenticated app routes with sidebar workspace/account
+chrome; collaboration chats/channels, chat and automation chat headers, and
+agent model settings. No selects, command palette, remaining dialogs or
+app-wide markup sweep are migrated here. The workspace create dialog receives
+an explicit close-focus callback because its original menu item unmounts.
+
+Run `node scripts/qa/menu-interactions.mjs` for real-wrapper and product-picker
+Chromium interaction regressions. Its fixture covers action keyboard/mouse,
+rich controls, legacy anchors, collisions, scrolling, nested dialogs, focus,
+CSS-variable themes and touch. This is independent component evidence, not a
+substitute for current-head authenticated PR-preview QA or all real presets.
 
 ## Phase 3 — tooltip
 
