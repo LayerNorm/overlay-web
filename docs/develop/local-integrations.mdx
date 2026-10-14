@@ -13,6 +13,15 @@ stripe listen --forward-to https://<your-selected-dev-deployment>.convex.site/st
 
 Use matching Stripe test secrets for that explicitly selected personal development Convex backend. Do not forward to customer production; dedicated staging has its own test endpoint. The former Next.js webhook route was removed.
 
+## Redis rate limiter QA
+
+Redis client 6 uses RESP3 and requires Node.js 20 or newer. Use a disposable
+local Redis instance for the opt-in TCP tests; never point them at customer
+storage. Set `OVERLAY_REDIS_URL` explicitly and run
+`NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs npx tsx --test src/server/shared/providers/redis-rate-limiter.test.ts`.
+The live cases verify shared limits, concurrent requests and expiry; the same
+file retains ordinary unit tests for fail-closed behavior without Redis.
+
 ## Auth
 
 WorkOS sign-in flows require the local callback URL to match the WorkOS application settings. Keep local, staging, and production WorkOS credentials separate.
