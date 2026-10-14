@@ -17,6 +17,8 @@ export * from './components/primitives/Tile'
 export * from './components/primitives/Toggle'
 export * from './components/primitives/Toolbar'
 export * from './components/primitives/UsageMeterBar'
+export * from './components/ui/dialog'
+export * from './components/ui/label'
 export * from './components/ui/popover'
 export * from './components/ui/sidebar'
 

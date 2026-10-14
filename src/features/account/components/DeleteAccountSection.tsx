@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, X } from 'lucide-react'
-import { useDialogFocus, usePresence } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 
 /**
  * Account-deletion UI required by Apple App Store guideline 5.1.1(v).
@@ -22,8 +22,6 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
   const autoOpenedRef = useRef(false)
 
   const [open, setOpen] = useState(false)
-  const { mounted: dialogMounted, visible: dialogVisible } = usePresence(open)
-  const dialogRef = useDialogFocus(dialogMounted)
   const [confirmInput, setConfirmInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,18 +45,6 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
     setConfirmInput('')
     setError(null)
   }
-
-  useEffect(() => {
-    if (!dialogMounted || submitting) return undefined
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setOpen(false)
-      setConfirmInput('')
-      setError(null)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [dialogMounted, submitting])
 
   async function handleConfirm(): Promise<void> {
     if (submitting) return
@@ -101,29 +87,25 @@ export function DeleteAccountSection({ isLandingDark }: { isLandingDark: boolean
         Delete account
       </button>
 
-      {dialogMounted ? (
-        <DeleteAccountDialog
-          visible={dialogVisible}
-          dialogRef={dialogRef}
-          isLandingDark={isLandingDark}
-          confirmInput={confirmInput}
-          submitting={submitting}
-          error={error}
-          onClose={close}
-          onConfirmInputChange={(value) => {
-            setConfirmInput(value)
-            if (error) setError(null)
-          }}
-          onConfirm={handleConfirm}
-        />
-      ) : null}
+      <DeleteAccountDialog
+        open={open}
+        isLandingDark={isLandingDark}
+        confirmInput={confirmInput}
+        submitting={submitting}
+        error={error}
+        onClose={close}
+        onConfirmInputChange={(value) => {
+          setConfirmInput(value)
+          if (error) setError(null)
+        }}
+        onConfirm={handleConfirm}
+      />
     </>
   )
 }
 
 function DeleteAccountDialog({
-  visible,
-  dialogRef,
+  open,
   isLandingDark,
   confirmInput,
   submitting,
@@ -132,8 +114,7 @@ function DeleteAccountDialog({
   onConfirmInputChange,
   onConfirm,
 }: {
-  visible: boolean
-  dialogRef: RefObject<HTMLDivElement | null>
+  open: boolean
   isLandingDark: boolean
   confirmInput: string
   submitting: boolean
@@ -143,26 +124,12 @@ function DeleteAccountDialog({
   onConfirm(): void
 }) {
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      role="presentation"
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 transition-opacity duration-200 ease-(--overlay-ease) ${
-        visible ? 'opacity-100' : 'opacity-0'
-      }`}
-      onClick={onClose}
-    >
-      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-50 bg-black/60 px-4"
         aria-labelledby="delete-account-title"
-        onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease) ${
-          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
-        } ${
+        className={`block w-full max-w-md gap-0 p-6 ${
           isLandingDark ? 'border-zinc-800 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'
         }`}
       >
@@ -248,7 +215,7 @@ function DeleteAccountDialog({
             {submitting ? 'Deleting…' : 'Delete account'}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

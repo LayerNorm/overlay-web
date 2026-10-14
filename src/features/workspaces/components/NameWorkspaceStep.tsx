@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { Dialog, DialogContent } from '@overlay/ui'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { workspaceManagementClient } from '../lib/workspace-client'
 
@@ -36,12 +37,14 @@ export function NameWorkspaceStep({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-9998 flex items-center justify-center bg-black/55 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
+    <Dialog open>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-9998 bg-black/55 p-4"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
         aria-labelledby="name-workspace-title"
-        className="w-full max-w-sm rounded-xl border border-(--border) bg-(--surface-elevated) p-5 shadow-2xl"
+        className="block w-full max-w-sm gap-0 p-5"
       >
         <h3 id="name-workspace-title" className="text-sm font-semibold text-(--foreground)">Name your workspace</h3>
         <p className="mt-1 text-xs leading-5 text-(--muted)">
@@ -68,7 +71,7 @@ export function NameWorkspaceStep({ onDone }: { onDone: () => void }) {
             Continue
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

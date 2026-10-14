@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, X } from 'lucide-react'
-import { useDialogFocus, usePresence } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 import type { AutomationDraftSummary, DraftModalState, SkillDraftSummary } from '@overlay/chat-core'
 
 export function FlashCopyIconButton({
@@ -64,48 +64,21 @@ export function DraftReviewModal({
   onSaveSkill: (draft: SkillDraftSummary) => Promise<void>
   onSaveAutomation: (draft: AutomationDraftSummary) => Promise<void>
 }) {
-  const { mounted, visible } = usePresence(Boolean(stateProp), 300)
-  const dialogRef = useDialogFocus(mounted)
-
-  useEffect(() => {
-    if (!mounted) return undefined
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [mounted, onClose])
   // Retain the last non-null state so the modal keeps its content while sliding
   // out. The state object is reference-stable while open, so this converges.
   const [cachedState, setCachedState] = useState(stateProp)
   if (stateProp && stateProp !== cachedState) setCachedState(stateProp)
   const state = stateProp ?? cachedState
-  if (!mounted || !state) return null
+  if (!state) return null
   const isAutomation = state.kind === 'automation'
 
   return (
-    // Backdrop click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className={`fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 transition-opacity duration-300 ease-(--overlay-ease) sm:items-center sm:p-4 ${
-        visible ? 'opacity-100' : 'opacity-0'
-      }`}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={Boolean(stateProp)} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-50 bg-black/30 p-3 sm:p-4"
         aria-labelledby="draft-review-modal-title"
-        className={`w-full max-w-2xl rounded-t-2xl border border-(--border) bg-(--surface-elevated) shadow-xl transition-[opacity,transform] duration-300 ease-(--overlay-ease) sm:rounded-2xl ${
-          visible
-            ? 'translate-y-0 opacity-100 sm:scale-100'
-            : 'translate-y-full opacity-100 sm:translate-y-2 sm:scale-95 sm:opacity-0'
-        }`}
+        className="block top-auto bottom-0 w-full max-w-2xl translate-y-0 gap-0 rounded-t-2xl p-0 data-[state=closed]:slide-out-to-bottom-full sm:top-[50%] sm:bottom-auto sm:translate-y-[-50%] sm:rounded-2xl sm:data-[state=closed]:slide-out-to-bottom-2"
       >
         <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
           <div>
@@ -171,7 +144,7 @@ export function DraftReviewModal({
             {saving ? 'Saving...' : isAutomation ? 'Create automation' : 'Save skill'}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

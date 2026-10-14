@@ -1,7 +1,7 @@
 'use client'
 
 import { useLayoutEffect, useState } from 'react'
-import { useDialogFocus } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { SignInForm } from '@/features/auth/components/SignInForm'
@@ -32,25 +32,15 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
   }, [])
 
   const visible = mounted && !isClosing
-  const dialogRef = useDialogFocus(visible)
 
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the close control.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      style={{ opacity: visible ? 1 : 0, transition: 'opacity 200ms ease' }}
-      className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={visible} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-100 bg-black/60 backdrop-blur-xs"
+        onEscapeKeyDown={(event) => event.preventDefault()}
         aria-labelledby="sign-in-modal-title"
-        style={{ transform: visible ? 'scale(1) translateY(0)' : 'scale(0.97) translateY(4px)', transition: 'transform 200ms ease' }}
-        className="relative w-full max-w-sm rounded-2xl border border-(--border) bg-(--surface-elevated) p-8 shadow-2xl"
+        className="relative block w-full max-w-sm gap-0 rounded-2xl p-8"
       >
         <button
           type="button"
@@ -93,7 +83,7 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
         </div>
 
         <SignInForm redirectTo={redirectTo} onClose={onClose} ssoEnabled={ssoEnabled} />
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
