@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline. Reduced motion disables the pulse and workspace spinner.
+
 - Require current-head PR QA comments for Builder handoffs, with Vercel MCP browser access, end-to-end results and explicit Integration review/release evidence.
 
 - Use authenticated Vercel MCP access links as the first choice for cloud-agent PR browser QA across platforms, with private runtime automation secrets as a fallback and separate Overlay sandbox login.

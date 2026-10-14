@@ -167,7 +167,45 @@ body {
   }
 }
 
+/* Lockup breathing: the same opacity-only pulse the chat stream marker uses.
+   It is phased to start at full opacity the moment the entrance finishes
+   (800ms) so the loader flows into it with no flicker and never fades out
+   completely. */
+@keyframes appBrandLoaderPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.app-brand-loader-pulse {
+  animation: appBrandLoaderPulse 1.4s ease-in-out 800ms infinite;
+}
+
+/* The workspace status line fades up as the word reveal lands. */
+@keyframes appBrandWslineFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.app-brand-loader-wsline {
+  opacity: 0;
+  animation: appBrandWslineFade 420ms ease-out 560ms forwards;
+}
+
 .app-brand-loader-logo {
+  /* rests the orb's bottom on the wordmark's text baseline so the mark reads
+     on the same line as the letters, not centered on the taller line box */
+  margin-top: -1px;
   animation: appBrandLogoFade 360ms ease-out both;
 }
 
@@ -175,11 +213,32 @@ body {
   animation: appBrandWordReveal 620ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
 }
 
+/* Settled variant: the identical screen with the entrance already played. The
+   workspace-hydration gate swaps to it without a visible re-flash. */
+.app-brand-loader--steady .app-brand-loader-logo,
+.app-brand-loader--steady .app-brand-loader-word,
+.app-brand-loader--steady .app-brand-loader-wsline {
+  animation: none;
+}
+
+.app-brand-loader--steady .app-brand-loader-wsline {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .app-brand-loader-pulse,
+  .app-brand-loader-wsline .animate-spin {
+    animation: none;
+  }
+
   .app-brand-loader-logo,
-  .app-brand-loader-word {
+  .app-brand-loader-word,
+  .app-brand-loader-wsline {
     animation-duration: 1ms;
     animation-delay: 0ms;
+  }
+  .app-brand-loader-wsline {
+    opacity: 1;
   }
 }
 

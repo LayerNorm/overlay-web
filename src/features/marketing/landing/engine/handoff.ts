@@ -52,6 +52,8 @@ export function applyHandoff(els: LandingEls, m: HandoffMeasure, r: number, y: n
   const f = clamp(r * 1.8)
   els.demo.style.opacity = String(1 - f)
   els.demo.style.transform = `translateY(${-f * 36}px) scale(${1 - f * 0.05})`
+  els.heroActions.style.opacity = String(1 - f)
+  els.heroActions.style.transform = `translateY(${-f * 20}px)`
 
   const le = ease(clamp(r / 0.9))
   const docked = le >= 1
