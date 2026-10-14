@@ -14,7 +14,7 @@ mockup: [`mockups/shadcn-migration-preview.html`](mockups/shadcn-migration-previ
 | 2 dropdown-menu + popover | Merged at `7578b6914`; authenticated current-head preview QA and all nine required merge-queue checks passed, including combined menu/select regressions | [#209](https://github.com/LayerNorm/overlay-web/pull/209), [final QA](https://github.com/LayerNorm/overlay-web/pull/209#issuecomment-6161698065) |
 | 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
 | 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
-| 5 command (cmdk) | Implemented in isolated restart worktree; local real-component interaction QA passed (39 presets, mobile, platform shortcuts and search destinations). Authenticated preview QA pending. No Phase 5 changes merged. | Fresh Builder from latest `origin/main`; scoped acceptance below |
+| 5 command (cmdk) | Implementation complete; local real-component QA passed (39 presets, mobile, platform shortcuts and search destinations). Current-head hosted acceptance/checks are recorded in the PR; not merged. | [#210](https://github.com/LayerNorm/overlay-web/pull/210); scoped acceptance below |
 | 6 core form primitives | Not started | Separate 6a, 6b and 6c PRs |
 | 7 niche fills | Not started | After the relevant foundations |
 | 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
