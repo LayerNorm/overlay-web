@@ -8,6 +8,7 @@ import {
   FileText,
   Folder,
   Hash,
+  ListChecks,
   Loader2,
   MessageCircle,
   MessageSquare,
@@ -47,6 +48,7 @@ const KIND_ICONS: Record<ArchivedItemKind, LucideIcon> = {
   skill: Sparkles,
   'mcp-server': Server,
   automation: Workflow,
+  'work-item': ListChecks,
 }
 
 function archivedOn(timestamp?: number): string {
@@ -226,7 +228,7 @@ export function ArchivedSettings() {
           </p>
           <p className="text-xs text-(--muted-light)">
             {items.length === 0
-              ? 'Chats, files, agents, extensions, and automations you archive show up here.'
+              ? 'Chats, files, tasks, agents, extensions, and automations you archive show up here.'
               : 'Try another kind or search.'}
           </p>
         </div>

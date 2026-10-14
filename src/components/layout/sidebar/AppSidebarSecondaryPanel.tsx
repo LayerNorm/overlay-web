@@ -2,8 +2,12 @@
 
 import type { ReactNode } from 'react'
 import {
+  Sidebar,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarProvider,
+  SidebarRail,
   SidebarResourceSection,
-  SidebarShell,
   type SidebarResourceAction,
   type SidebarResourceSearch,
 } from '@overlay/ui/primitives'
@@ -39,7 +43,7 @@ export function SecondaryPanelHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="flex h-16 min-h-16 shrink-0 items-center gap-2 border-b border-(--border) px-4">
+    <SidebarHeader>
       {/* Match the primary rail wordmark: Libre Baskerville, lowercase, text-lg. */}
       <span
         className="min-w-0 flex-1 truncate text-lg font-medium lowercase tracking-tight text-(--foreground)"
@@ -48,7 +52,7 @@ export function SecondaryPanelHeader({
         {title}
       </span>
       {action}
-    </div>
+    </SidebarHeader>
   )
 }
 
@@ -82,31 +86,38 @@ export function SecondaryPanelContent({
           {children}
         </SidebarResourceSection>
       ) : null}
-      {footer ? (
-        <div className="mt-auto shrink-0 border-t border-(--border) px-2 py-3">{footer}</div>
-      ) : null}
+      {footer ? <SidebarFooter>{footer}</SidebarFooter> : null}
     </div>
   )
 }
 
 /**
  * Secondary sidebar: a contextual list/subnavigation panel that sits beside
- * the primary rail for routes that have one.
+ * the primary rail for routes that have one. Built on the shadcn Sidebar parts;
+ * the shell decides whether it is shown (`open`), and the edge handle asks it to hide.
  */
 export function AppSidebarSecondaryPanel({
   title,
   headerAction,
   className,
+  open = true,
+  onOpenChange,
   ...content
 }: {
   title: string
   headerAction?: ReactNode
   className?: string
+  /** Whether the panel is showing. The caller animates the width; this drives the edge handle. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 } & SecondaryPanelContentProps) {
   return (
-    <SidebarShell className={className}>
-      <SecondaryPanelHeader title={title} action={headerAction} />
-      <SecondaryPanelContent {...content} />
-    </SidebarShell>
+    <SidebarProvider open={open} onOpenChange={onOpenChange}>
+      <Sidebar className={className} aria-label={title}>
+        <SecondaryPanelHeader title={title} action={headerAction} />
+        <SecondaryPanelContent {...content} />
+        {onOpenChange ? <SidebarRail /> : null}
+      </Sidebar>
+    </SidebarProvider>
   )
 }

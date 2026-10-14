@@ -24,6 +24,16 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
 - Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
+## Work (tasks)
+
+Work routes (`/api/v1/work`) follow the same layering as other scoped content: thin route files, `WorkService`
+(`src/server/work/`) over a `WorkRepository`, and Convex (`convex/work/`) as the owner of the rules. Convex refuses a
+change with `WORK_INVALID:<reason>`; `src/shared/work/errors.ts` turns the reason into the plain message and status
+the API returns (400, or 409 for an archived task), and `Unauthorized` becomes 403. Moving a task between Personal and
+Workspace, archiving and restoring are not Work routes: use `POST /api/v1/scope` with `resource: 'work'`. The wire types
+(`WorkItem`, `WorkEvent`, `WorkContext`, and the request bodies) live in `@overlay/app-core`; `@overlay/api-client`
+exposes them as `client.work`.
+
 ## Expected backend errors
 
 Carry expected Convex failures as `ConvexError` data and preserve `errorData` in

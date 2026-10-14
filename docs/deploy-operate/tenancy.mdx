@@ -87,6 +87,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `dailyUsage` | `userId` | Deployment boundary | Add `tenantId`; usage counters must include tenant context. |
 | `skills` | `userId` | Deployment boundary | Add `tenantId`; project and enabled-skill indexes must include tenant context. |
 | `automations` | `userId` | Deployment boundary | Add `tenantId`; scheduling and runner queries must not cross tenants. |
+| `workItems` | `userId` | Deployment boundary | Add `tenantId`; task lists, board ordering, and dependency checks are already workspace-scoped and must also be tenant-scoped. |
 | `automationRuns` | `userId` | Deployment boundary | Add `tenantId`; run history and scheduler claims must be tenant-scoped. |
 | `mcpServers` | `userId` | Deployment boundary | Add `tenantId`; connector credentials and enabled indexes must be tenant-scoped. |
 | `mcpToolExecutions` | `userId` | Deployment boundary | Add `tenantId`; connector execution audit, authorization, and usage records must be tenant-scoped. |

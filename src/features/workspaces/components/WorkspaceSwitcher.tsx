@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
-import { WorkspaceSwitcherView, type WorkspaceSwitcherMenuPosition } from './WorkspaceSwitcherView'
+import { WorkspaceSwitcherView } from './WorkspaceSwitcherView'
 
 export function WorkspaceSwitcher({
   onNavigate,
@@ -40,29 +40,8 @@ export function WorkspaceSwitcher({
   const [createOpen, setCreateOpen] = useState(false)
   const [createBusy, setCreateBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [menuPosition, setMenuPosition] = useState<WorkspaceSwitcherMenuPosition | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const isFooter = placement === 'footer'
-  const portalMenu = isFooter || compact
-
-  useEffect(() => {
-    if (!open) return
-    function onPointerDown(event: MouseEvent) {
-      const target = event.target as Node
-      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return
-      setOpen(false)
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
 
   useEffect(() => {
     function closeForAccountAction() {
@@ -71,40 +50,6 @@ export function WorkspaceSwitcher({
     window.addEventListener('overlay:account-menu-action', closeForAccountAction)
     return () => window.removeEventListener('overlay:account-menu-action', closeForAccountAction)
   }, [])
-
-  useLayoutEffect(() => {
-    if (!open || !portalMenu) return
-    function updatePosition() {
-      const root = rootRef.current
-      if (!root) return
-      const rect = root.getBoundingClientRect()
-      const width = Math.min(280, window.innerWidth - 16)
-      const left = Math.min(
-        Math.max(8, rect.left),
-        Math.max(8, window.innerWidth - width - 8),
-      )
-      if (isFooter) {
-        setMenuPosition({
-          left,
-          bottom: Math.max(8, window.innerHeight - rect.top + 6),
-          width,
-        })
-        return
-      }
-      setMenuPosition({
-        left,
-        top: rect.bottom + 6,
-        width,
-      })
-    }
-    updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [isFooter, open, portalMenu])
 
   async function selectWorkspace(workspaceId: string) {
     setActionError(null)
@@ -176,8 +121,7 @@ export function WorkspaceSwitcher({
       refresh={() => void refresh()}
       onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
       onCreateRequest={openCreateDialog}
-      onToggle={() => setOpen((current) => !current)}
-      menuPosition={menuPosition}
+      onOpenChange={setOpen}
       createOpen={createOpen}
       createBusy={createBusy}
       onCreateOpenChange={handleCreateOpenChange}
