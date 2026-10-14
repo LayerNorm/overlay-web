@@ -24,6 +24,7 @@ export const CAPABILITY_LABELS: Record<OverlayCapability, string> = {
   connectedAgents: 'Connected agents',
   computers: 'Computers',
   cloudAgents: 'Agents on Overlay Cloud',
+  work: 'Work',
 }
 
 export type CapabilityDisabledError = {
@@ -53,6 +54,7 @@ export function getRequiredCapabilityForRoute(
   if (startsWithRoute(normalizedPath, '/api/v1/api-keys')) return 'apiKeys'
   if (startsWithRoute(normalizedPath, '/api/v1/automations')) return 'automations'
   if (startsWithRoute(normalizedPath, '/api/v1/computers')) return 'computers'
+  if (startsWithRoute(normalizedPath, '/api/v1/work')) return 'work'
   if (startsWithRoute(normalizedPath, '/api/v1/agent-environments')) return 'connectedAgents'
   if (startsWithRoute(normalizedPath, '/api/v1/agent-bindings')) return 'connectedAgents'
   if (startsWithRoute(normalizedPath, '/api/v1/provider-accounts')) return 'connectedAgents'

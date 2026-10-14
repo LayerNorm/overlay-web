@@ -13,6 +13,7 @@ const MODULES = {
   'mcp-servers': 'integrations/mcpServers',
   connectors: 'integrations/workspaceConnectors',
   automations: 'automations/automations',
+  work: 'work/workItems',
 } as const
 
 type Resource = keyof typeof MODULES

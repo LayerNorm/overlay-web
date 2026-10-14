@@ -555,6 +555,22 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   // Convex enforces who may move, archive, or restore a given item; any signed-in member may ask.
   { path: '/api/v1/scope', methods: { POST: authenticated() } },
+  // Work: Convex decides which tasks the caller can see and change (Personal / Workspace rules).
+  {
+    path: '/api/v1/work',
+    methods: { GET: capability('work.use'), POST: capability('work.use') },
+  },
+  // Must precede `:id` — the first matching path wins.
+  { path: '/api/v1/work/context', methods: { GET: capability('work.use') } },
+  {
+    path: '/api/v1/work/:id',
+    methods: { GET: capability('work.use'), PATCH: capability('work.use') },
+  },
+  { path: '/api/v1/work/:id/move', methods: { POST: capability('work.use') } },
+  {
+    path: '/api/v1/work/:id/events',
+    methods: { GET: capability('work.use'), POST: capability('work.use') },
+  },
   {
     path: '/api/v1/skills',
     methods: {

@@ -57,6 +57,8 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     // configured computer provider (BOX_API_KEY for the default `box`
     // provider), so self-host deployments without credentials report it off.
     computers: false,
+    // Work (tasks, board, timeline). A kill switch: OVERLAY_FEATURE_WORK=0 hides the page and refuses its API.
+    work: false,
   },
   providers: {
     auth: { provider: 'workos' },
