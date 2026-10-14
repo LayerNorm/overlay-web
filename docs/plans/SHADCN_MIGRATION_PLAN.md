@@ -202,6 +202,10 @@ Consumer audit:
 | ScopeItemActions / ScopeBulkActions | Inline buttons today, not floating menus; unchanged |
 | MenuSurface story | Standalone surface with native buttons; unchanged API |
 
+Integration dependency: #209 includes #208 so the final preview verifies menus
+and selects together. Model-details hover dismissal stays suspended while its
+nested Radix reasoning select is open; pointer locking must not unmount it.
+
 Affected routes: all authenticated app routes with sidebar workspace/account
 chrome; collaboration chats/channels, chat and automation chat headers, and
 agent model settings. No selects, command palette, remaining dialogs or

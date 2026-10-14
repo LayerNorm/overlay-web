@@ -70,7 +70,9 @@ the layer. Model details are a nested Popover, anchored to the hovered row. Thei
 anchor exposes that row as its scroll context and uses Radix continuous updates
 to track the parent pop-in animation; Escape closes the whole model picker.
 Their existing reasoning select stays inline in that panel so its clicks remain
-inside the owning layer; it now uses the Phase 4 Radix select adapter.
+inside the owning layer; it now uses the Phase 4 Radix select adapter. Keep the
+hover card mounted while that select is open: Radix pointer locking emits a
+synthetic mouse leave to Window, which must not dismiss the owning card.
 
 For a menu-to-dialog handoff, the menu row may unmount. Pass an explicit
 `DialogFrame.onCloseAutoFocus` callback pointing to the surviving trigger, as

@@ -320,7 +320,13 @@ function ModelQualitiesHoverCard({
           if (modelPickerRef.current?.contains(event.target as Node)) event.preventDefault()
         }}
         onMouseEnter={() => onHoveredModelChange(modelId, position)}
-        onMouseLeave={() => onHoveredModelChange(null, null)}
+        onMouseLeave={(event) => {
+          // Opening Radix Select suppresses outside pointer events, producing a
+          // synthetic leave to Window. Keep the owning hover card mounted while
+          // its reasoning control owns that interaction.
+          if (event.currentTarget.querySelector('[data-slot="select-trigger"][data-state="open"]')) return
+          onHoveredModelChange(null, null)
+        }}
       >
         <Suspense fallback={null}>
           <ModelQualitiesPanel
