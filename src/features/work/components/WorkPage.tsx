@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { AlertCircle, ListChecks, Plus, X } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { Button, HeaderSearch } from '@overlay/ui/primitives'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { toWorkDate } from '@/shared/work/dates'
 import { countOpen, filterWork, needsViewer } from '@/shared/work/query'
@@ -180,8 +181,29 @@ function WorkScreen() {
   )
 }
 
-/** The Work page: Personal or Workspace tasks as a List, a Board, or a Timeline. */
-export function WorkPage() {
+function WorkUnavailable() {
+  return (
+    <AppScreenShell>
+      <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-xl font-semibold text-(--foreground)">Work unavailable</h1>
+          <p className="mt-2 text-sm leading-6 text-(--muted)">Work is turned off for this deployment.</p>
+        </div>
+      </AppScreenBody>
+    </AppScreenShell>
+  )
+}
+
+/**
+ * The Work page: Personal or Workspace tasks as a List, a Board, or a Timeline.
+ *
+ * The capability gate lives here, on the client, because the route's static shell is prerendered at
+ * build time, when runtime feature flags are not yet known. `fallback` is shown until they load.
+ */
+export function WorkPage({ fallback }: { fallback: ReactNode }) {
+  const { capabilities, isLoading } = useOverlayCapabilities()
+  if (isLoading) return fallback
+  if (!capabilities.work) return <WorkUnavailable />
   return (
     <WorkDataProvider>
       <WorkScreen />

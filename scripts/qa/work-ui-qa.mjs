@@ -596,6 +596,15 @@ await check('search: without access to Work, tasks are not offered', async (page
   assert.equal(await page.getByText('Migrate legacy plan names in Stripe').count(), 0)
 })
 
+await check('capability gate: Work off shows the notice, and nothing is decided while capabilities load', async (page) => {
+  await page.goto(`${harness.url}/?workOff=1`)
+  await page.getByText('Work unavailable').waitFor()
+  assert.equal(await page.locator('[data-testid="work-page"]').count(), 0)
+  await page.goto(`${harness.url}/?capsLoading=1`)
+  await page.getByTestId('work-fallback').waitFor()
+  assert.equal(await page.getByText('Work unavailable').count(), 0, 'no "unavailable" flash while loading')
+})
+
 await check('large workspaces: the list pages long groups and the timeline draws only the rows near the screen', async (page) => {
   await open(page, 'scope=workspace')
   await page.waitForSelector('[data-testid="work-list"]')

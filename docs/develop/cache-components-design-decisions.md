@@ -70,8 +70,11 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
     `searchParams` inside Suspense. `getOverlayCapabilities()` (async, env-only)
     + `notFound()` stay outside. Route removed with the projects feature.
 24. `/app/work` — `src/app/app/work/page.tsx` — Converted from the start (no opt-out).
-    `getOverlayCapabilitiesSync()` (env-only) gates the page outside the boundary and shows a
-    "Work unavailable" notice when the `work` flag is off. `WorkPage` is a client component that reads
+    The page must NOT gate on `getOverlayCapabilitiesSync()`: the static shell is prerendered at build
+    time, when runtime flags are unknown, and a build-time "off" would be served to everyone. The gate
+    is client-side in `WorkPage` (`useOverlayCapabilities()`: skeleton while loading, then the
+    "Work unavailable" notice when the `work` flag is off; the API enforces `work.use` regardless).
+    `WorkPage` is a client component that reads
     the scope and view from the URL with `useSearchParams()`, so it sits inside a `<Suspense>` with
     `WorkRouteSkeleton` as the fallback (also the route's `loading.tsx`). The page does no session or
     data I/O on the server; tasks load client-side through `client.work`. `error.tsx` retries the segment.

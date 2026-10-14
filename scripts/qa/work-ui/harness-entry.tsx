@@ -18,7 +18,7 @@ async function main() {
   const { WorkPage } = await import('../../../src/features/work/components/WorkPage')
   root.render(
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <WorkPage />
+      <WorkPage fallback={<div data-testid="work-fallback">Loading work</div>} />
     </div>,
   )
 }
