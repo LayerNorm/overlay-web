@@ -89,7 +89,7 @@ export function FilesInlineBranch({
         </button>
       </div>
 
-      {file.type === 'folder' && open ? (
+      {file.type === 'folder' && open && children.length > 0 ? (
         // An open folder nests its children under the same guide line as an agent's threads (`SidebarMenuSub`).
         <SidebarMenuSub>
           {children.map((child) => (
