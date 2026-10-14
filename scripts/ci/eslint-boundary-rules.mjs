@@ -128,6 +128,23 @@ function noRestrictedImports(severity, patterns) {
 export function createArchitectureBoundaryConfigs() {
   const configs = []
 
+  // Admin app separation (docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md):
+  // customer src/** must never import the apps/admin tree — the console is a
+  // standalone app with its own secrets. (The reverse direction is enforced
+  // by apps/admin's own eslint config; apps/** is globally ignored here.)
+  configs.push({
+    files: ['src/**/*.{ts,tsx,js,jsx,mts}'],
+    rules: {
+      'no-restricted-imports': noRestrictedImports(
+        'error',
+        restrictedPatterns(
+          ['../apps/**', '../../apps/**', '../../../apps/**', 'apps/**', '@/apps/**'],
+          'Do not import apps/** from the customer app. The admin console is a standalone app; share code through packages/*.',
+        ),
+      ),
+    },
+  })
+
   // src/app — thin routes; no direct asset/type barrel imports.
   configs.push({
     files: ['src/app/**/*.{ts,tsx}'],

@@ -160,6 +160,7 @@
     ".agents",
     ".agent",
     "agent",
+    "apps",
     "overlay-chrome",
     "overlay-desktop",
     "overlay-mobile",

@@ -125,6 +125,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "apps/**",
     "overlay-desktop/**",
     "overlay-chrome/dist/**",
     "next-env.d.ts",

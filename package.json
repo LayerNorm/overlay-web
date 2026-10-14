@@ -8,7 +8,8 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "convex:push:prod": "CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 convex deploy -y",
@@ -88,6 +89,11 @@
     "ui:typecheck": "npm --prefix packages/overlay-ui run typecheck",
     "ui:test": "npm --prefix packages/overlay-ui run test",
     "ui:storybook": "npm --prefix packages/overlay-ui run storybook",
+    "admin:dev": "npm run dev --workspace @overlay/admin",
+    "admin:build": "npm run build --workspace @overlay/admin",
+    "admin:typecheck": "npm run typecheck --workspace @overlay/admin",
+    "admin:lint": "npm run lint --workspace @overlay/admin",
+    "admin:test": "npm run test --workspace @overlay/admin",
     "api-client:typecheck": "npm --prefix packages/overlay-api-client run typecheck",
     "api-client:test": "npm --prefix packages/overlay-api-client run test",
     "app-core:typecheck": "npm --prefix packages/overlay-app-core run typecheck",

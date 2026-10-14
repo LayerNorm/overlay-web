@@ -90,6 +90,7 @@ The `docs/develop/` directory contains living documentation that coding agents *
 | `docs/develop/codex-subscription.md` | Any change to Codex ChatGPT sign-in, the token broker and refresh lock, per-run `auth.json` delivery, experimental OpenCode/Hermes/Cursor agents, or the E2B sandbox adapter. |
 | `docs/develop/mcp-access.md` | Any change to Overlay's MCP server for other AI apps: OAuth endpoints, grants, access levels, token formats, consent page, or Settings → Connected apps. |
 | `docs/develop/convex-only-self-hosting.md` | Any change to the Convex-only backend decision, the Postgres-layer deletion plan, self-hosted Convex topology/scaling, the data-mirror/Data Sync integration path, or the big-brain control-plane plan. |
+| `docs/develop/admin-console.md` | Any change to `apps/admin` (the operator console app): its WorkOS sign-in/gate, `convex-admin.ts` secret boundary, ported admin sections, env vars, or the `src/**`↔`apps/admin` isolation rules. |
 
 **Rules:**
 1. Read the relevant doc(s) before starting work in a new area.

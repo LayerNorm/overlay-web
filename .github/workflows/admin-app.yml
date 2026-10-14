@@ -1,0 +1,52 @@
+name: Admin app
+
+on:
+  pull_request:
+    paths:
+      - 'apps/admin/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'packages/overlay-ui/**'
+      - 'packages/overlay-app-core/**'
+      - 'packages/overlay-authz-contracts/**'
+      - 'packages/overlay-tools-core/**'
+      - '.github/workflows/admin-app.yml'
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+    paths:
+      - 'apps/admin/**'
+      - '.github/workflows/admin-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin:
+    name: apps/admin (typecheck, lint, test, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # actions/setup-node v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run admin:typecheck
+      - run: npm run admin:lint
+      - run: npm run admin:test
+      # Build with inert placeholder envs; the app reads all secrets at request
+      # time, never at build time.
+      - run: npm run admin:build
+        env:
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
+          ADMIN_CONVEX_SECRET: ci-placeholder
+          ADMIN_SESSION_SECRET: ci-placeholder
+          WORKOS_CLIENT_ID: ci-placeholder
+          WORKOS_API_KEY: ci-placeholder
+          ADMIN_ALLOWED_USER_IDS: ci-placeholder
