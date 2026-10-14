@@ -25,9 +25,19 @@ and backend resources. Production stays on native Git. Reuse credentials across 
 shared settings for each feature. No Production deployment token or purchased
 Preview Deployment Suffix is needed.
 
-Open PR backends renew within Convex's retention limits. Closing a PR removes its
-owned URL and branch app setting, stops backend renewal, and leaves the hostname
-returning HTTPS 404. Credential lifetime and backend retention are separate.
+Labeled open PR backends renew within Convex's retention limits. Closing a PR or
+removing `needs-preview` settles running builds, removes its owned URL and branch
+app setting, deletes its isolated Convex backend and synthetic data, and leaves
+the hostname returning HTTPS 404. Re-adding the label creates fresh fixtures.
+Six-hour reconciliation also discovers leftover backends for closed/unlabeled
+PRs, even when their Vercel resources are already gone. Credential lifetime is separate.
+
+Backend cleanup accepts only the pinned Overlay project Preview credential and
+exact PR ownership in project `1649204`. Broader account/team credentials and
+keys for other products fail before API access. Production backend
+`colorful-chickadee-419` is explicitly blocked even if API metadata misidentifies
+it. Dev, production, foreign-project and ambiguous backends cannot be deleted by
+this controller. Account administrators retain their manual Convex permissions.
 
 Assign independent features to separate Builders so implementation, builds and
 browser QA can proceed in parallel. Each Builder owns one branch and PR. Share
@@ -111,7 +121,7 @@ Commit and push the feature branch and open a draft PR against `main`. PR previe
 
 The trusted controller runs protected main code, validates the internal PR, provisions its branch app URL, then requests an exact-SHA Vercel Preview using the existing token. The build deploys/seeds only `preview/pr-<number>`. The controller assigns `pr-<number>.preview.getoverlay.io` only after READY and backend verification. While labeled, new commits request the new head. Reconciliation reuses healthy current builds and renews the backend; a missing/expired backend requires a fresh build.
 
-Removing the label or closing the PR settles running builds, removes its alias/domain/app-URL override and stops backend renewal. Unlabeled PRs receive successful “Preview not requested” status and still require normal CI. Manual workflow dispatch reconciles this policy; it does not bypass the label. Forks receive no Preview credentials.
+Removing the label or closing the PR settles running builds, removes its alias/domain/app-URL override and deletes the owned Convex preview backend and its synthetic data. Cleanup verifies absence before reporting success; a failure remains visible for retry. Unlabeled PRs receive successful “Preview not requested” status and still require normal CI. Manual workflow dispatch reconciles this policy; it does not bypass the label. Forks receive no Preview credentials.
 
 Wait for the deployment result and verify that its SHA matches the current PR head before browser QA.
 

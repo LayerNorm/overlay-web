@@ -37,7 +37,8 @@ Never pass `.env.local` or feature-worktree source to production commands.
 Shared Preview test credentials are configured once in `overlay-landing` Preview, with no
 scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
 calls. Convex's five-day preview retention is renewed while PRs are open and is
-independent of credential lifetime. Closure cleans owned aliases and stops renewal.
+independent of credential lifetime. Closure or label removal deletes the owned
+backend and synthetic data after settling builds, with confirmed absence.
 Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
 Preview Deployment Suffix.
 
@@ -56,7 +57,10 @@ formatting/comments and type-only changes ordinarily need CI alone. Record the
 decision; see Development Workflow for the full criteria.
 
 While labeled, new commits replace the preview. Removing the label or closing
-the PR settles builds, removes owned URL resources and stops backend renewal.
+the PR settles builds, removes owned URL resources and deletes its isolated
+Convex backend and synthetic data. Six-hour reconciliation discovers retained
+backends for closed/unlabeled PRs and retries cleanup; production/dev/cross-project
+backends cannot pass the ownership checks.
 Unlabeled PRs pass “Preview not requested”; normal CI remains required. Manual
 dispatch reconciles the label policy. Healthy current builds are reused; missing,
 failed/canceled builds or missing/expired backends require a fresh build.

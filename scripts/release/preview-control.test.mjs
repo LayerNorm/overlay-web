@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
+import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, previewBackendClient, main, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
 
 const sha = 'a'.repeat(40)
 function pull(patch = {}) {
@@ -71,7 +71,9 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
     throw new Error('Unexpected Vercel request: ' + method + ' ' + path)
   }
   const controller = new PreviewController({ github, vercel, report: () => {}, sleep: async () => {},
-    backends: { active: async () => backendActive, renew: async () => ({ name: 'fixture-backend', expiresAt: 123 }) },
+    backends: { active: async () => backendActive, renew: async () => ({ name: 'fixture-backend', expiresAt: 123 }),
+      remove: async number => { calls.push({ service: 'backend-delete', number }) },
+      inventory: async () => [126] },
     verifyRemoved: async origin => {
       calls.push({ service: 'removed-https', origin })
       if (failRemoved) throw new Error('Closed preview hostname must return 404')
@@ -108,6 +110,7 @@ test('removing needs-preview cleans a previously ready preview', async () => {
   f.setCurrent(pull({ labels: [] }))
   assert.equal((await f.controller.run(123)).state, 'not-required')
   assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+  assert.ok(f.calls.some(c => c.service === 'backend-delete' && c.number === 123))
 })
 
 test('label removal before creation prevents spending build minutes', async () => {
@@ -144,6 +147,14 @@ test('an already-running maintenance preview is settled before resources are rem
   const cancel = f.calls.findIndex(c => c.path.endsWith('/cancel'))
   const verifyRemoved = f.calls.findIndex(c => c.service === 'removed-https')
   assert.ok(cancel >= 0 && cancel < verifyRemoved)
+  assert.ok(cancel < f.calls.findIndex(c => c.service === 'backend-delete'))
+})
+
+test('backend deletion failure cannot publish a successful no-preview status', async () => {
+  const f = fixture({ current: pull({ labels: [] }) })
+  f.controller.backends.remove = async () => { throw new Error('Backend cleanup failed') }
+  await assert.rejects(f.controller.run(123), /Backend cleanup failed/)
+  assert.ok(!f.calls.some(c => c.body?.state === 'success'))
 })
 
 test('PR identifiers cannot become API paths, hostnames, or shell fragments', () => {
@@ -239,7 +250,7 @@ test('inventory reconciles open PRs and resources left behind by partial provisi
   const f = fixture()
   f.setDomain({ name: 'pr-124.preview.getoverlay.io', gitBranch: 'codex/closed' })
   f.setEnv([{ key: 'NEXT_PUBLIC_APP_URL', gitBranch: 'codex/partial', comment: 'overlay-preview-control:pr-125' }])
-  assert.deepEqual(await f.controller.inventory(), [123, 124, 125])
+  assert.deepEqual(await f.controller.inventory(), [123, 124, 125, 126])
 })
 test('API failures never print credentials, bodies, or attacker-controlled messages', async () => {
   const api = apiClient({ token: 'private-fixture', service: 'Vercel', base: 'https://api.vercel.com',
@@ -306,6 +317,86 @@ test('renewal preserves backend identity and patches only expiry within the rete
   d = { ...d, projectId: CONFIG.convexProjectId, expiresAt: now - 1 }
   assert.equal(await b.active(123), false)
   await assert.rejects(b.renew(123), /expired/)
+})
+
+test('backend deletion targets only the exact PR preview and is idempotent after a lost response', async () => {
+  const owned = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
+    reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview' }
+  const unrelated = { ...owned, name: 'fixture-preview-124', reference: 'preview/pr-124', previewIdentifier: 'pr-124' }
+  let items = [owned, unrelated]; const writes = []
+  const b = new PreviewBackends({ api: async (path, options = {}) => {
+    if (options.method === 'POST') {
+      writes.push({ path, ...options }); items = [unrelated]
+      throw new Error('Response lost after deletion')
+    }
+    return items
+  } })
+  assert.deepEqual(await b.inventory(), [123, 124])
+  await b.remove(123)
+  await b.remove(123)
+  assert.deepEqual(writes, [{ path: '/deployments/fixture-preview-123/delete', method: 'POST', body: {} }])
+  assert.deepEqual(items, [unrelated])
+})
+
+test('backend deletion rejects production, dev, cross-project, ambiguous and mismatched identities', async () => {
+  const owned = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
+    reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview' }
+  for (const patch of [{ deploymentType: 'prod' }, { deploymentType: 'dev' }, { projectId: 1 },
+    { previewIdentifier: 'pr-124' }, { name: '../production' },
+    { name: CONFIG.convexProductionName }]) {
+    const b = new PreviewBackends({ api: async (path, options = {}) => {
+      assert.equal(options.method, undefined, 'invalid ownership must never mutate')
+      return [{ ...owned, ...patch }]
+    } })
+    await assert.rejects(b.remove(123), /identity mismatch/)
+    await assert.rejects(b.inventory(), /identity mismatch/)
+    await assert.rejects(b.renew(123), /identity mismatch/)
+  }
+  const duplicate = new PreviewBackends({ api: async () => [owned, owned] })
+  await assert.rejects(duplicate.remove(123), /Ambiguous/)
+})
+
+test('control rejects broad and foreign credentials before any API access', async () => {
+  let calls = 0
+  const fetchImpl = async () => { calls++; throw new Error('Unexpected API access') }
+  for (const token of [undefined, '', 'personal-token', 'team:example|secret',
+    'prod:colorful-chickadee-419|secret', 'dev:example|secret',
+    'preview:other-team:overlay|secret', 'preview:divyansh-lalwani-37bb7:other-product|secret',
+    `${CONFIG.convexPreviewKeyScope}|`, `${CONFIG.convexPreviewKeyScope}|secret|extra`,
+    `${CONFIG.convexPreviewKeyScope}|secret\n`]) {
+    assert.throws(() => previewBackendClient(token, { fetchImpl }), /pinned Overlay project Preview key/)
+    // Entry point validates Convex credentials before constructing other clients.
+    await assert.rejects(main({ CONVEX_PREVIEW_CONTROL_KEY: token }, ['inventory']), /pinned Overlay project Preview key/)
+  }
+  assert.equal(calls, 0)
+})
+
+test('pinned Preview credential authenticates only against the fixed Convex API', async () => {
+  const token = `${CONFIG.convexPreviewKeyScope}|fixture-secret`
+  const api = previewBackendClient(token, { fetchImpl: async (url, options) => {
+    assert.equal(String(url), `https://api.convex.dev/v1/projects/${CONFIG.convexProjectId}/list_deployments`)
+    assert.equal(options.headers.authorization, `Bearer ${token}`)
+    return new Response('[]', { status: 200 })
+  } })
+  assert.deepEqual(await new PreviewBackends({ api }).inventory(), [])
+})
+
+test('backend deletion requires confirmed absence and propagates retained-backend failures', async () => {
+  const owned = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
+    reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview' }
+  for (const failure of [true, false]) {
+    let writes = 0
+    const b = new PreviewBackends({ api: async (path, options = {}) => {
+      if (options.method === 'POST') {
+        writes++
+        if (failure) throw new Error('Deletion denied')
+        return {}
+      }
+      return [owned]
+    } })
+    await assert.rejects(b.remove(123), failure ? /Deletion denied/ : /readback failed/)
+    assert.equal(writes, 1)
+  }
 })
 
 test('superseded running build is canceled and confirmed before releasing the PR job', async () => {
