@@ -11,7 +11,7 @@
 
 
 The original migration history below records the retired staging/candidate lane.
-The current target is [`RELEASE_WORKFLOW_TARGET.md`](RELEASE_WORKFLOW_TARGET.md):
+The current target is [`RELEASE_WORKFLOW_TARGET.md`](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_TARGET.md):
 per-PR previews and automatic Git production in one project, main merge queue
 for cloud Builders, and the authorized local owner integration path.
 

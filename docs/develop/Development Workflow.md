@@ -2,7 +2,7 @@
 
 Use multiple Builder threads to develop independent features and one Integration thread to review and merge ready PRs. Each Builder has its own computer or VM, browser, repository access, and configured test environments.
 
-**The workflow:** assign a feature → implement → local smoke QA → draft PR → Vercel preview interaction QA → ready PR → Integration review → main merge queue.
+**The workflow:** assign a feature → implement → local smoke QA → draft PR → request preview when needed → interaction QA → ready PR → Integration review → main merge queue.
 
 Production follows **merge to main → automatic Vercel Git production deployment → production smoke checks**. Integration synchronizes Convex when backend changes require it, after matching production web is live. PR previews provide the acceptance environment for sensitive changes too. This document is the authoritative workflow.
 
@@ -11,7 +11,7 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 | Setting | Development rule |
 | --- | --- |
 | Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
-| Build source | Keep Git allowed for both environments. Vercel starts builds automatically when branches/main change. |
+| Build source | Main deploys automatically through Git. Root `git.deploymentEnabled` sets `"*": false, "main": true`. The trusted controller creates Preview deployments only for `needs-preview` PRs; Preview allows REST API only, also blocking automatic builds from older branches. |
 | Build machine | Keep **Basic**. Let slow builds finish; inspect concrete failures before changing configuration. |
 | Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
 | Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
@@ -20,14 +20,24 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 The trusted `PR Preview` workflow uses the existing `VERCEL_PREVIEW_TOKEN` in
 GitHub's `release-control` environment for ordinary custom URL assignment and
 cleanup, plus the existing scoped Convex Preview credential for backend renewal.
-The Git deployment-source rule permits builds; these credentials support URL and
-backend management. Reuse them across PRs. Builders do not create tokens or copy
+The token creates requested Preview builds from exact Git SHAs and manages URL
+and backend resources. Production stays on native Git. Reuse credentials across PRs. Builders do not create tokens or copy
 shared settings for each feature. No Production deployment token or purchased
 Preview Deployment Suffix is needed.
 
-Open PR backends renew within Convex's retention limits. Closing a PR removes its
-owned URL and branch app setting, stops backend renewal, and leaves the hostname
-returning HTTPS 404. Credential lifetime and backend retention are separate.
+Labeled open PR backends renew within Convex's retention limits. Closing a PR or
+removing `needs-preview` settles running builds, removes its owned URL and branch
+app setting, deletes its isolated Convex backend and synthetic data, and leaves
+the hostname returning HTTPS 404. Re-adding the label creates fresh fixtures.
+Six-hour reconciliation also discovers leftover backends for closed/unlabeled
+PRs, even when their Vercel resources are already gone. Credential lifetime is separate.
+
+Backend cleanup accepts only the pinned Overlay project Preview credential and
+exact PR ownership in project `1649204`. Broader account/team credentials and
+keys for other products fail before API access. Production backend
+`colorful-chickadee-419` is explicitly blocked even if API metadata misidentifies
+it. Dev, production, foreign-project and ambiguous backends cannot be deleted by
+this controller. Account administrators retain their manual Convex permissions.
 
 Assign independent features to separate Builders so implementation, builds and
 browser QA can proceed in parallel. Each Builder owns one branch and PR. Share
@@ -104,19 +114,20 @@ Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant 
 
 ### 3. Open a draft PR to get the preview
 
-Commit and push the feature branch, then promptly open a draft PR against `main`. Vercel’s native Git integration builds the Preview environment. The trusted `PR Preview` workflow assigns the custom URL and renews the isolated backend. Wait for its deployment result and verify that its deployed SHA matches the current PR head.
+Commit and push the feature branch and open a draft PR against `main`. PR previews require `needs-preview`. Record the decision and evidence in the PR:
+
+- Request a preview for UI/interactions; auth, routing, cookies, uploads, payments, streaming or persistence; isolated backend QA; environment/build changes; uncertainty CI cannot resolve; or explicit browser QA.
+- Ordinarily use CI alone for well-tested Dependabot patch/minor upgrades, documentation, tests/fixtures, CI metadata, formatting/comments and type-only changes. Dependency risk can still justify a preview.
+
+The trusted controller runs protected main code, validates the internal PR, provisions its branch app URL, then requests an exact-SHA Vercel Preview using the existing token. The build deploys/seeds only `preview/pr-<number>`. The controller assigns `pr-<number>.preview.getoverlay.io` only after READY and backend verification. While labeled, new commits request the new head. Reconciliation reuses healthy current builds and renews the backend; a missing/expired backend requires a fresh build.
+
+Removing the label or closing the PR settles running builds, removes its alias/domain/app-URL override and deletes the owned Convex preview backend and its synthetic data. Cleanup verifies absence before reporting success; a failure remains visible for retry. Unlabeled PRs receive successful “Preview not requested” status and still require normal CI. Manual workflow dispatch reconciles this policy; it does not bypass the label. Forks receive no Preview credentials.
+
+Wait for the deployment result and verify that its SHA matches the current PR head before browser QA.
 
 Use the shared hosting settings above. Do not copy `.env.local` wholesale or deploy shared development or production backends from the feature worktree.
 
-Vercel can start a first build before the draft PR exists. The build wrapper
-briefly looks up the public repository's open internal main PR, verifying its
-exact branch and SHA when Vercel's PR-number metadata is missing. It sends no
-credentials to this lookup. A missing PR number is a metadata/timing problem;
-keep concurrent builds enabled and inspect the failed build and `PR Preview`
-workflow logs. If the lookup times out, ensure the PR is open against main and
-push a new revision. Never test an older deployment as evidence for the new head.
-
-Documentation/GitHub-only changes may receive the controller's hosted-app exemption. Review the docs and required checks; use `needs-preview` if an app preview is needed.
+The build wrapper resolves missing PR-number metadata by public branch/SHA lookup without sending credentials. Inspect controller/build logs for failures. Never test an older deployment as evidence for the new head.
 
 ### 4. Test the preview in the browser
 
@@ -140,7 +151,7 @@ Mark the draft PR ready when the feature meets its acceptance criteria, current-
 Outcome: [what now works]
 PR: [URL]
 Head and tested preview SHA: [SHA]
-Preview: [URL, or hosted-app exemption]
+Preview: [URL and SHA, or reason preview was not requested]
 Checks: [commands and actual results; required CI status]
 Browser QA: [flows exercised and evidence links]
 Dependencies: [PRs, or none]
@@ -178,6 +189,37 @@ Report each accepted PR and main SHA, or the concrete blocker and next action. D
 Main changes automatically deploy to production through Vercel’s Git integration; Integration then runs proportionate smoke checks.
 
 ## Automatic production release
+
+### Required CI checks
+
+`Security Checks` runs lint/types, production compilation and two complete test
+shards in parallel. `next typegen` generates current route validators before the
+required standalone typecheck; only the CI compilation job skips the duplicate
+Next TypeScript pass. Ordinary Vercel builds retain their existing type checks.
+Configuration and Convex boundary checks that depend on generated Workflow routes
+stay after compilation. Gateway tests retain their react-server condition in a
+dedicated discovered group; route and gateway suites run once through the shards.
+
+The runner inventories every tracked `*.test.{ts,tsx,mts,mjs}` file and classifies
+the ten live-only suites in `scripts/ci/integration-tests.mjs` separately.
+`npm run test:all` runs all ordinary suites, including mixed unit/live files.
+`npm run test:integration -- --list` lists opt-in live suites;
+`npm run test:integration -- --only <group>` runs explicitly configured ones.
+Select service credentials explicitly; never point CI at production.
+Package groups build once and execute only their selected files. Each shard
+verifies complete, disjoint coverage; package test commands that build their own
+outputs stay atomic on one worker. Invalid/empty selections fail. The existing
+`Schema and Routing Contracts` context now reports the test jobs' result from this
+workflow; do not recreate a separate installation-heavy gateway workflow.
+
+`Required Quality and Security Gates` runs even after a prerequisite fails and
+requires every lint/type, build, test, secret-scan, public-env and applicable
+dependency-review lane to succeed. Docs, CodeQL, Semgrep and CLA remain separate
+required contexts. Docs health runs in the complete Docs check on every main push.
+PR and merge-group triggers remain mandatory; no application or dependency change
+is exempted by path filters. Do not treat cancellation, missing output or an
+unexpectedly skipped lane as success. Keep protections synchronized with check
+names. The post-merge main run also protects authorized direct owner pushes.
 
 1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay-web` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
 2. Keep `git.deploymentEnabled.main=true` in root `vercel.json`, production branch `main`, and automatic production domain assignment enabled. No custom GitHub Actions deployer or Vercel deployment token is required.

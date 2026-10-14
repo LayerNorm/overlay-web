@@ -7,9 +7,11 @@ revision, verify automatic Vercel production deployment and production smoke aft
 `worktree-staging-qa.mdx`. The isolated PR preview is the test environment.
 
 Use GitHub's PR/check records, verify base/head, dependencies, changelog and living
-docs, and read the full diff with relevant implementation. Require current-head
-preview evidence for app changes; complete documentation/GitHub-only changes can
-use the hosted-app exemption. Resolve findings before queue entry. Passing CI
+docs, and read the full diff with relevant implementation. Review the Builder's
+preview decision under Development Workflow: require `needs-preview` and current
+browser/isolated-backend evidence for hosted QA; well-tested dependency, docs,
+test or CI changes can use “Preview not requested” with a rationale.
+Resolve findings before queue entry. Passing CI
 alone does not prove the authenticated UI or tenant/provider isolation.
 
 Merge once required checks and proportionate QA are green. `DevelopedByDev` is
@@ -28,8 +30,8 @@ explicit authorization.
 After merge, verify exact origin/main and the native Vercel Git production
 deployment in Divyansh's overlay-landing project. Verify its live SHA. Synchronize
 Convex only for backend changes, from clean current canonical main after matching
-web is live, then run proportionate authenticated production smoke. Staging is
-optional only when the owner/task explicitly requests sensitive-change acceptance.
+web is live, then run proportionate authenticated production smoke. Sensitive
+acceptance uses the isolated PR preview.
 
 Development Workflow is authoritative. Keep root git.deploymentEnabled.main=true.
 The owner enabled Git as a production deployment source. Do not recreate the

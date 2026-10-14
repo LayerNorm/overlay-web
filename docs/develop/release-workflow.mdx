@@ -37,20 +37,34 @@ Never pass `.env.local` or feature-worktree source to production commands.
 Shared Preview test credentials are configured once in `overlay-landing` Preview, with no
 scheduled expiry. Model budgets remain bounded; exhausting a budget still stops
 calls. Convex's five-day preview retention is renewed while PRs are open and is
-independent of credential lifetime. Closure cleans owned aliases and stops renewal.
+independent of credential lifetime. Closure or label removal deletes the owned
+backend and synthetic data after settling builds, with confirmed absence.
 Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
 Preview Deployment Suffix.
 
-Vercel’s native Git integration builds internal main PR heads in Preview and
-builds main in Production. Enable Git as a deployment source in both environments.
-The trusted `PR Preview` GitHub workflow uses the project-scoped, non-expiring
-`VERCEL_PREVIEW_TOKEN` to manage branch app URLs and ordinary custom aliases.
-It waits for the exact READY Git deployment and validates its SHA and per-PR
-Convex backend before reporting success. It does not create deployments.
-If an old backend has expired, push a new PR revision to trigger a Git rebuild.
-For a first push that starts before PR creation, the build wrapper briefly looks
-up the public repository’s open internal main PR and verifies its exact branch
-and SHA. This lookup sends no credentials. Vercel PR metadata remains the normal path.
+Main deploys through native Git. Root `vercel.json` disables automatic non-main
+deployments with `"*": false, "main": true`. PR Preview is opt-in through
+`needs-preview`. The trusted main controller uses the existing scoped
+`VERCEL_PREVIEW_TOKEN` to provision branch URLs, create exact-SHA Preview builds
+through REST API, and assign custom aliases after READY/backend verification.
+Preview allows REST API only, blocking automatic Git builds even for older PR
+branches that lack the new repository rule. Production stays Git-only.
+
+Builders request previews for browser interactions, sensitive auth/billing/data
+flows, isolated backend QA, environment/build changes or uncertainty CI cannot
+resolve. Well-tested patch/minor dependency upgrades, docs, tests, CI metadata,
+formatting/comments and type-only changes ordinarily need CI alone. Record the
+decision; see Development Workflow for the full criteria.
+
+While labeled, new commits replace the preview. Removing the label or closing
+the PR settles builds, removes owned URL resources and deletes its isolated
+Convex backend and synthetic data. Six-hour reconciliation discovers retained
+backends for closed/unlabeled PRs and retries cleanup; production/dev/cross-project
+backends cannot pass the ownership checks.
+Unlabeled PRs pass “Preview not requested”; normal CI remains required. Manual
+dispatch reconciles the label policy. Healthy current builds are reused; missing,
+failed/canceled builds or missing/expired backends require a fresh build.
+The wrapper resolves missing PR metadata by exact public branch/SHA lookup.
 Keep project on-demand concurrency enabled in `WAIT_FOR_NAMESPACE_QUEUE` mode
 (**Run up to one build per branch**). Different PRs build in parallel; pushes
 sharing one per-PR backend remain sequential. Concurrency does not supply PR identity. Preview and Production variable targets are separate.
@@ -67,6 +81,14 @@ Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` veri
 The [migration plan](https://github.com/LayerNorm/overlay-web/blob/main/docs/plans/RELEASE_WORKFLOW_MIGRATION_PLAN.md) records provider and rollout evidence. Commands and guards are in [Staging and Production Promotion](/develop/worktree-staging-qa) and [Convex Workflow](/develop/convex-workflow).
 
 ### Verified workspace and queue protections
+
+CI runs static checks, production compilation and two exhaustive test shards in
+parallel, retaining all nine required contexts. The required quality aggregate
+fails on failed, cancelled, absent or unexpectedly skipped lanes. Gateway contract
+results come from the test lane in `Security Checks`; Docs remains a separate
+required workflow. Current route types are generated before standalone typechecking,
+so the CI compilation job omits only its redundant TypeScript pass. Hosted builds
+keep their existing checks. See Development Workflow for the complete CI contract.
 
 Release smoke resolves and activates the synthetic account's actual personal
 workspace through the authenticated app API. It uses that ID for chat, Files and

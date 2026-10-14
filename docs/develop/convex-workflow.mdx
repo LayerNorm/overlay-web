@@ -21,7 +21,9 @@ npm run dev
 
 ## Isolated PR preview backends
 
-`scripts/vercel-build.sh` builds PR previews in the `overlay-landing` Vercel project.
+Add `needs-preview` when isolated hosted QA is needed; the trusted controller
+requests the exact PR SHA. Unlabeled PRs create no backend or build.
+`scripts/vercel-build.sh` builds requested PR previews in the `overlay-landing` Vercel project.
 New PR heads use `OVERLAY_RELEASE_LANE=preview`; older open PR heads retain
 the former `staging` value until those branches update. Both values are accepted
 only for Vercel's Preview target. Preview builds require
@@ -38,11 +40,26 @@ inputs, even when the key exists in the parent process; do not use an empty file
 The trusted PR controller also holds the project preview key as
 `CONVEX_PREVIEW_CONTROL_KEY` in the main-only `release-control` environment.
 Six-hour reconciliation validates the project, preview type, PR identifier and
-reference before extending an open PR backend to four days from now when fewer
+reference before extending a labeled open PR backend to four days from now when fewer
 than two days remain. This is within Starter's five-day retention entitlement
-and preserves data. Closed PRs stop renewing and expire naturally. A missing or
+and preserves data while the PR remains labeled. On PR closure or label removal,
+cleanup settles owned builds before deleting the exact `preview/pr-<number>`
+backend and synthetic data through the scoped Preview key. It validates project,
+Preview type, reference, PR identifier and name, then verifies absence. Unknown
+ownership or failed deletion cannot report successful cleanup. Six-hour inventory
+includes retained Convex backends so leftovers are retried even without Vercel
+resources. Re-adding the label seeds a fresh backend. A missing or
 expired backend forces a fresh web build at the same SHA, with fresh seed data;
 an old READY frontend cannot be reused just because its SHA matches.
+
+The controller rejects credentials unless their scope is exactly
+`preview:divyansh-lalwani-37bb7:overlay` before making API requests. Never replace
+this key with a personal/team token or another product's key. Backend ownership
+must match project `1649204` and the exact PR reference and identifier; dev,
+production and cross-project targets fail closed. `colorful-chickadee-419` is
+also denied by name, independently of metadata. Regression tests exercise these
+refusals without sending deletion requests. This protects automation, not manual
+deletion by an administrator in the Convex dashboard.
 
 Convex injects the preview URL into the web build. `deploymentEnv()` keeps
 server configuration on the same captured URL as the browser; generic runtime
