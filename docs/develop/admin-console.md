@@ -102,3 +102,5 @@ PRs and merge groups touching `apps/admin` or its workspace deps.
 Operator capabilities derive from the active administrative principal inside the admin app, independently of customer workspace role assignments. First-operator grants need no customer-role bootstrap. AuthKit sign-in requests `max_age=0`; mutations use the access token's `auth_time`, never callback or refresh time, for the 30-minute freshness check. Return destinations are normalized and constrained to the admin origin at both ends of OAuth.
 
 Admin lint/typecheck/build run as a reusable workflow called by Security Checks; the exhaustive shards execute every admin test under its own tsconfig once; the required quality aggregate fails if admin validation fails, is absent or is skipped. Separate import-boundary rule IDs preserve existing web architecture restrictions.
+
+The admin CI install selects only the admin workspace and its dependency closure, matching Vercel’s monorepo install. Shared UI packages declare their runtime styling/Radix dependencies; root web dependencies must not mask missing admin dependencies.
