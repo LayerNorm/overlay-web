@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Subprocessor List',
+  description:
+    'The infrastructure, authentication, payment, AI, sandbox, and analytics providers that may process data for Overlay.',
+  alternates: { canonical: '/subprocessors' },
+}
+
 
 const sections = [
   { title: 'Infrastructure and platform', body: 'Vercel provides web hosting and serverless infrastructure. Convex and/or Neon may provide application databases depending on the deployment. Cloudflare may provide network, security, DNS, and object-storage services. Production owners must verify the exact provider, region, and purpose before this list is finalized.' },

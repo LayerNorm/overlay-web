@@ -40,7 +40,7 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
         overlayClassName="z-100 bg-black/60 backdrop-blur-xs"
         onEscapeKeyDown={(event) => event.preventDefault()}
         aria-labelledby="sign-in-modal-title"
-        className="relative block w-full max-w-sm gap-0 rounded-2xl p-8"
+        className="block w-full max-w-sm gap-0 rounded-2xl p-8"
       >
         <button
           type="button"
