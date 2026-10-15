@@ -709,6 +709,10 @@ export const controlRemoteAgentTurnByServer = mutation({
           currentAttemptId: newAttemptId,
           executionGeneration: nextGeneration,
           recoveryOutcome: 'requires_new_attempt',
+          // The new attempt's start gets its own claim window; the run's original
+          // queue deadline would otherwise neutralize it as a stale start.
+          // Mirrors CONNECTED_AGENT_INTERACTIVE_QUEUE_MS in workspace-agent-invocation.ts.
+          claimDeadlineAt: now + 2 * 60_000,
         }
         delete nextState.approval
         delete nextState.approvals
