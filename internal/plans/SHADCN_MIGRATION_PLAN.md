@@ -1,7 +1,7 @@
 # shadcn/ui migration plan
 
 _Started 2026-10-13. Progress verified 2026-10-14 against GitHub and
-`origin/main` at `6a5218fe9510e3df37ec0d4698b3af328112851f`. Companion visual
+`origin/main` at `905404c4671e4437141bd4a079fbe82ad9d2cd68`. Companion visual
 mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/internal/plans/mockups/shadcn-migration-preview.html)._
 
 ## Progress
@@ -14,13 +14,14 @@ mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/o
 | 2 dropdown-menu + popover | Merged at `7578b6914`; authenticated current-head preview QA and all nine required merge-queue checks passed, including combined menu/select regressions | [#209](https://github.com/LayerNorm/overlay-web/pull/209), [final QA](https://github.com/LayerNorm/overlay-web/pull/209#issuecomment-6161698065) |
 | 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
 | 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
-| 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Not promoted to production. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
-| 6 core form primitives | Phase 6a implemented in #227; Phase 6b implemented in #228 (`checkbox`, `switch`, `badge`, `separator`, `skeleton`); Phase 6c is staged in #229. | [#227](https://github.com/LayerNorm/overlay-web/pull/227), [#228](https://github.com/LayerNorm/overlay-web/pull/228), [#229](https://github.com/LayerNorm/overlay-web/pull/229) |
+| 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Included in verified native Git production at `905404c46`. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
+| 6 core form primitives | Phase 6a implemented in #227; Phase 6b implemented in #228 (`checkbox`, `switch`, `badge`, `separator`, `skeleton`); Phase 6c implemented in #229 (`tabs`, `scroll-area`, Toggle-on-Switch). | [#227](https://github.com/LayerNorm/overlay-web/pull/227), [#228](https://github.com/LayerNorm/overlay-web/pull/228), [#229](https://github.com/LayerNorm/overlay-web/pull/229) |
 | 7 niche fills | Not started | After the relevant foundations |
 | 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
 
-Phases 2 and 4 passed preview QA before merging; this does not constitute
-production promotion. Production remains a separately authorized release.
+Phases 0–5 are included in verified production main `905404c46`. New phases
+use current-head PR previews, then native Git production deployment after main
+integration; no separate staging promotion is required.
 The baseline inventory below is historical, not the current dependency or
 consumer count. GitHub PRs and their checks remain the integration record.
 
