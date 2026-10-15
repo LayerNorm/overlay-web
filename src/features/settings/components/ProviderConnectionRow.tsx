@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from './control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
+
 import { useCallback, useMemo, useState } from 'react'
 import {
   AlertCircle,
@@ -407,19 +410,19 @@ function ProviderConnectionHeader({
 
       {/* Actions */}
       <div className="flex shrink-0 items-center gap-1">
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onDiscover}
           disabled={discoverDisabled}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50"
+          className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50`)}
           aria-label="Search provider models"
         >
           {discovering ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} strokeWidth={1.8} />}
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           onClick={onToggleExpanded}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)"
+          className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)`)}
           aria-label={expanded ? 'Hide provider models' : 'Show provider models'}
         >
           <ChevronRight
@@ -427,24 +430,24 @@ function ProviderConnectionHeader({
             strokeWidth={1.8}
             className={`transition-transform ${expanded ? 'rotate-90' : ''}`}
           />
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           onClick={onEdit}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)"
+          className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)`)}
           aria-label="Edit provider"
         >
           <Pencil size={14} strokeWidth={1.8} />
-        </button>
+        </Button>
         {connection.isDeletable ? (
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onDelete}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-red-500"
+            className={unstyledButton(`flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-muted) hover:text-red-500`)}
             aria-label="Delete provider"
           >
             <Trash2 size={14} strokeWidth={1.8} />
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>
@@ -483,22 +486,22 @@ function ProviderModelsPanel({
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
-          <input
+          <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={`Search ${connectionDisplayName} models`}
-            className="h-9 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
+            className={unstyledInput(`h-9 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
           />
         </div>
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onDiscover}
           disabled={discoverDisabled}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground) hover:bg-(--surface-elevated) disabled:opacity-50"
+          className={unstyledButton(`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground) hover:bg-(--surface-elevated) disabled:opacity-50`)}
         >
           {discovering ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           Search
-        </button>
+        </Button>
       </div>
 
       {rowError ? (

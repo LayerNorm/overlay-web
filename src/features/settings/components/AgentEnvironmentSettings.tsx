@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton, unstyledTextarea } from './control-reset'
+import { Button, Textarea } from '@overlay/ui/primitives'
+
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -133,7 +136,7 @@ export function AgentEnvironmentSettings() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-(--foreground)">Environments</h2>
-          <button type="button" aria-label="Refresh environments" onClick={() => void refresh()} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"><RefreshCw size={15} /></button>
+          <Button variant="ghost" type="button" aria-label="Refresh environments" onClick={() => void refresh()} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}><RefreshCw size={15} /></Button>
         </div>
         {environments.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No environments connected yet.</p> : null}
         {environments.map((environment) => (
@@ -160,9 +163,9 @@ export function AgentEnvironmentSettings() {
                   <div className="mt-4 space-y-3 border-t border-(--border) pt-4">
                     <div className="flex items-center gap-2 text-sm text-(--foreground)"><ShieldCheck size={16} className="text-(--muted)" /> Verify phrase: <strong>{environment.verificationPhrase ?? 'waiting'}</strong></div>
                     <label className="block text-xs text-(--muted)">Approved project roots, one per line
-                      <textarea value={roots[environment.id] ?? (environment.kind === 'overlay_cloud' ? '/workspace' : '')} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className="mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)" />
+                      <Textarea value={roots[environment.id] ?? (environment.kind === 'overlay_cloud' ? '/workspace' : '')} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} placeholder={environment.kind === 'overlay_cloud' ? '/workspace' : '/Users/you/Projects'} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)`)} />
                     </label>
-                    <button type="button" disabled={busy !== null} onClick={() => void approve(environment.id)} className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50">Approve environment</button>
+                    <Button variant="ghost" type="button" disabled={busy !== null} onClick={() => void approve(environment.id)} className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}>Approve environment</Button>
                   </div>
                 ) : null}
                 {environment.status !== 'pending' && environment.status !== 'revoked' && environment.filesystemGrant ? (
@@ -170,11 +173,11 @@ export function AgentEnvironmentSettings() {
                     {editingRoots === environment.id ? (
                       <div className="space-y-2">
                         <label className="block text-xs text-(--muted)">Approved project roots, one per line
-                          <textarea value={roots[environment.id] ?? ''} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} className="mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)" />
+                          <Textarea value={roots[environment.id] ?? ''} onChange={(event) => setRoots((current) => ({ ...current, [environment.id]: event.target.value }))} className={unstyledTextarea(`mt-2 min-h-20 w-full resize-y rounded-xl border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--muted)`)} />
                         </label>
                         <div className="flex gap-2">
-                          <button type="button" disabled={busy !== null} onClick={() => void updateRoots(environment.id)} className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50">Save roots</button>
-                          <button type="button" disabled={busy !== null} onClick={() => setEditingRoots(null)} className="rounded-full px-3 py-1.5 text-xs text-(--muted) hover:text-(--foreground)">Cancel</button>
+                          <Button variant="ghost" type="button" disabled={busy !== null} onClick={() => void updateRoots(environment.id)} className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}>Save roots</Button>
+                          <Button variant="ghost" type="button" disabled={busy !== null} onClick={() => setEditingRoots(null)} className={unstyledButton(`rounded-full px-3 py-1.5 text-xs text-(--muted) hover:text-(--foreground)`)}>Cancel</Button>
                         </div>
                       </div>
                     ) : (
@@ -183,16 +186,16 @@ export function AgentEnvironmentSettings() {
                           <p className="font-medium text-(--foreground)">Filesystem access</p>
                           <p className="mt-1 truncate">{environment.filesystemGrant.mode === 'all_user_files' ? 'All user files' : environment.filesystemGrant.roots.join(', ')}</p>
                         </div>
-                        <button type="button" onClick={() => {
+                        <Button variant="ghost" type="button" onClick={() => {
                           setRoots((current) => ({ ...current, [environment.id]: environment.filesystemGrant?.mode === 'selected_roots' ? environment.filesystemGrant.roots.join('\n') : '' }))
                           setEditingRoots(environment.id)
-                        }} className="shrink-0 rounded-full px-2.5 py-1 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">Change roots</button>
+                        }} className={unstyledButton(`shrink-0 rounded-full px-2.5 py-1 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>Change roots</Button>
                       </div>
                     )}
                   </div>
                 ) : null}
               </div>
-              {environment.status !== 'revoked' ? <button type="button" aria-label={`Revoke ${environment.name}`} disabled={busy !== null} onClick={() => void revoke(environment.id)} className="rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"><Trash2 size={15} /></button> : null}
+              {environment.status !== 'revoked' ? <Button variant="ghost" type="button" aria-label={`Revoke ${environment.name}`} disabled={busy !== null} onClick={() => void revoke(environment.id)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50`)}><Trash2 size={15} /></Button> : null}
             </div>
           </div>
         ))}
@@ -239,14 +242,14 @@ function OfflineRecoveryHint({ environment, copied, onCopy }: {
         <div className="mt-2">
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded-md bg-(--background) px-2 py-1.5 font-mono text-[11px] text-(--muted)">{serviceCommand}</code>
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onCopy}
               aria-label="Copy persistent service command"
-              className="shrink-0 rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`shrink-0 rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             >
               {copied ? <Check size={13} /> : <Copy size={13} />}
-            </button>
+            </Button>
           </div>
           <p className="mt-1 text-[11px] leading-4 text-(--muted)">
             Run this once on that Mac to keep the connector alive across Terminal restarts and logins (uses the default install location).
