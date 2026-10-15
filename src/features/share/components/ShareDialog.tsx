@@ -95,7 +95,7 @@ export function ShareDialog({
         showCloseButton={false}
         overlayClassName="z-10080 bg-black/60 p-4"
         aria-labelledby="share-dialog-title"
-        className="block w-[min(560px,94vw)] gap-0 overflow-hidden rounded-2xl p-0"
+        className="z-10080 block w-[min(560px,94vw)] gap-0 overflow-hidden rounded-2xl p-0"
       >
         <div className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
           <div className="min-w-0">

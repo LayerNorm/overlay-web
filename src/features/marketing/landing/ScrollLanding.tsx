@@ -7,6 +7,7 @@ import { getMarketingAppHref } from '@/shared/marketing/marketing'
 import { GraphicPanel } from './GraphicPanel'
 import { LandingAgents } from './LandingAgents'
 import { LandingCta } from './LandingCta'
+import { LandingFaq } from './LandingFaq'
 import { LandingHero } from './LandingHero'
 import { LandingNav } from './LandingNav'
 import { LandingRail } from './LandingRail'
@@ -80,6 +81,7 @@ export function ScrollLanding() {
         </div>
       </div>
       {/* outside .lp: the landing reset would strip the footer's own utility styles */}
+      <LandingFaq />
       <MarketingFooter />
     </>
   )

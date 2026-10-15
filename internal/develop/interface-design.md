@@ -28,14 +28,16 @@ note-editor styles, uses standard properties such as `flex-shrink: 0`.
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
 shadcn/Radix primitives. Their consumers open them from ordinary buttons without
-a Radix Trigger, so the wrappers remember the focused opener and restore it on
-close. Radix owns focus trapping and scroll locking while open.
+a Radix Trigger. Canonical modal `DialogContent` remembers the focused opener
+and restores it on close unless a consumer overrides focus restoration. Radix owns focus trapping and scroll locking while open. Custom backdrop and
+content stacking levels must match so the backdrop cannot cover dialog controls.
 
 `ConfirmDialog` delegates dismissal to its callbacks. Confirming must not invoke
 Cancel or close an asynchronous operation early; native Radix Action/Cancel
 closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
-in isolated Chromium (requires the Playwright Chromium browser).
+in isolated Chromium. Use the Playwright browser or set
+`OVERLAY_QA_BROWSER_EXECUTABLE` to an installed compatible Chrome executable.
 
 ## Command palette
 
@@ -324,3 +326,10 @@ App startup renders a single loading screen wherever the shell is still resolvin
 ## Avatar colors
 
 The avatar picker offers the preset swatches plus a rainbow swatch that opens `AvatarColorPicker` (saturation/brightness square, hue strip, hex field; no opacity; helpers in `features/agents/lib/color-utils.ts`). Colors are stored as six-digit lowercase hex; the server accepts any such value.
+
+## Marketing FAQ and page metadata
+
+The landing FAQ uses native details/summary disclosures after the scroll story.
+Its visible answers and FAQ structured data share one source; describe available
+capabilities only. Public marketing pages define their own canonical paths so
+they do not inherit the root homepage canonical.

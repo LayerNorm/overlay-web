@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { MarketingPlaceholderPage } from '@/features/marketing/pages/MarketingPlaceholderPage'
 
 export const metadata: Metadata = {
-  title: 'Changelog — Overlay',
+  alternates: { canonical: '/changelog' },
+  title: 'Changelog',
   description: 'What shipped, what changed, and what is next in Overlay.',
 }
 
