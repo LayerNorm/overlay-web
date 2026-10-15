@@ -87,6 +87,10 @@ billable task requires a new idempotent reservation boundary. Cancellation stays
 requested until host stop is confirmed; finalization intents retry usage/ordinary
 idle cleanup with the existing ledger idempotency keys after terminal ingestion.
 Machine time continues during human approval waits and pending stop delivery.
+The lifecycle coordinator retries cloud stop-proof checks on its durable timer
+while cancelling. A delivered notification does not finish this responsibility:
+its first check may precede the healthy-host grace period. Only provider/host
+stop proof closes the run and releases its reservation.
 
 A lifecycle-v2 cancellation timeout is not evidence that a disconnected BYO process
 stopped. Keep the run and reservation unresolved until host stop/provider isolation

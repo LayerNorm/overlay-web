@@ -141,6 +141,15 @@ files. The Vercel automation secret is project-scoped, not PR-scoped; restrict
 its distribution to trusted repository agents. It bypasses Vercel's hosting
 gate only; Overlay sandbox login and exact-head/backend verification still apply.
 
+For unattended Agent Host acceptance on a protected Preview, use a disposable
+QA image with a transport wrapper that attaches an existing access cookie only
+to that exact PR origin. Keep the cookie in a mode-0600 file under the machine's
+private persistent home, never in a snapshot, provider-child environment or
+global request headers. Boat clears `/tmp` during stop/resume, so a temporary
+access file cannot establish unattended wake acceptance. Keep the signed host
+authentication intact, record the wrapper as a QA fixture, and delete the owned
+machine after settlement; this is not the production image bootstrap.
+
 See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
 See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).
 

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
+
 - Scope Boat Preview machine creation to its isolated named environment while keeping account credentials excluded; document the approved one-year Preview key renewal requirement.
 
 - Preserve connected-agent approval/input waits across transcript batches and healthy long waits. Add opt-in versioned remote lifecycle coordination, fenced host observations, durable control/finalization intents, truthful recovery limits, and reconnect output protection. Host/protocol candidate: 0.3.11; image candidate: v6. New enrollment remains disabled pending hosted/provider acceptance.
