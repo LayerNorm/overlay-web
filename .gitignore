@@ -22,12 +22,15 @@
 /.next/
 /.next-analyze/
 /.next.stale.*/
+apps/*/.next/
+apps/*/.next-analyze/
 /out/
 
 # production
 /build
 packages/*/dist/
 packages/*/node_modules/
+apps/*/node_modules/
 workers/*/node_modules/
 examples/**/node_modules/
 workers/*/.wrangler/

@@ -1,0 +1,42 @@
+{
+  "name": "@overlay/admin",
+  "version": "0.0.1",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "eslint",
+    "start": "next start",
+    "test": "TSX_TSCONFIG_PATH=tsconfig.json NODE_OPTIONS=\"--require=../../scripts/ci/register-server-only.cjs\" node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overlay/app-core": "file:../../packages/overlay-app-core",
+    "@overlay/authz-contracts": "file:../../packages/overlay-authz-contracts",
+    "@overlay/modules-react": "file:../../packages/overlay-modules-react",
+    "@overlay/tools-core": "file:../../packages/overlay-tools-core",
+    "@overlay/ui": "file:../../packages/overlay-ui",
+    "@workos-inc/node": "^8.7.0",
+    "lucide-react": "^0.575.0",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "eslint": "10.10.0",
+    "eslint-config-next": "16.3.0",
+    "postcss": "8.5.26",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "@eslint/compat": "2.1.0",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "7.0.1"
+  }
+}

@@ -232,10 +232,13 @@ jobs:
           TEST_RESULT: ${{ needs.tests.result }}
         run: test "$TEST_RESULT" = success
 
+  admin-console:
+    uses: ./.github/workflows/admin.yml
+
   dependency-audit:
     name: Required Quality and Security Gates
     if: ${{ always() }}
-    needs: [static, build, tests, secret-scan, public-env-guard, dependency-review]
+    needs: [static, build, tests, secret-scan, public-env-guard, dependency-review, admin-console]
     runs-on: ubuntu-latest
     steps:
       - name: Require every quality lane
@@ -246,7 +249,7 @@ jobs:
         run: |
           node - <<'NODE'
           const needs = JSON.parse(process.env.NEEDS_JSON);
-          const expected = ['static', 'build', 'tests', 'secret-scan', 'public-env-guard', 'dependency-review'];
+          const expected = ['static', 'build', 'tests', 'secret-scan', 'public-env-guard', 'dependency-review', 'admin-console'];
           if (Object.keys(needs).sort().join() !== [...expected].sort().join()) process.exit(1);
           for (const name of expected) {
             const allowed = name === 'dependency-review' &&

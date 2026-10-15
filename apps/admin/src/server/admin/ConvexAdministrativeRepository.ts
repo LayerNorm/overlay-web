@@ -1,0 +1,60 @@
+import 'server-only'
+
+import { adminConvexClient as convex } from '../convex-admin'
+import type {
+  AdministrativePrincipal,
+  AdministrativeRepository,
+  AdministrativeRole,
+} from './AdministrativeRepository'
+
+export class ConvexAdministrativeRepository implements AdministrativeRepository {
+  async get(args: { userId: string }): Promise<AdministrativePrincipal | null> {
+    return normalize(await convex.query<AdministrativePrincipal | null>(
+      'admin/administration:getPrincipalByServer',
+      { ...args },
+      { throwOnError: true },
+    ))
+  }
+
+  async list(): Promise<AdministrativePrincipal[]> {
+    const rows = await convex.query<AdministrativePrincipal[]>(
+      'admin/administration:listPrincipalsByServer',
+      {},
+      { throwOnError: true },
+    ) ?? []
+    return rows.map((row) => normalize(row)!)
+  }
+
+  async grant(args: {
+    grantedBy: string
+    reason?: string
+    role: AdministrativeRole
+    userId: string
+  }): Promise<AdministrativePrincipal> {
+    const row = await convex.mutation<AdministrativePrincipal | null>(
+      'admin/administration:grantPrincipalByServer',
+      { ...args },
+      { throwOnError: true },
+    )
+    if (!row) throw new Error('Failed to grant administrative principal')
+    return normalize(row)!
+  }
+
+  async revoke(args: { revokedBy: string; userId: string }): Promise<boolean> {
+    const result = await convex.mutation<{ revoked: boolean }>(
+      'admin/administration:revokePrincipalByServer',
+      { ...args },
+      { throwOnError: true },
+    )
+    return result?.revoked === true
+  }
+}
+
+function normalize(row: AdministrativePrincipal | null): AdministrativePrincipal | null {
+  if (!row) return null
+  const { _id: _, _creationTime: __, ...principal } = row as AdministrativePrincipal & {
+    _id?: string
+    _creationTime?: number
+  }
+  return principal
+}
