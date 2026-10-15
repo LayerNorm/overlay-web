@@ -25,6 +25,7 @@ import type * as auth_authDebug from "../auth/authDebug.js";
 import type * as auth_serviceAuth from "../auth/serviceAuth.js";
 import type * as auth_sessionTransfer from "../auth/sessionTransfer.js";
 import type * as auth_users from "../auth/users.js";
+import type * as authorization_defaults from "../authorization/defaults.js";
 import type * as automations_automationRunner from "../automations/automationRunner.js";
 import type * as automations_automations from "../automations/automations.js";
 import type * as automations_workflowEventProjector from "../automations/workflowEventProjector.js";
@@ -137,6 +138,7 @@ declare const fullApi: ApiFromModules<{
   "auth/serviceAuth": typeof auth_serviceAuth;
   "auth/sessionTransfer": typeof auth_sessionTransfer;
   "auth/users": typeof auth_users;
+  "authorization/defaults": typeof authorization_defaults;
   "automations/automationRunner": typeof automations_automationRunner;
   "automations/automations": typeof automations_automations;
   "automations/workflowEventProjector": typeof automations_workflowEventProjector;
