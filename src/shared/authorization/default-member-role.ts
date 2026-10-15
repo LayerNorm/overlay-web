@@ -31,4 +31,3 @@ export const MEMBER_AUTHORIZATION_CAPABILITIES: AuthorizationCapability[] = [
   'api_keys.manage',
   'webhooks.manage',
 ]
-
