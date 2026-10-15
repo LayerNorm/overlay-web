@@ -24,6 +24,13 @@ border color for new controls.
 Tailwind utility names apply to class names. Literal CSS, including injected
 note-editor styles, uses standard properties such as `flex-shrink: 0`.
 
+## Agent connection controls
+
+Connecting agent messages use the existing hover-toolbar Stop icon to cancel. Do not
+add inline timeout explanations, Cancel buttons, or preemptive Retry buttons. Recoverable
+failures expose a Retry icon in the same toolbar; retries in progress hide it. Preserve
+failure output and the explicit safety confirmation for runs that need inspection.
+
 ## Shared modal dialogs
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
