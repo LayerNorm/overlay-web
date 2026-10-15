@@ -7,7 +7,6 @@ import { useAuthorization } from './AuthorizationProvider'
 import {
   getAppRouteAuthorizationRequirement,
   getSettingsSectionAuthorizationRequirement,
-  satisfiesAuthorizationRequirement,
 } from '@/shared/authorization/client-policy'
 
 export function AuthorizationRouteGuard({ children }: { children: React.ReactNode }) {
@@ -17,9 +16,7 @@ export function AuthorizationRouteGuard({ children }: { children: React.ReactNod
   const requirement = pathname.startsWith('/app/settings')
     ? getSettingsSectionAuthorizationRequirement(searchParams.get('section') ?? 'general')
     : getAppRouteAuthorizationRequirement(pathname)
-  const allowed = authorization && pathname.startsWith('/app/admin')
-    ? satisfiesAuthorizationRequirement(authorization, requirement)
-    : allows(requirement)
+  const allowed = allows(requirement)
 
   if (authorization && !allowed) {
     return (

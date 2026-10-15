@@ -132,7 +132,11 @@ async function canCreateAdminKey(
   context: AppApiRouteContext,
 ): Promise<boolean> {
   if (!arrayValue(context.parsedJson.scopes).includes('admin')) return false
-  return await server.administrativeService.canManageAdministrators(context.auth.userId)
+  const decision = await server.authorizationService.checkCapability({
+    userId: context.auth.userId,
+    capability: 'administration.access',
+  })
+  return decision.allowed
 }
 
 async function publishApiKeyLifecycle(

@@ -2,7 +2,6 @@ import { AccountClient } from './auth/account-client'
 import { BillingClient } from './auth/billing-client'
 import { SubscriptionClient } from './auth/subscription-client'
 import { TopUpsClient } from './auth/topups-client'
-import { AdminAuthorizationClient } from './admin-authorization/client'
 import { AgentsClient } from './agents/client'
 import { AgentEnvironmentsClient } from './agent-environments/client'
 import { AutomationRunsClient } from './automation-runs/client'
@@ -61,7 +60,6 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     chat: new ChatAuxClient(http),
     automationRuns: new AutomationRunsClient(http),
     webhooks: new WebhooksClient(http),
-    adminAuthorization: new AdminAuthorizationClient(http),
     sharing: new SharingClient(http),
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),

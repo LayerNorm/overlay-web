@@ -3,7 +3,9 @@ title: "Admin"
 description: "Administration workflow endpoints for audit, principals, and usage."
 ---
 
-Admin endpoints are protected by role checks. The authenticated user must hold an active `admin`, `auditor`, or `billing_admin` role. Unauthorized calls are recorded as audit events.
+Admin endpoints are protected by role checks. The authenticated operator must hold an active `admin`, `auditor`, or `billing_admin` role. Unauthorized calls are recorded as audit events.
+
+These routes are served by the standalone `apps/admin` console at `admin.getoverlay.io` — not by the main web app — under `ADMIN_API_SECRET` and WorkOS operator sign-in.
 
 ## Audit
 

@@ -202,9 +202,6 @@ export default function AppSidebar({
         panelSearch={s.panelSearch}
         panelChildren={panelChildren}
         brandLink={brandLink}
-        showAdminNavigation={s.showAdminNavigation}
-        adminOpen={s.routeState.adminOpen}
-        onAdminSelect={s.onSelectMobileAdmin}
         navItems={s.mobileNavItems}
         onSelectItem={s.onSelectMobileNavItem}
         showcaseLinks={s.showcasePrimaryLinks}

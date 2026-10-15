@@ -30,7 +30,6 @@ const ROUTE_REQUIREMENTS: Array<{
   prefix: string
   requirement: ClientAuthorizationRequirement
 }> = [
-  { prefix: '/app/admin', requirement: { all: ['administration.access'] } },
   { prefix: '/app/automations', requirement: { all: ['automations.use'] } },
   { prefix: '/app/work', requirement: { all: ['work.use'] } },
   { prefix: '/app/memories', requirement: { all: ['memory.use'] } },
