@@ -317,7 +317,7 @@ export function MemoryDetailDialog({
       ariaLabelledBy="memory-detail-dialog-title"
       onClose={onClose}
       scrimClassName="p-4"
-      dialogClassName="overlay-dialog-in flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl"
+      dialogClassName="overlay-dialog-in flex max-h-[min(90vh,640px)] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl"
     >
         <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
           <span id="memory-detail-dialog-title" className="text-sm font-medium text-(--foreground)">Memory</span>
