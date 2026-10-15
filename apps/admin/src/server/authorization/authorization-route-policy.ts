@@ -1,0 +1,709 @@
+import 'server-only'
+
+import type {
+  AuthorizationCapability,
+  ResourceAction,
+} from '@overlay/authz-contracts'
+
+export const AUTHORIZATION_ROUTE_ACCESS = [
+  'public',
+  'authenticated',
+  'capability',
+  'resource',
+  'internal',
+] as const
+
+export type AuthorizationRouteAccess = (typeof AUTHORIZATION_ROUTE_ACCESS)[number]
+
+export type AuthorizationRoutePolicy = {
+  access: AuthorizationRouteAccess
+  capabilities?: readonly AuthorizationCapability[]
+  resource?: {
+    action: ResourceAction
+    identifiers?: readonly string[]
+    optional?: boolean
+    type: string
+  }
+}
+
+type MethodPolicies = Partial<Record<string, AuthorizationRoutePolicy>>
+
+export type AuthorizationRoutePolicyRule = {
+  path: string
+  methods: MethodPolicies
+}
+
+const publicPolicy = (): AuthorizationRoutePolicy => ({ access: 'public' })
+const authenticated = (): AuthorizationRoutePolicy => ({ access: 'authenticated' })
+// Server-to-server only: the handler verifies `x-internal-api-secret` and no
+// user session can satisfy it.
+const internal = (): AuthorizationRoutePolicy => ({ access: 'internal' })
+const capability = (
+  ...capabilities: AuthorizationCapability[]
+): AuthorizationRoutePolicy => ({ access: 'capability', capabilities })
+const resource = (
+  type: string,
+  action: ResourceAction,
+  options: { identifiers?: readonly string[]; optional?: boolean },
+  ...capabilities: AuthorizationCapability[]
+): AuthorizationRoutePolicy => ({
+  access: 'resource',
+  capabilities,
+  resource: { action, type, ...options },
+})
+
+export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule[] = [
+  { path: '/api/v1/capabilities', methods: { GET: publicPolicy() } },
+  // Deployment discovery is intentionally anonymous: it advertises API versions
+  // and capabilities to clients that have not authenticated yet.
+  { path: '/api/v1/discovery', methods: { GET: publicPolicy() } },
+  { path: '/api/v1/bootstrap', methods: { GET: authenticated() } },
+  {
+    path: '/api/v1/agents',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/agents/:agentId',
+    methods: { GET: authenticated(), PATCH: authenticated(), DELETE: authenticated() },
+  },
+  // Agent sub-resources resolve the agent through WorkspaceAgentService with
+  // the caller as actor, which enforces visibility and manager rules.
+  { path: '/api/v1/agents/:agentId/automations', methods: { GET: authenticated() } },
+  { path: '/api/v1/agents/:agentId/bundle', methods: { GET: authenticated() } },
+  { path: '/api/v1/agents/:agentId/restore', methods: { POST: authenticated() } },
+  { path: '/api/v1/agents/:agentId/permanent', methods: { DELETE: authenticated() } },
+  { path: '/api/v1/agents/:agentId/machine', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
+  {
+    path: '/api/v1/agents/:agentId/threads',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  // Must precede `:threadId` — the first matching path wins.
+  { path: '/api/v1/agents/:agentId/threads/resolve', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/agents/:agentId/threads/:threadId',
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
+  },
+  // Computers: ComputerService enforces owner / workspace-visibility access.
+  {
+    path: '/api/v1/computers',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/computers/:computerId',
+    methods: { GET: authenticated(), DELETE: authenticated() },
+  },
+  { path: '/api/v1/computers/:computerId/start', methods: { POST: authenticated() } },
+  { path: '/api/v1/computers/:computerId/stop', methods: { POST: authenticated() } },
+  { path: '/api/v1/computers/:computerId/desktop', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/agent-environments',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/enrollment-sessions',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/cloud',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/:environmentId/approve',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/:environmentId/roots',
+    methods: { PATCH: authenticated() },
+  },
+  {
+    path: '/api/v1/agent-environments/:environmentId/revoke',
+    methods: { POST: authenticated() },
+  },
+  // Owner/admin is enforced in the handler.
+  { path: '/api/v1/agent-environments/:environmentId/desktop', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/agent-bindings',
+    methods: { GET: authenticated(), PUT: authenticated(), DELETE: authenticated() },
+  },
+  { path: '/api/v1/agent-environments/enroll', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-profiles/upload', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-asks', methods: { POST: authenticated() } },
+  { path: '/api/v1/agents/:agentId/profile', methods: { GET: authenticated(), POST: authenticated() } },
+  { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/run-credentials', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/heartbeat', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/capabilities', methods: { PUT: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/commands/:commandId/ack', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/events', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/artifacts', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/artifacts/:artifactId/complete', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/artifacts/cleanup', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/operations/reconcile', methods: { POST: publicPolicy() } },
+  {
+    path: '/api/v1/shares',
+    methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/shares/impact',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/shares/shared-with-me',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/search',
+    methods: { GET: authenticated() },
+  },
+  { path: '/api/v1/mention-search', methods: { GET: authenticated() } },
+  {
+    path: '/api/v1/workspaces',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/active',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/management',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/invitations',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/invitations/:invitationId',
+    methods: { POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/members',
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/teams',
+    methods: { POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/teams/:teamId/members',
+    methods: { POST: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/lifecycle',
+    methods: { PATCH: authenticated(), DELETE: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/policies',
+    methods: { GET: authenticated(), PATCH: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/governance',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  {
+    path: '/api/v1/workspaces/:workspaceId/audit-export',
+    methods: { GET: authenticated() },
+  },
+  {
+    path: '/api/v1/workspace-invitations/:invitationId/accept',
+    methods: { POST: authenticated() },
+  },
+  { path: '/api/v1/chat-suggestions', methods: { GET: capability('conversations.create') } },
+  { path: '/api/v1/settings', methods: { GET: authenticated(), PATCH: authenticated() } },
+  { path: '/api/v1/onboarding/status', methods: { GET: authenticated() } },
+  { path: '/api/v1/onboarding/complete', methods: { POST: authenticated() } },
+  { path: '/api/v1/onboarding/reset', methods: { POST: authenticated() } },
+  { path: '/api/v1/subscription', methods: { GET: authenticated() } },
+  // Workspace billing: WorkspaceBillingService requires an owner/admin
+  // billing manager for every operation.
+  {
+    path: '/api/v1/workspaces/:workspaceId/billing',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  { path: '/api/v1/workspaces/:workspaceId/billing/checkout', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/portal', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/auto-top-up', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/subscription/settings',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+
+  { path: '/api/v1/admin/audit', methods: { GET: capability('audit.read') } },
+  { path: '/api/v1/admin/usage', methods: { GET: capability('usage.read') } },
+  {
+    path: '/api/v1/admin/principals',
+    methods: {
+      GET: capability('users.read'),
+      POST: capability('users.manage'),
+      DELETE: capability('users.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/capabilities',
+    methods: { GET: capability('roles.read') },
+  },
+  {
+    path: '/api/v1/admin/authorization/roles',
+    methods: {
+      GET: capability('roles.read'),
+      POST: capability('roles.manage'),
+      PATCH: capability('roles.manage'),
+      DELETE: capability('roles.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/groups',
+    methods: {
+      GET: capability('groups.read'),
+      POST: capability('groups.manage'),
+      PATCH: capability('groups.manage'),
+      DELETE: capability('groups.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/memberships',
+    methods: {
+      GET: capability('groups.read'),
+      POST: capability('groups.manage'),
+      DELETE: capability('groups.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/assignments',
+    methods: {
+      GET: capability('roles.read'),
+      POST: capability('roles.manage'),
+      DELETE: capability('roles.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/authorization/grants',
+    methods: {
+      GET: capability('roles.read'),
+      POST: capability('roles.manage'),
+      DELETE: capability('roles.manage'),
+    },
+  },
+  {
+    path: '/api/v1/admin/catalog',
+    methods: { GET: capability('roles.read') },
+  },
+
+  {
+    path: '/api/v1/conversations',
+    methods: {
+      GET: resource('conversation', 'view', { optional: true }, 'conversations.read'),
+      POST: capability('conversations.create'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'delete', {}, 'conversations.delete'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/events',
+    methods: { GET: capability('conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/direct-messages',
+    methods: { POST: capability('conversations.create') },
+  },
+  {
+    path: '/api/v1/conversations/channels',
+    methods: {
+      GET: capability('conversations.read'),
+      POST: capability('conversations.create'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/search',
+    methods: { GET: capability('conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/saved-messages',
+    methods: {
+      GET: capability('conversations.read'),
+      PATCH: capability('conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/notifications',
+    methods: {
+      GET: capability('conversations.read'),
+      PATCH: capability('conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/notification-preferences',
+    methods: {
+      GET: capability('conversations.read'),
+      PATCH: capability('conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/participants',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      POST: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/state',
+    methods: { PATCH: resource('conversation', 'view', {}, 'conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/presence',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'view', {}, 'conversations.read'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/threads/:threadRootMessageId/follow',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/reactions',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/pins',
+    methods: {
+      GET: resource('conversation', 'view', {}, 'conversations.read'),
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/reports',
+    methods: { POST: authenticated() },
+  },
+  {
+    path: '/api/v1/conversations/:conversationId/messages/:messageId',
+    methods: {
+      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  { path: '/api/v1/conversations/agent-greeting', methods: { POST: authenticated() } },
+  {
+    path: '/api/v1/conversations/act',
+    methods: { POST: resource('conversation', 'edit', { optional: true }, 'conversations.edit', 'models.use') },
+  },
+  {
+    path: '/api/v1/conversations/act/extension-plan',
+    methods: { POST: capability('conversations.edit', 'models.use') },
+  },
+  {
+    path: '/api/v1/conversations/message',
+    methods: {
+      POST: resource('conversation', 'edit', {}, 'conversations.edit'),
+      DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
+    },
+  },
+  {
+    path: '/api/v1/conversations/share',
+    methods: { PATCH: resource('conversation', 'share', {}, 'conversations.share') },
+  },
+  {
+    path: '/api/v1/conversations/stop',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/run',
+    methods: { GET: capability('conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/run/approval',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/run/remote',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/run/remote/request',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/conversations/run/remote/artifacts/:artifactId',
+    methods: { GET: capability('conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/run/metrics',
+    methods: { GET: capability('conversations.read') },
+  },
+  {
+    path: '/api/v1/conversations/run/metrics-event',
+    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
+  },
+  {
+    path: '/api/v1/files',
+    methods: {
+      GET: resource('file', 'view', { optional: true }, 'files.read'),
+      POST: capability('files.upload'),
+      PATCH: resource('file', 'edit', {}, 'files.edit'),
+      DELETE: resource('file', 'delete', {}, 'files.delete'),
+    },
+  },
+  {
+    path: '/api/v1/files/:fileId/content',
+    methods: { GET: resource('file', 'view', {}, 'files.read') },
+  },
+  { path: '/api/v1/files/ingest-document', methods: { POST: capability('files.upload') } },
+  {
+    path: '/api/v1/files/ingest-jobs',
+    methods: { GET: capability('files.read'), POST: capability('files.upload') },
+  },
+  // Called by the Convex ingestion runner with the internal API secret.
+  { path: '/api/v1/files/ingest-jobs/process', methods: { POST: internal() } },
+  { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },
+  { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
+  {
+    path: '/api/v1/files/share',
+    methods: { PATCH: resource('file', 'share', {}, 'files.share') },
+  },
+  { path: '/api/v1/files/upload-url', methods: { POST: capability('files.upload') } },
+
+  {
+    path: '/api/v1/notes',
+    methods: {
+      GET: resource('note', 'view', { optional: true }, 'notes.read'),
+      POST: capability('notes.create'),
+      PATCH: resource('note', 'edit', {}, 'notes.edit'),
+      DELETE: resource('note', 'delete', {}, 'notes.delete'),
+    },
+  },
+  {
+    path: '/api/v1/outputs',
+    methods: {
+      GET: resource('output', 'view', { optional: true }, 'outputs.read'),
+      PATCH: resource('output', 'share', {}, 'outputs.delete'),
+      DELETE: resource('output', 'delete', {}, 'outputs.delete'),
+    },
+  },
+  {
+    path: '/api/v1/outputs/:outputId/content',
+    methods: { GET: resource('output', 'view', {}, 'outputs.read') },
+  },
+
+  { path: '/api/v1/model-catalog', methods: { GET: capability('models.use') } },
+  { path: '/api/v1/generate-title', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/link-preview', methods: { GET: capability('conversations.read') } },
+  { path: '/api/v1/generate-tab-group-label', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/generate-image', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/generate-video', methods: { POST: capability('models.use') } },
+  { path: '/api/v1/notebook-agent', methods: { POST: capability('models.use', 'tools.use') } },
+  { path: '/api/v1/browser-task', methods: { POST: capability('tools.use') } },
+  {
+    path: '/api/v1/imports/slack',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  // Called by the Slack import cron with the internal API secret.
+  { path: '/api/v1/imports/slack/process', methods: { POST: internal() } },
+  // BYOK provider connections are scoped to the caller's own user id.
+  {
+    path: '/api/v1/providers/connections',
+    methods: {
+      GET: authenticated(),
+      POST: authenticated(),
+      PATCH: authenticated(),
+      DELETE: authenticated(),
+    },
+  },
+  { path: '/api/v1/providers/connections/test', methods: { POST: authenticated() } },
+  // Agent provider accounts (Claude Code / Codex credentials) are scoped to the caller's own user id.
+  {
+    path: '/api/v1/provider-accounts',
+    methods: {
+      GET: authenticated(),
+      POST: authenticated(),
+      PATCH: authenticated(),
+      DELETE: authenticated(),
+    },
+  },
+  { path: '/api/v1/provider-accounts/codex-sign-in', methods: { POST: authenticated() } },
+  // Other AI apps connected over MCP: every operation is scoped to the caller's own user id.
+  { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
+  { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
+  { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
+  // Surfaces: SurfaceService enforces bind permission (visible agent, no
+  // guests, personal agents only by their creator). connect/callback are browser
+  // navigations that check the Overlay session themselves; the Slack webhook
+  // is session-free and verifies Slack's request signature.
+  { path: '/api/v1/surfaces/connections', methods: { GET: authenticated() } },
+  { path: '/api/v1/surfaces/connections/:connectionId/channels', methods: { GET: authenticated() } },
+  {
+    path: '/api/v1/surfaces/bindings',
+    methods: { GET: authenticated(), POST: authenticated() },
+  },
+  { path: '/api/v1/surfaces/bindings/:bindingId', methods: { DELETE: authenticated() } },
+  { path: '/api/v1/surfaces/slack/connect', methods: { GET: authenticated() } },
+  { path: '/api/v1/surfaces/slack/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/webhooks/slack', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
+  { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
+  {
+    path: '/api/v1/integrations',
+    methods: { GET: capability('integrations.use'), POST: capability('integrations.use') },
+  },
+  // Convex enforces who may move, archive, or restore a given item; any signed-in member may ask.
+  { path: '/api/v1/scope', methods: { POST: authenticated() } },
+  // Work: Convex decides which tasks the caller can see and change (Personal / Workspace rules).
+  {
+    path: '/api/v1/work',
+    methods: { GET: capability('work.use'), POST: capability('work.use') },
+  },
+  // Must precede `:id` — the first matching path wins.
+  { path: '/api/v1/work/context', methods: { GET: capability('work.use') } },
+  {
+    path: '/api/v1/work/:id',
+    methods: { GET: capability('work.use'), PATCH: capability('work.use'), DELETE: capability('work.use') },
+  },
+  { path: '/api/v1/work/:id/move', methods: { POST: capability('work.use') } },
+  {
+    path: '/api/v1/work/:id/events',
+    methods: { GET: capability('work.use'), POST: capability('work.use') },
+  },
+  {
+    path: '/api/v1/skills',
+    methods: {
+      GET: capability('skills.use'),
+      POST: capability('skills.use'),
+      PATCH: capability('skills.use'),
+      DELETE: capability('skills.use'),
+    },
+  },
+  {
+    path: '/api/v1/mcps',
+    methods: {
+      GET: capability('mcp.use'),
+      POST: capability('mcp.use'),
+      PATCH: capability('mcp.use'),
+      DELETE: capability('mcp.use'),
+    },
+  },
+  { path: '/api/v1/mcps/test', methods: { POST: capability('mcp.use') } },
+  // The callback is authorized by its single-use, user-bound OAuth state (or the
+  // sealed desktop confirmation cookie), because an identity provider redirect
+  // cannot reliably carry an Overlay session. Starting and disconnecting still
+  // require the ordinary MCP capability.
+  {
+    path: '/api/v1/mcps/oauth/callback',
+    methods: { GET: publicPolicy(), POST: publicPolicy() },
+  },
+  {
+    path: '/api/v1/mcps/oauth',
+    methods: { POST: capability('mcp.use'), DELETE: capability('mcp.use') },
+  },
+  {
+    path: '/api/v1/memory',
+    methods: {
+      GET: capability('memory.use'),
+      POST: capability('memory.use'),
+      PATCH: capability('memory.use'),
+      DELETE: capability('memory.use'),
+    },
+  },
+  { path: '/api/v1/knowledge/search', methods: { POST: capability('files.read') } },
+  {
+    path: '/api/v1/automations',
+    methods: {
+      GET: resource('automation', 'view', { optional: true }, 'automations.use'),
+      POST: capability('automations.use'),
+      PATCH: resource('automation', 'edit', {}, 'automations.use'),
+      DELETE: resource('automation', 'delete', {}, 'automations.use'),
+    },
+  },
+  { path: '/api/v1/automations/run', methods: { POST: capability('automations.use') } },
+  { path: '/api/v1/automations/test', methods: {
+    POST: resource('automation', 'execute', {}, 'automations.use'),
+  } },
+  { path: '/api/v1/automations/execute', methods: {
+    POST: capability('automations.use'),
+    PATCH: capability('automations.use'),
+  } },
+  {
+    path: '/api/v1/automations/:id/run',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:id/approve',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:id/start-scheduler',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:id/cancel-scheduler',
+    methods: { POST: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:runId/stream',
+    methods: { GET: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/automations/:runId/events',
+    methods: { GET: capability('automations.use') },
+  },
+  {
+    path: '/api/v1/api-keys',
+    methods: {
+      GET: capability('api_keys.manage'),
+      POST: capability('api_keys.manage'),
+      PATCH: capability('api_keys.manage'),
+      DELETE: capability('api_keys.manage'),
+    },
+  },
+  {
+    path: '/api/v1/webhooks',
+    methods: {
+      GET: capability('webhooks.manage'),
+      POST: capability('webhooks.manage'),
+      PATCH: capability('webhooks.manage'),
+      DELETE: capability('webhooks.manage'),
+    },
+  },
+] as const
+
+export function getAuthorizationRoutePolicy(
+  method: string,
+  pathname: string,
+): AuthorizationRoutePolicy | null {
+  const normalizedMethod = method.toUpperCase()
+  const normalizedPath = normalizePath(pathname)
+  for (const rule of AUTHORIZATION_ROUTE_POLICIES) {
+    if (!matchesPath(rule.path, normalizedPath)) continue
+    return rule.methods[normalizedMethod] ?? rule.methods.ALL ?? null
+  }
+  return null
+}
+
+function normalizePath(pathname: string): string {
+  const normalized = pathname.replace(/\/+$/, '')
+  return normalized || '/'
+}
+
+function matchesPath(pattern: string, pathname: string): boolean {
+  const patternSegments = normalizePath(pattern).split('/').filter(Boolean)
+  const pathSegments = pathname.split('/').filter(Boolean)
+  let index = 0
+  for (; index < patternSegments.length; index += 1) {
+    const expected = patternSegments[index]
+    if (expected === '*') return true
+    const actual = pathSegments[index]
+    if (actual === undefined) return false
+    if (expected.startsWith(':')) continue
+    if (expected !== actual) return false
+  }
+  return index === pathSegments.length
+}
