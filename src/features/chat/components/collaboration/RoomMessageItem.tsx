@@ -706,7 +706,6 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
-  const hasConnectionStatus = message.blocks.some(block => block.kind === 'tool' && block.name === 'connect_computer')
   return (
     <>
       {message.askedBy ? (
@@ -731,7 +730,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}
         foldWorkIntoSummary={collapseAgentWork}
-        isStreaming={Boolean(message.streaming) || hasConnectionStatus}
+        isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
