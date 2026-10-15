@@ -109,6 +109,6 @@ export class AdministrativeService {
 
   private async activeRole(userId: string): Promise<AdministrativeRole | null> {
     const principal = await this.deps.repository.get({ userId })
-    return principal && !principal.revokedAt ? principal.role : null
+    return principal && principal.revokedAt === undefined ? principal.role : null
   }
 }

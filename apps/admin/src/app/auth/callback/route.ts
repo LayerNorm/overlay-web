@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     'admin/administration:getPrincipalByServer',
     { userId: tokens.user.id },
   ).catch(() => null)
-  if (!principal || principal.revokedAt) {
+  if (!principal || principal.revokedAt !== undefined) {
     return redirectWithCookies('/denied?reason=principal', request, [clearAuthStateCookie()])
   }
 
