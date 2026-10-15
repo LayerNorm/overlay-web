@@ -324,3 +324,12 @@ App startup renders a single loading screen wherever the shell is still resolvin
 ## Avatar colors
 
 The avatar picker offers the preset swatches plus a rainbow swatch that opens `AvatarColorPicker` (saturation/brightness square, hue strip, hex field; no opacity; helpers in `features/agents/lib/color-utils.ts`). Colors are stored as six-digit lowercase hex; the server accepts any such value.
+
+## Shared tabs
+
+The TabsList/TabButton compatibility API derives the Radix root selection from
+the caller’s active prop, including external selection changes. Arrow/Home/End
+keys move focus and skip disabled tabs; Enter/Space activate through the existing
+click callback. Keep manual activation and one owner for selected styling.
+Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it accepts
+`OVERLAY_QA_BROWSER_EXECUTABLE` like the dialog harness.
