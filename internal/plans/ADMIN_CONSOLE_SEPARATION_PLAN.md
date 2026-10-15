@@ -1,6 +1,6 @@
 # Admin Console Separation Plan
 
-Status (2026-10-14): Stages 1/2 merged in #224/#225; standalone production activation in progress; #230 and #233 prepare retirement behind authenticated production acceptance.
+Status (2026-10-14): Stages 1/2 merged in #224/#225; standalone production accepted at `7997a1a41`; #230 merged at `d309cdffb` and deploying; #233 implements the final backend retirement after that web release is live.
 Owner: DevelopedByDev
 Workflow: [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
 ready PR; the Integration thread reviews and merges.
@@ -370,3 +370,5 @@ Self-hosters run the same admin app with their own IT team as operators. Add an 
 - `overlay-admin` project: `prj_IQJT4xvTp9F33h9UT51XJX1NIk5X`; `apps/admin`, Node 24, outside-root sources enabled, dedicated Production/Preview settings, verified `admin.getoverlay.io`.
 - Real preview WorkOS sign-in/PKCE, persisted role edits, group membership, and non-allowlisted Google denial verified.
 - Retirement preview #233: synthetic sign-in, session, notes and conversations return 200; `/app/admin` and removed API routes return 404. All 12 parity/separation/backend tests pass. Checkmarks above record implemented source; production retirement is not accepted until 3b and the web-first/backend-second rollout pass.
+
+- Stage 3b accepted on production at `7997a1a41`: owner Google login, all four sections, zero-capability unassigned role create/edit/reload, audit readback and archive verified. A genuine synthetic production WorkOS identity in a signed test session was denied with 403 for GET and POST; anonymous API calls returned 401. This hosted session probe supplements the real non-allowlisted OAuth refusal on Preview.

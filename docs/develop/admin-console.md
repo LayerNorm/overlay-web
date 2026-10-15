@@ -7,8 +7,8 @@ in-app `/app/admin` surface, which stays in place until Stage 3.
 
 ## Status
 
-- Stages 1/2: standalone app and dedicated Convex operator endpoints implemented; integration QA in progress.
-- Stage 3: separate `overlay-admin` project created; domain, WorkOS and environment activation are being verified. The web admin remains until authenticated standalone acceptance passes.
+- Stages 1/2: merged and deployed; standalone production acceptance passed at `7997a1a41`.
+- Stage 3: `admin.getoverlay.io` is live with verified owner Google sign-in, all four sections, persisted role writes and audit readback. #230 removes the web admin; #233 retires legacy operator backend endpoints after the replacement web is live.
 
 ## Access model
 
@@ -68,9 +68,7 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
   row with a permitted role — writes require `admin`, reads any active
   operator, audit list `admin`/`auditor`, user directory `admin`/`billing_admin`/`support`.
   Every write records its own `auditEvents` row in the same transaction.
-  `admin/administration:*`, `admin/authorization:*`, and
-  `auth/users:listUserDirectoryByServer` stay on `INTERNAL_API_SECRET` for the
-  web app until Stage 3.
+  Customer web retains ordinary permission-check reads, the restricted member initializer and append-only audit on `INTERNAL_API_SECRET`; legacy operator mutations, list endpoints and directory access are removed in Stage 3d.
 - `src/server/operator.ts` `resolveOperator()` is the single gate (session →
   allowlist → principal row); every API route wraps `adminRoute()` in
   `src/server/guard.ts` which maps it to 401/403 and re-mints the idle cookie.
@@ -116,8 +114,7 @@ allows native main production deployments and disables automatic non-main builds
 
 ## CI
 
-`.github/workflows/admin.yml` runs typecheck, lint, tests, and `next build` on
-PRs and merge groups touching `apps/admin` or its workspace deps.
+`.github/workflows/admin.yml` runs typecheck, lint and `next build` as a fail-closed dependency of Security Checks. Exhaustive shards execute admin tests once under its own tsconfig; merge-group coverage remains required.
 
 ## Integration hardening
 
@@ -142,3 +139,9 @@ The admin CI install selects only the admin workspace and its dependency closure
 The OAuth state envelope holds a one-use PKCE verifier; AuthKit gets its S256 challenge and callback exchanges the code with that verifier. Exchange failures log only event, error class, bounded provider code and status, never codes, tokens or credentials.
 
 The legacy `/api/v1/admin/usage` path is the People directory: admin, billing and support operators may read it; auditors use the audit view. The UI, route gate and Convex directory gate use that same policy.
+
+## Isolated admin Preview provisioning
+
+The admin project inherits its shared non-expiring test WorkOS, session/API secret and QA-operator allowlist once. Unscoped `ADMIN_CONVEX_URL` and `NEXT_PUBLIC_CONVEX_URL` are deliberately empty: an unbound admin build fails closed rather than contacting shared development. Bind both URL variables on the feature branch to its verified `preview/pr-<number>` backend, set the matching shared Preview admin secret there, and provision only the dedicated test principal. Register that exact preview callback in the test WorkOS environment and request a Preview at the current SHA with connected Vercel tools. The existing customer-web controller does not manage the separate admin project. Clear branch backend URLs after QA; do not recreate shared credentials per PR.
+
+Responsive QA at 390px confirmed no document overflow. Icon-only navigation retains explicit accessible section names. Production acceptance used an unassigned zero-capability role, then archived it; no customer permission assignment was changed.
