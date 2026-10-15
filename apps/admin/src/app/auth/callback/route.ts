@@ -12,6 +12,7 @@ import {
   type AdminSession,
 } from '@/server/session'
 import { authenticateWithCode } from '@/server/workos'
+import { safeReturnTo } from '@/server/auth-redirect'
 
 type AuthState = {
   issuedAt: number
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
       { userId: tokens.user.id },
     ),
   ).catch(() => null)
-  if (!principal || principal.revokedAt) {
+  if (!principal || principal.revokedAt !== undefined) {
     return redirectWithCookies('/denied?reason=principal', request, [clearAuthStateCookie()])
   }
 
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
     },
   }
 
-  return redirectWithCookies(stored.returnTo || '/', request, [
+  return redirectWithCookies(safeReturnTo(stored.returnTo, request.nextUrl.origin), request, [
     sessionCookie(session),
     clearAuthStateCookie(),
   ])

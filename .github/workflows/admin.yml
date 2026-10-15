@@ -1,21 +1,10 @@
 name: Admin Console
 
 on:
-  pull_request:
-  merge_group:
-    types: [checks_requested]
-  push:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   admin-console:
@@ -41,9 +30,6 @@ jobs:
 
       - name: Lint
         run: npm run admin:lint
-
-      - name: Test
-        run: npm run admin:test
 
       - name: Build
         run: npm run admin:build

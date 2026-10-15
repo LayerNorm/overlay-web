@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import { XIcon } from 'lucide-react'
 
 import { cn } from '../../utils/cn'
+import { useDialogReturnFocus } from '../../hooks/useDialogReturnFocus'
 
 const DialogModalContext = React.createContext(true)
 
@@ -45,12 +46,16 @@ function DialogContent({
   children,
   showCloseButton = true,
   overlayClassName,
+  onOpenAutoFocus,
+  onFocusCapture,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
   overlayClassName?: string
 }) {
   const modal = React.useContext(DialogModalContext)
+  const returnFocus = useDialogReturnFocus()
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay className={overlayClassName} />
@@ -62,6 +67,18 @@ function DialogContent({
           className,
         )}
         {...props}
+        onFocusCapture={(event) => {
+          returnFocus.onFocusCapture(event)
+          onFocusCapture?.(event)
+        }}
+        onOpenAutoFocus={(event) => {
+          returnFocus.onOpenAutoFocus()
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          if (modal && !event.defaultPrevented) returnFocus.onCloseAutoFocus(event)
+        }}
       >
         {children}
         {showCloseButton && (

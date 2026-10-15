@@ -53,7 +53,7 @@ test('recent sign-in window is enforced', () => {
 
 function freshSession(now = Date.now()) {
   return {
-    accessToken: 'token',
+    accessToken: `header.${Buffer.from(JSON.stringify({ auth_time: Math.floor(now / 1000) })).toString('base64url')}.sig`,
     lastActiveAt: now,
     refreshToken: null,
     signedInAt: now,

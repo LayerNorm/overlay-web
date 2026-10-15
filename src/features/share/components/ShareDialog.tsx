@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Check, Linkedin, Link2, X } from 'lucide-react'
-import { useDialogFocus, usePresence } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 
 type Resource = {
@@ -65,29 +65,13 @@ export function ShareDialog({
   onClose: () => void
 }) {
   const [copied, setCopied] = useState(false)
-  const onKey = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key === 'Escape') onClose()
-  })
-
-  useEffect(() => {
-    if (!isOpen) return
-    window.addEventListener('keydown', onKey)
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
-    }
-  }, [isOpen])
 
   const socials = useMemo(
     () => (resource?.url ? buildSocialUrls(resource.url, resource.title) : null),
     [resource],
   )
 
-  const { mounted, visible } = usePresence(isOpen)
-  const dialogRef = useDialogFocus(mounted)
-  if (!mounted || !resource || !socials) return null
+  if (!resource || !socials) return null
 
   const handleCopy = async () => {
     try {
@@ -106,26 +90,12 @@ export function ShareDialog({
   }
 
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className={`fixed inset-0 z-10080 flex items-center justify-center bg-black/60 p-4 transition-opacity duration-200 ease-(--overlay-ease) ${
-        visible ? 'opacity-100' : 'opacity-0'
-      }`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-10080 bg-black/60 p-4"
         aria-labelledby="share-dialog-title"
-        className={`w-[min(560px,94vw)] overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated) shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease) ${
-          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
-        }`}
+        className="z-10080 block w-[min(560px,94vw)] gap-0 overflow-hidden rounded-2xl p-0"
       >
         <div className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
           <div className="min-w-0">
@@ -249,7 +219,7 @@ export function ShareDialog({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
