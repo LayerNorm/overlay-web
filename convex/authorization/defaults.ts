@@ -20,7 +20,8 @@ export const ensureDefaultUserRoleByServer = mutation({
         createdAt: Date.now(), updatedAt: Date.now(),
       })
     }
-    const assignments = await ctx.db.query('authorizationUserRoles').withIndex('by_userId', q => q.eq('userId', args.userId)).collect()
+    const assignments = await ctx.db.query('authorizationUserRoles').withIndex('by_userId', q => q.eq('userId', args.userId)).take(100)
+    if (assignments.length === 100) throw new Error('Too many assignments; operator review required')
     // Preserve explicit custom assignments, matching the existing shell contract.
     const compatibility = new Set(['system:administrator', 'system:auditor', 'system:billing-administrator', 'system:support'])
     if (assignments.some(a => !compatibility.has(a.roleId))) return null
