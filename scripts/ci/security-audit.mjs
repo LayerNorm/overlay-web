@@ -13,15 +13,7 @@ import { spawnSync } from 'node:child_process'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
-const AUDIT_EXCEPTIONS = [
-  {
-    path: 'node_modules/eve/node_modules/undici',
-    advisories: ['GHSA-rfgv-xxqx-mfg5', 'GHSA-w293-vg96-wgc3'],
-    expires: '2026-10-14',
-    reason: 'Every eve release pins undici 8.9.0 exactly. eve is imported only by the '
-      + '@layernorm/overlay-agent-host CLI (eve adapter), never by the web app runtime.',
-  },
-]
+const AUDIT_EXCEPTIONS = []
 
 const BLOCKING = new Set(['high', 'critical'])
 
