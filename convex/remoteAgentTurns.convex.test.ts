@@ -862,4 +862,18 @@ test('fresh lifecycle attempt uses a strict executable start rather than checkpo
     type: command.type, payload: command.payload })
   expect(parsed.success).toBe(true)
   expect(command.payload).toEqual(expect.objectContaining({ prompt: 'work', fresh: true, metadata: {} }))
+  const replacement = run!.remoteLifecycle!.currentAttemptId
+  const result = await call('applyRemoteEventsByServer', {
+    workspaceId, environmentId, sessionId: replacement, now: now + 5,
+    events: [event(1, 'session_started', { remoteSessionId: 'new', adapterId: 'acp' }),
+      event(2, 'approval_requested', { requestKey: 'new-write', prompt: 'New write?', options: [{ id: 'allow', label: 'Allow' }], context: {} })]
+      .map(e => ({ ...e, execution: { attemptId: replacement, generation: 2, hostBootId: 'boot-after-restart' } })),
+  })
+  expect(result).toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 2 }))
+  expect(result).not.toHaveProperty('stale')
+  const active = await projectedState(convex, run!.assistantMessageId)
+  expect(active.run?.remoteLifecycle?.phase).toBe('waiting_for_approval')
+  expect(active.message?.parts).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'new-write', state: 'pending' }) }),
+  ]))
 })

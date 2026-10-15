@@ -1068,3 +1068,5 @@ closed if the bounded drain cannot establish that the group is gone.
 Starting a fresh attempt atomically resolves the old process's outstanding request
 cards as `execution_replaced`, preserving decisions already recorded, and projects
 `recovering` on the same assistant row before dispatching the replacement.
+Replacement attempts clear the previous host boot and health lease; the first
+accepted replacement event binds the new boot, while old attempt events remain fenced.
