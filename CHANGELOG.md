@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Migrate the niche UI fills to shadcn internals (Phase 7): the mobile navigation drawer uses Sheet machinery, archive notices use Sonner, workspace and work avatars use Avatar, the Work error banner uses Alert, and UsageMeterBar uses Progress. Canonical Card is exported for later feature adoption. Appearance and public APIs are unchanged.
+
 - Update Vercel Speed Insights to 2.0 and patch the Agent Host Eve dependency to undici 8.10.2, removing the expired security-audit exception.
 
 - The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline. Reduced motion disables the pulse and workspace spinner; shared pulse timing prevents flashes across loading-boundary handoffs.

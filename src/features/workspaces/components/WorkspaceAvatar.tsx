@@ -1,3 +1,4 @@
+import { Avatar, AvatarFallback } from '@overlay/ui/primitives'
 import type { WorkspaceSummary } from '@/shared/workspaces/types'
 
 function initials(name: string): string {
@@ -24,11 +25,8 @@ export function WorkspaceAvatar({
   }[size]
 
   return (
-    <span
-      className={`inline-flex shrink-0 items-center justify-center border border-(--border) bg-(--surface-subtle) font-semibold text-(--foreground) ${sizeClass}`}
-      aria-hidden
-    >
-      {initials(workspace.name)}
-    </span>
+    <Avatar className={`border border-(--border) bg-(--surface-subtle) font-semibold text-(--foreground) ${sizeClass}`} aria-hidden>
+      <AvatarFallback className="bg-transparent font-semibold">{initials(workspace.name)}</AvatarFallback>
+    </Avatar>
   )
 }

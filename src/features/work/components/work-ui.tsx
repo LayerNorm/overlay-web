@@ -1,4 +1,5 @@
 import type { WorkPerson, WorkPriority, WorkStatus } from '@overlay/app-core'
+import { Avatar as AvatarRoot, AvatarFallback } from '@overlay/ui/primitives'
 import { WORK_PRIORITY_LABELS } from '@/shared/work/status'
 import { dueTone, formatWorkDate } from '@/shared/work/dates'
 import { initialsOf } from '../lib/work-state'
@@ -44,24 +45,26 @@ export function Avatar({ person, size = 22, title }: { person: Pick<WorkPerson, 
   const dimension = { width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.42)) }
   if (!person) {
     return (
-      <span
-        className="inline-grid shrink-0 place-items-center rounded-full border border-dashed border-(--muted-light) text-(--muted-light)"
+      <AvatarRoot
+        className="rounded-full border border-dashed border-(--muted-light) text-(--muted-light)"
         style={dimension}
         title={title ?? 'Unassigned'}
         aria-label={title ?? 'Unassigned'}
-      />
+      >
+        <AvatarFallback className="bg-transparent" />
+      </AvatarRoot>
     )
   }
   const agent = person.type === 'agent'
   return (
-    <span
-      className={`inline-grid shrink-0 place-items-center border font-semibold text-(--foreground) ${agent ? 'rounded-md border-transparent bg-zinc-600 text-white dark:bg-zinc-500' : 'rounded-full border-(--border) bg-(--surface-subtle)'}`}
+    <AvatarRoot
+      className={`border font-semibold text-(--foreground) ${agent ? 'rounded-md border-transparent bg-zinc-600 text-white dark:bg-zinc-500' : 'rounded-full border-(--border) bg-(--surface-subtle)'}`}
       style={dimension}
       title={title ?? `${person.displayName}${agent ? ' (agent)' : ''}`}
       aria-label={title ?? person.displayName}
     >
-      {initialsOf(person.displayName)}
-    </span>
+      <AvatarFallback className="bg-transparent font-semibold">{initialsOf(person.displayName)}</AvatarFallback>
+    </AvatarRoot>
   )
 }
 

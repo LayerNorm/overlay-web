@@ -7,7 +7,7 @@ import { AlertCircle, ListChecks, Plus, X } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { Button, HeaderSearch } from '@overlay/ui/primitives'
+import { Alert, Button, HeaderSearch } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { toWorkDate } from '@/shared/work/dates'
@@ -53,13 +53,13 @@ function EmptyState({ title, description, action }: { title: string; description
 
 function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
-    <div role="alert" className="mx-6 mt-3 flex shrink-0 items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+    <Alert variant="destructive" className="mx-6 mt-3 flex shrink-0 items-start gap-2 px-3 py-2 text-[13px]">
       <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
       <span className="flex-1">{message}</span>
       <button type="button" onClick={onDismiss} aria-label="Dismiss" className="shrink-0 rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900/40">
         <X size={14} />
       </button>
-    </div>
+    </Alert>
   )
 }
 
