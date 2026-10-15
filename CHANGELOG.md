@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Harden the standalone operator console: fresh WorkOS authentication, safe local redirects, principal-derived operator permissions, preserved architecture boundaries, and mandatory admin CI.
+
 ### Changed
 
 - **Admin console gets its own Convex secret and operator gate (Stage 2).** New `admin/console:*` functions mirror every admin read/write: each runs `requireAdminSecret` (constant-time `ADMIN_API_SECRET` compare, fails closed when unset) plus `requireOperator` — the caller's WorkOS identity via `convex/auth.config.ts` customJwt providers, plus an active `administrativePrincipals` row with a permitted role. Every write records its own `auditEvents` row in the same transaction, and `admin/breakGlass:grantFirstAdmin` recovers access via `npx convex run` when no admin remains. `apps/admin` now sends `ADMIN_API_SECRET` and the operator's access token; production is unaffected until `ADMIN_API_SECRET` is set (the existing `*ByServer` functions keep serving `/app/admin` on `INTERNAL_API_SECRET`).
@@ -49,6 +51,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **Work is the home page.** Signing in, opening `/` or `/app`, clicking the Overlay logo, and the marketing site's app links now open Work (`/app/work`) instead of Agents, including password/SSO sign-in without an explicit return destination. Explicit Account/desktop returns are preserved. Agents is unchanged in the sidebar. A deployment with `OVERLAY_FEATURE_WORK=0` shows its "Work unavailable" notice, which now links to Agents.
 
 - **Command search uses cmdk and the shared modal primitives (shadcn Phase 5).** Preserve category drill-in, application-ranked async results, destinations and Overlay themes; keyboard selection, disabled rows, focus containment/return and scroll locking now share canonical owners. Long result descriptions leave their titles visible on mobile.
+
+- **Dialog and form internals use the shadcn primitives (shadcn Phases 1b and 6a).** Remaining centered dialogs and the link-open chooser now share canonical Dialog/Popover machinery, and Button/IconButton/Input/Textarea wrap the canonical implementations while preserving existing exports and appearance. Non-dialog panels and the mobile drawer are unchanged.
+
+- **Selection and status primitives use shadcn internals (shadcn Phase 6b).** Badge now uses variant-backed canonical classes; Toggle wraps the canonical Switch while preserving its checked callback API; Checkbox, Separator, and Skeleton are exported from `@overlay/ui` for later adoption.
+
+- **Tabs and scrolling internals use shadcn primitives (shadcn Phase 6c).** The existing `TabsList`/`TabButton` API now sits on Radix Tabs keyboard semantics, `Toggle` uses canonical Switch machinery, and `ScrollArea`/`ScrollBar` are exported for later surface adoption. Caller-controlled selection stays synchronized with accessible tab state; keyboard focus skips disabled tabs and Enter/Space use existing activation callbacks.
 
 - Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 

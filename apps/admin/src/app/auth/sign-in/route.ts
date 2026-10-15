@@ -8,6 +8,7 @@ import {
   serializeCookie,
 } from '@/server/session'
 import { adminAuthorizationUrl } from '@/server/workos'
+import { safeReturnTo } from '@/server/auth-redirect'
 
 type AuthState = {
   issuedAt: number
@@ -15,16 +16,11 @@ type AuthState = {
   returnTo: string
 }
 
-function sanitizeReturnTo(value: string | null): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/'
-  return value
-}
-
 export async function GET(request: NextRequest) {
   const state: AuthState = {
     issuedAt: Date.now(),
     nonce: randomUUID(),
-    returnTo: sanitizeReturnTo(request.nextUrl.searchParams.get('returnTo')),
+    returnTo: safeReturnTo(request.nextUrl.searchParams.get('returnTo'), request.nextUrl.origin),
   }
   const url = adminAuthorizationUrl({
     origin: request.nextUrl.origin,

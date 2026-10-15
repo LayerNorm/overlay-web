@@ -79,8 +79,8 @@ export async function resolveOperator(
       session.refreshToken = refreshed.refreshToken ?? session.refreshToken
       sessionMutated = true
     } catch {
-      // The access token is only needed to forward identity to Convex in a
-      // later stage; a refresh failure does not invalidate the session.
+      // A revoked or expired WorkOS session must fail closed.
+      return { kind: 'anonymous', reason: 'expired' }
     }
   }
 
@@ -91,7 +91,7 @@ export async function resolveOperator(
   const principal = await runWithOperatorAccessToken(session.accessToken, async () =>
     await getPrincipal(session.user.id),
   ).catch(() => null)
-  if (!principal || principal.revokedAt) {
+  if (!principal || principal.revokedAt !== undefined) {
     return { kind: 'denied', reason: 'not_operator' }
   }
 

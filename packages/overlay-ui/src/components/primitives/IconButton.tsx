@@ -1,4 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
+
+import { Button } from '../ui/button'
 import { cn } from '../../utils/cn'
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -18,13 +20,11 @@ export function IconButton({
   ...props
 }: IconButtonProps) {
   return (
-    <button
+    <Button
       type={type}
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50',
-        sizeClasses[size],
-        className,
-      )}
+      variant="ghost"
+      size="icon"
+      className={cn(sizeClasses[size], className)}
       {...props}
     />
   )

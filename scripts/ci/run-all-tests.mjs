@@ -90,6 +90,11 @@ function classify(files) {
     const source = fs.readFileSync(path.join(root, file), 'utf8')
     const packageMatch = /^packages\/([^/]+)\//.exec(file)
 
+    if (file.startsWith('apps/admin/')) {
+      add('tsx:admin', { kind: 'tsx-admin', cwd: '.' }, file)
+      continue
+    }
+
     if (VITEST.test(source)) {
       const convex = file.endsWith('.convex.test.ts')
       add(convex ? 'vitest:convex' : 'vitest:unit', {
@@ -133,6 +138,11 @@ function commandFor(group) {
   // Opt-in live suites must use the caller's explicitly selected service,
   // never CI's deterministic fixture URL or authentication placeholder.
   const env = integrationOnly ? { ...process.env, NEXT_TELEMETRY_DISABLED: '1' } : { ...process.env, ...TEST_ENV }
+  if (group.kind === 'tsx-admin') {
+    env.TSX_TSCONFIG_PATH = path.join(root, 'apps/admin/tsconfig.json')
+    env.NODE_OPTIONS = [process.env.NODE_OPTIONS, ...PRELOADS].filter(Boolean).join(' ')
+    return { cmd: 'node', argv: ['--import', 'tsx', '--test', '--test-reporter=dot', ...group.files], env }
+  }
   if (group.kind === 'vitest') {
     // Files are passed as filters so the config's include glob never pulls in
     // node:test suites that live beside vitest ones.

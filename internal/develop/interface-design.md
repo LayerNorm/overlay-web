@@ -28,14 +28,20 @@ note-editor styles, uses standard properties such as `flex-shrink: 0`.
 
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
 shadcn/Radix primitives. Their consumers open them from ordinary buttons without
-a Radix Trigger, so the wrappers remember the focused opener and restore it on
-close. Radix owns focus trapping and scroll locking while open.
+a Radix Trigger. Canonical modal `DialogContent` remembers the focused opener
+and restores it on close unless a consumer overrides focus restoration. Radix owns focus trapping and scroll locking while open. Content captures the
+previous focused element before a descendant’s React `autoFocus` can replace it,
+so closing returns focus to the external opener even for autofocus inputs.
+Portaled content owns its viewport gutter; padding on `DialogOverlay` does not
+constrain its sibling content. Preserve mobile margins in the content width. Custom backdrop and
+content stacking levels must match so the backdrop cannot cover dialog controls.
 
 `ConfirmDialog` delegates dismissal to its callbacks. Confirming must not invoke
 Cancel or close an asynchronous operation early; native Radix Action/Cancel
 closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
-in isolated Chromium (requires the Playwright Chromium browser).
+in isolated Chromium. Use the Playwright browser or set
+`OVERLAY_QA_BROWSER_EXECUTABLE` to an installed compatible Chrome executable.
 
 ## Command palette
 
@@ -324,6 +330,15 @@ App startup renders a single loading screen wherever the shell is still resolvin
 ## Avatar colors
 
 The avatar picker offers the preset swatches plus a rainbow swatch that opens `AvatarColorPicker` (saturation/brightness square, hue strip, hex field; no opacity; helpers in `features/agents/lib/color-utils.ts`). Colors are stored as six-digit lowercase hex; the server accepts any such value.
+
+## Shared tabs
+
+The TabsList/TabButton compatibility API derives the Radix root selection from
+the caller’s active prop, including external selection changes. Arrow/Home/End
+keys move focus and skip disabled tabs; Enter/Space activate through the existing
+click callback. Keep manual activation and one owner for selected styling.
+Run `node scripts/qa/tabs-interactions.mjs` for real-browser regressions; it accepts
+`OVERLAY_QA_BROWSER_EXECUTABLE` like the dialog harness.
 
 ## Marketing FAQ and page metadata
 

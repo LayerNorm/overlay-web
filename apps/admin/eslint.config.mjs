@@ -33,23 +33,6 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/shared/**/*.ts', 'src/shared/**/*.tsx'],
-    ignores: ['src/shared/**/*.test.ts', 'src/shared/**/*.test.tsx'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['@/server', '@/server/*', '../server/*'],
-              message: 'src/shared must not import server-only code.',
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
     files: ['src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
@@ -64,5 +47,22 @@ export default defineConfig([
         },
       ],
     },
+  },  {
+    files: ['src/shared/**/*.ts', 'src/shared/**/*.tsx'],
+    ignores: ['src/shared/**/*.test.ts', 'src/shared/**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/server', '@/server/*', '../server/*', '*/src/*', '../../../src/*'],
+              message: 'src/shared must not import server-only code.',
+            },
+          ],
+        },
+      ],
+    },
   },
+
 ])

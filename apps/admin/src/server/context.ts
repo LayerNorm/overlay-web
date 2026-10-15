@@ -10,6 +10,7 @@ import { AuthorizationAdministrationService } from './authorization/Authorizatio
 import { AuthorizationDeniedError, AuthorizationService } from './authorization/AuthorizationService'
 import { createConvexAuthorizationRepositories } from './authorization/ConvexAuthorizationRepositories'
 import { FixedRoleAuthorizationBridge } from './authorization/FixedRoleAuthorizationBridge'
+import { operatorCapabilities } from './operator-permissions'
 
 export type AdminServerContext = {
   administrativeService: AdministrativeService
@@ -35,7 +36,10 @@ function buildContext(): AdminServerContext {
   // Web bootstrap passes AuthorizationDeniedError through; the routes' error
   // mapper turns it into a 403. Do the same translation here.
   const assertCapability = async (userId: string, capability: AuthorizationCapability) => {
-    await authorizationService.assertCapability({ capability, userId })
+    const principal = await new ConvexAdministrativeRepository().get({ userId })
+    if (!principal || !operatorCapabilities(principal).includes(capability)) {
+      throw new AdministrativeAuthorizationError()
+    }
   }
   const authorizationAdministrationService = new AuthorizationAdministrationService({
     assertCapability,

@@ -2,9 +2,9 @@
 
 import type { MemoryRow } from '@overlay/app-core'
 import { IMPORT_MEMORY_PROMPT } from '@overlay/app-core'
-import { useDialogFocus } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 import { Brain,Check,Copy,FileText,Loader2,Search,Trash2,X } from 'lucide-react'
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 const DIALOG_ACTION_BUTTON_CLASS =
   'px-3 py-1.5 rounded-md text-xs border border-(--border) bg-(--surface-subtle) text-(--foreground) transition-colors hover:bg-(--border)'
@@ -22,38 +22,17 @@ function DialogShell({
   scrimClassName?: string
   children: ReactNode
 }) {
-  const dialogRef = useDialogFocus<HTMLDivElement>(true)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className={`overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-(--overlay-scrim) ${scrimClassName}`}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      {/* Custom modal keeps enter/exit transition classes; focus trapped via useDialogFocus, Escape handled. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName={`overlay-backdrop-in z-50 bg-(--overlay-scrim) ${scrimClassName}`}
         aria-labelledby={ariaLabelledBy}
-        className={dialogClassName}
-        onClick={(event) => event.stopPropagation()}
+        className={`block gap-0 ${dialogClassName}`}
       >
         {children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -338,7 +317,7 @@ export function MemoryDetailDialog({
       ariaLabelledBy="memory-detail-dialog-title"
       onClose={onClose}
       scrimClassName="p-4"
-      dialogClassName="overlay-dialog-in flex max-h-[min(90vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl"
+      dialogClassName="overlay-dialog-in flex max-h-[min(90vh,640px)] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl"
     >
         <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
           <span id="memory-detail-dialog-title" className="text-sm font-medium text-(--foreground)">Memory</span>

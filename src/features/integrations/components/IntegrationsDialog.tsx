@@ -8,7 +8,7 @@ import {
   truncateIntegrationDescription,
   type IntegrationProviderCapabilities,
 } from '@overlay/app-core'
-import { useDialogFocus, usePresence } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 import { IntegrationDialogRowSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -189,18 +189,6 @@ export function IntegrationsDialog({
     }
   }, [actingSlug, onDisconnect])
 
-  const { mounted, visible } = usePresence(isOpen)
-  const dialogRef = useDialogFocus(mounted)
-
-  useEffect(() => {
-    if (!mounted) return undefined
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [mounted, onClose])
-  if (!mounted) return null
 
   const isSearching = queryInput.trim() !== query || loadingInitial
   const visibleItems = isSearching
@@ -208,24 +196,12 @@ export function IntegrationsDialog({
     : items.map((item) => ({ ...item, isConnected: connectedSlugs.has(item.slug) }))
 
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close control.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className={`${overlayClassName} transition-opacity duration-200 ease-(--overlay-ease) ${
-        visible ? 'opacity-100' : 'opacity-0'
-      }`}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName={overlayClassName}
         aria-labelledby="integrations-dialog-title"
-        className={`flex max-h-[80vh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease) ${
-          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
-        }`}
+        className="flex max-h-[80vh] w-[calc(100%-2.5rem)] max-w-[680px] gap-0 flex-col overflow-hidden p-0"
       >
         <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
           <div>
@@ -349,7 +325,7 @@ export function IntegrationsDialog({
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
