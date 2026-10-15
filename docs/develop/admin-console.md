@@ -132,3 +132,5 @@ Authenticated handlers and their error/audit paths share the same operator token
 WorkOS native Convex verification follows the [official AuthKit configuration](https://docs.convex.dev/auth/authkit/): shared issuers require the client audience; client-scoped issuers use client-specific JWKS and do not require an absent audience claim. Fresh authentication follows [WorkOS reauthentication](https://workos.com/docs/authkit/reauthentication).
 
 Keep admin production settings limited to its Convex URL, dedicated admin API/session secrets, production WorkOS credentials and the owner's explicit operator allowlist. Never allowlist the release-QA or demo identity in production. Preview uses separate secrets and test identities. Credentials have no scheduled expiry.
+
+The admin CI install selects only the admin workspace and its dependency closure, matching Vercel’s monorepo install. Shared UI packages declare their runtime styling/Radix dependencies; root web dependencies must not mask missing admin dependencies.
