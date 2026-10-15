@@ -4,7 +4,7 @@ import overlayAppConfig from '@/overlay.config'
 import { NoOpLLMGateway, OpenAILLMGateway, OpenRouterGateway } from '@/server/ai/providers'
 import { ApiKeyService } from '@/server/auth/api-keys'
 import { resolveBetterAuthConnectionSet } from '@/server/auth/connections'
-import { AdministrativeService, AuditService } from '@/server/admin'
+import { AuditService } from '@/server/admin'
 import {
   BetterAuthProvider,
   NoOpAuthProvider,
@@ -82,7 +82,6 @@ import { WorkspaceGovernanceService } from '@/server/governance/WorkspaceGoverna
 import {
   AuthorizationService,
 } from '@/server/authorization/AuthorizationService'
-import { FixedRoleAuthorizationBridge } from '@/server/authorization/FixedRoleAuthorizationBridge'
 import { createConvexAuthorizationRepositories } from '@/server/authorization/ConvexAuthorizationRepositories'
 import type { AuthorizationRepositories } from '@overlay/authz-contracts'
 import {
@@ -110,7 +109,6 @@ export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
   appDataCapabilities: AppDataCapabilities
   byokCredentialStore: ByokCredentialStore
-  administrativeService: AdministrativeService
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
   generationUsagePolicy: GenerationUsagePolicy
@@ -135,7 +133,6 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   authorizationService: AuthorizationService
-  fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
   conversationCollaboration: ConversationCollaborationRepository
 }
 
@@ -198,10 +195,6 @@ export function createOverlayServerContext(
     lifecycleEvents,
     repository: appData.repositories.users,
   })
-  const administrativeService = new AdministrativeService({
-    audit: auditService,
-    repository: appData.repositories.administration,
-  })
   const knowledgeSearchService = createKnowledgeSearchService(appData, runtimeConfig)
 
   // ── Workspace, authorization, and collaboration services ────────────────
@@ -222,7 +215,6 @@ export function createOverlayServerContext(
 
   const authorizationRepositories: AuthorizationRepositories = createConvexAuthorizationRepositories()
 
-  const fixedRoleAuthorizationBridge = new FixedRoleAuthorizationBridge(authorizationRepositories)
 
   const authorizationService = new AuthorizationService({
     repositories: authorizationRepositories,
@@ -428,7 +420,6 @@ export function createOverlayServerContext(
     appData,
     appDataCapabilities: appData.capabilities,
     byokCredentialStore,
-    administrativeService,
     auditService,
     chatUsagePolicy,
     generationUsagePolicy,
@@ -453,7 +444,6 @@ export function createOverlayServerContext(
     workspaceSharingService,
     workspaceSearchService,
     authorizationService,
-    fixedRoleAuthorizationBridge,
     conversationCollaboration,
   }
 }

@@ -132,3 +132,7 @@ Authenticated handlers and their error/audit paths share the same operator token
 WorkOS native Convex verification follows the [official AuthKit configuration](https://docs.convex.dev/auth/authkit/): shared issuers require the client audience; client-scoped issuers use client-specific JWKS and do not require an absent audience claim. Fresh authentication follows [WorkOS reauthentication](https://workos.com/docs/authkit/reauthentication).
 
 Keep admin production settings limited to its Convex URL, dedicated admin API/session secrets, production WorkOS credentials and the owner's explicit operator allowlist. Never allowlist the release-QA or demo identity in production. Preview uses separate secrets and test identities. Credentials have no scheduled expiry.
+
+## Stage 3d backend retirement
+
+After the standalone console and web surface retirement are accepted, customer web loses operator principal/list/directory and authorization-write endpoints. `admin/administration` exposes only append-only operational audit; `admin/authorization` retains ordinary permission-check reads. Web repository writes fail locally with an operator-only error, and operator repositories are no longer part of the customer backend registry. Customer role initialization uses the previously deployed fixed-member endpoint, preserving explicit custom assignments. Operator CRUD parity and every operator endpoint's secret/identity boundary are covered by Convex regression suites.

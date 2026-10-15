@@ -27,15 +27,8 @@ type ConvexGroup = AuthorizationGroup & { groupId?: string }
 type ConvexGrant = ResourceGrant & { grantId?: string }
 
 class ConvexAuthorizationRoleRepository implements RoleRepository {
-  async create(input: CreateRoleInput): Promise<AuthorizationRole> {
-    return role(await requiredMutation<ConvexRole>('createRoleByServer', {
-      roleId: input.id,
-      name: input.name,
-      description: input.description,
-      capabilities: input.capabilities,
-      isSystem: input.isSystem ?? false,
-      createdBy: input.createdBy,
-    }))
+  async create(_input: CreateRoleInput): Promise<AuthorizationRole> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
   async get(id: string): Promise<AuthorizationRole | null> {
@@ -50,32 +43,18 @@ class ConvexAuthorizationRoleRepository implements RoleRepository {
     return rows.map(role)
   }
 
-  async update(input: UpdateRoleInput): Promise<AuthorizationRole | null> {
-    const row = await mutation<ConvexRole | null>('updateRoleByServer', {
-      roleId: input.id,
-      name: input.name,
-      description: input.description,
-      capabilities: input.capabilities,
-    })
-    return row ? role(row) : null
+  async update(_input: UpdateRoleInput): Promise<AuthorizationRole | null> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
-  async archive(args: { id: string; archivedBy?: string }): Promise<boolean> {
-    const result = await mutation<{ archived: boolean }>('archiveRoleByServer', { roleId: args.id })
-    return result?.archived === true
+  async archive(_args: { id: string; archivedBy?: string }): Promise<boolean> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 }
 
 class ConvexAuthorizationGroupRepository implements GroupRepository {
-  async create(input: CreateGroupInput): Promise<AuthorizationGroup> {
-    return group(await requiredMutation<ConvexGroup>('createGroupByServer', {
-      groupId: input.id,
-      name: input.name,
-      description: input.description,
-      source: input.source ?? 'local',
-      externalId: input.externalId,
-      createdBy: input.createdBy,
-    }))
+  async create(_input: CreateGroupInput): Promise<AuthorizationGroup> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
   async get(id: string): Promise<AuthorizationGroup | null> {
@@ -90,34 +69,24 @@ class ConvexAuthorizationGroupRepository implements GroupRepository {
     return rows.map(group)
   }
 
-  async update(input: UpdateGroupInput): Promise<AuthorizationGroup | null> {
-    const row = await mutation<ConvexGroup | null>('updateGroupByServer', {
-      groupId: input.id,
-      name: input.name,
-      description: input.description,
-    })
-    return row ? group(row) : null
+  async update(_input: UpdateGroupInput): Promise<AuthorizationGroup | null> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
-  async archive(args: { id: string; archivedBy?: string }): Promise<boolean> {
-    const result = await mutation<{ archived: boolean }>('archiveGroupByServer', { groupId: args.id })
-    return result?.archived === true
+  async archive(_args: { id: string; archivedBy?: string }): Promise<boolean> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
-  async addMember(args: {
+  async addMember(_args: {
     groupId: string
     userId: string
     source?: GroupMembership['source']
   }): Promise<GroupMembership> {
-    return clean(await requiredMutation<GroupMembership>('addGroupMemberByServer', {
-      ...args,
-      source: args.source ?? 'local',
-    }))
+    throw new Error('Operator writes require the standalone admin console')
   }
 
-  async removeMember(args: { groupId: string; userId: string }): Promise<boolean> {
-    const result = await mutation<{ removed: boolean }>('removeGroupMemberByServer', args)
-    return result?.removed === true
+  async removeMember(_args: { groupId: string; userId: string }): Promise<boolean> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
   async listMembers(groupId: string): Promise<GroupMembership[]> {
@@ -132,17 +101,16 @@ class ConvexAuthorizationGroupRepository implements GroupRepository {
 }
 
 class ConvexAuthorizationRoleAssignmentRepository implements RoleAssignmentRepository {
-  async assignUser(args: {
+  async assignUser(_args: {
     userId: string
     roleId: string
     assignedBy?: string
   }): Promise<UserRoleAssignment> {
-    return clean(await requiredMutation<UserRoleAssignment>('assignUserRoleByServer', args))
+    throw new Error('Operator writes require the standalone admin console')
   }
 
-  async revokeUser(args: { userId: string; roleId: string }): Promise<boolean> {
-    const result = await mutation<{ removed: boolean }>('revokeUserRoleByServer', args)
-    return result?.removed === true
+  async revokeUser(_args: { userId: string; roleId: string }): Promise<boolean> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
   async listForUser(userId: string): Promise<UserRoleAssignment[]> {
@@ -155,17 +123,16 @@ class ConvexAuthorizationRoleAssignmentRepository implements RoleAssignmentRepos
     return rows.map(clean)
   }
 
-  async assignGroup(args: {
+  async assignGroup(_args: {
     groupId: string
     roleId: string
     assignedBy?: string
   }): Promise<GroupRoleAssignment> {
-    return clean(await requiredMutation<GroupRoleAssignment>('assignGroupRoleByServer', args))
+    throw new Error('Operator writes require the standalone admin console')
   }
 
-  async revokeGroup(args: { groupId: string; roleId: string }): Promise<boolean> {
-    const result = await mutation<{ removed: boolean }>('revokeGroupRoleByServer', args)
-    return result?.removed === true
+  async revokeGroup(_args: { groupId: string; roleId: string }): Promise<boolean> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
   async listForGroups(groupIds: string[]): Promise<GroupRoleAssignment[]> {
@@ -180,21 +147,12 @@ class ConvexAuthorizationRoleAssignmentRepository implements RoleAssignmentRepos
 }
 
 class ConvexAuthorizationResourceGrantRepository implements ResourceGrantRepository {
-  async upsert(input: UpsertResourceGrantInput): Promise<ResourceGrant> {
-    return grant(await requiredMutation<ConvexGrant>('upsertResourceGrantByServer', {
-      grantId: input.id,
-      resourceType: input.resourceType,
-      resourceId: input.resourceId,
-      principalType: input.principalType,
-      principalId: input.principalId,
-      accessRole: input.accessRole,
-      grantedBy: input.grantedBy,
-    }))
+  async upsert(_input: UpsertResourceGrantInput): Promise<ResourceGrant> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
-  async remove(id: string): Promise<boolean> {
-    const result = await mutation<{ removed: boolean }>('removeResourceGrantByServer', { grantId: id })
-    return result?.removed === true
+  async remove(_id: string): Promise<boolean> {
+    throw new Error('Operator writes require the standalone admin console')
   }
 
   async listForResource(args: {
@@ -239,20 +197,6 @@ function query<T>(operation: string, args: Record<string, unknown>): Promise<T |
     { ...args, serverSecret: getInternalApiSecret() },
     { throwOnError: true },
   )
-}
-
-function mutation<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
-  return convex.mutation<T>(
-    `admin/authorization:${operation}`,
-    { ...args, serverSecret: getInternalApiSecret() },
-    { throwOnError: true },
-  )
-}
-
-async function requiredMutation<T>(operation: string, args: Record<string, unknown>): Promise<T> {
-  const result = await mutation<T>(operation, args)
-  if (!result) throw new Error(`Convex authorization operation ${operation} returned no result`)
-  return result
 }
 
 function role(row: ConvexRole): AuthorizationRole {

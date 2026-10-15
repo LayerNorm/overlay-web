@@ -36,13 +36,8 @@ export class ConvexAuditRepository implements AuditRepository {
     return fromRow(row)
   }
 
-  async list(args: Parameters<AuditRepository['list']>[0] = {}): Promise<AuditEventRecord[]> {
-    const rows = await convex.query<ConvexAuditRow[]>(
-      'admin/administration:listAuditByServer',
-      { ...args, serverSecret: this.serverSecret },
-      { throwOnError: true },
-    ) ?? []
-    return rows.map(fromRow)
+  async list(_args: Parameters<AuditRepository['list']>[0] = {}): Promise<AuditEventRecord[]> {
+    throw new Error('Operator audit reads require the standalone admin console')
   }
 }
 
