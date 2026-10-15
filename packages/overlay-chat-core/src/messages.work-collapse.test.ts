@@ -49,6 +49,14 @@ test('keeps deliverable segments inline while work around them collapses', () =>
   assert.equal(plan.collapsedToolCallCount, 1)
 })
 
+test('keeps synthetic computer connection status visible without counting it as tool work', () => {
+  const segments = buildAssistantVisualSegments([tool('connect_computer')])
+  const plan = planAssistantWorkCollapse(segments)
+  assert.deepEqual(plan.collapsedIndexes, [])
+  assert.equal(plan.collapsedToolCallCount, 0)
+  assert.equal(segments[0]!.kind, 'tools')
+})
+
 test('a gated plan callout stays inline rather than hiding in the row', () => {
   // A file segment splits the tools so the gated callout is its own
   // single-tool segment — which is when it renders as the callout.

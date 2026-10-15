@@ -75,8 +75,30 @@ test('while a connected agent’s computer wakes up the row is a running "Connec
   })
   assert.deepEqual(view.blocks, [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }])
   assert.equal(getDescriptiveToolLabel('connect_computer', undefined, 'running'), 'Connecting to computer')
-  // Its controls (Cancel, Retry) are unchanged.
+  // The queue identity remains available while the hover toolbar handles cancellation.
   assert.equal(view.remoteQueue?.environmentName, 'overlay-cloud-5d291a64')
+})
+
+test('a connection timeout replaces stored waiting text with a failed connection, then reconnects on retry', () => {
+  for (const state of ['recoverable', 'recovering']) {
+    const view = toRoomMessageView({
+      message: record({ content: 'Waiting for Computer', parts: [
+        { type: 'text', text: 'Waiting for Computer' },
+        { type: 'data-remote-agent-status', data: { state, runId: 'run-1', environmentName: 'Computer', retryable: true } },
+      ] }), currentPrincipalId: 'me', authorName: 'Claude Code',
+    })
+    assert.deepEqual(view.blocks, [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer',
+      state: state === 'recoverable' ? 'output-error' : 'input-available' }])
+  }
+  assert.equal(getDescriptiveToolLabel('connect_computer', undefined, 'error'), 'Computer connection failed')
+})
+
+test('a recoverable failure after work starts preserves the actual output', () => {
+  const view = toRoomMessageView({ message: record({ content: 'Finished inspecting', parts: [
+    { type: 'text', text: 'Finished inspecting' },
+    { type: 'data-remote-agent-status', data: { state: 'recoverable', runId: 'run-1', environmentName: 'Computer', retryable: true } },
+  ] }), currentPrincipalId: 'me', authorName: 'Claude Code' })
+  assert.deepEqual(view.blocks, [{ kind: 'text', text: 'Finished inspecting' }])
 })
 
 test('once the agent starts working the connecting row is gone and the real content shows', () => {

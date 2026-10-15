@@ -417,9 +417,12 @@ required by law may be tombstoned and access-restricted rather than silently orp
 An offline environment never appears to be working. The environment list derives its displayed
 health from the most recent heartbeat: an `online` row becomes effectively `offline` after 45
 seconds without a heartbeat, and the settings UI refreshes every 15 seconds while environments
-exist. Interactive mentions may remain queued
-for a short, explicitly displayed window; the UI must show `Waiting for <environment>` with
-Cancel and Retry. Commands are durable and claim-once. Revocation prevents new claims
+exist. Interactive mentions may remain queued for a short window. The transcript shows
+`Connecting to computer` with cancellation through the existing hover-toolbar Stop icon,
+not inline waiting text or buttons. A recoverable failure exposes a Retry icon in that same
+toolbar; it is absent while connecting or recovering. Retry lets the backend choose reconnect
+or a fresh attempt based on the available session. Runs requiring inspection retain the
+explicit, confirmed Start fresh control. Commands are durable and claim-once. Revocation prevents new claims
 immediately; active credentials expire and leases terminate safely. Reconnect resumes from
 acknowledged command/event cursors. Duplicate sequences are acknowledged without reapplying;
 gaps are rejected with the next expected sequence. The Environments settings surface repeats

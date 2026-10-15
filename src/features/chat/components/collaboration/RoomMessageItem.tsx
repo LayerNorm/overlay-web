@@ -19,6 +19,7 @@ import {
   MessageSquareReply,
   Pencil,
   Pin,
+  RotateCcw,
   SmilePlus,
   Square,
   Trash2,
@@ -308,7 +309,13 @@ export function RoomMessageItem({
     : null
   const stopHandler = activeRemoteRun && onControlRemoteQueue
     ? () => onControlRemoteQueue(activeRemoteRun.runId, 'cancel')
-    : message.streaming ? onStopResponse : undefined
+    : !message.remoteRun && message.streaming ? onStopResponse : undefined
+  const retryableRun = message.remoteRun?.state === 'recoverable' && message.remoteRun.retryable
+    ? message.remoteRun
+    : null
+  const retryHandler = retryableRun && onControlRemoteQueue
+    ? () => onControlRemoteQueue(retryableRun.runId, 'retry')
+    : undefined
 
   const toolbar = (
     <RoomMessageToolbar
@@ -321,6 +328,7 @@ export function RoomMessageItem({
       saved={saved}
       disabled={Boolean(message.delivery)}
       onStop={stopHandler}
+      onRetry={retryHandler}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
       onReport={onReport}
@@ -739,9 +747,6 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
           ))}
         </div>
       ) : null}
-      {message.remoteQueue && onControlRemoteQueue ? (
-        <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
-      ) : null}
       {message.remoteRequest && onResolveRemoteRequest ? (
         <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
       ) : null}
@@ -1001,7 +1006,6 @@ function RemoteRunControls({ run, onControl }: {
   onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
 }) {
   if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
-  if (run.state === 'recovering') return <p className='mt-2 text-xs text-(--muted)' role='status'>Resuming…</p>
   if (run.state === 'cancelling') return <p className='mt-2 text-xs text-(--muted)' role='status'>Cancellation requested. Waiting for execution to stop.</p>
   if (run.state === 'needs_attention') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
@@ -1013,72 +1017,8 @@ function RemoteRunControls({ run, onControl }: {
         }}>Start fresh</button>
     </div>
   )
-  if (run.state === 'recoverable') return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
-        <span>
-          {run.retryClass === 'host_offline'
-            ? 'The environment went offline.'
-            : 'This run can be recovered.'}
-        </span>
-        <button
-          type='button'
-          onClick={() => onControl(run.runId, 'resume')}
-          className='rounded-md border border-(--border) px-2 py-1 text-(--foreground)'
-        >
-          Resume
-        </button>
-        <button
-          type='button'
-          onClick={() => onControl(run.runId, 'start_fresh')}
-          className='rounded-md px-2 py-1 hover:bg-(--surface-subtle)'
-        >
-          Start fresh
-        </button>
-    </div>
-  )
   // Cancelling an active run is the Stop button in the message toolbar.
   return null
-}
-
-function RemoteQueueControls({
-  queue,
-  onControl,
-}: {
-  queue: NonNullable<RoomMessageView['remoteQueue']>
-  onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
-}) {
-  const [elapsed, setElapsed] = useState(false)
-
-  useEffect(() => {
-    const refresh = () => setElapsed(Date.now() >= queue.queueExpiresAt)
-    refresh()
-    const timeout = window.setTimeout(refresh, Math.max(0, queue.queueExpiresAt - Date.now()))
-    return () => window.clearTimeout(timeout)
-  }, [queue.queueExpiresAt])
-
-  return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
-      <span>
-        {elapsed
-          ? 'The 2-minute waiting window elapsed.'
-          : 'Waiting up to 2 minutes for the environment to reconnect.'}
-      </span>
-      <button
-        type='button'
-        onClick={() => onControl(queue.runId, 'cancel')}
-        className='rounded-md px-2 py-1 hover:bg-(--surface-subtle) hover:text-(--foreground)'
-      >
-        Cancel
-      </button>
-      <button
-        type='button'
-        onClick={() => onControl(queue.runId, 'retry')}
-        className='rounded-md border border-(--border) px-2 py-1 text-(--foreground) hover:bg-(--surface-subtle)'
-      >
-        Retry
-      </button>
-    </div>
-  )
 }
 
 const QUICK_REACTIONS = [
@@ -1186,6 +1126,7 @@ function RoomMessageToolbar({
   saved,
   disabled,
   onStop,
+  onRetry,
   onStartEdit,
   onDelete,
   onReport,
@@ -1205,6 +1146,7 @@ function RoomMessageToolbar({
   saved: boolean
   disabled: boolean
   onStop?: () => void
+  onRetry?: () => void
   onStartEdit: () => void
   onDelete: () => void
   onReport: () => void
@@ -1226,6 +1168,11 @@ function RoomMessageToolbar({
       {onStop ? (
         <ToolbarIconButton buttonClass={buttonClass} onClick={onStop} disabled={disabled} ariaLabel="Stop response" title="Stop response">
           <Square size={13} strokeWidth={1.75} className="fill-current" />
+        </ToolbarIconButton>
+      ) : null}
+      {onRetry ? (
+        <ToolbarIconButton buttonClass={buttonClass} onClick={onRetry} disabled={disabled} ariaLabel="Retry connection" title="Retry connection">
+          <RotateCcw size={14} strokeWidth={1.75} />
         </ToolbarIconButton>
       ) : null}
       <EmojiPickerButton
