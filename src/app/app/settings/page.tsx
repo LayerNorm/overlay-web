@@ -1,4 +1,5 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
 
 // Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
 // with reusable panel rendering primitives in @overlay/modules-react.
@@ -18,7 +19,7 @@ import overlayAppConfig from '@/overlay.config'
 import type { BillingSettings } from '@overlay/app-core'
 import { resolveOverlayAppShellConfig } from '@overlay/app-core'
 import { resolveSettingsPanel } from '@overlay/app-core/settings-account'
-import { ListboxSelect } from '@overlay/ui/primitives'
+import { ListboxSelect, Button } from '@overlay/ui/primitives'
 import type { LinkOpenPreference } from '@overlay/app-core'
 import {
   SettingRow,
@@ -136,7 +137,7 @@ function GeneralSettingsSection({
         title="Onboarding tour"
         description="Replay the guided walkthrough that highlights the key features of the app."
         action={
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => {
               void (async () => {
@@ -144,10 +145,10 @@ function GeneralSettingsSection({
                 router.push('/app/chat?tour=replay')
               })()
             }}
-            className="shrink-0 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated)"
+            className={unstyledButton(`shrink-0 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated)`)}
           >
             Replay tour
-          </button>
+          </Button>
         }
       />
     </SettingsGroup>
@@ -420,7 +421,7 @@ export default function Page() {
 function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { capabilities, appDataCapabilities } = useOverlayCapabilities()
+  const { capabilities } = useOverlayCapabilities()
   const appShell = useMemo(
     () => resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }),
     [capabilities],

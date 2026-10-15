@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useEffect } from 'react'
 import { AlertCircle, RefreshCw } from 'lucide-react'
@@ -29,14 +31,14 @@ export function AppRouteErrorState({
         <p className="mt-2 text-sm text-(--muted)">
           The route failed while loading. Retry the segment without leaving the app.
         </p>
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={reset}
-          className="mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-(--border) bg-(--foreground) px-3 text-sm font-medium text-(--background) transition-opacity hover:opacity-90"
+          className={unstyledButton(`mt-5 inline-flex h-9 items-center gap-2 rounded-md border border-(--border) bg-(--foreground) px-3 text-sm font-medium text-(--background) transition-opacity hover:opacity-90`)}
         >
           <RefreshCw size={14} strokeWidth={1.8} />
           Retry
-        </button>
+        </Button>
       </div>
     </div>
   )
