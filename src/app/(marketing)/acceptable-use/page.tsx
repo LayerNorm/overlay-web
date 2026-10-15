@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Acceptable Use Policy',
+  description:
+    'The rules that protect users, providers, and the public when Overlay is used to connect models, tools, files, integrations, and sandboxes.',
+  alternates: { canonical: '/acceptable-use' },
+}
+
 
 const sections = [
   { title: 'Use lawfully and safely', body: 'Do not use Overlay to violate law or another person’s rights; facilitate fraud, trafficking, exploitation, violence, or evasion of legal restrictions; produce or distribute malware; conduct unauthorized surveillance; or make high-impact decisions without required human review, notices, and safeguards.' },

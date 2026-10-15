@@ -33,7 +33,8 @@ export function LandingAuthPageChrome({ children }: { children: ReactNode }) {
         <AuthBrandMark className="relative" />
         <div className="relative">
           <p className="max-w-md font-serif text-3xl leading-snug text-(--foreground) xl:text-4xl">
-            The control plane for your workspace.
+            The control plane for AI employees.
+
           </p>
           <p className="mt-5 max-w-sm text-sm leading-6 text-(--muted)">
             Create, deploy, and manage your agents in one workspace — or bring

@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Data Processing Addendum',
+  description:
+    'The Data Processing Addendum for customers that use Overlay to process personal data on their behalf.',
+  alternates: { canonical: '/dpa' },
+}
+
 
 const sections = [
   { title: 'Status', body: 'This page is a DPA readiness notice, not an executed Data Processing Addendum. Customers requiring processor terms must sign a counsel-approved DPA with LayerNorm before submitting regulated or contractually restricted personal data.' },

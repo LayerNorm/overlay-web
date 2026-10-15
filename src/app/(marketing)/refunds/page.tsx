@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import { LegalPageTemplate } from '@/features/marketing/components/LegalPageTemplate'
 import { LEGAL_EFFECTIVE_DATE } from '@/shared/legal/legal-documents'
+
+export const metadata: Metadata = {
+  title: 'Refund, Cancellation, and Usage Billing Terms',
+  description:
+    'How Overlay handles recurring charges, top-ups, usage reconciliation, cancellation, refunds, disputes, and taxes.',
+  alternates: { canonical: '/refunds' },
+}
+
 
 const sections = [
   { title: 'Recurring subscriptions', body: 'Paid plans renew automatically at the amount and interval shown at checkout until canceled. Cancel through the billing portal before renewal to avoid the next recurring charge. Cancellation takes effect at the end of the paid period unless law or the checkout disclosure says otherwise.' },
