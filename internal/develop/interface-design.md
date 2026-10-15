@@ -326,7 +326,14 @@ paint, so replacing a loading boundary preserves opacity and never restarts the
 800 ms pulse delay. Keep this clock shared by animated and settled instances.
 The brand entrance (mark fade + word reveal) is likewise claimed once per boot:
 the first loader to mount plays it and records it played, so every later gate
-renders the settled screen and the word never re-reveals.
+renders the settled screen and the word never re-reveals. The loader is also
+always the first paint: `WorkspaceHydrationBoundary` only treats 'idle' as
+decided once the auth check has resolved (guests settle there; a session user
+enables workspaces after first paint), so children stay gated until status is
+'ready' and the app can never paint before the loader. The wordmark paints
+only in Libre Baskerville: the Regular face is preloaded in the root layout
+and the loader keeps the word hidden (`app-brand-loader--fontwait`) until
+`document.fonts` reports it loaded (1.5s cap).
 
 ## Brand lockup
 
