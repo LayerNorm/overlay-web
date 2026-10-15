@@ -1,5 +1,4 @@
 import type { HTMLAttributes, ReactNode } from 'react'
-import { useDialogReturnFocus } from '../../hooks/useDialogReturnFocus'
 import {
   Dialog,
   DialogContent,
@@ -32,10 +31,9 @@ export function DialogFrame({
   className,
   ...props
 }: DialogFrameProps) {
-  const returnFocus = useDialogReturnFocus()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} className={className} {...returnFocus} onCloseAutoFocus={onCloseAutoFocus ?? returnFocus.onCloseAutoFocus} {...props}>
+      <DialogContent showCloseButton={false} className={className} onCloseAutoFocus={onCloseAutoFocus} {...props}>
         {title || actions ? (
           <DialogHeader>
             {title ? <DialogTitle>{title}</DialogTitle> : <span />}

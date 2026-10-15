@@ -24,9 +24,9 @@ Trash2,
 X,
 Zap
 } from 'lucide-react'
-import { useEffect, useState,type MouseEvent,type ReactNode } from 'react'
+import { useState,type MouseEvent,type ReactNode } from 'react'
 import { ListboxSelect, Tile, TileIcon, TileGrid } from '@overlay/ui/primitives'
-import { useDialogFocus } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 
 import { EnabledToggle, Field } from './shared'
 import { AppScreenBody } from '../shell'
@@ -442,23 +442,15 @@ export function McpServerDialog({
   const handleConnectOAuth = () => connectMcpServerOAuth({ connecting, values, onConnectOAuth, setConnecting, setMutationError })
   const handleDisconnectOAuth = () => disconnectMcpServerOAuth({ connecting, initial, onDisconnectOAuth, onClose, setConnecting, setMutationError })
 
-  const dialogRef = useDialogFocus<HTMLDivElement>(true)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
   return (
-    // Backdrop click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-(--overlay-scrim) p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="mcp-server-dialog-title" className="overlay-dialog-in flex w-full max-w-xl flex-col rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="overlay-backdrop-in z-50 bg-(--overlay-scrim) p-4"
+        aria-labelledby="mcp-server-dialog-title"
+        className="overlay-dialog-in flex w-[calc(100%-2rem)] max-w-xl gap-0 flex-col p-0"
+        style={{ maxHeight: 'calc(100vh - 80px)' }}
+      >
         <div className="flex shrink-0 items-center justify-between border-b border-(--border) px-5 py-4">
           <h3 id="mcp-server-dialog-title" className="text-sm font-medium text-(--foreground)">{isEdit ? 'Edit MCP Server' : 'Add MCP Server'}</h3>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"><X size={16} /></button>
@@ -505,8 +497,8 @@ export function McpServerDialog({
           isEdit={isEdit}
           onSave={() => void handleSave()}
         />
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
