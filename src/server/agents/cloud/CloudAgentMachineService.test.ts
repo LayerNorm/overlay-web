@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
 import { CloudAgentMachineService } from './CloudAgentMachineService'
-import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
+import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentRunCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
 
 function fakeMachine(status: 'running' | 'stopped' = 'running', files: Record<string, string> = {}) {
   const written: string[] = []
@@ -270,4 +270,13 @@ test('unreachable execution is confirmed stopped only after provider readback, w
 test('a successful provider stop request without stopped-state proof is not confirmation', async () => {
   const { machine } = fakeMachine('running')
   assert.equal(await deps(machine).service.stopExecution({ workspaceId: 'ws', environmentId: 'env-1' }), false)
+})
+
+test('managed startup propagates lifecycle v2 only after explicit enablement', () => {
+  const input = { enrollmentCode: 'fixture-code', serverUrl: 'https://preview.example.test', name: 'fixture', adapterId: 'codex' as const }
+  for (const value of [undefined, '1', '2']) {
+    const env = { OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION: value }
+    assert.equal(cloudAgentConnectCommand(input, env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
+    assert.equal(cloudAgentRunCommand(env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
+  }
 })

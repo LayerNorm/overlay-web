@@ -514,6 +514,8 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   machine, so the server approves the environment itself instead of a person confirming a phrase,
   with the filesystem grant fixed to `/home/user/workspace`. The short-lived credential, signed
   polling, and ACP bridge are unchanged.
+  Managed connect/restart commands propagate lifecycle v2 only when the server
+  enables it; the host persists that negotiation for subsequent restarts.
 - **Lifecycle.** A machine stops 10 minutes after its last run ends
   (event-based; see `internal/develop/agent-machine-idle.md`). A turn queued for an offline machine
   resumes it and restarts the host from saved state after the response is sent. Revoking the
