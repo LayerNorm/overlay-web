@@ -5,8 +5,6 @@
  * - `personal`: mine within this workspace; only I can see it.
  * - `workspace`: shared with the workspace's members.
  * - Archived is a state, not a scope: an archived row keeps the scope it was archived from, and restoring returns to it.
- *
- * See docs/plans/UNIFIED_SCOPES_PLAN.md.
  */
 
 export const RESOURCE_SCOPES = ['personal', 'workspace'] as const

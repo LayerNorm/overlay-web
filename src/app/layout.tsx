@@ -6,47 +6,74 @@ import { THEME_INIT_SCRIPT } from "@/shared/app/theme-init-script";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://getoverlay.io"),
-  title: "overlay",
+  title: {
+    default: "Overlay: The control plane for AI employees",
+    template: "%s | Overlay",
+  },
   description:
-    "Overlay is the unified AI interaction layer: chat, voice notes, browser tasks, agents, automations, context, and content generation in one open-source workspace.",
+    "Overlay is the control plane for AI employees. Create, deploy, and manage every agent in one workspace. Bring your own agents, or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+  applicationName: "Overlay",
   keywords: [
-    "AI workspace",
-    "AI interaction layer",
-    "open source AI",
+    "control plane for AI employees",
+    "AI employees",
+    "control plane for AI agents",
+    "AI agent platform",
+    "unify AI agents",
+    "run all agents in one place",
+    "agent orchestration",
+    "AI agent workspace",
+    "multi-agent platform",
     "AI agents",
-    "browser agent",
-    "voice notes",
+    "Codex",
+    "Claude Code",
     "Overlay",
-    "ChatGPT alternative",
-    "Claude alternative",
-    "Perplexity alternative",
+    "open source AI",
   ],
+  authors: [{ name: "LayerNorm", url: "https://layernorm.co" }],
+  creator: "LayerNorm",
+  publisher: "LayerNorm Inc",
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
   icons: {
     icon: [
       { url: "/icon.png", sizes: "64x64", type: "image/png" },
     ],
   },
   openGraph: {
-    title: "overlay — the unified AI interaction layer",
+    title: "Overlay: The control plane for AI employees",
     description:
-      "Open-source AI workspace for chat, voice notes, browser tasks, agents, automations, context, and content generation.",
+      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
     type: "website",
     url: "https://getoverlay.io",
+    siteName: "Overlay",
+    locale: "en_US",
     images: [
       {
         url: "https://getoverlay.io/assets/overlay-share-linkedin-thumb.png",
         width: 1200,
         height: 627,
-        alt: "overlay logo",
+        alt: "Overlay: The control plane for AI employees",
       },
     ],
   },
   twitter: {
-    card: "summary",
-    title: "overlay — the unified AI interaction layer",
+    card: "summary_large_image",
+    title: "Overlay: The control plane for AI employees",
     description:
-      "Open-source AI workspace for chat, voice notes, browser tasks, agents, automations, context, and content generation.",
-    images: ["https://getoverlay.io/assets/overlay-share-x-thumb.png"],
+      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+    images: ["https://getoverlay.io/assets/overlay-share-linkedin-thumb.png"],
   },
 };
 

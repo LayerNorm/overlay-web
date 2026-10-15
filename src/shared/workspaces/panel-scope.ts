@@ -1,8 +1,7 @@
 /**
  * The scope a person is looking at in the secondary panel (Personal / Workspace). It is one setting shared by every page:
  * the URL carries it as `?scope=`, and the last choice is remembered so the next page opens on it. Archived items are not a
- * scope: they all live in Settings → Archived (older links with `?scope=archived` are sent there). See
- * docs/plans/UNIFIED_SCOPES_PLAN.md.
+ * scope: they all live in Settings → Archived (older links with `?scope=archived` are sent there).
  */
 import type { ResourceScope } from './resource-scope'
 import { soloPanelScope } from './solo-workspace'

@@ -150,7 +150,7 @@ export async function prepareActTooling(params: {
   agentId?: string
   agentPrincipalId?: string
   /**
-   * The turn is in a room others can read (docs/plans/TOOL_SCOPING_PLAN.md, T4): the person's private reach is withheld.
+   * The turn is in a room others can read (internal/plans/TOOL_SCOPING_PLAN.md, T4): the person's private reach is withheld.
    * Searches and lists see only what the workspace shares, tools that read the person's own chats and files are not
    * offered, connected accounts are the workspace's only, and MCP servers are the workspace's shared ones.
    */

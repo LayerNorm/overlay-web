@@ -1,5 +1,5 @@
 // Builds and serves the real Work UI in an isolated browser page, backed by an in-page fake API (see fake-work-api.ts).
-// Used by scripts/qa/work-ui-qa.mjs. Needs Playwright's Chromium (see docs/develop/browser-testing-with-agent-browser.md).
+// Used by scripts/qa/work-ui-qa.mjs. Needs Playwright's Chromium (see internal/develop/browser-testing-with-agent-browser.md).
 import { createServer } from 'node:http'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
