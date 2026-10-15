@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Update Vercel Speed Insights to 2.0 and patch the Agent Host Eve dependency to undici 8.10.2, removing the expired security-audit exception.
+
 - The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline. Reduced motion disables the pulse and workspace spinner; shared pulse timing prevents flashes across loading-boundary handoffs.
 
 - **Sidebar sub-rows share the agent tree's guide-line indent.** Scope sub-rows in the secondary panel (Personal/Workspace's pages such as List/Board/Timeline, All/Notes/Files/Outputs, Connectors/Skills/MCPs, and chat subviews) and folders in the Files tree now nest inside the same `SidebarMenuSub` vertical-line list as an agent's threads, instead of sitting flush or using per-row padding. Behavior and routes are unchanged.
