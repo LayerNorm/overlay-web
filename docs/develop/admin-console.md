@@ -138,3 +138,7 @@ The admin CI install selects only the admin workspace and its dependency closure
 The OAuth state envelope holds a one-use PKCE verifier; AuthKit gets its S256 challenge and callback exchanges the code with that verifier. Exchange failures log only event, error class, bounded provider code and status, never codes, tokens or credentials.
 
 The legacy `/api/v1/admin/usage` path is the People directory: admin, billing and support operators may read it; auditors use the audit view. The UI, route gate and Convex directory gate use that same policy.
+
+## Operator MFA verification
+
+On 2026-10-14, Google Account security for `divyansh@layernorm.co` showed 2-Step Verification enabled since March 14, with an authenticator and a passkey. WorkOS has no separately enrolled factor for this user. This confirms Google-account MFA enrollment; it does not prove every AuthKit sign-in method requires a second factor. Production acceptance uses the verified Google identity.
