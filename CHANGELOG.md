@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make connected-agent transport failures diagnosable (reliable connected agents, Phase 0). Agent Host routes return `x-overlay-request-id` and log failed or slow requests. Server failures and Convex call errors are logged with a safe classification: type, class, codes, Convex function and request id. Each connected-agent run records stream counters (batches, bytes, text snapshot size, message rewrites, refused batches, host lag, quiet gaps, longest tool), returned as `streamSummary` by `GET /api/v1/conversations/run`. The long-horizon smoke gains `--via overlay` to run a real cloud agent on a PR preview.
+
 - Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
 
 - Scope Boat Preview machine creation to its isolated named environment while keeping account credentials excluded; document the approved one-year Preview key renewal requirement.

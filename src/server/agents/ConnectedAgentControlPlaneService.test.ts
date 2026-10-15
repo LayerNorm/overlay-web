@@ -591,3 +591,21 @@ test('fresh tool delivery preserves signed scope and refuses a token from anothe
     else process.env.OVERLAY_AGENT_MCP_SECRET = previous
   }
 })
+
+test('a batch Convex refuses as unusable is counted against its run, and the refusal still reaches the host', async () => {
+  const { service, repository } = fixture()
+  const counted: Array<{ runId: string; workspaceId: string; environmentId: string }> = []
+  Object.assign(repository, {
+    async getRemoteSessionForRun() { return { id: 'session-1', eventCursor: 0, capabilitySnapshot: {} } },
+    async applyRemoteEvents() { throw new Error('[Request ID: abc123] Uncaught Error: AGENT_EVENT_BATCH_TOO_LARGE') },
+    async recordRejectedEventBatch(args: { runId: string; workspaceId: string; environmentId: string }) { counted.push(args); return true },
+  })
+  const auth = { credential: { workspaceId: 'workspace-1', environmentId: 'environment-1' }, environment: { id: 'environment-1' } }
+  const batch = { protocolVersion: 1, environmentId: 'environment-1', runId: 'run-1', events: [] }
+  await assert.rejects(() => service.applyEvents(auth as never, batch as never), /AGENT_EVENT_BATCH_TOO_LARGE/)
+  assert.deepEqual(counted, [{ workspaceId: 'workspace-1', environmentId: 'environment-1', runId: 'run-1' }])
+
+  // A failing counter never replaces the original refusal.
+  Object.assign(repository, { async recordRejectedEventBatch() { throw new Error('convex down') } })
+  await assert.rejects(() => service.applyEvents(auth as never, batch as never), /AGENT_EVENT_BATCH_TOO_LARGE/)
+})

@@ -42,12 +42,15 @@ import type { ConnectedAgentRepository, RemoteAgentUsageSettlement } from './Con
 import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
+import { describeFailure } from '@/server/observability/failure-classification'
 import { logger } from '@/server/observability/logger'
 import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
 import type { AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
 import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
+/** Convex refusals that mean the batch itself was unusable, not that the run or policy refused it. */
+const REFUSED_BATCH_PATTERN = /AGENT_EVENT_BATCH_|AGENT_EVENT_SCOPE_MISMATCH|AGENT_REMOTE_REQUEST_INVALID|AGENT_ARTIFACT_NOT_VALIDATED/
 const PROOF_CHALLENGE_TTL_MS = 15 * 60_000
 const CREDENTIAL_TTL_MS = 15 * 60_000
 /**
@@ -882,6 +885,17 @@ export class ConnectedAgentControlPlaneService {
     if (!updated) throw controlPlaneError('Command was not found or is no longer acknowledgeable', 409, 'command_acknowledgement_rejected')
   }
 
+  /** Best effort: a diagnostics write must never turn a refused batch into a different failure. */
+  async recordRejectedEventBatch(auth: HostAuthentication, runId: string): Promise<void> {
+    try {
+      await this.dependencies.repository.recordRejectedEventBatch?.({
+        workspaceId: auth.credential.workspaceId, environmentId: auth.credential.environmentId, runId,
+      })
+    } catch (error) {
+      logger.warn('Connected-agent rejected-batch counter failed', describeFailure(error))
+    }
+  }
+
   async applyEvents(auth: HostAuthentication, batch: EventBatch) {
     if (batch.environmentId !== auth.environment.id) {
       throw controlPlaneError('Event batch scope does not match credential', 403, 'event_scope_mismatch')
@@ -914,6 +928,9 @@ export class ConnectedAgentControlPlaneService {
         now: this.now(),
       })
     } catch (error) {
+      if (error instanceof Error && REFUSED_BATCH_PATTERN.test(error.message)) {
+        await this.recordRejectedEventBatch(auth, batch.runId)
+      }
       throw translatePolicyError(error)
     }
     if (!result.accepted) {

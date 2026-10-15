@@ -19,8 +19,9 @@ import { createHash, randomBytes, sign } from 'node:crypto'
 
 /** A control-plane request that failed; `code` is the server's stable error code when it sent one. */
 export class ControlPlaneRequestError extends Error {
-  constructor(readonly status: number, readonly code?: string) {
-    super(`control plane request failed with ${status}`)
+  constructor(readonly status: number, readonly code?: string, readonly requestId?: string) {
+    // The request id matches this failure to Overlay's own log line for the same request.
+    super(`control plane request failed with ${status}${code ? ` (${code})` : ''}${requestId ? ` [request ${requestId}]` : ''}`)
     this.name = 'ControlPlaneRequestError'
   }
 }
@@ -167,7 +168,9 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     })
     if (!response.ok) {
       const body = await response.json().catch(() => null) as { code?: unknown } | null
-      throw new ControlPlaneRequestError(response.status, typeof body?.code === 'string' ? body.code : undefined)
+      const requestId = response.headers?.get?.('x-overlay-request-id') ?? undefined
+      throw new ControlPlaneRequestError(response.status, typeof body?.code === 'string' ? body.code : undefined,
+        requestId && /^[A-Za-z0-9_.:-]{1,128}$/.test(requestId) ? requestId : undefined)
     }
     return response
   }

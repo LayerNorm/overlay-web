@@ -11,6 +11,9 @@
  *                 compare hashes again (proves nothing important lived only on the sandbox)
  *
  * Usage (from overlay-landing/):
+ *   Through Overlay (a PR preview or local dev server; see via-overlay.mts):
+ *     npx tsx scripts/smoke/cloud-agent-long-horizon/harness.mts --via overlay --preview-url https://pr-<n>.preview.getoverlay.io
+ *   Directly against a Boat box (provider baseline):
  *   npx tsx scripts/smoke/cloud-agent-long-horizon/harness.mts [--model claude-haiku-5-5] [--mode bypassPermissions]
  *     [--scope personal/smoke-user] [--box <id>] [--keep-box] [--probe] [--prompt-file path]
  * Env (from .env.local): BOX_API_KEY | BOAT_API_KEY, CLAUDE_SETUP_TOKEN, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
@@ -44,6 +47,12 @@ const flag = (name: string) => args.includes(`--${name}`)
 const option = (name: string, fallback?: string) => {
   const index = args.indexOf(`--${name}`)
   return index >= 0 ? args[index + 1] : fallback
+}
+
+// `--via overlay` runs the task through the real product on a PR preview instead of driving a box directly.
+if (option('via') === 'overlay') {
+  const { runViaOverlay } = await import('./via-overlay.mts')
+  process.exit(await runViaOverlay(args).catch((failure) => { console.error(failure); return 1 }))
 }
 
 const HOME = '/home/user'

@@ -7,6 +7,7 @@ import { internalMutation, mutation, query, type MutationCtx } from '../_generat
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
 import { projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
+import { recordAcceptedBatch, recordRejectedBatch } from '../../src/shared/agents/remote-run-stream-stats'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
 import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../platform/usage'
 
@@ -2366,7 +2367,10 @@ export const applyRemoteEventsByServer = mutation({
     })
     if (last <= session.eventCursor) return duplicateResult()
     const expected = session.eventCursor + 1
-    if (first !== expected) return { accepted: false, expectedSequence: expected }
+    if (first !== expected) {
+      if (run) await ctx.db.patch(run._id, { streamStats: recordRejectedBatch(run.streamStats) })
+      return { accepted: false, expectedSequence: expected }
+    }
     if (args.maxEventsPerMinute !== undefined) {
       const windowStartedAt = Math.floor(args.now / 60_000) * 60_000
       const window = await ctx.db
@@ -2536,6 +2540,9 @@ export const applyRemoteEventsByServer = mutation({
     })
     await ctx.db.patch(run._id, {
       status: projection.runStatus,
+      streamStats: recordAcceptedBatch(run.streamStats, {
+        events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage: true,
+      }),
       ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
       ...(!run.startedAt ? { startedAt: args.now } : {}),
       ...(projection.runStatus === 'completed' ? { completedAt: args.now } : {}),
@@ -2583,6 +2590,22 @@ export const applyRemoteEventsByServer = mutation({
     }
     return { accepted: true, acknowledgedSequence: last, duplicate: false,
       ...(projection.terminal ? { terminal: terminalBilling(session.capabilitySnapshot, projection.tokens, terminalOutcome(projection.runStatus)) } : {}) }
+  },
+})
+
+/** Counts an event batch the server refused before it could be applied (schema, size or scope), for QA readback. */
+export const recordRemoteEventBatchRejectionByServer = mutation({
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const environment = await ctx.db.query('agentEnvironments')
+      .withIndex('by_environmentId', (q) => q.eq('environmentId', args.environmentId)).unique()
+    if (!environment || environment.workspaceId !== args.workspaceId) return false
+    const run = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
+    if (!run || run.runner !== 'remote' || run.environmentId !== args.environmentId) return false
+    await ctx.db.patch(run._id, { streamStats: recordRejectedBatch(run.streamStats) })
+    return true
   },
 })
 

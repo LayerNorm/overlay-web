@@ -197,6 +197,9 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   applyRemoteEvents(input: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]) {
     return mutation<ApplyRemoteEventsResult>('applyRemoteEventsByServer', input)
   }
+  recordRejectedEventBatch(input: { workspaceId: string; environmentId: string; runId: string }) {
+    return mutation<boolean>('recordRemoteEventBatchRejectionByServer', input)
+  }
   revokeEnvironment(input: Parameters<ConnectedAgentRepository['revokeEnvironment']>[0]) {
     return mutation<boolean>('revokeEnvironmentByServer', input)
   }

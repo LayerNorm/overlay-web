@@ -1,4 +1,5 @@
 import type { RemoteRunState } from './remote-run'
+import type { RemoteRunStreamStats } from './remote-run-stream-stats'
 
 /**
  * `room` is a workspace-agent turn in a DM or channel. It is a distinct mode
@@ -101,6 +102,8 @@ export type AgentRun = {
   terminalError?: AgentRunTerminalError
   approval?: AgentRunApproval
   metrics?: AgentRunMetrics
+  /** Connected-agent transport counters; remote runs only. */
+  streamStats?: RemoteRunStreamStats
   createdAt: number
   updatedAt: number
 }

@@ -201,6 +201,52 @@ describe('Convex remote agent room turns', () => {
     })).toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 4, stale: 'stale_terminal' }))
   })
 
+  test('stream stats record batches, snapshot size, quiet gaps, host lag, tool time and refused batches', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    const apply = (events: Array<ReturnType<typeof event>>, at: number) => call<{ accepted: boolean }>('applyRemoteEventsByServer', {
+      workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at,
+    })
+    await apply([
+      event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' }),
+      event(2, 'text_checkpoint', { text: 'Searching' }),
+      event(3, 'action', { actionId: 'search-1', title: 'Web search', status: 'started' }),
+    ], now + 1_000)
+    // A gap in sequence numbers is refused and counted, and changes nothing else.
+    expect(await apply([event(9, 'text_checkpoint', { text: 'out of order' })], now + 2_000))
+      .toEqual({ accepted: false, expectedSequence: 4 })
+    await apply([
+      { ...event(4, 'action', { actionId: 'search-1', title: 'Web search', status: 'completed' }), occurredAt: now + 4_000 },
+      { ...event(5, 'text_checkpoint', { text: 'Searching done' }), occurredAt: now + 4_001 },
+    ], now + 5_000)
+    // A batch the server could not use at all (scope or schema) is counted through the separate mutation.
+    expect(await call('recordRemoteEventBatchRejectionByServer', { workspaceId, environmentId, runId: 'run-remote-turn' })).toBe(true)
+    expect(await call('recordRemoteEventBatchRejectionByServer', { workspaceId: 'other-workspace', environmentId, runId: 'run-remote-turn' })).toBe(false)
+
+    const { run, message } = await projectedState(convex, started.messageId)
+    expect(message?.content).toBe('Searching done')
+    expect(run?.streamStats).toEqual(expect.objectContaining({
+      batches: 2,
+      events: 5,
+      textCheckpointChars: 'Searching'.length + 'Searching done'.length,
+      messageWrites: 2,
+      rejectedBatches: 2,
+      firstEventAt: now + 1_000,
+      lastEventAt: now + 5_000,
+      maxQuietGapMs: 4_000,
+      longestToolMs: 4_000 - 3,
+      longestToolTitle: 'Web search',
+      openTools: [],
+    }))
+    expect(run?.streamStats?.eventBytes).toBeGreaterThan(0)
+    // The second batch arrived 1 s after its events happened on the host.
+    expect(run?.streamStats?.maxHostLagMs).toBe(1_000)
+  })
+
   test('a rejected host command terminates the visible run with a recoverable error', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)

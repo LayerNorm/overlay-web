@@ -409,6 +409,8 @@ export interface ConnectedAgentRepository {
     maxEventsPerMinute?: number
     now: number
   }): Promise<ApplyRemoteEventsResult>
+  /** Counts a batch refused before it was applied; best effort, for transport diagnostics. */
+  recordRejectedEventBatch?(args: { workspaceId: string; environmentId: string; runId: string }): Promise<boolean>
   revokeEnvironment(args: { workspaceId: string; environmentId: string; now: number }): Promise<boolean>
   deleteWorkspaceData(args: { workspaceId: string }): Promise<void>
 }

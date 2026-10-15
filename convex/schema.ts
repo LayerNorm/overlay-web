@@ -1226,6 +1226,22 @@ export default defineSchema({
       cancellationAcknowledgedAt: v.optional(v.number()),
       staleDetectedAt: v.optional(v.number()),
     })),
+    // Connected-agent transport counters (src/shared/agents/remote-run-stream-stats.ts).
+    streamStats: v.optional(v.object({
+      batches: v.number(),
+      events: v.number(),
+      eventBytes: v.number(),
+      textCheckpointChars: v.number(),
+      messageWrites: v.number(),
+      rejectedBatches: v.number(),
+      firstEventAt: v.optional(v.number()),
+      lastEventAt: v.optional(v.number()),
+      maxQuietGapMs: v.number(),
+      maxHostLagMs: v.number(),
+      longestToolMs: v.number(),
+      longestToolTitle: v.optional(v.string()),
+      openTools: v.array(v.object({ actionId: v.string(), title: v.string(), startedAt: v.number() })),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

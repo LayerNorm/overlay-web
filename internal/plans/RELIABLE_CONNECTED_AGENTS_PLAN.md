@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: proposed; nothing implemented. Phase 1 is the first PR.
+Status: Phase 0 implemented on `codex/reliable-connected-agents` (pending preview QA); Phases 1–5 not started.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),

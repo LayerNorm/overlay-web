@@ -1,6 +1,7 @@
 import 'server-only'
 import { ConvexError, jsonToConvex } from 'convex/values'
 
+import { describeFailure, recordConvexCallFailure } from '@/server/observability/failure-classification'
 import { logger } from '@/server/observability/logger'
 import { deploymentEnv } from '@/server/env/deployment-env'
 import { resolveConvexUrl } from './convex-url'
@@ -73,6 +74,22 @@ async function callConvex<T>(
   args: Record<string, unknown>,
   options: CallConvexOptions = {}
 ): Promise<T | null> {
+  try {
+    return await callConvexUnlabelled<T>(type, path, args, options)
+  } catch (error) {
+    // Callers see the same error; logs can now say which function failed and how.
+    throw recordConvexCallFailure(error, { path, type, httpStatus: lastHttpStatus.get(error as object) })
+  }
+}
+
+const lastHttpStatus = new WeakMap<object, number>()
+
+async function callConvexUnlabelled<T>(
+  type: 'query' | 'mutation' | 'action',
+  path: string,
+  args: Record<string, unknown>,
+  options: CallConvexOptions = {}
+): Promise<T | null> {
   if (!IS_BROWSER && !CONVEX_URL) {
     logger.error('CONVEX_URL not configured')
     return null
@@ -134,12 +151,14 @@ async function callConvex<T>(
           ? data.errorMessage
           : `Convex ${type} request failed with HTTP ${response.status}`)
       if (options.throwOnError) {
-        throw data.errorData !== undefined
+        const failure = data.errorData !== undefined
           ? new ConvexError(jsonToConvex(data.errorData))
           : new Error(message)
+        lastHttpStatus.set(failure, response.status)
+        throw failure
       }
       if (!shouldSuppressConvexError(options, message)) {
-        logger.error(`Convex ${type} HTTP error:`, message)
+        logger.error(`Convex ${type} HTTP error`, describeFailure(message, { path, type, httpStatus: response.status }))
       }
       return null
     }
@@ -151,7 +170,7 @@ async function callConvex<T>(
           : new Error(data.errorMessage || `Convex ${type} error`)
       }
       if (!shouldSuppressConvexError(options, data.errorMessage ?? '')) {
-        logger.error(`Convex ${type} error:`, data.errorMessage)
+        logger.error(`Convex ${type} error`, describeFailure(data.errorMessage ?? '', { path, type }))
       }
       return null
     }
@@ -165,7 +184,7 @@ async function callConvex<T>(
       throw error
     }
     if (!shouldSuppressConvexError(options, error)) {
-      logger.error(`Convex ${type} failed:`, error)
+      logger.error(`Convex ${type} failed`, describeFailure(error, { path, type }))
     }
     return null
   }

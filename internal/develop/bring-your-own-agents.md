@@ -397,6 +397,31 @@ group is added without being placed.
 - A human initiator and the agent principal are distinct. Authorization and billing remain
   attributable to the initiator; messages and delegated actions are authored by the agent.
 
+## Transport diagnostics
+
+A run that seems stuck needs evidence from both sides. Decisions (see
+`internal/plans/RELIABLE_CONNECTED_AGENTS_PLAN.md`, Phase 0):
+
+- **Request ids.** The poll, events, ack and heartbeat routes return `x-overlay-request-id`. Host warnings for a
+  failed request include it (`[request …]`), so a host log line matches the server log for the same request.
+  Healthy fast polls are not logged. Failed or slower-than-3 s requests log one line with route, status and
+  duration.
+- **Failure classification, never messages.** The logger drops error messages and redacts keys containing `name`
+  or `error`. A bare `logger.error(..., error)` therefore records nothing useful. Log
+  `describeFailure(error)` instead (`src/server/observability/failure-classification.ts`). It records the error
+  type, a class (`convex_occ`, `convex_limit`, `convex_timeout`, `convex_unavailable`, `convex_function`,
+  `control_plane`, `validation`, …), our SCREAMING_SNAKE codes, and for Convex calls the function path and Convex
+  request id. `callConvex` tags every thrown error with its function path for this purpose.
+- **Run stream counters.** `applyRemoteEventsByServer` keeps `conversationAgentRuns.streamStats` (batches, events,
+  bytes, `text_checkpoint` characters, message rewrites, refused batches, host-to-server lag, longest gap between
+  batches, longest tool call). `GET /api/v1/conversations/run` returns them as `streamSummary`, including the
+  current silence and longest still-open tool for an active run. `textCheckpointChars` divided by the final text
+  length is the snapshot amplification that Phase 1 removes. A host whose outbox is wedged never reaches the
+  server, so it shows up as a growing `currentQuietMs`, not as refused batches.
+- **Smoke.** `scripts/smoke/cloud-agent-long-horizon/harness.mts --via overlay --preview-url <PR preview>` runs a
+  real Claude Code cloud agent through the product API and reports visible progress, visible stalls (90 s with
+  nothing new on screen), the counters, and with `--cancel-after-s` whether text survives Stop.
+
 ## Data classification and retention
 
 | Data | Classification | Retention |
