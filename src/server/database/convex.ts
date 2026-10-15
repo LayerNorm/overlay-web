@@ -68,14 +68,14 @@ function shouldSuppressConvexError(
   return isBenignBackgroundConvexError(message)
 }
 
-async function callConvex<T>(
+async function callConvexLabelled<T>(
   type: 'query' | 'mutation' | 'action',
   path: string,
   args: Record<string, unknown>,
   options: CallConvexOptions = {}
 ): Promise<T | null> {
   try {
-    return await callConvexUnlabelled<T>(type, path, args, options)
+    return await callConvex<T>(type, path, args, options)
   } catch (error) {
     // Callers see the same error; logs can now say which function failed and how.
     throw recordConvexCallFailure(error, { path, type, httpStatus: lastHttpStatus.get(error as object) })
@@ -84,7 +84,7 @@ async function callConvex<T>(
 
 const lastHttpStatus = new WeakMap<object, number>()
 
-async function callConvexUnlabelled<T>(
+async function callConvex<T>(
   type: 'query' | 'mutation' | 'action',
   path: string,
   args: Record<string, unknown>,
@@ -205,9 +205,9 @@ function controllerSignalReasonMessage(error: Error): Error | null {
 
 export const convex = {
   query: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
-    callConvex<T>('query', path, args, options),
+    callConvexLabelled<T>('query', path, args, options),
   mutation: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
-    callConvex<T>('mutation', path, args, options),
+    callConvexLabelled<T>('mutation', path, args, options),
   action: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
-    callConvex<T>('action', path, args, options)
+    callConvexLabelled<T>('action', path, args, options)
 }
