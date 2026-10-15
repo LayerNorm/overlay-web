@@ -110,3 +110,18 @@ test('an older HTTP snapshot cannot overwrite committed subscription output afte
   assert.equal(mergeRoomMessages([snapshot], [committed])[0]?.content, '**Finished**')
   assert.equal(mergeRoomMessages([committed], [snapshot])[0]?.content, '**Finished**')
 })
+
+test('a newer HTTP completion without an event sequence supersedes an older live row', () => {
+  const base = { id: 'reply', turnId: 'turn', authorKind: 'agent' as const, createdAt: 1 }
+  const live = { ...base, content: 'Working', updatedAt: 10, eventSequence: 3 }
+  const completed = { ...base, content: 'Finished', updatedAt: 20, status: 'completed' as const }
+  assert.equal(mergeRoomMessages([completed], [live])[0]?.status, 'completed')
+  assert.equal(mergeRoomMessages([live], [completed])[0]?.status, 'completed')
+})
+
+test('same-millisecond reconnect snapshots cannot regress a terminal row to generating', () => {
+  const base = { id: 'reply', turnId: 'turn', authorKind: 'agent' as const, createdAt: 1, updatedAt: 10 }
+  const snapshot = { ...base, content: 'Working', status: 'generating' as const }
+  const committed = { ...base, content: 'Done', status: 'completed' as const }
+  assert.equal(mergeRoomMessages([snapshot], [committed])[0]?.status, 'completed')
+})

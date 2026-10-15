@@ -121,8 +121,12 @@ export function mergeRoomMessages(
     const key = message.clientNonce ? `nonce:${message.clientNonce}` : `id:${message.id}`
     const existing = merged.get(key)
     const currentIsNewer = existing && !message.delivery && !existing.delivery && (
-      (message.eventSequence ?? 0) > (existing.eventSequence ?? 0)
-      || ((message.eventSequence ?? 0) === (existing.eventSequence ?? 0) && (message.updatedAt ?? 0) > (existing.updatedAt ?? 0))
+      typeof message.eventSequence === 'number' && typeof existing.eventSequence === 'number'
+        ? message.eventSequence > existing.eventSequence
+          || (message.eventSequence === existing.eventSequence && (message.updatedAt ?? 0) > (existing.updatedAt ?? 0))
+        : (message.updatedAt ?? 0) > (existing.updatedAt ?? 0)
+          || ((message.updatedAt ?? 0) === (existing.updatedAt ?? 0) && existing.status === 'generating'
+            && (message.status === 'completed' || message.status === 'error'))
     )
     if (!existing || (existing.delivery && !message.delivery) || currentIsNewer) merged.set(key, message)
   }
