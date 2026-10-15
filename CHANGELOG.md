@@ -48,6 +48,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - **Command search uses cmdk and the shared modal primitives (shadcn Phase 5).** Preserve category drill-in, application-ranked async results, destinations and Overlay themes; keyboard selection, disabled rows, focus containment/return and scroll locking now share canonical owners. Long result descriptions leave their titles visible on mobile.
 
+- **Dialog and form internals use the shadcn primitives (shadcn Phases 1b and 6a).** Remaining centered dialogs and the link-open chooser now share canonical Dialog/Popover machinery, and Button/IconButton/Input/Textarea wrap the canonical implementations while preserving existing exports and appearance. Non-dialog panels and the mobile drawer are unchanged.
+
+- **Selection and status primitives use shadcn internals (shadcn Phase 6b).** Badge now uses variant-backed canonical classes; Toggle wraps the canonical Switch while preserving its checked callback API; Checkbox, Separator, and Skeleton are exported from `@overlay/ui` for later adoption.
+
+- **Tabs and scrolling internals use shadcn primitives (shadcn Phase 6c).** The existing `TabsList`/`TabButton` API now sits on Radix Tabs keyboard semantics, `Toggle` uses canonical Switch machinery, and `ScrollArea`/`ScrollBar` are exported for later surface adoption. Caller-controlled selection stays synchronized with accessible tab state; keyboard focus skips disabled tabs and Enter/Space use existing activation callbacks.
+
 - Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 
 - Wrap open-select Tab/Shift+Tab navigation within actual modal dialogs, including disabled footer actions; non-modal popovers advance outside their panel.
