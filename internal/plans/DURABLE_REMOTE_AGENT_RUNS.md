@@ -74,3 +74,23 @@ five-minute cancellation cutoff is removed: only confirmed stop/isolation can
 close a cancelled execution. Keep production lifecycle-v2 enrollment disabled;
 provider wake/billing, compatible package/image publication and unavailable
 provider-specific recovery remain separate activation gates.
+
+### Cloud acceptance follow-up
+
+The earlier claim that Overlay Cloud creation was disabled was incorrect: the
+Preview lacked its provider configuration. It now uses a separate `overlay-preview`
+Boat environment and CI key, with `noEnv` retained and production access denied.
+The owner approved Boat's mandatory one-year expiry; renew before 2027-10-15.
+
+Head e61b61cd7 passed real OpenCode cloud completion, a provider-confirmed stop,
+wake/completion, and a second unattended stop/wake/completion on host 0.3.11 with
+lifecycle v2. Four sandbox holds released; stopped-machine reconciliation kept
+the same seven machine ledger entries and 0.26-cent total. A protected-Preview
+transport wrapper was a test fixture, not a production image modification.
+
+Duplicate cancellation returned one operation and stop command, but live testing
+found a consumed-notification gap: the first stop-proof check can precede the
+grace period. The coordinator now retries proof on durable timer passes; the
+actual loop has regression coverage. The PR QA handoff records the final tested
+head and its cancellation/provider/settlement readback. Earlier failing acceptance
+is retained as evidence and is not counted as a passing cancellation test.

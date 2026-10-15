@@ -30,6 +30,12 @@
 
 - Operator console: `apps/admin` serves `admin.getoverlay.io` as a separate Vercel project. Customer web must contain no operator UI/API or operator secret. Operator calls require the dedicated admin secret plus a verified active WorkOS operator; ordinary web member initialization uses only `authorization/defaults:ensureDefaultUserRoleByServer`. Retire backend endpoints only after their replacement callers are live. See `docs/develop/admin-console.md`.
 
+Boat Preview credential exception: Boat requires a maximum 365-day lifetime. The
+owner approved the environment-scoped `overlay-preview` key through 2027-10-15.
+Renew it before that date using the same restricted scope and update shared
+Preview settings; see `internal/develop/bring-your-own-agents.md`. Other shared
+Preview credentials retain the no-expiry policy.
+
 ## Learned Workspace Facts
 
 - This Next.js app selects Convex URL from env: development commonly uses `DEV_NEXT_PUBLIC_CONVEX_URL` for a separate dev backend from production `NEXT_PUBLIC_CONVEX_URL`.
