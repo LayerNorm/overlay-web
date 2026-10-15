@@ -838,7 +838,7 @@ export function MobileDrawer({
   children?: ReactNode
 }) {
   return (
-    <Sheet modal={false} open={open && !hidden} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
+    <Sheet open={open && !hidden} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
       <SheetContent
         side="left"
         showCloseButton={false}
