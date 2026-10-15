@@ -129,7 +129,7 @@ function DeleteAccountDialog({
         showCloseButton={false}
         overlayClassName="z-50 bg-black/60 px-4"
         aria-labelledby="delete-account-title"
-        className={`block w-full max-w-md gap-0 p-6 ${
+        className={`block w-[calc(100%-2rem)] max-w-md gap-0 p-6 ${
           isLandingDark ? 'border-zinc-800 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'
         }`}
       >
