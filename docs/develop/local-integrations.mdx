@@ -11,7 +11,7 @@ Run the app locally, then forward Stripe events:
 stripe listen --forward-to https://<your-selected-dev-deployment>.convex.site/stripe/webhook
 ```
 
-Use matching Stripe test secrets for that explicitly selected personal development Convex backend. Do not forward to customer production; dedicated staging has its own test endpoint. The former Next.js webhook route was removed.
+Use matching Stripe test secrets for that explicitly selected personal development Convex backend. Do not forward to customer production; each isolated PR preview has its own test endpoint. The former Next.js webhook route was removed.
 
 ## Redis rate limiter QA
 
@@ -24,7 +24,7 @@ file retains ordinary unit tests for fail-closed behavior without Redis.
 
 ## Auth
 
-WorkOS sign-in flows require the local callback URL to match the WorkOS application settings. Keep local, staging, and production WorkOS credentials separate.
+WorkOS sign-in flows require the local callback URL to match the WorkOS application settings. Keep local, Preview, and Production WorkOS credentials separate.
 
 For OIDC deployments, including Keycloak-compatible realm issuers, verify browser callback wiring and token claims before production use.
 

@@ -2,6 +2,7 @@
 
 import type { FileTreeEntry } from '@overlay/app-core'
 import { childFilesForTree, rootFilesForTree } from '@overlay/app-core'
+import { SidebarMenuSub, SidebarMenuSubItem } from '@overlay/ui/primitives'
 import { BookOpen, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
@@ -13,7 +14,6 @@ const panelItemClass =
 export interface FilesInlineBranchProps {
   file: FileTreeEntry
   allFiles: readonly FileTreeEntry[]
-  depth: number
   expanded: ReadonlySet<string>
   activeFileId: string | null
   onToggle: (fileId: string) => void
@@ -24,7 +24,6 @@ export interface FilesInlineBranchProps {
 export function FilesInlineBranch({
   file,
   allFiles,
-  depth,
   expanded,
   activeFileId,
   onToggle,
@@ -60,7 +59,6 @@ export function FilesInlineBranch({
           onMove(fileId, file._id)
         }}
         className={`${panelItemClass} ${dragOver ? 'bg-(--surface-subtle) ring-1 ring-inset ring-(--foreground)' : activeFileId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
-        style={{ paddingLeft: `${10 + depth * 14}px` }}
       >
         {file.type === 'folder' ? (
           <button
@@ -91,19 +89,24 @@ export function FilesInlineBranch({
         </button>
       </div>
 
-      {file.type === 'folder' && open && children.map((child) => (
-        <FilesInlineBranch
-          key={child._id}
-          file={child}
-          allFiles={allFiles}
-          depth={depth + 1}
-          expanded={expanded}
-          activeFileId={activeFileId}
-          onToggle={onToggle}
-          onOpen={onOpen}
-          onMove={onMove}
-        />
-      ))}
+      {file.type === 'folder' && open && children.length > 0 ? (
+        // An open folder nests its children under the same guide line as an agent's threads (`SidebarMenuSub`).
+        <SidebarMenuSub>
+          {children.map((child) => (
+            <SidebarMenuSubItem key={child._id}>
+              <FilesInlineBranch
+                file={child}
+                allFiles={allFiles}
+                expanded={expanded}
+                activeFileId={activeFileId}
+                onToggle={onToggle}
+                onOpen={onOpen}
+                onMove={onMove}
+              />
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      ) : null}
     </div>
   )
 }
@@ -141,7 +144,6 @@ export function FilesInlineTree({
           key={file._id}
           file={file}
           allFiles={files}
-          depth={0}
           expanded={expanded}
           activeFileId={activeFileId}
           onToggle={onToggle}

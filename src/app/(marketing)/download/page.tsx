@@ -11,6 +11,7 @@ import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 export const instant = false
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/download' },
   title: 'Download for macOS',
   description:
     'Download Overlay Desktop for macOS Apple Silicon, or build from the public source repository.',

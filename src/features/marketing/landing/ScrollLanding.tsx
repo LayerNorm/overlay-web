@@ -62,7 +62,7 @@ export function ScrollLanding() {
         <div className="lp-track" data-lp="track">
           <div className="lp-stage" data-sec={current.sec}>
             <LandingNav />
-            <LandingHero />
+            <LandingHero appHref={getMarketingAppHref(isAuthenticated)} />
             <LandingAgents />
             <LandingRail />
             <main className="view" data-lp="view">

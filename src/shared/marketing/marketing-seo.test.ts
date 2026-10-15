@@ -41,3 +41,14 @@ test('robots keeps app surfaces out of the index and advertises the sitemap', ()
     true,
   )
 })
+
+
+test('every crawler group excludes private application and authentication paths', () => {
+  const result = robots()
+  const rules = Array.isArray(result.rules) ? result.rules : [result.rules]
+  for (const rule of rules) {
+    for (const path of ['/app/', '/api/', '/auth/', '/share/']) {
+      assert.ok(rule.disallow?.includes(path), `${String(rule.userAgent)} must exclude ${path}`)
+    }
+  }
+})

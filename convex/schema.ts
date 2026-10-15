@@ -752,7 +752,7 @@ export default defineSchema({
 
 
   skills: defineTable({
-    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),
@@ -774,7 +774,7 @@ export default defineSchema({
     }),
 
   // Work: tasks shown as a list, a board and a timeline. Personal / Workspace / Archived like other content; see
-  // docs/plans/WORK_PLAN.md. Dates are `YYYY-MM-DD` strings (no timezone shift); `rank` is a fractional string.
+  // Dates are `YYYY-MM-DD` strings (no timezone shift); `rank` is a fractional string.
   workItems: defineTable({
     scope: v.union(v.literal('personal'), v.literal('workspace')),
     archivedAt: v.optional(v.number()),
@@ -827,7 +827,7 @@ export default defineSchema({
   }).index('by_workItemId_createdAt', ['workItemId', 'createdAt']),
 
   automations: defineTable({
-    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),
@@ -982,7 +982,7 @@ export default defineSchema({
     .index('by_automationRunId_createdAt', ['automationRunId', 'createdAt']),
 
   mcpServers: defineTable({
-    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),
@@ -1571,7 +1571,7 @@ export default defineSchema({
     .index('by_status_createdAt', ['status', 'createdAt']),
 
   files: defineTable({
-    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),
@@ -2257,7 +2257,7 @@ export default defineSchema({
     .index('by_resource_createdAt', ['resourceType', 'resourceId', 'createdAt']),
 
   workspaceConnectors: defineTable({
-    // Personal / Workspace / Archived (see docs/plans/UNIFIED_SCOPES_PLAN.md). Absent `scope` means personal.
+    // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),

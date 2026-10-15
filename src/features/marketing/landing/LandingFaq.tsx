@@ -7,7 +7,7 @@ const FAQ_ITEMS: { q: string; a: string }[] = [
   },
   {
     q: 'Can I bring my own agents to Overlay?',
-    a: 'Yes. Connect agents running on your own machine or deploy them on Overlay Cloud. They get the same workspace tools, memory, and supervision as agents built in Overlay.',
+    a: 'Yes. Connect agents running on machines you control. They join the same roster and receive workspace tools, context, and supervision through Overlay.',
   },
   {
     q: 'Where do Overlay agents work?',

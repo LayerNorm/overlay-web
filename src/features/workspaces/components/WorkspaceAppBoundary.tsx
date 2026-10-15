@@ -2,11 +2,12 @@
 
 import { useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { CircleAlert, Loader2 } from 'lucide-react'
+import { CircleAlert } from 'lucide-react'
 import type { WorkspaceClient } from '@/shared/workspaces/types'
 import { workspaceClient } from '../lib/workspace-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext'
+import { AppBootLoader } from '@/components/layout/AppBootLoader'
 
 function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   const { status, error, refresh } = useWorkspace()
@@ -17,12 +18,9 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
   // A late client-auth enablement flips idle → loading. Keep the already-visible
   // app shell mounted so the account footer does not vanish behind a full-page gate.
   if (status === 'loading' && !hasShownApp) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-(--background) text-sm text-(--muted)">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        Opening workspace…
-      </div>
-    )
+    // Same screen as the boot loader, rendered already-settled so the handoff
+    // shows no second splash.
+    return <AppBootLoader settled />
   }
   if (status === 'error') {
     return (

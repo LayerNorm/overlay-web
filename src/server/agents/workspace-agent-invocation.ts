@@ -48,7 +48,7 @@ import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
  * there is expected, the same way it is in personal chat. A channel is shared,
  * so an agent that grinds for twenty steps in front of six people is a worse
  * experience than one that answers or asks. The channel cap lifts once agent
- * runs become durable and can show live progress — see docs/develop/bring-your-own-agents.md,
+ * runs become durable and can show live progress — see internal/develop/bring-your-own-agents.md,
  * "Durable agent runs".
  */
 const MAX_TOOL_STEPS_AGENT_DM = 20
@@ -934,7 +934,7 @@ export async function runWorkspaceAgentTurn(args: {
               // Approval-gated MCP tools stay gated for agents too. Nothing in a
               // room can grant that approval yet, so such a call stalls rather
               // than running unapproved — the safe failure of the two. The room
-              // Approval UI remains tracked in docs/develop/bring-your-own-agents.md.
+              // Approval UI remains tracked in internal/develop/bring-your-own-agents.md.
               ...(tooling.toolApproval
                 ? {
                     toolApproval: tooling.toolApproval as unknown as ToolApprovalConfiguration<
