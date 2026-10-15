@@ -134,3 +134,5 @@ WorkOS native Convex verification follows the [official AuthKit configuration](h
 Keep admin production settings limited to its Convex URL, dedicated admin API/session secrets, production WorkOS credentials and the owner's explicit operator allowlist. Never allowlist the release-QA or demo identity in production. Preview uses separate secrets and test identities. Credentials have no scheduled expiry.
 
 The admin CI install selects only the admin workspace and its dependency closure, matching Vercel’s monorepo install. Shared UI packages declare their runtime styling/Radix dependencies; root web dependencies must not mask missing admin dependencies.
+
+The OAuth state envelope holds a one-use PKCE verifier; AuthKit gets its S256 challenge and callback exchanges the code with that verifier. Exchange failures log only event, error class, bounded provider code and status, never codes, tokens or credentials.

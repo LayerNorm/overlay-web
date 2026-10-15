@@ -11,9 +11,11 @@ function client(): WorkOS {
 }
 
 /** Hosted AuthKit sign-in: staff authenticate with whatever providers WorkOS has configured. */
-export function adminAuthorizationUrl(args: { origin: string; state: string }): string {
+export function adminAuthorizationUrl(args: { codeChallenge: string; origin: string; state: string }): string {
   const url = new URL(client().userManagement.getAuthorizationUrl({
     clientId: workosClientId(),
+    codeChallenge: args.codeChallenge,
+    codeChallengeMethod: 'S256',
     provider: 'authkit',
     redirectUri: `${args.origin}/auth/callback`,
     state: args.state,
@@ -23,10 +25,11 @@ export function adminAuthorizationUrl(args: { origin: string; state: string }): 
   return url.toString()
 }
 
-export async function authenticateWithCode(code: string) {
+export async function authenticateWithCode(code: string, codeVerifier: string) {
   return client().userManagement.authenticateWithCode({
     clientId: workosClientId(),
     code,
+    codeVerifier,
   })
 }
 
