@@ -26,7 +26,15 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarResourceList } from '@overlay/ui/primitives'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarResourceList,
+} from '@overlay/ui/primitives'
 import { cn } from '@overlay/ui'
 
 import { arrayOrEmpty } from './sidebar-nav'
@@ -202,7 +210,7 @@ export interface InlineNavItem {
   /** Items with an href render as links so they support open-in-new-tab. */
   href?: string
   badgeCount?: number
-  /** Rows shown indented beneath this one while it is `expanded`. */
+  /** Rows shown inside the guide-line sub list beneath this one while it is `expanded`. */
   children?: ReadonlyArray<InlineNavItem>
   expanded?: boolean
 }
@@ -226,22 +234,21 @@ export function InlineNavChildren({
   pendingId?: string | null
   /** Also fires for href items on link click, so callers can close chrome. */
   onSelect: (id: string) => void
-  /** Container override — the default indents children under a nav row. */
+  /** Container override — spacing/padding around the whole nav list. */
   className?: string
 }) {
   function renderRow(item: InlineNavItem, active: boolean, nested: boolean) {
-    // Top-level rows are the large menu button; revealed rows are the compact one. Neither is indented (see
-    // interface-design.md), so the row classes set size only, never a left offset.
+    // Top-level rows are the large menu button; revealed rows are the compact sub button inside the guide-line
+    // list, so no row class ever sets a left offset — the list's line carries the indent.
     const rowClass = cn(
-      'gap-2.5 px-3',
-      nested ? 'h-8 text-[13px]' : undefined,
+      nested ? undefined : 'gap-2.5 px-3',
       item.locked ? 'cursor-default text-(--muted-light) hover:bg-transparent hover:text-(--muted-light)' : undefined,
     )
     const content = (
       <>
         {pendingId === item.id ? (
-          <Loader2 size={nested ? 14 : 15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
-        ) : item.icon ? <item.icon size={nested ? 14 : 15} className="shrink-0" aria-hidden /> : null}
+          <Loader2 size={nested ? 13 : 15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
+        ) : item.icon ? <item.icon size={nested ? 13 : 15} className="shrink-0" aria-hidden /> : null}
         <span className="flex-1 text-left">{item.label}</span>
         {item.badgeCount ? (
           <span
@@ -258,28 +265,43 @@ export function InlineNavChildren({
       </>
     )
     if (item.href && !item.locked) {
+      const link = (
+        <Link
+          href={item.href}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+            onSelect(item.id)
+          }}
+        >
+          {content}
+        </Link>
+      )
+      return nested ? (
+        <SidebarMenuSubButton asChild isActive={active} className={rowClass}>
+          {link}
+        </SidebarMenuSubButton>
+      ) : (
+        <SidebarMenuButton asChild size="lg" isActive={active} className={rowClass}>
+          {link}
+        </SidebarMenuButton>
+      )
+    }
+    if (nested) {
       return (
-        <SidebarMenuButton
-          asChild
-          size={nested ? 'default' : 'lg'}
-          isActive={active}
+        <SidebarMenuSubButton
+          isActive={active && !item.locked}
+          onClick={() => {
+            if (!item.locked) onSelect(item.id)
+          }}
           className={rowClass}
         >
-          <Link
-            href={item.href}
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-              onSelect(item.id)
-            }}
-          >
-            {content}
-          </Link>
-        </SidebarMenuButton>
+          {content}
+        </SidebarMenuSubButton>
       )
     }
     return (
       <SidebarMenuButton
-        size={nested ? 'default' : 'lg'}
+        size="lg"
         isActive={active && !item.locked}
         aria-expanded={item.children?.length ? Boolean(item.expanded) : undefined}
         onClick={() => {
@@ -298,12 +320,12 @@ export function InlineNavChildren({
         <SidebarMenuItem key={item.id}>
           {renderRow(item, activeId === item.id, false)}
           {item.expanded && item.children?.length ? (
-            // Not indented: what an expansion reveals lines up with the row that opened it (see interface-design.md).
-            <SidebarMenu className="pb-1 pt-0.5">
+            // What an expansion reveals nests under the same guide line as an agent's threads (`SidebarMenuSub`).
+            <SidebarMenuSub>
               {item.children.map((child) => (
-                <SidebarMenuItem key={child.id}>{renderRow(child, activeChildId === child.id, true)}</SidebarMenuItem>
+                <SidebarMenuSubItem key={child.id}>{renderRow(child, activeChildId === child.id, true)}</SidebarMenuSubItem>
               ))}
-            </SidebarMenu>
+            </SidebarMenuSub>
           ) : null}
         </SidebarMenuItem>
       ))}

@@ -6,7 +6,7 @@ import type { ConversationCollaborationRepository } from '@/server/conversations
 import { isSharedRoom } from '@/shared/agents/room-access'
 
 /**
- * Whether an agent turn in this conversation is in a room others can read (docs/plans/TOOL_SCOPING_PLAN.md, T4). Decided
+ * Whether an agent turn in this conversation is in a room others can read (internal/plans/TOOL_SCOPING_PLAN.md, T4). Decided
  * on the server from the conversation itself, never from anything the model or a connected agent supplies. If the
  * conversation cannot be read the answer is yes: the safe side is to withhold the person's private reach.
  */

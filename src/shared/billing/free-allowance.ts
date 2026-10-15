@@ -1,5 +1,5 @@
 /**
- * The free allowance belongs to a workspace, not to a person (docs/plans/UNIFIED_SCOPES_PLAN.md, 5b): everyone working
+ * The free allowance belongs to a workspace, not to a person: everyone working
  * in a free workspace draws from the same weekly count (ask / write / agent turns, transcription seconds), so a free
  * workspace and a paid pool read the same way. A person on a paid plan keeps counting under their own id.
  *

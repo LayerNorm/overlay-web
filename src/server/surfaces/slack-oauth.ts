@@ -19,7 +19,7 @@ export interface SlackConnectState {
 
 const STATE_TTL_MS = 10 * 60 * 1000
 
-// Bot scopes from the app manifest (docs/develop/surfaces-slack-app.md). Keep
+// Bot scopes from the app manifest (internal/develop/surfaces-slack-app.md). Keep
 // in sync when the manifest changes.
 const SLACK_BOT_SCOPES = [
   'app_mentions:read',

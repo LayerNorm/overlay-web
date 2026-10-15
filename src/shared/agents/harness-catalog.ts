@@ -1,6 +1,6 @@
 /**
  * Catalog of agent harnesses Overlay Cloud can host in managed sandboxes via
- * the AI SDK HarnessAgent (`docs/plans/MANAGED_HARNESS_AGENTS_PLAN.md`).
+ * the AI SDK HarnessAgent.
  *
  * This module is isomorphic — the editor renders the picker from it and the
  * server resolves adapters from it — so it must stay free of Node builtins,

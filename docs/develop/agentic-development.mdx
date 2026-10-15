@@ -5,11 +5,11 @@ description: "Feature PRs, isolated previews, the main merge queue, and automati
 
 ## Activation checkpoint
 
-Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` verified exact main `bee84a33a2d4b101bf85d3b179cd30984b556045` before and after staging publication. Production `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified web-first, then customer Convex and full authenticated smoke passed. Deliberate web rollback, compatibility checks, restoration and full final smoke passed; the accepted release is live. Automatic test Stripe checkout/cancellation and actual browser storage acceptance passed. See the migration plan and `docs/plans/release-workflow-evidence/` for exact proof. Subsequent releases require fresh evidence.
+Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` verified exact main `bee84a33a2d4b101bf85d3b179cd30984b556045` before and after staging publication. Production `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified web-first, then customer Convex and full authenticated smoke passed. Deliberate web rollback, compatibility checks, restoration and full final smoke passed; the accepted release is live. Automatic test Stripe checkout/cancellation and actual browser storage acceptance passed. See the migration plan and `internal/plans/release-workflow-evidence/` for exact proof. Subsequent releases require fresh evidence.
 
 ## Release model
 
-[Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md) is the authoritative Builder,
+[Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/Development%20Workflow.md) is the authoritative Builder,
 Integration and release policy. Cloud Builder features reach main through focused PRs
 and the merge queue. Local laptop agents under DevelopedByDev have standing
 authorization for validated fast-forward direct main pushes, as documented in
@@ -24,7 +24,7 @@ The retired staging branch and project are not development or release lanes. See
 
 ## Two roles
 
-Tag [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md)
+Tag [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/Development%20Workflow.md)
 for the complete Builder and Integration instructions and copyable role prompts.
 
 | Role | Responsibility |
@@ -32,8 +32,8 @@ for the complete Builder and Integration instructions and copyable role prompts.
 | Builder | Own one feature worktree, implement and validate a coherent change, update living docs and CHANGELOG, verify the current PR preview, and submit the PR to main. Stop at a ready PR. |
 | Integration | Review the diff and evidence, resolve conversations, enqueue the reviewed PR once required checks pass, then verify the native Git deployment SHA and authenticated production smoke. |
 
-Use [Builder Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/BUILDER_AGENT_PROMPT.md) and
-[Integration Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/INTEGRATION_AGENT_PROMPT.md). No additional
+Use [Builder Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/BUILDER_AGENT_PROMPT.md) and
+[Integration Agent Prompt](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/INTEGRATION_AGENT_PROMPT.md). No additional
 review or release role is required. GitHub PRs, checks and history are the
 integration record; do not create a second Markdown PR ledger.
 
@@ -66,7 +66,7 @@ formatting/comments and type-only changes can use CI alone. Record the rationale
 For requested previews, wait for `PR Preview`. Verify its SHA equals
 the current PR head before using `https://pr-<number>.preview.getoverlay.io`.
 Sign in with the sandbox QA identity or the preview-only login recipe in
-[Browser Testing](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/browser-testing-with-agent-browser.md). Keep secrets and
+[Browser Testing](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/browser-testing-with-agent-browser.md). Keep secrets and
 cookies outside tracked files and PR text.
 
 Verify the changed flow, rendered UI and persistence as applicable. Record the
@@ -169,7 +169,7 @@ and the queue. Other bypass use requires explicit authorization.
 
 ## Production
 
-Follow [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/Development%20Workflow.md). Main changes deploy
+Follow [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/Development%20Workflow.md). Main changes deploy
 automatically through Vercel’s Git integration. Integration runs authenticated
 production smoke and synchronizes Convex only for backend changes. Verify
 the exact SHA, live alias, smoke result and saved rollback checkpoint.

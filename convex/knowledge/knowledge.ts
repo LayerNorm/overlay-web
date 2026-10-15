@@ -537,7 +537,7 @@ export const backfillMessageChunkVisibilityByServer = mutation({
  * Makes the memories saved before the "a person's memory is theirs by default" rule private to whoever saved them: every
  * person-owned memory with no visibility becomes `owner`, and so do its chunks. Agents' own memories stay shared (workspace
  * knowledge by design), and so does anything saved as shared on purpose. Pure patches, no re-embedding; idempotent.
- * `dryRun` only counts. Run until `isDone`. See docs/plans/TOOL_SCOPING_PLAN.md (T0).
+ * `dryRun` only counts. Run until `isDone`. See internal/plans/TOOL_SCOPING_PLAN.md (T0).
  */
 export const backfillMemoryVisibilityByServer = mutation({
   args: {

@@ -8,7 +8,6 @@ import { defaultWorkspaceName, isGenericWorkspaceName } from '../../src/shared/w
  * Gives the first workspaces that early versions called "Personal" (or "Personal’s workspace") a name that says whose
  * they are, "<First name>’s workspace". Workspaces whose owner already chose a name are left alone. Idempotent: a renamed
  * workspace no longer matches. Run with `dryRun: true` first; it returns what would change and changes nothing.
- * See docs/plans/UNIFIED_SCOPES_PLAN.md (Phase 5).
  */
 export const renameGenericWorkspacesByServer = mutation({
   args: {
