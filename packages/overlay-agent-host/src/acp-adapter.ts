@@ -173,19 +173,17 @@ export class AcpAgentAdapter implements AgentAdapter {
       finally { if (timer) clearTimeout(timer) }
       signal('SIGKILL')
       await exited
-      if (process.platform !== 'win32') {
-        // SIGKILL delivery and descendant reaping are asynchronous even after the
-        // wrapper emits exit. Give the whole group a bounded drain before attesting.
-        const deadline = Date.now() + 2_000
-        for (;;) {
-          try { process.kill(-pid, 0) }
-          catch (error) {
-            if ((error as NodeJS.ErrnoException).code === 'ESRCH') break
-            throw error
-          }
-          if (Date.now() >= deadline) throw new Error('ACP process group has not stopped; inspect remaining execution')
-          await new Promise(resolve => setTimeout(resolve, 20))
+      // SIGKILL delivery and descendant reaping are asynchronous even after the
+      // wrapper emits exit. Give the whole group a bounded drain before attesting.
+      const deadline = Date.now() + 2_000
+      for (;;) {
+        try { process.kill(-pid, 0) }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') break
+          throw error
         }
+        if (Date.now() >= deadline) throw new Error('ACP process group has not stopped; inspect remaining execution')
+        await new Promise(resolve => setTimeout(resolve, 20))
       }
       terminationConfirmed = true
       closed.resolve()
