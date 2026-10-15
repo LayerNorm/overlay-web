@@ -63,11 +63,14 @@ const TOUR_STEPS: TourStep[] = [
     placement: 'right',
   },
   {
-    target: 'generation-mode-toggle',
+    // Anchors to the picker + its open panel: the generation-mode toggle only
+    // exists inside the open dropdown, so pointing at the whole menu is both
+    // accurate and can never dead-end when the toggle is unmounted.
+    target: 'model-picker',
     title: 'Generate images & video',
     description:
-      'Switch between Text, Image, and Video generation right from the composer. The best generative models are one tap away.',
-    placement: 'bottom',
+      'Switch between Text, Image, and Video generation inside this menu. The best generative models are one tap away.',
+    placement: 'right',
   },
   {
     target: 'nav-knowledge',

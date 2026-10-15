@@ -23,6 +23,7 @@ import {
   getVideoModelsBySubMode,
 } from '@/shared/ai/gateway/model-data'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { subscribeTourModelPicker } from '@/shared/onboarding/tour-model-picker'
 import { readableModelId } from './chat-runtime-helpers'
 import { safeSetLocalStorage, toggleModelSelection } from './model-selection-utils'
 import {
@@ -59,16 +60,7 @@ function useModelPickerState() {
 
   // The onboarding tour keeps the picker open while its steps anchor to
   // elements inside the open panel (e.g. the generation-mode toggle).
-  useEffect(() => {
-    function openPicker() { setShowModelPicker(true) }
-    function closePicker() { setShowModelPicker(false) }
-    window.addEventListener('overlay:tour:open-model-picker', openPicker)
-    window.addEventListener('overlay:tour:close-model-picker', closePicker)
-    return () => {
-      window.removeEventListener('overlay:tour:open-model-picker', openPicker)
-      window.removeEventListener('overlay:tour:close-model-picker', closePicker)
-    }
-  }, [])
+  useEffect(() => subscribeTourModelPicker(setShowModelPicker), [])
 
   useEffect(() => {
     if (!showModelPicker) {
