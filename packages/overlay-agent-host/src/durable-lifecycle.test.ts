@@ -112,6 +112,7 @@ test('fresh attempts retain old callback fences and resume periodic health after
     const runtime = f.create()
     await runtime.processCommand(f.start)
     await f.emitters[0]!({ type: 'failed', payload: { code: 'lost', message: 'old process lost', retryable: true } })
+    assert.ok(f.start.type === 'start')
     const fresh: AgentHostCommand = { ...f.start, commandId: 'fresh', sequence: 2,
       execution: { attemptId: 'replacement', generation: 2 },
       payload: { ...f.start.payload, fresh: true } }
