@@ -29,7 +29,7 @@ import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
-import { Textarea, Toggle } from '@overlay/ui/primitives'
+import { Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
@@ -200,15 +200,16 @@ function AuthorIdentityPopover({
 
   return (
     <span ref={ref} className="relative inline-flex isolate">
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`text-left outline-hidden focus-visible:ring-2 focus-visible:ring-(--foreground) ${triggerClassName ?? ''}`}
+        className={`h-auto p-0 text-left font-normal text-inherit outline-hidden hover:bg-transparent hover:text-current focus-visible:ring-2 focus-visible:ring-(--foreground) ${triggerClassName ?? ''}`}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
         {children}
-      </button>
+      </Button>
       {open ? (
         // Anchored author popover — a native <dialog> cannot anchor below the trigger.
         // react-doctor-disable-next-line react-doctor/prefer-html-dialog
@@ -508,7 +509,8 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
       {message.images.length > 0 ? (
         <div className={`flex w-full flex-wrap gap-1.5 ${message.mine ? 'justify-end' : ''}`}>
           {message.images.map((attachment) => (
-            <button
+            <Button
+              variant="ghost"
               key={attachment.url}
               type="button"
               onClick={() => onOpenAttachmentPreview({
@@ -516,7 +518,7 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
                 content: attachment.url,
                 url: attachment.url,
               })}
-              className="group rounded-xl outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground)"
+              className="group h-auto rounded-xl p-0 outline-hidden transition-transform hover:bg-transparent hover:text-current hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground)"
               title="Open attachment"
             >
               <img
@@ -524,7 +526,7 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
                 alt={attachment.name}
                 className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-(--border)"
               />
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}
@@ -569,22 +571,26 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
         }}
         className="min-h-20 flex-1 resize-y"
       />
-      <button
+      <Button
+        variant="primary"
+        size="icon"
         type="button"
         onClick={onSaveEdit}
         aria-label="Save edit"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background)"
+        className="h-9 w-9 shrink-0 rounded-lg bg-(--foreground) p-0 text-(--background)"
       >
         <Check size={14} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={onCancelEdit}
         aria-label="Cancel edit"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-subtle)"
+        className="h-9 w-9 shrink-0 rounded-lg p-0 text-(--muted) hover:bg-(--surface-subtle)"
       >
         <X size={14} />
-      </button>
+      </Button>
     </div>
   )
 }
@@ -598,11 +604,12 @@ function RoomReactionRow({ reactions, alignEnd, onToggleReaction }: {
   return (
     <div className={`flex flex-wrap items-center gap-1 ${alignEnd ? 'justify-end' : ''}`}>
       {reactions.map((reaction) => (
-        <button
+        <Button
+          variant="ghost"
           key={reaction.emoji}
           type="button"
           onClick={() => onToggleReaction(reaction.emoji)}
-          className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors ${
+          className={`h-6 gap-1 rounded-full border px-2 text-[11px] font-normal text-inherit transition-colors ${
             reaction.reactedByCurrentPrincipal
               ? 'border-(--foreground) bg-(--surface-subtle)'
               : 'border-(--border) hover:bg-(--surface-subtle)'
@@ -610,7 +617,7 @@ function RoomReactionRow({ reactions, alignEnd, onToggleReaction }: {
         >
           <span>{reaction.emoji}</span>
           <span>{reaction.count}</span>
-        </button>
+        </Button>
       ))}
     </div>
   )
@@ -624,11 +631,12 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
 }) {
   if (!mine && replyCount > 0) {
     return (
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={onOpenThread}
         data-testid="thread-teaser"
-        className="group/thread mt-0.5 flex max-w-xl items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-(--surface-subtle)"
+        className="group/thread mt-0.5 h-auto max-w-xl items-start justify-start gap-2 rounded-md px-1 py-1 text-left font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
       >
         <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-(--muted)" />
         <span className="min-w-0 flex-1">
@@ -643,20 +651,21 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
             </span>
           ) : null}
         </span>
-      </button>
+      </Button>
     )
   }
   if (replyCount > 0) {
     return (
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={onOpenThread}
         data-testid="thread-teaser"
-        className={`inline-flex items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) ${mine ? 'self-end' : ''}`}
+        className={`h-auto w-auto gap-1 p-0 text-[11px] font-medium text-(--muted) transition-colors hover:bg-transparent hover:text-(--foreground) ${mine ? 'self-end' : ''}`}
       >
         <MessageSquareReply size={12} strokeWidth={1.75} />
         {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-      </button>
+      </Button>
     )
   }
   return null
@@ -779,9 +788,9 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
           <SentMessageContent message={message} />
         )}
         {message.delivery === 'failed' ? (
-          <button type="button" className="text-[11px] font-medium text-red-500 hover:underline" onClick={onRetrySend}>
+          <Button variant="ghost" type="button" className="h-auto p-0 text-[11px] font-medium text-red-500 hover:bg-transparent hover:text-red-500 hover:underline" onClick={onRetrySend}>
             Failed to send · Retry
-          </button>
+          </Button>
         ) : null}
         <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
         <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
@@ -904,7 +913,7 @@ function RemoteRequestControls({ request, onResolve }: {
           <label key={key} className="mt-2 block text-[11px] text-(--muted)">
             <span>{property.title ?? key}{requiredSet.has(key) ? ' *' : ''}</span>
             {elicitationOptions(property).length > 0 ? (
-              <select
+              <Select
                 aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) =>
@@ -921,9 +930,9 @@ function RemoteRequestControls({ request, onResolve }: {
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
-              <input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
+              <Input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
                 aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
@@ -936,31 +945,34 @@ function RemoteRequestControls({ request, onResolve }: {
       <div className="mt-3 flex flex-wrap gap-2">
         {request.kind === 'permission' ? (
           request.options.map((option) => (
-            <button
+            <Button
+              variant="ghost"
               key={option.id}
               type='button'
               onClick={() => onResolve(request, option.id)}
-              className='rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface)'
+              className='h-auto rounded-md border border-(--border) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface)'
             >
               {option.label}
-            </button>
+            </Button>
           ))
         ) : (
           <>
-            <button
+            <Button
+              variant="ghost"
               type='button'
               onClick={() => onResolve(request, 'accept', values)}
-              className='rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface)'
+              className='h-auto rounded-md border border-(--border) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface)'
             >
               Submit
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               type='button'
               onClick={() => onResolve(request, 'decline')}
-              className='rounded-md px-2 py-1 text-xs text-(--muted) hover:bg-(--surface)'
+              className='h-auto rounded-md px-2 py-1 text-xs font-normal text-(--muted) hover:bg-(--surface)'
             >
               Decline
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -1005,20 +1017,22 @@ function RemoteRunControls({ run, onControl }: {
             ? 'The environment went offline.'
             : 'This run can be recovered.'}
         </span>
-        <button
+        <Button
+          variant="ghost"
           type='button'
           onClick={() => onControl(run.runId, 'resume')}
-          className='rounded-md border border-(--border) px-2 py-1 text-(--foreground)'
+          className='h-auto rounded-md border border-(--border) px-2 py-1 font-normal text-(--foreground) hover:bg-transparent'
         >
           Resume
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           type='button'
           onClick={() => onControl(run.runId, 'start_fresh')}
-          className='rounded-md px-2 py-1 hover:bg-(--surface-subtle)'
+          className='h-auto rounded-md px-2 py-1 font-normal text-inherit hover:bg-(--surface-subtle)'
         >
           Start fresh
-        </button>
+        </Button>
     </div>
   )
   // Cancelling an active run is the Stop button in the message toolbar.
@@ -1048,20 +1062,22 @@ function RemoteQueueControls({
           ? 'The 2-minute waiting window elapsed.'
           : 'Waiting up to 2 minutes for the environment to reconnect.'}
       </span>
-      <button
+      <Button
+        variant="ghost"
         type='button'
         onClick={() => onControl(queue.runId, 'cancel')}
-        className='rounded-md px-2 py-1 hover:bg-(--surface-subtle) hover:text-(--foreground)'
+        className='h-auto rounded-md px-2 py-1 font-normal text-inherit hover:bg-(--surface-subtle) hover:text-(--foreground)'
       >
         Cancel
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
         type='button'
         onClick={() => onControl(queue.runId, 'retry')}
-        className='rounded-md border border-(--border) px-2 py-1 text-(--foreground) hover:bg-(--surface-subtle)'
+        className='h-auto rounded-md border border-(--border) px-2 py-1 font-normal text-(--foreground) hover:bg-(--surface-subtle)'
       >
         Retry
-      </button>
+      </Button>
     </div>
   )
 }
@@ -1091,9 +1107,9 @@ function ToolbarIconButton({ buttonClass, onClick, disabled, ariaLabel, title, c
   children: ReactNode
 }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={buttonClass} aria-label={ariaLabel} title={title}>
+    <Button variant="ghost" size="icon" type="button" onClick={onClick} disabled={disabled} className={`h-auto w-auto ${buttonClass}`} aria-label={ariaLabel} title={title}>
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -1104,16 +1120,18 @@ function PinMessageButton({ buttonClass, pinned, disabled, onTogglePinned }: {
   onTogglePinned: () => void
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="icon"
       type="button"
       onClick={onTogglePinned}
       disabled={disabled}
-      className={`${buttonClass} ${pinned ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+      className={`h-auto w-auto ${buttonClass} ${pinned ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
       aria-label={pinned ? 'Unpin message' : 'Pin message'}
       aria-pressed={pinned}
     >
       <Pin size={14} strokeWidth={1.75} className={pinned ? 'fill-current' : undefined} />
-    </button>
+    </Button>
   )
 }
 
@@ -1124,16 +1142,18 @@ function SaveMessageButton({ buttonClass, saved, disabled, onToggleSaved }: {
   onToggleSaved: () => void
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="icon"
       type="button"
       onClick={onToggleSaved}
       disabled={disabled}
-      className={`${buttonClass} ${saved ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+      className={`h-auto w-auto ${buttonClass} ${saved ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
       aria-label={saved ? 'Remove from saved' : 'Save message'}
       aria-pressed={saved}
     >
       <Bookmark size={14} strokeWidth={1.75} className={saved ? 'fill-current' : undefined} />
-    </button>
+    </Button>
   )
 }
 
@@ -1148,15 +1168,17 @@ function EditDeleteButtons({ buttonClass, disabled, onStartEdit, onDelete }: {
       <ToolbarIconButton buttonClass={buttonClass} onClick={onStartEdit} disabled={disabled} ariaLabel="Edit message">
         <Pencil size={14} strokeWidth={1.75} />
       </ToolbarIconButton>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={onDelete}
         disabled={disabled}
-        className={`${buttonClass} hover:text-red-500`}
+        className={`h-auto w-auto ${buttonClass} hover:text-red-500`}
         aria-label="Delete message"
       >
         <Trash2 size={14} strokeWidth={1.75} />
-      </button>
+      </Button>
     </>
   )
 }
@@ -1282,17 +1304,19 @@ function EmojiPickerButton({
 
   return (
     <div ref={rootRef} className="relative">
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={() => setOpen(!open)}
         disabled={disabled}
-        className={`${buttonClass} ${open ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+        className={`h-auto w-auto ${buttonClass} ${open ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
         aria-label="Add reaction"
         aria-expanded={open}
         aria-haspopup="dialog"
       >
         <SmilePlus size={14} strokeWidth={1.75} />
-      </button>
+      </Button>
       {open ? (
         // Anchored reaction picker — a native <dialog> cannot anchor above the trigger.
         // react-doctor-disable-next-line react-doctor/prefer-html-dialog
@@ -1305,18 +1329,20 @@ function EmojiPickerButton({
         >
           <div className="grid grid-cols-8 gap-0.5">
             {QUICK_REACTIONS.map((emoji) => (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 key={emoji}
                 type="button"
                 onClick={() => {
                   onSelect(emoji)
                   setOpen(false)
                 }}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-base transition-colors hover:bg-(--surface-muted)"
+                className="h-7 w-7 rounded-md p-0 text-base hover:bg-(--surface-muted)"
                 aria-label={`React with ${emoji}`}
               >
                 {emoji}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

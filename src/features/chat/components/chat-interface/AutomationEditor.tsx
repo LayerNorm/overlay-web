@@ -2,6 +2,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
@@ -255,15 +256,17 @@ export function AutomationEditorPanel({
               Scheduled and manual execution records.
             </p>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             type="button"
             aria-label="Refresh automation runs"
-            className="inline-flex size-8 items-center justify-center rounded-md border border-(--border) disabled:opacity-50"
+            className="h-8 w-8 rounded-md border border-(--border) p-0 text-(--foreground) hover:bg-transparent disabled:opacity-50"
             disabled={runsBusy}
             onClick={() => void loadRuns()}
           >
             <RefreshCw size={14} />
-          </button>
+          </Button>
         </div>
         <div className="divide-y divide-(--border) border-y border-(--border)">
           {runs.length === 0 ? (
@@ -306,24 +309,26 @@ export function AutomationEditorPanel({
                     </a>
                   ) : null}
                   {run.status === 'queued' || run.status === 'running' ? (
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
-                      className="rounded-md border border-(--border) px-2.5 py-1.5 text-xs"
+                      className="h-auto rounded-md border border-(--border) px-2.5 py-1.5 text-xs font-normal text-(--foreground) hover:bg-transparent"
                       disabled={runsBusy}
                       onClick={() => void updateRun('cancel-run', run._id)}
                     >
                       Cancel
-                    </button>
+                    </Button>
                   ) : null}
                   {run.status === 'failed' || run.status === 'dead_letter' || run.status === 'cancelled' ? (
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
-                      className="rounded-md border border-(--border) px-2.5 py-1.5 text-xs"
+                      className="h-auto rounded-md border border-(--border) px-2.5 py-1.5 text-xs font-normal text-(--foreground) hover:bg-transparent"
                       disabled={runsBusy}
                       onClick={() => void updateRun('retry-run', run._id)}
                     >
                       Retry
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { Reply, X } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import type { ComposerViewProps } from '../ChatComposerTypes'
 
 export function ReplyContextBar({ replyContext, setReplyContext }: Pick<ComposerViewProps, 'replyContext' | 'setReplyContext'>) {
@@ -12,9 +13,9 @@ export function ReplyContextBar({ replyContext, setReplyContext }: Pick<Composer
         <p className="font-medium text-(--foreground)">Replying to prior response</p>
         <p className="mt-0.5 line-clamp-2 text-(--muted)">{replyContext.snippet}</p>
       </div>
-      <button type="button" onClick={() => setReplyContext(null)} className="shrink-0 rounded-md p-1 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)" aria-label="Cancel reply">
+      <Button variant="ghost" size="icon" type="button" onClick={() => setReplyContext(null)} className="h-auto w-auto shrink-0 rounded-md p-1 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)" aria-label="Cancel reply">
         <X size={14} strokeWidth={1.75} />
-      </button>
+      </Button>
     </div>
   )
 }
