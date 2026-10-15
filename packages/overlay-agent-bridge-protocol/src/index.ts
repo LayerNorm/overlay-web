@@ -195,7 +195,7 @@ export const commandPollResponseSchema = z.object({
   commands: z.array(agentHostCommandSchema).max(MAX_COMMANDS_PER_POLL),
   retryAfterMs: z.number().int().min(100).max(60_000).optional(),
   // Highest command sequence the host may skip: every row below it is resolved
-  // server-side. Older servers omit it; older hosts ignore it.
+  // server-side. Only negotiated lifecycle-v2 hosts receive it; legacy schemas are strict.
   resolvedThroughSequence: z.number().int().min(0).optional(),
 }).strict().superRefine((response, context) => {
   for (let index = 0; index < response.commands.length; index += 1) {

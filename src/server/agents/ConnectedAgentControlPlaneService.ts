@@ -43,6 +43,7 @@ import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import { logger } from '@/server/observability/logger'
+import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
 import type { AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
 import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
 
@@ -838,10 +839,27 @@ export class ConnectedAgentControlPlaneService {
       }
       if (parsed.data.type === 'start') {
         this.assertWorkingDirectory(auth.environment, parsed.data.payload.workingDirectory)
+        if (parsed.data.payload.fresh) {
+          const mcp = parsed.data.payload.metadata.overlayMcp
+          if (mcp !== undefined) {
+            if (!mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string')
+              throw controlPlaneError('Recovery tool credentials are invalid', 409, 'recovery_credentials_invalid')
+            const claims = verifyAgentMcpToken(mcp.token)
+            if (!claims || claims.runId !== command.runId || claims.workspaceId !== command.workspaceId
+              || claims.environmentId !== command.environmentId)
+              throw controlPlaneError('Recovery tool credentials expired or do not match this run', 409, 'recovery_credentials_invalid')
+            const { expiresAt, ...scope } = claims
+            // Refresh delivery without extending the original grant's authority or lifetime.
+            const token = mintAgentMcpToken({ ...scope, ttlMs: expiresAt - Date.now() })
+            if (!token) throw controlPlaneError('Recovery tool credentials unavailable', 409, 'recovery_credentials_invalid')
+            parsed.data.payload.metadata.overlayMcp = { ...mcp, token }
+          }
+        }
       }
       return parsed.data
     })
-    return { commands: parsedCommands, resolvedThroughSequence }
+    return { commands: parsedCommands,
+      ...(auth.environment.capabilities.remoteLifecycleVersion === 2 ? { resolvedThroughSequence } : {}) }
   }
 
   async acknowledgeCommand(auth: HostAuthentication, acknowledgement: CommandAcknowledgement) {

@@ -681,7 +681,12 @@ export const controlRemoteAgentTurnByServer = mutation({
         const newAttemptId = `agent_session_${crypto.randomUUID()}`
         const nextGeneration = state.executionGeneration + 1
         const snapshot = session.capabilitySnapshot as Record<string, unknown>
-        const startPayload = (snapshot?.startPayload ?? {}) as Record<string, unknown>
+        // The checkpoint contains nonsecret references, not an executable start.
+        // Reuse the original validated command; its prompt/config remain canonical.
+        const originalStart = commands.find(command => command.type === 'start'
+          && command.payload && typeof command.payload.prompt === 'string')
+        if (!originalStart) return { applied: false, reason: 'unsupported_recovery' }
+        const startPayload = originalStart.payload
         const { attemptId: _oldAttemptId, executionGeneration: _oldGen, ...snapshotRest } = snapshot as Record<string, unknown> & { attemptId?: string, executionGeneration?: number }
         const { _id: oldSessionDocId, _creationTime: _oldCreationTime, ...sessionRest } = session
         void _oldCreationTime
@@ -2211,7 +2216,7 @@ export const claimCommandsByServer = mutation({
         await applyRemoteFact(ctx, run, { type: 'observe' }, args.now)
         neutralized.add(row.commandId)
       }
-      if (run?.remoteLifecycle && !run.remoteLifecycle.coordinatorId && !['cancel', 'shutdown'].includes(row.type)) break
+      if (run?.remoteLifecycle && !run.remoteLifecycle.coordinatorId && !['cancel', 'shutdown'].includes(row.type) && !neutralized.has(row.commandId)) break
       if (run?.remoteLifecycle && ['cancelling', 'completed', 'cancelled', 'failed'].includes(run.remoteLifecycle.phase) && !['cancel', 'shutdown', 'observe'].includes(row.type)) neutralized.add(row.commandId)
       if (run && !run.remoteLifecycle && row.type !== 'cancel' && (!['queued', 'running', 'waiting_for_approval'].includes(run.status) ||
         (run.leaseExpiresAt !== undefined && run.leaseExpiresAt <= args.now))) neutralized.add(row.commandId)

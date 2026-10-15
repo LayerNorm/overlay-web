@@ -87,3 +87,7 @@ billable task requires a new idempotent reservation boundary. Cancellation stays
 requested until host stop is confirmed; finalization intents retry usage/ordinary
 idle cleanup with the existing ledger idempotency keys after terminal ingestion.
 Machine time continues during human approval waits and pending stop delivery.
+
+A lifecycle-v2 cancellation timeout is not evidence that a disconnected BYO process
+stopped. Keep the run and reservation unresolved until host stop/provider isolation
+is confirmed; elapsed time must not trigger terminal settlement or release its hold.

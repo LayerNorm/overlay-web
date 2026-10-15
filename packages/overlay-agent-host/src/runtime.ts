@@ -111,7 +111,7 @@ export class AgentHostRuntime {
     if (this.options.durableLifecycle) for (const [runId, session] of this.sessions) {
       const execution = this.executions.get(runId)
       if (!execution || this.terminalRuns.has(runId)) continue
-      await this.emit(runId, { type: 'process_observation', payload: { process: await session.observe?.() ?? 'unknown' } })
+      await this.emit(runId, { type: 'process_observation', payload: { process: await session.observe?.() ?? 'unknown' } }, execution)
     }
   }
 
@@ -260,6 +260,7 @@ export class AgentHostRuntime {
     if (replacesPrevious && !(command.type === 'start' && command.payload.fresh === true))
       throw new Error('execution replacement requires proof that the old writer stopped')
     this.executions.set(command.runId, { ...command.execution, hostBootId: this.bootId })
+    if (replacesPrevious) this.terminalRuns.delete(command.runId)
   }
 
   private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
@@ -283,6 +284,9 @@ export class AgentHostRuntime {
     const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
     const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
     if (credentials === 'unavailable') return
+    // Bind callbacks before adapter code can emit, including during old-session teardown.
+    const execution = this.executions.get(command.runId)
+    const emit = (event: NormalizedAgentEvent) => this.emit(command.runId, event, execution)
     const session = await adapter.start({
       runId: command.runId,
       workingDirectory: scope.workingDirectory,
@@ -293,7 +297,7 @@ export class AgentHostRuntime {
       ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
-    }, (event) => this.emit(command.runId, event))
+    }, emit)
     this.sessions.set(command.runId, session)
     this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory,
       config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...(typeof command.payload.metadata.model === 'string' ? { model: command.payload.metadata.model } : {}) },
@@ -301,7 +305,7 @@ export class AgentHostRuntime {
     })
     await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
     if (!session.initialPromptHandled) {
-      void session.prompt(command.payload.prompt).catch((error) => this.emit(command.runId, { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
+      void session.prompt(command.payload.prompt).catch((error) => emit({ type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
     }
     return
   }
@@ -366,18 +370,21 @@ export class AgentHostRuntime {
     return adapter
   }
 
-  private async emit(runId: string, event: NormalizedAgentEvent): Promise<void> {
+  private async emit(runId: string, event: NormalizedAgentEvent,
+    execution = this.executions.get(runId)): Promise<void> {
     if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) {
       throw new Error('event outbox backpressure limit reached')
     }
     const stored: Omit<AgentHostEvent, 'sourceSequence'> = {
       protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
-      ...(this.executions.get(runId) ? { execution: this.executions.get(runId) } : {}),
+      ...(execution ? { execution } : {}),
       eventId: randomUUID(), environmentId: this.options.environmentId, runId,
       occurredAt: Date.now(), ...event,
     } as Omit<AgentHostEvent, 'sourceSequence'>
     this.options.state.appendEvent(stored)
-    if (this.options.durableLifecycle && ['completed', 'cancelled', 'failed'].includes(event.type)) this.terminalRuns.add(runId)
+    const currentExecution = this.executions.get(runId)
+    if (this.options.durableLifecycle && execution?.attemptId === currentExecution?.attemptId
+      && execution?.generation === currentExecution?.generation && ['completed', 'cancelled', 'failed'].includes(event.type)) this.terminalRuns.add(runId)
     try { await this.flushOutbox() } catch (error) { this.logger.warn('event upload deferred', { runId, error: safeError(error) }) }
   }
 

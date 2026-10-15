@@ -284,3 +284,17 @@ test('a terminal event freezes subsequent content and outcome within the same co
   assert.equal(projection.content, 'Done')
   assert.equal(projection.runStatus, 'completed')
 })
+
+
+test('resolved legacy request cannot resurrect its old waiting status on later output', () => {
+  for (const state of ['waiting_for_approval', 'waiting_for_input']) {
+    const projection = projectRemoteAgentEvents({ content: '', environmentName: 'Host',
+      runId: 'run-1', queueExpiresAt: 5000,
+      parts: [{ type: 'data-remote-agent-status', data: { state } },
+        { type: 'data-remote-agent-request', data: { requestKey: 'resolved', state: 'resolved' } }],
+      events: [event(2, 'text_checkpoint', { text: 'Continuing after approval' })],
+    })
+    assert.equal(projection.sessionStatus, 'running')
+    assert.equal(projection.runStatus, 'running')
+  }
+})

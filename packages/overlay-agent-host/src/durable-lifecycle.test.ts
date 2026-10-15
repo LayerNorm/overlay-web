@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentHostCommand, EventBatch } from '@layernorm/overlay-agent-bridge-protocol'
-import type { AgentAdapter } from './adapter'
+import type { AgentAdapter, EmitAgentEvent } from './adapter'
 import { AgentHostRuntime } from './runtime'
 import { SqliteHostStateStore } from './state'
 
@@ -13,15 +13,16 @@ async function fixture() {
   const root = join(directory, 'project'); await mkdir(root)
   let starts = 0
   const events: EventBatch[] = []
+  const emitters: EmitAgentEvent[] = []
   const capabilities: Array<Record<string, unknown>> = []
   const adapter: AgentAdapter = {
     capability: { id: 'fixture', displayName: 'Fixture', protocol: 'fake', supports: { prompt: true, approval: true, cancel: true, resume: true },
       recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false } },
     async discover() { return this.capability },
-    async start() { starts++; return { remoteSessionId: 'native', async prompt() {}, async approve() {}, async elicit() {}, async cancel() {}, async resume() {}, async stop() {}, async observe() { return 'live' } } },
+    async start(_input, emit) { starts++; emitters.push(emit); return { remoteSessionId: 'native', async prompt() {}, async approve() {}, async elicit() {}, async cancel() {}, async resume() {}, async stop() {}, async observe() { return 'live' } } },
   }
   const state = new SqliteHostStateStore(join(directory, 'host.sqlite'))
-  const controlPlane = { async pollCommands() { return { commands: [] } }, async acknowledgeCommand() {},
+  const controlPlane = { async pollCommands() { return { commands: [], retryAfterMs: 10 } }, async acknowledgeCommand() {},
     async updateCapabilities(input: Record<string, unknown>) { capabilities.push(input) },
     async uploadEvents(batch: EventBatch) { events.push(batch); return { protocolVersion: 1 as const, accepted: true as const, acknowledgedSequence: batch.events.at(-1)!.sourceSequence } } }
   const create = (durableLifecycle = true) => new AgentHostRuntime({ durableLifecycle, environmentId: 'env', workspaceId: 'ws', filesystem: { mode: 'selected_roots', roots: [root] }, state, adapters: [adapter], controlPlane })
@@ -31,7 +32,7 @@ async function fixture() {
   } as AgentHostCommand)
   const start = command(1, 'start', { bindingId: 'binding', adapterId: 'fixture', workingDirectory: root, prompt: 'do one write',
     metadata: { model: 'chosen-model', overlayMcp: { token: 'must-not-be-checkpointed', url: 'https://example.test/mcp' } } })
-  return { state, events, capabilities, create, command, start, starts: () => starts,
+  return { state, events, emitters, capabilities, create, command, start, starts: () => starts,
     async cleanup() { state.close(); await rm(directory, { recursive: true, force: true }) } }
 }
 
@@ -101,5 +102,30 @@ test('a crash after an external command claim consumes the uncertain command wit
     assert.equal(f.starts(), 0)
     assert.equal(f.state.getProcessedCommand(f.start.commandId)?.errorCode, 'command_outcome_unknown')
     assert.equal(f.state.commandCursor(), 1)
+  } finally { await f.cleanup() }
+})
+
+
+test('fresh attempts retain old callback fences and resume periodic health after an old failure', async () => {
+  const f = await fixture()
+  try {
+    const runtime = f.create()
+    await runtime.processCommand(f.start)
+    await f.emitters[0]!({ type: 'failed', payload: { code: 'lost', message: 'old process lost', retryable: true } })
+    const fresh: AgentHostCommand = { ...f.start, commandId: 'fresh', sequence: 2,
+      execution: { attemptId: 'replacement', generation: 2 },
+      payload: { ...f.start.payload, fresh: true } }
+    await runtime.processCommand(fresh)
+    await f.emitters[0]!({ type: 'text_checkpoint', payload: { text: 'late old output' } })
+    await f.emitters[0]!({ type: 'failed', payload: { code: 'late', message: 'old prompt rejected', retryable: true } })
+    const late = f.events.flatMap(batch => batch.events).find(event => event.type === 'text_checkpoint')
+    assert.equal(late?.execution?.attemptId, 'attempt')
+    const controller = new AbortController()
+    const running = runtime.run(controller.signal).catch(error => { if (!controller.signal.aborted) throw error })
+    await new Promise(resolve => setTimeout(resolve, 30))
+    controller.abort()
+    await running
+    assert.ok(f.events.flatMap(batch => batch.events).some(event => event.type === 'process_observation'
+      && event.execution?.attemptId === 'replacement' && event.payload.process === 'live'))
   } finally { await f.cleanup() }
 })

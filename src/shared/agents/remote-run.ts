@@ -1,7 +1,6 @@
 import type { AgentRunStatus } from './agent-run'
 
 export const REMOTE_RUN_LIFECYCLE_VERSION = 2 as const
-export const REMOTE_RUN_CANCEL_GRACE_MS = 5 * 60_000
 export const REMOTE_RUN_PHASES = [
   'queued', 'waking', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input',
   'recovering', 'needs_attention', 'cancelling', 'completed', 'cancelled', 'failed',
@@ -190,12 +189,9 @@ export function reduceRemoteRun(
     ...(current.approvals ? { approvals: current.approvals.map(request => ({ ...request })) } : {}) }
   // Policy stops cannot be undone by an event, recovery, or a late decision.
   if (current.phase === 'cancelling') {
-    // A host is asked to confirm the stop, but a dead, revoked, or reimaged machine never
-    // will — after the grace window the supervisor's next observe closes the run anyway
-    // rather than leaving it cancelling forever. Runs cancelled before this field existed
-    // (cancelRequestedAt unset) resolve immediately.
+    // Elapsed time cannot prove that a disconnected host's external writer stopped.
+    // Only host/provider stop evidence may close execution and release its hold.
     if (fact.type === 'stopped') next.phase = 'cancelled'
-    else if (now - (current.cancelRequestedAt ?? 0) >= REMOTE_RUN_CANCEL_GRACE_MS) next.phase = 'cancelled'
     else return reject('conflict')
   } else if (now >= current.hardDeadlineAt) {
     if (fact.type === 'stopped') next.phase = 'cancelled'

@@ -1,3 +1,4 @@
+import { agentHostCommandSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
@@ -815,4 +816,40 @@ test('canonical request projection preserves decisions and closes lost execution
   ]))
   await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: seeded.conversationId,
     runId: 'run-remote-turn', requestKey: 'lost', decision: 'allow', now: now + 4 })).rejects.toThrow(/ALREADY_RESOLVED/)
+})
+
+
+test('cancellation before coordinator claim delivers shutdown and cancel without blocking later sequences', async () => {
+  const { call, seeded } = await durableFixture()
+  await call('controlRemoteAgentTurnByServer', { actorUserId, workspaceId, conversationId: seeded.conversationId,
+    runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 1 })
+  const commands = await call<Array<{ type: string; sequence: number }>>('claimCommandsByServer', {
+    workspaceId, environmentId, now: now + 2, leaseMs: 5000, limit: 10,
+  })
+  expect(commands.map(command => command.type)).toEqual(['shutdown', 'cancel'])
+  expect(commands.map(command => command.sequence)).toEqual([1, 2])
+})
+
+test('fresh lifecycle attempt uses a strict executable start rather than checkpoint references', async () => {
+  const { call, lifecycle, seeded, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await call('claimCommandsByServer', { workspaceId, environmentId, now, leaseMs: 5000, limit: 10 })
+  await call('acknowledgeCommandByServer', { workspaceId, environmentId, commandId: 'command-remote-turn', accepted: true, now: now + 1 })
+  await events([event(1, 'session_started', { remoteSessionId: 'old', adapterId: 'acp' }),
+    event(2, 'process_observation', { process: 'lost' })], now + 2)
+  const fresh = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
+    actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn',
+    action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 3,
+  })
+  expect(fresh.applied).toBe(true)
+  const commands = await call<Array<{ id: string; runId: string; sequence: number; type: string; payload: unknown }>>('claimCommandsByServer', {
+    workspaceId, environmentId, now: now + 4, leaseMs: 5000, limit: 10,
+  })
+  const command = commands.find(command => command.id === fresh.commandId)!
+  const parsed = agentHostCommandSchema.safeParse({ protocolVersion: 1, commandId: command.id,
+    environmentId, workspaceId, runId: command.runId, sequence: command.sequence, issuedAt: now,
+    type: command.type, payload: command.payload })
+  expect(parsed.success).toBe(true)
+  expect(command.payload).toEqual(expect.objectContaining({ prompt: 'work', fresh: true, metadata: {} }))
 })

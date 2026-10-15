@@ -60,7 +60,7 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
     now: () => NOW,
     isEnabled: () => true,
   })
-  return { service, environment }
+  return { service, environment, repository, credential }
 }
 
 function signedRequest(args: {
@@ -509,4 +509,17 @@ test('an account that needs a file on the machine (a Codex subscription) has it 
   await assertControlPlaneError(() => down.service.issueRunCredentials(down.auth, 'run-1'), 'machine_files_failed')
   const none = providerAccountHarness({ resolve, deliver: 'none', bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
   await assertControlPlaneError(() => none.service.issueRunCredentials(none.auth, 'run-1'), 'machine_files_unavailable')
+})
+
+
+test('poll extension is omitted for strict legacy hosts and sent only after v2 negotiation', async () => {
+  for (const negotiated of [false, true]) {
+    const f = fixture({ capabilities: negotiated ? { remoteLifecycleVersion: 2 } : {} })
+    f.repository.claimCommands = async () => []
+    f.repository.commandResolutionFloor = async () => 12
+    const response = await f.service.pollCommands({ environment: f.environment, credential: f.credential }, 10)
+    const wire = JSON.parse(JSON.stringify(response))
+    assert.equal(Object.hasOwn(wire, 'resolvedThroughSequence'), negotiated)
+    if (negotiated) assert.equal(wire.resolvedThroughSequence, 12)
+  }
 })

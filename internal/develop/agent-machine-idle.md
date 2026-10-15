@@ -22,3 +22,7 @@ The meter pass (`operations/reconcile`, called by the Convex cron every minute f
 - Cost: one scheduled function per run end, one Convex query per idle-window check, and the existing sweep; nothing per agent that is stopped.
 
 Quiet transcript output is not proof of process loss. A healthy pending approval keeps the machine active; automatic parking requires proven durable approval restoration and is not enabled. V2 attention/cancellation keeps execution protected until the old writer is proven stopped. Idle checks remain the existing timer/meter path after terminal settlement.
+
+Lifecycle-v2 runs awaiting cancellation remain unresolved until a host stop or
+provider isolation is confirmed. A disconnected host exceeding a grace period
+cannot be treated as stopped; its execution and billing hold may still be active.

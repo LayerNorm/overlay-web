@@ -1003,7 +1003,16 @@ function RemoteRunControls({ run, onControl }: {
   if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
   if (run.state === 'recovering') return <p className='mt-2 text-xs text-(--muted)' role='status'>Resuming…</p>
   if (run.state === 'cancelling') return <p className='mt-2 text-xs text-(--muted)' role='status'>Cancellation requested. Waiting for execution to stop.</p>
-  if (run.state === 'needs_attention') return <p className='mt-2 text-xs text-(--muted)' role='status'>Execution needs attention. Inspect the original process before continuing this task.</p>
+  if (run.state === 'needs_attention') return (
+    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
+      <p role="status">Execution needs attention. Stop or isolate the original process before starting fresh.</p>
+      <button type="button" className="shrink-0 rounded-md border border-(--border) px-2 py-1 text-(--foreground)"
+        onClick={() => {
+          if (window.confirm('Confirm that you inspected and stopped or isolated the original process. Starting fresh creates a new attempt and does not resume the old process.'))
+            onControl(run.runId, 'start_fresh')
+        }}>Start fresh</button>
+    </div>
+  )
   if (run.state === 'recoverable') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
         <span>

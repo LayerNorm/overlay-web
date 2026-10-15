@@ -60,15 +60,12 @@ export function projectRemoteAgentEvents(input: {
   let parts = [...(input.parts ?? [])]
   // A batch is a delta, not a new execution context. In particular, command,
   // plan and text updates do not resolve an outstanding human request.
-  const previous = parts.find((part) => part.type === REMOTE_AGENT_STATUS_PART_TYPE)
-  const previousState = objectValue(previous?.data)?.state
   const pending = parts.filter((part) => part.type === REMOTE_AGENT_REQUEST_PART_TYPE
     && ['pending', 'decision_pending'].includes(String(objectValue(part.data)?.state)))
   const waitingForInput = pending.some((part) => objectValue(part.data)?.kind === 'elicitation')
   let sessionStatus: AgentRemoteSessionStatus = pending.length > 0
     ? waitingForInput ? 'waiting_for_input' : 'waiting_for_approval'
-    : previousState === 'waiting_for_input' ? 'waiting_for_input'
-    : previousState === 'waiting_for_approval' ? 'waiting_for_approval' : 'running'
+    : 'running'
   let runStatus: AgentRunStatus = sessionStatus === 'waiting_for_approval' || sessionStatus === 'waiting_for_input'
     ? 'waiting_for_approval' : 'running'
   let remoteSessionId: string | undefined

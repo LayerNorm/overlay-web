@@ -99,7 +99,7 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
     const existing = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', commandId)).unique()
     // Release any reserved sequence as a neutralized shutdown, preserving environment ordering.
     const held = await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', attempt.runId)).take(100)
-    for (const command of held) if (command.status === 'coordinator_pending') await ctx.db.patch(command._id, { status: 'pending', updatedAt: now })
+    for (const command of held) if (command.status === 'coordinator_pending') await ctx.db.patch(command._id, { type: 'shutdown', payload: { reason: 'Cancellation requested before execution was dispatched.' }, status: 'pending', updatedAt: now })
     if (!existing) {
       const latest = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', q => q.eq('environmentId', attempt.environmentId)).order('desc').first()
       await ctx.db.insert('agentRunCommands', { commandId, workspaceId: attempt.workspaceId, environmentId: attempt.environmentId,

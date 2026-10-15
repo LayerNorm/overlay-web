@@ -1042,3 +1042,21 @@ continuing machine cost. A recorded decision remains pending delivery until the
 host accepts it. Browser refresh and subscription readers never own execution.
 Real hosted soak, stopped-machine wake, process recovery, deployment continuity and
 billing readbacks are required before declaring the incident class fixed.
+
+### Recovery and cancellation integration safeguards
+
+Command-resolution floors are returned only to lifecycle-v2 hosts; strict 0.3.10
+poll schemas must receive the original response shape. A cancellation before the
+coordinator starts releases its reserved sequence as a shutdown, so later stop
+commands remain deliverable during Workflow outages.
+
+Cancellation remains `cancelling` until a host stop or provider isolation is
+confirmed. A timeout alone never finalizes an unknown external writer or releases
+its usage hold. For `needs_attention`, the room offers Start fresh with explicit
+confirmation that the operator inspected and stopped or isolated the old process.
+The new attempt uses the original validated start command, not stripped checkpoint
+references; tool credentials are reissued within their original scope and expiry.
+Adapter callbacks capture their originating execution fence, including delayed
+prompt errors and teardown output. New attempts reset terminal health suppression;
+old callbacks cannot suppress their observations or claim the replacement identity.
+Resolved legacy requests do not resurrect a wait when later output arrives.

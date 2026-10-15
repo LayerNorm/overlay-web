@@ -62,3 +62,15 @@ are 0.3.11 and image v6; the publishing workflow is main-only. Do not bypass it 
 a feature branch. Keep new enrollment disabled and the PR draft until those gates
 and required CI are satisfied. Preserve the existing task's approval history when
 inspecting continuation; this checkout has not resumed any incident task.
+
+## Integration review (2026-10-15)
+
+The c2d90984 live handoff records a real 17-minute approval wait, browser reload,
+completion, recovery and redeployment continuity. Integration found additional
+legacy-poll compatibility, fresh-start payload/UI, cancellation proof, sequence
+release, callback fencing/health and resolved-request projection defects. Fixes
+and regression tests are being validated on the updated head. The earlier
+five-minute cancellation cutoff is removed: only confirmed stop/isolation can
+close a cancelled execution. Keep production lifecycle-v2 enrollment disabled;
+provider wake/billing, compatible package/image publication and unavailable
+provider-specific recovery remain separate activation gates.
