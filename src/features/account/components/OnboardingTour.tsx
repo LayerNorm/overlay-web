@@ -899,6 +899,25 @@ export function OnboardingTour({
     document.querySelectorAll(`[data-tour="${target}"]`).forEach(el => observerRef.current!.observe(el))
     observerRef.current.observe(document.body)
 
+    // The target can mount after this component does (surface navigation, lazy
+    // headers). Watch for its insertion; without this the tour stays armed but
+    // invisible forever.
+    let lateObserver: MutationObserver | null = null
+    if (!getTargetRect(target)) {
+      lateObserver = new MutationObserver(() => {
+        if (getTargetRect(target)) {
+          doMeasure()
+          lateObserver?.disconnect()
+          lateObserver = null
+        }
+      })
+      lateObserver.observe(document.body, { childList: true, subtree: true })
+    }
+    const lateObserverTimeout = window.setTimeout(() => {
+      lateObserver?.disconnect()
+      lateObserver = null
+    }, 10000)
+
     const onResize = () => measure(idx, target)
     window.addEventListener('resize', onResize)
     return () => {
@@ -907,9 +926,23 @@ export function OnboardingTour({
         rafRef.current = null
       }
       observerRef.current?.disconnect()
+      lateObserver?.disconnect()
+      window.clearTimeout(lateObserverTimeout)
       window.removeEventListener('resize', onResize)
     }
   }, [currentStep, step, measure, postTourPhase])
+
+  // Steps 0-1 anchor to the model picker and the generation-mode toggle inside
+  // its open panel; the dropdown must be open while those steps are active or
+  // their targets never mount.
+  const pickerOpenForStep = currentStep <= 1
+  useEffect(() => {
+    if (!pickerOpenForStep || isClosing || postTourPhase) return
+    window.dispatchEvent(new Event('overlay:tour:open-model-picker'))
+    return () => {
+      window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
+    }
+  }, [pickerOpenForStep, isClosing, postTourPhase])
 
   if (!step) return null
 
