@@ -1,6 +1,7 @@
 import type { AgentRunStatus } from './agent-run'
 
 export const REMOTE_RUN_LIFECYCLE_VERSION = 2 as const
+export const REMOTE_RUN_CANCEL_GRACE_MS = 5 * 60_000
 export const REMOTE_RUN_PHASES = [
   'queued', 'waking', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input',
   'recovering', 'needs_attention', 'cancelling', 'completed', 'cancelled', 'failed',
@@ -18,6 +19,7 @@ export type RemoteRunState = {
   coordinatorId?: string
   hardDeadlineAt: number
   claimDeadlineAt: number
+  cancelRequestedAt?: number
   lastHealthAt?: number
   lastProgressAt?: number
   approval?: RemoteRunApproval
@@ -93,8 +95,8 @@ const factHandlers: FactHandlers = {
     if (current.coordinatorId === fact.coordinatorId) return 'unchanged'
     next.coordinatorId = fact.coordinatorId
   },
-  cancel({ next }, fact) { next.phase = 'cancelling'; next.cause = fact.cause },
-  refuse({ next }, fact) { next.phase = 'cancelling'; next.cause = fact.cause },
+  cancel({ next, now }, fact) { next.phase = 'cancelling'; next.cause = fact.cause; next.cancelRequestedAt = now },
+  refuse({ next, now }, fact) { next.phase = 'cancelling'; next.cause = fact.cause; next.cancelRequestedAt = now },
   wake({ current, next }) {
     if (!['queued', 'waking'].includes(current.phase)) return 'conflict'
     next.phase = 'waking'
@@ -167,7 +169,7 @@ const factHandlers: FactHandlers = {
   observe({ current, next, now }) {
     if (current.phase === 'needs_attention' && current.cause !== 'process_health_required') return 'unchanged'
     if (pendingRemoteApprovals(current).some(request => now >= request.expiresAt)) {
-      next.phase = 'cancelling'; next.cause = 'approval_expired'
+      next.phase = 'cancelling'; next.cause = 'approval_expired'; next.cancelRequestedAt = now
     } else if (['queued', 'waking', 'starting'].includes(current.phase) && now >= current.claimDeadlineAt) {
       needsAttention(next, 'command_unclaimed')
     } else if (!['queued', 'waking', 'starting'].includes(current.phase) && now - (current.lastHealthAt ?? 0) >= 90_000) needsAttention(next, 'process_health_required')
@@ -187,11 +189,20 @@ export function reduceRemoteRun(
   const next: RemoteRunState = { ...current, ...(current.approval ? { approval: { ...current.approval } } : {}),
     ...(current.approvals ? { approvals: current.approvals.map(request => ({ ...request })) } : {}) }
   // Policy stops cannot be undone by an event, recovery, or a late decision.
-  if (now >= current.hardDeadlineAt && fact.type !== 'stopped') {
-    next.phase = 'cancelling'; next.cause = 'hard_deadline_expired'
-  } else if (current.phase === 'cancelling') {
-    if (fact.type !== 'stopped') return reject('conflict')
-    next.phase = 'cancelled'
+  if (current.phase === 'cancelling') {
+    // A host is asked to confirm the stop, but a dead, revoked, or reimaged machine never
+    // will — after the grace window the supervisor's next observe closes the run anyway
+    // rather than leaving it cancelling forever. Runs cancelled before this field existed
+    // (cancelRequestedAt unset) resolve immediately.
+    if (fact.type === 'stopped') next.phase = 'cancelled'
+    else if (now - (current.cancelRequestedAt ?? 0) >= REMOTE_RUN_CANCEL_GRACE_MS) next.phase = 'cancelled'
+    else return reject('conflict')
+  } else if (now >= current.hardDeadlineAt) {
+    if (fact.type === 'stopped') next.phase = 'cancelled'
+    else {
+      next.phase = 'cancelling'; next.cause = 'hard_deadline_expired'
+      next.cancelRequestedAt = next.cancelRequestedAt ?? now
+    }
   } else {
     // The exhaustive map checks each handler's discriminant/arguments at declaration.
     const handle = factHandlers[fact.type] as (context: FactContext, fact: RemoteRunFact) => Disposition

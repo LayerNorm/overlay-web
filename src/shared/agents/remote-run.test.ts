@@ -35,6 +35,20 @@ test('cancel races fence approvals, recovery, wake and completion until confirme
   assert.equal(s.phase, 'cancelled')
   assert.equal(apply(s, { type: 'complete' }).reason, 'terminal')
 })
+test('cancelling resolves without a host ack after the grace window', () => {
+  const cancelled = apply(state(), { type: 'cancel', cause: 'user' }, 1_000).state
+  assert.equal(cancelled.phase, 'cancelling')
+  assert.equal(cancelled.cancelRequestedAt, 1_000)
+  assert.equal(apply(cancelled, { type: 'observe' }, 1_000 + 4 * 60_000).state.phase, 'cancelling')
+  const closed = apply(cancelled, { type: 'observe' }, 1_000 + 5 * 60_000).state
+  assert.equal(closed.phase, 'cancelled')
+  assert.equal(closed.cause, 'user')
+  // Runs cancelled before cancelRequestedAt existed resolve on the next observe
+  // (unset is treated as epoch, so any real timestamp is past the grace window).
+  const legacy = { ...cancelled }
+  delete legacy.cancelRequestedAt
+  assert.equal(apply(legacy, { type: 'observe' }, 1_700_000_000_000).state.phase, 'cancelled')
+})
 test('unknown process / uncertain old writer requires attention without replacement', () => {
   assert.equal(apply(state(), { type: 'health', process: 'unknown' }).state.phase, 'needs_attention')
   for (const recoveryOutcome of ['requires_new_attempt', 'unavailable', 'restored'] as const) {
