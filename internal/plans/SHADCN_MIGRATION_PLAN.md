@@ -326,6 +326,8 @@ shape without changing it — otherwise keep it bespoke.
 
 ## Phase 8 — ad-hoc markup sweep (where most inconsistency actually lives)
 
+Detailed execution plan: [`SHADCN_PHASE_8_SUBPLAN.md`](./SHADCN_PHASE_8_SUBPLAN.md).
+
 Per feature dir, one PR each: `chat` → `settings` → `workspaces` → `agents` →
 `account` → `integrations` → `knowledge` → `work` → remaining small feature
 dirs (`files`, `share`, `admin`, `auth`, `automations`, `notebook`, `showcase`)
