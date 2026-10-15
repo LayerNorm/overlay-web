@@ -751,3 +751,17 @@ test('a downgraded legacy host receives parseable shutdowns and an explicit cano
   expect(commands[0].attemptId).toBeUndefined()
   expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('needs_attention')
 })
+
+test('expired wake/claim deadlines never launch late work or strand the reserved command sequence', async () => {
+  for (const claimedOwner of [false, true]) {
+    const { convex, call, lifecycle, started } = await durableFixture()
+    if (claimedOwner) {
+      const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+      await lifecycle('claim', owner); await lifecycle('advance', owner)
+    }
+    await call('sweepRemoteRunsByServer', { now: now + 60_001, hostOfflineBefore: 0, limit: 100 })
+    const commands = await call<Array<{ type: string; sequence: number }>>('claimCommandsByServer', { workspaceId, environmentId, now: now + 60_002, leaseMs: 5000, limit: 10 })
+    expect(commands[0]).toEqual(expect.objectContaining({ sequence: 1, type: 'shutdown' }))
+    expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('needs_attention')
+  }
+})

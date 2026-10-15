@@ -70,6 +70,12 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
     }
     await ctx.db.patch(message._id, { parts: parts as typeof message.parts, updatedAt: now })
   }
+  if (attempt && result.state.phase === 'needs_attention' && result.state.cause === 'command_unclaimed') {
+    const held = await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', attempt.runId)).take(100)
+    for (const command of held) if (command.status === 'coordinator_pending') await ctx.db.patch(command._id, {
+      type: 'shutdown', payload: { reason: 'The task was not claimed before its wake deadline.' }, status: 'pending', updatedAt: now,
+    })
+  }
   // A policy stop must reach the host even while Workflow delivery is unavailable.
   if (attempt && result.state.phase === 'cancelling') {
     const commandId = `stop:${run.externalRunId}:${result.state.currentAttemptId}`

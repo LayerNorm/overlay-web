@@ -2147,7 +2147,11 @@ export const claimCommandsByServer = mutation({
         neutralized.add(row.commandId)
         legacyLimitations.add(row.commandId)
       }
-      if (run?.remoteLifecycle && !run.remoteLifecycle.coordinatorId && run.remoteLifecycle.phase !== 'cancelling') break
+      if (run?.remoteLifecycle && row.type === 'start' && args.now >= run.remoteLifecycle.claimDeadlineAt) {
+        await applyRemoteFact(ctx, run, { type: 'observe' }, args.now)
+        neutralized.add(row.commandId)
+      }
+      if (run?.remoteLifecycle && !run.remoteLifecycle.coordinatorId && !['cancel', 'shutdown'].includes(row.type)) break
       if (run?.remoteLifecycle && ['cancelling', 'completed', 'cancelled', 'failed'].includes(run.remoteLifecycle.phase) && !['cancel', 'shutdown', 'observe'].includes(row.type)) neutralized.add(row.commandId)
       if (run && !run.remoteLifecycle && row.type !== 'cancel' && (!['queued', 'running', 'waiting_for_approval'].includes(run.status) ||
         (run.leaseExpiresAt !== undefined && run.leaseExpiresAt <= args.now))) neutralized.add(row.commandId)
