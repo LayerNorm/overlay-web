@@ -672,8 +672,58 @@ export const controlRemoteAgentTurnByServer = mutation({
       }
       if (['completed', 'cancelled', 'failed'].includes(state.phase)) return { applied: false, reason: 'conflicting_state' }
       if (args.action !== 'cancel' && args.now >= state.hardDeadlineAt) return { applied: false, reason: 'expired_deadline' }
-      if (args.action === 'start_fresh') return { applied: false, reason: 'unsupported_recovery' }
       if (args.action !== 'cancel' && state.phase === 'cancelling') return { applied: false, reason: 'conflicting_state' }
+      if (args.action === 'start_fresh') {
+        // BYO adapters cannot reattach to a dead process: the only continuation is a
+        // brand-new attempt on a fresh execution generation. The old attempt's
+        // approval context is discarded; the new process asks again if it needs to.
+        if (state.phase !== 'needs_attention') return { applied: false, reason: 'unsupported_recovery' }
+        const newAttemptId = `agent_session_${crypto.randomUUID()}`
+        const nextGeneration = state.executionGeneration + 1
+        const snapshot = session.capabilitySnapshot as Record<string, unknown>
+        const startPayload = (snapshot?.startPayload ?? {}) as Record<string, unknown>
+        const { attemptId: _oldAttemptId, executionGeneration: _oldGen, ...snapshotRest } = snapshot as Record<string, unknown> & { attemptId?: string, executionGeneration?: number }
+        const { _id: oldSessionDocId, _creationTime: _oldCreationTime, ...sessionRest } = session
+        void _oldCreationTime
+        const now = args.now
+        const latestFresh = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', q => q.eq('environmentId', session.environmentId)).order('desc').first()
+        await ctx.db.insert('agentRemoteSessions', {
+          ...sessionRest,
+          attemptId: newAttemptId,
+          executionGeneration: nextGeneration,
+          sessionId: newAttemptId,
+          status: 'queued',
+          commandCursor: 0,
+          eventCursor: 0,
+          remoteSessionId: undefined,
+          capabilitySnapshot: snapshotRest,
+          createdAt: now,
+          updatedAt: now,
+        } as never)
+        await ctx.db.patch(session._id, { status: 'failed', endedAt: now, updatedAt: now })
+        const nextState: RemoteRunState = {
+          ...state,
+          revision: state.revision + 1,
+          phase: 'recovering',
+          cause: 'fresh_attempt',
+          currentAttemptId: newAttemptId,
+          executionGeneration: nextGeneration,
+          recoveryOutcome: 'requires_new_attempt',
+        }
+        delete nextState.approval
+        delete nextState.approvals
+        delete nextState.cancelRequestedAt
+        delete nextState.lastHealthAt
+        await ctx.db.patch(run._id, { remoteLifecycle: nextState, status: remoteRunCoarseStatus(nextState.phase), updatedAt: now })
+        await ctx.db.insert('agentRemoteRunIntents', { intentId: `control:${operationId}`, runId: args.runId, kind: 'control', action: args.action,
+          operationId, revision: nextState.revision, status: 'pending', createdAt: now, updatedAt: now })
+        await ctx.db.insert('agentRunCommands', {
+          commandId: `command:${operationId}`, workspaceId: args.workspaceId, environmentId: session.environmentId,
+          runId: args.runId, attemptId: newAttemptId, executionGeneration: nextGeneration,
+          type: 'start', sequence: (latestFresh?.sequence ?? 0) + 1,
+          payload: { ...startPayload, fresh: true }, status: 'pending', createdAt: now, updatedAt: now })
+        return { applied: true, operationId, phase: nextState.phase, commandId: `command:${operationId}`, messageId: run.assistantMessageId }
+      }
       const result = await applyRemoteFact(ctx, run, args.action === 'cancel'
         ? { type: 'cancel', cause: 'user_cancelled' } : { type: 'recovery_requested' }, args.now)
       const next = result?.state ?? state
