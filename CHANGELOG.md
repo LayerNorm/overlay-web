@@ -4,10 +4,17 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a restricted ordinary-member initializer before retiring legacy operator writes, preserving safe web/backend release ordering.
+
+- Preserve operator tokens through denied-action auditing, align billing directory permissions, reject invalid/cross-origin admin mutations, and correct client-scoped WorkOS verification.
+
+- Harden the standalone operator console: fresh WorkOS authentication, safe local redirects, principal-derived operator permissions, preserved architecture boundaries, and mandatory admin CI.
+
 ### Changed
 
-- Removed the in-app operator console: `/app/admin`, the `/api/v1/admin/*` routes, `src/features/admin`, the admin sidebar entry, and `AuthorizationAdministrationService` are deleted in favor of the standalone `apps/admin` console (see `internal/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`). `/app/admin` now returns 404. API-key `admin` scope checks use the ordinary `administration.access` capability, and a `check:admin-separation` CI guard keeps admin routes and `ADMIN_API_SECRET` out of the web build.
+- **Admin console gets its own Convex secret and operator gate (Stage 2).** New `admin/console:*` functions mirror every admin read/write: each runs `requireAdminSecret` (constant-time `ADMIN_API_SECRET` compare, fails closed when unset) plus `requireOperator` — the caller's WorkOS identity via `convex/auth.config.ts` customJwt providers, plus an active `administrativePrincipals` row with a permitted role. Every write records its own `auditEvents` row in the same transaction, and `admin/breakGlass:grantFirstAdmin` recovers access via `npx convex run` when no admin remains. `apps/admin` now sends `ADMIN_API_SECRET` and the operator's access token; production is unaffected until `ADMIN_API_SECRET` is set (the existing `*ByServer` functions keep serving `/app/admin` on `INTERNAL_API_SECRET`).
 
+- Removed the in-app operator console: `/app/admin`, the `/api/v1/admin/*` routes, `src/features/admin`, the admin sidebar entry, and `AuthorizationAdministrationService` are deleted in favor of the standalone `apps/admin` console (see `internal/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`). `/app/admin` now returns 404. API-key `admin` scope checks use the ordinary `administration.access` capability, and a `check:admin-separation` CI guard keeps admin routes and `ADMIN_API_SECRET` out of the web build.
 - Update Vercel Speed Insights to 2.0 and patch the Agent Host Eve dependency to undici 8.10.2, removing the expired security-audit exception.
 
 - The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline. Reduced motion disables the pulse and workspace spinner; shared pulse timing prevents flashes across loading-boundary handoffs.
@@ -20,6 +27,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Use authenticated Vercel MCP access links as the first choice for cloud-agent PR browser QA across platforms, with private runtime automation secrets as a fallback and separate Overlay sandbox login.
 
 - Update CodeQL init, analyze and SARIF upload together to 4.38.2; group future Dependabot updates and enforce matching pins so dependency updates cannot break analysis through version mismatches.
+
+- **Add the standalone admin console app (`apps/admin`).** The operator surface is being split out of the web app per `docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`: Stage 1 scaffolds a separate Next.js app with WorkOS AuthKit sign-in, an `__Host-overlay_admin_session` cookie (8h absolute, 30m idle, recent-sign-in required for destructive actions), a single `convex-admin` server module that calls the existing admin Convex functions with `ADMIN_CONVEX_SECRET`, and the ported Overview/Roles/Groups/Catalog panels. Nothing deploys yet — Vercel project and domain wiring is Stage 3, and `/app/admin` stays in place.
 
 - Restrict preview cleanup to the pinned Overlay project Preview credential and explicitly block the customer production backend, alongside existing project/type/PR ownership checks, to protect production and other products from automation deletion.
 

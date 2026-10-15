@@ -156,6 +156,7 @@
   ],
   "exclude": [
     "node_modules",
+    "apps",
     "archives",
     ".agents",
     ".agent",

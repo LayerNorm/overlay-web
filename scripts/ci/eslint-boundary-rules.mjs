@@ -250,6 +250,22 @@ export function createArchitectureBoundaryConfigs() {
     },
   })
 
+  configs.push({
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { 'app-separation': { rules: { imports: {
+      meta: { type: 'problem', schema: [] },
+      create(context) {
+        const check = (node) => {
+          if (typeof node.value === 'string' && /(?:^|\/)apps\//.test(node.value)) {
+            context.report({ node, message: 'Web src must not import standalone apps; use packages.' })
+          }
+        }
+        return { ImportDeclaration: (node) => check(node.source), ExportNamedDeclaration: (node) => node.source && check(node.source), ExportAllDeclaration: (node) => check(node.source), ImportExpression: (node) => check(node.source) }
+      },
+    } } } },
+    rules: { 'app-separation/imports': 'error' },
+  })
+
   // Server domain isolation (infra: env + database remain importable from any domain).
   for (const domain of SERVER_DOMAINS) {
     configs.push({
