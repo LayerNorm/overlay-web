@@ -1,6 +1,6 @@
 # Admin Console Separation Plan
 
-Status: approved direction (2026-10-14); Stage 1 not started
+Status (2026-10-14): Stages 1/2 merged in #224/#225; standalone production activation in progress; #230 and #233 prepare retirement behind authenticated production acceptance.
 Owner: DevelopedByDev
 Workflow: [Development Workflow](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/Development%20Workflow.md). Builder threads build one PR each and stop at a
 ready PR; the Integration thread reviews and merges.
@@ -50,7 +50,7 @@ Operator and workspace admin are two different jobs:
 4. **Many surfaces, one control plane.** Web, desktop, mobile and the extension share one Convex backend. One operator app
    is the natural place to see and act on users, workspaces, billing and usage across all of them.
 
-## Current state (verified 2026-10-14)
+## Initial state (before this migration, 2026-10-14)
 
 - UI: `src/app/app/admin/page.tsx` with `src/features/admin/{authorization,catalog}`. It shows when
   `can('administration.access')` (`src/components/layout/sidebar/useAppSidebarState.ts:508`), and the route guard lives in
@@ -133,34 +133,32 @@ Branch: `codex/admin-console-app`.
 
 Tasks:
 
-- [ ] Scaffold `apps/admin` as a Next.js app on the web app's Next version. Read `node_modules/next/dist/docs/` first.
-- [ ] Staff sign-in using the existing WorkOS environment (the callback path is `/auth/callback` on the admin host).
+- [x] Scaffold `apps/admin` as a Next.js app on the web app's Next version. Read `node_modules/next/dist/docs/` first.
+- [x] Staff sign-in using the existing WorkOS environment (the callback path is `/auth/callback` on the admin host).
   - Cookie: `__Host-overlay_admin_session`, signed with `ADMIN_SESSION_SECRET`, 8-hour absolute and 30-minute idle
     lifetime.
   - Access requires all three: a valid WorkOS session, the user id listed in `ADMIN_ALLOWED_USER_IDS`, and an active
     `administrativePrincipals` row.
-- [ ] `src/server/convex-admin.ts`: the single module that calls Convex.
-  - In Stage 1 it calls the **existing** admin functions (`admin/administration:*`, `admin/authorization:*`,
-    `auth/users:listUserDirectoryByServer`).
-  - It reads the secret from `ADMIN_CONVEX_SECRET`. In local dev only, set this to the dev backend's internal secret.
-  - Stage 2 changes only this module.
-- [ ] Port the four sections (Overview, Roles, Groups, Catalog) from `src/features/admin/*` and the API logic from
+- [x] `src/server/convex-admin.ts`: the single module that calls Convex.
+  - Calls the dedicated `admin/console:*` functions with `ADMIN_API_SECRET` and the authenticated operator token.
+  - Customer-web credentials never substitute for this secret.
+- [x] Port the four sections (Overview, Roles, Groups, Catalog) from `src/features/admin/*` and the API logic from
       `src/app/api/v1/admin/*` and `src/server/admin/*`. Copy them; don't move them. The web app copy stays until Stage 3.
-- [ ] Use the existing app chrome and design language: dark gray surfaces, Lucide icons, `OverlayMark` lockup.
-- [ ] Security headers in `apps/admin/next.config.ts`:
+- [x] Use the existing app chrome and design language: dark gray surfaces, Lucide icons, `OverlayMark` lockup.
+- [x] Security headers in `apps/admin/next.config.ts`:
   - Strict CSP: `default-src 'self'`, plus Convex and WorkOS in `connect-src`, and `frame-ancestors 'none'`.
   - `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`.
-- [ ] `apps/admin/vercel.json` with `git.deploymentEnabled.main=false`, ready for Stage 3.
-- [ ] Root wiring: workspaces, `tsconfig`/ESLint exclusions, boundary rules, and root scripts `admin:dev`,
+- [x] `apps/admin/vercel.json` with `git.deploymentEnabled.main=true`; non-main builds are explicitly requested.
+- [x] Root wiring: workspaces, `tsconfig`/ESLint exclusions, boundary rules, and root scripts `admin:dev`,
       `admin:build`, `admin:typecheck`, `admin:lint`, `admin:test`.
-- [ ] CI: one job (in an existing workflow, or a new `admin.yml`) that runs the admin typecheck, lint, test and build on
+- [x] CI: one job (in an existing workflow, or a new `admin.yml`) that runs the admin typecheck, lint, test and build on
       PRs and in `merge_group`. Make it a required check once it is green.
-- [ ] Tests:
+- [x] Tests:
   - Sign-in gate: no session → redirect; non-allowlisted user → 403; principal revoked → 403.
   - The secret module is never imported into client code.
   - The ported service tests from `src/server/admin/AdministrativeService.test.ts`.
-- [ ] Docs:
-  - Add `internal/develop/admin-console.md`: what the console is, local setup, env vars, the operator/workspace split.
+- [x] Docs:
+  - Add `docs/develop/admin-console.md`: what the console is, local setup, env vars, the operator/workspace split.
   - Add it to the living-docs table in `AGENTS.md`.
   - Update `docs/develop/architecture.mdx` with the new `apps/` layer.
   - Add an Unreleased entry to `CHANGELOG.md`.
@@ -190,44 +188,41 @@ Branch: `codex/admin-convex-secret`.
 
 Tasks:
 
-- [ ] `convex/lib/auth.ts`:
+- [x] `convex/lib/auth.ts`:
   - `requireAdminSecret()` checks `ADMIN_API_SECRET`, compared in constant time, failing closed when unset.
   - `requireOperator(ctx, roles)`:
     1. Checks the caller's WorkOS identity with Convex auth.
     2. Requires an active `administrativePrincipals` row with one of `roles`.
     3. Returns the actor id for audit records.
-- [ ] Add new admin functions, for example in `convex/admin/console.ts`, behind both checks. They cover:
+- [x] Add new admin functions, for example in `convex/admin/console.ts`, behind both checks. They cover:
   - Every **write** in `convex/admin/authorization.ts`.
   - Principal grant and revoke.
   - Audit list.
   - The user directory.
 
   Each write records its own `auditEvents` row in the same transaction.
-- [ ] Leave the reads the web app uses for permission checks, and `appendAuditByServer`, on `INTERNAL_API_SECRET`.
-- [ ] Switch `apps/admin/src/server/convex-admin.ts` to the new functions. Rename its env var to `ADMIN_API_SECRET` and
+- [x] Leave the reads the web app uses for permission checks, and `appendAuditByServer`, on `INTERNAL_API_SECRET`.
+- [x] Switch `apps/admin/src/server/convex-admin.ts` to the new functions. Rename its env var to `ADMIN_API_SECRET` and
       forward the operator's access token for `requireOperator`.
-- [ ] Add a break-glass CLI path. It is an internal mutation, run with `npx convex run` by someone with deployment access,
-      that grants the first `admin` principal and writes an audit event. Document it in `internal/develop/admin-console.md`.
-- [ ] Convex tests (`*.convex.test.ts`):
+- [x] Add a break-glass CLI path. It is an internal mutation, run with `npx convex run` by someone with deployment access,
+      that grants the first `admin` principal and writes an audit event. Document it in `docs/develop/admin-console.md`.
+- [x] Convex tests (`*.convex.test.ts`):
   - The internal secret is rejected by every new function.
   - The admin secret with no operator identity is rejected.
   - A revoked operator is rejected.
   - An `auditor` can list audit events but not write.
   - Each write produces an audit row.
-- [ ] Set `ADMIN_API_SECRET` on the engineer dev backend for local QA. Each PR's preview backend needs it too: extend
-      `scripts/release/preview-control.mjs`, or document the step.
-- [ ] Docs: update `docs/develop/convex-workflow.mdx` and `internal/develop/admin-console.md`, and add a `CHANGELOG.md` entry.
+- [x] Configure the isolated QA preview backend and matching admin branch settings with the dedicated preview secret. The [admin runbook](../../docs/develop/admin-console.md) documents provisioning; shared development backends are not migration test targets.
+- [x] Docs: update `docs/develop/convex-workflow.mdx` and `docs/develop/admin-console.md`, and add a `CHANGELOG.md` entry.
 
 Builder QA: Convex tests; the local admin app against the dev backend with the new functions; the web PR preview still
 signs in, and permission checks still work there (create a chat, upload a file).
 
-Merge note: merging to main syncs Convex production through Production Release. That is safe because the change only adds
-functions. Production has no `ADMIN_API_SECRET` yet, so the new functions fail closed until Stage 3.
+Release note: native Vercel Git deploys main. Convex synchronization is a separate operation from clean current canonical main, only after matching production web is live. Deploy the additive operator functions and restricted member initializer before contracting legacy endpoints.
 
 ## Stage 3: Deployment (owner-authorized; Integration thread)
 
-Each step that changes a live account (Vercel, Convex env, DNS, WorkOS) needs the owner's explicit go-ahead at the time it
-runs.
+The owner authorized Integration to complete this setup and release. Follow the applicable tool confirmation rules for consequential UI actions.
 
 ### 3a. Create the Vercel project `overlay-admin`
 
@@ -262,7 +257,7 @@ runs.
    | `ADMIN_ALLOWED_USER_IDS` | the owner's WorkOS user id | test operator id |
 
 6. WorkOS: add `https://admin.getoverlay.io/auth/callback` and the preview callback pattern as redirect URIs. Confirm the
-   owner account has MFA turned on.
+   owner account has MFA turned on. Verified Google 2-Step Verification enabled for `divyansh@layernorm.co` on 2026-10-14; WorkOS has no separate enrolled factor. This verifies enrollment, not enforcement across every AuthKit method.
 7. Domain: add `admin.getoverlay.io` to `overlay-admin` and create a CNAME to Vercel. Confirm the web app's
    `*.preview.getoverlay.io` wildcard doesn't cover it.
 8. Release: configure native Vercel Git deployments from main for the separate admin project, with the correct root/build settings. Then:
@@ -292,6 +287,7 @@ office IP), and keep the break-glass path in mind.
 1. Set `ADMIN_API_SECRET` on Convex production. The owner runs this command:
 
    ```bash
+   # Explicit production-scoped deploy key; never source .env.local.
    npx convex env set ADMIN_API_SECRET ...
    ```
 
@@ -306,14 +302,14 @@ office IP), and keep the break-glass path in mind.
 
 Branch: `codex/remove-web-admin`. A Builder can prepare this during Stage 1 or 2 and leave it as a draft until 3b passes.
 
-- [ ] Delete `src/app/app/admin`, `src/app/api/v1/admin/**`, `src/features/admin/**`, the Admin sidebar entry and the
+- [x] Delete `src/app/app/admin`, `src/app/api/v1/admin/**`, `src/features/admin/**`, the Admin sidebar entry and the
       `client-policy.ts` `/app/admin` prefix. `/app/admin` returns 404 rather than redirecting.
-- [ ] Remove `AdminAuthorizationClient` from `@overlay/api-client`. First confirm desktop, mobile and the extension don't
+- [x] Remove `AdminAuthorizationClient` from `@overlay/api-client`. First confirm desktop, mobile and the extension don't
       use it.
-- [ ] Move the permission check in `src/app/api/v1/api-keys/route.ts` off `administrativeService` and onto ordinary
+- [x] Move the permission check in `src/app/api/v1/api-keys/route.ts` off `administrativeService` and onto ordinary
       authorization checks. Remove the admin service from `src/server/bootstrap.ts` if nothing else uses it.
-- [ ] Add a CI check: the web build contains no `/api/v1/admin` routes, and `src/**` contains no `ADMIN_API_SECRET`.
-- [ ] Docs:
+- [x] Add a CI check: the web build contains no `/api/v1/admin` routes, and `src/**` contains no `ADMIN_API_SECRET`.
+- [x] Docs:
   - `docs/develop/api-route-catalog.mdx`, `compact-api-route-catalog.mdx`, `architecture.mdx`,
     `api-source-of-truth.mdx`.
   - The admin-related lines in `AGENTS.md`.
@@ -321,10 +317,10 @@ Branch: `codex/remove-web-admin`. A Builder can prepare this during Stage 1 or 2
 
 ### 3d. Retire the old Convex functions (Builder PR, after 3c is live)
 
-- [ ] Delete the old `INTERNAL_API_SECRET` admin write, list and directory functions in `convex/admin/*` and
+- [x] Delete the old `INTERNAL_API_SECRET` admin write, list and directory functions in `convex/admin/*` and
       `auth/users:listUserDirectoryByServer`, if nothing else calls them. Keep the permission-check reads and
-      `appendAuditByServer`.
-- [ ] Add a Convex test showing `INTERNAL_API_SECRET` can't reach any admin function.
+      `appendAuditByServer`. Ordinary role initialization uses `authorization/defaults:ensureDefaultUserRoleByServer`, which can only create the fixed member role and respects existing assignments.
+- [x] Add a Convex test showing `INTERNAL_API_SECRET` can't reach any admin function.
 
 Exit for the whole migration: the web app has no route, page or secret that can read or change operator data.
 
@@ -367,3 +363,10 @@ Self-hosters run the same admin app with their own IT team as operators. Add an 
 | Convex functions removed while production web still calls them | 3d merges only after 3c is live |
 | The web app loses permission checks by accident | Permission-check reads stay on `INTERNAL_API_SECRET`; Stage 2 QA checks everyday actions on the web preview |
 | Operator lockout | Break-glass CLI grant (Stage 2), and no IP allowlist without a stable egress |
+
+## Integration evidence
+
+- #224/#225 merged at `7997a1a410e8ef7dbb5be9d66d74722acfd70526`; all nine required contexts passed on both reviewed heads. Admin tests: 25; additive backend tests: 8.
+- `overlay-admin` project: `prj_IQJT4xvTp9F33h9UT51XJX1NIk5X`; `apps/admin`, Node 24, outside-root sources enabled, dedicated Production/Preview settings, verified `admin.getoverlay.io`.
+- Real preview WorkOS sign-in/PKCE, persisted role edits, group membership, and non-allowlisted Google denial verified.
+- Retirement preview #233: synthetic sign-in, session, notes and conversations return 200; `/app/admin` and removed API routes return 404. All 12 parity/separation/backend tests pass. Checkmarks above record implemented source; production retirement is not accepted until 3b and the web-first/backend-second rollout pass.
