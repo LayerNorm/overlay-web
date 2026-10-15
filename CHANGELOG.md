@@ -16,6 +16,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Changed
 
+- Migrate the niche UI fills to shadcn internals (Phase 7): the mobile navigation drawer uses Sheet machinery, archive notices use Sonner, workspace and work avatars use Avatar, the Work error banner uses Alert, and UsageMeterBar uses Progress. Canonical Card is exported for later feature adoption. Appearance and public APIs are unchanged.
+
 - **Admin console gets its own Convex secret and operator gate (Stage 2).** New `admin/console:*` functions mirror every admin read/write: each runs `requireAdminSecret` (constant-time `ADMIN_API_SECRET` compare, fails closed when unset) plus `requireOperator` — the caller's WorkOS identity via `convex/auth.config.ts` customJwt providers, plus an active `administrativePrincipals` row with a permitted role. Every write records its own `auditEvents` row in the same transaction, and `admin/breakGlass:grantFirstAdmin` recovers access via `npx convex run` when no admin remains. `apps/admin` now sends `ADMIN_API_SECRET` and the operator's access token; production is unaffected until `ADMIN_API_SECRET` is set (the existing `*ByServer` functions keep serving `/app/admin` on `INTERNAL_API_SECRET`).
 
 - Removed the in-app operator console: `/app/admin`, the `/api/v1/admin/*` routes, `src/features/admin`, the admin sidebar entry, and `AuthorizationAdministrationService` are deleted in favor of the standalone `apps/admin` console (see `internal/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`). `/app/admin` now returns 404. API-key `admin` scope checks use the ordinary `administration.access` capability, and a `check:admin-separation` CI guard keeps admin routes and `ADMIN_API_SECRET` out of the web build.

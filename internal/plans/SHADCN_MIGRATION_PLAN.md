@@ -1,7 +1,7 @@
 # shadcn/ui migration plan
 
-_Started 2026-10-13. Progress verified 2026-10-14 against GitHub and
-`origin/main` at `905404c4671e4437141bd4a079fbe82ad9d2cd68`. Companion visual
+_Started 2026-10-13. Progress verified 2026-10-15 against GitHub and
+`origin/main` at `35d6fc49` (merge of #229). Companion visual
 mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/internal/plans/mockups/shadcn-migration-preview.html)._
 
 ## Progress
@@ -15,13 +15,14 @@ mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/o
 | 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
 | 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
 | 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Included in verified native Git production at `905404c46`. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
-| 6 core form primitives | Phase 6a implemented in #227; Phase 6b implemented in #228 (`checkbox`, `switch`, `badge`, `separator`, `skeleton`); Phase 6c implemented in #229 (`tabs`, `scroll-area`, Toggle-on-Switch). | [#227](https://github.com/LayerNorm/overlay-web/pull/227), [#228](https://github.com/LayerNorm/overlay-web/pull/228), [#229](https://github.com/LayerNorm/overlay-web/pull/229) |
-| 7 niche fills | Not started | After the relevant foundations |
-| 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
+| 6 core form primitives | Merged on `main` at `35d6fc49`: Phase 6a in #227 (`button`, `input`, `textarea`, `label`); Phase 6b in #228 (`checkbox`, `switch`, `badge`, `separator`, `skeleton`); Phase 6c in #229 (`tabs`, `scroll-area`, Toggle-on-Switch) | [#227](https://github.com/LayerNorm/overlay-web/pull/227), [#228](https://github.com/LayerNorm/overlay-web/pull/228), [#229](https://github.com/LayerNorm/overlay-web/pull/229) |
+| 7 niche fills | Implemented in #232 (`sheet`, `card`, `avatar`, `sonner`, `alert`, `progress`); hosted preview QA passed on app revision `f7b5fda9` and all checks are green; merge pending | [#232](https://github.com/LayerNorm/overlay-web/pull/232) |
+| 8 ad-hoc markup sweep + guardrails | Ready to start after #232 merges; refreshed audit and sequencing below | Start with `chat` after #232 lands |
 
-Phases 0–5 are included in verified production main `905404c46`. New phases
-use current-head PR previews, then native Git production deployment after main
-integration; no separate staging promotion is required.
+Phases 0–6 are included in current `main` at `35d6fc49`. Phase 7 is
+implemented and QA'd in #232, pending merge. New phases use current-head PR
+previews, then native Git production deployment after main integration; no
+separate staging promotion is required.
 The baseline inventory below is historical, not the current dependency or
 consumer count. GitHub PRs and their checks remain the integration record.
 
@@ -325,13 +326,23 @@ shape without changing it — otherwise keep it bespoke.
 
 ## Phase 8 — ad-hoc markup sweep (where most inconsistency actually lives)
 
-Per feature dir, one PR each: `chat` → `settings` → `workspaces` → `agents` →
-`account` → `integrations` → `knowledge` → `components/` chrome → `marketing`
-(zero `@overlay/ui` imports today — the biggest bespoke island).
+Detailed execution plan: [`SHADCN_PHASE_8_SUBPLAN.md`](./SHADCN_PHASE_8_SUBPLAN.md).
 
-Replace raw `<button>`/`<input>`/`fixed inset-0` markup with the migrated
-primitives (~500 raw buttons + ~60 raw inputs). Then land the guardrails:
-`AGENTS.md` rule + ESLint `no-restricted-syntax` on raw elements.
+Per feature dir, one PR each: `chat` → `settings` → `workspaces` → `agents` →
+`account` → `integrations` → `knowledge` → `work` → remaining small feature
+dirs (`files`, `share`, `admin`, `auth`, `automations`, `notebook`, `showcase`)
+→ `components/` chrome → `marketing` (still zero `@overlay/ui` imports; the
+biggest bespoke island). Keep `packages/overlay-chat-react` and
+`packages/overlay-modules-react` as separate package-island PRs rather than
+folding them into app feature dirs.
+
+Current audit (2026-10-15): `src/features/*` + `src/components/` contain 302
+raw `<button>`, 43 `<input>`, 11 `<textarea>`, 2 `<select>`, and 2
+`fixed inset-0` blocks; `src/app` adds 20 buttons and 13 inputs; the two
+package islands add 181 buttons, 30 inputs, and 10 textareas. Replace raw
+markup with the migrated primitives, then land the guardrails last: `AGENTS.md`
+rule + ESLint `no-restricted-syntax` on raw elements, with explicit exemptions
+for tests/fixtures and `@overlay/ui` internals.
 
 ## Risks / watch list
 

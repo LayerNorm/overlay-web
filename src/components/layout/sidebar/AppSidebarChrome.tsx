@@ -19,6 +19,9 @@ import {
   FloatingMenu,
   SidebarNav,
   SidebarSection,
+  Sheet,
+  SheetContent,
+  SheetTitle,
   SidebarShell,
   type SidebarResourceAction,
   type SidebarResourceSearch,
@@ -802,22 +805,18 @@ export function MobileDrawer({
   onClose: () => void
   children?: ReactNode
 }) {
-  const visible = open && !hidden
   return (
-    <div className={`fixed inset-0 z-50 md:hidden ${visible ? '' : 'pointer-events-none'}`}>
-      <button
-        type="button"
-        aria-label="Close app navigation"
-        onClick={onClose}
-        className={`absolute inset-0 bg-black/30 transition-opacity ${visible ? 'opacity-100' : 'opacity-0'}`}
-      />
-      <SidebarShell
-        className={`absolute inset-y-0 left-0 w-[82vw] max-w-[320px] border-r border-(--border) bg-(--sidebar-surface) shadow-[0_20px_80px_rgba(10,10,10,0.18)] transition-transform ${
-          visible ? 'translate-x-0' : '-translate-x-full'
-        }`}
+    <Sheet open={open && !hidden} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
+      <SheetContent
+        side="left"
+        showCloseButton={false}
+        overlayClassName="z-50 bg-black/30 md:hidden"
+        className="z-50 w-[82vw] max-w-[320px] gap-0 border-r border-(--border) bg-(--sidebar-surface) p-0 shadow-[0_20px_80px_rgba(10,10,10,0.18)] md:hidden"
+        aria-describedby={undefined}
       >
-        {children}
-      </SidebarShell>
-    </div>
+        <SheetTitle className="sr-only">App navigation</SheetTitle>
+        <SidebarShell className="h-full">{children}</SidebarShell>
+      </SheetContent>
+    </Sheet>
   )
 }
