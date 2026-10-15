@@ -1,3 +1,5 @@
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { RefreshCw, LogOut } from 'lucide-react'
 
 interface SessionPanelProps {
@@ -31,24 +33,24 @@ export function SessionPanel({
         </span>
       </div>
       <div className="mt-4 flex items-center gap-2">
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onRefresh}
           disabled={!connected || loading}
-          className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2.5 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] disabled:cursor-not-allowed disabled:opacity-50"
+          className={unstyledButton(`inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2.5 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] disabled:cursor-not-allowed disabled:opacity-50`)}
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           Refresh
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           onClick={onSignOut}
           disabled={!connected}
-          className="inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2.5 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] disabled:cursor-not-allowed disabled:opacity-50"
+          className={unstyledButton(`inline-flex items-center gap-1 rounded-md border border-[#e5e5e5] px-2.5 py-1.5 text-xs text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] disabled:cursor-not-allowed disabled:opacity-50`)}
         >
           <LogOut size={12} />
           Sign out
-        </button>
+        </Button>
       </div>
     </div>
   )

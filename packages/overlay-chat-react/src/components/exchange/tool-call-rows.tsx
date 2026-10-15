@@ -1,3 +1,5 @@
+import { unstyledButton } from '../control-reset'
+import { Button } from '@overlay/ui/primitives'
 import type { ToolGroupItem, ToolVisualBlock } from '@overlay/chat-core'
 import {
 TOOL_UI_DONE_STATES,
@@ -134,10 +136,10 @@ export function ToolCallsCollapsedGroup({
 
   return (
     <div className="w-full px-1 py-0.5">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent"
+        className={unstyledButton(`inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent`)}
       >
         <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
         <span className="inline-flex min-w-0 items-center gap-1">
@@ -153,7 +155,7 @@ export function ToolCallsCollapsedGroup({
             aria-hidden
           />
         </span>
-      </button>
+      </Button>
       {open && (
         <div className="mt-2 space-y-2">
           {items.map((it, idx) => {

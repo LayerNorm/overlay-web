@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useEffect } from 'react'
 import { Brain, FileText, MessageSquare, PanelRightOpen, Maximize2 } from 'lucide-react'
 import {
@@ -25,17 +28,17 @@ function PresentationToggle({
   const next: PanelPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
   const label = presentation === 'floating' ? 'Dock as side panel' : 'Show as floating panel'
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={() => onPresentationChange(next)}
-      className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+      className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
       aria-label={label}
       title={label}
     >
       {presentation === 'floating'
         ? <PanelRightOpen size={15} strokeWidth={1.75} />
         : <Maximize2 size={15} strokeWidth={1.75} />}
-    </button>
+    </Button>
   )
 }
 

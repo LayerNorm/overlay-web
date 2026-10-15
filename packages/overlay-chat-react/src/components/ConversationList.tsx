@@ -1,3 +1,5 @@
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { MessageSquare } from 'lucide-react'
 
 export interface ConversationItem {
@@ -26,11 +28,11 @@ export function ConversationList({ conversations, activeId, onSelect }: Conversa
         conversations.map((conversation) => {
           const active = conversation.id === activeId
           return (
-            <button
+            <Button variant="ghost"
               key={conversation.id}
               type="button"
               onClick={() => onSelect(conversation.id)}
-              className={`${panelItemClass} text-left ${active ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+              className={unstyledButton(`${panelItemClass} text-left ${active ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`)}
             >
               <MessageSquare size={12} className="mt-0.5 shrink-0 self-start" strokeWidth={1.75} />
               <div className="min-w-0 flex-1">
@@ -54,7 +56,7 @@ export function ConversationList({ conversations, activeId, onSelect }: Conversa
                   </p>
                 ) : null}
               </div>
-            </button>
+            </Button>
           )
         })
       )}

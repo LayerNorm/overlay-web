@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -82,10 +85,10 @@ export function UserMessageBubble({
         ) : null}
       </div>
       {collapsible ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => setExpanded((open) => !open)}
-          className="ml-auto mt-1 flex h-6 w-6 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
+          className={unstyledButton(`ml-auto mt-1 flex h-6 w-6 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)`)}
           aria-label={expanded ? 'Collapse message' : 'Expand message'}
           title={expanded ? 'Collapse message' : 'Expand message'}
         >
@@ -94,7 +97,7 @@ export function UserMessageBubble({
             strokeWidth={1.75}
             className={cx('transition-transform duration-200', expanded && 'rotate-180')}
           />
-        </button>
+        </Button>
       ) : null}
     </div>
   )
