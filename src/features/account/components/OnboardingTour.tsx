@@ -18,6 +18,7 @@ import { Dialog, DialogContent } from '@overlay/ui'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { setTourModelPickerOpen } from '@/shared/onboarding/tour-model-picker'
 
 /** Paste in ChatGPT, Claude, etc., then paste the reply into Overlay to save as memories. */
 export const ONBOARDING_IMPORT_MEMORY_PROMPT =
@@ -932,16 +933,14 @@ export function OnboardingTour({
     }
   }, [currentStep, step, measure, postTourPhase])
 
-  // Steps 0-1 anchor to the model picker and the generation-mode toggle inside
-  // its open panel; the dropdown must be open while those steps are active or
-  // their targets never mount.
+  // Steps 0-1 describe the model picker, including the generation-mode toggle
+  // that only exists inside its open panel; the dropdown must stay open while
+  // those steps are active or their content is invisible.
   const pickerOpenForStep = currentStep <= 1
   useEffect(() => {
     if (!pickerOpenForStep || isClosing || postTourPhase) return
-    window.dispatchEvent(new Event('overlay:tour:open-model-picker'))
-    return () => {
-      window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
-    }
+    setTourModelPickerOpen(true)
+    return () => setTourModelPickerOpen(false)
   }, [pickerOpenForStep, isClosing, postTourPhase])
 
   if (!step) return null
