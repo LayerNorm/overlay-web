@@ -2,8 +2,7 @@
 
 This is the living design for agents connected from user-owned computers, customer VPSs,
 hosted agent services, and Overlay-managed sandboxes. The rollout is provider-neutral:
-Convex and PostgreSQL must expose identical behavior, and PostgreSQL mode must never fall
-back to Convex.
+Convex is the canonical backend. Historical PostgreSQL rollout notes below describe retired implementation phases, not a second lifecycle authority.
 
 See the [Architecture](#architecture) section for diagrams of the environment topology, protocol
 layers, enrollment, Agent Host loop, ACP adapters, durable run flow, memory, and package
@@ -14,10 +13,10 @@ boundaries.
 The first release supports agent conversations and supervised work through one outbound-only
 Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
 may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
-`external`. Overlay Cloud is Boat, formerly Box (E2B is planned for self-hosting); Vercel
-Sandbox and Daytona were removed. Overlay Cloud agents are being rebuilt on the same Agent Host
-(`internal/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`); the machine layer (Phase 0) exists behind
-`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, and the product UI does not offer it yet. The
+`external`. Overlay Cloud uses Boat, formerly Box, with an E2B adapter for self-hosting; Vercel
+Sandbox and Daytona were removed. Overlay Cloud agents use the same Agent Host
+(`internal/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`), with machine provisioning and the product UI behind
+`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, paid entitlements and provider configuration. The
 connected (on-your-machine) path described here is unaffected.
 
 The release includes `@mention` invocation, durable runs and commands, streamed transcript
@@ -40,7 +39,7 @@ Phases 0 through 8 are implemented. Phase 9 release controls and repeatable loca
 implemented, but Phase 9 is not complete until the live Convex and PostgreSQL browser matrices,
 managed-provider conformance, and production stability gates are recorded.
 Overlay Cloud activation remains
-gated on rebuilding hosted other-agents on Box and passing live conformance; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
+gated on the configured provider's live conformance and current host/image acceptance; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
 conformance run against staging. The connected-agent repository now includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
@@ -195,7 +194,7 @@ The managed-sandbox boundary is `@overlay/sandbox-runtime`. Its contract covers
 lifecycle and reconnect, streamed and cancellable commands, files, process environment, ports,
 snapshots and persistence, network policy, broker-owned credential references, idle and hard
 timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Box is the
-Overlay Cloud adapter, and an E2B adapter is planned for self-hosting. Provider SDK objects and references are never public response fields.
+Overlay Cloud adapter, and an E2B adapter is implemented for self-hosting. Provider SDK objects and references are never public response fields.
 The lease meter (`ManagedAgentSandboxBilling`) bills a lease from provider-reported usage and
 enforces the idle window and the 24-hour hard cap; Box has no idle timer, so idle-stop is ours.
 
@@ -206,8 +205,8 @@ its Vercel adapter, the harness bridge, the editor's runtime picker, and the res
 deleted. `protocol: 'harness'` bindings that still exist in data are inert: dispatch posts a failed
 reply asking the user to recreate the agent, the editor shows such an agent read-only, and the
 control plane refuses new harness bindings. Hosted other-agents (Claude Code, Codex, … on Overlay
-Cloud) will be rebuilt from the ground up on Box, and on E2B for self-hosted deployments; the
-connected-agent protocol below is the foundation for that, as it already supports an Overlay-owned
+Cloud) use the new Boat machine service, or E2B for self-hosted deployments; the
+connected-agent protocol below is the foundation, supporting an Overlay-owned
 machine running the Agent Host.
 
 Overlay Cloud model access follows a fixed priority. Overlay-funded models are the default and
@@ -488,6 +487,16 @@ attachments after an immutable clean verdict. The existing checksum, size, tenan
 cleanup controls remain implemented but are not a substitute for that release gate.
 
 Overlay Cloud machines run on Boat, formerly Box (`BOAT_API_KEY`, or the legacy `BOX_API_KEY`).
+Use `BOAT_ENVIRONMENT=overlay-preview` with a separate environment-scoped key for
+hosted Preview QA. Machine creation retains `noEnv: true`, so attaching an
+environment never injects the account's credentials. Preview snapshots must also
+originate in that environment; a destination grant cannot read production images.
+The owner approved a Boat-specific expiry exception: the `overlay-preview` CI key
+expires **2027-10-15** (Boat requires expiry, maximum 365 days). Renew it in the
+same environment before that date, update shared Vercel Preview `BOAT_API_KEY`,
+verify Preview access and production denial, then revoke the predecessor. Do not
+copy the production key or treat the exception as permission to expire other
+shared Preview credentials. No automatic renewal is configured.
 An Overlay Cloud agent uses the same connected-agent protocol and host:
 
 - **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,
@@ -505,6 +514,8 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   machine, so the server approves the environment itself instead of a person confirming a phrase,
   with the filesystem grant fixed to `/home/user/workspace`. The short-lived credential, signed
   polling, and ACP bridge are unchanged.
+  Managed connect/restart commands propagate lifecycle v2 only when the server
+  enables it; the host persists that negotiation for subsequent restarts.
 - **Lifecycle.** A machine stops 10 minutes after its last run ends
   (event-based; see `internal/develop/agent-machine-idle.md`). A turn queued for an offline machine
   resumes it and restarts the host from saved state after the response is sent. Revoking the
@@ -949,7 +960,7 @@ continue using `@overlay/*`.
 | Codex, Claude Code, or Hermes | Performs the actual coding and tool work. |
 | `@overlay/agent-runtime` | Internal server-side helpers for Overlay-hosted turns. It is not the BYOA CLI. |
 | `@overlay/workspace-contracts` | Internal adapter identifiers and connected-agent domain contracts. |
-| `@overlay/sandbox-runtime` | Provider-neutral lifecycle for managed sandboxes (Box today, E2B planned). |
+| `@overlay/sandbox-runtime` | Provider-neutral lifecycle for managed sandboxes (Boat/Box and E2B). |
 | Overlay control plane | Workspace identity, authorization, bindings, runs, approvals, audit, transcript, memory, billing, and artifacts. |
 
 The product-qualified public names begin with the lockstep `0.3.0` release; the PATH-safe host and
@@ -993,3 +1004,83 @@ Use these files when tracing or changing the architecture:
 | Remote bridge schemas | `packages/overlay-agent-bridge-protocol` |
 | Generated enrollment command | `src/server/agents/agent-enrollment-command.ts` |
 | Remote dispatch and transcript projection | `src/server/agents` |
+
+## Versioned remote lifecycle (opt-in)
+
+The server enrolls a new run in lifecycle v2 only when
+`OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2` and the host advertises
+`remoteLifecycleVersion: 2`. Selection is persisted in `conversationAgentRuns.remoteLifecycle`;
+legacy runs retain their selected supervisor. Do not enable enrollment before the
+current-head hosted matrix and compatible package/image release pass.
+
+The logical run and assistant message remain stable. `agentRemoteSessions` rows
+are execution attempts, selected through `currentAttemptId`; historical attempts
+cannot publish into the current transcript. A shared typed reducer controls phase,
+revision, execution generation, coordinator generation, deadlines, decision delivery,
+and cancellation. Coordinator takeover requires the Workflow runtime to confirm the
+previous owner stopped, followed by a canonical compare-and-set. It does not start a
+second external writer.
+
+An atomic start transaction reserves the first environment command sequence and
+writes a durable start intent. Workflow 4.8.9 commits its hook registration before
+claiming/dispatching. The existing minute reconciliation bridge retries starts and
+coalesced ID/revision signals. Output continues to commit to Convex during Workflow
+outages. Workflow steps reread canonical state and do not replay an external task.
+Policy cancellation writes stop intent/command even when Workflow is unavailable.
+Terminal ingestion preserves undelivered command sequence slots as shutdowns and
+writes durable finalization intents; settlement retries retain existing ledger keys
+and cumulative machine baselines.
+
+The bridge remains protocol v1 with an explicitly negotiated lifecycle-v2 extension:
+optional execution fences and new observe/observation messages are sent only for v2
+runs. Hosts opt in using the same environment setting. Default legacy capability
+payloads omit the extension. Candidate packages are lockstep 0.3.11 and candidate
+image v6; publication is a separate main-only release workflow, not evidence from a
+source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
+compatible active runs drain on their persisted version.
+
+Direct ACP and acpx advertise live reattachment and session loading separately from
+interrupted-turn continuation. They do **not** restore an interrupted turn or an
+in-memory permission promise after host/process loss. Unknown process ownership is
+`needs_attention`, never permission to launch another writer. The Eve adapter has a
+native durable session/stream cursor; provider conformance still requires live QA.
+SQLite stores versioned nonsecret model/configuration references, execution identity,
+command deduplication and the exact-ack event outbox. Credentials stay in memory;
+restoration cannot reuse an old Overlay MCP token.
+
+Approval waits retain the same card through text/plans/commands. V2 approvals have a
+visible one-hour expiry bounded by the task hard deadline; cloud waits disclose
+continuing machine cost. A recorded decision remains pending delivery until the
+host accepts it. Browser refresh and subscription readers never own execution.
+Real hosted soak, stopped-machine wake, process recovery, deployment continuity and
+billing readbacks are required before declaring the incident class fixed.
+
+### Recovery and cancellation integration safeguards
+
+Command-resolution floors are returned only to lifecycle-v2 hosts; strict 0.3.10
+poll schemas must receive the original response shape. A cancellation before the
+coordinator starts releases its reserved sequence as a shutdown, so later stop
+commands remain deliverable during Workflow outages.
+
+Cancellation remains `cancelling` until a host stop or provider isolation is
+confirmed. A timeout alone never finalizes an unknown external writer or releases
+its usage hold. For `needs_attention`, the room offers Start fresh with explicit
+confirmation that the operator inspected and stopped or isolated the old process.
+The new attempt uses the original validated start command, not stripped checkpoint
+references; tool credentials are reissued within their original scope and expiry.
+Adapter callbacks capture their originating execution fence, including delayed
+prompt errors and teardown output. New attempts reset terminal health suppression;
+old callbacks cannot suppress their observations or claim the replacement identity.
+Resolved legacy requests do not resurrect a wait when later output arrives.
+
+ACP cancellation waits for the complete process group to drain after termination;
+wrapper exit alone is not proof that descendants stopped. Stop confirmation fails
+closed if the bounded drain cannot establish that the group is gone.
+
+Starting a fresh attempt atomically resolves the old process's outstanding request
+cards as `execution_replaced`, preserving decisions already recorded, and projects
+`recovering` on the same assistant row before dispatching the replacement.
+Replacement attempts clear the previous host boot and health lease; the first
+accepted replacement event binds the new boot, while old attempt events remain fenced.
+During web-first rollout, new control request IDs are sent to Convex only when
+lifecycle v2 is enabled; ordinary controls retain the legacy validator shape.

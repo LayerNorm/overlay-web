@@ -356,6 +356,8 @@
     "src/server/agents/profiles/ConvexAgentProfileRepository.ts",
     "src/server/agents/provider-accounts/ConvexAgentProviderAccountRepository.ts",
     "src/server/agents/provider-accounts/index.ts",
+    "src/server/agents/remote-agent-run-dispatcher.ts",
+    "src/server/agents/remote-agent-run-lifecycle.ts",
     "src/server/ai/catalog/ConvexModelCatalogRepository.ts",
     "src/server/ai/catalog/index.ts",
     "src/server/ai/provider-connections/ConvexProviderConnectionRepository.ts",
