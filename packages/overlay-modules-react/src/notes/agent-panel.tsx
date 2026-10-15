@@ -25,7 +25,7 @@ export function NotebookAgentPanel({
 }: NotebookAgentPanelProps) {
   return (
     <AppScreenSidePanel
-      className="overlay-chat-surface bg-[var(--sidebar-surface)]"
+      className="overlay-chat-surface bg-(--sidebar-surface)"
       bodyClassName="flex min-h-0 flex-col overflow-hidden"
       header={header}
       aria-label="Note assistant"
@@ -33,7 +33,7 @@ export function NotebookAgentPanel({
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
         {items.length === 0 && (
           <div className="text-center py-8">
-            <p className='text-sm text-[var(--muted)]'>
+            <p className='text-sm text-(--muted)'>
               Ask about this note or describe edits...
             </p>
           </div>
@@ -44,7 +44,7 @@ export function NotebookAgentPanel({
             return (
               // react-doctor-disable-next-line react-doctor/no-array-index-as-key
               <div key={idx} className="flex justify-end">
-                <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] break-words select-text rounded-2xl rounded-br-sm border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)] sm:max-w-[75%]">
+                <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] wrap-break-word select-text rounded-2xl rounded-br-sm border border-(--border) bg-(--surface-subtle) px-3 py-2.5 text-sm leading-relaxed text-(--foreground) sm:max-w-[75%]">
                   <span className="whitespace-pre-wrap">{item.text}</span>
                 </div>
               </div>
@@ -56,7 +56,7 @@ export function NotebookAgentPanel({
               // react-doctor-disable-next-line react-doctor/no-array-index-as-key
               <div
                 key={idx}
-                className='flex items-center gap-2 text-xs text-[var(--muted)]'
+                className='flex items-center gap-2 text-xs text-(--muted)'
               >
                 <span
                   className="overlay-stream-marker overlay-stream-marker--standalone h-4 w-4"
@@ -81,7 +81,7 @@ export function NotebookAgentPanel({
                 className='flex w-full max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug'
               >
                 <div className="relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-                  <div className="relative z-[1] shrink-0 rounded-full bg-[var(--background)] p-px">
+                  <div className="relative z-1 shrink-0 rounded-full bg-(--background) p-px">
                     {logo}
                   </div>
                 </div>
@@ -89,7 +89,7 @@ export function NotebookAgentPanel({
                   className={
                     isRunning
                       ? 'tool-line-shimmer'
-                      : 'text-[var(--tool-line-label)]'
+                      : 'text-(--tool-line-label)'
                   }
                 >
                   {toolLabel}
@@ -118,7 +118,7 @@ export function NotebookAgentPanel({
           )
         })}
       </div>
-      <div className="shrink-0 bg-[var(--sidebar-surface)] p-3">{composer}</div>
+      <div className="shrink-0 bg-(--sidebar-surface) p-3">{composer}</div>
     </AppScreenSidePanel>
   )
 }
@@ -139,7 +139,7 @@ export function NotebookAgentComposer({
   onStop,
 }: NotebookAgentComposerProps) {
   return (
-    <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+    <div className="overflow-visible rounded-2xl border border-(--border) bg-(--surface) shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="p-2.5">
         {input}
         <div className="mt-2 flex min-h-9 items-center justify-end gap-2">
@@ -147,17 +147,17 @@ export function NotebookAgentComposer({
             <button
               type="button"
               onClick={onStop}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80"
               aria-label="Stop"
             >
-              <div className="h-3.5 w-3.5 rounded-sm bg-[var(--background)]" />
+              <div className="h-3.5 w-3.5 rounded-xs bg-(--background)" />
             </button>
           ) : (
             <button
               type="button"
               onClick={onSend}
               disabled={!canSend}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40"
               aria-label="Send"
             >
               <Send size={17} strokeWidth={1.75} />

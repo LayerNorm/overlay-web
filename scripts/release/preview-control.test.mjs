@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
+import { CONFIG, PreviewController, PreviewBackends, ApiError, apiClient, previewBackendClient, main, deploymentMatches, previewAddress, trustedPull } from './preview-control.mjs'
 
 const sha = 'a'.repeat(40)
 function pull(patch = {}) {
   return { number: 123, state: 'open', base: { ref: 'main', repo: { full_name: CONFIG.repository } },
+    labels: [{ name: 'needs-preview' }],
     head: { ref: 'codex/fixture', sha, repo: { id: CONFIG.repositoryId, full_name: CONFIG.repository } }, ...patch }
 }
 function deployment(patch = {}) {
@@ -12,16 +13,20 @@ function deployment(patch = {}) {
     gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: 'codex/fixture', sha }, ...patch }
 }
 function fixture({ current = pull(), existing = true, backendActive = true, changeHead = false, failReadback = false,
-  failHttps = false, failRemoved = false, buildState = 'READY', cancelError = false, cancelFinishes = true, wildcardBranch = CONFIG.previewWildcardBranch, wildcardAlias = false } = {}) {
+  failHttps = false, failRemoved = false, buildState = 'READY', cancelError = false, cancelFinishes = true,
+  removeLabelAt = Infinity, wrongCreatedSha = false,
+  wildcardBranch = CONFIG.previewWildcardBranch, wildcardAlias = false, files = [{ filename: 'src/runtime.ts' }] } = {}) {
   const calls = []
   let envs = []; let domain; let alias; let reads = 0; let state = buildState
   const github = async (path, options = {}) => {
     calls.push({ service: 'github', path, ...options })
     if (path.endsWith('/pulls/123')) {
       reads++
+      if (reads >= removeLabelAt) current = { ...current, labels: [] }
       return changeHead && reads > 1 ? pull({ head: { ...current.head, sha: 'b'.repeat(40) } }) : current
     }
     if (path.endsWith('/pulls')) return [current]
+    if (path.endsWith('/pulls/123/files')) return files
     if (path.includes('/statuses/')) return {}
     throw new Error('Unexpected GitHub request: ' + path)
   }
@@ -52,7 +57,8 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
       return domain
     }
     if (path === '/v7/deployments') return { deployments: existing ? [{ uid: 'dpl_fixture', state: 'READY' }] : [] }
-    if (path === '/v13/deployments' || path === '/v13/deployments/dpl_fixture') return deployment({ readyState: state })
+    if (path === '/v13/deployments' || path === '/v13/deployments/dpl_fixture') return deployment({ readyState: state,
+      ...(wrongCreatedSha ? { gitSource: { ...deployment().gitSource, sha: 'f'.repeat(40) } } : {}) })
     if (path === '/v12/deployments/dpl_fixture/cancel') {
       if (cancelFinishes) state = 'CANCELED'
       if (cancelError) throw new Error('Lost cancellation response')
@@ -65,7 +71,9 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
     throw new Error('Unexpected Vercel request: ' + method + ' ' + path)
   }
   const controller = new PreviewController({ github, vercel, report: () => {}, sleep: async () => {},
-    backends: { active: async () => backendActive, renew: async () => ({ name: 'fixture-backend', expiresAt: 123 }) },
+    backends: { active: async () => backendActive, renew: async () => ({ name: 'fixture-backend', expiresAt: 123 }),
+      remove: async number => { calls.push({ service: 'backend-delete', number }) },
+      inventory: async () => [126] },
     verifyRemoved: async origin => {
       calls.push({ service: 'removed-https', origin })
       if (failRemoved) throw new Error('Closed preview hostname must return 404')
@@ -77,6 +85,77 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
   return { controller, calls, get: () => ({ envs, domain, alias }), setCurrent: pr => { current = pr },
     setEnv: values => { envs = values }, setDomain: value => { domain = value } }
 }
+
+test('unlabeled PRs skip hosted builds regardless of changed files', async () => {
+  const f = fixture({ current: pull({ labels: [] }) })
+  assert.equal((await f.controller.run(123)).state, 'not-required')
+  assert.equal(f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'), false)
+  assert.equal(f.calls.some(c => c.body?.key === 'NEXT_PUBLIC_APP_URL'), false)
+  assert.equal(f.calls.find(c => c.body?.state === 'success').body.description, 'Preview not requested; CI still required')
+})
+
+test('needs-preview creates the exact requested revision after provisioning its URL', async () => {
+  const f = fixture({ existing: false })
+  assert.equal((await f.controller.run(123)).state, 'ready')
+  const created = f.calls.find(c => c.path === '/v13/deployments' && c.method === 'POST')
+  assert.deepEqual(created.body, { name: CONFIG.projectName, project: CONFIG.projectId, autoAssignCustomDomains: false,
+    gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: 'codex/fixture', sha },
+    meta: { overlayPreviewPr: '123' } })
+  assert.ok(f.calls.findIndex(c => c.body?.key === 'NEXT_PUBLIC_APP_URL') < f.calls.indexOf(created))
+  assert.equal(f.calls.filter(c => c.path === '/v13/deployments' && c.method === 'POST').length, 1)
+})
+
+test('removing needs-preview cleans a previously ready preview', async () => {
+  const f = fixture(); await f.controller.run(123)
+  f.setCurrent(pull({ labels: [] }))
+  assert.equal((await f.controller.run(123)).state, 'not-required')
+  assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+  assert.ok(f.calls.some(c => c.service === 'backend-delete' && c.number === 123))
+})
+
+test('label removal before creation prevents spending build minutes', async () => {
+  const f = fixture({ existing: false, removeLabelAt: 2 })
+  assert.equal((await f.controller.run(123)).state, 'not-required')
+  assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
+  assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+})
+
+test('label removal during a build settles it and removes the preview', async () => {
+  const f = fixture({ buildState: 'BUILDING', removeLabelAt: 2 })
+  const delegate = f.controller.vercel
+  f.controller.vercel = async (path, options) => path === '/v7/deployments'
+    ? { deployments: [{ uid: 'dpl_fixture', state: 'BUILDING' }] } : delegate(path, options)
+  assert.equal((await f.controller.run(123)).state, 'not-required')
+  assert.ok(f.calls.some(c => c.path?.endsWith('/cancel')))
+  assert.ok(!f.calls.some(c => c.path?.endsWith('/aliases') && c.method === 'POST'))
+})
+
+test('created deployment must match the requested SHA before any alias assignment', async () => {
+  const f = fixture({ existing: false, wrongCreatedSha: true })
+  await assert.rejects(f.controller.run(123), /provenance mismatch/)
+  assert.ok(!f.calls.some(c => c.path.endsWith('/aliases') && c.method === 'POST'))
+  assert.ok(f.calls.some(c => c.body?.state === 'failure'))
+})
+
+test('an already-running maintenance preview is settled before resources are removed', async () => {
+  const f = fixture({ current: pull({ labels: [] }), buildState: 'BUILDING' })
+  const list = f.controller.vercel
+  f.controller.vercel = async (path, options) => path === '/v7/deployments'
+    ? { deployments: [{ uid: 'dpl_fixture', state: 'BUILDING' }] } : list(path, options)
+  assert.equal((await f.controller.run(123)).state, 'not-required')
+  assert.ok(f.calls.some(c => c.path === '/v12/deployments/dpl_fixture/cancel'))
+  const cancel = f.calls.findIndex(c => c.path.endsWith('/cancel'))
+  const verifyRemoved = f.calls.findIndex(c => c.service === 'removed-https')
+  assert.ok(cancel >= 0 && cancel < verifyRemoved)
+  assert.ok(cancel < f.calls.findIndex(c => c.service === 'backend-delete'))
+})
+
+test('backend deletion failure cannot publish a successful no-preview status', async () => {
+  const f = fixture({ current: pull({ labels: [] }) })
+  f.controller.backends.remove = async () => { throw new Error('Backend cleanup failed') }
+  await assert.rejects(f.controller.run(123), /Backend cleanup failed/)
+  assert.ok(!f.calls.some(c => c.body?.state === 'success'))
+})
 
 test('PR identifiers cannot become API paths, hostnames, or shell fragments', () => {
   for (const value of ['', 0, -1, '1/../../', '1;evil', '001', '1\n', Number.MAX_SAFE_INTEGER + 1]) {
@@ -111,16 +190,6 @@ test('provisions canonical branch URL before build and reuses current deployment
   assert.equal(f.get().envs[0].gitBranch, 'codex/fixture')
   assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
   assert.equal(f.calls.filter(c => c.body?.state === 'success').length, 1)
-})
-test('new deployment requests pin repository, branch and exact SHA', async () => {
-  const f = fixture({ existing: false }); await f.controller.run(123)
-  const build = f.calls.find(c => c.path === '/v13/deployments' && c.method === 'POST')
-  assert.deepEqual(build.body.gitSource, { type: 'github', repoId: CONFIG.repositoryId, ref: 'codex/fixture', sha })
-  assert.equal(build.body.project, CONFIG.projectId)
-  assert.equal(build.body.target, undefined)
-  assert.equal(build.body.autoAssignCustomDomains, false)
-  assert.equal(build.query.forceNew, '1')
-  assert.equal(build.body.projectSettings.buildCommand, 'bash scripts/vercel-build.sh')
 })
 test('new PR head prevents old deployment assignment and success status', async () => {
   const f = fixture({ changeHead: true })
@@ -181,7 +250,7 @@ test('inventory reconciles open PRs and resources left behind by partial provisi
   const f = fixture()
   f.setDomain({ name: 'pr-124.preview.getoverlay.io', gitBranch: 'codex/closed' })
   f.setEnv([{ key: 'NEXT_PUBLIC_APP_URL', gitBranch: 'codex/partial', comment: 'overlay-preview-control:pr-125' }])
-  assert.deepEqual(await f.controller.inventory(), [123, 124, 125])
+  assert.deepEqual(await f.controller.inventory(), [123, 124, 125, 126])
 })
 test('API failures never print credentials, bodies, or attacker-controlled messages', async () => {
   const api = apiClient({ token: 'private-fixture', service: 'Vercel', base: 'https://api.vercel.com',
@@ -193,9 +262,10 @@ test('API failures never print credentials, bodies, or attacker-controlled messa
   await assert.rejects(api('/v9/projects/x'), error => error.message === 'Vercel API 403 (forbidden)')
 })
 
-test('an expired backend prevents reuse of a READY frontend at the same SHA', async () => {
-  const f = fixture({ backendActive: false }); await f.controller.run(123)
-  assert.ok(f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST' && c.query.forceNew === '1'))
+test('an expired backend rebuilds the same SHA rather than reusing a stale frontend', async () => {
+  const f = fixture({ backendActive: false })
+  assert.equal((await f.controller.run(123)).state, 'ready')
+  assert.equal(f.calls.filter(c => c.path === '/v13/deployments' && c.method === 'POST').length, 1)
 })
 
 test('API client accepts successful empty bodies without suppressing malformed JSON', async () => {
@@ -249,6 +319,86 @@ test('renewal preserves backend identity and patches only expiry within the rete
   await assert.rejects(b.renew(123), /expired/)
 })
 
+test('backend deletion targets only the exact PR preview and is idempotent after a lost response', async () => {
+  const owned = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
+    reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview' }
+  const unrelated = { ...owned, name: 'fixture-preview-124', reference: 'preview/pr-124', previewIdentifier: 'pr-124' }
+  let items = [owned, unrelated]; const writes = []
+  const b = new PreviewBackends({ api: async (path, options = {}) => {
+    if (options.method === 'POST') {
+      writes.push({ path, ...options }); items = [unrelated]
+      throw new Error('Response lost after deletion')
+    }
+    return items
+  } })
+  assert.deepEqual(await b.inventory(), [123, 124])
+  await b.remove(123)
+  await b.remove(123)
+  assert.deepEqual(writes, [{ path: '/deployments/fixture-preview-123/delete', method: 'POST', body: {} }])
+  assert.deepEqual(items, [unrelated])
+})
+
+test('backend deletion rejects production, dev, cross-project, ambiguous and mismatched identities', async () => {
+  const owned = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
+    reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview' }
+  for (const patch of [{ deploymentType: 'prod' }, { deploymentType: 'dev' }, { projectId: 1 },
+    { previewIdentifier: 'pr-124' }, { name: '../production' },
+    { name: CONFIG.convexProductionName }]) {
+    const b = new PreviewBackends({ api: async (path, options = {}) => {
+      assert.equal(options.method, undefined, 'invalid ownership must never mutate')
+      return [{ ...owned, ...patch }]
+    } })
+    await assert.rejects(b.remove(123), /identity mismatch/)
+    await assert.rejects(b.inventory(), /identity mismatch/)
+    await assert.rejects(b.renew(123), /identity mismatch/)
+  }
+  const duplicate = new PreviewBackends({ api: async () => [owned, owned] })
+  await assert.rejects(duplicate.remove(123), /Ambiguous/)
+})
+
+test('control rejects broad and foreign credentials before any API access', async () => {
+  let calls = 0
+  const fetchImpl = async () => { calls++; throw new Error('Unexpected API access') }
+  for (const token of [undefined, '', 'personal-token', 'team:example|secret',
+    'prod:colorful-chickadee-419|secret', 'dev:example|secret',
+    'preview:other-team:overlay|secret', 'preview:divyansh-lalwani-37bb7:other-product|secret',
+    `${CONFIG.convexPreviewKeyScope}|`, `${CONFIG.convexPreviewKeyScope}|secret|extra`,
+    `${CONFIG.convexPreviewKeyScope}|secret\n`]) {
+    assert.throws(() => previewBackendClient(token, { fetchImpl }), /pinned Overlay project Preview key/)
+    // Entry point validates Convex credentials before constructing other clients.
+    await assert.rejects(main({ CONVEX_PREVIEW_CONTROL_KEY: token }, ['inventory']), /pinned Overlay project Preview key/)
+  }
+  assert.equal(calls, 0)
+})
+
+test('pinned Preview credential authenticates only against the fixed Convex API', async () => {
+  const token = `${CONFIG.convexPreviewKeyScope}|fixture-secret`
+  const api = previewBackendClient(token, { fetchImpl: async (url, options) => {
+    assert.equal(String(url), `https://api.convex.dev/v1/projects/${CONFIG.convexProjectId}/list_deployments`)
+    assert.equal(options.headers.authorization, `Bearer ${token}`)
+    return new Response('[]', { status: 200 })
+  } })
+  assert.deepEqual(await new PreviewBackends({ api }).inventory(), [])
+})
+
+test('backend deletion requires confirmed absence and propagates retained-backend failures', async () => {
+  const owned = { name: 'fixture-preview-123', projectId: CONFIG.convexProjectId,
+    reference: 'preview/pr-123', previewIdentifier: 'pr-123', deploymentType: 'preview' }
+  for (const failure of [true, false]) {
+    let writes = 0
+    const b = new PreviewBackends({ api: async (path, options = {}) => {
+      if (options.method === 'POST') {
+        writes++
+        if (failure) throw new Error('Deletion denied')
+        return {}
+      }
+      return [owned]
+    } })
+    await assert.rejects(b.remove(123), failure ? /Deletion denied/ : /readback failed/)
+    assert.equal(writes, 1)
+  }
+})
+
 test('superseded running build is canceled and confirmed before releasing the PR job', async () => {
   const f = fixture({ changeHead: true, buildState: 'BUILDING' })
   assert.equal((await f.controller.run(123)).state, 'superseded')
@@ -268,13 +418,13 @@ test('cancellation refuses a production deployment before sending a mutation', a
   await assert.rejects(f.controller.settleBuild(pull(), 'dpl_fixture'), /unrelated deployment/)
 })
 
-test('a recovered job settles abandoned older builds before requesting the current head', async () => {
+test('a recovered job settles abandoned older builds before assigning the current head', async () => {
   const f = fixture({ existing: false })
   const delegate = f.controller.vercel
   let canceled = false
   const oldSha = 'b'.repeat(40)
   f.controller.vercel = async (path, options = {}) => {
-    if (path === '/v7/deployments') return { deployments: [{ uid: 'dpl_old', state: 'BUILDING' }] }
+    if (path === '/v7/deployments') return { deployments: [{ uid: 'dpl_old', state: 'BUILDING' }, { uid: 'dpl_fixture', state: 'READY' }] }
     if (path === '/v13/deployments/dpl_old') return deployment({ id: 'dpl_old', readyState: canceled ? 'CANCELED' : 'BUILDING',
       gitSource: { ...deployment().gitSource, sha: oldSha } })
     if (path === '/v12/deployments/dpl_old/cancel') { canceled = true; return {} }

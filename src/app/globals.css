@@ -1,11 +1,50 @@
-@import '@overlay/ui/styles.css';
-@import '@overlay/modules-react/knowledge-surface.css';
-@import '@overlay/modules-react/file-viewer.css';
-@import '@overlay/modules-react/notebook-editor.css';
+@import '@overlay/ui/styles.css' layer(base);
+@import '@overlay/modules-react/knowledge-surface.css' layer(base);
+@import '@overlay/modules-react/file-viewer.css' layer(base);
+@import '@overlay/modules-react/notebook-editor.css' layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Workspace packages ship components consumed by the app; scan them for
+   utilities in addition to ./src (auto-detected via .gitignore-aware source
+   detection). Listed explicitly so coverage does not depend on detection
+   heuristics. */
+@source '../../**/*.{ts,tsx,mdx}';
+@source '../../../packages/overlay-ui/src/**/*.{ts,tsx,mdx}';
+@source '../../../packages/overlay-chat-react/src/**/*.{ts,tsx,mdx}';
+@source '../../../packages/overlay-modules-react/src/**/*.{ts,tsx,mdx}';
+
+/* `dark:` follows the app's [data-theme] attribute (set by
+   AppSettingsProvider), not the OS color scheme. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 @font-face {
   font-family: 'Libre Baskerville';
@@ -39,29 +78,19 @@
   font-display: swap;
 }
 
-/* Base semantic palette. JS-injected preset variables override these when
-   `data-theme-preset` is set (see AppSettingsProvider). */
+/* The base semantic palette is defined once in `@overlay/ui/styles.css`
+   (imported above). JS-injected preset variables override it when
+   `data-theme-preset` is set (see AppSettingsProvider). Only app-specific
+   variables live here. */
 :root {
-  --background: #fafafa;
-  --foreground: #0a0a0a;
-  --muted: #71717a;
-  --muted-light: #a1a1aa;
-  --border: #e4e4e7;
-  --surface-elevated: #ffffff;
-  --surface-muted: #f5f5f5;
-  --surface-subtle: #f0f0f0;
   --room-message-self-bg: #27272a;
   --room-message-self-text: #fafafa;
-  --sidebar-surface: #f5f5f5;
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.5);
   --selection-bg: rgba(0, 0, 0, 0.1);
   --scrollbar-thumb: #d4d4d8;
   --scrollbar-thumb-hover: #a1a1aa;
-  --overlay-scrim: rgba(0, 0, 0, 0.4);
   --font-serif-family: 'Libre Baskerville';
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --font-serif: var(--font-serif-family), var(--font-sans);
   --accent: #0a0a0a;
   --skill: #751ed9;
@@ -82,38 +111,16 @@
   /* Assistant tool rows ("2 tools called", browser label) — readable on light bg */
   --tool-line-label: #52525b;
   --tool-line-chevron: #a1a1aa;
-  --button-primary-bg: #0a0a0a;
-  --button-primary-text: #ffffff;
-  --button-secondary-bg: #ffffff;
-  --button-secondary-border: #e4e4e7;
-  --button-secondary-text: #0a0a0a;
-  --input-background: #ffffff;
-  --input-border: #e4e4e7;
-  --input-text: #0a0a0a;
-  --input-placeholder: #a1a1aa;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
 }
 
 [data-theme='dark'] {
-  --background: #09090b;
-  --foreground: #f5f5f5;
-  --muted: #a1a1aa;
-  --muted-light: #71717a;
-  --border: #27272a;
-  --surface-elevated: #111113;
-  --surface-muted: #151518;
-  --surface-subtle: #1c1c20;
   --room-message-self-bg: #27272a;
   --room-message-self-text: #f5f5f5;
-  --sidebar-surface: #111113;
   --glass-bg: rgba(17, 17, 19, 0.72);
   --glass-border: rgba(255, 255, 255, 0.08);
   --selection-bg: rgba(255, 255, 255, 0.16);
   --scrollbar-thumb: #3f3f46;
   --scrollbar-thumb-hover: #52525b;
-  --overlay-scrim: rgba(0, 0, 0, 0.58);
   --chat-badge-free-bg: rgba(16, 185, 129, 0.16);
   --chat-badge-free-fg: #6ee7b7;
   --chat-badge-upgrade-bg: rgba(245, 158, 11, 0.14);
@@ -129,18 +136,6 @@
   --chat-media-error-border: rgba(248, 113, 113, 0.3);
   --tool-line-label: #d4d4d8;
   --tool-line-chevron: #c4c4c4;
-  --button-primary-bg: #f5f5f5;
-  --button-primary-text: #09090b;
-  --button-secondary-bg: #111113;
-  --button-secondary-border: #27272a;
-  --button-secondary-text: #f5f5f5;
-  --input-background: #111113;
-  --input-border: #27272a;
-  --input-text: #f5f5f5;
-  --input-placeholder: #71717a;
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #f87171;
 }
 
 body {
@@ -172,7 +167,45 @@ body {
   }
 }
 
+/* Lockup breathing: the same opacity-only pulse the chat stream marker uses.
+   It is phased to start at full opacity the moment the entrance finishes
+   (800ms) so the loader flows into it with no flicker and never fades out
+   completely. */
+@keyframes appBrandLoaderPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.app-brand-loader-pulse {
+  animation: appBrandLoaderPulse 1.4s ease-in-out 800ms infinite;
+}
+
+/* The workspace status line fades up as the word reveal lands. */
+@keyframes appBrandWslineFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.app-brand-loader-wsline {
+  opacity: 0;
+  animation: appBrandWslineFade 420ms ease-out 560ms forwards;
+}
+
 .app-brand-loader-logo {
+  /* rests the orb's bottom on the wordmark's text baseline so the mark reads
+     on the same line as the letters, not centered on the taller line box */
+  margin-top: -1px;
   animation: appBrandLogoFade 360ms ease-out both;
 }
 
@@ -180,11 +213,32 @@ body {
   animation: appBrandWordReveal 620ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both;
 }
 
+/* Settled variant: the identical screen with the entrance already played. The
+   workspace-hydration gate swaps to it without a visible re-flash. */
+.app-brand-loader--steady .app-brand-loader-logo,
+.app-brand-loader--steady .app-brand-loader-word,
+.app-brand-loader--steady .app-brand-loader-wsline {
+  animation: none;
+}
+
+.app-brand-loader--steady .app-brand-loader-wsline {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .app-brand-loader-pulse,
+  .app-brand-loader-wsline .animate-spin {
+    animation: none;
+  }
+
   .app-brand-loader-logo,
-  .app-brand-loader-word {
+  .app-brand-loader-word,
+  .app-brand-loader-wsline {
     animation-duration: 1ms;
     animation-delay: 0ms;
+  }
+  .app-brand-loader-wsline {
+    opacity: 1;
   }
 }
 

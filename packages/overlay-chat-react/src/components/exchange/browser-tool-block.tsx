@@ -75,14 +75,14 @@ function BrowserToolHeader({
       <ToolLogoColumn connectTop={connectTop} connectBottom={connectBottom} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={details.running ? 'tool-line-shimmer' : 'text-[var(--tool-line-label)]'}>
+          <span className={details.running ? 'tool-line-shimmer' : 'text-(--tool-line-label)'}>
             {details.label}
           </span>
           {details.hasDetails && details.isDone ? (
             <button
               type="button"
               onClick={() => onExpandedChange(!userExpanded)}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
               aria-label={userExpanded ? 'Collapse browser tool details' : 'Expand browser tool details'}
             >
               <ChevronDown
@@ -122,11 +122,11 @@ function BrowserToolDetailsPanel({
           ref={scrollRef}
           key={userExpanded ? 'open' : details.running ? 'streaming' : 'closed'}
           className={`space-y-3 message-appear ${ASSISTANT_COLLAPSIBLE_BODY_CLASS} ${
-            details.running ? '[scrollbar-width:none]' : '[scrollbar-width:thin]'
+            details.running ? 'scrollbar-none' : 'scrollbar-thin'
           }`}
         >
           {details.task ? (
-            <div className="reasoning-markdown text-[12px] leading-relaxed text-[var(--muted)]">
+            <div className="reasoning-markdown text-[12px] leading-relaxed text-(--muted)">
               <MarkdownMessage text={details.task} isStreaming={details.running} suppressTypingIndicator />
             </div>
           ) : null}
@@ -135,7 +135,7 @@ function BrowserToolDetailsPanel({
               src={details.liveUrl}
               title="Browser Use live browser"
               sandbox="allow-scripts"
-              className="h-[280px] w-full rounded-xl border border-[var(--border)] bg-[var(--background)]"
+              className="h-[280px] w-full rounded-xl border border-(--border) bg-(--background)"
             />
           ) : null}
         </div>

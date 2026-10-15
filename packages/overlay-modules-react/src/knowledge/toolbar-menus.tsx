@@ -17,7 +17,7 @@ import type {
 } from '@overlay/app-core'
 
 const TOOLBAR_ICON_BUTTON_CLASS =
-  'inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
 
 export function OutputFilterMenu({
   onCommit,
@@ -33,14 +33,14 @@ export function OutputFilterMenu({
   setOpen: (value: boolean | ((value: boolean) => boolean)) => void
 }) {
   return (
-    <div ref={outputFilterRef} className="relative h-8 w-fit max-w-[13rem]">
+    <div ref={outputFilterRef} className="relative h-8 w-fit max-w-52">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-0 text-left text-xs leading-none text-[var(--foreground)] ${
-          open ? 'bg-[var(--border)]' : 'hover:bg-[var(--border)]'
+        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-(--border) bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--foreground) ${
+          open ? 'bg-(--border)' : 'hover:bg-(--border)'
         }`}
       >
         <span className="min-w-0 truncate">{OUTPUT_FILTER_LABELS[outputFilter]}</span>
@@ -48,7 +48,7 @@ export function OutputFilterMenu({
       </button>
       {open && (
         <div
-          className="overlay-pop-in absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg"
+          className="overlay-pop-in absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg"
           role="listbox"
         >
           {(['all', 'image', 'video', 'files'] as const).map((id) => (
@@ -58,8 +58,8 @@ export function OutputFilterMenu({
               role="option"
               aria-selected={outputFilter === id}
               onClick={() => onCommit(id)}
-              className={`w-full whitespace-nowrap px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--surface-muted)] ${
-                outputFilter === id ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted)]'
+              className={`w-full whitespace-nowrap px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-(--surface-muted) ${
+                outputFilter === id ? 'font-medium text-(--foreground)' : 'text-(--muted)'
               }`}
             >
               {OUTPUT_FILTER_LABELS[id]}
@@ -122,14 +122,14 @@ export function FilesCreateUploadControls({
             <Plus size={15} />
           </button>
           {createMenuOpen ? (
-            <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+            <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
               <button
                 type="button"
                 onClick={() => {
                   setCreateMenuOpen(false)
                   onCreateNoteFile()
                 }}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
               >
                 <BookOpen size={13} />
                 New Note
@@ -141,7 +141,7 @@ export function FilesCreateUploadControls({
                   setDialog({ type: 'folder', parentId: activeFolder?._id ?? null })
                   setDialogName('')
                 }}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
               >
                 <FolderPlus size={13} />
                 New Folder
@@ -165,7 +165,7 @@ export function FilesCreateUploadControls({
           <Upload size={15} />
         </button>
         {uploadMenuOpen ? (
-          <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+          <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
             <button
               type="button"
               onClick={() => {
@@ -173,7 +173,7 @@ export function FilesCreateUploadControls({
                 if (onPickFile) onPickFile()
                 else fileUploadRef.current?.click()
               }}
-              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             >
               <FilePlus size={13} />
               Upload File
@@ -185,7 +185,7 @@ export function FilesCreateUploadControls({
                 if (onPickFolder) onPickFolder()
                 else folderUploadRef.current?.click()
               }}
-              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             >
               <FolderInput size={13} />
               Upload Folder

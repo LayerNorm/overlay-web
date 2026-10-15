@@ -79,6 +79,7 @@ import type * as lib_metrics from "../lib/metrics.js";
 import type * as lib_resourceScope from "../lib/resourceScope.js";
 import type * as lib_scopeMutations from "../lib/scopeMutations.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
+import type * as lib_workItems from "../lib/workItems.js";
 import type * as mcp_grants from "../mcp/grants.js";
 import type * as migrations_backfillAgentThreads from "../migrations/backfillAgentThreads.js";
 import type * as migrations_backfillAutomationConversations from "../migrations/backfillAutomationConversations.js";
@@ -104,6 +105,8 @@ import type * as surfaces_surfaces from "../surfaces/surfaces.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
 import type * as webhooks_deliveryRunner from "../webhooks/deliveryRunner.js";
 import type * as webhooks_subscriptions from "../webhooks/subscriptions.js";
+import type * as work_workItemEvents from "../work/workItemEvents.js";
+import type * as work_workItems from "../work/workItems.js";
 
 import type {
   ApiFromModules,
@@ -183,6 +186,7 @@ declare const fullApi: ApiFromModules<{
   "lib/resourceScope": typeof lib_resourceScope;
   "lib/scopeMutations": typeof lib_scopeMutations;
   "lib/workspaceMembership": typeof lib_workspaceMembership;
+  "lib/workItems": typeof lib_workItems;
   "mcp/grants": typeof mcp_grants;
   "migrations/backfillAgentThreads": typeof migrations_backfillAgentThreads;
   "migrations/backfillAutomationConversations": typeof migrations_backfillAutomationConversations;
@@ -208,6 +212,8 @@ declare const fullApi: ApiFromModules<{
   "webhooks/deliveries": typeof webhooks_deliveries;
   "webhooks/deliveryRunner": typeof webhooks_deliveryRunner;
   "webhooks/subscriptions": typeof webhooks_subscriptions;
+  "work/workItemEvents": typeof work_workItemEvents;
+  "work/workItems": typeof work_workItems;
 }>;
 
 /**

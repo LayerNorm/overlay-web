@@ -28,8 +28,8 @@ export function KnowledgeMemoryList({
         return (
           <div
             key={memory.key}
-            className={`group flex items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-[var(--border)] hover:bg-[var(--surface-muted)] ${
-              bulkSel ? 'border-[var(--border)] bg-[var(--surface-muted)]' : ''
+            className={`group flex items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-(--border) hover:bg-(--surface-muted) ${
+              bulkSel ? 'border-(--border) bg-(--surface-muted)' : ''
             }`}
           >
             {selectMode ? <BulkSelectMarker selected={bulkSel} className="mt-0.5 shrink-0" /> : null}
@@ -44,16 +44,16 @@ export function KnowledgeMemoryList({
                   else onOpen(memory)
                 }
               }}
-              className="min-w-0 flex-1 cursor-pointer rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+              className="min-w-0 flex-1 cursor-pointer rounded-xs outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
             >
-              <p className="min-w-0 flex-1 text-sm leading-relaxed text-[var(--foreground)]">{memory.content}</p>
+              <p className="min-w-0 flex-1 text-sm leading-relaxed text-(--foreground)">{memory.content}</p>
             </div>
             {!selectMode ? (
               <button
                 type="button"
                 aria-label="Delete memory"
                 onClick={(event) => onDelete(memory.memoryId, event)}
-                className="shrink-0 rounded p-1 text-[var(--muted-light)] opacity-0 transition-opacity hover:bg-[var(--surface-subtle)] hover:text-red-500 group-hover:opacity-100"
+                className="shrink-0 rounded-sm p-1 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-red-500 group-hover:opacity-100"
               >
                 <Trash2 size={12} />
               </button>
@@ -79,7 +79,7 @@ export function KnowledgeMemoryCards({
   onToggleSelect: (memoryId: string) => void
 }) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 [column-gap:1rem] sm:columns-2 lg:columns-3">
+    <div className="mx-auto w-full max-w-[1440px] columns-1 gap-4 gap-x-4 sm:columns-2 lg:columns-3">
       {memories.map((memory) => {
         const bulkSel = selectedIds.has(memory.memoryId)
         return (
@@ -89,8 +89,8 @@ export function KnowledgeMemoryCards({
             onClick={() =>
               selectMode ? onToggleSelect(memory.memoryId) : onOpen(memory)
             }
-            className={`group relative mb-4 block w-full break-inside-avoid rounded-xl border bg-[var(--surface-elevated)] p-4 text-left transition-shadow hover:shadow-md ${
-              bulkSel ? 'border-[var(--foreground)] ring-1 ring-[var(--foreground)]/20' : 'border-[var(--border)]'
+            className={`group relative mb-4 block w-full break-inside-avoid rounded-xl border bg-(--surface-elevated) p-4 text-left transition-shadow hover:shadow-md ${
+              bulkSel ? 'border-(--foreground) ring-1 ring-(--foreground)/20' : 'border-(--border)'
             }`}
             style={{ breakInside: 'avoid' }}
           >
@@ -101,11 +101,11 @@ export function KnowledgeMemoryCards({
               />
             ) : null}
             <p
-              className={`line-clamp-6 text-xs leading-relaxed text-[var(--foreground)] ${selectMode ? 'pl-7' : ''}`}
+              className={`line-clamp-6 text-xs leading-relaxed text-(--foreground) ${selectMode ? 'pl-7' : ''}`}
             >
               {memory.content}
             </p>
-            <p className="mt-3 text-[10px] text-[var(--muted-light)]">
+            <p className="mt-3 text-[10px] text-(--muted-light)">
               {
                 // Locale pinned to 'en-US'.
                 // react-doctor-disable-next-line react-doctor/no-locale-format-in-render

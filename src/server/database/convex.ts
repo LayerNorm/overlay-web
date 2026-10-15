@@ -1,4 +1,5 @@
 import 'server-only'
+import { ConvexError, jsonToConvex } from 'convex/values'
 
 import { logger } from '@/server/observability/logger'
 import { deploymentEnv } from '@/server/env/deployment-env'
@@ -25,6 +26,7 @@ interface ConvexResponse<T> {
   status: 'success' | 'error'
   value?: T
   errorMessage?: string
+  errorData?: Parameters<typeof jsonToConvex>[0]
 }
 
 interface CallConvexOptions {
@@ -132,7 +134,9 @@ async function callConvex<T>(
           ? data.errorMessage
           : `Convex ${type} request failed with HTTP ${response.status}`)
       if (options.throwOnError) {
-        throw new Error(message)
+        throw data.errorData !== undefined
+          ? new ConvexError(jsonToConvex(data.errorData))
+          : new Error(message)
       }
       if (!shouldSuppressConvexError(options, message)) {
         logger.error(`Convex ${type} HTTP error:`, message)
@@ -142,7 +146,9 @@ async function callConvex<T>(
 
     if (data.status === 'error') {
       if (options.throwOnError) {
-        throw new Error(data.errorMessage || `Convex ${type} error`)
+        throw data.errorData !== undefined
+          ? new ConvexError(jsonToConvex(data.errorData))
+          : new Error(data.errorMessage || `Convex ${type} error`)
       }
       if (!shouldSuppressConvexError(options, data.errorMessage ?? '')) {
         logger.error(`Convex ${type} error:`, data.errorMessage)

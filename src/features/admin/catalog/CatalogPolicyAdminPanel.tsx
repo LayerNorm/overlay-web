@@ -162,7 +162,7 @@ export function CatalogPolicyAdminPanel({ canManage }: { canManage: boolean }) {
               Models, tools, and connectors
             </h2>
           </div>
-          <p className="mt-1 max-w-2xl text-xs text-[var(--muted)]">
+          <p className="mt-1 max-w-2xl text-xs text-(--muted)">
             Restrict deployment-enabled resources to selected users, groups, or roles.
             A resource with no grants remains available to everyone who has its capability.
           </p>
@@ -229,20 +229,20 @@ function CatalogResourceList({
   onSelect(id: string): void
 }) {
   return (
-    <div className="min-w-0 border-r-0 border-[var(--border)] lg:border-r lg:pr-6">
+    <div className="min-w-0 border-r-0 border-(--border) lg:border-r lg:pr-6">
       <div className="relative">
-        <Search className="absolute left-3 top-2.5 text-[var(--muted)]" size={14} />
+        <Search className="absolute left-3 top-2.5 text-(--muted)" size={14} />
         <input
           aria-label={`Search ${resourceType}s`}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={`Search ${resourceType}s`}
-          className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-9 pr-3 text-sm"
+          className="h-9 w-full rounded-md border border-(--border) bg-(--surface) pl-9 pr-3 text-sm"
         />
       </div>
-      <div className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+      <div className="mt-3 divide-y divide-(--border) border-y border-(--border)">
         {visibleResources.length === 0 ? (
-          <p className="py-5 text-sm text-[var(--muted)]">No matching resources.</p>
+          <p className="py-5 text-sm text-(--muted)">No matching resources.</p>
         ) : visibleResources.map((resource) => (
           <button
             key={`${resource.resourceType}:${resource.id}`}
@@ -250,12 +250,12 @@ function CatalogResourceList({
             onClick={() => onSelect(resource.id)}
             className={`w-full px-2 py-3 text-left transition-colors ${
               selectedId === resource.id
-                ? 'bg-[var(--surface-subtle)]'
-                : 'hover:bg-[var(--surface-subtle)]'
+                ? 'bg-(--surface-subtle)'
+                : 'hover:bg-(--surface-subtle)'
             }`}
           >
             <p className="truncate text-sm font-medium">{resource.label}</p>
-            <p className="mt-1 truncate text-xs text-[var(--muted)]">
+            <p className="mt-1 truncate text-xs text-(--muted)">
               {resource.category ? `${resource.category} · ` : ''}{resource.id}
             </p>
           </button>
@@ -293,15 +293,15 @@ function CatalogResourcePolicy({
   return (
     <div className="min-w-0">
       {!selected ? (
-        <p className="py-10 text-sm text-[var(--muted)]">Select a resource to manage availability.</p>
+        <p className="py-10 text-sm text-(--muted)">Select a resource to manage availability.</p>
       ) : (
         <>
           <h3 className="text-base font-semibold">{selected.label}</h3>
-          <p className="mt-1 break-all text-xs text-[var(--muted)]">{selected.id}</p>
+          <p className="mt-1 break-all text-xs text-(--muted)">{selected.id}</p>
           {selected.description ? (
-            <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{selected.description}</p>
+            <p className="mt-3 text-sm leading-6 text-(--muted)">{selected.description}</p>
           ) : null}
-          <p className="mt-4 text-xs text-[var(--muted)]">
+          <p className="mt-4 text-xs text-(--muted)">
             {grants.length === 0
               ? 'Unrestricted within the deployment capability boundary.'
               : `Restricted to ${grants.length} assigned principal${grants.length === 1 ? '' : 's'}.`}
@@ -355,7 +355,7 @@ function CatalogGrantEditor({
         aria-label="Catalog principal type"
         value={principalType}
         onChange={(event) => onPrincipalTypeChange(event.target.value as AuthorizationPrincipalType)}
-        className="h-9 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+        className="h-9 rounded-md border border-(--border) bg-(--surface) px-2 text-xs"
       >
         <option value="user">User</option>
         <option value="group">Group</option>
@@ -367,14 +367,14 @@ function CatalogGrantEditor({
           value={principalId}
           onChange={(event) => onPrincipalIdChange(event.target.value)}
           placeholder="User ID"
-          className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+          className="h-9 min-w-0 rounded-md border border-(--border) bg-(--surface) px-2 text-xs"
         />
       ) : (
         <Select
           aria-label="Catalog policy principal"
           value={principalId}
           onChange={(event) => onPrincipalIdChange(event.target.value)}
-          className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+          className="h-9 min-w-0 rounded-md border border-(--border) bg-(--surface) px-2 text-xs"
         >
           <option value="">Select {principalType}</option>
           {directoryEntries(directory, principalType).map((entry) => (
@@ -407,14 +407,14 @@ function CatalogGrantList({
   onRemoveGrant(grantId: string): void
 }) {
   return (
-    <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+    <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
       {grants.length === 0 ? (
-        <p className="py-5 text-sm text-[var(--muted)]">No principal restrictions.</p>
+        <p className="py-5 text-sm text-(--muted)">No principal restrictions.</p>
       ) : grants.map((grant) => (
         <div key={grant.id} className="flex items-center gap-3 py-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{principalLabel(directory, grant)}</p>
-            <p className="text-xs text-[var(--muted)]">{grant.principalType}</p>
+            <p className="text-xs text-(--muted)">{grant.principalType}</p>
           </div>
           {canManage ? (
             <IconButton

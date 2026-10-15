@@ -142,7 +142,7 @@ function authorInitial(name: string): string {
 const AUTHOR_STATUS_META = {
   member: { label: 'In workspace', className: 'bg-green-500/10 text-green-600' },
   invited: { label: 'Invited', className: 'bg-amber-500/10 text-amber-600' },
-  not_invited: { label: 'Not invited', className: 'bg-[var(--surface-subtle)] text-[var(--muted)]' },
+  not_invited: { label: 'Not invited', className: 'bg-(--surface-subtle) text-(--muted)' },
 } as const
 
 /** Agent mention chips carry the creature avatar; other types keep their icon. */
@@ -203,7 +203,7 @@ function AuthorIdentityPopover({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--foreground)] ${triggerClassName ?? ''}`}
+        className={`text-left outline-hidden focus-visible:ring-2 focus-visible:ring-(--foreground) ${triggerClassName ?? ''}`}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -215,26 +215,26 @@ function AuthorIdentityPopover({
         <div
           role="dialog"
           aria-label={name ? `${name} profile` : 'Message author'}
-          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-3 shadow-xl"
+          className="absolute left-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border border-(--border) bg-(--surface-elevated) p-3 shadow-xl"
         >
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--surface-muted) text-[13px] font-semibold text-(--foreground)">
               {authorInitial(name)}
             </span>
             <span className="min-w-0 flex-1">
-              <span className='block truncate text-sm font-semibold text-[var(--foreground)]'>
+              <span className='block truncate text-sm font-semibold text-(--foreground)'>
                 {name}
               </span>
-              <span className='block truncate text-[11px] text-[var(--muted)]'>
+              <span className='block truncate text-[11px] text-(--muted)'>
                 {email ?? 'No email on file'}
               </span>
             </span>
           </div>
           {statusMeta ? (
-            <div className="mt-2.5 flex items-center justify-between border-t border-[var(--border)] pt-2.5">
-              <span className="text-[11px] text-[var(--muted)]">Workspace</span>
+            <div className="mt-2.5 flex items-center justify-between border-t border-(--border) pt-2.5">
+              <span className="text-[11px] text-(--muted)">Workspace</span>
               <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}
+                className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${statusMeta.className}`}
               >
                 {statusMeta.label}
               </span>
@@ -299,7 +299,7 @@ export function RoomMessageItem({
     'data-overlay-link-scope': '',
   }
   const highlightClass = highlighted
-    ? 'rounded-xl ring-2 ring-[var(--foreground)] ring-offset-4 ring-offset-[var(--background)]'
+    ? 'rounded-xl ring-2 ring-(--foreground) ring-offset-4 ring-offset-(--background)'
     : ''
 
   // A connected agent's run is stopped by cancelling it; a native agent's response by stopping the response.
@@ -438,7 +438,7 @@ function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
       triggerClassName="rounded-lg"
     >
       <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[13px] font-semibold text-[var(--foreground)]"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--surface-muted) text-[13px] font-semibold text-(--foreground)"
         aria-hidden
       >
         {authorInitial(message.mine ? 'You' : message.authorName)}
@@ -451,7 +451,7 @@ function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
 function HumanMessageText({ message }: { message: RoomMessageView }) {
   if (!message.text) return null
   return (
-    <div className="text-[15px] leading-relaxed text-[var(--foreground)]">
+    <div className="text-[15px] leading-relaxed text-(--foreground)">
       <MarkdownMessage text={message.text} isStreaming={false} mentions={message.mentions} renderMentionAvatar={renderMentionAvatar} />
     </div>
   )
@@ -477,11 +477,11 @@ function DeletedRoomMessage({ rootProps, mine, personalChatStyle, highlightClass
     return (
       <div
         {...rootProps}
-        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
       >
         <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
           <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
-            <span className="italic text-[var(--muted)]">Message deleted</span>
+            <span className="italic text-(--muted)">Message deleted</span>
           </UserMessageBubble>
         </div>
       </div>
@@ -494,7 +494,7 @@ function DeletedRoomMessage({ rootProps, mine, personalChatStyle, highlightClass
       className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 ${highlightClass}`}
     >
       <RoomMessageAvatar message={message} />
-      <p className="self-center text-sm italic text-[var(--muted-light)]">Message deleted</p>
+      <p className="self-center text-sm italic text-(--muted-light)">Message deleted</p>
     </div>
   )
 }
@@ -516,13 +516,13 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
                 content: attachment.url,
                 url: attachment.url,
               })}
-              className="group rounded-xl outline-none transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-[var(--foreground)]"
+              className="group rounded-xl outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground)"
               title="Open attachment"
             >
               <img
                 src={attachment.url}
                 alt={attachment.name}
-                className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-[var(--border)]"
+                className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-(--border)"
               />
             </button>
           ))}
@@ -533,10 +533,10 @@ function RoomMessageAttachments({ message, onOpenAttachmentPreview }: {
           {message.documentNames.map((name) => (
             <div
               key={name}
-              className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--muted)] shadow-sm"
+              className="flex max-w-[220px] items-center gap-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) px-2.5 py-1.5 text-xs text-(--muted) shadow-xs"
             >
-              <FileText size={13} className="shrink-0 text-[var(--muted)]" />
-              <span className='truncate font-medium text-[var(--foreground)]'>
+              <FileText size={13} className="shrink-0 text-(--muted)" />
+              <span className='truncate font-medium text-(--foreground)'>
                 {name}
               </span>
             </div>
@@ -573,7 +573,7 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
         type="button"
         onClick={onSaveEdit}
         aria-label="Save edit"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)]"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background)"
       >
         <Check size={14} />
       </button>
@@ -581,7 +581,7 @@ function RoomMessageEditor({ editingContent, onEditingContentChange, onSaveEdit,
         type="button"
         onClick={onCancelEdit}
         aria-label="Cancel edit"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-subtle)]"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-subtle)"
       >
         <X size={14} />
       </button>
@@ -604,8 +604,8 @@ function RoomReactionRow({ reactions, alignEnd, onToggleReaction }: {
           onClick={() => onToggleReaction(reaction.emoji)}
           className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] transition-colors ${
             reaction.reactedByCurrentPrincipal
-              ? 'border-[var(--foreground)] bg-[var(--surface-subtle)]'
-              : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'
+              ? 'border-(--foreground) bg-(--surface-subtle)'
+              : 'border-(--border) hover:bg-(--surface-subtle)'
           }`}
         >
           <span>{reaction.emoji}</span>
@@ -628,16 +628,16 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
         type="button"
         onClick={onOpenThread}
         data-testid="thread-teaser"
-        className="group/thread mt-0.5 flex max-w-xl items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-[var(--surface-subtle)]"
+        className="group/thread mt-0.5 flex max-w-xl items-start gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-(--surface-subtle)"
       >
-        <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-[var(--muted)]" />
+        <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-(--muted)" />
         <span className="min-w-0 flex-1">
-          <span className="block text-[12px] font-semibold text-[var(--foreground)]">
+          <span className="block text-[12px] font-semibold text-(--foreground)">
             {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
           </span>
           {threadTeaser?.text ? (
-            <span className="mt-0.5 block truncate text-[12px] text-[var(--muted)]">
-              <span className="font-medium text-[var(--foreground)]">{threadTeaser.authorName}</span>
+            <span className="mt-0.5 block truncate text-[12px] text-(--muted)">
+              <span className="font-medium text-(--foreground)">{threadTeaser.authorName}</span>
               {': '}
               {threadTeaser.text}
             </span>
@@ -652,7 +652,7 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
         type="button"
         onClick={onOpenThread}
         data-testid="thread-teaser"
-        className={`inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] ${mine ? 'self-end' : ''}`}
+        className={`inline-flex items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) ${mine ? 'self-end' : ''}`}
       >
         <MessageSquareReply size={12} strokeWidth={1.75} />
         {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
@@ -675,18 +675,18 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
         email={message.authorEmail}
         status={message.authorStatus}
       >
-        <span className="truncate text-[13px] font-bold text-[var(--foreground)] hover:underline">
+        <span className="truncate text-[13px] font-bold text-(--foreground) hover:underline">
           {message.authorName}
         </span>
       </AuthorIdentityPopover>
       {message.authorStatus && message.authorStatus !== 'member' ? (
-        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${AUTHOR_STATUS_META[message.authorStatus].className}`}>
+        <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium ${AUTHOR_STATUS_META[message.authorStatus].className}`}>
           {AUTHOR_STATUS_META[message.authorStatus].label}
         </span>
       ) : null}
-      {!grouped ? <time className="shrink-0 text-[11px] text-[var(--muted-light)]">{timeLabel}</time> : null}
-      {message.editedAt ? <span className="text-[11px] text-[var(--muted-light)]">edited</span> : null}
-      {pinned ? <Pin size={11} className="shrink-0 text-[var(--muted-light)]" /> : null}
+      {!grouped ? <time className="shrink-0 text-[11px] text-(--muted-light)">{timeLabel}</time> : null}
+      {message.editedAt ? <span className="text-[11px] text-(--muted-light)">edited</span> : null}
+      {pinned ? <Pin size={11} className="shrink-0 text-(--muted-light)" /> : null}
     </div>
   )
 }
@@ -701,14 +701,14 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
   return (
     <>
       {message.askedBy ? (
-        <p className="mb-1 text-[11px] text-[var(--muted)]">
+        <p className="mb-1 text-[11px] text-(--muted)">
           Agent question · step {message.askedBy.hop} of {MAX_AGENT_HOPS}
           {message.askedBy.parentConversationId ? (
             <>
               {' · '}
               <a
                 href={`/app/chat?id=${encodeURIComponent(message.askedBy.parentConversationId)}`}
-                className="underline underline-offset-2 hover:text-[var(--foreground)]"
+                className="underline underline-offset-2 hover:text-(--foreground)"
               >
                 see where it came from
               </a>
@@ -733,7 +733,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
           {[0, 1, 2].map((dot) => (
             <span
               key={dot}
-              className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--muted-light)]"
+              className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--muted-light)"
               style={{ animationDelay: `${dot * 120}ms` }}
             />
           ))}
@@ -763,7 +763,7 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
     >
       <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
         {!personalChatStyle && toolbar}
@@ -807,7 +807,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-[var(--surface-subtle)]'} ${highlightClass}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
     >
       <RoomMessageAvatar message={message} />
       <div className="relative min-w-0 flex-1">
@@ -871,20 +871,20 @@ function RemoteRequestControls({ request, onResolve }: {
     initialElicitationValues(properties, required),
   )
   return (
-    <div className="mt-3 max-w-xl rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-      <p className='text-xs font-medium text-[var(--foreground)]'>
+    <div className="mt-3 max-w-xl rounded-lg border border-(--border) bg-(--surface-subtle) p-3">
+      <p className='text-xs font-medium text-(--foreground)'>
         {request.kind === 'permission'
           ? 'Permission requested'
           : 'Input requested'}
       </p>
-      <p className='mt-1 text-xs leading-5 text-[var(--muted)]'>
+      <p className='mt-1 text-xs leading-5 text-(--muted)'>
         {request.prompt}
       </p>
       {request.kind === 'elicitation'
         ? Object.entries(properties).map(([key, property]) =>
         property.type === 'boolean' ? (
           <div key={key} className="mt-2 flex items-center gap-3">
-            <span className="flex-1 text-[11px] text-[var(--muted)]">
+            <span className="flex-1 text-[11px] text-(--muted)">
                   {property.title ?? key}
                   {requiredSet.has(key) ? ' *' : ''}
             </span>
@@ -901,7 +901,7 @@ function RemoteRequestControls({ request, onResolve }: {
             />
           </div>
         ) : (
-          <label key={key} className="mt-2 block text-[11px] text-[var(--muted)]">
+          <label key={key} className="mt-2 block text-[11px] text-(--muted)">
             <span>{property.title ?? key}{requiredSet.has(key) ? ' *' : ''}</span>
             {elicitationOptions(property).length > 0 ? (
               <select
@@ -913,7 +913,7 @@ function RemoteRequestControls({ request, onResolve }: {
                     [key]: elicitationFieldValue(property.type, event.target.value),
                   }))
                 }
-                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]"
+                className="mt-1 h-8 w-full rounded-md border border-(--border) bg-(--surface) px-2 text-xs text-(--foreground)"
               >
                 <option value="">Select…</option>
                 {elicitationOptions(property).map((option) => (
@@ -927,7 +927,7 @@ function RemoteRequestControls({ request, onResolve }: {
                 aria-label={key}
                 value={String(values[key] ?? '')}
                 onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-                className="mt-1 h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--foreground)]" />
+                className="mt-1 h-8 w-full rounded-md border border-(--border) bg-(--surface) px-2 text-xs text-(--foreground)" />
             )}
           </label>
         ),
@@ -940,7 +940,7 @@ function RemoteRequestControls({ request, onResolve }: {
               key={option.id}
               type='button'
               onClick={() => onResolve(request, option.id)}
-              className='rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]'
+              className='rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface)'
             >
               {option.label}
             </button>
@@ -950,14 +950,14 @@ function RemoteRequestControls({ request, onResolve }: {
             <button
               type='button'
               onClick={() => onResolve(request, 'accept', values)}
-              className='rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--foreground)] hover:bg-[var(--surface)]'
+              className='rounded-md border border-(--border) px-2 py-1 text-xs text-(--foreground) hover:bg-(--surface)'
             >
               Submit
             </button>
             <button
               type='button'
               onClick={() => onResolve(request, 'decline')}
-              className='rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--surface)]'
+              className='rounded-md px-2 py-1 text-xs text-(--muted) hover:bg-(--surface)'
             >
               Decline
             </button>
@@ -999,7 +999,7 @@ function RemoteRunControls({ run, onControl }: {
 }) {
   if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
   if (run.state === 'recoverable') return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
         <span>
           {run.retryClass === 'host_offline'
             ? 'The environment went offline.'
@@ -1008,14 +1008,14 @@ function RemoteRunControls({ run, onControl }: {
         <button
           type='button'
           onClick={() => onControl(run.runId, 'resume')}
-          className='rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)]'
+          className='rounded-md border border-(--border) px-2 py-1 text-(--foreground)'
         >
           Resume
         </button>
         <button
           type='button'
           onClick={() => onControl(run.runId, 'start_fresh')}
-          className='rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)]'
+          className='rounded-md px-2 py-1 hover:bg-(--surface-subtle)'
         >
           Start fresh
         </button>
@@ -1042,7 +1042,7 @@ function RemoteQueueControls({
   }, [queue.queueExpiresAt])
 
   return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
+    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
       <span>
         {elapsed
           ? 'The 2-minute waiting window elapsed.'
@@ -1051,14 +1051,14 @@ function RemoteQueueControls({
       <button
         type='button'
         onClick={() => onControl(queue.runId, 'cancel')}
-        className='rounded-md px-2 py-1 hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+        className='rounded-md px-2 py-1 hover:bg-(--surface-subtle) hover:text-(--foreground)'
       >
         Cancel
       </button>
       <button
         type='button'
         onClick={() => onControl(queue.runId, 'retry')}
-        className='rounded-md border border-[var(--border)] px-2 py-1 text-[var(--foreground)] hover:bg-[var(--surface-subtle)]'
+        className='rounded-md border border-(--border) px-2 py-1 text-(--foreground) hover:bg-(--surface-subtle)'
       >
         Retry
       </button>
@@ -1074,7 +1074,7 @@ const QUICK_REACTIONS = [
 
 function toolbarRailClass(floating: boolean, pickerOpen: boolean, alignEnd: boolean) {
   return floating
-    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
+    ? `absolute -top-3 right-0 z-20 flex items-center gap-0.5 rounded-lg border border-(--border) bg-(--surface-elevated) p-0.5 shadow-md transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
         pickerOpen ? 'opacity-100' : 'opacity-0'
       }`
     : `chat-exchange-actions--hover flex items-center gap-1 px-1 pt-0.5 transition-opacity focus-within:opacity-100 group-hover/exchange:opacity-100 ${
@@ -1108,7 +1108,7 @@ function PinMessageButton({ buttonClass, pinned, disabled, onTogglePinned }: {
       type="button"
       onClick={onTogglePinned}
       disabled={disabled}
-      className={`${buttonClass} ${pinned ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+      className={`${buttonClass} ${pinned ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
       aria-label={pinned ? 'Unpin message' : 'Pin message'}
       aria-pressed={pinned}
     >
@@ -1128,7 +1128,7 @@ function SaveMessageButton({ buttonClass, saved, disabled, onToggleSaved }: {
       type="button"
       onClick={onToggleSaved}
       disabled={disabled}
-      className={`${buttonClass} ${saved ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+      className={`${buttonClass} ${saved ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
       aria-label={saved ? 'Remove from saved' : 'Save message'}
       aria-pressed={saved}
     >
@@ -1202,7 +1202,7 @@ function RoomMessageToolbar({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const buttonClass =
-    'rounded-md p-1.5 text-[var(--muted)] transition-[color,background-color,transform] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30'
+    'rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30'
 
   const railClass = toolbarRailClass(floating, pickerOpen, alignEnd)
 
@@ -1286,7 +1286,7 @@ function EmojiPickerButton({
         type="button"
         onClick={() => setOpen(!open)}
         disabled={disabled}
-        className={`${buttonClass} ${open ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
+        className={`${buttonClass} ${open ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
         aria-label="Add reaction"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -1299,7 +1299,7 @@ function EmojiPickerButton({
         <div
           role="dialog"
           aria-label="Pick a reaction"
-          className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-2 shadow-lg ${
+          className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-lg ${
             alignEnd ? 'right-0' : 'left-0'
           }`}
         >
@@ -1312,7 +1312,7 @@ function EmojiPickerButton({
                   onSelect(emoji)
                   setOpen(false)
                 }}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-base transition-colors hover:bg-[var(--surface-muted)]"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-base transition-colors hover:bg-(--surface-muted)"
                 aria-label={`React with ${emoji}`}
               >
                 {emoji}

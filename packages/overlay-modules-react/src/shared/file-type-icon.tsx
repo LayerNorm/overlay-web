@@ -208,7 +208,7 @@ export function FileTypeIcon({
     if (!framed) return img
     return (
       <span
-        className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-black/[0.06] dark:bg-white ${className}`}
+        className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-white shadow-xs ring-1 ring-black/6 dark:bg-white ${className}`}
         style={{ height: frameSize, width: frameSize }}
         aria-hidden
       >

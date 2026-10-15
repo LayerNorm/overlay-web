@@ -113,7 +113,7 @@ export function LinkOpenInterceptor({
     <>
       {/* Scrim is a pointer-only click catcher; keyboard users dismiss via Escape. */}
       {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
-      <div className="fixed inset-0 z-[450]" onMouseDown={close} />
+      <div className="fixed inset-0 z-450" onMouseDown={close} />
       {/* Anchored chooser popover — a native <dialog> cannot position at the clicked link. */}
       {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
       <div
@@ -121,10 +121,10 @@ export function LinkOpenInterceptor({
         role="dialog"
         aria-label="Open link"
         style={{ position: 'fixed', top, left, width: CHOOSER_WIDTH, zIndex: 451 }}
-        className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-1 shadow-2xl"
+        className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) p-1 shadow-2xl"
       >
         <p
-          className='truncate px-2.5 pb-1 pt-1.5 text-[11px] text-[var(--muted-light)]'
+          className='truncate px-2.5 pb-1 pt-1.5 text-[11px] text-(--muted-light)'
           title={choice.url}
         >
           {hostOf(choice.url)}
@@ -135,9 +135,9 @@ export function LinkOpenInterceptor({
             onOpenInOverlay(choice.url, choice.label)
             close()
           }}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
         >
-          <PanelRight size={15} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+          <PanelRight size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
           Open in Overlay
         </button>
         <button
@@ -146,9 +146,9 @@ export function LinkOpenInterceptor({
             openInNewTab(choice.url)
             close()
           }}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
         >
-          <ExternalLink size={15} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+          <ExternalLink size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
           Open in new tab
         </button>
       </div>

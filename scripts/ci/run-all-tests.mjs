@@ -19,16 +19,28 @@
  *   node scripts/ci/run-all-tests.mjs              # run every group
  *   node scripts/ci/run-all-tests.mjs --list       # print the classification
  *   node scripts/ci/run-all-tests.mjs --only tsx   # run groups whose name starts with a prefix
+ *   node scripts/ci/run-all-tests.mjs --integration --list # opt-in live suites
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { parseShard, selectShard, verifyShards } from './test-shards.mjs'
+import { INTEGRATION_TESTS, REACT_SERVER_TESTS } from './integration-tests.mjs'
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..')
 const args = process.argv.slice(2)
 const listOnly = args.includes('--list')
+const integrationOnly = args.includes('--integration')
 const onlyIndex = args.indexOf('--only')
 const onlyPrefix = onlyIndex >= 0 ? args[onlyIndex + 1] : undefined
+const shardIndex = args.indexOf('--shard')
+const verifyIndex = args.indexOf('--verify-shards')
+for (let i = 0; i < args.length; i++) {
+  if (['--list', '--integration'].includes(args[i])) continue
+  if (['--only', '--shard', '--verify-shards'].includes(args[i]) && args[i + 1] && !args[i + 1].startsWith('--')) { i++; continue }
+  throw new Error(`Invalid or incomplete argument: ${args[i]}`)
+}
+if (shardIndex >= 0 && verifyIndex >= 0) throw new Error('Choose --shard or --verify-shards')
 
 const TEST_FILE = /\.test\.(?:ts|tsx|mts|mjs)$/
 // A top-level await cannot be compiled to CommonJS, which is what tsx emits for
@@ -50,10 +62,15 @@ const TEST_ENV = {
 }
 
 function trackedTestFiles() {
-  return execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
+  const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
     .split('\0')
     .filter((file) => TEST_FILE.test(file))
     .sort()
+  for (const file of INTEGRATION_TESTS) {
+    if (!tracked.includes(file)) throw new Error(`Stale integration test path: ${file}`)
+  }
+  console.log(`Test inventory: ${tracked.length - INTEGRATION_TESTS.size} ordinary, ${INTEGRATION_TESTS.size} opt-in integration files.`)
+  return tracked.filter(file => INTEGRATION_TESTS.has(file) === integrationOnly)
 }
 
 function readPackageTestScript(packageDir) {
@@ -88,6 +105,11 @@ function classify(files) {
       continue
     }
 
+    if (REACT_SERVER_TESTS.has(file)) {
+      add('tsx:react-server', { kind: 'tsx', cwd: '.', reactServer: true }, file)
+      continue
+    }
+
     if (packageMatch) {
       // Published packages build before testing (their suites import `dist`).
       const packageDir = `packages/${packageMatch[1]}`
@@ -108,7 +130,9 @@ function classify(files) {
 }
 
 function commandFor(group) {
-  const env = { ...process.env, ...TEST_ENV }
+  // Opt-in live suites must use the caller's explicitly selected service,
+  // never CI's deterministic fixture URL or authentication placeholder.
+  const env = integrationOnly ? { ...process.env, NEXT_TELEMETRY_DISABLED: '1' } : { ...process.env, ...TEST_ENV }
   if (group.kind === 'vitest') {
     // Files are passed as filters so the config's include glob never pulls in
     // node:test suites that live beside vitest ones.
@@ -119,7 +143,11 @@ function commandFor(group) {
     }
   }
   if (group.kind === 'npm-test') {
-    return { cmd: 'npm', argv: ['test', '--silent'], env }
+    // Build once, then execute only this group's selected files. Package globs
+    // would pull opt-in live integration files back into ordinary CI.
+    const build = spawnSync('npm', ['run', 'build', '--silent'], { cwd: path.join(root, group.cwd), env, stdio: 'inherit' })
+    if (build.status !== 0) throw new Error(`Package test build failed: ${group.cwd}`)
+    return { cmd: 'npx', argv: ['tsx', '--test', ...group.files.map(file => path.relative(group.cwd, file))], env }
   }
   if (group.kind === 'node') {
     env.NODE_OPTIONS = [process.env.NODE_OPTIONS, group.reactServer ? '--conditions=react-server' : '']
@@ -131,7 +159,7 @@ function commandFor(group) {
       env,
     }
   }
-  env.NODE_OPTIONS = [process.env.NODE_OPTIONS, ...PRELOADS].filter(Boolean).join(' ')
+  env.NODE_OPTIONS = [process.env.NODE_OPTIONS, ...PRELOADS, group.reactServer ? '--conditions=react-server' : ''].filter(Boolean).join(' ')
   return {
     cmd: 'node',
     argv: ['--import', 'tsx', '--test', '--test-reporter=dot', ...group.files],
@@ -140,8 +168,19 @@ function commandFor(group) {
 }
 
 const groups = classify(trackedTestFiles())
-const selected = [...groups.entries()]
+let selected = [...groups.entries()]
   .filter(([name]) => !onlyPrefix || name.startsWith(onlyPrefix))
+if (!selected.length) throw new Error('No matching test groups')
+if (verifyIndex >= 0) {
+  const total = Number(args[verifyIndex + 1])
+  console.log(`Verified ${verifyShards(selected, total)} test files across ${total} disjoint shards.`)
+  process.exit(0)
+}
+if (shardIndex >= 0) {
+  const shard = parseShard(args[shardIndex + 1])
+  verifyShards(selected, shard.total)
+  selected = selectShard(selected, shard)
+}
 
 if (listOnly) {
   for (const [name, group] of selected) {

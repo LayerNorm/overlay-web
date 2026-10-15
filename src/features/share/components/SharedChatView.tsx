@@ -73,7 +73,7 @@ function UserMessage({ message }: { message: Message }) {
                 key={part.url}
                 src={part.url}
                 alt=""
-                className="max-h-60 max-w-full rounded-lg border border-[var(--border)] object-cover"
+                className="max-h-60 max-w-full rounded-lg border border-(--border) object-cover"
               />
             ))}
           </div>
@@ -83,7 +83,7 @@ function UserMessage({ message }: { message: Message }) {
             {fileParts.map((part) => (
               <span
                 key={part.fileName}
-                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--muted)]"
+                className="inline-flex items-center gap-2 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--muted)"
               >
                 {part.fileName ?? 'Attachment'}
               </span>
@@ -91,7 +91,7 @@ function UserMessage({ message }: { message: Message }) {
           </div>
         )}
         {text.trim().length > 0 && (
-          <div className="rounded-2xl bg-[var(--surface-elevated)] px-4 py-2.5 text-sm leading-relaxed text-[var(--foreground)]">
+          <div className="rounded-2xl bg-(--surface-elevated) px-4 py-2.5 text-sm leading-relaxed text-(--foreground)">
             <div className="whitespace-pre-wrap">{text}</div>
           </div>
         )}
@@ -110,7 +110,7 @@ function AssistantMessage({ message }: { message: Message }) {
     : (message.content?.trim() ?? '')
   return (
     <div className="flex justify-start">
-      <div className="flex w-full max-w-[100%] flex-col gap-3">
+      <div className="flex w-full max-w-full flex-col gap-3">
         {fallbackText ? (
           <MarkdownMessage text={fallbackText} isStreaming={false} />
         ) : null}
@@ -134,7 +134,7 @@ function AssistantMessage({ message }: { message: Message }) {
                     key={part.url}
                 src={part.url}
                 alt=""
-                className="max-h-96 max-w-full rounded-lg border border-[var(--border)] object-contain"
+                className="max-h-96 max-w-full rounded-lg border border-(--border) object-contain"
               />
             )
           }
@@ -159,20 +159,20 @@ export function SharedChatView({
   })
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--background)]/95 backdrop-blur">
+    <div className="min-h-screen bg-(--background) text-(--foreground)">
+      <header className="sticky top-0 z-10 border-b border-(--border) bg-(--background)/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-3">
           <div className="min-w-0">
             <h1 className='truncate text-sm font-medium'>
               {conversation.title}
             </h1>
-            <p className='text-[11px] text-[var(--muted)]'>
+            <p className='text-[11px] text-(--muted)'>
               Shared {sharedAt} · Read-only
             </p>
           </div>
           <Link
             href="/"
-            className="shrink-0 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+            className="shrink-0 rounded-full border border-(--border) px-3 py-1 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
           >
             Open Overlay
           </Link>
@@ -181,7 +181,7 @@ export function SharedChatView({
 
       <main className="mx-auto max-w-3xl px-5 py-8">
         {conversation.messages.length === 0 ? (
-          <p className='text-center text-sm text-[var(--muted)]'>
+          <p className='text-center text-sm text-(--muted)'>
             This conversation is empty.
           </p>
         ) : (
@@ -214,11 +214,11 @@ export function SharedChatView({
       </main>
 
       <footer className="mx-auto max-w-3xl px-5 pb-10">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-xs text-[var(--muted)]">
+        <div className="rounded-xl border border-(--border) bg-(--surface-subtle) px-4 py-3 text-xs text-(--muted)">
           This is a read-only snapshot shared from{' '}
           <Link
             href='/'
-            className='font-medium text-[var(--foreground)] hover:underline'
+            className='font-medium text-(--foreground) hover:underline'
           >
             Overlay
           </Link>

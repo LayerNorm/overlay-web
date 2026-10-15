@@ -229,11 +229,11 @@ export function AutomationEditorPanel({
       renderInstructionsEditor={({ value, onChange }) => (
         <Suspense
           fallback={
-            <div className="min-h-[18rem] rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-              <div className="ui-skeleton-line mb-3 h-4 w-40 rounded" />
-              <div className="ui-skeleton-line mb-2 h-3 w-full rounded" />
-              <div className="ui-skeleton-line mb-2 h-3 w-5/6 rounded" />
-              <div className="ui-skeleton-line h-3 w-2/3 rounded" />
+            <div className="min-h-72 rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+              <div className="ui-skeleton-line mb-3 h-4 w-40 rounded-sm" />
+              <div className="ui-skeleton-line mb-2 h-3 w-full rounded-sm" />
+              <div className="ui-skeleton-line mb-2 h-3 w-5/6 rounded-sm" />
+              <div className="ui-skeleton-line h-3 w-2/3 rounded-sm" />
             </div>
           }
         >
@@ -248,26 +248,26 @@ export function AutomationEditorPanel({
       <section className="mx-auto w-full max-w-4xl px-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <h2 className='text-sm font-semibold text-[var(--foreground)]'>
+            <h2 className='text-sm font-semibold text-(--foreground)'>
               Run history
             </h2>
-            <p className='mt-1 text-xs text-[var(--muted)]'>
+            <p className='mt-1 text-xs text-(--muted)'>
               Scheduled and manual execution records.
             </p>
           </div>
           <button
             type="button"
             aria-label="Refresh automation runs"
-            className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] disabled:opacity-50"
+            className="inline-flex size-8 items-center justify-center rounded-md border border-(--border) disabled:opacity-50"
             disabled={runsBusy}
             onClick={() => void loadRuns()}
           >
             <RefreshCw size={14} />
           </button>
         </div>
-        <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        <div className="divide-y divide-(--border) border-y border-(--border)">
           {runs.length === 0 ? (
-            <p className="py-5 text-sm text-[var(--muted)]">No runs yet.</p>
+            <p className="py-5 text-sm text-(--muted)">No runs yet.</p>
           ) : (
             runs.slice(0, 50).map((run) => {
               const runError = formatAutomationRunError(
@@ -279,10 +279,10 @@ export function AutomationEditorPanel({
                   className='flex flex-wrap items-center justify-between gap-3 py-3'
                 >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium capitalize text-[var(--foreground)]">
+                  <p className="text-sm font-medium capitalize text-(--foreground)">
                     {run.status.replace('_', ' ')}
                   </p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">
+                  <p className="mt-1 text-xs text-(--muted)">
                       {
                         // Locale pinned to 'en-US' — SSR and client output are identical.
                         // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
@@ -299,7 +299,7 @@ export function AutomationEditorPanel({
                 <div className="flex items-center gap-2">
                   {run.conversationId ? (
                     <a
-                      className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                      className="rounded-md border border-(--border) px-2.5 py-1.5 text-xs"
                       href={`/app/automations?id=${encodeURIComponent(run.conversationId)}&automationId=${encodeURIComponent(automation._id)}`}
                     >
                       Open
@@ -308,7 +308,7 @@ export function AutomationEditorPanel({
                   {run.status === 'queued' || run.status === 'running' ? (
                     <button
                       type="button"
-                      className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                      className="rounded-md border border-(--border) px-2.5 py-1.5 text-xs"
                       disabled={runsBusy}
                       onClick={() => void updateRun('cancel-run', run._id)}
                     >
@@ -318,7 +318,7 @@ export function AutomationEditorPanel({
                   {run.status === 'failed' || run.status === 'dead_letter' || run.status === 'cancelled' ? (
                     <button
                       type="button"
-                      className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                      className="rounded-md border border-(--border) px-2.5 py-1.5 text-xs"
                       disabled={runsBusy}
                       onClick={() => void updateRun('retry-run', run._id)}
                     >

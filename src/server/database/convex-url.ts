@@ -20,33 +20,20 @@ export const CONVEX_URL_ENV_KEYS = {
   default: 'NEXT_PUBLIC_CONVEX_URL',
 } as const
 
-/**
- * Whether this process should prefer the shared development Convex deployment.
- *
- * Dual-project staging is the hard case: `overlay-web-staging` deploys
- * `staging.getoverlay.io` with `VERCEL_ENV=production` and `NODE_ENV=production`,
- * but that lane must talk to the development Convex deployment, not production.
- */
+/** Hosted lanes use explicit deployment configuration, never a hostname heuristic. */
 export function prefersDevConvexUrl(
   env: Record<string, string | undefined>,
 ): boolean {
   // Hosted previews and the new dedicated staging backend receive their URL
   // from the deploy step; they must never fall back to the shared dev backend.
   if (env.OVERLAY_DEPLOYMENT_ENV === 'preview' || env.CONVEX_PREVIEW === '1') return false
-  if (env.OVERLAY_DEPLOYMENT_ENV === 'staging' && env.OVERLAY_RELEASE_LANE === 'staging') return false
+  if (env.OVERLAY_DEPLOYMENT_ENV === 'staging') return false
   if (env.NODE_ENV === 'development') return true
 
   const explicit = env.OVERLAY_DEPLOYMENT_ENV?.trim().toLowerCase()
   if (explicit) {
     return explicit !== 'production' && explicit !== 'onprem'
   }
-
-  const appUrl = (
-    env.NEXT_PUBLIC_APP_URL
-    || env.DEV_NEXT_PUBLIC_APP_URL
-    || ''
-  ).trim()
-  if (/staging\.getoverlay\.io/i.test(appUrl)) return true
 
   const vercelEnv = env.VERCEL_ENV?.trim().toLowerCase()
   return vercelEnv === 'preview' || vercelEnv === 'development'
@@ -57,7 +44,7 @@ export function resolveConvexUrl(
   options: { isDev?: boolean } = {},
 ): ConvexUrlResolution {
   const isolated = env.OVERLAY_DEPLOYMENT_ENV === 'preview' || env.CONVEX_PREVIEW === '1'
-    || (env.OVERLAY_DEPLOYMENT_ENV === 'staging' && env.OVERLAY_RELEASE_LANE === 'staging')
+    || (env.OVERLAY_DEPLOYMENT_ENV === 'staging')
   const preferDev = isolated ? false : options.isDev ?? prefersDevConvexUrl(env)
   const candidates: Array<[string, string | undefined]> = preferDev
     ? [

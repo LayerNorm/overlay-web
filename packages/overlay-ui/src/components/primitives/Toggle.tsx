@@ -28,15 +28,15 @@ export function Toggle({
       className={cn(
         'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-70',
         checked
-          ? 'border-[var(--muted)] bg-[var(--muted)]'
-          : 'border-[var(--border)] bg-[var(--surface-subtle)]',
+          ? 'border-(--muted) bg-(--muted)'
+          : 'border-(--border) bg-(--surface-subtle)',
         className,
       )}
       {...props}
     >
       <span
         className={cn(
-          'inline-block h-5 w-5 rounded-full bg-[var(--surface-elevated)] transition-transform',
+          'inline-block h-5 w-5 rounded-full bg-(--surface-elevated) transition-transform',
           checked ? 'translate-x-6' : 'translate-x-1',
         )}
       />

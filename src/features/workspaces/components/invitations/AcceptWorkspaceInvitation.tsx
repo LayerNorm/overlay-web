@@ -51,14 +51,14 @@ export function AcceptWorkspaceInvitation({
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl items-center px-5 py-12">
-      <section className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-7 text-center shadow-sm">
-        <span className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]">
+      <section className="w-full rounded-2xl border border-(--border) bg-(--surface-elevated) p-7 text-center shadow-xs">
+        <span className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-xl border border-(--border) bg-(--surface-subtle) text-(--foreground)">
           <UsersRound size={21} />
         </span>
-        <h1 className="mt-5 text-lg font-semibold text-[var(--foreground)]">
+        <h1 className="mt-5 text-lg font-semibold text-(--foreground)">
           Join an Overlay workspace
         </h1>
-        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--muted)]">
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-(--muted)">
           Invitations are bound to the exact invited email address. Sign in with that account,
           then accept to join.
         </p>
@@ -75,7 +75,7 @@ export function AcceptWorkspaceInvitation({
           {requiresSignIn ? (
             <Link
               href={`/auth/sign-in?redirect=${encodeURIComponent(redirect)}`}
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-[var(--foreground)] px-4 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90"
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-(--foreground) px-4 text-sm font-medium text-(--background) transition-opacity hover:opacity-90"
             >
               Sign in to continue
             </Link>
@@ -92,7 +92,7 @@ export function AcceptWorkspaceInvitation({
             </Button>
           )}
         </div>
-        <p className="mt-5 text-[11px] text-[var(--muted-light)]">
+        <p className="mt-5 text-[11px] text-(--muted-light)">
           Expired, cancelled, replaced, or already-used invitations cannot be accepted.
         </p>
       </section>

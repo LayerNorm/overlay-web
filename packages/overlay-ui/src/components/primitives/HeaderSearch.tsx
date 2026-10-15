@@ -52,7 +52,7 @@ export function HeaderSearch({
     <div className={cn('flex items-center gap-1.5', className)}>
       {open ? (
         <label className="relative block w-52 max-w-[45vw]">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" size={14} />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-(--muted)" size={14} />
           <span className="sr-only">{label}</span>
           <input
             autoFocus
@@ -62,7 +62,7 @@ export function HeaderSearch({
               if (event.key === 'Escape') dismiss()
             }}
             placeholder={placeholder}
-            className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] pl-8 pr-3 text-xs outline-none focus:border-[var(--muted)]"
+            className="h-8 w-full rounded-md border border-(--border) bg-(--surface-subtle) pl-8 pr-3 text-xs outline-hidden focus:border-(--muted)"
           />
         </label>
       ) : null}

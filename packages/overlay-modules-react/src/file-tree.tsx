@@ -2,18 +2,18 @@
 
 import type { FileTreeEntry } from '@overlay/app-core'
 import { childFilesForTree, rootFilesForTree } from '@overlay/app-core'
+import { SidebarMenuSub, SidebarMenuSubItem } from '@overlay/ui/primitives'
 import { BookOpen, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
 import { FileTypeIcon } from './shared/file-type-icon'
 
 const panelItemClass =
-  'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+  'group flex h-7 items-center gap-2 rounded-md px-2.5 py-0 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
 
 export interface FilesInlineBranchProps {
   file: FileTreeEntry
   allFiles: readonly FileTreeEntry[]
-  depth: number
   expanded: ReadonlySet<string>
   activeFileId: string | null
   onToggle: (fileId: string) => void
@@ -24,7 +24,6 @@ export interface FilesInlineBranchProps {
 export function FilesInlineBranch({
   file,
   allFiles,
-  depth,
   expanded,
   activeFileId,
   onToggle,
@@ -59,8 +58,7 @@ export function FilesInlineBranch({
           if (!fileId || fileId === file._id) return
           onMove(fileId, file._id)
         }}
-        className={`${panelItemClass} ${dragOver ? 'bg-[var(--surface-subtle)] ring-1 ring-inset ring-[var(--foreground)]' : activeFileId === file._id ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]' : ''}`}
-        style={{ paddingLeft: `${10 + depth * 14}px` }}
+        className={`${panelItemClass} ${dragOver ? 'bg-(--surface-subtle) ring-1 ring-inset ring-(--foreground)' : activeFileId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
       >
         {file.type === 'folder' ? (
           <button
@@ -69,7 +67,7 @@ export function FilesInlineBranch({
               event.stopPropagation()
               onToggle(file._id)
             }}
-            className="shrink-0 rounded p-0.5 text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+            className="shrink-0 rounded-sm p-0.5 text-(--muted) hover:bg-(--border) hover:text-(--foreground)"
             aria-label={open ? 'Collapse folder' : 'Expand folder'}
           >
             <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -78,32 +76,37 @@ export function FilesInlineBranch({
         <button
           type="button"
           onClick={() => onOpen(file)}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--foreground)]"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs text-left outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
         >
           {file.type === 'folder'
             ? open
               ? <FolderOpen size={12} className="shrink-0" />
               : <Folder size={12} className="shrink-0" />
             : file.kind === 'note'
-              ? <BookOpen size={12} className="shrink-0 text-[var(--muted-light)]" />
-              : <FileTypeIcon file={file} size={12} className="text-[var(--muted-light)]" />}
+              ? <BookOpen size={12} className="shrink-0 text-(--muted-light)" />
+              : <FileTypeIcon file={file} size={12} className="text-(--muted-light)" />}
           <span className="min-w-0 flex-1 truncate">{file.name}</span>
         </button>
       </div>
 
-      {file.type === 'folder' && open && children.map((child) => (
-        <FilesInlineBranch
-          key={child._id}
-          file={child}
-          allFiles={allFiles}
-          depth={depth + 1}
-          expanded={expanded}
-          activeFileId={activeFileId}
-          onToggle={onToggle}
-          onOpen={onOpen}
-          onMove={onMove}
-        />
-      ))}
+      {file.type === 'folder' && open && children.length > 0 ? (
+        // An open folder nests its children under the same guide line as an agent's threads (`SidebarMenuSub`).
+        <SidebarMenuSub>
+          {children.map((child) => (
+            <SidebarMenuSubItem key={child._id}>
+              <FilesInlineBranch
+                file={child}
+                allFiles={allFiles}
+                expanded={expanded}
+                activeFileId={activeFileId}
+                onToggle={onToggle}
+                onOpen={onOpen}
+                onMove={onMove}
+              />
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      ) : null}
     </div>
   )
 }
@@ -132,8 +135,8 @@ export function FilesInlineTree({
   onMove,
 }: FilesInlineTreeProps) {
   const roots = rootFilesForTree(files)
-  if (loading) return <>{loadingContent ?? <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">Loading...</p>}</>
-  if (roots.length === 0) return <p className="px-2.5 py-2 text-xs text-[var(--muted-light)]">{emptyLabel}</p>
+  if (loading) return <>{loadingContent ?? <p className="px-2.5 py-2 text-xs text-(--muted-light)">Loading...</p>}</>
+  if (roots.length === 0) return <p className="px-2.5 py-2 text-xs text-(--muted-light)">{emptyLabel}</p>
   return (
     <>
       {roots.map((file) => (
@@ -141,7 +144,6 @@ export function FilesInlineTree({
           key={file._id}
           file={file}
           allFiles={files}
-          depth={0}
           expanded={expanded}
           activeFileId={activeFileId}
           onToggle={onToggle}

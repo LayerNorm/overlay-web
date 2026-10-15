@@ -126,7 +126,7 @@ function GeneralSettingsSection({
             disabled={busy}
             aria-label="Where to open links"
             className="shrink-0"
-            buttonClassName="min-w-[9.5rem]"
+            buttonClassName="min-w-38"
             onChange={(linkOpenPreference) => void updateSettings({ linkOpenPreference })}
           />
         }
@@ -144,7 +144,7 @@ function GeneralSettingsSection({
                 router.push('/app/chat?tour=replay')
               })()
             }}
-            className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)]"
+            className="shrink-0 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated)"
           >
             Replay tour
           </button>
@@ -293,12 +293,12 @@ function ContactSettingsSection({
   return (
     <SettingsCard title="Contact">
       <p className="flex items-start gap-2">
-        <Mail size={16} className="mt-0.5 shrink-0 text-[var(--muted)]" strokeWidth={1.75} />
+        <Mail size={16} className="mt-0.5 shrink-0 text-(--muted)" strokeWidth={1.75} />
         <span>
           Questions or feedback? Email the founder:{' '}
           <a
             href={`mailto:${supportEmail ?? 'divyansh@layernorm.co'}`}
-            className="font-medium text-[var(--foreground)] underline underline-offset-4 hover:opacity-90"
+            className="font-medium text-(--foreground) underline underline-offset-4 hover:opacity-90"
           >
             {supportEmail ?? 'divyansh@layernorm.co'}
           </a>
@@ -498,7 +498,7 @@ function SettingsPage() {
       activeLabel={sectionLabel}
       activeDetail={
         section === 'memories' && memoriesHeaderState && memoriesHeaderState.count > 0 ? (
-          <span className="text-xs text-[var(--muted-light)]">{memoriesHeaderState.count}</span>
+          <span className="text-xs text-(--muted-light)">{memoriesHeaderState.count}</span>
         ) : null
       }
       actions={section === 'memories' ? memoriesHeaderState?.actions : null}

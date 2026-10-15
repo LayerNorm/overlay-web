@@ -36,8 +36,9 @@ import { resolveFilesCategory, type FilesCategory } from '@/components/layout/Fi
 import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
 import { PANEL_SCOPE_PARAM, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
+import { resolveWorkView, type WorkView } from '@/shared/work/views'
 
-export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'settings'
+export type SecondaryPanelKind = 'chat' | 'files' | 'notes' | 'agents' | 'automations' | 'tools' | 'work' | 'settings'
 
 export const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   chat: 'chats',
@@ -46,6 +47,7 @@ export const PANEL_KIND_TITLES: Record<SecondaryPanelKind, string> = {
   agents: 'agents',
   automations: 'automations',
   tools: 'extensions',
+  work: 'work',
   settings: 'settings',
 }
 
@@ -97,9 +99,12 @@ export interface SidebarRouteState {
   automationsOpen: boolean
   automationsSectionOpen: boolean
   toolsOpen: boolean
+  workOpen: boolean
   settingsPathActive: boolean
   settingsSection: string
   toolsView: string
+  /** List, Board, or Timeline (`?view=`). */
+  workView: WorkView
   filesView: FilesCategory
   agentsView: AgentsPanelView
   chatViewParam: string | null
@@ -173,10 +178,12 @@ export function resolveSidebarRouteState({
   const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
   const automationsSectionOpen = automationsOpen && automationsEnabled
   const toolsOpen = pathname.startsWith('/app/tools') || (canonicalWorkspaceRoute && workspaceSurface === 'tools')
+  const workOpen = pathname.startsWith('/app/work') || (canonicalWorkspaceRoute && workspaceSurface === 'work')
   const settingsPathActive = pathname.startsWith('/app/settings') || (canonicalWorkspaceRoute && workspaceSurface === 'settings')
   const settingsSection = searchParams.get('section') ?? 'general'
   const chatViewParam = searchParams.get('view')
   const toolsView = resolveToolsView(chatViewParam)
+  const workView = resolveWorkView(chatViewParam)
   const filesView = resolveFilesCategory(chatViewParam)
   const chatsView = resolveChatsView({ activityOpen, chatViewParam })
   // Agent links from before scopes carried the tab as `?view=`.
@@ -195,9 +202,11 @@ export function resolveSidebarRouteState({
             ? 'automations'
             : toolsOpen
               ? 'tools'
-              : settingsPathActive
-                ? 'settings'
-                : null
+              : workOpen
+                ? 'work'
+                : settingsPathActive
+                  ? 'settings'
+                  : null
   return {
     workspaceSurface,
     canonicalWorkspaceRoute,
@@ -212,9 +221,11 @@ export function resolveSidebarRouteState({
     automationsOpen,
     automationsSectionOpen,
     toolsOpen,
+    workOpen,
     settingsPathActive,
     settingsSection,
     toolsView,
+    workView,
     filesView,
     agentsView,
     chatViewParam,
@@ -293,6 +304,8 @@ export function panelKindForNavItem(
       return automationsEnabled ? 'automations' : null
     case '/app/tools':
       return 'tools'
+    case '/app/work':
+      return 'work'
     default:
       return null
   }

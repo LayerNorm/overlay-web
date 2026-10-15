@@ -1,4 +1,4 @@
-import { v } from 'convex/values'
+import { ConvexError, v } from 'convex/values'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 import { Doc, Id } from '../_generated/dataModel'
@@ -1127,6 +1127,7 @@ export const update = mutation({
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
   },
+  returns: v.null(),
   handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, ...updates }) => {
     await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
@@ -1134,7 +1135,7 @@ export const update = mutation({
     // Storage, keys, and indexing belong to the file's owner, even when an admin edits a workspace-scoped file.
     const userId = existing.userId
     if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
-      throw new Error('NOTE_REVISION_CONFLICT')
+      throw new ConvexError('NOTE_REVISION_CONFLICT')
     }
     if (updates.parentId !== undefined) {
       await assertParentAndProject(ctx, {
@@ -1208,6 +1209,9 @@ export const update = mutation({
           ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
           : null
       patch.content = nextText
+      // Legacy rows can still carry textContent, which readers prefer over
+      // content. Remove it when writing canonical text so it cannot mask a save.
+      patch.textContent = undefined
       patch.sizeBytes = nextSizeBytes
       patch.contentHash = updates.contentHash
       patch.duplicateOfFileId = canonicalDuplicate?._id
@@ -1229,6 +1233,7 @@ export const update = mutation({
     if (shouldReindex) {
       await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
     }
+    return null
   },
 })
 

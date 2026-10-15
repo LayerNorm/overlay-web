@@ -8,7 +8,7 @@ import type { ResourceKind, ResourceScope } from '@/shared/workspaces/resource-s
 import { announceArchived, refreshAfterRestore } from '@/shared/app/archive-toast'
 
 const BUTTON =
-  'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2.5 py-0 text-xs leading-none text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)] disabled:cursor-not-allowed disabled:opacity-40'
+  'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-muted) px-2.5 py-0 text-xs leading-none text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:cursor-not-allowed disabled:opacity-40'
 
 /**
  * Move or archive several selected items at once. A button appears only when it would work for every selected item

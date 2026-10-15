@@ -138,8 +138,8 @@ function AdminSidebarNav({
             onClick={() => onSelectSection(value)}
             className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${
               section === value
-                ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
+                ? 'bg-(--surface-subtle) text-(--foreground)'
+                : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
             }`}
           >
             <Icon size={15} strokeWidth={1.75} className="shrink-0" />
@@ -167,16 +167,16 @@ function AdminUsageSection({
       <div className="flex items-center gap-2"><UsersRound size={17} /><h2 className="text-sm font-semibold">People</h2></div>
       <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="relative">
-          <Search className="absolute left-3 top-2.5 text-[var(--muted)]" size={15} />
-          <input aria-label="Filter people by user ID" className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-9 pr-3 text-sm" placeholder="User ID" value={userFilter} onChange={(event) => onUserFilterChange(event.target.value)} />
+          <Search className="absolute left-3 top-2.5 text-(--muted)" size={15} />
+          <input aria-label="Filter people by user ID" className="h-9 w-full rounded-md border border-(--border) bg-(--surface) pl-9 pr-3 text-sm" placeholder="User ID" value={userFilter} onChange={(event) => onUserFilterChange(event.target.value)} />
         </div>
-        <button type="button" className="h-9 rounded-md border border-[var(--border)] px-4 text-sm" onClick={onApplyFilter}>Apply filter</button>
+        <button type="button" className="h-9 rounded-md border border-(--border) px-4 text-sm" onClick={onApplyFilter}>Apply filter</button>
       </div>
-      <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+      <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
         {usage.map((row) => (
           <div key={row.userId} className="py-3 text-sm">
             <div className="font-medium">{row.email || row.userId}</div>
-            <div className="text-xs text-[var(--muted)]">{row.userId}</div>
+            <div className="text-xs text-(--muted)">{row.userId}</div>
           </div>
         ))}
       </div>
@@ -199,18 +199,18 @@ function AdminAuditSection({
     <section className="mt-10" data-testid="admin-audit">
       <div className="flex items-center gap-2"><ShieldCheck size={17} /><h2 className="text-sm font-semibold">Audit events</h2></div>
       <div className="mt-4 flex gap-3">
-        <input aria-label="Filter audit action" className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm" placeholder="Exact action" value={auditFilter} onChange={(event) => onAuditFilterChange(event.target.value)} />
-        <button type="button" className="h-9 rounded-md border border-[var(--border)] px-4 text-sm" onClick={onSearch}>Search</button>
+        <input aria-label="Filter audit action" className="h-9 min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 text-sm" placeholder="Exact action" value={auditFilter} onChange={(event) => onAuditFilterChange(event.target.value)} />
+        <button type="button" className="h-9 rounded-md border border-(--border) px-4 text-sm" onClick={onSearch}>Search</button>
       </div>
-      <div className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
-        {events.length === 0 ? <p className="py-5 text-sm text-[var(--muted)]">No matching audit events.</p> : events.map((event) => (
+      <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
+        {events.length === 0 ? <p className="py-5 text-sm text-(--muted)">No matching audit events.</p> : events.map((event) => (
           <div key={event.id} className="grid gap-1 py-3 text-sm md:grid-cols-[220px_1fr_100px]">
-            <div><p className="font-medium">{event.action}</p><p className="text-xs text-[var(--muted)]">{
+            <div><p className="font-medium">{event.action}</p><p className="text-xs text-(--muted)">{
               // Locale pinned to 'en-US'.
               // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
               new Date(event.createdAt).toLocaleString('en-US')
             }</p></div>
-            <p className="text-[var(--muted)]">{event.resourceType}{event.resourceId ? ` · ${event.resourceId}` : ''}</p>
+            <p className="text-(--muted)">{event.resourceType}{event.resourceId ? ` · ${event.resourceId}` : ''}</p>
             <p>{event.outcome}</p>
           </div>
         ))}
@@ -237,7 +237,7 @@ function AdminOverview({
       <div className="py-12" data-testid="admin-forbidden">
         <ShieldCheck size={22} />
         <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
-        <p className="mt-2 text-sm text-[var(--muted)]">This account cannot view people or audit data.</p>
+        <p className="mt-2 text-sm text-(--muted)">This account cannot view people or audit data.</p>
       </div>
     )
   }
@@ -306,7 +306,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 aria-label="Refresh administration"
-                className="inline-flex size-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                className="inline-flex size-8 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 onClick={() => void load()}
               >
                 <RefreshCw size={15} />

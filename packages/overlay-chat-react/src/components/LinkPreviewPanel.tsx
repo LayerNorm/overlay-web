@@ -40,7 +40,7 @@ function PanelIconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+      className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
     >
       {children}
     </button>
@@ -144,10 +144,10 @@ function LinkPreviewFallback({
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
       <div>
-        <p className="text-sm font-medium text-[var(--foreground)]">
+        <p className="text-sm font-medium text-(--foreground)">
           {safeUrl ? 'This website can only be opened in a new tab' : 'This link cannot be previewed'}
         </p>
-        <p className="mt-1.5 text-xs leading-relaxed text-[var(--muted)]">
+        <p className="mt-1.5 text-xs leading-relaxed text-(--muted)">
           {safeUrl
             ? `${hostOf(url)} does not allow other sites to embed it.`
             : 'Only http and https links open in the panel.'}
@@ -158,7 +158,7 @@ function LinkPreviewFallback({
           <button
             type="button"
             onClick={onOpenInNewTab}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)"
           >
             <ExternalLink size={13} strokeWidth={1.75} />
             Open in New Tab
@@ -167,7 +167,7 @@ function LinkPreviewFallback({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="rounded-lg px-3 py-1.5 text-xs font-medium text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           Close
         </button>
@@ -233,7 +233,7 @@ export function LinkPreviewPanel({
           key={reloadKey}
           src={safeUrl}
           title={title?.trim() || hostOf(url)}
-          className="h-full min-h-0 w-full flex-1 border-0 bg-[var(--surface)]"
+          className="h-full min-h-0 w-full flex-1 border-0 bg-(--surface)"
           sandbox={IFRAME_SANDBOX}
           referrerPolicy="no-referrer"
           loading="eager"

@@ -4,7 +4,7 @@
  * A message chunk is indexed under its author. `owner` chunks surface only for that author; `workspace` chunks surface for
  * every active member of the workspace. Only a **public channel** is meant to be shared that widely. Personal chats and
  * direct messages are private to the people in them, and a private channel to its members, none of which a single
- * workspace flag can express, so they stay `owner` until search knows participants (docs/plans/TOOL_SCOPING_PLAN.md, T3):
+ * workspace flag can express, so they stay `owner` until search knows participants (internal/plans/TOOL_SCOPING_PLAN.md, T3):
  * safe over convenient, since a participant can still open the chat itself.
  *
  * Before this rule, every message in a conversation that had a workspace (every conversation does) was `workspace`, so a

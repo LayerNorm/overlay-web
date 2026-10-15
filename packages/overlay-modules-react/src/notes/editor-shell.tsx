@@ -65,7 +65,7 @@ export function NotesEditorShell({
           </AppScreenHeader>
         <div className="min-h-0 flex-1 overflow-auto py-2">
           {loading ? (
-            <div className="px-3 py-2 text-xs text-[var(--muted)]">Loading notes...</div>
+            <div className="px-3 py-2 text-xs text-(--muted)">Loading notes...</div>
           ) : notes.length === 0 ? (
             <EmptyState className="h-full px-4" title="No notes yet" />
           ) : (
@@ -77,13 +77,13 @@ export function NotesEditorShell({
                 className={cn(
                   'group/row flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
                   selectedNoteId === note._id
-                    ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-                    : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]',
+                    ? 'bg-(--surface-subtle) text-(--foreground)'
+                    : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)',
                 )}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{note.title || 'Untitled'}</span>
-                  <span className="mt-0.5 block truncate text-xs text-[var(--muted-light)]">
+                  <span className="mt-0.5 block truncate text-xs text-(--muted-light)">
                     {note.content || 'Empty note'}
                   </span>
                 </span>
@@ -102,7 +102,7 @@ export function NotesEditorShell({
                         onDeleteNote(note)
                       }
                     }}
-                    className="hidden rounded-md px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--border)] group-hover/row:inline-flex"
+                    className="hidden rounded-md px-2 py-1 text-xs text-(--muted) hover:bg-(--border) group-hover/row:inline-flex"
                   >
                     Delete
                   </span>
@@ -124,7 +124,7 @@ export function NotesEditorShell({
               placeholder="Untitled"
             />
             <div className="ml-auto flex shrink-0 items-center gap-2">
-              {dirty ? <span className="text-xs text-[var(--muted)]">Unsaved</span> : null}
+              {dirty ? <span className="text-xs text-(--muted)">Unsaved</span> : null}
               {editorActions}
               {onSave ? (
                 <Button size="sm" disabled={!dirty || saving || !selectedNote} onClick={onSave}>

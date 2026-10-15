@@ -8,6 +8,7 @@ import {
   FileText,
   Folder,
   Hash,
+  ListChecks,
   Loader2,
   MessageCircle,
   MessageSquare,
@@ -47,6 +48,7 @@ const KIND_ICONS: Record<ArchivedItemKind, LucideIcon> = {
   skill: Sparkles,
   'mcp-server': Server,
   automation: Workflow,
+  'work-item': ListChecks,
 }
 
 function archivedOn(timestamp?: number): string {
@@ -176,7 +178,7 @@ export function ArchivedSettings() {
 
   if (items === null) {
     return (
-      <div className="flex min-h-48 items-center justify-center text-[var(--muted)]">
+      <div className="flex min-h-48 items-center justify-center text-(--muted)">
         <Loader2 size={18} className="animate-spin" aria-label="Loading archived items" />
       </div>
     )
@@ -184,7 +186,7 @@ export function ArchivedSettings() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[var(--muted)]">
+      <p className="text-sm text-(--muted)">
         Everything you archive lands here. Restore it to put it back, or delete it forever.
       </p>
 
@@ -194,7 +196,7 @@ export function ArchivedSettings() {
           options={ARCHIVED_CATEGORIES.map((value) => ({ value, label: ARCHIVED_CATEGORY_LABELS[value] }))}
           aria-label="Show"
           className="shrink-0"
-          buttonClassName="min-w-[9.5rem]"
+          buttonClassName="min-w-38"
           onChange={setCategory}
         />
         <Input
@@ -213,36 +215,36 @@ export function ArchivedSettings() {
         </p>
       ) : null}
       {notice ? (
-        <p role={notice.tone === 'error' ? 'alert' : 'status'} className={notice.tone === 'error' ? 'text-xs text-red-500' : 'text-xs text-[var(--muted)]'}>
+        <p role={notice.tone === 'error' ? 'alert' : 'status'} className={notice.tone === 'error' ? 'text-xs text-red-500' : 'text-xs text-(--muted)'}>
           {notice.text}
         </p>
       ) : null}
 
       {visible.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] px-6 py-14 text-center">
-          <Archive size={28} strokeWidth={1.25} className="text-[var(--muted-light)]" aria-hidden />
-          <p className="text-sm font-medium text-[var(--foreground)]">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-(--border) px-6 py-14 text-center">
+          <Archive size={28} strokeWidth={1.25} className="text-(--muted-light)" aria-hidden />
+          <p className="text-sm font-medium text-(--foreground)">
             {items.length === 0 ? 'Nothing archived' : 'No matches'}
           </p>
-          <p className="text-xs text-[var(--muted-light)]">
+          <p className="text-xs text-(--muted-light)">
             {items.length === 0
-              ? 'Chats, files, agents, extensions, and automations you archive show up here.'
+              ? 'Chats, files, tasks, agents, extensions, and automations you archive show up here.'
               : 'Try another kind or search.'}
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
-          <div className="flex h-10 items-center gap-3 border-b border-[var(--border)] px-3">
+        <div className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)">
+          <div className="flex h-10 items-center gap-3 border-b border-(--border) px-3">
             <input
               type="checkbox"
               checked={allVisibleSelected}
               onChange={toggleAllVisible}
               aria-label="Select all shown"
-              className="h-3.5 w-3.5 shrink-0 accent-[var(--foreground)]"
+              className="h-3.5 w-3.5 shrink-0 accent-(--foreground)"
             />
             {selectedItems.length > 0 ? (
               <>
-                <span className="text-xs text-[var(--foreground)]">{selectedItems.length} selected</span>
+                <span className="text-xs text-(--foreground)">{selectedItems.length} selected</span>
                 <div className="ml-auto flex items-center gap-1.5">
                   <Button size="sm" variant="secondary" disabled={busy} onClick={() => void restore(selectedItems)}>
                     <RotateCcw size={13} aria-hidden /> Restore
@@ -256,7 +258,7 @@ export function ArchivedSettings() {
                 </div>
               </>
             ) : (
-              <span className="text-xs text-[var(--muted)]">
+              <span className="text-xs text-(--muted)">
                 {visible.length === 1 ? '1 item' : `${visible.length} items`}
               </span>
             )}
@@ -267,14 +269,14 @@ export function ArchivedSettings() {
               const checked = selected.has(item.key)
               const label = (
                 <>
-                  <span className="block truncate text-sm text-[var(--foreground)]">{item.name}</span>
-                  {item.detail ? <span className="block truncate text-xs text-[var(--muted-light)]">{item.detail}</span> : null}
+                  <span className="block truncate text-sm text-(--foreground)">{item.name}</span>
+                  {item.detail ? <span className="block truncate text-xs text-(--muted-light)">{item.detail}</span> : null}
                 </>
               )
               return (
                 <li
                   key={item.key}
-                  className="group flex items-center gap-3 border-b border-[var(--border)] px-3 py-2 last:border-b-0 hover:bg-[var(--surface-subtle)]"
+                  className="group flex items-center gap-3 border-b border-(--border) px-3 py-2 last:border-b-0 hover:bg-(--surface-subtle)"
                 >
                   <input
                     type="checkbox"
@@ -282,24 +284,24 @@ export function ArchivedSettings() {
                     onChange={() => undefined}
                     onClick={(event) => toggle(item, event.shiftKey)}
                     aria-label={`Select ${item.name}`}
-                    className="h-3.5 w-3.5 shrink-0 accent-[var(--foreground)]"
+                    className="h-3.5 w-3.5 shrink-0 accent-(--foreground)"
                   />
-                  <Icon size={15} className="shrink-0 text-[var(--muted)]" aria-hidden />
+                  <Icon size={15} className="shrink-0 text-(--muted)" aria-hidden />
                   {item.href && item.kind === 'chat' ? (
                     <Link href={item.href} className="min-w-0 flex-1">{label}</Link>
                   ) : (
                     <div className="min-w-0 flex-1">{label}</div>
                   )}
-                  <span className="hidden w-24 shrink-0 text-right text-xs text-[var(--muted-light)] sm:inline">{ARCHIVED_KIND_LABELS[item.kind]}</span>
-                  <span className="flex w-[4.5rem] shrink-0 justify-end">{item.scope ? <ScopeTag scope={item.scope} /> : null}</span>
-                  <span className="hidden w-12 shrink-0 text-right text-xs text-[var(--muted-light)] sm:inline">{archivedOn(item.archivedAt)}</span>
+                  <span className="hidden w-24 shrink-0 text-right text-xs text-(--muted-light) sm:inline">{ARCHIVED_KIND_LABELS[item.kind]}</span>
+                  <span className="flex w-18 shrink-0 justify-end">{item.scope ? <ScopeTag scope={item.scope} /> : null}</span>
+                  <span className="hidden w-12 shrink-0 text-right text-xs text-(--muted-light) sm:inline">{archivedOn(item.archivedAt)}</span>
                   <button
                     type="button"
                     title="Restore"
                     aria-label={`Restore ${item.name}`}
                     disabled={busy}
                     onClick={() => void restore([item])}
-                    className="shrink-0 rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-50"
+                    className="shrink-0 rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground) disabled:opacity-50"
                   >
                     <RotateCcw size={14} />
                   </button>
@@ -309,7 +311,7 @@ export function ArchivedSettings() {
                     aria-label={`Delete ${item.name} forever`}
                     disabled={busy}
                     onClick={() => setPendingDelete([item])}
-                    className="shrink-0 rounded-md p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-red-400 disabled:opacity-50"
+                    className="shrink-0 rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--border) hover:text-red-400 disabled:opacity-50"
                   >
                     <Trash2 size={14} />
                   </button>

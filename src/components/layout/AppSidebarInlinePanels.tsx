@@ -26,7 +26,16 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarResourceList,
+} from '@overlay/ui/primitives'
+import { cn } from '@overlay/ui'
 
 import { arrayOrEmpty } from './sidebar-nav'
 const nextSidebarMutation = createKnowledgeMutationPublisher(
@@ -201,7 +210,7 @@ export interface InlineNavItem {
   /** Items with an href render as links so they support open-in-new-tab. */
   href?: string
   badgeCount?: number
-  /** Rows shown indented beneath this one while it is `expanded`. */
+  /** Rows shown inside the guide-line sub list beneath this one while it is `expanded`. */
   children?: ReadonlyArray<InlineNavItem>
   expanded?: boolean
 }
@@ -213,7 +222,7 @@ export function InlineNavChildren({
   activeChildId,
   pendingId,
   onSelect,
-  className = 'mt-1 space-y-0.5',
+  className = 'mt-1',
 }: {
   id?: string
   items: ReadonlyArray<InlineNavItem>
@@ -225,80 +234,101 @@ export function InlineNavChildren({
   pendingId?: string | null
   /** Also fires for href items on link click, so callers can close chrome. */
   onSelect: (id: string) => void
-  /** Container override — the default indents children under a nav row. */
+  /** Container override — spacing/padding around the whole nav list. */
   className?: string
 }) {
   function renderRow(item: InlineNavItem, active: boolean, nested: boolean) {
-    const itemClass = `flex ${nested ? 'h-8' : 'h-9'} w-full items-center gap-2.5 rounded-md px-3 ${nested ? 'text-[13px]' : 'text-sm'} transition-colors ${
-      item.locked
-        ? 'cursor-default text-[var(--muted-light)]'
-        : active
-          ? 'bg-[var(--surface-subtle)] text-[var(--foreground)]'
-          : 'text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]'
-    }`
+    // Top-level rows are the large menu button; revealed rows are the compact sub button inside the guide-line
+    // list, so no row class ever sets a left offset — the list's line carries the indent.
+    const rowClass = cn(
+      nested ? undefined : 'gap-2.5 px-3',
+      item.locked ? 'cursor-default text-(--muted-light) hover:bg-transparent hover:text-(--muted-light)' : undefined,
+    )
     const content = (
       <>
         {pendingId === item.id ? (
-          <Loader2 size={nested ? 14 : 15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
-        ) : item.icon ? <item.icon size={nested ? 14 : 15} className="shrink-0" aria-hidden /> : null}
+          <Loader2 size={nested ? 13 : 15} className="shrink-0 animate-spin" aria-label={`Loading ${item.label}`} />
+        ) : item.icon ? <item.icon size={nested ? 13 : 15} className="shrink-0" aria-hidden /> : null}
         <span className="flex-1 text-left">{item.label}</span>
         {item.badgeCount ? (
           <span
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--border)] text-[9px] font-medium leading-none text-[var(--foreground)]"
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--border) text-[9px] font-medium leading-none text-(--foreground)"
             aria-label={`${item.badgeCount} unread`}
           >
             {item.badgeCount > 9 ? '9+' : item.badgeCount}
           </span>
         ) : null}
-        {item.locked ? <span className="text-[10px] text-[var(--muted-light)]">Soon</span> : null}
+        {item.locked ? <span className="text-[10px] text-(--muted-light)">Soon</span> : null}
         {item.expanded && item.children?.length ? (
-          <ChevronRight size={13} className="shrink-0 rotate-90 text-[var(--muted-light)]" aria-hidden />
+          <ChevronRight size={13} className="shrink-0 rotate-90 text-(--muted-light)" aria-hidden />
         ) : null}
       </>
     )
     if (item.href && !item.locked) {
-      return (
+      const link = (
         <Link
-          key={item.id}
           href={item.href}
           onClick={(event) => {
             if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
             onSelect(item.id)
           }}
-          className={itemClass}
         >
           {content}
         </Link>
       )
+      return nested ? (
+        <SidebarMenuSubButton asChild isActive={active} className={rowClass}>
+          {link}
+        </SidebarMenuSubButton>
+      ) : (
+        <SidebarMenuButton asChild size="lg" isActive={active} className={rowClass}>
+          {link}
+        </SidebarMenuButton>
+      )
+    }
+    if (nested) {
+      return (
+        <SidebarMenuSubButton
+          isActive={active && !item.locked}
+          onClick={() => {
+            if (!item.locked) onSelect(item.id)
+          }}
+          className={rowClass}
+        >
+          {content}
+        </SidebarMenuSubButton>
+      )
     }
     return (
-      <button
-        key={item.id}
-        type="button"
+      <SidebarMenuButton
+        size="lg"
+        isActive={active && !item.locked}
         aria-expanded={item.children?.length ? Boolean(item.expanded) : undefined}
         onClick={() => {
           if (!item.locked) onSelect(item.id)
         }}
-        className={itemClass}
+        className={rowClass}
       >
         {content}
-      </button>
+      </SidebarMenuButton>
     )
   }
 
   return (
-    <div id={id} className={className}>
+    <SidebarMenu id={id} className={className}>
       {items.map((item) => (
-        <div key={item.id}>
+        <SidebarMenuItem key={item.id}>
           {renderRow(item, activeId === item.id, false)}
           {item.expanded && item.children?.length ? (
-            // Not indented: what an expansion reveals lines up with the row that opened it (see interface-design.md).
-            <div className="space-y-0.5 pb-1 pt-0.5">
-              {item.children.map((child) => renderRow(child, activeChildId === child.id, true))}
-            </div>
+            // What an expansion reveals nests under the same guide line as an agent's threads (`SidebarMenuSub`).
+            <SidebarMenuSub>
+              {item.children.map((child) => (
+                <SidebarMenuSubItem key={child.id}>{renderRow(child, activeChildId === child.id, true)}</SidebarMenuSubItem>
+              ))}
+            </SidebarMenuSub>
           ) : null}
-        </div>
+        </SidebarMenuItem>
       ))}
-    </div>
+    </SidebarMenu>
   )
 }

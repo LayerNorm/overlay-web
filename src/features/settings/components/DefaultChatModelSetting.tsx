@@ -58,6 +58,7 @@ export function DefaultChatModelSetting({
       description="Used when you start a new chat. Existing chats keep the model they last used."
       action={
         <ListboxSelect
+          aria-label="Default model"
           disabled={disabled}
           value={currentActModelId}
           onChange={(nextActModelId) => {

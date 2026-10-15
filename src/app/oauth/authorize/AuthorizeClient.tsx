@@ -90,19 +90,19 @@ export function AuthorizeClient() {
     <LandingAuthPageChrome>
       {error && !client ? (
         <div>
-          <h1 className="font-serif text-2xl text-[var(--foreground)]">Can&rsquo;t connect</h1>
-          <p role="alert" className="mt-3 text-sm leading-6 text-[var(--muted)]">{error}</p>
+          <h1 className="font-serif text-2xl text-(--foreground)">Can&rsquo;t connect</h1>
+          <p role="alert" className="mt-3 text-sm leading-6 text-(--muted)">{error}</p>
         </div>
       ) : !client ? (
-        <p className="text-sm text-[var(--muted)]">Loading…</p>
+        <p className="text-sm text-(--muted)">Loading…</p>
       ) : (
         <div className="space-y-6">
           <div>
-            <h1 className="font-serif text-2xl leading-snug text-[var(--foreground)]">{client.name} wants to use your Overlay workspace</h1>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">After you allow it, you&rsquo;ll go back to {client.redirectHost || client.name}. You can disconnect it any time in Settings → Connected apps.</p>
+            <h1 className="font-serif text-2xl leading-snug text-(--foreground)">{client.name} wants to use your Overlay workspace</h1>
+            <p className="mt-2 text-sm leading-6 text-(--muted)">After you allow it, you&rsquo;ll go back to {client.redirectHost || client.name}. You can disconnect it any time in Settings → Connected apps.</p>
           </div>
           <div>
-            <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">Workspace</p>
+            <p className="mb-1.5 text-xs font-medium text-(--foreground)">Workspace</p>
             <ListboxSelect
               aria-label="Workspace"
               value={workspaceId}
@@ -111,7 +111,7 @@ export function AuthorizeClient() {
             />
           </div>
           <div>
-            <p className="mb-1.5 text-xs font-medium text-[var(--foreground)]">What it can do</p>
+            <p className="mb-1.5 text-xs font-medium text-(--foreground)">What it can do</p>
             <SegmentedControl
               ariaLabel="Access"
               layout="stretch"
@@ -119,7 +119,7 @@ export function AuthorizeClient() {
               options={MCP_ACCESS_LEVELS.map((level) => ({ value: level, label: MCP_ACCESS_LABEL[level] }))}
               onChange={setAccess}
             />
-            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{MCP_ACCESS_DESCRIPTION[access]}</p>
+            <p className="mt-2 text-xs leading-5 text-(--muted)">{MCP_ACCESS_DESCRIPTION[access]}</p>
           </div>
           {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
           <div className="flex gap-2">

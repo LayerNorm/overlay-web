@@ -19,12 +19,12 @@ export function ShareVisibilitySubmenu({
   onOpenShareDialog(): void
 }) {
   return (
-    <div className="border-t border-[var(--border)] bg-[var(--surface-subtle)] py-1">
+    <div className="border-t border-(--border) bg-(--surface-subtle) py-1">
       <button
         type="button"
         onClick={() => onUpdateVisibility('private')}
         disabled={shareBusy}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors disabled:opacity-50"
+        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50"
       >
         <Lock size={14} />
         <span className="flex-1 text-left">Private</span>
@@ -40,7 +40,7 @@ export function ShareVisibilitySubmenu({
           onUpdateVisibility('public')
         }}
         disabled={shareBusy}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-muted)] transition-colors disabled:opacity-50"
+        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50"
       >
         {shareBusy && shareVisibility !== 'public' ? (
           <Loader2 size={14} className="animate-spin" />

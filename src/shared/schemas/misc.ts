@@ -24,7 +24,7 @@ export const EntityListQuery = PaginationQuery.extend({
 })
 
 export const ScopeActionRequest = z.object({
-  resource: z.enum(['files', 'skills', 'mcp-servers', 'connectors', 'automations']),
+  resource: z.enum(['files', 'skills', 'mcp-servers', 'connectors', 'automations', 'work']),
   id: z.string().min(1),
   action: z.enum(['move', 'archive', 'restore']),
   to: z.enum(['personal', 'workspace']).optional(),

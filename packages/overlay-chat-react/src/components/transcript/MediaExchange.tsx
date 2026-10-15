@@ -126,7 +126,7 @@ export function MediaExchange({
               <RotateCw size={14} strokeWidth={1.75} />
             </TranscriptIconAction>
           ) : null}
-          <span className="ml-2 shrink-0 text-left text-[11px] text-[var(--muted-light)]">
+          <span className="ml-2 shrink-0 text-left text-[11px] text-(--muted-light)">
             {modelLabel}
           </span>
         </div>
@@ -141,13 +141,13 @@ function MediaReplyAnchor({ snippet, onClick }: { snippet: string; onClick: () =
       <button
         type="button"
         onClick={onClick}
-        className="max-w-[75%] rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-left text-[11px] text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+        className="max-w-[75%] rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
       >
-        <span className="flex items-center gap-1.5 font-medium text-[var(--foreground)]">
-          <Reply size={12} strokeWidth={1.75} className="shrink-0 text-[var(--muted)]" />
+        <span className="flex items-center gap-1.5 font-medium text-(--foreground)">
+          <Reply size={12} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
           Replying to
         </span>
-        <span className="mt-0.5 line-clamp-2 block text-[var(--muted)]">{snippet}</span>
+        <span className="mt-0.5 line-clamp-2 block text-(--muted)">{snippet}</span>
       </button>
     </div>
   )
@@ -176,7 +176,7 @@ function MediaUserPrompt({
                   content: image.url,
                   url: image.url,
                 })}
-                className="rounded-lg outline-none transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-[var(--foreground)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-subtle)]"
+                className="rounded-lg outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-subtle)"
                 title="Open attachment"
               >
                 <img
@@ -215,7 +215,7 @@ function TranscriptIconAction({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded-md p-1.5 text-[var(--muted)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] active:scale-90 active:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-30"
+      className="rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30"
       aria-label={label}
     >
       {children}

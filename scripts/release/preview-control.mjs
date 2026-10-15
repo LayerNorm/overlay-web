@@ -6,8 +6,10 @@ import { pathToFileURL } from 'node:url'
 export const CONFIG = Object.freeze({
   repository: 'LayerNorm/overlay-web', repositoryId: 1133644268,
   teamId: 'team_VT3uNspuyAOwicxedhtG4SMe',
-  projectId: 'prj_IKvugqekF8qLP14p7Rg4ilWErXPr', projectName: 'overlay-web-staging',
+  projectId: 'prj_wucEZdZyA2xKUurHLXSuQNcS1YPy', projectName: 'overlay-landing',
   convexProjectId: 1649204,
+  convexPreviewKeyScope: 'preview:divyansh-lalwani-37bb7:overlay',
+  convexProductionName: 'colorful-chickadee-419',
   previewWildcardDomain: '*.preview.getoverlay.io',
   previewWildcardBranch: 'codex/preview-unassigned',
 })
@@ -42,6 +44,8 @@ export function deploymentMatches(deployment, pr, { ready = false } = {}) {
     && (!meta.githubCommitRef || meta.githubCommitRef === pr.head.ref)
     && (!ready || (deployment.readyState ?? deployment.state) === 'READY')
 }
+
+export const previewRequested = pr => pr.labels?.some(label => label.name === 'needs-preview') === true
 
 export class ApiError extends Error {
   constructor(service, status, code) {
@@ -89,29 +93,68 @@ export function apiClient({ token, service, base, teamId, fetchImpl = fetch,
   }
 }
 
+export function previewBackendClient(token, options = {}) {
+  // Never accept a personal, team, production, dev or other project's key.
+  // Scope is pinned independently of API responses and workflow inputs.
+  const prefix = `${CONFIG.convexPreviewKeyScope}|`
+  if (typeof token !== 'string' || !token.startsWith(prefix)
+    || token.length === prefix.length || /[\s|]/.test(token.slice(prefix.length))) {
+    throw new Error('Convex control requires the pinned Overlay project Preview key')
+  }
+  return apiClient({ ...options, token, service: 'Convex', base: 'https://api.convex.dev/v1' })
+}
+
 export class PreviewBackends {
   constructor({ api, now = Date.now }) { this.api = api; this.now = now }
+  validate(d, number) {
+    previewAddress(number)
+    if (d.name === CONFIG.convexProductionName
+      || d.projectId !== CONFIG.convexProjectId || d.deploymentType !== 'preview'
+      || d.reference !== `preview/pr-${number}` || d.previewIdentifier !== `pr-${number}`
+      || !/^[a-z0-9-]+$/.test(d.name)) throw new Error('PR backend identity mismatch')
+    return d
+  }
+  async inventory() {
+    const items = await this.api(`/projects/${CONFIG.convexProjectId}/list_deployments`)
+    return items.flatMap(d => {
+      const match = /^preview\/pr-([1-9]\d*)$/.exec(d.reference ?? '')
+      if (!match) return []
+      const number = Number(match[1])
+      this.validate(d, number)
+      return [number]
+    })
+  }
   async find(number) {
     previewAddress(number)
     const items = await this.api(`/projects/${CONFIG.convexProjectId}/list_deployments`)
     const matches = items.filter(d => d.reference === `preview/pr-${number}`)
     if (matches.length > 1) throw new Error('Ambiguous PR backend')
     const d = matches[0]
-    if (d && (d.projectId !== CONFIG.convexProjectId || d.deploymentType !== 'preview'
-      || d.previewIdentifier !== `pr-${number}` || !/^[a-z0-9-]+$/.test(d.name))) {
-      throw new Error('PR backend identity mismatch')
-    }
+    if (d) this.validate(d, number)
     return d
   }
   async active(number) {
     const d = await this.find(number)
     return !!d && (d.expiresAt === null || d.expiresAt > this.now())
   }
+  async remove(number) {
+    const d = await this.find(number)
+    if (!d) return
+    try {
+      await this.api(`/deployments/${segment(d.name)}/delete`, { method: 'POST', body: {} })
+    } catch (error) {
+      // The deletion may have completed despite a lost response. Inspect
+      // state rather than blindly repeating a destructive request.
+      if (await this.find(number)) throw error
+      return
+    }
+    if (await this.find(number)) throw new Error('Preview backend deletion readback failed')
+  }
   async renew(number) {
     const d = await this.find(number)
     if (!d || (d.expiresAt !== null && d.expiresAt <= this.now())) throw new Error('PR backend is missing or expired')
     // Starter permits five days from now. Renew to four days, safely inside
-    // that entitlement. Closed PRs stop renewing and expire naturally.
+    // that entitlement. Cleanup deletes closed or unrequested PR backends.
     if (d.expiresAt !== null && d.expiresAt > this.now() + 2 * 86400_000) return d
     const expiresAt = this.now() + 4 * 86400_000
     await this.api(`/deployments/${segment(d.name)}`, { method: 'PATCH', body: { expiresAt } })
@@ -163,7 +206,7 @@ export class PreviewController {
     const p = await this.vercel(this.projectPath)
     if (p.id !== CONFIG.projectId || p.name !== CONFIG.projectName || p.link?.type !== 'github'
       || Number(p.link.repoId) !== CONFIG.repositoryId || p.link.org !== 'LayerNorm' || p.link.repo !== 'overlay-web') {
-      throw new Error('Staging project repository identity mismatch')
+      throw new Error('Preview project repository identity mismatch')
     }
     const wildcard = await this.vercel(`${this.projectPath}/domains/${segment(CONFIG.previewWildcardDomain)}`)
     if (wildcard.name !== CONFIG.previewWildcardDomain || wildcard.verified !== true
@@ -211,6 +254,8 @@ export class PreviewController {
     return address
   }
   async cleanup(pr) {
+    // Stop every owned build before deleting the backend it could recreate.
+    await this.settleBranch(pr)
     const address = previewAddress(pr.number)
     const variables = await this.environment(pr)
     if (variables.some(e => e.comment !== address.marker || e.target.some(t => t !== 'preview'))) {
@@ -228,8 +273,9 @@ export class PreviewController {
       || (await this.environment(pr)).some(e => e.comment === address.marker)) {
       throw new Error('Preview cleanup readback failed')
     }
+    await this.backends.remove(pr.number)
     await this.verifyRemoved(address.origin)
-    this.report(`PR ${pr.number}: domain, alias, and branch app URL removed`)
+    this.report(`PR ${pr.number}: domain, alias, branch app URL, and Convex preview backend removed`)
     return { state: 'closed', number: pr.number }
   }
   async settleBuild(pr, id) {
@@ -258,16 +304,11 @@ export class PreviewController {
     throw new Error('Preview cancellation readiness timeout')
   }
   async start(pr) {
-    const backendActive = await this.backends.active(pr.number)
     const results = await this.vercel('/v7/deployments', { query: {
       projectId: CONFIG.projectId, branch: pr.head.ref, limit: 100,
     } })
-    // Settle abandoned older builds before the new backend deploy can start.
-    // List records omit gitSource; inspect candidates before reuse/cancellation.
     const candidates = []
     for (const candidate of results.deployments) {
-      if (!['READY', 'QUEUED', 'INITIALIZING', 'BUILDING'].includes(candidate.readyState ?? candidate.state)) continue
-      if ((candidate.readyState ?? candidate.state) === 'READY' && !backendActive) continue
       const d = await this.vercel(`/v13/deployments/${segment(candidate.uid ?? candidate.id)}`)
       if (deploymentMatches(d, pr)) { candidates.push(d); continue }
       if (['QUEUED', 'INITIALIZING', 'BUILDING'].includes(d.readyState ?? d.state)) {
@@ -278,29 +319,67 @@ export class PreviewController {
         await this.settleBuild(old, d.id)
       }
     }
-    if (candidates.length) return candidates[0]
-    return this.vercel('/v13/deployments', { method: 'POST', query: { forceNew: '1' }, body: {
-      name: CONFIG.projectName, project: CONFIG.projectId,
-      // The controller owns canonical assignment; native branch aliases must
-      // not assign an older deployment before provenance checks run.
-      autoAssignCustomDomains: false,
-      projectSettings: { buildCommand: 'bash scripts/vercel-build.sh' },
+    for (const d of candidates) {
+      const state = d.readyState ?? d.state
+      if (['QUEUED', 'INITIALIZING', 'BUILDING'].includes(state)
+        || (state === 'READY' && await this.backends.active(pr.number))) return d
+    }
+    // Recheck immediately before spending build minutes. Never retry a POST
+    // blindly; the next reconciliation first inspects existing deployments.
+    const current = trustedPull(await this.pull(pr.number), { requireMain: false })
+    if (current.state !== 'open' || current.base.ref !== 'main' || !previewRequested(current)
+      || current.head.sha !== pr.head.sha || current.head.ref !== pr.head.ref) return null
+    const created = await this.vercel('/v13/deployments', { method: 'POST', query: { forceNew: '1' }, body: {
+      // Omitting target selects Vercel's standard Preview environment.
+      name: CONFIG.projectName, project: CONFIG.projectId, autoAssignCustomDomains: false,
       gitSource: { type: 'github', repoId: CONFIG.repositoryId, ref: pr.head.ref, sha: pr.head.sha },
-      meta: { overlayPreviewPr: String(pr.number), overlayPreviewSha: pr.head.sha },
+      meta: { overlayPreviewPr: String(pr.number) },
     } })
+    const d = await this.vercel(`/v13/deployments/${segment(created.id ?? created.uid)}`)
+    if (!deploymentMatches(d, pr)) throw new Error('Created preview deployment provenance mismatch')
+    return d
+  }
+  async settleBranch(pr) {
+    const builds = await pages(this.vercel, '/v7/deployments', 'deployments', {
+      projectId: CONFIG.projectId, branch: pr.head.ref,
+    })
+    for (const candidate of builds) {
+      if (!['QUEUED', 'INITIALIZING', 'BUILDING'].includes(candidate.readyState ?? candidate.state)) continue
+      const d = await this.vercel(`/v13/deployments/${segment(candidate.uid ?? candidate.id)}`)
+      const old = { ...pr, head: { ...pr.head, sha: d.gitSource?.sha } }
+      if (!/^[a-f0-9]{40}$/.test(old.head.sha ?? '') || !deploymentMatches(d, old)) {
+        throw new Error('Refusing to settle an unrelated maintenance preview')
+      }
+      await this.settleBuild(old, d.id)
+    }
+  }
+  async notRequested(pr) {
+    await this.cleanup(pr)
+    const current = trustedPull(await this.pull(pr.number), { requireMain: false })
+    if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
+    if (current.head.sha !== pr.head.sha || previewRequested(current)) return { state: 'superseded', number: pr.number }
+    await this.status(pr, 'success', 'Preview not requested; CI still required')
+    return { state: 'not-required', number: pr.number, sha: pr.head.sha }
   }
   async run(number) {
     previewAddress(number)
     await this.verifyProject()
     const pr = trustedPull(await this.pull(number), { requireMain: false })
     if (pr.state !== 'open' || pr.base.ref !== 'main') return this.cleanup(pr)
+    if (!previewRequested(pr)) return this.notRequested(pr)
     const siblings = await this.github(`${this.repoPath}/pulls`, { query: { state: 'open', head: `LayerNorm:${pr.head.ref}`, base: 'main', per_page: 100 } })
     if (siblings.some(other => other.number !== pr.number)) throw new Error('One PR per source branch is required')
     const address = await this.provision(pr)
-    await this.status(pr, 'pending', `Building ${pr.head.sha.slice(0, 12)} at canonical PR URL`)
+    await this.status(pr, 'pending', `Building requested preview ${pr.head.sha.slice(0, 12)}`)
     let deployment
     try {
       deployment = await this.start(pr)
+      if (!deployment) {
+        const current = trustedPull(await this.pull(number), { requireMain: false })
+        if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
+        if (!previewRequested(current)) return this.notRequested(current)
+        return { state: 'superseded', number }
+      }
       const deadline = this.now() + 30 * 60_000
       let lastState
       while (this.now() < deadline) {
@@ -309,6 +388,7 @@ export class PreviewController {
           await this.settleBuild(pr, deployment.id ?? deployment.uid)
           return this.cleanup(current)
         }
+        if (!previewRequested(current)) return this.notRequested(current)
         if (current.head.sha !== pr.head.sha || current.head.ref !== pr.head.ref) {
           await this.settleBuild(pr, deployment.id ?? deployment.uid)
           this.report(`PR ${number}: head changed; old build settled without alias assignment`)
@@ -325,6 +405,7 @@ export class PreviewController {
       if (!deploymentMatches(deployment, pr, { ready: true })) throw new Error('Preview build readiness timeout')
       const current = trustedPull(await this.pull(number), { requireMain: false })
       if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
+      if (!previewRequested(current)) return this.notRequested(current)
       if (current.head.sha !== pr.head.sha) return { state: 'superseded', number }
       const backend = await this.backends.renew(number)
       await this.vercel(`/v2/deployments/${segment(deployment.id)}/aliases`, { method: 'POST', body: { alias: address.hostname } })
@@ -334,6 +415,7 @@ export class PreviewController {
       // Recheck after assignment: a push or close during the API call must not publish stale success.
       const after = trustedPull(await this.pull(number), { requireMain: false })
       if (after.state !== 'open' || after.base.ref !== 'main') return this.cleanup(after)
+      if (!previewRequested(after)) return this.notRequested(after)
       if (after.head.sha !== pr.head.sha) return { state: 'superseded', number }
       await this.status(pr, 'success', `READY ${pr.head.sha.slice(0, 12)}; browser QA required`, address.origin)
       const evidence = { number, sha: pr.head.sha, url: address.origin, deploymentId: deployment.id,
@@ -367,17 +449,19 @@ export class PreviewController {
       const match = /^overlay-preview-control:pr-([1-9]\d*)$/.exec(env.comment ?? '')
       if (match && env.key === 'NEXT_PUBLIC_APP_URL' && env.gitBranch) numbers.add(Number(match[1]))
     }
+    // Find old closed PRs even after all their Vercel resources were removed.
+    for (const number of await this.backends.inventory()) numbers.add(number)
     return [...numbers].sort((a, b) => a - b)
   }
 }
 
 export async function main(env = process.env, args = process.argv.slice(2)) {
   if (env.GITHUB_REPOSITORY && env.GITHUB_REPOSITORY !== CONFIG.repository) throw new Error('Unexpected workflow repository')
+  const convex = previewBackendClient(env.CONVEX_PREVIEW_CONTROL_KEY)
   const controller = new PreviewController({
     github: apiClient({ token: env.GITHUB_TOKEN, service: 'GitHub', base: 'https://api.github.com' }),
-    vercel: apiClient({ token: env.VERCEL_STAGING_TOKEN, service: 'Vercel', base: 'https://api.vercel.com', teamId: CONFIG.teamId }),
-    backends: new PreviewBackends({ api: apiClient({ token: env.CONVEX_PREVIEW_CONTROL_KEY,
-      service: 'Convex', base: 'https://api.convex.dev/v1' }) }),
+    vercel: apiClient({ token: env.VERCEL_PREVIEW_TOKEN, service: 'Vercel', base: 'https://api.vercel.com', teamId: CONFIG.teamId }),
+    backends: new PreviewBackends({ api: convex }),
   })
   if (args[0] === 'inventory') {
     const numbers = await controller.inventory()

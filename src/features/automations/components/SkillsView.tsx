@@ -120,7 +120,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           action={canAdd ? (
             <button
               onClick={() => setDialog({ mode: 'create' })}
-              className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"
+              className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)"
             >
               <Plus size={12} />
               New Skill

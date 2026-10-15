@@ -215,28 +215,28 @@ function McpServerFormFields({ values, update }: { values: McpServerFormValues; 
   return (
     <>
       <Field label="Name">
-        <input aria-label="Name" value={values.name} onChange={(event) => update('name', event.target.value)} placeholder="e.g. My API Server" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
+        <input aria-label="Name" value={values.name} onChange={(event) => update('name', event.target.value)} placeholder="e.g. My API Server" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
       </Field>
       <Field label="Description">
-        <input aria-label="Description" value={values.description} onChange={(event) => update('description', event.target.value)} placeholder="Optional description" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
+        <input aria-label="Description" value={values.description} onChange={(event) => update('description', event.target.value)} placeholder="Optional description" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Transport">
-          <ListboxSelect value={values.transport} onChange={(value) => update('transport', value as McpTransport)} className="w-full" buttonClassName="min-h-10 bg-[var(--surface-muted)]" options={[{ value: 'streamable-http', label: 'Streamable HTTP' }, { value: 'sse', label: 'SSE' }]} />
+          <ListboxSelect aria-label="Transport" value={values.transport} onChange={(value) => update('transport', value as McpTransport)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'streamable-http', label: 'Streamable HTTP' }, { value: 'sse', label: 'SSE' }]} />
         </Field>
         <Field label="Timeout (ms)">
-          <input type="number" aria-label="Timeout (ms)" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
+          <input type="number" aria-label="Timeout (ms)" value={values.timeoutMs} onChange={(event) => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
         </Field>
       </div>
       <Field label="URL">
-        <input aria-label="URL" value={values.url} onChange={(event) => update('url', event.target.value)} placeholder="https://example.com/mcp or http://localhost:3000/mcp" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
-        <p className="text-[10px] text-[var(--muted-light)]">HTTPS required in production. HTTP allowed for localhost only.</p>
+        <input aria-label="URL" value={values.url} onChange={(event) => update('url', event.target.value)} placeholder="https://example.com/mcp or http://localhost:3000/mcp" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
+        <p className="text-[10px] text-(--muted-light)">HTTPS required in production. HTTP allowed for localhost only.</p>
       </Field>
       <Field label="Authentication">
-        <ListboxSelect value={values.authType} onChange={(value) => update('authType', value as McpAuthType)} className="w-full" buttonClassName="min-h-10 bg-[var(--surface-muted)]" options={[{ value: 'none', label: 'None' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'header', label: 'Custom Header' }, { value: 'oauth', label: 'OAuth (sign in with browser)' }]} />
+        <ListboxSelect aria-label="Authentication" value={values.authType} onChange={(value) => update('authType', value as McpAuthType)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'none', label: 'None' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'header', label: 'Custom Header' }, { value: 'oauth', label: 'OAuth (sign in with browser)' }]} />
       </Field>
       <Field label="Tool execution policy">
-        <ListboxSelect value={values.defaultToolPolicy} onChange={(value) => update('defaultToolPolicy', value as McpToolPolicyMode)} className="w-full" buttonClassName="min-h-10 bg-[var(--surface-muted)]" options={[{ value: 'allow', label: 'Allow tools' }, { value: 'approval_required', label: 'Require approval' }, { value: 'deny', label: 'Deny tools' }]} />
+        <ListboxSelect aria-label="Tool execution policy" value={values.defaultToolPolicy} onChange={(value) => update('defaultToolPolicy', value as McpToolPolicyMode)} className="w-full" buttonClassName="min-h-10 bg-(--surface-muted)" options={[{ value: 'allow', label: 'Allow tools' }, { value: 'approval_required', label: 'Require approval' }, { value: 'deny', label: 'Deny tools' }]} />
       </Field>
     </>
   )
@@ -260,17 +260,17 @@ function McpOAuthSection({
   onDisconnect: () => void
 }) {
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+    <div className="rounded-lg border border-(--border) bg-(--surface-muted) p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-[var(--foreground)]">
+          <p className="text-xs font-medium text-(--foreground)">
             {oauthStatus === 'connected'
               ? 'Connected'
               : oauthStatus === 'needs_reauth'
                 ? 'Needs reconnect'
                 : 'Not connected'}
           </p>
-          <p className="mt-0.5 text-[11px] text-[var(--muted)]">
+          <p className="mt-0.5 text-[11px] text-(--muted)">
             {oauthStatus === 'connected'
               ? 'Overlay holds an authorized session for this server.'
               : 'Opens the server’s sign-in page in a new tab. No API key needed.'}
@@ -278,11 +278,11 @@ function McpOAuthSection({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {canDisconnect ? (
-            <button type="button" onClick={onDisconnect} disabled={connecting} className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50">
+            <button type="button" onClick={onDisconnect} disabled={connecting} className="rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50">
               Disconnect
             </button>
           ) : null}
-          <button type="button" onClick={onConnect} disabled={connecting || !canConnect} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50">
+          <button type="button" onClick={onConnect} disabled={connecting || !canConnect} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50">
             {connecting ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
             {connecting ? 'Opening…' : oauthStatus === 'connected' ? 'Reconnect' : 'Connect'}
           </button>
@@ -300,16 +300,16 @@ function McpAuthSecretFields({ values, update }: { values: McpServerFormValues; 
     <>
       {values.authType === 'bearer' ? (
         <Field label="Bearer Token">
-          <input type="password" aria-label="Bearer token" value={values.bearerToken} onChange={(event) => update('bearerToken', event.target.value)} placeholder="Bearer token" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
+          <input type="password" aria-label="Bearer token" value={values.bearerToken} onChange={(event) => update('bearerToken', event.target.value)} placeholder="Bearer token" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
         </Field>
       ) : null}
       {values.authType === 'header' ? (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Header Name">
-            <input aria-label="Header name" value={values.headerName} onChange={(event) => update('headerName', event.target.value)} placeholder="X-Api-Key" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
+            <input aria-label="Header name" value={values.headerName} onChange={(event) => update('headerName', event.target.value)} placeholder="X-Api-Key" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
           </Field>
           <Field label="Header Value">
-            <input type="password" aria-label="Header value" value={values.headerValue} onChange={(event) => update('headerValue', event.target.value)} placeholder="Secret value" className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-light)] focus:border-[var(--muted)] focus:bg-[var(--surface-elevated)]" />
+            <input type="password" aria-label="Header value" value={values.headerValue} onChange={(event) => update('headerValue', event.target.value)} placeholder="Secret value" className="w-full rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted) focus:bg-(--surface-elevated)" />
           </Field>
         </div>
       ) : null}
@@ -383,22 +383,22 @@ function McpServerDialogFooter({
   onSave: () => void
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-between border-t border-[var(--border)] px-5 py-3">
+    <div className="flex shrink-0 items-center justify-between border-t border-(--border) px-5 py-3">
       <div className="flex items-center gap-3">
         <EnabledToggle enabled={enabled} onChange={onToggleEnabled} />
         {showDelete ? (
-          <button type="button" onClick={onDelete} disabled={deleting} className="flex items-center gap-1 text-xs text-[var(--muted)] transition-colors hover:text-red-400 disabled:opacity-50">
+          <button type="button" onClick={onDelete} disabled={deleting} className="flex items-center gap-1 text-xs text-(--muted) transition-colors hover:text-red-400 disabled:opacity-50">
             {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
             Delete
           </button>
         ) : null}
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onTest} disabled={!canTest} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50">
+        <button type="button" onClick={onTest} disabled={!canTest} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50">
           {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
           {testing ? 'Testing…' : 'Test Connection'}
         </button>
-        <button type="button" onClick={onSave} disabled={!canSave} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-1.5 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--border)] disabled:opacity-50">
+        <button type="button" onClick={onSave} disabled={!canSave} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50">
           {saving ? <Loader2 size={12} className="animate-spin" /> : saved ? <Check size={12} /> : null}
           {saving ? 'Saving…' : saved ? 'Saved' : isEdit ? 'Save' : 'Add Server'}
         </button>
@@ -455,17 +455,17 @@ export function McpServerDialog({
   return (
     // Backdrop click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay-scrim)] p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="overlay-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-(--overlay-scrim) p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
       {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
       {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="mcp-server-dialog-title" className="overlay-dialog-in flex w-full max-w-xl flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-xl" style={{ maxHeight: 'calc(100vh - 80px)' }}>
-        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-4">
-          <h3 id="mcp-server-dialog-title" className="text-sm font-medium text-[var(--foreground)]">{isEdit ? 'Edit MCP Server' : 'Add MCP Server'}</h3>
-          <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"><X size={16} /></button>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="mcp-server-dialog-title" className="overlay-dialog-in flex w-full max-w-xl flex-col rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+        <div className="flex shrink-0 items-center justify-between border-b border-(--border) px-5 py-4">
+          <h3 id="mcp-server-dialog-title" className="text-sm font-medium text-(--foreground)">{isEdit ? 'Edit MCP Server' : 'Add MCP Server'}</h3>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"><X size={16} /></button>
         </div>
         {isEdit && scopeActions ? (
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-3">
-            <span className="text-xs text-[var(--muted)]">{scopeLabel}</span>
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-(--border) px-5 py-3">
+            <span className="text-xs text-(--muted)">{scopeLabel}</span>
             {scopeActions}
           </div>
         ) : null}
@@ -524,7 +524,7 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
   if (loading) {
     return (
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center">
-        <Loader2 size={20} className="animate-spin text-[var(--muted)]" />
+        <Loader2 size={20} className="animate-spin text-(--muted)" />
       </AppScreenBody>
     )
   }
@@ -532,12 +532,12 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
   if (servers.length === 0) {
     return (
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 px-6">
-        <Server size={40} strokeWidth={1} className="text-[var(--muted-light)]" />
+        <Server size={40} strokeWidth={1} className="text-(--muted-light)" />
         <div className="space-y-1 text-center">
-          <p className="text-sm font-medium text-[var(--foreground)]">No MCP servers configured</p>
-          <p className="text-xs text-[var(--muted-light)]">Add remote MCP servers to extend the AI agent with custom tools</p>
+          <p className="text-sm font-medium text-(--foreground)">No MCP servers configured</p>
+          <p className="text-xs text-(--muted-light)">Add remote MCP servers to extend the AI agent with custom tools</p>
         </div>
-        {onCreate ? <button onClick={onCreate} className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--border)]"><Plus size={14} />Add Server</button> : null}
+        {onCreate ? <button onClick={onCreate} className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-4 py-2 text-sm text-(--foreground) transition-colors hover:bg-(--border)"><Plus size={14} />Add Server</button> : null}
       </AppScreenBody>
     )
   }
@@ -558,12 +558,12 @@ export function McpServersPanel({ loading, servers, filteredServers, onCreate, o
 function McpServerBadges({ server }: { server: McpServerSummary }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--muted)]">{server.transport}</span>
-      {server.hasAuth && server.authType !== 'oauth' ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">Auth</span> : null}
+      <span className="inline-flex rounded-sm border border-(--border) px-1.5 py-0.5 text-[10px] uppercase text-(--muted)">{server.transport}</span>
+      {server.hasAuth && server.authType !== 'oauth' ? <span className="inline-flex rounded-sm border border-(--border) px-1.5 py-0.5 text-[10px] text-(--muted)">Auth</span> : null}
       {server.authType === 'oauth' ? (
         <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] ${
           server.oauthStatus === 'connected'
-            ? 'border-[var(--border)] text-[var(--muted)]'
+            ? 'border-(--border) text-(--muted)'
             : 'border-red-500/30 text-red-400'
         }`}>
           {server.oauthStatus === 'connected'
@@ -573,7 +573,7 @@ function McpServerBadges({ server }: { server: McpServerSummary }) {
               : 'Not connected'}
         </span>
       ) : null}
-      {server.toolCatalogCount ? <span className="inline-flex rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">{server.toolCatalogCount} tools</span> : null}
+      {server.toolCatalogCount ? <span className="inline-flex rounded-sm border border-(--border) px-1.5 py-0.5 text-[10px] text-(--muted)">{server.toolCatalogCount} tools</span> : null}
     </div>
   )
 }
@@ -589,8 +589,8 @@ function McpServerCardActions({
 }) {
   return (
     <div className="hidden items-center gap-1 group-hover:flex">
-      <button type="button" onClick={(event) => onToggle(server, event)} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</button>
-      <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className="rounded p-1 text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]" title="Edit"><Pencil size={13} /></button>
+      <button type="button" onClick={(event) => onToggle(server, event)} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)" title={server.enabled ? 'Disable' : 'Enable'}>{server.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}</button>
+      <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(server) }} className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)" title="Edit"><Pencil size={13} /></button>
     </div>
   )
 }
@@ -616,7 +616,7 @@ function McpServerCard({
       description={server.description || server.url}
       topRight={(
         <span
-          className={`h-2 w-2 rounded-full transition-colors ${server.enabled ? 'bg-[var(--foreground)]' : 'bg-[var(--muted-light)]'}`}
+          className={`h-2 w-2 rounded-full transition-colors ${server.enabled ? 'bg-(--foreground)' : 'bg-(--muted-light)'}`}
           title={server.enabled ? 'Active' : 'Disabled'}
         />
       )}

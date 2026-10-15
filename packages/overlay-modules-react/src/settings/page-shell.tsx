@@ -55,7 +55,7 @@ export function SettingsPageShell({
 
 export function SettingsGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] divide-y divide-[var(--border)]">
+    <div className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) divide-y divide-(--border)">
       {children}
     </div>
   )
@@ -63,16 +63,16 @@ export function SettingsGroup({ children }: { children: ReactNode }) {
 
 export function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-      <h2 className="text-sm font-medium text-[var(--foreground)]">{title}</h2>
-      <div className="mt-3 text-sm leading-relaxed text-[var(--muted)]">{children}</div>
+    <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
+      <h2 className="text-sm font-medium text-(--foreground)">{title}</h2>
+      <div className="mt-3 text-sm leading-relaxed text-(--muted)">{children}</div>
     </div>
   )
 }
 
 export function SettingsTopUpCard({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+    <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
       {children}
     </div>
   )

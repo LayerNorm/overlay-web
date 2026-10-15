@@ -49,12 +49,12 @@ export interface NotebookFloatingFormatToolbarProps {
 }
 
 const floatingToolbarButtonClass =
-  'inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40'
+  'inline-flex h-8 w-8 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-40'
 
 const floatingToolbarActiveButtonClass =
-  'bg-[var(--surface-subtle)] text-[var(--foreground)]'
+  'bg-(--surface-subtle) text-(--foreground)'
 
-const floatingToolbarDividerClass = 'mx-1 h-5 w-px shrink-0 bg-[var(--border)]'
+const floatingToolbarDividerClass = 'mx-1 h-5 w-px shrink-0 bg-(--border)'
 
 export function NotebookFloatingFormatToolbar({
   editor,
@@ -64,13 +64,13 @@ export function NotebookFloatingFormatToolbar({
   const [hovered, setHovered] = useState(false)
 
   return (
-    <div className="absolute bottom-5 right-5 z-30 flex max-w-[calc(100%-2.5rem)] items-center gap-1 overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-1.5 shadow-lg">
+    <div className="absolute bottom-5 right-5 z-30 flex max-w-[calc(100%-2.5rem)] items-center gap-1 overflow-x-auto rounded-xl border border-(--border) bg-(--surface-elevated) p-1.5 shadow-lg">
       <button
         type="button"
         onClick={() => onOpenChange(!open)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
         aria-label={open ? 'Close formatting toolbar' : 'Open formatting toolbar'}
         aria-expanded={open}
         title={open ? 'Close formatting toolbar' : 'Formatting'}

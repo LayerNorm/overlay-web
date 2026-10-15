@@ -28,27 +28,27 @@ export function AttachmentTray({
       {attachments.map((attachment) => (
         <div
           key={attachment.id}
-          className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--foreground)]"
+          className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-muted) px-2 py-1 text-xs text-(--foreground)"
         >
           {attachment.kind === 'image' && attachment.dataUrl ? (
-            <img src={attachment.dataUrl} alt="" className="h-5 w-5 rounded object-cover" />
+            <img src={attachment.dataUrl} alt="" className="h-5 w-5 rounded-sm object-cover" />
           ) : isImageMime(attachment.mimeType) ? (
             <ImageIcon size={12} strokeWidth={1.75} />
           ) : (
             <FileText size={12} strokeWidth={1.75} />
           )}
-          <span className="max-w-[10rem] truncate">{attachment.name}</span>
+          <span className="max-w-40 truncate">{attachment.name}</span>
           {attachment.status === 'uploading' ? (
-            <Loader2 size={11} className="animate-spin text-[var(--muted)]" />
+            <Loader2 size={11} className="animate-spin text-(--muted)" />
           ) : attachment.status === 'error' ? (
-            <span className="text-[var(--chat-alert-error-text)]">!</span>
+            <span className="text-(--chat-alert-error-text)">!</span>
           ) : attachment.sizeBytes ? (
-            <span className="text-[var(--muted)]">{formatSize(attachment.sizeBytes)}</span>
+            <span className="text-(--muted)">{formatSize(attachment.sizeBytes)}</span>
           ) : null}
           <button
             type="button"
             onClick={() => onRemoveAttachment(attachment.id)}
-            className="text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+            className="text-(--muted) transition-colors hover:text-(--foreground)"
             aria-label={`Remove ${attachment.name}`}
           >
             <X size={11} strokeWidth={2} />

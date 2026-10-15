@@ -17,12 +17,16 @@ For ordinary local web work against the development Convex backend, run Next.js 
 npm run dev
 ```
 
-`npm run dev:with-convex` pushes development Convex before starting Next.js. Use it only from the dedicated `staging` worktree, where the current revision is the shared staging release candidate.
+`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Native Vercel production deployment does not push Convex.
 
 ## Isolated PR preview backends
 
-The migration adds `scripts/vercel-build.sh` for the staging Vercel project.
-Preview builds require `OVERLAY_RELEASE_LANE=staging`,
+Add `needs-preview` when isolated hosted QA is needed; the trusted controller
+requests the exact PR SHA. Unlabeled PRs create no backend or build.
+`scripts/vercel-build.sh` builds requested PR previews in the `overlay-landing` Vercel project.
+New PR heads use `OVERLAY_RELEASE_LANE=preview`; older open PR heads retain
+the former `staging` value until those branches update. Both values are accepted
+only for Vercel's Preview target. Preview builds require
 `OVERLAY_DEPLOYMENT_ENV=preview`, a canonical PR app origin, and a project-scoped
 `preview:<team>:<project>|…` deploy key. The script clears conflicting backend
 selectors and dev URL overrides, then runs `convex deploy --preview-name
@@ -36,11 +40,26 @@ inputs, even when the key exists in the parent process; do not use an empty file
 The trusted PR controller also holds the project preview key as
 `CONVEX_PREVIEW_CONTROL_KEY` in the main-only `release-control` environment.
 Six-hour reconciliation validates the project, preview type, PR identifier and
-reference before extending an open PR backend to four days from now when fewer
+reference before extending a labeled open PR backend to four days from now when fewer
 than two days remain. This is within Starter's five-day retention entitlement
-and preserves data. Closed PRs stop renewing and expire naturally. A missing or
+and preserves data while the PR remains labeled. On PR closure or label removal,
+cleanup settles owned builds before deleting the exact `preview/pr-<number>`
+backend and synthetic data through the scoped Preview key. It validates project,
+Preview type, reference, PR identifier and name, then verifies absence. Unknown
+ownership or failed deletion cannot report successful cleanup. Six-hour inventory
+includes retained Convex backends so leftovers are retried even without Vercel
+resources. Re-adding the label seeds a fresh backend. A missing or
 expired backend forces a fresh web build at the same SHA, with fresh seed data;
 an old READY frontend cannot be reused just because its SHA matches.
+
+The controller rejects credentials unless their scope is exactly
+`preview:divyansh-lalwani-37bb7:overlay` before making API requests. Never replace
+this key with a personal/team token or another product's key. Backend ownership
+must match project `1649204` and the exact PR reference and identifier; dev,
+production and cross-project targets fail closed. `colorful-chickadee-419` is
+also denied by name, independently of metadata. Regression tests exercise these
+refusals without sending deletion requests. This protects automation, not manual
+deletion by an administrator in the Convex dashboard.
 
 Convex injects the preview URL into the web build. `deploymentEnv()` keeps
 server configuration on the same captured URL as the browser; generic runtime
@@ -49,7 +68,75 @@ crons are not registered, and email/webhook delivery actions return without
 sending. Project preview defaults contain matching internal API/service secrets,
 the sandbox client ID and seed identity; passwords stay on the web app only.
 
-## Production backend
+Provider credentials are configured once in `overlay-landing`'s unscoped Preview settings
+and this project's **preview** defaults. New backends inherit the defaults;
+existing backends do not synchronize automatically. A key rotation therefore
+updates both defaults and each still-open backend. Reuse verified development
+credentials from `.env.local` through an explicit allowlist, mapping test
+`DEV_STRIPE_*` values to the runtime names as well. Never import the file wholesale:
+it also contains live Stripe, a production OpenRouter key, and shared-dev backend
+selectors. Keep per-lane session/internal secrets and the build-injected backend
+URL. Cloudflare bucket permissions and model budgets need separate verification.
+
+Pair a `none` integration, browser, sandbox or web-search provider with its
+`OVERLAY_FEATURE_*` flag set to `false`. Provider selection alone does not change
+capabilities. Release builds reject the mismatch before deploying functions;
+otherwise chat can try to load the disabled integration provider and fail before
+calling its model. The Preview defaults contain these four disabled flags.
+Preview and Production variables have separate Vercel targets, and the
+corresponding Convex preview defaults remain separate from customer Production.
+
+## Expand, migrate, then contract
+
+Web and Convex deploy independently. The incoming web must work with the old
+backend, and the incoming backend must work with the old web, including retained
+rollback revisions. Never remove an old field or require a new field in the same
+release that first introduces its replacement.
+
+Worked example: rename `files.name` to `displayName` (illustrative; this migration
+does not change the current schema).
+
+1. **Expand.** Add `displayName: v.optional(v.string())`; retain required `name`.
+   Keep `name` authoritative during the overlap. Existing create/rename handlers
+   accept the existing request shape and write both values. The incoming web
+   keeps sending `name`, so production's previous backend still accepts it.
+2. **Backfill.** Use an internal mutation that advances through bounded pages,
+   copying each current `name` into missing `displayName`. Save the returned
+   cursor, repeat until `isDone`, and count missing fields. Do not export customer
+   data into preview fixtures. Rehearse against synthetic PR preview data first.
+3. **Switch reads.** In a later compatible revision, read
+   `displayName ?? name` only once every active and retained rollback backend
+   dual-writes. Until then read `name`: an older backend can rename a file while
+   leaving its backfilled `displayName` stale. Keep legacy request arguments. Verify
+   old/new web against old/new backend and exercise web-first production
+   deployment plus rollback before accepting it.
+4. **Contract.** Remove `name` only after backfill is complete, old callers are
+   no longer supported, and the oldest retained rollback web/backend also uses
+   the new shape. Record that minimum rollback revision. Until then, retaining
+   the alias is cheaper than making rollback unsafe.
+
+The backfill pattern is bounded and restartable:
+
+```ts
+export const backfillDisplayNames = internalMutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  returns: v.object({ cursor: v.string(), isDone: v.boolean() }),
+  handler: async (ctx, { cursor }) => {
+    const page = await ctx.db.query('files').paginate({ cursor, numItems: 100 })
+    for (const row of page.page) {
+      if (row.displayName === undefined) await ctx.db.patch(row._id, { displayName: row.name })
+    }
+    return { cursor: page.continueCursor, isDone: page.isDone }
+  },
+})
+```
+
+The example needs the expanded schema before it can compile. Backfill only the
+target deployment, verify counts/readback, and retain compatibility until the
+contract gate is satisfied. For large deployments, schedule the next bounded
+batch rather than running one unbounded mutation.
+
+## Customer production backend
 
 Use the production script only from the clean canonical `main` worktree after the matching main web deployment is live:
 
@@ -57,7 +144,7 @@ Use the production script only from the clean canonical `main` worktree after th
 npm run convex:push:prod
 ```
 
-For the full worktree, staging QA, and promotion process, see [Worktree Staging QA](/develop/worktree-staging-qa).
+For Preview and Production checks, see [Preview and Production QA](/develop/worktree-staging-qa).
 
 ## Runtime inventory during release changes
 
@@ -79,10 +166,18 @@ Convex **queries and mutations cannot call `fetch()`**. WorkOS / Better Auth JWK
 Browser→Convex subscriptions must use short-lived **HS256** tokens:
 
 1. Next BFF `GET /api/auth/convex-token` mints a token with `INTERNAL_API_SECRET` (`mintBrowserConvexAccessToken`).
-2. `ConvexAuthProvider` passes that token into Convex client queries.
+2. `ConvexAuthProvider` refreshes the token; consumers pass it explicitly as the
+   `accessToken` query argument. Keep the ordinary `ConvexProvider` transport.
 3. Convex `requireAccessToken` verifies HS256 with `crypto.subtle` only (`verifyBrowserConvexAccessToken`).
 
 `INTERNAL_API_SECRET` must match between the Next app env and the Convex deployment. Do not send the raw WorkOS access token into reactive queries.
+
+Do not call the client's native `setAuth` with these handler tokens. Convex's
+platform verifier expects a configured native identity provider; it rejects the
+internal HMAC token and interrupts subscriptions. Handler authorization still
+verifies signature, expiry and the requested user's identity. Release smoke must
+read a real subscription for the signed-in synthetic user, deny a different user
+with the same token, and fail on browser runtime or authentication errors.
 
 Collaboration realtime is native Convex when `appDataCapabilities.provider === 'convex'`:
 
@@ -99,10 +194,31 @@ Maintenance jobs and user-facing lists must advance through indexed, bounded pag
 ## Chat-delta retirement migration
 
 Removing `conversationMessageDeltas` requires a two-revision Convex rollout.
-From the dedicated `staging` worktree, deploy the phase-5 migration revision and
+On the explicitly selected deployment, deploy the compatible migration revision and
 run `internal.chat.conversations.collapseLegacyConversationPersistence` once.
 Its scheduled batches fold every remaining delta into its assistant message and
 mark generating messages without an active AgentRun as interrupted. Confirm the
 scheduled chain has finished before deploying the following phase-5 cleanup
 revision, which removes the table, queries, and crons. Never skip directly to
 the cleanup revision on a deployment that may still contain delta rows.
+
+### Expected errors on production-type deployments
+
+Use `ConvexError` data for expected revision conflicts. Production-type Convex redacts ordinary developer error messages. The
+server HTTP adapter preserves application `errorData`, so stale note edits return
+HTTP 409 in all lanes. Generic internal failures remain redacted and fail closed.
+
+
+### Interrupted preview build recovery
+
+The installed Convex CLI executes `--preview-run` only for newly claimed preview
+backends. An interrupted first build can leave a reused backend without fixtures.
+After every successful preview deploy, the hosted build therefore explicitly runs
+`dev/seed:init` against `preview/pr-<number>` using the preview-scoped key. This
+idempotent repair preserves edited fixture data and reuses any existing personal
+workspace; it does not recreate the backend or deploy shared development/production.
+A failed deploy never runs the repair, and a failed repair fails the hosted build.
+
+### Generated type output after production deploy
+
+The Convex CLI may regenerate `convex/_generated/api.d.ts` during a production push. The accepted release added only type entries for existing preview/staging helper modules. Preserve that generated output in ignored release evidence, inspect its diff, and restore only the deploy-generated changes to the accepted tracked version before the clean-main rollback drill. Preserve all pre-existing edits separately. No second backend deployment is needed for that local type-file restoration.

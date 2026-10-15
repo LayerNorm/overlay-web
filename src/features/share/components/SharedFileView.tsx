@@ -33,7 +33,7 @@ function PreviewBody({ file, token }: { file: SharedFile; token: string }) {
 
   if (file.kind === 'note' && file.content) {
     return (
-      <article className="prose prose-neutral max-w-none rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-6 py-6 text-[var(--foreground)] dark:prose-invert">
+      <article className="prose prose-neutral max-w-none rounded-xl border border-(--border) bg-(--surface-elevated) px-6 py-6 text-(--foreground) dark:prose-invert">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeRaw, [rehypeSanitize, noteSchema], rehypeKatex]}
@@ -46,7 +46,7 @@ function PreviewBody({ file, token }: { file: SharedFile; token: string }) {
 
   if (file.mimeType?.startsWith('image/') && binaryUrl) {
     return (
-      <div className="flex justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+      <div className="flex justify-center rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
         <img src={binaryUrl} alt={file.name} className="max-h-[80vh] max-w-full rounded-lg object-contain" />
       </div>
     )
@@ -58,28 +58,28 @@ function PreviewBody({ file, token }: { file: SharedFile; token: string }) {
         src={binaryUrl}
         title={file.name}
         sandbox=""
-        className="h-[80vh] w-full rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]"
+        className="h-[80vh] w-full rounded-xl border border-(--border) bg-(--surface-elevated)"
       />
     )
   }
 
   if (file.textContent) {
     return (
-      <pre className="overflow-auto whitespace-pre-wrap rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-5 py-4 text-sm leading-relaxed text-[var(--foreground)]">
+      <pre className="overflow-auto whitespace-pre-wrap rounded-xl border border-(--border) bg-(--surface-elevated) px-5 py-4 text-sm leading-relaxed text-(--foreground)">
         {file.textContent}
       </pre>
     )
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] px-6 py-12 text-center">
-      <p className="text-sm text-[var(--muted)]">No inline preview available for this file.</p>
+    <div className="flex flex-col items-center gap-4 rounded-xl border border-(--border) bg-(--surface-elevated) px-6 py-12 text-center">
+      <p className="text-sm text-(--muted)">No inline preview available for this file.</p>
       {binaryUrl && (
         <a
           href={binaryUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-full bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90"
+          className="inline-flex items-center gap-2 rounded-full bg-(--foreground) px-4 py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-90"
         >
           <Download size={14} />
           Download
@@ -103,18 +103,18 @@ export function SharedFileView({ file, token }: { file: SharedFile; token: strin
     .join(' · ')
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--background)]/95 backdrop-blur">
+    <div className="min-h-screen bg-(--background) text-(--foreground)">
+      <header className="sticky top-0 z-10 border-b border-(--border) bg-(--background)/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-3">
           <div className="min-w-0">
             <h1 className="truncate text-sm font-medium">{file.name}</h1>
-            <p className="text-[11px] text-[var(--muted)]">
+            <p className="text-[11px] text-(--muted)">
               {meta ? `${meta} · ` : ''}Shared {sharedAt} · Read-only
             </p>
           </div>
           <Link
             href="/"
-            className="shrink-0 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+            className="shrink-0 rounded-full border border-(--border) px-3 py-1 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
           >
             Open Overlay
           </Link>
@@ -126,9 +126,9 @@ export function SharedFileView({ file, token }: { file: SharedFile; token: strin
       </main>
 
       <footer className="mx-auto max-w-3xl px-5 pb-10">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-xs text-[var(--muted)]">
+        <div className="rounded-xl border border-(--border) bg-(--surface-subtle) px-4 py-3 text-xs text-(--muted)">
           This is a read-only snapshot shared from{' '}
-          <Link href="/" className="font-medium text-[var(--foreground)] hover:underline">
+          <Link href="/" className="font-medium text-(--foreground) hover:underline">
             Overlay
           </Link>
           .

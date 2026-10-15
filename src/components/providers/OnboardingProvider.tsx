@@ -103,29 +103,29 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
         role="dialog"
         aria-label="Welcome to Overlay"
         onClick={(e) => e.stopPropagation()}
-        className="absolute bottom-6 left-4 right-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 shadow-2xl"
+        className="absolute bottom-6 left-4 right-4 rounded-xl border border-(--border) bg-(--surface-elevated) p-5 shadow-2xl"
       >
-        <h3 className='mb-2 text-sm font-semibold text-[var(--foreground)]'>
+        <h3 className='mb-2 text-sm font-semibold text-(--foreground)'>
           Welcome to Overlay
         </h3>
-        <ul className="mb-5 space-y-1.5 text-xs text-[var(--muted)]">
+        <ul className="mb-5 space-y-1.5 text-xs text-(--muted)">
           <li>
-            💬 <strong className='text-[var(--foreground)]'>Chat</strong> — talk
+            💬 <strong className='text-(--foreground)'>Chat</strong> — talk
             to the best models, or multiple at once
           </li>
           <li>
-            🎨 <strong className='text-[var(--foreground)]'>Generate</strong> —
+            🎨 <strong className='text-(--foreground)'>Generate</strong> —
             images & video with best-in-class models
           </li>
           <li>
-            🧠 <strong className='text-[var(--foreground)]'>Knowledge</strong> —
+            🧠 <strong className='text-(--foreground)'>Knowledge</strong> —
             memories, files, connectors, skills & MCPs
           </li>
         </ul>
         <button
           type="button"
           onClick={onDismiss}
-          className="w-full rounded-md bg-[var(--foreground)] py-2 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-80"
+          className="w-full rounded-md bg-(--foreground) py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-80"
         >
           Get started
         </button>

@@ -110,8 +110,8 @@ export function ChatComposer(props: ChatComposerProps) {
       >
         <ChatEmptyHero visible={viewProps.showCenteredEmptyChat} greetingLine={viewProps.greetingLine} />
         <div
-          className={`mx-auto w-full min-w-0 shrink-0 transition-[max-width] duration-[780ms] ease-[cubic-bezier(0.16,1,0.3,1)] max-md:order-3 ${
-            viewProps.showCenteredEmptyChat ? 'max-w-[36rem]' : 'max-w-[56rem]'
+          className={`mx-auto w-full min-w-0 shrink-0 transition-[max-width] duration-780 ease-[cubic-bezier(0.16,1,0.3,1)] max-md:order-3 ${
+            viewProps.showCenteredEmptyChat ? 'max-w-xl' : 'max-w-4xl'
           }`}
         >
           {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? null : null}
@@ -124,7 +124,7 @@ export function ChatComposer(props: ChatComposerProps) {
             <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
           {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? (
-            <p className="mt-2 text-center text-[11px] text-[var(--muted-light)]">
+            <p className="mt-2 text-center text-[11px] text-(--muted-light)">
               Overlay can make mistakes. Check important info.
             </p>
           ) : null}
@@ -155,7 +155,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   }
 
   return (
-    <div className="overflow-visible rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
+    <div className="overflow-visible rounded-2xl border border-(--border) bg-(--surface-elevated) shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,color] duration-300">
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <div className="relative p-2.5 sm:p-3">
         {slash.open ? (
@@ -236,7 +236,7 @@ function ComposerControls(props: ComposerControlsProps) {
     }`}>
       <AttachMenu {...props} />
       <DelayedTooltip label={mentionTooltip} side="top">
-        <button type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" aria-label="Insert mention">
+        <button type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
         </button>
       </DelayedTooltip>
@@ -248,14 +248,14 @@ function ComposerControls(props: ComposerControlsProps) {
               if (!props.hasComposerText) props.onInputChange('/')
               props.textareaRef.current?.focus()
             }}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label="Agent slash commands"
           >
             <Slash size={16} strokeWidth={1.75} />
           </button>
         </DelayedTooltip>
       ) : null}
-      <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-none [&::-webkit-scrollbar]:hidden">
         {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
@@ -286,9 +286,9 @@ function ComposerControls(props: ComposerControlsProps) {
           <button
             type="button"
             onClick={() => void props.onStop()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80"
           >
-            <div className="h-3.5 w-3.5 rounded-sm bg-current" />
+            <div className="h-3.5 w-3.5 rounded-xs bg-current" />
           </button>
         </DelayedTooltip>
       ) : (
@@ -298,7 +298,7 @@ function ComposerControls(props: ComposerControlsProps) {
             aria-label="Send message"
             onClick={() => void props.onSend()}
             disabled={props.disabledSend}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-colors hover:opacity-80 disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40"
           >
             <Send size={17} strokeWidth={1.75} />
           </button>
@@ -348,12 +348,12 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
       <DelayedTooltip label="Attach files or choose tools" side="top">
-        <button type="button" onClick={handleToggle} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]" aria-label="Open attachment and tools menu">
+        <button type="button" onClick={handleToggle} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Open attachment and tools menu">
           <Plus size={18} strokeWidth={1.75} />
         </button>
       </DelayedTooltip>
       {props.showAttachMenu && (
-        <div className={`absolute left-0 z-20 w-64 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+        <div className={`absolute left-0 z-20 w-64 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
           {props.capabilities.files && (
             <AttachMenuButton
               onClick={() => {
@@ -383,11 +383,11 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               />
             )
           })}
-          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-[var(--foreground)]" />} label="Generate images" />
-          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-[var(--foreground)]" />} label="Generate videos" />
+          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-(--foreground)" />} label="Generate images" />
+          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-(--foreground)" />} label="Generate videos" />
           {props.capabilities.memory && props.capabilities.vectorSearch && (
             <>
-              <div className="my-1 border-t border-[var(--border)]" />
+              <div className="my-1 border-t border-(--border)" />
               <AttachMenuButton
                 active={props.memoryEnabled}
                 onClick={() => {
@@ -441,21 +441,21 @@ function AttachMenuButton({
   neutralWhenActive?: boolean
 }) {
   const activeClass = active && !neutralWhenActive
-    ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-    : 'text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]'
+    ? 'bg-(--surface-muted) text-(--foreground)'
+    : 'text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)'
 
   return (
     <button type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors ${disabled ? 'cursor-not-allowed text-[#bbb]' : activeClass}`}>
       {icon}
       <span>{label}</span>
       {showSwitch ? (
-        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-[var(--muted)]' : 'bg-[var(--border)]'}`}>
-          <span className={`h-3 w-3 rounded-full bg-[var(--surface-elevated)] transition-transform ${active ? 'translate-x-3' : ''}`} />
+        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-(--muted)' : 'bg-(--border)'}`}>
+          <span className={`h-3 w-3 rounded-full bg-(--surface-elevated) transition-transform ${active ? 'translate-x-3' : ''}`} />
         </span>
       ) : checked ? (
-        <Check size={11} strokeWidth={1.8} className="ml-auto shrink-0 text-[var(--foreground)]" />
+        <Check size={11} strokeWidth={1.8} className="ml-auto shrink-0 text-(--foreground)" />
       ) : suffix ? (
-        <span className="ml-auto max-w-[6.75rem] truncate text-[10px] text-[var(--muted-light)]">{suffix}</span>
+        <span className="ml-auto max-w-27 truncate text-[10px] text-(--muted-light)">{suffix}</span>
       ) : null}
     </button>
   )
@@ -471,11 +471,11 @@ function ToolRequestChip({
   onClear: () => void
 }) {
   return (
-    <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2 text-xs font-medium text-[var(--foreground)]">
+    <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-subtle) px-2 text-xs font-medium text-(--foreground)">
       <button
         type="button"
         onClick={onClear}
-        className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--foreground)]"
+        className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
         aria-label={`Remove ${label}`}
       >
         <Icon size={11} strokeWidth={1.75} className="absolute opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0" />
@@ -488,7 +488,7 @@ function ToolRequestChip({
 
 function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: () => void }) {
   return (
-    <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-[var(--foreground)] px-2 text-xs font-medium text-[var(--background)]">
+    <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-(--foreground) px-2 text-xs font-medium text-(--background)">
       <button
         type="button"
         onClick={onClear}

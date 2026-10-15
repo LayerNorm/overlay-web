@@ -29,6 +29,8 @@ export function buildChatExperienceViewProps(
       onRightPanelResize: shell.shellRightPanelResize,
     },
     main: {
+      activeChatId: c.activeChatId,
+      activeChatHydrated: c.activeChatHydrated,
       activeChatDeleting: c.activeChatDeleting,
       isDragging: c.isDragging,
       dragHandlers: {
@@ -127,7 +129,7 @@ export function buildChatExperienceViewProps(
                   type="button"
                   aria-label="Jump to latest message"
                   onClick={() => c.scrollToConversationBottom('smooth')}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--muted)] shadow-sm transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) shadow-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 >
                   <ChevronDown size={17} strokeWidth={1.9} />
                 </button>
@@ -216,7 +218,7 @@ export function buildChatExperienceViewProps(
               isActiveLoading: c.isActiveLoading,
               isTemporaryChat: c.isTemporaryChat,
               blockedComposerContent: c.isBudgetExhaustedPaid ? null : (
-                <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--muted)]">
+                <div className="flex items-center gap-2 rounded-2xl border border-(--border) bg-(--background) px-4 py-3 text-xs text-(--muted)">
                   This model requires a paid plan. Switch to Auto or upgrade.
                 </div>
               ),

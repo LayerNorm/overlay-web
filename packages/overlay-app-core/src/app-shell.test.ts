@@ -39,12 +39,13 @@ test('resolveOverlayAppShellConfig merges registry overrides by id', () => {
   assert.equal(shell.sidebarActions.find((item) => item.id === 'admin.invite')?.routePatterns[0], '/app/admin')
 })
 
-test('agents are the default home and lead the primary navigation', () => {
+test('Work is the default home and first primary navigation item, followed by Agents', () => {
   const shell = resolveOverlayAppShellConfig()
 
-  assert.equal(shell.brand.homeHref, '/app/agents')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'agents')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'chat')
+  assert.equal(shell.brand.homeHref, '/app/work')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'work')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'agents')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[2]?.id, 'chat')
 })
 
 test('resolveOverlayAppShellConfig filters disabled feature registries', () => {
@@ -66,4 +67,15 @@ test('sidebar registries resolve feature modules and actions from routes', () =>
   assert.equal(resolveSidebarActionForPath('/app/settings', shell.sidebarActions), null)
   assert.equal(DEFAULT_OVERLAY_SETTINGS_SECTIONS.find((item) => item.id === 'agent-environments')?.label, 'Environments')
   assert.equal(DEFAULT_OVERLAY_SETTINGS_PANELS.find((item) => item.id === 'agent-environments')?.label, 'Environments')
+})
+
+test('Work leads the navigation and appears only when the work capability is on', () => {
+  const on = resolveOverlayAppShellConfig(undefined, { capabilities: { work: true } })
+  assert.equal(on.navigation[0]?.id, 'work')
+  const work = on.navigation.find((item) => item.id === 'work')
+  assert.equal(work?.href, '/app/work')
+  assert.deepEqual(work?.subviews, ['list', 'board', 'timeline'])
+  // Off by default: the flag keeps it out of the sidebar, the mobile drawer, and the Alt+N shortcuts.
+  const off = resolveOverlayAppShellConfig()
+  assert.equal(off.navigation.some((item) => item.id === 'work'), false)
 })

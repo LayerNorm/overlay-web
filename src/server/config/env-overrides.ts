@@ -401,6 +401,7 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     overlayCloudEnvironments: readFeatureBool(env, 'OVERLAY_CLOUD_ENVIRONMENTS'),
     managedHarnessAgents: readFeatureBool(env, 'MANAGED_HARNESS_AGENTS'),
     computers: readFeatureBool(env, 'COMPUTERS'),
+    work: readFeatureBool(env, 'WORK'),
   })
 }
 

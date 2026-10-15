@@ -280,7 +280,7 @@ function AgentEditorFormFooter({
     <>
       {error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null}
       {savedFlash && mode === 'edit'
-        ? <p role="status" className="text-xs text-[var(--muted)]">Saved.</p>
+        ? <p role="status" className="text-xs text-(--muted)">Saved.</p>
         : null}
       {mode === 'new' ? (
         <>
@@ -399,15 +399,15 @@ export function AgentEditorView({
         {loading ? (
           <AgentEditorSkeleton />
         ) : loadFailed || (mode === 'edit' && !agent) ? (
-          <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
-            <p className="text-sm font-medium text-[var(--foreground)]">Agent not found</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">It may have been archived, or you may not have access to it.</p>
+          <div className="mx-auto w-full max-w-2xl rounded-xl border border-(--border) bg-(--surface-elevated) p-8 text-center">
+            <p className="text-sm font-medium text-(--foreground)">Agent not found</p>
+            <p className="mt-1 text-xs leading-5 text-(--muted)">It may have been archived, or you may not have access to it.</p>
             <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : mode === 'new' && !canCreate ? (
-          <div className="mx-auto w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 text-center">
-            <p className="text-sm font-medium text-[var(--foreground)]">You cannot create agents in this workspace</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Guests can chat with agents but cannot create new ones.</p>
+          <div className="mx-auto w-full max-w-2xl rounded-xl border border-(--border) bg-(--surface-elevated) p-8 text-center">
+            <p className="text-sm font-medium text-(--foreground)">You cannot create agents in this workspace</p>
+            <p className="mt-1 text-xs leading-5 text-(--muted)">Guests can chat with agents but cannot create new ones.</p>
             <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : (

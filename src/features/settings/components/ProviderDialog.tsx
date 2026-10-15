@@ -226,26 +226,26 @@ function ProviderPresetSelect({
 }) {
   return (
     <div>
-      <label htmlFor="provider-id" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider</label>
+      <label htmlFor="provider-id" className="mb-1.5 block text-xs font-medium text-(--muted)">Provider</label>
       <div className="relative">
         <select
           id="provider-id"
           value={providerId}
           onChange={(e) => onSelect(e.target.value)}
-          className="h-10 w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-8 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+          className="h-10 w-full appearance-none rounded-lg border border-(--border) bg-(--surface-subtle) px-3 pr-8 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
         >
           {presets.map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
           ))}
         </select>
-        <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+        <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--muted)" />
       </div>
       {docsURL ? (
         <a
           href={docsURL}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-[var(--muted-light)] hover:text-[var(--muted)]"
+          className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-(--muted-light) hover:text-(--muted)"
         >
           <ExternalLink size={10} />
           Provider docs
@@ -264,7 +264,7 @@ function ProviderEndpointField({
 }) {
   return (
     <div>
-      <label htmlFor="provider-endpoint" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+      <label htmlFor="provider-endpoint" className="mb-1.5 block text-xs font-medium text-(--muted)">
         API base URL
       </label>
       <input
@@ -275,9 +275,9 @@ function ProviderEndpointField({
         autoComplete="url"
         spellCheck={false}
         placeholder="https://api.example.com/v1"
-        className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+        className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
       />
-      <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-light)]">
+      <p className="mt-1.5 text-[11px] leading-4 text-(--muted-light)">
         Use an HTTPS OpenAI-compatible base URL. Overlay blocks redirects and private-network addresses before sending your key.
       </p>
     </div>
@@ -301,7 +301,7 @@ function ProviderApiKeyField({
 }) {
   return (
     <div>
-      <label htmlFor="provider-api-key" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+      <label htmlFor="provider-api-key" className="mb-1.5 block text-xs font-medium text-(--muted)">
         API key{optional ? ' (optional)' : ''}
         {isEdit ? ' (leave blank to keep existing)' : ''}
       </label>
@@ -314,13 +314,13 @@ function ProviderApiKeyField({
           autoComplete="off"
           spellCheck={false}
           placeholder={isEdit ? '••••••••' : 'Enter your API key'}
-          className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 pr-10 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+          className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 pr-10 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
         />
         <button
           type="button"
           aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
           onClick={onToggleShow}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted-light)] hover:text-[var(--muted)]"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-(--muted-light) hover:text-(--muted)"
         >
           {showApiKey ? <X size={14} /> : <KeyRound size={14} />}
         </button>
@@ -344,9 +344,9 @@ function ModelToggleList({
       {models.map((model) => (
         <div
           key={model.id}
-          className="flex items-center gap-3 border-b border-[var(--border)] py-1.5 last:border-b-0"
+          className="flex items-center gap-3 border-b border-(--border) py-1.5 last:border-b-0"
         >
-          <span className="min-w-0 flex-1 truncate text-xs text-[var(--foreground)]">{formatByokModelDisplayName(model.id, model.name)}</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-(--foreground)">{formatByokModelDisplayName(model.id, model.name)}</span>
           <Toggle
             checked={enabledModelIdSet.has(model.id)}
             onCheckedChange={() => onToggleModel(model.id)}
@@ -368,7 +368,7 @@ function ConnectionTestResultPanel({
   onToggleModel: (modelId: string) => void
 }) {
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+    <div className="rounded-lg border border-(--border) bg-(--surface-subtle) p-3">
       {testResult.ok ? (
         <>
           <div className="flex items-center gap-2 text-xs font-medium text-green-600 dark:text-green-400">
@@ -377,7 +377,7 @@ function ConnectionTestResultPanel({
           </div>
           {testResult.models.length > 0 ? (
             <div className="mt-2 max-h-40 overflow-y-auto">
-              <p className="mb-1.5 text-[11px] text-[var(--muted)]">Select models to enable:</p>
+              <p className="mb-1.5 text-[11px] text-(--muted)">Select models to enable:</p>
               <ModelToggleList
                 models={testResult.models}
                 enabledModelIds={enabledModelIds}
@@ -407,8 +407,8 @@ function ExistingModelsPanel({
 }) {
   const models = parseDiscoveredModels(connection.discoveredModelsJson)
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-      <p className="mb-2 text-xs font-medium text-[var(--muted)]">
+    <div className="rounded-lg border border-(--border) bg-(--surface-subtle) p-3">
+      <p className="mb-2 text-xs font-medium text-(--muted)">
         {models.length} discovered models
       </p>
       <div className="max-h-32 overflow-y-auto">
@@ -447,7 +447,7 @@ function ProviderDialogFooter({
         type="button"
         onClick={onTest}
         disabled={testing || busy || !canTest}
-        className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-50"
+        className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-(--foreground) transition-opacity hover:opacity-80 disabled:opacity-50"
       >
         {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         Test connection
@@ -456,7 +456,7 @@ function ProviderDialogFooter({
         type="button"
         onClick={onCancel}
         disabled={busy}
-        className="rounded-lg px-3 py-2 text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+        className="rounded-lg px-3 py-2 text-xs font-medium text-(--muted) hover:text-(--foreground) disabled:opacity-50"
       >
         Cancel
       </button>
@@ -464,7 +464,7 @@ function ProviderDialogFooter({
         type="button"
         onClick={onSave}
         disabled={busy || !canSave}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-(--foreground) px-4 py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : null}
         {isEdit ? 'Save changes' : 'Add provider'}
@@ -667,7 +667,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
         ) : null}
 
         <div>
-          <label htmlFor="provider-name" className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Provider name</label>
+          <label htmlFor="provider-name" className="mb-1.5 block text-xs font-medium text-(--muted)">Provider name</label>
           <input
             id="provider-name"
             type="text"
@@ -675,7 +675,7 @@ export function ProviderDialog({ state, busy, onBusyChange, onClose, onSaved }: 
             onChange={(event) => setDisplayName(event.target.value)}
             maxLength={80}
             placeholder={preset?.allowsCustomEndpoint ? 'e.g. OpenCode Zen' : 'e.g. Personal OpenRouter key'}
-            className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+            className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
           />
         </div>
 

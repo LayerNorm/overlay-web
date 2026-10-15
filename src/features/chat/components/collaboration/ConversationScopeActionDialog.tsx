@@ -44,12 +44,12 @@ export function ConversationScopeActionDialog({
           type="button"
           disabled={busy}
           onClick={() => void onSelect('self')}
-          className="flex w-full items-start gap-3 rounded-xl border border-[var(--border)] p-3 text-left transition-colors hover:bg-[var(--surface-subtle)] disabled:opacity-50"
+          className="flex w-full items-start gap-3 rounded-xl border border-(--border) p-3 text-left transition-colors hover:bg-(--surface-subtle) disabled:opacity-50"
         >
-          <UserRound size={16} className="mt-0.5 shrink-0 text-[var(--muted)]" />
+          <UserRound size={16} className="mt-0.5 shrink-0 text-(--muted)" />
           <span>
-            <span className="block text-sm font-medium text-[var(--foreground)]">{verb} only for me</span>
-            <span className="mt-0.5 block text-xs text-[var(--muted)]">
+            <span className="block text-sm font-medium text-(--foreground)">{verb} only for me</span>
+            <span className="mt-0.5 block text-xs text-(--muted)">
               {destructive ? 'Remove it from your workspace view without deleting it for teammates.' : 'Hide it from your workspace view while teammates keep it.'}
             </span>
           </span>
@@ -61,15 +61,15 @@ export function ConversationScopeActionDialog({
           className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
             destructive
               ? 'border-red-500/30 hover:bg-red-500/5'
-              : 'border-[var(--border)] hover:bg-[var(--surface-subtle)]'
+              : 'border-(--border) hover:bg-(--surface-subtle)'
           }`}
         >
-          <UsersRound size={16} className={`mt-0.5 shrink-0 ${destructive ? 'text-red-500' : 'text-[var(--muted)]'}`} />
+          <UsersRound size={16} className={`mt-0.5 shrink-0 ${destructive ? 'text-red-500' : 'text-(--muted)'}`} />
           <span>
-            <span className={`block text-sm font-medium ${destructive ? 'text-red-500' : 'text-[var(--foreground)]'}`}>
+            <span className={`block text-sm font-medium ${destructive ? 'text-red-500' : 'text-(--foreground)'}`}>
               {verb} for everyone
             </span>
-            <span className="mt-0.5 block text-xs text-[var(--muted)]">
+            <span className="mt-0.5 block text-xs text-(--muted)">
               {canApplyToEveryone
                 ? destructive
                   ? 'Delete the conversation and its history for every workspace member.'

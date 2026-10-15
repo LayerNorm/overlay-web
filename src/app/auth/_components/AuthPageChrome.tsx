@@ -12,7 +12,7 @@ function AuthBrandMark({ className = '' }: { className?: string }) {
   return (
     <Link href="/" className={`flex items-center gap-2.5 ${className}`}>
       <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
-      <span className="font-serif text-xl font-medium tracking-tight text-[var(--foreground)]">overlay</span>
+      <span className="font-serif text-xl font-medium tracking-tight text-(--foreground)">overlay</span>
     </Link>
   )
 }
@@ -24,27 +24,27 @@ function AuthBrandMark({ className = '' }: { className?: string }) {
  */
 export function LandingAuthPageChrome({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <aside className="relative hidden w-[45%] flex-col justify-between overflow-hidden border-r border-[var(--border)] bg-[var(--surface-subtle)] px-12 py-12 lg:flex xl:px-16">
+    <div className="flex min-h-screen bg-(--background) text-(--foreground)">
+      <aside className="relative hidden w-[45%] flex-col justify-between overflow-hidden border-r border-(--border) bg-(--surface-subtle) px-12 py-12 lg:flex xl:px-16">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_50%_at_50%_0%,var(--surface-muted),transparent)]"
         />
         <AuthBrandMark className="relative" />
         <div className="relative">
-          <p className="max-w-md font-serif text-3xl leading-snug text-[var(--foreground)] xl:text-4xl">
+          <p className="max-w-md font-serif text-3xl leading-snug text-(--foreground) xl:text-4xl">
             The control plane for your workspace.
           </p>
-          <p className="mt-5 max-w-sm text-sm leading-6 text-[var(--muted)]">
+          <p className="mt-5 max-w-sm text-sm leading-6 text-(--muted)">
             Create, deploy, and manage your agents in one workspace — or bring
             the ones you already trust.
           </p>
         </div>
-        <div className="relative flex items-center gap-5 text-xs text-[var(--muted-light)]">
-          <Link href="/terms" className="transition-colors hover:text-[var(--foreground)]">
+        <div className="relative flex items-center gap-5 text-xs text-(--muted-light)">
+          <Link href="/terms" className="transition-colors hover:text-(--foreground)">
             Terms
           </Link>
-          <Link href="/privacy" className="transition-colors hover:text-[var(--foreground)]">
+          <Link href="/privacy" className="transition-colors hover:text-(--foreground)">
             Privacy
           </Link>
         </div>

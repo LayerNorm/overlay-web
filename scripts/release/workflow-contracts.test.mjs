@@ -1,13 +1,49 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import vm from 'node:vm'
 import test from 'node:test'
 import { parse } from 'yaml'
 
 const workflow = name => parse(readFileSync(new URL(`../../.github/workflows/${name}.yml`, import.meta.url), 'utf8'))
 
+test('CodeQL initialization, analysis and SARIF upload share one pinned version', () => {
+  const uses = ['codeql', 'semgrep'].flatMap(name => Object.values(workflow(name).jobs)
+    .flatMap(job => job.steps ?? []).map(step => step.uses)
+    .filter(use => use?.startsWith('github/codeql-action/')))
+  assert.equal(uses.length, 3)
+  assert.deepEqual(new Set(uses.map(use => use.split('@')[0])), new Set([
+    'github/codeql-action/init', 'github/codeql-action/analyze', 'github/codeql-action/upload-sarif',
+  ]))
+  const pins = uses.map(use => use.split('@')[1])
+  assert.ok(pins.every(pin => /^[a-f0-9]{40}$/.test(pin)))
+  assert.equal(new Set(pins).size, 1, 'mixed action versions cannot share CodeQL configuration')
+  const dependabot = parse(readFileSync(new URL('../../.github/dependabot.yml', import.meta.url), 'utf8'))
+  const actions = dependabot.updates.find(update => update['package-ecosystem'] === 'github-actions')
+  assert.deepEqual(actions.groups['codeql-actions'].patterns, ['github/codeql-action*'])
+})
+
+test('Git automatically deploys only main; preview label changes trigger trusted reconciliation', () => {
+  const config = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'))
+  assert.deepEqual(config.git.deploymentEnabled, { '*': false, main: true })
+  const events = workflow('pr-preview').on.pull_request_target.types
+  for (const event of ['labeled', 'unlabeled', 'synchronize', 'closed']) assert.ok(events.includes(event))
+})
+
+test('new PR revisions cancel obsolete checks without canceling main releases or merge groups', () => {
+  for (const name of ['security', 'docs', 'codeql', 'semgrep']) {
+    const config = workflow(name)
+    assert.equal(config.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}")
+    assert.match(config.concurrency.group, /github\.workflow/)
+    assert.match(config.concurrency.group, /github\.event_name/)
+    assert.match(config.concurrency.group, /github\.event\.pull_request\.number \|\| github\.ref/)
+  }
+  // Deployment controllers must settle remote builds before releasing their locks.
+  assert.equal(workflow('pr-preview').jobs.preview.concurrency['cancel-in-progress'], false)
+})
+
 test('every required workflow reports on merge groups; required PR checks have no paths filter', () => {
-  for (const name of ['security', 'docs', 'gateway-contracts', 'codeql', 'semgrep', 'cla']) {
+  for (const name of ['security', 'docs', 'codeql', 'semgrep', 'cla']) {
     const config = workflow(name)
     assert.deepEqual(config.on.merge_group.types, ['checks_requested'], name)
     assert.equal(config.on.pull_request?.paths, undefined, name)
@@ -17,6 +53,20 @@ test('every required workflow reports on merge groups; required PR checks have n
   const action = review.steps.find(s => s.uses?.startsWith('actions/dependency-review-action@'))
   assert.match(action.with['base-ref'], /merge_group.base_sha/)
   assert.match(action.with['head-ref'], /merge_group.head_sha/)
+  assert.equal(action.if, undefined, 'dependency comparison must run rather than trust an absent repository field')
+  assert.equal(review.steps.some(s => /Skip dependency review/.test(s.name ?? '')), false)
+})
+
+test('unrelated deployment events cannot overwrite required contract checks with skipped results', () => {
+  assert.equal(workflow('security').on.deployment_status, undefined)
+  assert.equal(workflow('security').jobs.contracts.if, '${{ always() }}')
+  assert.equal(workflow('security').jobs.contracts.needs, 'tests')
+  const canary = workflow('paid-gateway-canary')
+  assert.ok(Object.hasOwn(canary.on, 'deployment_status'))
+  assert.match(canary.jobs['paid-gateway-canary'].if, /overlay-landing/)
+  const checkout = canary.jobs['paid-gateway-canary'].steps.find(s => s.uses?.startsWith('actions/checkout@'))
+  assert.equal(checkout.with.ref, 'main', 'canary credentials must never execute a deployment-supplied unreviewed SHA')
+  assert.equal(checkout.with['persist-credentials'], false)
 })
 test('preview management never checks out PR code, installs packages, or interpolates input into shell', () => {
   const config = workflow('pr-preview')
@@ -86,4 +136,58 @@ test('unlinked commits require exact membership in an exempt-author PR', async (
   const associated = [{ number: 123, base: { repo: { full_name: 'LayerNorm/overlay-web' } }, user: { login: 'DevelopedByDev' } }]
   assert.match((await cla({ commits, associated })).errors[0], /unidentified/)
   assert.deepEqual((await cla({ commits, associated, prCommits: commits })).errors, [])
+})
+
+
+test('quality aggregation fails closed for every failed, cancelled, missing or skipped lane', () => {
+  const gate = workflow('security').jobs['dependency-audit']
+  assert.equal(gate.if, '${{ always() }}')
+  const run = (needs, event = 'pull_request') => spawnSync('bash', ['-c', gate.steps[0].run], {
+    env: { ...process.env, NEEDS_JSON: JSON.stringify(needs), EVENT_NAME: event }, encoding: 'utf8',
+  }).status
+  const green = Object.fromEntries(gate.needs.map(name => [name, { result: 'success' }]))
+  assert.equal(run(green), 0)
+  assert.equal(run(green, 'merge_group'), 0)
+  for (const name of gate.needs) {
+    for (const result of ['failure', 'cancelled', 'skipped', '']) {
+      assert.notEqual(run({ ...green, [name]: { result } }), 0, `${name}: ${result}`)
+    }
+    const missing = { ...green }; delete missing[name]
+    assert.notEqual(run(missing), 0, `missing ${name}`)
+  }
+  const push = { ...green, 'dependency-review': { result: 'skipped' } }
+  assert.equal(run(push, 'push'), 0)
+  assert.notEqual(run(push, 'merge_group'), 0)
+})
+
+test('parallel lanes preserve complete test discovery, runtime-specific contracts and generated route checks', () => {
+  const { jobs } = workflow('security')
+  assert.deepEqual(jobs.tests.strategy.matrix.shard, [1, 2])
+  assert.equal(jobs.tests.strategy['fail-fast'], false)
+  assert.ok(jobs.tests.steps.some(s => s.run === 'node scripts/ci/run-all-tests.mjs --verify-shards 2'))
+  assert.ok(jobs.tests.steps.some(s => s.run === 'node scripts/ci/run-all-tests.mjs --shard ${{ matrix.shard }}/2'))
+  assert.ok(!jobs.tests.steps.some(s => /test:(gateway-contracts|route-characterization)/.test(s.run ?? '')), 'contracts run once through discovery')
+  const build = jobs.build.steps.map(s => s.run)
+  assert.ok(build.includes('npm run build'))
+  assert.ok(build.indexOf('npm run build') < build.indexOf('npm run check:on-prem-convex-boundaries'))
+  assert.equal(jobs.build.env.OVERLAY_SKIP_BUILD_TYPECHECK, '1')
+  const types = jobs.static.steps.map(s => s.run)
+  assert.ok(types.includes('npx next typegen'))
+  assert.ok(types.indexOf('npx next typegen') < types.indexOf('npm run typecheck'))
+  assert.ok(types.includes('npm run security:audit'))
+  assert.ok(jobs.build.steps.some(s => s.run === 'npm run check:config && npm run test:release-safety'))
+  assert.equal(workflow('docs').on.push.paths, undefined, 'docs health must still run for every main push')
+})
+
+test('scanner findings stay blocking and publish diagnostics; dependency updates retain their cooldown', () => {
+  const steps = workflow('semgrep').jobs.semgrep.steps
+  const scan = steps.find(step => step.name === 'Run Semgrep')
+  assert.match(scan.run, /--error/)
+  assert.match(scan.run, /--sarif-output semgrep\.sarif/)
+  assert.equal(scan['continue-on-error'], undefined)
+  const upload = steps.find(step => step.name === 'Upload Semgrep results')
+  assert.match(upload.if, /!cancelled\(\)/)
+  assert.match(upload.if, /hashFiles\('semgrep\.sarif'\)/)
+  const dependabot = parse(readFileSync(new URL('../../.github/dependabot.yml', import.meta.url), 'utf8'))
+  for (const update of dependabot.updates) assert.equal(update.cooldown['default-days'], 7)
 })

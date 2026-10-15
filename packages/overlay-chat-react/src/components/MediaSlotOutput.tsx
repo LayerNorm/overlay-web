@@ -80,7 +80,7 @@ function MediaHoverOverlay({
         <a
           href={url}
           download={genType === 'image' ? 'generated.png' : 'generated.mp4'}
-          className="pointer-events-auto shrink-0 rounded-full bg-(--glass-bg) p-1.5 shadow-sm transition-colors hover:bg-(--surface-elevated)"
+          className="pointer-events-auto shrink-0 rounded-full bg-(--glass-bg) p-1.5 shadow-xs transition-colors hover:bg-(--surface-elevated)"
           title="Download"
         >
           <Download size={13} className="text-(--foreground)" />
@@ -93,7 +93,7 @@ function MediaHoverOverlay({
 function VideoPlayBadge({ ready }: { ready: boolean }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-300 ease-out group-hover:opacity-0">
-      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white shadow-sm transition-opacity duration-300 ${
+      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white shadow-xs transition-opacity duration-300 ${
         ready ? 'opacity-100' : 'opacity-0'
       }`}>
         <Play size={16} fill="currentColor" />
@@ -181,7 +181,7 @@ export function MediaSlotOutput({
           }
           {isMulti ? (
             <div className="mx-auto flex max-w-[240px] flex-col items-center gap-2 px-5 text-center">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-elevated) text-red-500 shadow-sm">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--surface-elevated) text-red-500 shadow-xs">
                 <AlertCircle size={18} />
               </span>
               <div className="space-y-1">

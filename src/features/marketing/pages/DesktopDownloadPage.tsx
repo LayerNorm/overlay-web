@@ -100,7 +100,7 @@ function ReleaseDownloadCard({
 }) {
   return (
     <>
-      <p className="text-sm text-[var(--muted)]">
+      <p className="text-sm text-(--muted)">
         Version {release.version}
         {published ? ` · ${published}` : null}
         {release.releaseName ? ` · ${release.releaseName}` : null}
@@ -148,7 +148,7 @@ function DownloadCard({
     <ReleaseDownloadCard release={release} published={published} />
   )
   return (
-    <div className="mt-10 space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-6">
+    <div className="mt-10 space-y-4 rounded-xl border border-(--border) bg-(--surface-subtle) p-6">
       {body}
     </div>
   )

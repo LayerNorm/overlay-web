@@ -1,5 +1,7 @@
 import { memo } from 'react'
 import Link from 'next/link'
+import { Github } from 'lucide-react'
+import { MARKETING_GITHUB_URL } from '@/shared/marketing/marketing'
 import { HeroDemo } from './demo/HeroDemo'
 import { LandingOrb } from './LandingOrb'
 
@@ -8,7 +10,7 @@ import { LandingOrb } from './LandingOrb'
  * The five underlined phrases are invisible here; the rail items sit on top of
  * them at scroll 0 and fly into the rail as you scroll.
  */
-export const LandingHero = memo(function LandingHero() {
+export const LandingHero = memo(function LandingHero({ appHref }: { appHref: string }) {
   return (
     <section className="hero" data-lp="hero">
       <Link className="lockup" data-lp="hero-lockup" href="/home" aria-label="Overlay home">
@@ -27,6 +29,13 @@ export const LandingHero = memo(function LandingHero() {
         <span className="w">for</span>{' '}
         <span className="k" data-k="ai">AI employees</span>
       </h1>
+      <div className="hero-actions" data-lp="hero-actions">
+        <Link className="pill" href={appHref}>Get Started</Link>
+        <a className="gh-link" href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer">
+          <Github className="i" />
+          GitHub
+        </a>
+      </div>
       <HeroDemo />
     </section>
   )

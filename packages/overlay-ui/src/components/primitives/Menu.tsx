@@ -1,43 +1,39 @@
-"use client"
+'use client'
 
 import {
+  createContext,
   forwardRef,
-  useEffect,
-  useLayoutEffect,
+  useContext,
+  useMemo,
   useRef,
-  useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
+  type ReactElement,
   type ReactNode,
   type RefObject,
 } from 'react'
-import { createPortal } from 'react-dom'
 import { cn } from '../../utils/cn'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu'
+import { floatingSurfaceClassName } from '../ui/floating-surface'
 
-export const MenuSurface = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function MenuSurface({ className, ...props }, ref) {
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        'rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg',
-        className,
-      )}
-      {...props}
-    />
-  )
-})
+const ActionMenuContext = createContext(false)
 
-MenuSurface.displayName = 'MenuSurface'
-
-type FloatingMenuPosition = {
-  left: number
-  top: number
-}
+/** Standalone visual surface; semantics belong to its owning dropdown or popover. */
+export const MenuSurface = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  function MenuSurface({ className, ...props }, ref) {
+    return <div ref={ref} className={cn(floatingSurfaceClassName, className)} {...props} />
+  },
+)
 
 /**
- * A dismissible, viewport-positioned menu. Rendering at the document root
- * prevents a menu from being clipped by the sidebar, card, or dialog that
- * owns its trigger.
+ * Existing external-anchor API remains a rich-content popover. Action menus
+ * opt into a real Radix trigger so keyboard opening and typeahead are owned by Radix.
  */
 export function FloatingMenu({
   anchorRef,
@@ -47,6 +43,8 @@ export function FloatingMenu({
   onOpenChange,
   side = 'bottom',
   align = 'start',
+  trigger,
+  kind = 'popover',
   ...props
 }: {
   anchorRef: RefObject<HTMLElement | null>
@@ -56,84 +54,69 @@ export function FloatingMenu({
   onOpenChange: (open: boolean) => void
   side?: 'top' | 'bottom'
   align?: 'start' | 'end'
+  trigger?: ReactElement
+  kind?: 'menu' | 'popover'
 } & Omit<HTMLAttributes<HTMLDivElement>, 'children'>) {
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<FloatingMenuPosition | null>(null)
+  const outsideInteraction = useRef(false)
+  const virtualRef = useMemo(
+    () => ({
+      current: {
+        getBoundingClientRect: () => anchorRef.current?.getBoundingClientRect() ?? new DOMRect(),
+        get contextElement() {
+          return anchorRef.current ?? undefined
+        },
+      },
+    }),
+    [anchorRef],
+  )
 
-  useLayoutEffect(() => {
-    if (!open) return
+  if (kind === 'menu' && trigger) {
+    return (
+      <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
+        <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+        <DropdownMenuContent side={side} align={align} className={className} {...props}>
+          <ActionMenuContext.Provider value>{children}</ActionMenuContext.Provider>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
 
-    function updatePosition() {
-      const anchor = anchorRef.current
-      const menu = menuRef.current
-      if (!anchor || !menu) return
-
-      const anchorRect = anchor.getBoundingClientRect()
-      const menuRect = menu.getBoundingClientRect()
-      const gap = 6
-      const padding = 8
-      const roomAbove = anchorRect.top - padding
-      const roomBelow = window.innerHeight - anchorRect.bottom - padding
-      const preferredHeight = menuRect.height || 1
-      const opensUpward = side === 'top'
-        ? roomAbove >= preferredHeight || roomAbove >= roomBelow
-        : roomBelow < preferredHeight && roomAbove > roomBelow
-      const top = opensUpward
-        ? Math.max(padding, anchorRect.top - preferredHeight - gap)
-        : Math.min(window.innerHeight - preferredHeight - padding, anchorRect.bottom + gap)
-      const desiredLeft = align === 'end'
-        ? anchorRect.right - menuRect.width
-        : anchorRect.left
-      const left = Math.min(
-        Math.max(padding, desiredLeft),
-        Math.max(padding, window.innerWidth - menuRect.width - padding),
-      )
-      setPosition({ left, top })
-    }
-
-    updatePosition()
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    return () => {
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-    }
-  }, [align, anchorRef, open, side])
-
-  useEffect(() => {
-    if (!open) return
-    function dismissWhenOutside(event: PointerEvent) {
-      const target = event.target as Node
-      if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) return
-      onOpenChange(false)
-    }
-    function dismissOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') onOpenChange(false)
-    }
-    document.addEventListener('pointerdown', dismissWhenOutside, true)
-    document.addEventListener('keydown', dismissOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', dismissWhenOutside, true)
-      document.removeEventListener('keydown', dismissOnEscape)
-    }
-  }, [anchorRef, onOpenChange, open])
-
-  if (!open || typeof document === 'undefined') return null
-
-  return createPortal(
-    <MenuSurface
-      ref={menuRef}
-      className={cn('overlay-pop-in fixed z-[10090]', className)}
-      style={{
-        left: position?.left ?? -10_000,
-        top: position?.top ?? -10_000,
-        visibility: position ? 'visible' : 'hidden',
-      }}
-      {...props}
-    >
-      {children}
-    </MenuSurface>,
-    document.body,
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      {trigger ? (
+        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      ) : (
+        <PopoverAnchor virtualRef={virtualRef} />
+      )}
+      <PopoverContent
+        side={side}
+        align={align}
+        className={className}
+        onOpenAutoFocus={() => {
+          outsideInteraction.current = false
+        }}
+        onInteractOutside={(event) => {
+          if (!trigger && anchorRef.current?.contains(event.target as Node)) event.preventDefault()
+          else outsideInteraction.current = true
+        }}
+        onCloseAutoFocus={
+          trigger
+            ? undefined
+            : (event) => {
+                event.preventDefault()
+                if (outsideInteraction.current) return
+                const anchor = anchorRef.current
+                const control = anchor?.matches('button, a, [tabindex]')
+                  ? anchor
+                  : anchor?.querySelector<HTMLElement>('button, a, [tabindex]')
+                control?.focus()
+              }
+        }
+        {...props}
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -142,14 +125,22 @@ export function MenuItem({
   className,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
+  const actionMenu = useContext(ActionMenuContext)
+  const button = (
     <button
       type={type}
       className={cn(
-        'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:text-[var(--muted-light)]',
+        'flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) disabled:cursor-not-allowed disabled:text-(--muted-light)',
         className,
       )}
       {...props}
     />
+  )
+  return actionMenu ? (
+    <DropdownMenuItem asChild disabled={props.disabled}>
+      {button}
+    </DropdownMenuItem>
+  ) : (
+    button
   )
 }

@@ -9,7 +9,7 @@ import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForUser } 
 import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
 import { usageCountSubject } from '../../src/shared/billing/free-allowance'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
-import { ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
+import { canceledPlanCreditPatch, ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
 
 const usageReconciliationQueueItemValidator = v.object({
   createdAt: v.number(),
@@ -1133,12 +1133,15 @@ export async function finalizeWorkspaceLedger(
   const topUpCharge = Math.max(0, args.actualMicros - allowanceCharge)
   if (topUpCharge > args.balance.topUpBalanceMicros) throw new Error('workspace_billing_allocation_invalid')
   const now = Date.now()
+  const reservedMicros = Math.max(0, args.balance.reservedMicros - args.reservedMicros)
+  const usedMicros = args.balance.usedMicros + args.actualMicros
   await ctx.db.patch(args.balance._id, {
+    ...await canceledPlanCreditPatch(ctx, args.balance, usedMicros, reservedMicros),
     allowanceUsedMicros: args.balance.allowanceUsedMicros + allowanceCharge,
-    reservedMicros: Math.max(0, args.balance.reservedMicros - args.reservedMicros),
+    reservedMicros,
     topUpBalanceMicros: args.balance.topUpBalanceMicros - topUpCharge,
     updatedAt: now,
-    usedMicros: args.balance.usedMicros + args.actualMicros,
+    usedMicros,
     version: args.balance.version + 1,
   })
   if (args.limit) {
@@ -1160,8 +1163,10 @@ async function releaseWorkspaceLedger(
   },
 ): Promise<void> {
   const now = Date.now()
+  const reservedMicros = Math.max(0, args.balance.reservedMicros - args.reservedMicros)
   await ctx.db.patch(args.balance._id, {
-    reservedMicros: Math.max(0, args.balance.reservedMicros - args.reservedMicros),
+    ...await canceledPlanCreditPatch(ctx, args.balance, args.balance.usedMicros, reservedMicros),
+    reservedMicros,
     updatedAt: now,
     version: args.balance.version + 1,
   })

@@ -42,7 +42,7 @@ export function WorkedForGroup({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-[var(--tool-line-label)] hover:bg-transparent"
+        className="inline-flex h-auto w-fit max-w-full items-stretch gap-2.5 rounded-md px-0 py-1 text-left text-[13px] leading-snug text-(--tool-line-label) hover:bg-transparent"
       >
         <ToolLogoColumn connectTop={false} connectBottom={false} />
         <span className="inline-flex min-w-0 items-center gap-1">
@@ -50,7 +50,7 @@ export function WorkedForGroup({
           <ChevronDown
             size={14}
             strokeWidth={1.75}
-            className={`shrink-0 text-[var(--tool-line-chevron)] transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+            className={`shrink-0 text-(--tool-line-chevron) transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
             aria-hidden
           />
         </span>

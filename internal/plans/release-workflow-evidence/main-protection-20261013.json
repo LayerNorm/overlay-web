@@ -1,0 +1,24 @@
+{
+  "mainRuleset": 21959970,
+  "historyRuleset": 16007495,
+  "legacyClassicProtectionRetired": true,
+  "requiredContexts": [
+    "Analyze JavaScript and TypeScript (javascript-typescript)",
+    "Docs Check",
+    "Schema and Routing Contracts",
+    "Secret Scan",
+    "Semgrep SAST",
+    "Guard Public Env Names",
+    "Dependency Review",
+    "Required Quality and Security Gates",
+    "CLA Signatures"
+  ],
+  "checkProducer": "github-actions (15368)",
+  "conversationResolutionRequired": true,
+  "approvingReviews": 0,
+  "queueRequired": true,
+  "forcePushAndDeletionBlockedForEveryone": true,
+  "ownerEmergencyBypassPreserved": true,
+  "queueMergeAcceptancePending": false,
+  "acceptedQueueMerge": "6bb3e0d8294a955030e3c6b2f7ba7d353f6475d7"
+}

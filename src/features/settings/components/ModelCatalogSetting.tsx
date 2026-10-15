@@ -75,7 +75,7 @@ function ModelCatalogControls({
         type="button"
         disabled={disabled || !hasUsagePricing}
         onClick={() => onChange(model.type === 'image' ? { defaultImageModelId: model.id } : { defaultVideoModelId: model.id })}
-        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${mediaDefault ? 'border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]' : 'border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)] hover:text-[var(--foreground)]'}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${mediaDefault ? 'border-(--foreground) bg-(--foreground) text-(--background)' : 'border-(--border) bg-(--surface-subtle) text-(--muted) hover:text-(--foreground)'}`}
       >
         {mediaDefault ? <Check size={12} /> : null}
         {mediaDefault ? 'Default' : 'Set default'}
@@ -88,10 +88,10 @@ function ModelCatalogControls({
     <>
       {isEnabled ? (
         <div className="flex items-center gap-1">
-          <button type="button" aria-label={`Move ${model.name} up`} disabled={disabled} onClick={() => onMove(model.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40">
+          <button type="button" aria-label={`Move ${model.name} up`} disabled={disabled} onClick={() => onMove(model.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-40">
             <ChevronUp size={14} />
           </button>
-          <button type="button" aria-label={`Move ${model.name} down`} disabled={disabled} onClick={() => onMove(model.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] hover:bg-[var(--surface-subtle)] disabled:opacity-40">
+          <button type="button" aria-label={`Move ${model.name} down`} disabled={disabled} onClick={() => onMove(model.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-40">
             <ChevronDown size={14} />
           </button>
         </div>
@@ -117,17 +117,17 @@ function ModelCatalogTags({
   return (
     <>
       {language && model.tags.includes('vision') ? (
-        <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-[#f0f0f0] text-zinc-700">
           <ScanEye size={11} strokeWidth={1.6} />
         </span>
       ) : null}
       {language && model.tags.includes('reasoning') ? (
-        <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#f0f0f0] text-zinc-700">
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-[#f0f0f0] text-zinc-700">
           <Sparkles size={11} strokeWidth={1.6} />
         </span>
       ) : null}
       {!language ? <span>{formatMediaPrice(model)}</span> : byok ? (
-        <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">
+        <span className="inline-flex items-center gap-1 rounded-sm bg-(--surface-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--muted)">
           <KeyRound size={10} /> BYOK
         </span>
       ) : null}
@@ -149,7 +149,7 @@ function ModelCatalogPricingLine({
   curated: boolean
 }) {
   return (
-    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
+    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-(--muted)">
       <span className="capitalize">{model.provider}</span><span>·</span>
       {byok ? <span>Billed directly by provider</span> : hasUsagePricing && language ? (
         <><span>{formatPrice(model.inputPricePerMillion)} in</span><span>·</span><span>{formatPrice(model.outputPricePerMillion)} out</span></>
@@ -190,10 +190,10 @@ function ModelCatalogRow({
     : model.type === 'video' && defaultVideoModelId === model.id
 
   return (
-    <div className={`flex items-center gap-4 px-4 py-3 transition-colors ${hasUsagePricing || byok ? 'hover:bg-[var(--surface-muted)]' : 'opacity-55'}`}>
+    <div className={`flex items-center gap-4 px-4 py-3 transition-colors ${hasUsagePricing || byok ? 'hover:bg-(--surface-muted)' : 'opacity-55'}`}>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-medium text-[var(--foreground)]">{model.name}</span>
+          <span className="truncate text-sm font-medium text-(--foreground)">{model.name}</span>
           <ModelCatalogTags model={model} language={language} byok={byok} />
         </div>
         <ModelCatalogPricingLine
@@ -336,8 +336,8 @@ export function ModelCatalogSetting({
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
-        <div className="flex items-center gap-1 border-b border-[var(--border)] p-2">
+      <section className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)">
+        <div className="flex items-center gap-1 border-b border-(--border) p-2">
           {([
             ['language', 'Chat', MessageSquare],
             ['image', 'Image', ImageIcon],
@@ -350,8 +350,8 @@ export function ModelCatalogSetting({
               onClick={() => setCatalogType(value)}
               className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                 catalogType === value
-                  ? 'bg-[var(--surface-muted)] text-[var(--foreground)]'
-                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+                  ? 'bg-(--surface-muted) text-(--foreground)'
+                  : 'text-(--muted) hover:text-(--foreground)'
               }`}
             >
               <Icon size={13} strokeWidth={1.75} />
@@ -359,15 +359,15 @@ export function ModelCatalogSetting({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 border-b border-[var(--border)] p-3">
+        <div className="flex items-center gap-2 border-b border-(--border) p-3">
           <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-light)]" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--muted-light)" />
             <input
               aria-label="Search models or providers"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search models or providers"
-              className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] pl-9 pr-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--muted)]"
+              className="h-10 w-full rounded-lg border border-(--border) bg-(--surface-subtle) pl-9 pr-3 text-sm text-(--foreground) outline-hidden focus:border-(--muted)"
             />
           </div>
           {catalogType === 'language' ? <>
@@ -376,7 +376,7 @@ export function ModelCatalogSetting({
               aria-label="Refresh models"
               disabled={isLoading}
               onClick={() => { void refresh(); void refreshByok() }}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted) hover:text-(--foreground) disabled:opacity-50"
             >
               <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             </button>
@@ -387,20 +387,20 @@ export function ModelCatalogSetting({
                 enabledChatModelIds: [...DEFAULT_CURATED_CHAT_MODEL_IDS],
                 modelOrder: [],
               })}
-              className="hidden h-10 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] px-3 text-xs text-[var(--foreground)] sm:block"
+              className="hidden h-10 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 text-xs text-(--foreground) sm:block"
             >
               Reset defaults
             </button>
           </> : null}
         </div>
-        <div className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--muted)]">
+        <div className="border-b border-(--border) px-4 py-2 text-xs text-(--muted)">
           {catalogType === 'language'
             ? `${effectiveIds.length} enabled · ${filtered.length} available chat models`
             : `${filtered.length} priced ${catalogType} models from AI Gateway`}
         </div>
         {error ? <div className="px-4 py-6 text-sm text-red-500">{error}</div> : null}
         {!error ? (
-          <div className="max-h-[34rem] divide-y divide-[var(--border)] overflow-y-auto">
+          <div className="max-h-136 divide-y divide-(--border) overflow-y-auto">
             {filtered.map((model) => (
               <ModelCatalogRow
                 key={model.id}
@@ -416,7 +416,7 @@ export function ModelCatalogSetting({
               />
             ))}
             {!isLoading && filtered.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-[var(--muted)]">No models match your search.</div>
+              <div className="px-4 py-10 text-center text-sm text-(--muted)">No models match your search.</div>
             ) : null}
           </div>
         ) : null}

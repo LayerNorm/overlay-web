@@ -38,9 +38,9 @@ test('opening a section from elsewhere selects nothing on the person behalf', ()
   const html = renderToStaticMarkup(
     <InlineNavChildren items={CHAT_VIEWS} activeId="" onSelect={() => undefined} />,
   )
-  // Only the selected row carries the surface class unprefixed; every row has a
-  // hover: variant of it, so the assertion has to exclude the hover form.
-  const selected = /transition-colors bg-\[var\(--surface-subtle\)\]/
+  // Only the selected row is marked active (every row carries the active styling
+  // as a data-[active=true] variant, so the assertion looks at the attribute).
+  const selected = /data-active="true"/
   assert.doesNotMatch(html, selected)
 
   const onRoute = renderToStaticMarkup(
@@ -48,6 +48,29 @@ test('opening a section from elsewhere selects nothing on the person behalf', ()
   )
   assert.match(onRoute, selected)
   assert.equal(onRoute.match(selected)?.length, 1)
+})
+
+test('an expanded item nests its sub-rows inside the guide-line sub list', () => {
+  const html = renderToStaticMarkup(
+    <InlineNavChildren
+      items={[
+        { id: 'personal', label: 'Personal', expanded: true, children: [{ id: 'personal:list', label: 'List' }] },
+        { id: 'workspace', label: 'Workspace' },
+      ]}
+      activeId="personal"
+      activeChildId="personal:list"
+      onSelect={() => undefined}
+    />,
+  )
+  // The same tree treatment as an agent's threads: a vertical line left of the group.
+  assert.match(html, /data-slot="sidebar-menu-sub"[^>]*border-l/)
+  assert.match(html, /data-slot="sidebar-menu-sub-item"/)
+  assert.match(html, /data-slot="sidebar-menu-sub-button"[^>]*data-active="true"/)
+  assert.ok(
+    html.indexOf('data-slot="sidebar-menu-sub"') > html.indexOf('>Personal<')
+      && html.indexOf('data-slot="sidebar-menu-sub"') < html.indexOf('>Workspace<'),
+    'the sub list sits between the parent row and the next top-level row',
+  )
 })
 
 test('a locked subview is inert rather than a dead link', () => {

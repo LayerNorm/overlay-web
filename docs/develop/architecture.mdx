@@ -14,7 +14,7 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `src/features/**` holds web feature containers and feature-local helpers. Cross-feature imports are banned; shared primitives belong in `@/shared`, `@/contexts`, or `@/hooks` (e.g. the workspace provider, routing helpers, and types that used to sit inside `features/workspaces`).
 - `src/server/workflows/**` holds Vercel Workflow SDK durable orchestration (`automation-run`, `automation-schedule`, `personal-chat-work`, `workspace-agent-turn`). Workflow bodies bundle for the workflow runtime — keep their imports to `"use step"` functions and `@/` alias modules only.
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
-- `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/release/` (hosted build wrappers and trusted PR preview lifecycle control), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` and `scripts/vercel-ignore-build.sh` stay at root — the latter is pinned by the Vercel project ignore-build command.
+- `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/release/` (hosted build wrappers and trusted PR preview lifecycle control), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` stays at root. The retired staging ignore-build script is removed; `overlay-landing` uses native Git deployment and the hosted build wrapper.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 - `packages/overlay-ui/**` holds the shared presentation primitives (buttons, inputs, dialogs,
@@ -38,7 +38,7 @@ publishes the Convex capability set and `src/server/app-data/repositories.ts`
 constructs the Convex repositories every domain service consumes. The bespoke
 Postgres repository layer, Drizzle schema, app-data migrations, and parity
 harness were removed; enterprise self-hosting runs the official
-`convex-backend` binary (see `docs/develop/convex-only-self-hosting.md`).
+`convex-backend` binary (see `internal/develop/convex-only-self-hosting.md`).
 
 Connected-agent persistence goes through the Convex-backed
 `ConnectedAgentRepository`. Environment, binding, command, remote-session,
@@ -93,6 +93,26 @@ only in lifecycle: it is the account's permanent default workspace, cannot be
 archived through workspace lifecycle APIs, and its creating principal remains
 the canonical active owner. Permanent account-deletion erasure is a separate
 audited compliance path.
+
+### Work (tasks, board, timeline)
+
+`work` is a content domain: tasks that appear in a List, a Board and a Timeline, in Personal or Workspace scope.
+Where things live:
+
+- `src/shared/work/` — the isomorphic rules: statuses and limits (`status.ts`), fractional string ranks
+  (`rank.ts`), parent and "blocked by" validation (`graph.ts`) and who may work on a task (`permissions.ts`). Convex
+  and the UI import these, so what the UI previews is what the backend enforces.
+- `convex/work/workItems.ts` and `workItemEvents.ts` — the `workItems` and `workItemEvents` tables. Visibility,
+  move, archive and restore reuse `convex/lib/resourceScope.ts` and `scopeMutations('workItems', 'content')`; the
+  activity log is written by `afterApply` and by each mutation. Helpers are in `convex/lib/workItems.ts`.
+- Editing is wider than for most content: any member can work on a workspace task when the workspace lets members
+  edit workspace content, and the assignee always can. Move between scopes, archive and restore stay with the creator
+  and admins, exactly as for other content.
+- Dependencies (`blockedBy`) are set through `update`, which reads the tasks they lead to and refuses a loop with `checkBlockedBy`
+  (`src/shared/work/graph.ts`); blockers must be active tasks in the same scope. The Timeline draws them with `dependencyArrow`
+  (`src/shared/work/timeline.ts`).
+- The assignee is a workspace principal (a person now, an agent later). Dates are `YYYY-MM-DD` strings so a due date
+  never shifts with timezone.
 
 ## Personal Chat execution lifecycle
 

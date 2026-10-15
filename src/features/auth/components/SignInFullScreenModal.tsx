@@ -39,7 +39,7 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       style={{ opacity: visible ? 1 : 0, transition: 'opacity 200ms ease' }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus. */}
@@ -50,13 +50,13 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
         aria-modal="true"
         aria-labelledby="sign-in-modal-title"
         style={{ transform: visible ? 'scale(1) translateY(0)' : 'scale(0.97) translateY(4px)', transition: 'transform 200ms ease' }}
-        className="relative w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-8 shadow-2xl"
+        className="relative w-full max-w-sm rounded-2xl border border-(--border) bg-(--surface-elevated) p-8 shadow-2xl"
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-4 top-4 text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+          className="absolute right-4 top-4 text-(--muted) transition-colors hover:text-(--foreground)"
         >
           <svg
             width='15'
@@ -75,16 +75,16 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
         <div className="mb-6 text-center">
           <h2
             id="sign-in-modal-title"
-            className='text-xl font-medium text-[var(--foreground)]'
+            className='text-xl font-medium text-(--foreground)'
             style={{ fontFamily: 'var(--font-serif)' }}
           >
             {REASON_TITLES[reason]}
           </h2>
-          <p className="mt-1.5 text-sm text-[var(--muted)]">
+          <p className="mt-1.5 text-sm text-(--muted)">
             By continuing, you agree to our{' '}
             <Link
               href='/terms'
-              className='underline underline-offset-2 hover:text-[var(--foreground)] transition-colors'
+              className='underline underline-offset-2 hover:text-(--foreground) transition-colors'
             >
               terms of service
             </Link>

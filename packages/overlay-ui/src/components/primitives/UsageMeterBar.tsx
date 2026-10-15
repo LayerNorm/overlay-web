@@ -24,9 +24,9 @@ export function UsageMeterBar({
 }: UsageMeterBarProps) {
   const clamped = Math.min(100, Math.max(0, percent))
   const toneClass =
-    tone === 'exhausted' ? 'text-red-500' : tone === 'warning' ? 'text-amber-500' : 'text-[var(--muted-light)]'
+    tone === 'exhausted' ? 'text-red-500' : tone === 'warning' ? 'text-amber-500' : 'text-(--muted-light)'
   const barClass =
-    tone === 'exhausted' ? 'bg-red-400' : tone === 'warning' ? 'bg-amber-400' : 'bg-[var(--foreground)]'
+    tone === 'exhausted' ? 'bg-red-400' : tone === 'warning' ? 'bg-amber-400' : 'bg-(--foreground)'
 
   return (
     <div className={cn('flex flex-col gap-1 text-xs', toneClass, className)}>
@@ -37,7 +37,7 @@ export function UsageMeterBar({
         ) : null}
         {trailingIcon}
       </div>
-      <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
+      <div className="h-1 overflow-hidden rounded-full bg-(--border)">
         <div className={cn('h-full rounded-full transition-all', barClass)} style={{ width: `${clamped}%` }} />
       </div>
     </div>

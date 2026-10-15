@@ -1,7 +1,7 @@
 /**
  * Whether a workspace has only one person in it. The interface follows this: a workspace that is just you has no
  * Personal/Workspace split, no person-to-person messages and no activity feed, and those appear when a second person
- * joins. It is derived, not a setting. See docs/plans/UNIFIED_SCOPES_PLAN.md (5b).
+ * joins. It is derived, not a setting.
  */
 import type { PanelScope } from './panel-scope'
 

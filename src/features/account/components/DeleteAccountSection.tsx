@@ -147,7 +147,7 @@ function DeleteAccountDialog({
     // react-doctor-disable-next-line react-doctor/no-static-element-interactions
     <div
       role="presentation"
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 transition-opacity duration-200 ease-[var(--overlay-ease)] ${
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 transition-opacity duration-200 ease-(--overlay-ease) ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
       onClick={onClose}
@@ -160,7 +160,7 @@ function DeleteAccountDialog({
         aria-modal="true"
         aria-labelledby="delete-account-title"
         onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-[opacity,transform] duration-200 ease-[var(--overlay-ease)] ${
+        className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-[opacity,transform] duration-200 ease-(--overlay-ease) ${
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1'
         } ${
           isLandingDark ? 'border-zinc-800 bg-zinc-950 text-zinc-100' : 'border-zinc-200 bg-white text-zinc-900'
@@ -215,7 +215,7 @@ function DeleteAccountDialog({
           autoComplete="off"
           disabled={submitting}
           placeholder="DELETE"
-          className={`w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors disabled:opacity-50 ${
+          className={`w-full rounded-lg border px-3 py-2 text-sm outline-hidden transition-colors disabled:opacity-50 ${
             isLandingDark
               ? 'border-zinc-700 bg-zinc-900 text-zinc-100 placeholder-zinc-500 focus:border-zinc-500'
               : 'border-zinc-300 bg-white text-zinc-900 placeholder-zinc-400 focus:border-zinc-500'

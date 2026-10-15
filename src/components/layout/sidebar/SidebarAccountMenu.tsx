@@ -30,57 +30,57 @@ export function SidebarAccountMenu({
               <UsageBar entitlements={entitlements} />
             </div>
           </CollapsibleSection>
-          <CollapsibleSection label="Storage" className="border-t border-[var(--border)]">
+          <CollapsibleSection label="Storage" className="border-t border-(--border)">
             <div className="px-3 pb-1">
               <StorageBar entitlements={entitlements} />
             </div>
           </CollapsibleSection>
         </>
       ) : null}
-      <CollapsibleSection label="Apps" className="border-t border-[var(--border)]">
+      <CollapsibleSection label="Apps" className="border-t border-(--border)">
         {PROFILE_APP_LINKS.map(({ label, icon: Icon }) => (
           <button
             key={label}
             type="button"
             disabled
             title={`${label} · Coming soon`}
-            className={`flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted-light)]`}
+            className={`flex w-full cursor-not-allowed items-center justify-between gap-2 px-3 ${itemPaddingClass} text-xs text-(--muted-light)`}
           >
             <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
               <Icon size={13} className="shrink-0" />
               <span className="min-w-0 flex-1 truncate">{label}</span>
             </span>
-            <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-[var(--muted-light)]">Soon</span>
+            <span className="rounded-full border border-(--border) px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-(--muted-light)">Soon</span>
           </button>
         ))}
       </CollapsibleSection>
       {demoHref ? (
-        <div className="border-t border-[var(--border)]">
+        <div className="border-t border-(--border)">
           <Link
             href={demoHref}
             onClick={onAccountClick}
-            className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
+            className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`}
           >
             <Sparkles size={13} />
             Demo
           </Link>
         </div>
       ) : null}
-      <div className="border-t border-[var(--border)]">
+      <div className="border-t border-(--border)">
         <Link
           href="/app/settings"
           onClick={onAccountClick}
-          className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
+          className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`}
         >
           <Settings size={13} />
           Settings
         </Link>
       </div>
-      <div className="border-t border-[var(--border)]">
+      <div className="border-t border-(--border)">
         <button
           type="button"
           onClick={onSignOut}
-          className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-[var(--muted)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]`}
+          className={`flex w-full items-center gap-2 px-3 ${itemPaddingClass} text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`}
         >
           <LogOut size={13} />
           Sign out

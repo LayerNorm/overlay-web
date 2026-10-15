@@ -101,15 +101,15 @@ export function WebhookSettings() {
     <div className="mx-auto w-full max-w-5xl space-y-8 px-5 py-6">
       <section>
         <div className="mb-4">
-          <h2 className="text-sm font-semibold text-[var(--foreground)]">Outbound webhooks</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">
+          <h2 className="text-sm font-semibold text-(--foreground)">Outbound webhooks</h2>
+          <p className="mt-1 text-sm text-(--muted)">
             Deliver signed chat and automation events to an HTTPS endpoint.
           </p>
         </div>
-        <div className="grid gap-3 border-y border-[var(--border)] py-4 md:grid-cols-[1fr_1fr_auto]">
+        <div className="grid gap-3 border-y border-(--border) py-4 md:grid-cols-[1fr_1fr_auto]">
           <input
             aria-label="Webhook URL"
-            className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm outline-none focus:border-[var(--muted)]"
+            className="h-9 min-w-0 rounded-md border border-(--border) bg-(--surface) px-3 text-sm outline-hidden focus:border-(--muted)"
             placeholder="https://example.com/overlay/events"
             type="url"
             value={url}
@@ -117,14 +117,14 @@ export function WebhookSettings() {
           />
           <input
             aria-label="Webhook description"
-            className="h-9 min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm outline-none focus:border-[var(--muted)]"
+            className="h-9 min-w-0 rounded-md border border-(--border) bg-(--surface) px-3 text-sm outline-hidden focus:border-(--muted)"
             placeholder="Production event receiver"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
           <button
             type="button"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[var(--foreground)] px-3 text-sm font-medium text-[var(--background)] disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-(--foreground) px-3 text-sm font-medium text-(--background) disabled:opacity-50"
             disabled={busy || !url.trim() || events.length === 0}
             onClick={() => void createSubscription()}
           >
@@ -132,8 +132,8 @@ export function WebhookSettings() {
           </button>
           <div className="md:col-span-3">
             {WEBHOOK_EVENT_TYPES.map((event) => (
-              <div key={event} className="flex items-center gap-3 border-b border-[var(--border)] py-2 last:border-b-0">
-                <span className="flex-1 text-xs text-[var(--muted)]">{EVENT_LABELS[event]}</span>
+              <div key={event} className="flex items-center gap-3 border-b border-(--border) py-2 last:border-b-0">
+                <span className="flex-1 text-xs text-(--muted)">{EVENT_LABELS[event]}</span>
                 <Toggle
                   checked={events.includes(event)}
                   onCheckedChange={() => toggleEvent(event)}
@@ -146,17 +146,17 @@ export function WebhookSettings() {
       </section>
 
       {secret ? (
-        <section className="border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
-          <h3 className="text-sm font-medium text-[var(--foreground)]">Signing secret</h3>
-          <p className="mt-1 text-xs text-[var(--muted)]">
+        <section className="border border-(--border) bg-(--surface-subtle) p-4">
+          <h3 className="text-sm font-medium text-(--foreground)">Signing secret</h3>
+          <p className="mt-1 text-xs text-(--muted)">
             Store this value now. It will not be shown again.
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <code className="min-w-0 flex-1 overflow-x-auto rounded bg-[var(--surface)] px-3 py-2 text-xs">{secret}</code>
+            <code className="min-w-0 flex-1 overflow-x-auto rounded-sm bg-(--surface) px-3 py-2 text-xs">{secret}</code>
             <button
               type="button"
               aria-label="Copy signing secret"
-              className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--border)]"
+              className="inline-flex size-9 items-center justify-center rounded-md border border-(--border)"
               onClick={() => void copySecret()}
             >
               {copied ? <Check size={15} /> : <Copy size={15} />}
@@ -169,20 +169,20 @@ export function WebhookSettings() {
 
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">Subscriptions</h3>
+          <h3 className="text-sm font-semibold text-(--foreground)">Subscriptions</h3>
           <button
             type="button"
             aria-label="Refresh webhooks"
-            className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] disabled:opacity-50"
+            className="inline-flex size-8 items-center justify-center rounded-md border border-(--border) disabled:opacity-50"
             disabled={busy}
             onClick={() => void load()}
           >
             <RefreshCw size={14} />
           </button>
         </div>
-        <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        <div className="divide-y divide-(--border) border-y border-(--border)">
           {subscriptions.length === 0 ? (
-            <p className="py-6 text-sm text-[var(--muted)]">No webhook subscriptions.</p>
+            <p className="py-6 text-sm text-(--muted)">No webhook subscriptions.</p>
           ) : subscriptions.map((subscription) => (
             <div key={subscription._id} className="py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -191,15 +191,15 @@ export function WebhookSettings() {
                   className="min-w-0 text-left"
                   onClick={() => setSelectedId((current) => current === subscription._id ? null : subscription._id)}
                 >
-                  <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                  <p className="truncate text-sm font-medium text-(--foreground)">
                     {subscription.description || subscription.url}
                   </p>
-                  <p className="mt-1 truncate text-xs text-[var(--muted)]">{subscription.url}</p>
+                  <p className="mt-1 truncate text-xs text-(--muted)">{subscription.url}</p>
                 </button>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs"
+                    className="rounded-md border border-(--border) px-2.5 py-1.5 text-xs"
                     disabled={busy}
                     onClick={() => void mutate(() => overlayAppClient.webhooks.updateResponse({
                       enabled: !subscription.enabled,
@@ -211,7 +211,7 @@ export function WebhookSettings() {
                   <button
                     type="button"
                     aria-label="Rotate signing secret"
-                    className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)]"
+                    className="inline-flex size-8 items-center justify-center rounded-md border border-(--border)"
                     disabled={busy}
                     onClick={() => void mutate(
                       () => overlayAppClient.webhooks.rotateSecretResponse(subscription._id),
@@ -225,7 +225,7 @@ export function WebhookSettings() {
                   <button
                     type="button"
                     aria-label="Delete webhook"
-                    className="inline-flex size-8 items-center justify-center rounded-md border border-[var(--border)] text-red-600 dark:text-red-400"
+                    className="inline-flex size-8 items-center justify-center rounded-md border border-(--border) text-red-600 dark:text-red-400"
                     disabled={busy}
                     onClick={() => void mutate(() => overlayAppClient.webhooks.deleteResponse(subscription._id))}
                   >
@@ -233,7 +233,7 @@ export function WebhookSettings() {
                   </button>
                 </div>
               </div>
-              <p className="mt-2 text-xs text-[var(--muted)]">
+              <p className="mt-2 text-xs text-(--muted)">
                 {subscription.events.map((event) => EVENT_LABELS[event]).join(', ')}
               </p>
               {selectedId === subscription._id ? (
@@ -263,17 +263,17 @@ function DeliveryHistory({
   onRedrive: (deliveryId: string) => void
 }) {
   return (
-    <div className="mt-4 border-t border-[var(--border)] pt-3">
-      <p className="mb-2 text-xs font-medium text-[var(--foreground)]">Recent deliveries</p>
+    <div className="mt-4 border-t border-(--border) pt-3">
+      <p className="mb-2 text-xs font-medium text-(--foreground)">Recent deliveries</p>
       {deliveries.length === 0 ? (
-        <p className="text-xs text-[var(--muted)]">No deliveries yet.</p>
+        <p className="text-xs text-(--muted)">No deliveries yet.</p>
       ) : (
         <div className="space-y-2">
           {deliveries.slice(0, 20).map((delivery) => (
             <div key={delivery._id} className="flex items-center justify-between gap-3 text-xs">
               <div className="min-w-0">
-                <p className="truncate text-[var(--foreground)]">{delivery.eventType}</p>
-                <p className="text-[var(--muted)]">
+                <p className="truncate text-(--foreground)">{delivery.eventType}</p>
+                <p className="text-(--muted)">
                   {delivery.status.replace('_', ' ')} · {delivery.attemptCount} attempt{delivery.attemptCount === 1 ? '' : 's'}
                   {delivery.lastStatusCode ? ` · HTTP ${delivery.lastStatusCode}` : ''}
                 </p>
@@ -281,7 +281,7 @@ function DeliveryHistory({
               {delivery.status === 'dead_letter' ? (
                 <button
                   type="button"
-                  className="shrink-0 rounded-md border border-[var(--border)] px-2.5 py-1.5"
+                  className="shrink-0 rounded-md border border-(--border) px-2.5 py-1.5"
                   disabled={busy}
                   onClick={() => onRedrive(delivery._id)}
                 >
