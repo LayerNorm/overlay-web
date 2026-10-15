@@ -70,7 +70,7 @@ This is the complete route-entry-point inventory for the web app as of 2026-10-1
 
 ## 4. Administration, authorization, and API keys
 
-- `GET, POST, PATCH, DELETE /api/v1/api-keys` — Lists owned API keys, creates a key, rotates a key, or revokes a key; admin-scoped creation is separately authorized and lifecycle/audit events are published. Files: `src/app/api/v1/api-keys/route.ts`; `src/app/api/v1/_utils/bff.ts`; `src/server/auth/api-keys/ApiKeyService.ts`; `src/server/auth/api-keys/crypto.ts`; `src/server/admin/AdministrativeService.ts`; `src/server/admin/AuditService.ts`.
+- `GET, POST, PATCH, DELETE /api/v1/api-keys` — Lists owned API keys, creates a key, rotates a key, or revokes a key; admin-scoped creation is separately authorized and lifecycle/audit events are published. Files: `src/app/api/v1/api-keys/route.ts`; `src/app/api/v1/_utils/bff.ts`; `src/server/auth/api-keys/ApiKeyService.ts`; `src/server/auth/api-keys/crypto.ts`; `src/server/authorization/AuthorizationService.ts`; `src/server/admin/AuditService.ts`.
 
 ## 5. Connected agents, environments, hosts, and remote artifacts
 
