@@ -1,23 +1,22 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
+import { AppBootLoader } from '@/components/layout/AppBootLoader'
 import { RootEntryResolver } from '@/features/showcase/RootEntryResolver'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 
 function RootEntryFallback() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
-      <p role="status" className="text-sm text-(--muted)">
-        Opening Overlay…
-      </p>
-    </main>
-  )
+  return <AppBootLoader />
 }
 
 async function SessionGate() {
   let session: Awaited<ReturnType<typeof getOverlaySession>> = null
+  let sessionResolved = false
   try {
-    session = await getOverlaySession()
+    // Refresh-capable so a resolved-null session below means a confirmed
+    // guest — matching the client resolver's /api/auth/session check.
+    session = await getOverlaySession(undefined, { refresh: true })
+    sessionResolved = true
   } catch {
     // The refresh-capable client resolver below deliberately handles
     // transient provider/configuration failures without treating them as a
@@ -25,6 +24,10 @@ async function SessionGate() {
   }
 
   if (session) redirect(ROOT_APP_DESTINATION)
+  // A resolved empty session is a confirmed guest: send visitors (and
+  // crawlers) to the marketing page with a real redirect instead of a
+  // client-side navigation.
+  if (sessionResolved) redirect('/home')
   return <RootEntryResolver />
 }
 

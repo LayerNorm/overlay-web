@@ -47,7 +47,7 @@ test('selecting a scope row or a sub-row reports the scope and the sub-row', () 
   assert.deepEqual(calls, [['workspace', null], ['workspace', 'notes']])
 })
 
-test('the scope rows and the open sub-rows render in order, with the sub-rows flush under their parent', () => {
+test('the scope rows and the open sub-rows render in order, with the sub-rows nested under the guide line', () => {
   const built = nav('personal', 'all')
   const html = renderToStaticMarkup(
     <InlineNavChildren items={built.items} activeId={built.activeId} activeChildId={built.activeChildId} onSelect={() => undefined} />,
@@ -55,9 +55,13 @@ test('the scope rows and the open sub-rows render in order, with the sub-rows fl
   const order = ['Personal', 'All', 'Notes', 'Workspace'].map((label) => html.indexOf(`>${label}<`))
   assert.ok(order.every((index) => index >= 0), 'every row renders')
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'in the order Personal, its sub-rows, Workspace')
-  // What an expansion reveals lines up with the row that opened it: no left padding on the nested rows.
-  assert.doesNotMatch(html, /\bpl-\d/)
-  assert.doesNotMatch(html, /\bml-\d/)
+  // What an expansion reveals nests inside the guide-line sub list (`SidebarMenuSub`), like an agent's threads.
+  const subList = html.indexOf('data-slot="sidebar-menu-sub"')
+  assert.ok(
+    subList > html.indexOf('>Personal<') && subList < html.indexOf('>All<'),
+    'the sub list opens under Personal and holds its sub-rows',
+  )
+  assert.match(html, /data-slot="sidebar-menu-sub"[^>]*border-l/)
 })
 
 test('a scope row shows an unread badge only while it is collapsed', () => {

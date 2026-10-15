@@ -22,7 +22,11 @@ examples/customer-deployment/
   helm/values.yaml
 ```
 
-Add customer-owned extension packages under `extensions/`, then register them in `overlay.config.ts` through `extendOverlayAppConfig`.
+Add customer-owned extension packages under `extensions/`, then register them in `overlay.config.ts` through `extendOverlayAppConfig`. Extension definitions live in this directory; local React component keys are registered in the application's extension component registry.
+
+## Customization without source edits
+
+For a self-hosted deployment that customizes Overlay without editing package internals, copy the shape of `overlay.config.ts` into the web app's `src/overlay.config.ts` and implement local renderers for any custom `componentKey` values in the web container layer. `examples/enterprise-customization/overlay.config.ts` is a minimal example.
 
 ## Self-hosted Convex backend
 
