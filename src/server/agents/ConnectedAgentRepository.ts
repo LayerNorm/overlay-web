@@ -27,6 +27,7 @@ export type ApplyRemoteEventsResult =
       accepted: true
       acknowledgedSequence: number
       duplicate: boolean
+      stale?: 'stale_attempt' | 'stale_execution' | 'stale_terminal'
       terminal?: {
         agentId: string
         conversationId: string

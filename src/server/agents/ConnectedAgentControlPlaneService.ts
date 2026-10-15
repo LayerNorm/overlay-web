@@ -894,6 +894,17 @@ export class ConnectedAgentControlPlaneService {
       }, batch.runId, 'agent_run')
       return result
     }
+    if (result.stale) {
+      // Events fenced out by the durable lifecycle (dead attempt, superseded boot, or
+      // post-terminal leftovers) are acknowledged so the host drops them instead of
+      // retrying a batch that can never apply.
+      await this.audit('agent_remote_run.stale_events_swallowed', 'service', undefined, {
+        workspaceId: auth.credential.workspaceId, agentId: billingAgentId(session.capabilitySnapshot),
+        environmentId: auth.environment.id, runId: batch.runId, remoteSessionId: session.id,
+        eventCursor: result.acknowledgedSequence, eventCount: batch.events.length, stale: result.stale,
+      }, batch.runId, 'agent_run')
+      return result
+    }
     await this.audit(
       result.terminal ? `agent_remote_run.${result.terminal.outcome}` : 'agent_remote_run.events_applied',
       'service', undefined, {

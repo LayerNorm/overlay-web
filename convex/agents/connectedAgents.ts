@@ -2280,12 +2280,16 @@ export const applyRemoteEventsByServer = mutation({
       await ctx.db.patch(session._id, { eventCursor: last, updatedAt: args.now })
       return { accepted: true, acknowledgedSequence: last, duplicate: false }
     }
-    if (run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId) throw new Error('AGENT_REMOTE_STALE_ATTEMPT')
+    const swallowStaleEvents = async (stale: 'stale_attempt' | 'stale_execution' | 'stale_terminal') => {
+      await ctx.db.patch(session._id, { eventCursor: last, updatedAt: args.now })
+      return { accepted: true as const, acknowledgedSequence: last, duplicate: false, stale }
+    }
+    if (run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId) return swallowStaleEvents('stale_attempt')
     if (run.runner !== 'remote' || run.environmentId !== args.environmentId) throw new Error('AGENT_REMOTE_RUN_NOT_FOUND')
     if (!message) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
     if (['completed', 'failed', 'cancelled'].includes(run.status)) {
       if (!isCompatibleTerminalAcknowledgement(run.status, args.events))
-        throw new Error('AGENT_RUN_TERMINAL')
+        return swallowStaleEvents('stale_terminal')
       await ctx.db.patch(session._id, {
         eventCursor: last,
         updatedAt: args.now,
@@ -2316,7 +2320,7 @@ export const applyRemoteEventsByServer = mutation({
     if (run.remoteLifecycle && args.events.some(event => !event.execution || event.execution.attemptId !== session.sessionId
       || event.execution.generation !== run.remoteLifecycle!.executionGeneration
       || (acceptedBoot && acceptedBoot !== event.execution.hostBootId
-        && !(event.type === 'process_observation' && event.payload.process === 'unknown')))) throw new Error('AGENT_REMOTE_STALE_EXECUTION')
+        && !(event.type === 'process_observation' && event.payload.process === 'unknown')))) return swallowStaleEvents('stale_execution')
     let canonicalRun = run
     const normalizedEvents: AgentRemoteEvent[] = []
     for (const event of args.events as AgentRemoteEvent[]) {

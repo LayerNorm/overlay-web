@@ -194,10 +194,10 @@ describe('Convex remote agent room turns', () => {
     expect(await convex.query(queryRef('listPendingSandboxSettlementsByServer'), {
       serverSecret: secret, limit: 10,
     })).toEqual([])
-    await expect(call('applyRemoteEventsByServer', {
+    expect(await call('applyRemoteEventsByServer', {
       workspaceId, environmentId, sessionId: 'session-remote-turn',
       events: [event(4, 'text_checkpoint', { text: 'must not apply' })], now: now + 102,
-    })).rejects.toThrow(/AGENT_RUN_TERMINAL/)
+    })).toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 4, stale: 'stale_terminal' }))
   })
 
   test('a rejected host command terminates the visible run with a recoverable error', async () => {
@@ -645,13 +645,13 @@ test('durable stale attempts are rejected, double Resume is one operation and ca
   const second = await call('controlRemoteAgentTurnByServer', control)
   expect(first.operationId).toBe(second.operationId)
   expect(second.phase).toBe('recovering')
-  await expect(call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 3,
+  expect(await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 3,
     events: [{ ...event(2, 'completed', { usage: {} }), execution: { attemptId: 'old-attempt', generation: 1 } }],
-  })).rejects.toThrow(/STALE_EXECUTION/)
+  })).toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 2, stale: 'stale_execution' }))
   await call('controlRemoteAgentTurnByServer', { ...control, action: 'cancel', now: now + 4 })
-  await events([event(2, 'completed', { usage: { inputTokens: 9, outputTokens: 4 } })], now + 5)
+  await events([event(3, 'completed', { usage: { inputTokens: 9, outputTokens: 4 } })], now + 5)
   expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelling')
-  await events([event(3, 'cancelled', {})], now + 6)
+  await events([event(4, 'cancelled', {})], now + 6)
   expect((await projectedState(convex, started.messageId)).run?.status).toBe('cancelled')
   expect((await projectedState(convex, started.messageId)).message?.tokens).toEqual({ input: 9, output: 4 })
   const attempts = await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_runId', q => q.eq('runId', 'run-remote-turn')).collect())
@@ -730,11 +730,11 @@ test('native durable-session reattachment can change receiver boot without accep
   await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 2,
     events: [{ ...event(2, 'process_observation', { process: 'live', recoveryOutcome: 'attached_live' }), execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-2' } }],
   })
-  await expect(call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 3,
+  expect(await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 3,
     events: [{ ...event(3, 'completed', { usage: {} }), execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1' } }],
-  })).rejects.toThrow(/STALE_EXECUTION/)
+  })).toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 3, stale: 'stale_execution' }))
   await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 4,
-    events: [{ ...event(3, 'completed', { usage: {} }), execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-2' } }],
+    events: [{ ...event(4, 'completed', { usage: {} }), execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-2' } }],
   })
   expect((await projectedState(convex, started.messageId)).run?.status).toBe('completed')
 })
