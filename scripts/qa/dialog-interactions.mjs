@@ -60,7 +60,7 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   assert.ok(address && typeof address !== 'string')
-  browser = await chromium.launch({ headless: true })
+  browser = await chromium.launch({ headless: true, executablePath: process.env.OVERLAY_QA_BROWSER_EXECUTABLE })
   const page = await browser.newPage()
   const origin = `http://127.0.0.1:${address.port}`
   const errors = []

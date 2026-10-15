@@ -36,7 +36,8 @@ content stacking levels must match so the backdrop cannot cover dialog controls.
 Cancel or close an asynchronous operation early; native Radix Action/Cancel
 closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
-in isolated Chromium (requires the Playwright Chromium browser).
+in isolated Chromium. Use the Playwright browser or set
+`OVERLAY_QA_BROWSER_EXECUTABLE` to an installed compatible Chrome executable.
 
 ## Command palette
 
