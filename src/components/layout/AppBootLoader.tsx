@@ -1,6 +1,6 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { BrandLockup } from '@/components/brand/BrandLockup'
 import { createBootEntranceClaim, createBootLoaderPulseClock } from './boot-loader-pulse'
@@ -22,6 +22,26 @@ const entrance = createBootEntranceClaim()
 export function AppBootLoader({ settled = false }: { settled?: boolean }) {
   const pulseRef = useRef<HTMLDivElement>(null)
   const [playsEntrance] = useState(() => !entrance.wasPlayed())
+  // The wordmark only paints once Libre Baskerville is loaded; until then it
+  // stays hidden (and the reveal is held) so the lockup never flashes a
+  // fallback serif. Capped so a failed font fetch can't hide the word forever.
+  const [fontReady, setFontReady] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    const done = () => {
+      if (live) setFontReady(true)
+    }
+    if (typeof document === 'undefined' || !document.fonts?.load) {
+      done()
+      return
+    }
+    const timeout = new Promise((resolve) => setTimeout(resolve, 1500))
+    Promise.race([document.fonts.load('500 24px "Libre Baskerville"'), timeout]).then(done, done)
+    return () => {
+      live = false
+    }
+  }, [])
 
   useLayoutEffect(() => {
     entrance.markPlayed()
@@ -34,7 +54,7 @@ export function AppBootLoader({ settled = false }: { settled?: boolean }) {
   return (
     <div className="flex h-screen items-center justify-center overflow-hidden bg-background text-foreground">
       <div
-        className={`flex flex-col items-center${settled || !playsEntrance ? ' app-brand-loader--steady' : ''}`}
+        className={`flex flex-col items-center${settled || !playsEntrance ? ' app-brand-loader--steady' : ''}${fontReady ? '' : ' app-brand-loader--fontwait'}`}
       >
         <div ref={pulseRef} className="app-brand-loader-pulse">
           <div className="app-brand-loader" role="status" aria-label="Loading overlay">

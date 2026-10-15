@@ -268,6 +268,13 @@ body {
   animation: none;
 }
 
+/* Font wait: the wordmark stays hidden (and its reveal held) until Libre
+   Baskerville is loaded, so the lockup never flashes a fallback serif. */
+.app-brand-loader--fontwait .brand-lockup-word {
+  visibility: hidden;
+  animation: none;
+}
+
 .app-brand-loader--steady .app-brand-loader-wsline {
   opacity: 1;
 }

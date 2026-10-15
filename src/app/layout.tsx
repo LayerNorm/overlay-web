@@ -85,6 +85,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Fetch the lockup face up front so the boot loader and landing
+            lockup never paint a fallback serif first. */}
+        <link
+          rel="preload"
+          href="/assets/fonts/Libre_Baskerville/static/LibreBaskerville-Regular.ttf"
+          as="font"
+          type="font/ttf"
+          crossOrigin="anonymous"
+        />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="antialiased bg-background text-foreground">
