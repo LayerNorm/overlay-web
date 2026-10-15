@@ -252,7 +252,7 @@ function AdminOverview({
 export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
   const can = (capability: string) => capabilities.includes(capability)
   const permissions: AdminPermissions = {
-    canViewUsage: can('usage.read'),
+    canViewUsage: can('usage.read') || can('support.access'),
     canViewAudit: can('audit.read'),
     canViewRoles: can('roles.read'),
     canManageRoles: can('roles.manage'),

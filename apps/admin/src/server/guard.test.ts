@@ -5,6 +5,7 @@ import { adminRoute } from './guard'
 import { AdministrativeAuthorizationError } from './admin/AdministrativeService'
 import { ADMIN_SESSION_COOKIE, sealPayload } from './session'
 import { adminConvexQuery } from './convex-admin'
+import { GET as readPeople } from '../app/api/v1/admin/usage/route'
 import { POST as createRole } from '../app/api/v1/admin/authorization/roles/route'
 
 process.env.ADMIN_SESSION_SECRET = 'test-session-secret'
@@ -25,6 +26,7 @@ function request(args: { authenticated?: boolean; stale?: boolean; origin?: stri
 
 test('complete route wrapper preserves operator identity for success and denied audit', async () => {
   const previous = globalThis.fetch
+  let operatorRole = 'admin'
   const calls: { path: string; token: string | null }[] = []
   globalThis.fetch = async (_url, init) => {
     const body = JSON.parse(String(init?.body))
@@ -32,7 +34,7 @@ test('complete route wrapper preserves operator identity for success and denied 
     calls.push({ path: body.path, token })
     assert.ok(token)
     return Response.json({ status: 'success', value: body.path.endsWith('getPrincipal')
-      ? { userId: 'user_admin', role: 'admin', createdAt: 1, updatedAt: 1 }
+      ? { userId: 'user_admin', role: operatorRole, createdAt: 1, updatedAt: 1 }
       : body.path.endsWith('appendAudit') ? { ...body.args, eventId: 'review', metadataJson: '{}' } : [] })
   }
   try {
@@ -44,6 +46,12 @@ test('complete route wrapper preserves operator identity for success and denied 
     const denied = adminRoute(() => { throw new AdministrativeAuthorizationError() }, { mutation: true, auditAction: 'review.denied' })
     assert.equal((await denied(request())).status, 403)
     assert.ok(calls.some((call) => call.path.endsWith('appendAudit') && call.token))
+    for (const role of ['admin', 'billing_admin', 'support', 'auditor']) {
+      operatorRole = role
+      const get = new NextRequest('https://admin.example.invalid/api/v1/admin/usage', { headers: request().headers })
+      assert.equal((await readPeople(get)).status, role === 'auditor' ? 403 : 200)
+    }
+    operatorRole = 'admin'
     assert.equal((await createRole(request({ body: 'null' }))).status, 400)
     assert.equal((await createRole(request({ body: '{"capabilities":["invented"],"name":"Invalid"}' }))).status, 400)
   } finally { globalThis.fetch = previous }
