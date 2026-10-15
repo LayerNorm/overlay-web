@@ -2433,6 +2433,7 @@ export default defineSchema({
     revision: v.number(), status: v.string(), operationId: v.optional(v.string()), action: v.optional(v.string()),
     createdAt: v.number(), updatedAt: v.number(),
   }).index('by_intentId', ['intentId'])
+    .index('by_kind_status_updatedAt', ['kind', 'status', 'updatedAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt'])
     .index('by_runId', ['runId']),
 

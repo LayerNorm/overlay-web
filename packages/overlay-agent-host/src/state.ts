@@ -16,6 +16,7 @@ export class SqliteHostStateStore {
     this.database = new DatabaseSync(path)
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;')
     this.database.exec(`
+      CREATE TABLE IF NOT EXISTS command_claims (command_id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS processed_commands (
         command_id TEXT PRIMARY KEY,
         sequence INTEGER NOT NULL,
@@ -97,6 +98,10 @@ export class SqliteHostStateStore {
     }
   }
 
+  claimCommand(commandId: string): boolean {
+    return this.database.prepare('INSERT OR IGNORE INTO command_claims(command_id) VALUES (?)').run(commandId).changes === 1
+  }
+
   commandCursor(): number {
     const row = this.database.prepare("SELECT value FROM host_state WHERE key = 'command_cursor'").get() as { value: number } | undefined
     return Number(row?.value ?? 0)
@@ -121,6 +126,7 @@ export class SqliteHostStateStore {
       )
       this.database.prepare(`INSERT INTO host_state(key, value) VALUES ('command_cursor', ?)
         ON CONFLICT(key) DO UPDATE SET value=MAX(value, excluded.value)`).run(result.sequence)
+      this.database.prepare('DELETE FROM command_claims WHERE command_id = ?').run(commandId)
       this.database.exec('COMMIT')
     } catch (error) {
       this.database.exec('ROLLBACK')

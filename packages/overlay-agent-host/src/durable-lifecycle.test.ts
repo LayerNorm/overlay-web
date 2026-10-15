@@ -92,3 +92,14 @@ test('attempt outboxes have separate cursors and acknowledgement never deletes a
     assert.equal(f.state.pendingEvents(100)[0]?.sourceSequence, 1)
   } finally { await f.cleanup() }
 })
+
+test('a crash after an external command claim consumes the uncertain command without replaying its effect', async () => {
+  const f = await fixture()
+  try {
+    assert.equal(f.state.claimCommand(f.start.commandId), true)
+    await f.create().processCommand(f.start)
+    assert.equal(f.starts(), 0)
+    assert.equal(f.state.getProcessedCommand(f.start.commandId)?.errorCode, 'command_outcome_unknown')
+    assert.equal(f.state.commandCursor(), 1)
+  } finally { await f.cleanup() }
+})

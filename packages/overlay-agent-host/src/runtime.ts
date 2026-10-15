@@ -130,6 +130,12 @@ export class AgentHostRuntime {
       await this.acknowledge(command, false, `expected command sequence ${expectedSequence}`, 'command_sequence_gap')
       throw new Error(`expected command sequence ${expectedSequence}, received ${command.sequence}`)
     }
+    if (!this.options.state.claimCommand(command.commandId)) {
+      const message = 'The previous command outcome is unknown; inspect the current execution instead of replaying it.'
+      this.options.state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: false, errorCode: 'command_outcome_unknown', errorMessage: message })
+      await this.acknowledge(command, false, message, 'command_outcome_unknown')
+      return
+    }
     try {
       await this.dispatch(command)
       this.options.state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: true })

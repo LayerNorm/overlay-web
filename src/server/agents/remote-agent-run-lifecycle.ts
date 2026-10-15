@@ -26,7 +26,10 @@ export async function wakeRemoteRun(input: Coordinator): Promise<void> {
     || !['queued', 'waking'].includes(snapshot.lifecycle.phase) || Date.now() >= snapshot.lifecycle.hardDeadlineAt) return
   const advanced = await lazyConvex.mutation<RemoteRunState>('agents/remoteRuns:advanceByServer', { serverSecret: getInternalApiSecret(), ...input, wake: true, now: Date.now() }, { throwOnError: true })
   if (advanced?.phase !== 'waking') return
-  if (snapshot.environmentKind === 'overlay_cloud') await createCloudAgentMachineService().wake({ workspaceId: snapshot.workspaceId, environmentId: snapshot.environmentId })
+  if (snapshot.environmentKind === 'overlay_cloud') {
+    const outcome = await createCloudAgentMachineService().wake({ workspaceId: snapshot.workspaceId, environmentId: snapshot.environmentId })
+    if (outcome === 'unavailable') throw new Error('remote_machine_unavailable: inspect the machine and the original execution before continuing')
+  }
 }
 
 export async function stopUnreachableRemoteRun(runId: string): Promise<void> {

@@ -130,3 +130,5 @@ benchmarks/memory/sweep-*.ts
 /tests/workflow-runtime/work/
 
 /tests/workflow-runtime/node_modules/
+
+/tests/workflow-runtime/.gitignore

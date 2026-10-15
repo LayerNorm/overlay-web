@@ -20,8 +20,12 @@ export async function dispatchRemoteRunIntents() {
   const finalizations = await lazyConvex.query<Array<Intent & { terminal: RemoteAgentUsageSettlement }>>('agents/connectedAgents:pendingRemoteFinalizationsByServer', { serverSecret: getInternalApiSecret() }, { throwOnError: true })
   let delivered = 0
   for (const intent of finalizations ?? []) {
-    await getOverlayServerContext().connectedAgentControlPlane.finalizeRemoteRunUsage(intent.terminal)
-    await lazyConvex.mutation('agents/remoteRuns:acknowledgeIntentByServer', { serverSecret: getInternalApiSecret(), intentId: intent.intentId, revision: intent.revision, now: Date.now() }, { throwOnError: true })
+    try {
+      await getOverlayServerContext().connectedAgentControlPlane.finalizeRemoteRunUsage(intent.terminal)
+      await lazyConvex.mutation('agents/remoteRuns:acknowledgeIntentByServer', { serverSecret: getInternalApiSecret(), intentId: intent.intentId, revision: intent.revision, now: Date.now() }, { throwOnError: true })
+    } catch (error) {
+      logger.warn('[remote-agent-run] settlement deferred', { runId: intent.runId, intentId: intent.intentId, error })
+    }
   }
   for (const intent of intents ?? []) {
     try {

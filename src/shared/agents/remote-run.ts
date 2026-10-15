@@ -135,6 +135,7 @@ export function reduceRemoteRun(
   } else if (fact.type === 'stopped') {
     attention('execution_stopped')
   } else if (fact.type === 'observe') {
+    if (current.phase === 'needs_attention' && current.cause !== 'process_health_required') return { applied: false, state: current }
     if (current.approval && now >= current.approval.expiresAt) {
       next.phase = 'cancelling'; next.cause = 'approval_expired'
     } else if (['queued', 'waking', 'starting'].includes(current.phase) && now >= current.claimDeadlineAt) {

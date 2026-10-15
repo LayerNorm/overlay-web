@@ -3022,7 +3022,7 @@ export const pendingRemoteFinalizationsByServer = query({
   args: { serverSecret: v.string() }, returns: v.any(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const intents = await ctx.db.query('agentRemoteRunIntents').withIndex('by_status_updatedAt', q => q.eq('status', 'pending')).take(100)
+    const intents = await ctx.db.query('agentRemoteRunIntents').withIndex('by_kind_status_updatedAt', q => q.eq('kind', 'finalize').eq('status', 'pending')).take(100)
     const results = []
     for (const intent of intents) {
       if (intent.kind !== 'finalize') continue

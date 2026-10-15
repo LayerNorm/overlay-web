@@ -40,7 +40,9 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
   if (!result.applied) return result
   await ctx.db.patch(run._id, { remoteLifecycle: result.state, status: remoteRunCoarseStatus(result.state.phase), updatedAt: now })
   const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', result.state.currentAttemptId)).unique()
-  if (attempt) await ctx.db.patch(attempt._id, { status: result.state.phase, updatedAt: now })
+  if (attempt) await ctx.db.patch(attempt._id, { status: result.state.phase,
+    ...(result.state.lastHealthAt !== undefined ? { lastHealthAt: result.state.lastHealthAt, executionLeaseExpiresAt: Math.min(result.state.lastHealthAt + 90_000, result.state.hardDeadlineAt) } : {}),
+    ...(result.state.lastProgressAt !== undefined ? { lastProgressAt: result.state.lastProgressAt } : {}), updatedAt: now })
   const invalidateRequests = result.state.phase === 'cancelling' || result.state.cause === 'approval_context_lost'
   if (attempt && invalidateRequests) {
     const requests = await ctx.db.query('agentApprovalRequests').withIndex('by_workspaceId_runId', q => q.eq('workspaceId', attempt.workspaceId).eq('runId', attempt.runId)).take(100)
