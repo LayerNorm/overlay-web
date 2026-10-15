@@ -8,7 +8,8 @@ import { adminRoute, optionalNumber, optionalString, queryParams } from '@/serve
 export const GET = adminRoute(async (request, context) => {
   const server = getAdminServerContext()
   const query = queryParams(request)
-  if (!await server.administrativeService.canManageBilling(context.operator.user.id)) {
+  if (!await server.administrativeService.canManageBilling(context.operator.user.id)
+    && !await server.administrativeService.canAccessSupportControls(context.operator.user.id)) {
     throw new AdministrativeAuthorizationError()
   }
   const usage = await adminConvexQuery<Array<{ email?: string; userId: string }>>(
