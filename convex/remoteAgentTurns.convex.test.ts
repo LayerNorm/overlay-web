@@ -1,4 +1,4 @@
-import { agentHostCommandSchema } from '@layernorm/overlay-agent-bridge-protocol'
+import { agentHostCommandSchema } from '../packages/overlay-agent-bridge-protocol/src/index'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
