@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Maximize2, PanelRightOpen, X } from 'lucide-react'
-import { cn, useDialogFocus, usePresence } from '@overlay/ui'
+import { cn, Dialog, DialogContent } from '@overlay/ui'
 
 export type AttachmentPreviewMode = 'panel' | 'dialog'
 
@@ -93,45 +93,19 @@ export function AttachmentPreviewDialog({
   onModeChange: (mode: AttachmentPreviewMode) => void
   renderViewer: (props: AttachmentViewerRenderProps) => ReactNode
 }) {
-  const { mounted, visible } = usePresence(open, 300)
-  const dialogRef = useDialogFocus(mounted)
   // Keep the last preview while the exit animation plays (same pattern as DraftReviewModal).
   const [cachedPreview, setCachedPreview] = useState(preview)
   if (preview && preview !== cachedPreview) setCachedPreview(preview)
   const activePreview = preview ?? cachedPreview
-  useEffect(() => {
-    if (!mounted) return undefined
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [mounted, onClose])
-
-  if (!mounted || !activePreview) return null
+  if (!activePreview) return null
 
   return (
-    // Backdrop click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close button.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center bg-(--overlay-scrim) p-4 transition-opacity duration-300 ease-(--overlay-ease)',
-        visible ? 'opacity-100' : 'opacity-0',
-      )}
-      onClick={(event) => { if (event.target === event.currentTarget) onClose() }}
-    >
-      {/* Custom modal keeps portal-free mount + enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-50 bg-(--overlay-scrim) p-4"
         aria-label="Attachment preview"
-        aria-modal="true"
-        className={cn(
-          'flex h-[min(92vh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl transition-[opacity,transform] duration-300 ease-(--overlay-ease)',
-          visible ? 'scale-100 translate-y-0 opacity-100' : 'scale-95 translate-y-1 opacity-0',
-        )}
-        onClick={(event) => event.stopPropagation()}
+        className={cn('flex h-[min(92vh,900px)] w-[calc(100%-2rem)] max-w-5xl gap-0 flex-col overflow-hidden p-0')}
       >
         <div className="flex min-h-0 flex-1 flex-col">
           {renderViewer({
@@ -145,7 +119,7 @@ export function AttachmentPreviewDialog({
             ),
           })}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

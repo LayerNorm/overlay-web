@@ -1,11 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useEffectEvent, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { ExternalLink, PanelRight } from 'lucide-react'
 import type { LinkOpenPreference } from '@overlay/app-core'
 import { safeHttpUrl } from '@/shared/security/safe-url'
-import { useDialogFocus } from '@overlay/ui'
+import { Popover, PopoverAnchor, PopoverContent } from '@overlay/ui'
 
 /**
  * Marks a region whose links participate in the open-in-Overlay flow. Anything
@@ -46,7 +45,6 @@ export function LinkOpenInterceptor({
   onOpenInOverlay: (url: string, title?: string) => void
 }) {
   const [choice, setChoice] = useState<Choice | null>(null)
-  const dialogRef = useDialogFocus(choice !== null)
 
   const close = useCallback(() => setChoice(null), [])
 
@@ -85,7 +83,6 @@ export function LinkOpenInterceptor({
   useEffect(() => {
     document.addEventListener('click', onClick, true)
     return () => document.removeEventListener('click', onClick, true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onClick is a stable useEffectEvent
   }, [])
 
   useEffect(() => {
@@ -106,22 +103,26 @@ export function LinkOpenInterceptor({
 
   if (!choice || typeof document === 'undefined') return null
 
-  const left = Math.min(Math.max(8, choice.x), window.innerWidth - CHOOSER_WIDTH - 8)
-  const top = Math.min(choice.y + 8, window.innerHeight - 132)
-
-  return createPortal(
-    <>
-      {/* Scrim is a pointer-only click catcher; keyboard users dismiss via Escape. */}
-      {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
-      <div className="fixed inset-0 z-450" onMouseDown={close} />
-      {/* Anchored chooser popover — a native <dialog> cannot position at the clicked link. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
+  return (
+    <Popover open onOpenChange={(open) => { if (!open) close() }}>
+      <PopoverAnchor
+        aria-hidden
+        className="fixed size-0"
+        style={{ left: choice.x, top: choice.y }}
+      />
+      <PopoverContent
+        side="bottom"
+        align="start"
+        sideOffset={8}
+        collisionPadding={8}
         aria-label="Open link"
-        style={{ position: 'fixed', top, left, width: CHOOSER_WIDTH, zIndex: 451 }}
-        className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) p-1 shadow-2xl"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          const content = event.currentTarget as HTMLElement | null
+          content?.querySelector('button')?.focus()
+        }}
+        style={{ width: CHOOSER_WIDTH }}
+        className="z-[451] overflow-hidden p-1 shadow-2xl"
       >
         <p
           className='truncate px-2.5 pb-1 pt-1.5 text-[11px] text-(--muted-light)'
@@ -151,8 +152,7 @@ export function LinkOpenInterceptor({
           <ExternalLink size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
           Open in new tab
         </button>
-      </div>
-    </>,
-    document.body,
+      </PopoverContent>
+    </Popover>
   )
 }

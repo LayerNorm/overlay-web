@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useEffectEvent, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   Bot,
   Check,
@@ -16,7 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { useDialogFocus, usePresence } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 import type {
   WorkspaceResourceGrant,
   WorkspaceShareAccessRole,
@@ -91,20 +91,6 @@ export function ShareDialog({
     return () => { current = false }
   }, [activeWorkspaceId, isOpen, resource?.id, resourceType])
 
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === 'Escape') onClose()
-  })
-
-  useEffect(() => {
-    if (!isOpen) return
-    window.addEventListener('keydown', onKey)
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = previous
-    }
-  }, [isOpen])
 
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen)
   if (prevIsOpen !== isOpen) {
@@ -118,9 +104,7 @@ export function ShareDialog({
   const available = useMemo(() => directory.filter((entry) => !grants.some((grant) => (
     grant.targetType === entry.targetType && grant.targetId === entry.id
   ))), [directory, grants])
-  const { mounted, visible } = usePresence(isOpen)
-  const dialogRef = useDialogFocus(mounted)
-  if (!mounted || !resource || !resourceType) return null
+  if (!resource || !resourceType) return null
 
   const shareResource = {
     workspaceId: activeWorkspaceId ?? '',
@@ -245,20 +229,12 @@ export function ShareDialog({
   }
 
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the dialog controls.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className={`fixed inset-0 z-10080 flex items-center justify-center bg-black/55 p-4 transition-opacity duration-150 ${visible ? 'opacity-100' : 'opacity-0'}`}
-      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
-    >
-      {/* Custom modal keeps enter/exit transitions; focus trapped via useDialogFocus, Escape handled. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-10080 bg-black/55 p-4"
         aria-labelledby="share-dialog-title"
-        className={`w-[min(620px,94vw)] overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated) shadow-2xl transition duration-150 ${visible ? 'translate-y-0 scale-100' : 'translate-y-1 scale-[.98]'}`}
+        className="z-10080 block w-[min(620px,94vw)] gap-0 overflow-hidden rounded-2xl p-0"
       >
         <header className="flex items-start justify-between gap-4 border-b border-(--border) px-6 py-5">
           <div className="min-w-0">
@@ -305,8 +281,8 @@ export function ShareDialog({
           onInvite={() => void invite()}
           onCopyLink={() => void copyLink()}
         />
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
