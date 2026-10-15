@@ -21,6 +21,17 @@ test('client modules never import server-only code or the Convex secret module',
   assert.deepEqual(violations, [])
 })
 
+test('ADMIN_API_SECRET is only read inside env.ts', () => {
+  const leaks: string[] = []
+  for (const file of walk(SRC_ROOT)) {
+    if (file.endsWith('env.ts') || file.endsWith('.test.ts')) continue
+    if (readFileSync(file, 'utf8').includes('process.env.ADMIN_API_SECRET')) {
+      leaks.push(path.relative(SRC_ROOT, file))
+    }
+  }
+  assert.deepEqual(leaks, [])
+})
+
 test('every server module opts into server-only', () => {
   const missing: string[] = []
   const serverRoot = path.join(SRC_ROOT, 'server')

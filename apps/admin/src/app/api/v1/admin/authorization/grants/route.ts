@@ -1,4 +1,4 @@
-import type { AuthorizationPrincipalType, ResourceAccessRole } from '@overlay/authz-contracts'
+import { choice } from '@/server/route-values'
 import { NextResponse } from 'next/server'
 
 import { getAdminServerContext } from '@/server/context'
@@ -29,11 +29,11 @@ export const POST = adminRoute(async (request, context) => {
   const grant = await service().upsertResourceGrant(
     authorizationActor(request, context),
     {
-      accessRole: body.accessRole as ResourceAccessRole,
-      principalId: body.principalId as string,
-      principalType: body.principalType as AuthorizationPrincipalType,
-      resourceId: body.resourceId as string,
-      resourceType: body.resourceType as string,
+      accessRole: choice(body.accessRole, ['viewer', 'editor', 'owner']),
+      principalId: requiredString(body.principalId),
+      principalType: choice(body.principalType, ['user', 'group', 'role']),
+      resourceId: requiredString(body.resourceId),
+      resourceType: requiredString(body.resourceType),
     },
   )
   return NextResponse.json({ grant }, { status: 201 })
@@ -43,7 +43,7 @@ export const DELETE = adminRoute(async (request, context) => {
   const body = await parseJson(request)
   const removed = await service().removeResourceGrant(
     authorizationActor(request, context),
-    body.grantId as string,
+    requiredString(body.grantId),
   )
   return NextResponse.json({ removed })
 }, { ...AUDIT('remove'), mutation: true })

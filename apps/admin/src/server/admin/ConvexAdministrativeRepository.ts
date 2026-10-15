@@ -10,7 +10,7 @@ import type {
 export class ConvexAdministrativeRepository implements AdministrativeRepository {
   async get(args: { userId: string }): Promise<AdministrativePrincipal | null> {
     return normalize(await convex.query<AdministrativePrincipal | null>(
-      'admin/administration:getPrincipalByServer',
+      'admin/console:getPrincipal',
       { ...args },
       { throwOnError: true },
     ))
@@ -18,7 +18,7 @@ export class ConvexAdministrativeRepository implements AdministrativeRepository 
 
   async list(): Promise<AdministrativePrincipal[]> {
     const rows = await convex.query<AdministrativePrincipal[]>(
-      'admin/administration:listPrincipalsByServer',
+      'admin/console:listPrincipals',
       {},
       { throwOnError: true },
     ) ?? []
@@ -32,7 +32,7 @@ export class ConvexAdministrativeRepository implements AdministrativeRepository 
     userId: string
   }): Promise<AdministrativePrincipal> {
     const row = await convex.mutation<AdministrativePrincipal | null>(
-      'admin/administration:grantPrincipalByServer',
+      'admin/console:grantPrincipal',
       { ...args },
       { throwOnError: true },
     )
@@ -42,7 +42,7 @@ export class ConvexAdministrativeRepository implements AdministrativeRepository 
 
   async revoke(args: { revokedBy: string; userId: string }): Promise<boolean> {
     const result = await convex.mutation<{ revoked: boolean }>(
-      'admin/administration:revokePrincipalByServer',
+      'admin/console:revokePrincipal',
       { ...args },
       { throwOnError: true },
     )

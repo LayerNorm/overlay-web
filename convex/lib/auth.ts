@@ -1,3 +1,4 @@
+import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { logAuthDebug, summarizeEnvResolutionForLog, summarizeJwtForLog } from './authDebug'
 import { verifyBrowserConvexAccessToken } from './browserConvexToken'
 
@@ -595,4 +596,53 @@ export function requireProviderKeysSecret(secret: string | undefined): void {
   if (!validateProviderKeysSecret(secret)) {
     throw new Error('Unauthorized')
   }
+}
+
+/**
+ * Stage 2 admin-console secret: distinct from INTERNAL_API_SECRET so the web
+ * app's key cannot call the operator surface. Compared in constant time and
+ * fails closed when ADMIN_API_SECRET is unset.
+ */
+export function validateAdminSecret(secret: string | undefined): boolean {
+  const expected = process.env.ADMIN_API_SECRET?.trim()
+  const provided = secret?.trim()
+  if (!expected || !provided) return false
+
+  return constantTimeEqualStrings(expected, provided)
+}
+
+export function requireAdminSecret(secret: string | undefined): void {
+  if (!validateAdminSecret(secret)) {
+    throw new Error('Unauthorized')
+  }
+}
+
+export type AdministrativeRole = 'admin' | 'auditor' | 'billing_admin' | 'support'
+
+type OperatorContext = Pick<QueryCtx | MutationCtx, 'auth' | 'db'>
+
+/**
+ * Operator gate for admin-console functions: the caller's WorkOS identity
+ * (verified by Convex auth against the configured WorkOS JWKS) must map to an
+ * active `administrativePrincipals` row carrying one of `roles`. Returns the
+ * principal so the handler can stamp audit records.
+ */
+export async function requireOperator(
+  ctx: OperatorContext,
+  roles: AdministrativeRole | readonly AdministrativeRole[],
+): Promise<{ role: AdministrativeRole; userId: string }> {
+  const identity = await ctx.auth.getUserIdentity()
+  const userId = identity?.subject
+  if (!userId) {
+    throw new Error('Unauthorized')
+  }
+  const principal = await ctx.db
+    .query('administrativePrincipals')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .unique()
+  const allowed = Array.isArray(roles) ? roles : [roles]
+  if (!principal || principal.revokedAt !== undefined || !allowed.includes(principal.role)) {
+    throw new Error('Unauthorized')
+  }
+  return { role: principal.role, userId }
 }

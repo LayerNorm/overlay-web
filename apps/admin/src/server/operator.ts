@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { AdministrativePrincipal } from './admin/AdministrativeRepository'
-import { adminConvexQuery } from './convex-admin'
+import { adminConvexQuery, runWithOperatorAccessToken } from './convex-admin'
 import { allowedUserIds } from './env'
 import {
   hasRecentSignIn,
@@ -47,7 +47,7 @@ type OperatorDeps = {
 
 async function loadPrincipal(userId: string) {
   return adminConvexQuery<AdministrativePrincipal | null>(
-    'admin/administration:getPrincipalByServer',
+    'admin/console:getPrincipal',
     { userId },
   )
 }
@@ -88,7 +88,9 @@ export async function resolveOperator(
     return { kind: 'denied', reason: 'not_allowlisted' }
   }
 
-  const principal = await getPrincipal(session.user.id).catch(() => null)
+  const principal = await runWithOperatorAccessToken(session.accessToken, async () =>
+    await getPrincipal(session.user.id),
+  ).catch(() => null)
   if (!principal || principal.revokedAt !== undefined) {
     return { kind: 'denied', reason: 'not_operator' }
   }

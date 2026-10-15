@@ -17,7 +17,7 @@ export class ConvexAuditRepository implements AuditRepository {
   }): Promise<AuditEventRecord> {
     const { id, metadata, ...event } = args
     const row = await convex.mutation<ConvexAuditRow>(
-      'admin/administration:appendAuditByServer',
+      'admin/console:appendAudit',
       {
         ...event,
         eventId: id ?? `audit_${randomUUID()}`,
@@ -32,7 +32,7 @@ export class ConvexAuditRepository implements AuditRepository {
 
   async list(args: Parameters<AuditRepository['list']>[0] = {}): Promise<AuditEventRecord[]> {
     const rows = await convex.query<ConvexAuditRow[]>(
-      'admin/administration:listAuditByServer',
+      'admin/console:listAudit',
       { ...args },
       { throwOnError: true },
     ) ?? []

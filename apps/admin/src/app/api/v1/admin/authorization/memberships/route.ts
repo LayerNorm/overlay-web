@@ -24,8 +24,8 @@ export const POST = adminRoute(async (request, context) => {
   const membership = await service().addGroupMember(
     authorizationActor(request, context),
     {
-      groupId: body.groupId as string,
-      userId: body.userId as string,
+      groupId: requiredString(body.groupId),
+      userId: requiredString(body.userId),
     },
   )
   return NextResponse.json({ membership }, { status: 201 })
@@ -36,8 +36,8 @@ export const DELETE = adminRoute(async (request, context) => {
   const removed = await service().removeGroupMember(
     authorizationActor(request, context),
     {
-      groupId: body.groupId as string,
-      userId: body.userId as string,
+      groupId: requiredString(body.groupId),
+      userId: requiredString(body.userId),
     },
   )
   return NextResponse.json({ removed })

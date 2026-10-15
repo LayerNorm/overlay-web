@@ -10,6 +10,9 @@ import {
 
 /** POST keeps the idle window alive and persists refreshed WorkOS tokens. */
 export async function POST(request: NextRequest) {
+  if (request.headers.get('origin') !== request.nextUrl.origin) {
+    return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 })
+  }
   const outcome = await resolveOperator(request.cookies.get(ADMIN_SESSION_COOKIE)?.value)
   if (outcome.kind === 'anonymous') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { AdministrativeAuthorizationError } from './admin/AdministrativeService'
 import { AuthorizationDeniedError } from './authorization/AuthorizationService'
 import { getAdminServerContext } from './context'
+import { runWithOperatorAccessToken } from './convex-admin'
 import { resolveOperator, type OperatorResolution } from './operator'
 import {
   ADMIN_SESSION_COOKIE,
@@ -35,9 +36,12 @@ export function getClientIp(request: NextRequest): string | undefined {
   )
 }
 
-export function parseJson(request: NextRequest): Promise<Record<string, unknown>> {
-  return request.json().catch(() => ({})) as Promise<Record<string, unknown>>
+export async function parseJson(request: NextRequest): Promise<Record<string, unknown>> {
+  const body: unknown = await request.json().catch(() => { throw new AdminValidationError('Invalid JSON') })
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new AdminValidationError('Expected a JSON object')
+  return body as Record<string, unknown>
 }
+
 
 export function queryParams(request: NextRequest): Record<string, string | true> {
   const params: Record<string, string | true> = {}
@@ -87,6 +91,9 @@ export function adminRoute(
   options: { auditAction?: string; mutation?: boolean; resourceType?: string } = {},
 ) {
   return async (request: NextRequest): Promise<Response> => {
+    if (options.mutation && request.headers.get('origin') !== request.nextUrl.origin) {
+      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 })
+    }
     const cookie = request.cookies.get(ADMIN_SESSION_COOKIE)?.value
     const outcome: OperatorResolution = await resolveOperator(cookie)
 
@@ -105,12 +112,14 @@ export function adminRoute(
       operator: { principal: outcome.principal, session: outcome.session, user: outcome.user },
     }
 
-    try {
-      const response = await handler(request, context)
-      return applyRefreshedSession(response, outcome.session, outcome.sessionMutated)
-    } catch (error) {
-      return adminErrorResponse(error, request, context, options)
-    }
+    return runWithOperatorAccessToken(outcome.session.accessToken, async () => {
+      try {
+        const response = await handler(request, context)
+        return applyRefreshedSession(response, outcome.session, outcome.sessionMutated)
+      } catch (error) {
+        return adminErrorResponse(error, request, context, options)
+      }
+    })
   }
 }
 

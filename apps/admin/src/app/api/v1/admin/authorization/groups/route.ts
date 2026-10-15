@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { getAdminServerContext } from '@/server/context'
-import { adminRoute, parseJson, queryParams } from '@/server/guard'
+import { adminRoute, parseJson, queryParams, requiredString, optionalString } from '@/server/guard'
 
 import { authorizationActor } from '../_utils'
 
@@ -24,8 +24,8 @@ export const POST = adminRoute(async (request, context) => {
   const group = await service().createGroup(
     authorizationActor(request, context),
     {
-      description: body.description as string | undefined,
-      name: body.name as string,
+      description: optionalString(body.description),
+      name: requiredString(body.name),
     },
   )
   return NextResponse.json({ group }, { status: 201 })
@@ -36,9 +36,9 @@ export const PATCH = adminRoute(async (request, context) => {
   const group = await service().updateGroup(
     authorizationActor(request, context),
     {
-      description: body.description as string | undefined,
-      groupId: body.groupId as string,
-      name: body.name as string | undefined,
+      description: optionalString(body.description),
+      groupId: requiredString(body.groupId),
+      name: optionalString(body.name),
     },
   )
   return NextResponse.json({ group })
@@ -48,7 +48,7 @@ export const DELETE = adminRoute(async (request, context) => {
   const body = await parseJson(request)
   const archived = await service().archiveGroup(
     authorizationActor(request, context),
-    body.groupId as string,
+    requiredString(body.groupId),
   )
   return NextResponse.json({ archived })
 }, { ...AUDIT('archive'), mutation: true })

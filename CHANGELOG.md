@@ -4,9 +4,15 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a restricted ordinary-member initializer before retiring legacy operator writes, preserving safe web/backend release ordering.
+
+- Preserve operator tokens through denied-action auditing, align billing directory permissions, reject invalid/cross-origin admin mutations, and correct client-scoped WorkOS verification.
+
 - Harden the standalone operator console: fresh WorkOS authentication, safe local redirects, principal-derived operator permissions, preserved architecture boundaries, and mandatory admin CI.
 
 ### Changed
+
+- **Admin console gets its own Convex secret and operator gate (Stage 2).** New `admin/console:*` functions mirror every admin read/write: each runs `requireAdminSecret` (constant-time `ADMIN_API_SECRET` compare, fails closed when unset) plus `requireOperator` — the caller's WorkOS identity via `convex/auth.config.ts` customJwt providers, plus an active `administrativePrincipals` row with a permitted role. Every write records its own `auditEvents` row in the same transaction, and `admin/breakGlass:grantFirstAdmin` recovers access via `npx convex run` when no admin remains. `apps/admin` now sends `ADMIN_API_SECRET` and the operator's access token; production is unaffected until `ADMIN_API_SECRET` is set (the existing `*ByServer` functions keep serving `/app/admin` on `INTERNAL_API_SECRET`).
 
 - Update Vercel Speed Insights to 2.0 and patch the Agent Host Eve dependency to undici 8.10.2, removing the expired security-audit exception.
 

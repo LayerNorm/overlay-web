@@ -234,7 +234,7 @@ export function createConvexAuthorizationRepositories(): AuthorizationRepositori
 
 function query<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
   return convex.query<T>(
-    `admin/authorization:${operation}`,
+    `admin/console:${operation.replace(/ByServer$/, '')}`,
     { ...args },
     { throwOnError: true },
   )
@@ -242,7 +242,7 @@ function query<T>(operation: string, args: Record<string, unknown>): Promise<T |
 
 function mutation<T>(operation: string, args: Record<string, unknown>): Promise<T | null> {
   return convex.mutation<T>(
-    `admin/authorization:${operation}`,
+    `admin/console:${operation.replace(/ByServer$/, '')}`,
     { ...args },
     { throwOnError: true },
   )
