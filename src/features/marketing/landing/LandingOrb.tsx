@@ -1,4 +1,5 @@
 import { OverlayMark } from '@/components/orb/Orb'
+import { BrandLockup } from '@/components/brand/BrandLockup'
 
 /**
  * The Overlay mark, sized in `em` so it follows the font size of its lockup.
@@ -13,12 +14,8 @@ export function LandingOrb() {
   )
 }
 
-/** Orb + serif wordmark, the canonical Overlay lockup. */
+/** Orb + serif wordmark, the canonical Overlay lockup (`lockup` class kept
+ * for landing font-size hooks). */
 export function LandingLockup({ className = '' }: { className?: string }) {
-  return (
-    <span className={`lockup ${className}`.trim()}>
-      <LandingOrb />
-      overlay
-    </span>
-  )
+  return <BrandLockup className={`lockup${className ? ` ${className}` : ''}`} />
 }

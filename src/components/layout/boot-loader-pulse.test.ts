@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBootLoaderPulseClock } from './boot-loader-pulse'
+import { createBootEntranceClaim, createBootLoaderPulseClock } from './boot-loader-pulse'
 
 test('a replacement loader keeps the first pulse origin instead of restarting its delay', () => {
   const synchronize = createBootLoaderPulseClock()
@@ -20,4 +20,11 @@ test('an unresolved first animation starts from the document timeline and retain
   synchronize(replacement, 2000)
   assert.equal(first.startTime, 0)
   assert.equal(replacement.startTime, 0)
+})
+
+test('the brand entrance plays on the first loader only', () => {
+  const entrance = createBootEntranceClaim()
+  assert.equal(entrance.wasPlayed(), false)
+  entrance.markPlayed()
+  assert.equal(entrance.wasPlayed(), true)
 })

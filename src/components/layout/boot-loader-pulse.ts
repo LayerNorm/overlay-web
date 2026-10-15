@@ -6,3 +6,19 @@ export function createBootLoaderPulseClock() {
     animation.startTime = startedAt
   }
 }
+
+/**
+ * The brand entrance (mark fade + word reveal) plays once per app boot: the
+ * first loader to mount claims it, and every later mount renders the settled
+ * screen so the word never re-reveals. Split into a read and a claim so a
+ * component can decide at render time and only mark it played once mounted.
+ */
+export function createBootEntranceClaim() {
+  let played = false
+  return {
+    wasPlayed: () => played,
+    markPlayed: () => {
+      played = true
+    },
+  }
+}

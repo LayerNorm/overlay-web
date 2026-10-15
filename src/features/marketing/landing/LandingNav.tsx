@@ -5,7 +5,7 @@ import { Github, MoonStar, SunMedium } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useLandingTheme } from '@/contexts/LandingThemeContext'
 import { MARKETING_DISCORD_URL, MARKETING_DOCS_URL, MARKETING_GITHUB_URL, getMarketingAppHref } from '@/shared/marketing/marketing'
-import { LandingOrb } from './LandingOrb'
+import { BrandLockup } from '@/components/brand/BrandLockup'
 
 /** Discord's mark (256x199 source), drawn in the current text color like the other nav icons. */
 function DiscordMark() {
@@ -23,8 +23,7 @@ export function LandingNav() {
   return (
     <header className="nav" data-lp="nav">
       <Link className="lockup" data-lp="nav-lockup" href="/home" aria-label="Overlay home">
-        <LandingOrb />
-        overlay
+        <BrandLockup />
       </Link>
       <nav className="nav-links" aria-label="Primary">
         <Link href="/home">Product</Link>
