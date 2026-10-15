@@ -201,7 +201,7 @@ export function IntegrationsDialog({
         showCloseButton={false}
         overlayClassName={overlayClassName}
         aria-labelledby="integrations-dialog-title"
-        className="flex max-h-[80vh] w-full max-w-[680px] gap-0 flex-col overflow-hidden p-0"
+        className="flex max-h-[80vh] w-[calc(100%-2.5rem)] max-w-[680px] gap-0 flex-col overflow-hidden p-0"
       >
         <div className="flex items-center justify-between border-b border-(--border) px-5 py-4">
           <div>

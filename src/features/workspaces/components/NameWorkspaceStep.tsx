@@ -44,7 +44,7 @@ export function NameWorkspaceStep({ onDone }: { onDone: () => void }) {
         onEscapeKeyDown={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
         aria-labelledby="name-workspace-title"
-        className="block w-full max-w-sm gap-0 p-5"
+        className="block w-[calc(100%-2rem)] max-w-sm gap-0 p-5"
       >
         <h3 id="name-workspace-title" className="text-sm font-semibold text-(--foreground)">Name your workspace</h3>
         <p className="mt-1 text-xs leading-5 text-(--muted)">
