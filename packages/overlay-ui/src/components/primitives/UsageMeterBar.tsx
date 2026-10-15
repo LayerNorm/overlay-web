@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { cn } from '../../utils/cn'
+import { Progress } from '../ui/progress'
 
 export type UsageMeterTone = 'default' | 'warning' | 'exhausted'
 
@@ -37,9 +38,7 @@ export function UsageMeterBar({
         ) : null}
         {trailingIcon}
       </div>
-      <div className="h-1 overflow-hidden rounded-full bg-(--border)">
-        <div className={cn('h-full rounded-full transition-all', barClass)} style={{ width: `${clamped}%` }} />
-      </div>
+      <Progress value={clamped} indicatorClassName={cn('transition-all', barClass)} aria-label={typeof primaryLabel === 'string' ? primaryLabel : undefined} />
     </div>
   )
 }

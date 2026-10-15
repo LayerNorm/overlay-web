@@ -1,50 +1,23 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { Toaster, toast } from '@overlay/ui/primitives'
 import { ARCHIVE_TOAST_EVENT, ARCHIVED_SETTINGS_HREF, type ArchiveToastDetail } from '@/shared/app/archive-toast'
 
 const VISIBLE_MS = 8000
+const ARCHIVE_TOAST_ID = 'archive-toast'
 
-/**
- * The note that appears after anything is archived: what was archived, an Undo, and a link to Settings → Archived.
- * Archived items no longer have a row in every sidebar, so this is how a person finds them again straight away.
- */
-export function ArchiveToastHost() {
-  const [toast, setToast] = useState<ArchiveToastDetail | null>(null)
+function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; dismiss: () => void }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const dismiss = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = null
-    setToast(null)
-    setFailed(false)
-  }, [])
-
-  useEffect(() => {
-    function onToast(event: Event) {
-      const detail = (event as CustomEvent<ArchiveToastDetail>).detail
-      if (!detail) return
-      if (timer.current) clearTimeout(timer.current)
-      setFailed(false)
-      setToast(detail)
-      timer.current = setTimeout(dismiss, VISIBLE_MS)
-    }
-    window.addEventListener(ARCHIVE_TOAST_EVENT, onToast)
-    return () => {
-      window.removeEventListener(ARCHIVE_TOAST_EVENT, onToast)
-      if (timer.current) clearTimeout(timer.current)
-    }
-  }, [dismiss])
 
   async function undo() {
-    if (!toast?.undo) return
+    if (!detail.undo) return
     setBusy(true)
     try {
-      await toast.undo()
-      toast.onUndone?.()
+      await detail.undo()
+      detail.onUndone?.()
       dismiss()
     } catch {
       setFailed(true)
@@ -53,16 +26,12 @@ export function ArchiveToastHost() {
     }
   }
 
-  if (!toast) return null
   return (
-    <div
-      role="status"
-      className="fixed bottom-4 left-1/2 z-80 flex max-w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-(--border) bg-(--surface-elevated) px-3.5 py-2 text-xs text-(--foreground) shadow-lg"
-    >
-      <span className="min-w-0 truncate">
-        {failed ? 'Could not undo that.' : (toast.summary ?? `Archived “${toast.name}”`)}
+    <span role="status" className="contents">
+      <span className="min-w-0 flex-1 truncate">
+        {failed ? 'Could not undo that.' : (detail.summary ?? `Archived “${detail.name}”`)}
       </span>
-      {toast.undo && !failed ? (
+      {detail.undo && !failed ? (
         <button type="button" disabled={busy} onClick={() => void undo()} className="shrink-0 font-medium underline-offset-2 hover:underline disabled:opacity-50">
           Undo
         </button>
@@ -70,6 +39,27 @@ export function ArchiveToastHost() {
       <Link href={ARCHIVED_SETTINGS_HREF} onClick={dismiss} className="shrink-0 text-(--muted) underline-offset-2 hover:text-(--foreground) hover:underline">
         View archived
       </Link>
-    </div>
+    </span>
   )
+}
+
+/**
+ * The note that appears after anything is archived: what was archived, an Undo, and a link to Settings → Archived.
+ * Archived items no longer have a row in every sidebar, so this is how a person finds them again straight away.
+ */
+export function ArchiveToastHost() {
+  useEffect(() => {
+    function onToast(event: Event) {
+      const detail = (event as CustomEvent<ArchiveToastDetail>).detail
+      if (!detail) return
+      toast.custom(
+        (id) => <ArchiveToastContent detail={detail} dismiss={() => toast.dismiss(id)} />,
+        { id: ARCHIVE_TOAST_ID, duration: VISIBLE_MS, position: 'bottom-center' },
+      )
+    }
+    window.addEventListener(ARCHIVE_TOAST_EVENT, onToast)
+    return () => window.removeEventListener(ARCHIVE_TOAST_EVENT, onToast)
+  }, [])
+
+  return <Toaster position="bottom-center" offset={16} visibleToasts={1} />
 }
