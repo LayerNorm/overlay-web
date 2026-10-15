@@ -709,10 +709,6 @@ export const controlRemoteAgentTurnByServer = mutation({
           currentAttemptId: newAttemptId,
           executionGeneration: nextGeneration,
           recoveryOutcome: 'requires_new_attempt',
-          // The new attempt's start gets its own claim window; the run's original
-          // queue deadline would otherwise neutralize it as a stale start.
-          // Mirrors CONNECTED_AGENT_INTERACTIVE_QUEUE_MS in workspace-agent-invocation.ts.
-          claimDeadlineAt: now + 2 * 60_000,
         }
         delete nextState.approval
         delete nextState.approvals
@@ -2204,7 +2200,10 @@ export const claimCommandsByServer = mutation({
         neutralized.add(row.commandId)
         legacyLimitations.add(row.commandId)
       }
-      if (run?.remoteLifecycle && row.type === 'start' && args.now >= run.remoteLifecycle.claimDeadlineAt) {
+      // Fresh-attempt starts are user-authorized recovery, not queue leftovers: the
+      // initial start's claim deadline must not neutralize them into a shutdown.
+      const isFreshStart = row.type === 'start' && (row.payload as { fresh?: unknown } | null)?.fresh === true
+      if (run?.remoteLifecycle && row.type === 'start' && !isFreshStart && args.now >= run.remoteLifecycle.claimDeadlineAt) {
         await applyRemoteFact(ctx, run, { type: 'observe' }, args.now)
         neutralized.add(row.commandId)
       }

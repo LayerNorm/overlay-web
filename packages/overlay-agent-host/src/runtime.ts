@@ -240,6 +240,9 @@ export class AgentHostRuntime {
   private acceptExecutionFence(command: AgentHostCommand): void {
     if (!command.execution) return
     if (!this.options.durableLifecycle) throw new Error('remote lifecycle extension was not negotiated')
+    // The server delivers shutdowns for runs this host may never have seen (or whose
+    // attempt was replaced): they cannot start a writer, so they bypass the fence.
+    if (command.type === 'shutdown') return
     const previous = this.executions.get(command.runId) ?? this.options.state.getSession(command.runId)?.execution
     const replacesPrevious = previous && (previous.attemptId !== command.execution.attemptId || previous.generation !== command.execution.generation)
     // The server only emits `fresh` on an explicit start_fresh: that user action is the
