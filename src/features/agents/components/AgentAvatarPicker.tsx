@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useEffect, useRef, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
@@ -48,7 +51,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
 
   return (
     <div ref={rootRef} className="relative flex justify-center">
-      <button
+      <Button variant="ghost"
         type="button"
         aria-label="Edit avatar"
         aria-haspopup="dialog"
@@ -58,13 +61,13 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
           if (!open) setCustomOpen(isCustomColor)
           setOpen((current) => !current)
         }}
-        className="group relative rounded-2xl outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
+        className={unstyledButton(`group relative rounded-2xl outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)`)}
       >
         <Creature shape={shape} color={color} size={size} label="Agent avatar" />
         <span className="absolute inset-[14%] flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           <Pencil size={18} strokeWidth={1.75} />
         </span>
-      </button>
+      </Button>
       {open ? (
         // Centred by a flex wrapper: the pop-in animation owns `transform`.
         <div className={`absolute top-full z-30 mt-1.5 flex ${align === 'center' ? 'inset-x-0 justify-center' : 'left-0'}`}>
@@ -75,17 +78,17 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
           >
             <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Avatar shape">
               {CREATURE_SHAPES.map((option) => (
-                <button
+                <Button variant="ghost"
                   key={option}
                   type="button"
                   role="radio"
                   aria-checked={shape === option}
                   aria-label={`${option} shape`}
                   onClick={() => onShapeChange(option)}
-                  className={`flex aspect-square items-center justify-center rounded-xl border transition-colors ${shape === option ? 'border-(--border) bg-(--surface-subtle)' : 'border-transparent hover:bg-(--surface-subtle)'}`}
+                  className={unstyledButton(`flex aspect-square items-center justify-center rounded-xl border transition-colors ${shape === option ? 'border-(--border) bg-(--surface-subtle)' : 'border-transparent hover:bg-(--surface-subtle)'}`)}
                 >
                   <Creature shape={option} color={color} size={40} animated={false} label="" />
-                </button>
+                </Button>
               ))}
             </div>
             <div
@@ -94,7 +97,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
               aria-label="Avatar color"
             >
               {AVATAR_COLORS.map((option) => (
-                <button
+                <Button variant="ghost"
                   key={option}
                   type="button"
                   role="radio"
@@ -102,10 +105,10 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
                   aria-label={`Color ${option}`}
                   onClick={() => onColorChange(option)}
                   style={{ backgroundColor: option }}
-                  className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${color === option ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`}
+                  className={unstyledButton(`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${color === option ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`)}
                 />
               ))}
-              <button
+              <Button variant="ghost"
                 type="button"
                 role="radio"
                 aria-checked={isCustomColor}
@@ -115,7 +118,7 @@ export function AgentAvatarPicker({ shape, color, onShapeChange, onColorChange, 
                 style={isCustomColor
                   ? { backgroundColor: color }
                   : { backgroundImage: 'conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
-                className={`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${isCustomColor ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`}
+                className={unstyledButton(`h-[26px] w-[26px] rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] ${isCustomColor ? 'ring-[1.5px] ring-(--muted) ring-offset-2 ring-offset-(--surface-elevated)' : ''}`)}
               />
             </div>
             {customOpen ? <AvatarColorPicker color={color} onChange={onColorChange} /> : null}
