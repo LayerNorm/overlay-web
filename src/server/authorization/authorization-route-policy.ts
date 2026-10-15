@@ -230,67 +230,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated(), POST: authenticated() },
   },
 
-  { path: '/api/v1/admin/audit', methods: { GET: capability('audit.read') } },
-  { path: '/api/v1/admin/usage', methods: { GET: capability('usage.read') } },
-  {
-    path: '/api/v1/admin/principals',
-    methods: {
-      GET: capability('users.read'),
-      POST: capability('users.manage'),
-      DELETE: capability('users.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/authorization/capabilities',
-    methods: { GET: capability('roles.read') },
-  },
-  {
-    path: '/api/v1/admin/authorization/roles',
-    methods: {
-      GET: capability('roles.read'),
-      POST: capability('roles.manage'),
-      PATCH: capability('roles.manage'),
-      DELETE: capability('roles.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/authorization/groups',
-    methods: {
-      GET: capability('groups.read'),
-      POST: capability('groups.manage'),
-      PATCH: capability('groups.manage'),
-      DELETE: capability('groups.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/authorization/memberships',
-    methods: {
-      GET: capability('groups.read'),
-      POST: capability('groups.manage'),
-      DELETE: capability('groups.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/authorization/assignments',
-    methods: {
-      GET: capability('roles.read'),
-      POST: capability('roles.manage'),
-      DELETE: capability('roles.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/authorization/grants',
-    methods: {
-      GET: capability('roles.read'),
-      POST: capability('roles.manage'),
-      DELETE: capability('roles.manage'),
-    },
-  },
-  {
-    path: '/api/v1/admin/catalog',
-    methods: { GET: capability('roles.read') },
-  },
-
   {
     path: '/api/v1/conversations',
     methods: {

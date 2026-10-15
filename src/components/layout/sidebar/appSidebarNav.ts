@@ -16,7 +16,6 @@ import {
   ScrollText,
   Server,
   Settings,
-  ShieldCheck,
   User,
   UserCog,
   UsersRound,
@@ -95,7 +94,6 @@ export interface SidebarRouteState {
   activityOpen: boolean
   archivedOpen: boolean
   chatOpen: boolean
-  adminOpen: boolean
   automationsOpen: boolean
   automationsSectionOpen: boolean
   toolsOpen: boolean
@@ -174,7 +172,6 @@ export function resolveSidebarRouteState({
   // keeps the same subnavigation beside it.
   const archivedOpen = pathname.startsWith('/app/archived') || (canonicalWorkspaceRoute && workspaceSurface === 'archived')
   const chatOpen = activityOpen || archivedOpen || pathname.startsWith('/app/chat') || (canonicalWorkspaceRoute && workspaceSurface === 'chat')
-  const adminOpen = pathname.startsWith('/app/admin') || (canonicalWorkspaceRoute && workspaceSurface === 'admin')
   const automationsOpen = pathname.startsWith('/app/automations') || (canonicalWorkspaceRoute && workspaceSurface === 'automations')
   const automationsSectionOpen = automationsOpen && automationsEnabled
   const toolsOpen = pathname.startsWith('/app/tools') || (canonicalWorkspaceRoute && workspaceSurface === 'tools')
@@ -217,7 +214,6 @@ export function resolveSidebarRouteState({
     activityOpen,
     archivedOpen,
     chatOpen,
-    adminOpen,
     automationsOpen,
     automationsSectionOpen,
     toolsOpen,
@@ -399,22 +395,6 @@ export function selectMobileNavItem(
   else ctx.closeDrawer()
 }
 
-export function selectMobileAdmin(ctx: {
-  adminOpen: boolean
-  pathname: string
-  router: { push: (href: string) => void }
-  setPendingNav: (nav: { href: string; fromPath: string }) => void
-  closeMobileDrawer: () => void
-}) {
-  if (ctx.adminOpen) {
-    ctx.closeMobileDrawer()
-    return
-  }
-  ctx.setPendingNav({ href: '/app/admin', fromPath: ctx.pathname })
-  ctx.router.push('/app/admin')
-  ctx.closeMobileDrawer()
-}
-
 export async function signOutToLanding() {
   await fetch('/api/auth/sign-out', { method: 'POST' })
   window.location.href = '/'
@@ -528,8 +508,6 @@ export function scopePanelAction({
 }
 
 export function buildPrimaryRailItems({
-  showAdminNavigation,
-  adminOpen,
   effectivePendingHref,
   navItems,
   primaryNavActionByItemId,
@@ -544,8 +522,6 @@ export function buildPrimaryRailItems({
   navItemActive,
   onSelectItem,
 }: {
-  showAdminNavigation: boolean
-  adminOpen: boolean
   effectivePendingHref: string | null
   navItems: SidebarNavItem[]
   primaryNavActionByItemId: ReadonlyMap<string, OverlaySidebarAction>
@@ -561,21 +537,6 @@ export function buildPrimaryRailItems({
   onSelectItem: (item: SidebarNavItem) => void
 }): PrimaryRailItem[] {
   const railItems: PrimaryRailItem[] = []
-  if (showAdminNavigation) {
-    railItems.push({
-      id: 'admin',
-      label: 'Admin',
-      icon: ShieldCheck,
-      active: adminOpen,
-      pending: effectivePendingHref === '/app/admin',
-      href: navItemDestination('/app/admin'),
-      onSelect: () => {
-        if (adminOpen) return
-        setPendingNav({ href: '/app/admin', fromPath: pathname })
-        router.push('/app/admin')
-      },
-    })
-  }
   navItems.forEach((item, navIdx) => {
     const shortcut = navIdx < 9 ? navIdx + 1 : null
     const canOpenDestinationInNewTab = Boolean(item.href)

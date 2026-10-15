@@ -183,6 +183,8 @@ jobs:
         run: npm run check:config && npm run test:release-safety
       - name: Verify tenant boundary guard
         run: npm run check:tenant-boundaries
+      - name: Verify admin console separation
+        run: npm run check:admin-separation
       - name: Verify on-prem Convex boundaries
         run: npm run check:on-prem-convex-boundaries
 

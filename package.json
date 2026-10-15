@@ -108,6 +108,7 @@
     "check:files-route-boundary": "node scripts/ci/check-files-route-boundary.mjs",
     "check:domain-service-boundaries": "node scripts/ci/check-domain-service-boundaries.mjs",
     "check:tenant-boundaries": "tsx scripts/ci/check-tenant-boundaries.ts",
+    "check:admin-separation": "tsx scripts/ci/check-admin-separation.ts",
     "license:check": "tsx scripts/ci/check-licensing.ts",
     "test:route-characterization": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud INTERNAL_API_SECRET=test-internal-secret NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/files/FileService.test.ts src/server/automations/AutomationService.test.ts src/server/billing/BillingCustomerService.test.ts src/server/conversations/ActConversationService.test.ts src/server/app-api/v1/route-characterization.test.ts",
     "test:lifecycle-events": "NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/lifecycle-events/LifecycleEventPublisher.test.ts src/server/users/UserService.test.ts src/server/automations/AutomationService.test.ts",
