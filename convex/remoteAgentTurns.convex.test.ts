@@ -765,3 +765,32 @@ test('expired wake/claim deadlines never launch late work or strand the reserved
     expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('needs_attention')
   }
 })
+
+test('overlapping durable permission and input wait for both host acknowledgements on the same row', async () => {
+  const { convex, seeded, call, lifecycle, started, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([
+    event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }),
+    event(2, 'approval_requested', { requestKey: 'write', prompt: 'Write?', options: [{ id: 'allow', label: 'Allow' }], context: {} }),
+    event(3, 'elicitation_requested', { requestKey: 'branch', prompt: 'Branch?', requestedSchema: { type: 'object' }, context: {} }),
+  ], now + 1)
+  const resolve = (requestKey: string, decision: string) => call('resolveRemoteRequestByServer', {
+    actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey, decision, now: now + 2,
+  })
+  const ack = (commandId: unknown) => call('acknowledgeCommandByServer', { workspaceId, environmentId, commandId, accepted: true, now: now + 3 })
+  const permission = await resolve('write', 'allow')
+  await ack(permission.commandId)
+  let snapshot = await projectedState(convex, started.messageId)
+  expect(snapshot.run?.remoteLifecycle?.phase).toBe('waiting_for_input')
+  expect(snapshot.session?.status).toBe('waiting_for_input')
+  expect((await resolve('write', 'allow')).commandId).toBe(permission.commandId)
+  const input = await resolve('branch', 'decline')
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('waiting_for_input')
+  await ack(input.commandId)
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('running')
+  await events([event(4, 'completed', { usage: {} })], now + 4)
+  snapshot = await projectedState(convex, started.messageId)
+  expect(snapshot.run?.status).toBe('completed')
+  expect(snapshot.message?._id).toBe(started.messageId)
+})

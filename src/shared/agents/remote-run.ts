@@ -7,6 +7,7 @@ export const REMOTE_RUN_PHASES = [
 ] as const
 export type RemoteRunPhase = typeof REMOTE_RUN_PHASES[number]
 export type RemoteRecoveryOutcome = 'attached_live' | 'restored' | 'requires_new_attempt' | 'unavailable'
+export type RemoteRunApproval = { requestKey: string; expiresAt: number; kind?: 'permission' | 'elicitation'; decision?: string; delivered?: boolean }
 export type RemoteRunState = {
   version: 2
   revision: number
@@ -19,7 +20,8 @@ export type RemoteRunState = {
   claimDeadlineAt: number
   lastHealthAt?: number
   lastProgressAt?: number
-  approval?: { requestKey: string; expiresAt: number; decision?: string; delivered?: boolean }
+  approval?: RemoteRunApproval
+  approvals?: RemoteRunApproval[]
   cause?: string
   recoveryOutcome?: RemoteRecoveryOutcome
 }
@@ -54,94 +56,145 @@ export function isTerminalRemoteRun(phase: RemoteRunPhase) {
   return phase === 'completed' || phase === 'cancelled' || phase === 'failed'
 }
 
+type Disposition = 'unchanged' | RemoteRunReduction['reason'] | void
+type FactContext = { current: RemoteRunState; next: RemoteRunState; now: number }
+type FactHandlers = { [K in RemoteRunFact['type']]: (context: FactContext, fact: Extract<RemoteRunFact, { type: K }>) => Disposition }
+
+function needsAttention(next: RemoteRunState, cause: string) {
+  next.phase = 'needs_attention'
+  next.cause = cause
+}
+export function pendingRemoteApprovals(state: RemoteRunState): RemoteRunApproval[] {
+  return (state.approvals ?? (state.approval ? [state.approval] : [])).filter(request => !request.delivered)
+}
+function allRemoteApprovals(state: RemoteRunState): RemoteRunApproval[] {
+  return state.approvals ?? (state.approval ? [state.approval] : [])
+}
+function replaceApprovals(next: RemoteRunState, approvals: RemoteRunApproval[]) {
+  next.approvals = approvals
+  const pending = approvals.find(request => !request.delivered)
+  if (pending) next.approval = pending
+  else delete next.approval
+}
+function phaseAfterAttach(current: RemoteRunState): RemoteRunPhase {
+  const pending = pendingRemoteApprovals(current)
+  if (pending.length === 0) return 'running'
+  return pending.some(request => request.kind === 'elicitation') ? 'waiting_for_input' : 'waiting_for_approval'
+}
+
+const factHandlers: FactHandlers = {
+  coordinator_stopped({ current, next }, fact) {
+    if (current.coordinatorId !== fact.coordinatorId) return 'stale_owner'
+    next.coordinatorGeneration++
+    delete next.coordinatorId
+  },
+  claim_coordinator({ current, next }, fact) {
+    if (current.coordinatorId && current.coordinatorId !== fact.coordinatorId) return 'stale_owner'
+    if (current.coordinatorId === fact.coordinatorId) return 'unchanged'
+    next.coordinatorId = fact.coordinatorId
+  },
+  cancel({ next }, fact) { next.phase = 'cancelling'; next.cause = fact.cause },
+  refuse({ next }, fact) { next.phase = 'cancelling'; next.cause = fact.cause },
+  wake({ current, next }) {
+    if (!['queued', 'waking'].includes(current.phase)) return 'conflict'
+    next.phase = 'waking'
+  },
+  dispatch({ current, next }) {
+    if (!current.coordinatorId || !['queued', 'waking', 'starting'].includes(current.phase)) return 'conflict'
+    next.phase = 'starting'
+  },
+  started({ current, next, now }) {
+    if (!['starting', 'recovering'].includes(current.phase)) return 'conflict'
+    next.phase = phaseAfterAttach(current)
+    next.lastHealthAt = now
+  },
+  health({ current, next, now }, fact) {
+    if (fact.process === 'live') {
+      next.lastHealthAt = now
+      if (current.phase === 'needs_attention' && current.cause === 'process_health_required') {
+        next.phase = phaseAfterAttach(current)
+        delete next.cause
+      }
+    } else if (fact.process === 'lost') {
+      needsAttention(next, pendingRemoteApprovals(current).length > 0 ? 'approval_context_lost' : 'process_lost')
+      delete next.approval
+      delete next.approvals
+    } else needsAttention(next, 'process_health_unknown')
+  },
+  progress({ next, now }) { next.lastProgressAt = now },
+  request({ current, next }, fact) {
+    const requests = allRemoteApprovals(current)
+    if (requests.some(request => request.requestKey === fact.requestKey)) return 'unchanged'
+    const pending = pendingRemoteApprovals(current)
+    if (pending.length >= 100) return 'conflict'
+    replaceApprovals(next, [...pending, { requestKey: fact.requestKey, kind: fact.kind,
+      expiresAt: Math.min(fact.expiresAt, current.hardDeadlineAt) }])
+    next.phase = phaseAfterAttach(next)
+  },
+  decision({ current, next, now }, fact) {
+    const requests = allRemoteApprovals(current)
+    const request = requests.find(request => request.requestKey === fact.requestKey)
+    if (!request || now >= request.expiresAt) return 'conflict'
+    if (request.decision) return request.decision === fact.decision ? 'unchanged' : 'conflict'
+    replaceApprovals(next, requests.map(request => request.requestKey === fact.requestKey ? { ...request, decision: fact.decision } : request))
+  },
+  decision_delivered({ current, next }, fact) {
+    const requests = allRemoteApprovals(current)
+    const request = requests.find(request => request.requestKey === fact.requestKey)
+    if (!request?.decision) return 'conflict'
+    if (request.delivered) return 'unchanged'
+    replaceApprovals(next, requests.map(request => request.requestKey === fact.requestKey ? { ...request, delivered: true } : request))
+    next.phase = phaseAfterAttach(next)
+  },
+  recovery_requested({ next }) { next.phase = 'recovering' },
+  recover({ current, next, now }, fact) {
+    next.recoveryOutcome = fact.recoveryOutcome
+    if (fact.recoveryOutcome === 'attached_live') {
+      next.phase = phaseAfterAttach(current)
+      next.lastHealthAt = now
+    } else if (fact.recoveryOutcome === 'restored' && fact.oldWriterStopped && pendingRemoteApprovals(current).length === 0) {
+      next.phase = 'running'; next.lastHealthAt = now
+    } else needsAttention(next, fact.oldWriterStopped ? 'continuation_unsupported' : 'old_writer_not_isolated')
+  },
+  complete({ current, next }) {
+    if (current.phase !== 'running' || pendingRemoteApprovals(current).length > 0) return 'conflict'
+    next.phase = 'completed'
+  },
+  stopped({ next }) { needsAttention(next, 'execution_stopped') },
+  observe({ current, next, now }) {
+    if (current.phase === 'needs_attention' && current.cause !== 'process_health_required') return 'unchanged'
+    if (pendingRemoteApprovals(current).some(request => now >= request.expiresAt)) {
+      next.phase = 'cancelling'; next.cause = 'approval_expired'
+    } else if (['queued', 'waking', 'starting'].includes(current.phase) && now >= current.claimDeadlineAt) {
+      needsAttention(next, 'command_unclaimed')
+    } else if (!['queued', 'waking', 'starting'].includes(current.phase) && now - (current.lastHealthAt ?? 0) >= 90_000) needsAttention(next, 'process_health_required')
+    else return 'unchanged'
+  },
+}
+
 /** Pure canonical transition. Callers supply trusted receipt time and authenticate facts before applying them. */
 export function reduceRemoteRun(
   current: RemoteRunState, expectedRevision: number, fence: RemoteRunFence, fact: RemoteRunFact, now: number,
 ): RemoteRunReduction {
-  const reject = (reason: RemoteRunReduction['reason']): RemoteRunReduction => ({ applied: false, state: current, reason })
+  const reject = (reason?: RemoteRunReduction['reason']): RemoteRunReduction => ({ applied: false, state: current, ...(reason ? { reason } : {}) })
   if (current.revision !== expectedRevision) return reject('stale_revision')
   if (current.currentAttemptId !== fence.attemptId || current.executionGeneration !== fence.executionGeneration) return reject('stale_attempt')
   if (current.coordinatorGeneration !== fence.coordinatorGeneration) return reject('stale_owner')
   if (isTerminalRemoteRun(current.phase)) return reject('terminal')
-  const next: RemoteRunState = { ...current, ...(current.approval ? { approval: { ...current.approval } } : {}) }
-  const attention = (cause: string) => { next.phase = 'needs_attention'; next.cause = cause }
+  const next: RemoteRunState = { ...current, ...(current.approval ? { approval: { ...current.approval } } : {}),
+    ...(current.approvals ? { approvals: current.approvals.map(request => ({ ...request })) } : {}) }
   // Policy stops cannot be undone by an event, recovery, or a late decision.
   if (now >= current.hardDeadlineAt && fact.type !== 'stopped') {
     next.phase = 'cancelling'; next.cause = 'hard_deadline_expired'
   } else if (current.phase === 'cancelling') {
-    if (fact.type === 'stopped') next.phase = 'cancelled'
-    else return reject('conflict')
-  } else if (fact.type === 'coordinator_stopped') {
-    if (current.coordinatorId !== fact.coordinatorId) return reject('stale_owner')
-    next.coordinatorGeneration++
-    delete next.coordinatorId
-  } else if (fact.type === 'claim_coordinator') {
-    if (current.coordinatorId && current.coordinatorId !== fact.coordinatorId) return reject('stale_owner')
-    if (current.coordinatorId === fact.coordinatorId) return { applied: false, state: current }
-    next.coordinatorId = fact.coordinatorId
-  } else if (fact.type === 'cancel' || fact.type === 'refuse') {
-    next.phase = 'cancelling'; next.cause = fact.cause
-  } else if (fact.type === 'wake') {
-    if (current.phase !== 'queued' && current.phase !== 'waking') return reject('conflict')
-    next.phase = 'waking'
-  } else if (fact.type === 'dispatch') {
-    if (!current.coordinatorId || !['queued', 'waking', 'starting'].includes(current.phase)) return reject('conflict')
-    next.phase = 'starting'
-  } else if (fact.type === 'started') {
-    if (!['starting', 'recovering'].includes(current.phase)) return reject('conflict')
-    next.phase = current.approval && !current.approval.delivered ? 'waiting_for_approval' : 'running'
-    next.lastHealthAt = now
-  } else if (fact.type === 'health') {
-    if (fact.process === 'live') {
-      next.lastHealthAt = now
-      if (current.phase === 'needs_attention' && current.cause === 'process_health_required') {
-        next.phase = current.approval && !current.approval.delivered ? 'waiting_for_approval' : 'running'
-        delete next.cause
-      }
-    }
-    else if (fact.process === 'lost') {
-      attention(current.approval ? 'approval_context_lost' : 'process_lost')
-      // Preserve approval history elsewhere; it is no longer executable authority.
-      delete next.approval
-    } else attention('process_health_unknown')
-  } else if (fact.type === 'progress') {
-    next.lastProgressAt = now
-  } else if (fact.type === 'request') {
-    if (current.approval && current.approval.requestKey !== fact.requestKey && !current.approval.delivered) return reject('conflict')
-    if (current.approval?.requestKey === fact.requestKey) return { applied: false, state: current }
-    next.approval = { requestKey: fact.requestKey, expiresAt: Math.min(fact.expiresAt, current.hardDeadlineAt) }
-    next.phase = fact.kind === 'permission' ? 'waiting_for_approval' : 'waiting_for_input'
-  } else if (fact.type === 'decision') {
-    if (!current.approval || current.approval.requestKey !== fact.requestKey || now >= current.approval.expiresAt) return reject('conflict')
-    if (current.approval.decision) return current.approval.decision === fact.decision ? { applied: false, state: current } : reject('conflict')
-    next.approval = { ...current.approval, decision: fact.decision }
-  } else if (fact.type === 'decision_delivered') {
-    if (!current.approval?.decision || current.approval.requestKey !== fact.requestKey) return reject('conflict')
-    next.approval = { ...current.approval, delivered: true }
-    next.phase = 'running'
-  } else if (fact.type === 'recovery_requested') {
-    next.phase = 'recovering'
-  } else if (fact.type === 'recover') {
-    next.recoveryOutcome = fact.recoveryOutcome
-    if (fact.recoveryOutcome === 'attached_live') {
-      next.phase = current.approval && !current.approval.delivered ? 'waiting_for_approval' : 'running'
-      next.lastHealthAt = now
-    } else if (fact.recoveryOutcome === 'restored' && fact.oldWriterStopped && !current.approval) {
-      next.phase = 'running'; next.lastHealthAt = now
-    } else attention(fact.oldWriterStopped ? 'continuation_unsupported' : 'old_writer_not_isolated')
-  } else if (fact.type === 'complete') {
-    if (current.phase !== 'running' || (current.approval && !current.approval.delivered)) return reject('conflict')
-    next.phase = 'completed'
-  } else if (fact.type === 'stopped') {
-    attention('execution_stopped')
-  } else if (fact.type === 'observe') {
-    if (current.phase === 'needs_attention' && current.cause !== 'process_health_required') return { applied: false, state: current }
-    if (current.approval && now >= current.approval.expiresAt) {
-      next.phase = 'cancelling'; next.cause = 'approval_expired'
-    } else if (['queued', 'waking', 'starting'].includes(current.phase) && now >= current.claimDeadlineAt) {
-      attention('command_unclaimed')
-    } else if (!['queued', 'waking', 'starting'].includes(current.phase) && now - (current.lastHealthAt ?? 0) >= 90_000) attention('process_health_required')
-    else return { applied: false, state: current }
+    if (fact.type !== 'stopped') return reject('conflict')
+    next.phase = 'cancelled'
+  } else {
+    // The exhaustive map checks each handler's discriminant/arguments at declaration.
+    const handle = factHandlers[fact.type] as (context: FactContext, fact: RemoteRunFact) => Disposition
+    const disposition = handle({ current, next, now }, fact)
+    if (disposition === 'unchanged') return reject()
+    if (disposition) return reject(disposition)
   }
   next.revision++
   return { applied: true, state: next }

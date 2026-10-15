@@ -54,3 +54,20 @@ test('hard and approval deadlines fail closed and coarse status is consistent', 
   assert.equal(remoteRunCoarseStatus('waiting_for_input'), 'waiting_for_approval')
   assert.equal(remoteRunCoarseStatus('needs_attention'), 'running')
 })
+
+test('overlapping approval and input decisions wait for each delivery and cannot mutate the previous state', () => {
+  const first = apply(state(), { type: 'request', requestKey: 'write', kind: 'permission', expiresAt: 99_000 }).state
+  let s = apply(first, { type: 'request', requestKey: 'branch', kind: 'elicitation', expiresAt: 99_000 }).state
+  s = apply(s, { type: 'decision', requestKey: 'write', decision: 'allow' }).state
+  s = apply(s, { type: 'decision_delivered', requestKey: 'write' }).state
+  assert.equal(first.approval?.decision, undefined)
+  assert.equal(s.phase, 'waiting_for_input')
+  assert.equal(s.approval?.requestKey, 'branch')
+  assert.equal(apply(s, { type: 'complete' }).applied, false)
+  assert.equal(apply(s, { type: 'decision_delivered', requestKey: 'write' }).applied, false)
+  s = apply(s, { type: 'decision', requestKey: 'branch', decision: 'accept' }).state
+  assert.equal(s.phase, 'waiting_for_input')
+  s = apply(s, { type: 'decision_delivered', requestKey: 'branch' }).state
+  assert.equal(s.phase, 'running')
+  assert.equal(apply(s, { type: 'complete' }).state.phase, 'completed')
+})

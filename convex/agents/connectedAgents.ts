@@ -1,5 +1,5 @@
 import { currentRemoteAttempt, applyRemoteFact } from './remoteRunModel'
-import { remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
+import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
 import { internal } from '../_generated/api'
@@ -1076,16 +1076,17 @@ export const requestMcpApprovalByServer = mutation({
     requireServerSecret(args.serverSecret)
     const session = await currentRemoteAttempt(ctx, args.runId)
     if (!session || session.workspaceId !== args.workspaceId || session.environmentId !== args.environmentId) return { state: 'unavailable' as const }
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
     const existing = await ctx.db.query('agentApprovalRequests')
       .withIndex('by_remoteSessionId_requestKey', (q) => q.eq('remoteSessionId', session.sessionId).eq('requestKey', args.requestKey)).unique()
     // A request keeps reporting its answer after the run ends (the run's end closes it), so a call still waiting is told.
     if (existing) {
+      if (existing.resolution && run?.remoteLifecycle) await applyRemoteFact(ctx, run, { type: 'decision_delivered', requestKey: args.requestKey }, args.now)
       return existing.resolution
         ? { state: 'resolved' as const, decision: existing.resolution.decision }
         : { state: 'pending' as const }
     }
     if (['completed', 'failed', 'cancelled'].includes(session.status)) return { state: 'unavailable' as const }
-    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
     const message = run?.assistantMessageId ? await ctx.db.get(run.assistantMessageId) : null
     if (!run || !message) return { state: 'unavailable' as const }
     if (run.remoteLifecycle && !['running', 'waiting_for_approval', 'waiting_for_input'].includes(run.remoteLifecycle.phase)) return { state: 'unavailable' as const }
@@ -1247,17 +1248,19 @@ export const resolveRemoteRequestByServer = mutation({
       resolvedByPrincipalId: actor.principalId, resolvedAt: args.now }
     if (run.remoteLifecycle) {
       const applied = await applyRemoteFact(ctx, run, { type: 'decision', requestKey: args.requestKey, decision: args.decision }, args.now)
-      if (!applied?.applied && !applied?.state.approval?.decision) return { applied: false }
+      if (!applied?.applied) return { applied: false }
     }
     await ctx.db.patch(request._id, { resolution })
     if ((request.payload as { source?: unknown } | undefined)?.source === MCP_APPROVAL_SOURCE) {
       // The waiting MCP call reads the resolution itself; the host has nothing to answer.
-      await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
-      await ctx.db.patch(session._id, { status: 'running', updatedAt: args.now })
+      if (!run.remoteLifecycle) {
+        await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
+        await ctx.db.patch(session._id, { status: 'running', updatedAt: args.now })
+      }
       await ctx.db.patch(message._id, {
         parts: conversationParts(resolveRemoteRequestPart(
           Array.isArray(message.parts) ? (message.parts as unknown as Array<Record<string, unknown>>) : [],
-          args.requestKey, resolution,
+          args.requestKey, resolution, Boolean(run.remoteLifecycle),
         )),
         status: 'generating', updatedAt: args.now,
       })
@@ -2366,8 +2369,9 @@ export const applyRemoteEventsByServer = mutation({
     }
     if (run.remoteLifecycle) for (const event of normalizedEvents) {
       const state = canonicalRun.remoteLifecycle as RemoteRunState
-      if (event.type === 'completed' && state.approval?.decision && !state.approval.delivered) {
-        const delivered = await applyRemoteFact(ctx, canonicalRun, { type: 'decision_delivered', requestKey: state.approval.requestKey }, args.now)
+      if (event.type === 'completed') for (const request of pendingRemoteApprovals(state)) {
+        if (!request.decision) continue
+        const delivered = await applyRemoteFact(ctx, canonicalRun, { type: 'decision_delivered', requestKey: request.requestKey }, args.now)
         if (delivered?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: delivered.state }
       }
       const fact = event.type === 'session_started' ? { type: 'started' as const }

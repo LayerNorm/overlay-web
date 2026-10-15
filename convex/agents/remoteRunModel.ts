@@ -3,6 +3,8 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { reduceRemoteRun, remoteRunCoarseStatus, type RemoteRunFact, type RemoteRunState } from '../../src/shared/agents/remote-run'
 
+const remoteApprovalValidator = v.object({ requestKey: v.string(), expiresAt: v.number(), kind: v.optional(v.union(v.literal('permission'), v.literal('elicitation'))), decision: v.optional(v.string()), delivered: v.optional(v.boolean()) })
+
 export const remoteLifecycleValidator = v.object({
   version: v.literal(2), revision: v.number(), phase: v.union(...[
     'queued', 'waking', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering',
@@ -11,7 +13,7 @@ export const remoteLifecycleValidator = v.object({
   currentAttemptId: v.string(), executionGeneration: v.number(), coordinatorGeneration: v.number(),
   coordinatorId: v.optional(v.string()), hardDeadlineAt: v.number(), claimDeadlineAt: v.number(),
   lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()),
-  approval: v.optional(v.object({ requestKey: v.string(), expiresAt: v.number(), decision: v.optional(v.string()), delivered: v.optional(v.boolean()) })),
+  approval: v.optional(remoteApprovalValidator), approvals: v.optional(v.array(remoteApprovalValidator)),
   cause: v.optional(v.string()), recoveryOutcome: v.optional(v.union(v.literal('attached_live'), v.literal('restored'), v.literal('requires_new_attempt'), v.literal('unavailable'))),
 })
 
@@ -56,6 +58,8 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
     const visibleState = ['queued', 'waking', 'starting'].includes(phase) ? 'waiting' : phase
     const parts = (message.parts ?? []).map(part => {
       if (part.type === 'data-remote-agent-status' && 'data' in part) return { ...part, data: { ...part.data, state: visibleState } }
+      if (fact.type === 'decision_delivered' && part.type === 'data-remote-agent-request' && 'data' in part
+        && (part.data as Record<string, unknown>).requestKey === fact.requestKey) return { ...part, data: { ...(part.data as Record<string, unknown>), state: 'resolved' } }
       if (invalidateRequests && part.type === 'data-remote-agent-request' && 'data' in part) return {
         ...part, data: { ...(part.data as Record<string, unknown>), state: 'resolved', resolution: {
           decision: result.state.cause, resolvedAt: now, resolvedByPrincipalId: 'system:remote-lifecycle',

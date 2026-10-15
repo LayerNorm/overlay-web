@@ -201,60 +201,13 @@ export class AgentHostRuntime {
   }
 
   private async dispatch(command: AgentHostCommand): Promise<void> {
-    if (command.execution) {
-      if (!this.options.durableLifecycle) throw new Error('remote lifecycle extension was not negotiated')
-      const previous = this.executions.get(command.runId) ?? this.options.state.getSession(command.runId)?.execution
-      if (previous && (previous.attemptId !== command.execution.attemptId || previous.generation !== command.execution.generation))
-        throw new Error('execution replacement requires proof that the old writer stopped')
-      this.executions.set(command.runId, { ...command.execution, hostBootId: this.bootId })
-    }
+    this.acceptExecutionFence(command)
     if (command.type === 'observe') {
       const session = this.sessions.get(command.runId)
       await this.emit(command.runId, { type: 'process_observation', payload: { process: session ? await session.observe?.() ?? 'unknown' : 'unknown' } })
       return
     }
-    if (command.type === 'start') {
-      if (command.payload.fresh) {
-        if (this.options.state.getSession(command.runId) && !this.sessions.has(command.runId))
-          throw new Error('cannot prove the old process stopped; inspect it before starting fresh')
-        await this.sessions.get(command.runId)?.stop('Starting a fresh session')
-        this.sessions.delete(command.runId)
-        this.options.state.deleteSession(command.runId)
-        this.options.state.deleteAdapterSessionState(command.runId)
-      } else if (this.sessions.has(command.runId)) return
-      else if (this.options.state.getSession(command.runId)) {
-        // A crash after the external write but before the local ack leaves an unknown outcome.
-        // Do not create another process or re-prompt it merely because delivery was repeated.
-        throw new Error('persisted execution exists; observe or inspect its outcome before starting again')
-      }
-      if (command.execution && !this.options.state.claimExecution(command.runId, command.execution.attemptId))
-        throw new Error('execution start outcome is unknown; inspect the existing process before continuing')
-      const adapter = this.requireAdapter(command.payload.adapterId)
-      const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
-      const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
-      if (credentials === 'unavailable') return
-      const session = await adapter.start({
-        runId: command.runId,
-        workingDirectory: scope.workingDirectory,
-        additionalDirectories: scope.additionalDirectories,
-        prompt: command.payload.prompt,
-        ...(command.payload.sessionId ? { remoteSessionId: command.payload.sessionId } : {}),
-        metadata: command.payload.metadata,
-        ...(credentials ? { credentials } : {}),
-        adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
-        persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
-      }, (event) => this.emit(command.runId, event))
-      this.sessions.set(command.runId, session)
-      this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory,
-        config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...(typeof command.payload.metadata.model === 'string' ? { model: command.payload.metadata.model } : {}) },
-        ...(command.execution ? { execution: { ...command.execution, hostBootId: this.bootId } } : {}),
-      })
-      await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
-      if (!session.initialPromptHandled) {
-        void session.prompt(command.payload.prompt).catch((error) => this.emit(command.runId, { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
-      }
-      return
-    }
+    if (command.type === 'start') { await this.startSession(command); return }
     if (command.type === 'shutdown') {
       const session = this.sessions.get(command.runId)
       if (session) await session.stop(command.payload.reason)
@@ -282,6 +235,58 @@ export class AgentHostRuntime {
       await session.resume()
       if (command.execution) await this.emit(command.runId, { type: 'process_observation', payload: { process: await session.observe?.() ?? 'unknown', recoveryOutcome: 'attached_live' } })
     }
+  }
+
+  private acceptExecutionFence(command: AgentHostCommand): void {
+    if (!command.execution) return
+    if (!this.options.durableLifecycle) throw new Error('remote lifecycle extension was not negotiated')
+    const previous = this.executions.get(command.runId) ?? this.options.state.getSession(command.runId)?.execution
+    if (previous && (previous.attemptId !== command.execution.attemptId || previous.generation !== command.execution.generation))
+      throw new Error('execution replacement requires proof that the old writer stopped')
+    this.executions.set(command.runId, { ...command.execution, hostBootId: this.bootId })
+  }
+
+  private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+    if (command.payload.fresh) {
+      if (this.options.state.getSession(command.runId) && !this.sessions.has(command.runId))
+        throw new Error('cannot prove the old process stopped; inspect it before starting fresh')
+      await this.sessions.get(command.runId)?.stop('Starting a fresh session')
+      this.sessions.delete(command.runId)
+      this.options.state.deleteSession(command.runId)
+      this.options.state.deleteAdapterSessionState(command.runId)
+    } else if (this.sessions.has(command.runId)) return
+    else if (this.options.state.getSession(command.runId)) {
+      // A crash after the external write but before the local ack leaves an unknown outcome.
+      // Do not create another process or re-prompt it merely because delivery was repeated.
+      throw new Error('persisted execution exists; observe or inspect its outcome before starting again')
+    }
+    if (command.execution && !this.options.state.claimExecution(command.runId, command.execution.attemptId))
+      throw new Error('execution start outcome is unknown; inspect the existing process before continuing')
+    const adapter = this.requireAdapter(command.payload.adapterId)
+    const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
+    const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
+    if (credentials === 'unavailable') return
+    const session = await adapter.start({
+      runId: command.runId,
+      workingDirectory: scope.workingDirectory,
+      additionalDirectories: scope.additionalDirectories,
+      prompt: command.payload.prompt,
+      ...(command.payload.sessionId ? { remoteSessionId: command.payload.sessionId } : {}),
+      metadata: command.payload.metadata,
+      ...(credentials ? { credentials } : {}),
+      adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
+      persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
+    }, (event) => this.emit(command.runId, event))
+    this.sessions.set(command.runId, session)
+    this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory,
+      config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...(typeof command.payload.metadata.model === 'string' ? { model: command.payload.metadata.model } : {}) },
+      ...(command.execution ? { execution: { ...command.execution, hostBootId: this.bootId } } : {}),
+    })
+    await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
+    if (!session.initialPromptHandled) {
+      void session.prompt(command.payload.prompt).catch((error) => this.emit(command.runId, { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
+    }
+    return
   }
 
   private async requireSession(runId: string, requestedRemoteSessionId?: string): Promise<AgentAdapterSession> {

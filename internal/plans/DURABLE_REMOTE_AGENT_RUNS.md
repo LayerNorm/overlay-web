@@ -31,7 +31,7 @@ Server compatibility first; publish compatible lockstep host/protocol and cloud 
   submodule; `npm run test:all -- --only tsx` then passed both affected groups.
   Existing explicitly marked TODO assertions remain in the baseline.
 - Expanded Convex remote lifecycle tests cover API-exit intents, competing owners,
-  simulated 20-minute approval wait, duplicate decisions/Resume, stale attempts and
+  simulated 20-minute approval wait, overlapping permission/input delivery, duplicate decisions/Resume, stale attempts and
   boots, cancel/completion races with retained usage, hard deadlines during Workflow
   outage, funding refusal, settlement retry identity, stale holds and legacy downgrade.
 - Installed Workflow 4.8.9 runtime hook/replay/timer/conflict tests pass using
@@ -41,6 +41,13 @@ Server compatibility first; publish compatible lockstep host/protocol and cloud 
 - Route type generation, standalone TypeScript, shared-isomorphic checks, docs
   health, targeted ESLint (warnings only), package pin consistency and clean packed
   Node 24 installation/import/CLI smoke passed.
+- Complexity ratchet passes without raising its baseline. The on-prem import inventory
+  records the two reviewed server-only lifecycle adapters; no browser import, route
+  or cron surface was added by that inventory update.
+- Published head 50ac1454 passed both complete CI test shards, production compilation,
+  configuration/migration and tenant checks, CodeQL, Semgrep and host compatibility.
+  Its complexity and import-inventory failures are addressed locally; the next
+  published head must independently pass every required gate.
 - Local default production build could not resolve symlinked worktree dependencies;
   the Webpack fallback compiled the Workflow bundles but was killed at the VM memory
   limit during application compilation. Required hosted CI/build remains mandatory.

@@ -109,6 +109,17 @@ export function compareRoomMessageRecords(left: Pick<RoomMessageRecord, 'id' | '
   return left.createdAt - right.createdAt || left.id.localeCompare(right.id)
 }
 
+function isNewerRoomMessage(message: RoomMessageRecord, existing: RoomMessageRecord): boolean {
+  if (message.delivery || existing.delivery) return false
+  if (typeof message.eventSequence === 'number' && typeof existing.eventSequence === 'number') {
+    return message.eventSequence > existing.eventSequence
+      || (message.eventSequence === existing.eventSequence && (message.updatedAt ?? 0) > (existing.updatedAt ?? 0))
+  }
+  return (message.updatedAt ?? 0) > (existing.updatedAt ?? 0)
+    || ((message.updatedAt ?? 0) === (existing.updatedAt ?? 0) && existing.status === 'generating'
+      && (message.status === 'completed' || message.status === 'error'))
+}
+
 export function mergeRoomMessages(
   persisted: RoomMessageRecord[],
   current: RoomMessageRecord[],
@@ -120,14 +131,7 @@ export function mergeRoomMessages(
   for (const message of current) {
     const key = message.clientNonce ? `nonce:${message.clientNonce}` : `id:${message.id}`
     const existing = merged.get(key)
-    const currentIsNewer = existing && !message.delivery && !existing.delivery && (
-      typeof message.eventSequence === 'number' && typeof existing.eventSequence === 'number'
-        ? message.eventSequence > existing.eventSequence
-          || (message.eventSequence === existing.eventSequence && (message.updatedAt ?? 0) > (existing.updatedAt ?? 0))
-        : (message.updatedAt ?? 0) > (existing.updatedAt ?? 0)
-          || ((message.updatedAt ?? 0) === (existing.updatedAt ?? 0) && existing.status === 'generating'
-            && (message.status === 'completed' || message.status === 'error'))
-    )
+    const currentIsNewer = existing && isNewerRoomMessage(message, existing)
     if (!existing || (existing.delivery && !message.delivery) || currentIsNewer) merged.set(key, message)
   }
   return [...merged.values()].sort(compareRoomMessageRecords)
