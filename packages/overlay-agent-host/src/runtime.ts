@@ -241,15 +241,20 @@ export class AgentHostRuntime {
     if (!command.execution) return
     if (!this.options.durableLifecycle) throw new Error('remote lifecycle extension was not negotiated')
     const previous = this.executions.get(command.runId) ?? this.options.state.getSession(command.runId)?.execution
-    if (previous && (previous.attemptId !== command.execution.attemptId || previous.generation !== command.execution.generation))
+    const replacesPrevious = previous && (previous.attemptId !== command.execution.attemptId || previous.generation !== command.execution.generation)
+    // The server only emits `fresh` on an explicit start_fresh: that user action is the
+    // proof-of-intent that authorizes replacing a persisted execution whose writer state
+    // is unknown (e.g. this host restarted while a detached adapter child was running).
+    if (replacesPrevious && !(command.type === 'start' && command.payload.fresh === true))
       throw new Error('execution replacement requires proof that the old writer stopped')
     this.executions.set(command.runId, { ...command.execution, hostBootId: this.bootId })
   }
 
   private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
     if (command.payload.fresh) {
-      if (this.options.state.getSession(command.runId) && !this.sessions.has(command.runId))
-        throw new Error('cannot prove the old process stopped; inspect it before starting fresh')
+      // An explicit start_fresh authorizes teardown even when the persisted session is
+      // not live here: the old process may be an orphan, and refusing would leave the
+      // run unrecoverable.
       await this.sessions.get(command.runId)?.stop('Starting a fresh session')
       this.sessions.delete(command.runId)
       this.options.state.deleteSession(command.runId)

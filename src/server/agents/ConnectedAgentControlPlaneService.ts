@@ -868,12 +868,17 @@ export class ConnectedAgentControlPlaneService {
     const limits = this.dependencies.policyLimits && billingUserId
       ? await this.dependencies.policyLimits({ userId: billingUserId, workspaceId: auth.credential.workspaceId })
       : undefined
+    // A batch carries one event stream: after a start_fresh the host still owes events
+    // from the previous attempt, which live on that attempt's session row with its own
+    // event cursor. Route by the declared attemptId so stale-stream batches reach their
+    // cursor (and the stale-attempt fence) instead of deadlocking on the new cursor.
+    const batchSessionId = batch.events.find((event) => event.execution?.attemptId)?.execution?.attemptId ?? session.id
     let result
     try {
       result = await this.dependencies.repository.applyRemoteEvents({
         workspaceId: auth.credential.workspaceId,
         environmentId: auth.credential.environmentId,
-        sessionId: session.id,
+        sessionId: batchSessionId,
         events: batch.events,
         ...(limits ? { maxEventsPerMinute: limits.maxEventsPerMinute } : {}),
         now: this.now(),

@@ -160,6 +160,7 @@ export class SqliteHostStateStore {
   deleteSession(runId: string): void {
     this.database.prepare('DELETE FROM remote_sessions WHERE run_id = ?').run(runId)
     this.database.prepare('DELETE FROM remote_session_config WHERE run_id = ?').run(runId)
+    this.database.prepare('DELETE FROM execution_claims WHERE run_id = ?').run(runId)
   }
 
   saveAdapterSessionState(runId: string, adapterId: string, state: Record<string, unknown>, now = Date.now()): void {
