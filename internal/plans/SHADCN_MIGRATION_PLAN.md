@@ -15,7 +15,7 @@ mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/o
 | 3 tooltip | Merged: Radix Tooltip behind the existing `DelayedTooltip` API | [#202](https://github.com/LayerNorm/overlay-web/pull/202) |
 | 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
 | 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Not promoted to production. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
-| 6 core form primitives | Phase 6a implemented in #227 (`button` including icon-button composition, `input`, `textarea`, `label`); 6b/6c remain unstarted. | [#227](https://github.com/LayerNorm/overlay-web/pull/227); then separate 6b and 6c PRs |
+| 6 core form primitives | Phase 6a implemented in #227; Phase 6b implemented in #228 (`checkbox`, `switch`, `badge`, `separator`, `skeleton`); Phase 6c is staged in #229. | [#227](https://github.com/LayerNorm/overlay-web/pull/227), [#228](https://github.com/LayerNorm/overlay-web/pull/228), [#229](https://github.com/LayerNorm/overlay-web/pull/229) |
 | 7 niche fills | Not started | After the relevant foundations |
 | 8 ad-hoc markup sweep + guardrails | Not started | Per-feature PRs after primitive migrations |
 
