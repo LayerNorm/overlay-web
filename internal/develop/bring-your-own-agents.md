@@ -1060,3 +1060,7 @@ Adapter callbacks capture their originating execution fence, including delayed
 prompt errors and teardown output. New attempts reset terminal health suppression;
 old callbacks cannot suppress their observations or claim the replacement identity.
 Resolved legacy requests do not resurrect a wait when later output arrives.
+
+ACP cancellation waits for the complete process group to drain after termination;
+wrapper exit alone is not proof that descendants stopped. Stop confirmation fails
+closed if the bounded drain cannot establish that the group is gone.

@@ -143,7 +143,9 @@ export class AcpAgentAdapter implements AgentAdapter {
       await emit({ type: 'failed', payload: { code: 'acp_connection_failed', message: safeError(error), retryable: true } })
     }).finally(() => child?.kill())
 
+    let terminationConfirmed = false
     const terminateProcess = async () => {
+      if (terminationConfirmed) return
       if (!child?.pid) throw new Error('cannot confirm ACP process termination')
       const target = child
       const pid = target.pid!
@@ -151,17 +153,41 @@ export class AcpAgentAdapter implements AgentAdapter {
         try { process.platform === 'win32' ? target.kill(name) : process.kill(-pid, name) }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error }
       }
-      signal('SIGTERM')
       const exited = new Promise<void>(resolve => target.exitCode !== null || target.signalCode !== null ? resolve() : target.once('exit', () => resolve()))
+      if (process.platform === 'win32') {
+        // Node's child.kill terminates only the wrapper on Windows. Require the
+        // OS tree terminator to succeed before reporting a confirmed stop.
+        await new Promise<void>((resolve, reject) => {
+          const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
+          killer.once('error', reject)
+          killer.once('exit', code => code === 0 ? resolve() : reject(new Error('ACP process tree termination was not confirmed')))
+        })
+        await exited
+        terminationConfirmed = true
+        closed.resolve()
+        return
+      }
+      signal('SIGTERM')
       let timer: ReturnType<typeof setTimeout> | undefined
       try { await Promise.race([exited, new Promise<void>(resolve => { timer = setTimeout(resolve, 1000) })]) }
       finally { if (timer) clearTimeout(timer) }
       signal('SIGKILL')
       await exited
       if (process.platform !== 'win32') {
-        try { process.kill(-pid, 0); throw new Error('ACP process group has not stopped; inspect remaining execution') }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error }
+        // SIGKILL delivery and descendant reaping are asynchronous even after the
+        // wrapper emits exit. Give the whole group a bounded drain before attesting.
+        const deadline = Date.now() + 2_000
+        for (;;) {
+          try { process.kill(-pid, 0) }
+          catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ESRCH') break
+            throw error
+          }
+          if (Date.now() >= deadline) throw new Error('ACP process group has not stopped; inspect remaining execution')
+          await new Promise(resolve => setTimeout(resolve, 20))
+        }
       }
+      terminationConfirmed = true
       closed.resolve()
     }
 
