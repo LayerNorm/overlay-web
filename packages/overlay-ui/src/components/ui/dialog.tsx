@@ -47,6 +47,7 @@ function DialogContent({
   showCloseButton = true,
   overlayClassName,
   onOpenAutoFocus,
+  onFocusCapture,
   onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
@@ -66,6 +67,10 @@ function DialogContent({
           className,
         )}
         {...props}
+        onFocusCapture={(event) => {
+          returnFocus.onFocusCapture(event)
+          onFocusCapture?.(event)
+        }}
         onOpenAutoFocus={(event) => {
           returnFocus.onOpenAutoFocus()
           onOpenAutoFocus?.(event)

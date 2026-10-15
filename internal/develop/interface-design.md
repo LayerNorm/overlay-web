@@ -29,7 +29,9 @@ note-editor styles, uses standard properties such as `flex-shrink: 0`.
 `DialogFrame` and `ConfirmDialog` keep their existing controlled APIs on top of
 shadcn/Radix primitives. Their consumers open them from ordinary buttons without
 a Radix Trigger. Canonical modal `DialogContent` remembers the focused opener
-and restores it on close unless a consumer overrides focus restoration. Radix owns focus trapping and scroll locking while open. Custom backdrop and
+and restores it on close unless a consumer overrides focus restoration. Radix owns focus trapping and scroll locking while open. Content captures the
+previous focused element before a descendant’s React `autoFocus` can replace it,
+so closing returns focus to the external opener even for autofocus inputs. Custom backdrop and
 content stacking levels must match so the backdrop cannot cover dialog controls.
 
 `ConfirmDialog` delegates dismissal to its callbacks. Confirming must not invoke

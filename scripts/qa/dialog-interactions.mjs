@@ -35,7 +35,7 @@ try {
             <button id="confirm-opener" onClick={() => setConfirm(true)}>Open confirm</button>
             <button id="dialog-opener" onClick={() => setDialog(true)}>Open dialog</button>
             <button id="direct-opener" onClick={() => setDirect(true)}>Open direct</button>
-            <Dialog open={direct} onOpenChange={setDirect}><DialogContent aria-label="Direct fixture" showCloseButton={false}><button onClick={() => setDirect(false)}>Close direct</button></DialogContent></Dialog>
+            <Dialog open={direct} onOpenChange={setDirect}><DialogContent aria-label="Direct fixture" showCloseButton={false}><input aria-label="Autofocused input" autoFocus /><button onClick={() => setDirect(false)}>Close direct</button></DialogContent></Dialog>
             <output id="counts">{confirmed}:{cancelled}</output>
             <ConfirmDialog isOpen={confirm} title="Delete fixture" description="Interaction fixture"
               busy={busy} onConfirm={() => { setConfirmed(n => n + 1); setBusy(true) }}
