@@ -11,7 +11,6 @@ import {
   ChevronUp,
   Loader2,
   Menu,
-  ShieldCheck,
   User,
   X,
 } from 'lucide-react'
@@ -561,9 +560,6 @@ export interface ShowcaseLink {
 export function MobileNavStep({
   brandLink,
   onClose,
-  showAdminNavigation,
-  adminOpen,
-  onAdminSelect,
   navItems,
   showcaseLinks,
   onShowcaseSelect,
@@ -571,9 +567,6 @@ export function MobileNavStep({
 }: {
   brandLink: ReactNode
   onClose: () => void
-  showAdminNavigation: boolean
-  adminOpen: boolean
-  onAdminSelect: () => void
   navItems: Array<{
     id: string
     icon: LucideIcon
@@ -606,22 +599,6 @@ export function MobileNavStep({
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
         <SidebarNav className="min-h-0 flex-1 overflow-y-auto">
-          {showAdminNavigation ? (
-            <button
-              type="button"
-              onClick={onAdminSelect}
-              aria-label="Admin"
-              aria-current={adminOpen ? 'page' : undefined}
-              className={`group flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-sm transition-colors ${
-                adminOpen
-                  ? 'bg-(--surface-subtle) text-(--foreground)'
-                  : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
-              }`}
-            >
-              <ShieldCheck size={15} />
-              <div className="min-w-0 flex-1 text-left">Admin</div>
-            </button>
-          ) : null}
           {navItems.map((item) => (
             <MobileNavRow
               key={item.id}
@@ -724,9 +701,6 @@ export function MobileSidebar({
   panelSearch,
   panelChildren,
   brandLink,
-  showAdminNavigation,
-  adminOpen,
-  onAdminSelect,
   navItems,
   onSelectItem,
   showcaseLinks,
@@ -751,9 +725,6 @@ export function MobileSidebar({
   panelSearch?: SidebarResourceSearch | null
   panelChildren?: ReactNode
   brandLink: ReactNode
-  showAdminNavigation: boolean
-  adminOpen: boolean
-  onAdminSelect: () => void
   navItems: MobileNavItemVm[]
   onSelectItem: (item: SidebarNavItem) => void
   showcaseLinks: ShowcaseLink[]
@@ -784,9 +755,6 @@ export function MobileSidebar({
         <MobileNavStep
           brandLink={brandLink}
           onClose={onClose}
-          showAdminNavigation={showAdminNavigation}
-          adminOpen={adminOpen}
-          onAdminSelect={onAdminSelect}
           navItems={navItems.map((vm) => ({
             id: vm.item.id,
             icon: vm.item.icon,

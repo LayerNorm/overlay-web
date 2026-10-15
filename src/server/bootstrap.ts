@@ -83,10 +83,8 @@ import {
   AuthorizationService,
 } from '@/server/authorization/AuthorizationService'
 import { FixedRoleAuthorizationBridge } from '@/server/authorization/FixedRoleAuthorizationBridge'
-import { AuthorizationAdministrationService } from '@/server/authorization/AuthorizationAdministrationService'
 import { createConvexAuthorizationRepositories } from '@/server/authorization/ConvexAuthorizationRepositories'
 import type { AuthorizationRepositories } from '@overlay/authz-contracts'
-import type { AuthorizationCapability } from '@overlay/authz-contracts'
 import {
   ConvexConversationCollaborationRepository,
 } from '@/server/conversations/ConvexConversationCollaborationRepository'
@@ -138,7 +136,6 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceSearchService: WorkspaceSearchService
   authorizationService: AuthorizationService
   fixedRoleAuthorizationBridge: FixedRoleAuthorizationBridge
-  authorizationAdministrationService: AuthorizationAdministrationService
   conversationCollaboration: ConversationCollaborationRepository
 }
 
@@ -235,17 +232,6 @@ export function createOverlayServerContext(
       // owner by default — the capability policy still apply.
       return false
     },
-  })
-
-  const assertCapability = async (userId: string, capability: AuthorizationCapability) => {
-    await authorizationService.assertCapability({ userId, capability })
-  }
-
-  const authorizationAdministrationService = new AuthorizationAdministrationService({
-    assertCapability,
-    audit: auditService,
-    prepareAuthorization: () => fixedRoleAuthorizationBridge.ensureSystemRoles(),
-    repositories: authorizationRepositories,
   })
 
   const conversationCollaboration: ConversationCollaborationRepository = new ConvexConversationCollaborationRepository()
@@ -468,7 +454,6 @@ export function createOverlayServerContext(
     workspaceSearchService,
     authorizationService,
     fixedRoleAuthorizationBridge,
-    authorizationAdministrationService,
     conversationCollaboration,
   }
 }

@@ -44,13 +44,7 @@ test('route policies are exact and expose typed resource requirements', () => {
   )
   assert.equal(getAuthorizationRoutePolicy('GET', '/api/v1/files-archive'), null)
   assert.equal(getAuthorizationRoutePolicy('POST', '/api/v1/unknown'), null)
-  assert.deepEqual(
-    getAuthorizationRoutePolicy('GET', '/api/v1/admin/authorization/roles'),
-    {
-      access: 'capability',
-      capabilities: ['roles.read'],
-    },
-  )
+  assert.equal(getAuthorizationRoutePolicy('GET', '/api/v1/admin/authorization/roles'), null)
 })
 
 test('policy registry does not contain duplicate path rules', () => {
