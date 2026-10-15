@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
-import { reduceRemoteRun, remoteRunCoarseStatus, type RemoteRunFact, type RemoteRunState } from '../../src/shared/agents/remote-run'
+import { reduceRemoteRun, remoteRunCoarseStatus, type RemoteRunFact, type RemoteRunState, type RemoteRunReduction } from '../../src/shared/agents/remote-run'
 
 const remoteApprovalValidator = v.object({ requestKey: v.string(), expiresAt: v.number(), kind: v.optional(v.union(v.literal('permission'), v.literal('elicitation'))), decision: v.optional(v.string()), delivered: v.optional(v.boolean()) })
 
@@ -54,7 +54,7 @@ export function reconcileRemoteRequestParts(parts: Array<Record<string, unknown>
   })
 }
 
-export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>, fact: RemoteRunFact, now: number) {
+export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>, fact: RemoteRunFact, now: number): Promise<RemoteRunReduction | null> {
   if (!run.remoteLifecycle) return null
   const current = run.remoteLifecycle as RemoteRunState
   const result = reduceRemoteRun(current, current.revision, { attemptId: current.currentAttemptId,
@@ -99,6 +99,8 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
     const existing = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', commandId)).unique()
     // Release any reserved sequence as a neutralized shutdown, preserving environment ordering.
     const held = await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', attempt.runId)).take(100)
+    const neverDispatched = held.some(command => command.status === 'coordinator_pending'
+      && command.type === 'start' && command.attemptId === result.state.currentAttemptId)
     for (const command of held) if (command.status === 'coordinator_pending') await ctx.db.patch(command._id, { type: 'shutdown', payload: { reason: 'Cancellation requested before execution was dispatched.' }, status: 'pending', updatedAt: now })
     if (!existing) {
       const latest = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', q => q.eq('environmentId', attempt.environmentId)).order('desc').first()
@@ -106,6 +108,8 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
         runId: attempt.runId, attemptId: attempt.sessionId, executionGeneration: result.state.executionGeneration,
         type: 'cancel', sequence: (latest?.sequence ?? 0) + 1, payload: { reason: result.state.cause }, status: 'pending', createdAt: now, updatedAt: now })
     }
+    // Atomic reserved-start state proves no host was ever allowed to execute it.
+    if (neverDispatched) return applyRemoteFact(ctx, { ...run, remoteLifecycle: result.state }, { type: 'stopped' }, now)
   }
   if (attempt && ['completed', 'cancelled', 'failed'].includes(result.state.phase)) {
     const intentId = `finalize:${attempt.runId}:${attempt.sessionId}`

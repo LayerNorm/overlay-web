@@ -686,7 +686,7 @@ test('a settled hold or revoked binding cannot be revived by coordination or rec
     })
     const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
     await lifecycle('claim', owner); await lifecycle('advance', owner)
-    expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelling')
+    expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelled')
   }
 })
 
@@ -820,7 +820,7 @@ test('canonical request projection preserves decisions and closes lost execution
 
 
 test('cancellation before coordinator claim delivers shutdown and cancel without blocking later sequences', async () => {
-  const { call, seeded } = await durableFixture()
+  const { call, seeded, convex, started } = await durableFixture()
   await call('controlRemoteAgentTurnByServer', { actorUserId, workspaceId, conversationId: seeded.conversationId,
     runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 1 })
   const commands = await call<Array<{ type: string; sequence: number }>>('claimCommandsByServer', {
@@ -828,6 +828,7 @@ test('cancellation before coordinator claim delivers shutdown and cancel without
   })
   expect(commands.map(command => command.type)).toEqual(['shutdown', 'cancel'])
   expect(commands.map(command => command.sequence)).toEqual([1, 2])
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelled')
 })
 
 test('fresh lifecycle attempt uses a strict executable start rather than checkpoint references', async () => {
