@@ -85,7 +85,7 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
         showCloseButton={false}
         overlayClassName="overlay-backdrop-in z-50 bg-(--overlay-scrim) p-4"
         aria-labelledby="skill-dialog-title"
-        className="overlay-dialog-in flex w-full max-w-xl gap-0 flex-col p-0"
+        className="overlay-dialog-in flex w-[calc(100%-2rem)] max-w-xl gap-0 flex-col p-0"
         style={{ maxHeight: 'calc(100vh - 80px)' }}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-(--border) px-5 py-4">

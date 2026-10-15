@@ -78,7 +78,7 @@ export function DraftReviewModal({
         showCloseButton={false}
         overlayClassName="z-50 bg-black/30 p-3 sm:p-4"
         aria-labelledby="draft-review-modal-title"
-        className="block top-auto bottom-0 w-full max-w-2xl translate-y-0 gap-0 rounded-t-2xl p-0 data-[state=closed]:slide-out-to-bottom-full sm:top-[50%] sm:bottom-auto sm:translate-y-[-50%] sm:rounded-2xl sm:data-[state=closed]:slide-out-to-bottom-2"
+        className="block top-auto bottom-3 w-[calc(100%-1.5rem)] sm:w-[calc(100%-2rem)] max-w-2xl translate-y-0 gap-0 rounded-t-2xl p-0 data-[state=closed]:slide-out-to-bottom-full sm:top-[50%] sm:bottom-auto sm:translate-y-[-50%] sm:rounded-2xl sm:data-[state=closed]:slide-out-to-bottom-2"
       >
         <div className="flex items-center justify-between border-b border-(--border) px-4 py-3">
           <div>

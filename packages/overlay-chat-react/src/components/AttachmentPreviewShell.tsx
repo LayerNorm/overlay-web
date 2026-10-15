@@ -105,7 +105,7 @@ export function AttachmentPreviewDialog({
         showCloseButton={false}
         overlayClassName="z-50 bg-(--overlay-scrim) p-4"
         aria-label="Attachment preview"
-        className={cn('flex h-[min(92vh,900px)] w-full max-w-5xl gap-0 flex-col overflow-hidden p-0')}
+        className={cn('flex h-[min(92vh,900px)] w-[calc(100%-2rem)] max-w-5xl gap-0 flex-col overflow-hidden p-0')}
       >
         <div className="flex min-h-0 flex-1 flex-col">
           {renderViewer({
