@@ -104,3 +104,5 @@ Operator capabilities derive from the active administrative principal inside the
 Admin lint/typecheck/build run as a reusable workflow called by Security Checks; the exhaustive shards execute every admin test under its own tsconfig once; the required quality aggregate fails if admin validation fails, is absent or is skipped. Separate import-boundary rule IDs preserve existing web architecture restrictions.
 
 The admin CI install selects only the admin workspace and its dependency closure, matching Vercel’s monorepo install. Shared UI packages declare their runtime styling/Radix dependencies; root web dependencies must not mask missing admin dependencies.
+
+The OAuth state envelope holds a one-use PKCE verifier; AuthKit gets its S256 challenge and callback exchanges the code with that verifier. Exchange failures log only event, error class, bounded provider code and status, never codes, tokens or credentials.

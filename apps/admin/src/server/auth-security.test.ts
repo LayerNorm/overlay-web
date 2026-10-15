@@ -21,6 +21,8 @@ test('every operator sign-in requests a fresh WorkOS challenge', async () => {
   const result = await signIn(new NextRequest('https://admin.example.invalid/auth/sign-in?reauth=1'))
   const url = new URL(result.headers.get('location')!)
   assert.equal(url.searchParams.get('max_age'), '0')
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
+  assert.ok(url.searchParams.get('code_challenge'))
   assert.equal(url.searchParams.get('redirect_uri'), 'https://admin.example.invalid/auth/callback')
 })
 
