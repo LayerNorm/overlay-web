@@ -23,15 +23,19 @@ try {
         import { createRoot } from 'react-dom/client'
         import { ConfirmDialog } from './packages/overlay-ui/src/components/overlays/ConfirmDialog'
         import { DialogFrame } from './packages/overlay-ui/src/components/primitives/Dialog'
+        import { Dialog, DialogContent } from './packages/overlay-ui/src/components/ui/dialog'
         function App() {
           const [confirm, setConfirm] = useState(false)
           const [dialog, setDialog] = useState(false)
+          const [direct, setDirect] = useState(false)
           const [busy, setBusy] = useState(false)
           const [confirmed, setConfirmed] = useState(0)
           const [cancelled, setCancelled] = useState(0)
           return <>
             <button id="confirm-opener" onClick={() => setConfirm(true)}>Open confirm</button>
             <button id="dialog-opener" onClick={() => setDialog(true)}>Open dialog</button>
+            <button id="direct-opener" onClick={() => setDirect(true)}>Open direct</button>
+            <Dialog open={direct} onOpenChange={setDirect}><DialogContent aria-label="Direct fixture" showCloseButton={false}><input aria-label="Autofocused input" autoFocus /><button onClick={() => setDirect(false)}>Close direct</button></DialogContent></Dialog>
             <output id="counts">{confirmed}:{cancelled}</output>
             <ConfirmDialog isOpen={confirm} title="Delete fixture" description="Interaction fixture"
               busy={busy} onConfirm={() => { setConfirmed(n => n + 1); setBusy(true) }}
@@ -56,7 +60,7 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   assert.ok(address && typeof address !== 'string')
-  browser = await chromium.launch({ headless: true })
+  browser = await chromium.launch({ headless: true, executablePath: process.env.OVERLAY_QA_BROWSER_EXECUTABLE })
   const page = await browser.newPage()
   const origin = `http://127.0.0.1:${address.port}`
   const errors = []
@@ -107,6 +111,17 @@ try {
       else await page.keyboard.press('Escape')
       await page.getByRole('dialog').waitFor({ state: 'detached' })
       await page.waitForFunction(() => document.activeElement?.id === 'dialog-opener', null, { timeout: 2000 })
+    })
+  }
+  for (const action of ['Close direct', 'Escape']) {
+    await check(`Direct DialogContent ${action} returns focus without a Trigger`, async () => {
+      await page.goto(origin)
+      await page.locator('#direct-opener').click()
+      await page.getByRole('dialog').waitFor()
+      if (action === 'Escape') await page.keyboard.press('Escape')
+      else await page.getByRole('button', { name: action, exact: true }).click()
+      await page.getByRole('dialog').waitFor({ state: 'detached' })
+      await page.waitForFunction(() => document.activeElement?.id === 'direct-opener', null, { timeout: 2000 })
     })
   }
   assert.deepEqual(errors, [], 'browser runtime errors')

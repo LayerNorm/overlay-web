@@ -39,7 +39,6 @@ import {
   resolveShowcasePrimaryLinks,
   scopePanelAction,
   resolveSidebarRouteState,
-  selectMobileAdmin,
   selectMobileNavItem,
   selectSidebarNavItem,
   type SidebarNavItem,
@@ -210,13 +209,6 @@ function useSidebarNavInteractions(args: {
     openPanel: () => setMobileView('panel'),
     closeDrawer: closeMobileDrawer,
   })
-  const onSelectMobileAdmin = () => selectMobileAdmin({
-    adminOpen: routeState.adminOpen,
-    pathname,
-    router,
-    setPendingNav,
-    closeMobileDrawer,
-  })
   const beginSecondaryNavigation = (id: string) => {
     setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })
   }
@@ -228,7 +220,6 @@ function useSidebarNavInteractions(args: {
     navItemDestination,
     onSelectNavItem,
     onSelectMobileNavItem,
-    onSelectMobileAdmin,
     beginSecondaryNavigation,
   }
 }
@@ -262,7 +253,6 @@ function useSidebarPanelChrome(args: {
   isGuestConfirmed: boolean
   cumulativeChatUnread: number
   automationsEnabled: boolean
-  showAdminNavigation: boolean
   setPendingNav: Dispatch<SetStateAction<{ href: string; fromPath: string } | null>>
 }) {
   const {
@@ -294,7 +284,6 @@ function useSidebarPanelChrome(args: {
     isGuestConfirmed,
     cumulativeChatUnread,
     automationsEnabled,
-    showAdminNavigation,
     setPendingNav,
   } = args
 
@@ -374,8 +363,6 @@ function useSidebarPanelChrome(args: {
 
   const showcasePrimaryLinks = resolveShowcasePrimaryLinks(publicShowcase)
   const railItems = buildPrimaryRailItems({
-    showAdminNavigation,
-    adminOpen: routeState.adminOpen,
     effectivePendingHref,
     navItems,
     primaryNavActionByItemId,
@@ -420,7 +407,6 @@ function useSidebarDerivedPanels(args: {
   currentSearchParams: URLSearchParams
   resolveWorkspaceSurface: (path: string) => ReturnType<NonNullable<AppSidebarWorkspaceAdapter['resolveSurface']>>
   automationsEnabled: boolean
-  can: ReturnType<typeof useAuthorization>['can']
   publicShowcase: boolean
   user: ReturnType<typeof useAuth>['user']
   isGuestConfirmed: boolean
@@ -460,7 +446,6 @@ function useSidebarDerivedPanels(args: {
     currentSearchParams,
     resolveWorkspaceSurface,
     automationsEnabled,
-    can,
     publicShowcase,
     user,
     isGuestConfirmed,
@@ -505,7 +490,6 @@ function useSidebarDerivedPanels(args: {
     savedScope,
     solo,
   })
-  const showAdminNavigation = can('administration.access') && !publicShowcase && Boolean(user)
 
   const closeMobileDrawer = () => {
     setMobileMenuOpen(false)
@@ -593,7 +577,6 @@ function useSidebarDerivedPanels(args: {
     navItemDestination,
     onSelectNavItem,
     onSelectMobileNavItem,
-    onSelectMobileAdmin,
     beginSecondaryNavigation,
   } = useSidebarNavInteractions({
     routeState,
@@ -661,7 +644,6 @@ function useSidebarDerivedPanels(args: {
     isGuestConfirmed,
     cumulativeChatUnread,
     automationsEnabled,
-    showAdminNavigation,
     setPendingNav,
   })
 
@@ -674,7 +656,6 @@ function useSidebarDerivedPanels(args: {
   return {
     routeState,
     panelTitle,
-    showAdminNavigation,
     hideTemporaryChatChrome,
     entitlements,
     createChat,
@@ -685,7 +666,6 @@ function useSidebarDerivedPanels(args: {
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
-    onSelectMobileAdmin,
     panelNav,
     panelAction,
     panelSearch,
@@ -777,7 +757,6 @@ export function useAppSidebarState({
   const {
     routeState,
     panelTitle,
-    showAdminNavigation,
     hideTemporaryChatChrome,
     entitlements,
     createChat,
@@ -788,7 +767,6 @@ export function useAppSidebarState({
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
-    onSelectMobileAdmin,
     panelNav,
     panelAction,
     panelSearch,
@@ -803,7 +781,6 @@ export function useAppSidebarState({
     currentSearchParams,
     resolveWorkspaceSurface,
     automationsEnabled: capabilities.automations,
-    can,
     publicShowcase,
     user,
     isGuestConfirmed,
@@ -873,12 +850,10 @@ export function useAppSidebarState({
     globalSearchOpen,
     globalSearchInitialCategory,
     closeGlobalSearch,
-    showAdminNavigation,
     effectivePendingSecondaryNavId,
     cumulativeChatUnread,
     onSelectNavItem,
     onSelectMobileNavItem,
-    onSelectMobileAdmin,
     panelNav,
     panelAction,
     panelSearch,

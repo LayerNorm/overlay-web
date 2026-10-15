@@ -28,6 +28,8 @@
 - Preview automation: PR builds require `needs-preview`. Root `git.deploymentEnabled` uses `"*": false, "main": true`; main retains native Git production. The trusted main controller uses the existing non-expiring `VERCEL_PREVIEW_TOKEN` in `release-control` to create exact-SHA Preview builds and manage custom URLs/cleanup; REST API must be allowed for Preview. Request previews for UI/browser interactions, sensitive flows, isolated backend QA, environment/build changes, uncertainty CI cannot resolve or explicitly requested browser QA. Ordinarily skip previews for well-tested Dependabot patch/minor updates, docs, tests/fixtures, CI metadata, formatting/comments and type-only changes. Record the rationale. Removing the label settles builds and removes resources; manual dispatch does not override it. Reuse existing credentials; never create per-feature tokens or duplicate shared environment variables.
 - Preview timing: open a draft main PR, complete local validation, then add `needs-preview` when hosted QA is needed. The controller requests the exact revision after provisioning its URL. Missing PR metadata is resolved by exact public branch/SHA lookup. QA starts only when the custom URL serves the current PR head and its own backend.
 
+- Operator console: `apps/admin` serves `admin.getoverlay.io` as a separate Vercel project. Customer web must contain no operator UI/API or operator secret. Operator calls require the dedicated admin secret plus a verified active WorkOS operator; ordinary web member initialization uses only `authorization/defaults:ensureDefaultUserRoleByServer`. Retire backend endpoints only after their replacement callers are live. See `docs/develop/admin-console.md`.
+
 ## Learned Workspace Facts
 
 - This Next.js app selects Convex URL from env: development commonly uses `DEV_NEXT_PUBLIC_CONVEX_URL` for a separate dev backend from production `NEXT_PUBLIC_CONVEX_URL`.
@@ -80,6 +82,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `docs/develop/worktree-staging-qa.mdx` | Any change to hosted Preview QA, native production verification, or Convex deploy lanes. |
 | `docs/develop/convex-workflow.mdx` | Any change to Convex deploy commands, environment selection, or boundary rules. |
 | `docs/develop/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
+| `docs/develop/admin-console.md` | Any change to `apps/admin/**` (the standalone operator console), its auth/session model, Convex access path, env contract, or deployment lifecycle. |
 | `docs/develop/feature-modules.mdx` | Any change to the feature module registry, extension system, or `@overlay/app-core` shell config. |
 | `docs/develop/api-source-of-truth.mdx` | Any change to where API logic lives (Convex vs BFF vs `@overlay/api-client`), or the contract between layers. |
 | `docs/develop/api-route-catalog.mdx` | Any change to a web API route's existence, methods, behavior, authentication boundary, or implementation files. Keep the exhaustive route descriptions current. |

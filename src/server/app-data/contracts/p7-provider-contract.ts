@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import type { TestContext } from 'node:test'
-import { AdministrativeAuthorizationError, AdministrativeService, AuditService } from '@/server/admin'
-import type { AdministrativeRepository, AuditRepository } from '@/server/admin'
+import type { AuditRepository } from '@/server/admin'
 import { ApiKeyService, type ApiKeyRepository } from '@/server/auth/api-keys'
 import type { BillingProviderEventRepository } from '@/server/billing/BillingProviderEventRepository'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
 
 export type P7ProviderContractBackend = {
-  administration: AdministrativeRepository
   apiKeys: ApiKeyRepository
   audit: AuditRepository
   billing: BillingRepository
@@ -37,8 +35,6 @@ export async function runP7ProviderContract(
   const foreignUserId = `${scope}_foreign`
   for (const id of [userId, foreignUserId]) await backend.prepareUser?.(id)
 
-  const audit = new AuditService(backend.audit)
-  const administration = new AdministrativeService({ audit, repository: backend.administration })
   const apiKeys = new ApiKeyService(backend.apiKeys)
 
   try {
@@ -323,35 +319,14 @@ export async function runP7ProviderContract(
       assert.equal(await apiKeys.revokeById({ id: rotated!.id, userId }), true)
     })
 
-    await t.test(`${backend.provider} admin authorization and owned audit records`, async () => {
-      await assert.rejects(administration.list(userId), AdministrativeAuthorizationError)
-      await backend.administration.grant({
-        grantedBy: 'system:p7-contract',
-        reason: 'contract bootstrap',
-        role: 'admin',
-        userId,
+    await t.test(`${backend.provider} operational audit is append-only for the customer web`, async () => {
+      const event = await backend.audit.append({
+        action: 'p7.contract.audit', actorType: 'user', actorUserId: userId,
+        metadata: { apiKey: 'redact-me', safe: 'visible' }, outcome: 'success',
+        resourceId: userId, resourceType: 'contract',
       })
-      await administration.grant({
-        actorUserId: userId,
-        role: 'auditor',
-        userId: foreignUserId,
-      })
-      assert.equal(await administration.canViewAudit(foreignUserId), true)
-      assert.equal(await administration.canManageAdministrators(foreignUserId), false)
-      await audit.record({
-        action: 'p7.contract.audit',
-        actorType: 'user',
-        actorUserId: userId,
-        metadata: { apiKey: 'redact-me', safe: 'visible' },
-        outcome: 'success',
-        resourceId: userId,
-        resourceType: 'contract',
-      })
-      const events = await audit.list({ actorUserId: userId, limit: 20 })
-      const event = events.find((candidate) => candidate.action === 'p7.contract.audit')
-      assert.deepEqual(event?.metadata, { apiKey: '[REDACTED]', safe: 'visible' })
-      assert.equal((await audit.list({ actorUserId: foreignUserId, limit: 20 }))
-        .some((candidate) => candidate.action === 'p7.contract.audit'), false)
+      assert.deepEqual(event.metadata, { apiKey: '[REDACTED]', safe: 'visible' })
+      await assert.rejects(backend.audit.list({ actorUserId: userId }), /standalone admin/)
     })
 
     await t.test(`${backend.provider} account deletion removes owned P7 state`, async () => {
@@ -359,7 +334,6 @@ export async function runP7ProviderContract(
       assert.ok(key)
       await backend.deleteUser(userId)
       assert.equal((await apiKeys.list({ userId })).length, 0)
-      assert.equal(await backend.administration.get({ userId }), null)
     })
   } finally {
     for (const id of [userId, foreignUserId]) await backend.cleanupUser?.(id)

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import test from 'node:test'
-import { ConvexAdministrativeRepository, ConvexAuditRepository } from '@/server/admin'
+import { ConvexAuditRepository } from '@/server/admin'
 import { ConvexApiKeyRepository } from '@/server/auth/api-keys'
 import { ConvexBillingProviderEventRepository } from '@/server/billing/ConvexBillingProviderEventRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
@@ -21,7 +21,6 @@ test('real Convex P7 provider contract', {
 }, async (t) => {
   const billing = new ConvexBillingRepository()
   await runP7ProviderContract(t, {
-    administration: new ConvexAdministrativeRepository(),
     apiKeys: new ConvexApiKeyRepository(),
     audit: new ConvexAuditRepository(),
     billing,

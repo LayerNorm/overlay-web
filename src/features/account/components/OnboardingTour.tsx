@@ -12,6 +12,7 @@ import Image from 'next/image'
 import { X, ArrowRight, Copy, Check, Plus, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
+import { Dialog, DialogContent } from '@overlay/ui'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
@@ -308,14 +309,7 @@ function usePostTourPhase({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (postTourPhase === 'import-memories') {
-        if (e.key === 'Escape') finishImportStep()
-        return
-      }
-      if (postTourPhase === 'connectors') {
-        if (e.key === 'Escape') finishPostTour()
-        return
-      }
+      if (postTourPhase) return
       if (e.key === 'Escape') onSkip()
       if (e.key === 'ArrowRight' || e.key === 'Enter') {
         if (currentStep < stepsLength - 1) onNext()
@@ -369,19 +363,12 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
   }, [importPaste, isImportSaving, onFinish])
 
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className="fixed inset-0 z-10050 flex items-center justify-center bg-black/60 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onFinish() }}
-    >
-      {/* Import step is a transient post-tour surface, not a persistent native <dialog>. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div
-        role="dialog"
+    <Dialog open onOpenChange={(open) => { if (!open) onFinish() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-10050 bg-black/60 p-4"
         aria-labelledby="onboarding-import-title"
-        className="w-[min(540px,92vw)] max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-(--border) bg-(--surface-elevated) p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        className="block w-[min(540px,92vw)] max-h-[min(90vh,720px)] gap-0 overflow-y-auto p-6"
       >
         <div className="mb-5 flex items-start justify-between gap-3">
           <h2 id="onboarding-import-title" className="text-base font-semibold text-(--foreground)">
@@ -464,8 +451,8 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
             {isImportSaving ? 'Saving…' : 'Add to memory'}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -586,19 +573,12 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
 
   return (
     <>
-      {/* Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via the dialog controls. */}
-      {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
-      <div
-        className="fixed inset-0 z-10050 flex items-center justify-center bg-black/60 p-4"
-        onClick={(e) => { if (e.target === e.currentTarget) onFinish() }}
-      >
-        {/* Anchored post-tour surface, not a persistent native <dialog>. */}
-        {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-        <div
-          role="dialog"
+      <Dialog open onOpenChange={(open) => { if (!open) onFinish() }}>
+        <DialogContent
+          showCloseButton={false}
+          overlayClassName="z-10050 bg-black/60 p-4"
           aria-labelledby="onboarding-connectors-title"
-          className="w-[min(520px,94vw)] max-h-[min(90vh,840px)] overflow-y-auto rounded-xl border border-(--border) bg-(--surface-elevated) p-6 shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
+          className="block w-[min(520px,94vw)] max-h-[min(90vh,840px)] gap-0 overflow-y-auto p-6"
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <h2 id="onboarding-connectors-title" className="text-base font-semibold text-(--foreground)">
@@ -686,8 +666,8 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
               Open Extensions
             </button>
           </div>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
       <IntegrationsDialog
         connectedSlugs={connectedSlugs}
         isOpen={integrationsPickerOpen}

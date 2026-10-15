@@ -10,6 +10,8 @@
 
 import type * as admin_administration from "../admin/administration.js";
 import type * as admin_authorization from "../admin/authorization.js";
+import type * as admin_breakGlass from "../admin/breakGlass.js";
+import type * as admin_console from "../admin/console.js";
 import type * as agents_agentAsks from "../agents/agentAsks.js";
 import type * as agents_agentThreads from "../agents/agentThreads.js";
 import type * as agents_artifactCleanup from "../agents/artifactCleanup.js";
@@ -23,6 +25,7 @@ import type * as auth_authDebug from "../auth/authDebug.js";
 import type * as auth_serviceAuth from "../auth/serviceAuth.js";
 import type * as auth_sessionTransfer from "../auth/sessionTransfer.js";
 import type * as auth_users from "../auth/users.js";
+import type * as authorization_defaults from "../authorization/defaults.js";
 import type * as automations_automationRunner from "../automations/automationRunner.js";
 import type * as automations_automations from "../automations/automations.js";
 import type * as automations_workflowEventProjector from "../automations/workflowEventProjector.js";
@@ -48,6 +51,7 @@ import type * as collaboration_sharing from "../collaboration/sharing.js";
 import type * as collaboration_workspaces from "../collaboration/workspaces.js";
 import type * as computers_computers from "../computers/computers.js";
 import type * as crons from "../crons.js";
+import type * as dev_seed from "../dev/seed.js";
 import type * as email_deliveryRunner from "../email/deliveryRunner.js";
 import type * as email_outbox from "../email/outbox.js";
 import type * as files_files from "../files/files.js";
@@ -76,10 +80,12 @@ import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js
 import type * as lib_gatewayCredits from "../lib/gatewayCredits.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_metrics from "../lib/metrics.js";
+import type * as lib_preview from "../lib/preview.js";
 import type * as lib_resourceScope from "../lib/resourceScope.js";
 import type * as lib_scopeMutations from "../lib/scopeMutations.js";
-import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
+import type * as lib_staging from "../lib/staging.js";
 import type * as lib_workItems from "../lib/workItems.js";
+import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
 import type * as mcp_grants from "../mcp/grants.js";
 import type * as migrations_backfillAgentThreads from "../migrations/backfillAgentThreads.js";
 import type * as migrations_backfillAutomationConversations from "../migrations/backfillAutomationConversations.js";
@@ -117,6 +123,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   "admin/administration": typeof admin_administration;
   "admin/authorization": typeof admin_authorization;
+  "admin/breakGlass": typeof admin_breakGlass;
+  "admin/console": typeof admin_console;
   "agents/agentAsks": typeof agents_agentAsks;
   "agents/agentThreads": typeof agents_agentThreads;
   "agents/artifactCleanup": typeof agents_artifactCleanup;
@@ -130,6 +138,7 @@ declare const fullApi: ApiFromModules<{
   "auth/serviceAuth": typeof auth_serviceAuth;
   "auth/sessionTransfer": typeof auth_sessionTransfer;
   "auth/users": typeof auth_users;
+  "authorization/defaults": typeof authorization_defaults;
   "automations/automationRunner": typeof automations_automationRunner;
   "automations/automations": typeof automations_automations;
   "automations/workflowEventProjector": typeof automations_workflowEventProjector;
@@ -155,6 +164,7 @@ declare const fullApi: ApiFromModules<{
   "collaboration/workspaces": typeof collaboration_workspaces;
   "computers/computers": typeof computers_computers;
   crons: typeof crons;
+  "dev/seed": typeof dev_seed;
   "email/deliveryRunner": typeof email_deliveryRunner;
   "email/outbox": typeof email_outbox;
   "files/files": typeof files_files;
@@ -183,10 +193,12 @@ declare const fullApi: ApiFromModules<{
   "lib/gatewayCredits": typeof lib_gatewayCredits;
   "lib/logging": typeof lib_logging;
   "lib/metrics": typeof lib_metrics;
+  "lib/preview": typeof lib_preview;
   "lib/resourceScope": typeof lib_resourceScope;
   "lib/scopeMutations": typeof lib_scopeMutations;
-  "lib/workspaceMembership": typeof lib_workspaceMembership;
+  "lib/staging": typeof lib_staging;
   "lib/workItems": typeof lib_workItems;
+  "lib/workspaceMembership": typeof lib_workspaceMembership;
   "mcp/grants": typeof mcp_grants;
   "migrations/backfillAgentThreads": typeof migrations_backfillAgentThreads;
   "migrations/backfillAutomationConversations": typeof migrations_backfillAutomationConversations;

@@ -449,16 +449,3 @@ export const deleteUserAccountByServer = mutation({
     }
   },
 })
-
-/** Server-only: people for the admin console's directory (id and email), optionally one person. */
-export const listUserDirectoryByServer = query({
-  args: { serverSecret: v.string(), limit: v.optional(v.number()), userId: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const limit = Math.min(Math.max(args.limit ?? 100, 1), 200)
-    const rows = args.userId
-      ? await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', args.userId!)).take(1)
-      : await ctx.db.query('subscriptions').take(limit)
-    return rows.map((row) => ({ userId: row.userId, email: row.email }))
-  },
-})

@@ -10,6 +10,7 @@ description: "PR previews on overlay-landing, main integration, and automatic pr
 | Local | Working tree | Engineer-owned dev backend and test credentials |
 | PR preview | Current internal main PR head on `overlay-landing` Preview | Per-PR Convex, Sandbox identity, shared test credentials |
 | Customer production | Automatically deployed current main SHA | `colorful-chickadee-419`, production identity/providers |
+| Operator console | Native main deployment of `apps/admin` to `overlay-admin` | Same production backend; separate admin secret/session, explicit operator allowlist |
 
 Cloud Builder verifies a focused main PR on its isolated preview and stops when ready.
 Integration reviews it, resolves findings and enters the main merge queue once
@@ -73,6 +74,10 @@ unknown or closed PR hosts return HTTPS 404.
 
 The migration evidence below records the former staging lane historically; it
 is not an instruction to deploy staging or gate production on a candidate.
+
+## Operator console
+
+`admin.getoverlay.io` has its own Vercel project rooted at `apps/admin`, with outside-root workspace sources enabled and Node 24. Production deploys through native Git from main. Admin Preview builds require explicit branch binding to an isolated PR backend and matching test credentials; the customer-web preview controller does not manage this second project. See [Admin Console](https://github.com/LayerNorm/overlay-web/blob/main/docs/develop/admin-console.md) for provisioning and cleanup. It adds no staging requirement to ordinary releases.
 
 ## Activation checkpoint
 

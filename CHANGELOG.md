@@ -6,8 +6,19 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Preserve connected-agent approval/input waits across transcript batches and healthy long waits. Add opt-in versioned remote lifecycle coordination, fenced host observations, durable control/finalization intents, truthful recovery limits, and reconnect output protection. Host/protocol candidate: 0.3.11; image candidate: v6. New enrollment remains disabled pending hosted/provider acceptance.
 
+- Complete operator backend separation: retire customer-secret operator endpoints, keep operational audit append-only, and provision ordinary member permissions through a restricted initializer.
+
+- Add a restricted ordinary-member initializer before retiring legacy operator writes, preserving safe web/backend release ordering.
+
+- Preserve operator tokens through denied-action auditing, align billing directory permissions, reject invalid/cross-origin admin mutations, and correct client-scoped WorkOS verification.
+
+- Harden the standalone operator console: fresh WorkOS authentication, safe local redirects, principal-derived operator permissions, preserved architecture boundaries, and mandatory admin CI.
+
 ### Changed
 
+- **Admin console gets its own Convex secret and operator gate (Stage 2).** New `admin/console:*` functions mirror every admin read/write: each runs `requireAdminSecret` (constant-time `ADMIN_API_SECRET` compare, fails closed when unset) plus `requireOperator` — the caller's WorkOS identity via `convex/auth.config.ts` customJwt providers, plus an active `administrativePrincipals` row with a permitted role. Every write records its own `auditEvents` row in the same transaction, and `admin/breakGlass:grantFirstAdmin` recovers access via `npx convex run` when no admin remains. `apps/admin` now sends `ADMIN_API_SECRET` and the operator's access token; production is unaffected until `ADMIN_API_SECRET` is set (the existing `*ByServer` functions keep serving `/app/admin` on `INTERNAL_API_SECRET`).
+
+- Removed the in-app operator console: `/app/admin`, the `/api/v1/admin/*` routes, `src/features/admin`, the admin sidebar entry, and `AuthorizationAdministrationService` are deleted in favor of the standalone `apps/admin` console (see `internal/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`). `/app/admin` now returns 404. API-key `admin` scope checks use the ordinary `administration.access` capability, and a `check:admin-separation` CI guard keeps admin routes and `ADMIN_API_SECRET` out of the web build.
 - Update Vercel Speed Insights to 2.0 and patch the Agent Host Eve dependency to undici 8.10.2, removing the expired security-audit exception.
 
 - The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline. Reduced motion disables the pulse and workspace spinner; shared pulse timing prevents flashes across loading-boundary handoffs.
@@ -20,6 +31,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Use authenticated Vercel MCP access links as the first choice for cloud-agent PR browser QA across platforms, with private runtime automation secrets as a fallback and separate Overlay sandbox login.
 
 - Update CodeQL init, analyze and SARIF upload together to 4.38.2; group future Dependabot updates and enforce matching pins so dependency updates cannot break analysis through version mismatches.
+
+- **Add the standalone admin console app (`apps/admin`).** The operator surface is being split out of the web app per `docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`: Stage 1 scaffolds a separate Next.js app with WorkOS AuthKit sign-in, an `__Host-overlay_admin_session` cookie (8h absolute, 30m idle, recent-sign-in required for destructive actions), a single `convex-admin` server module that calls the existing admin Convex functions with `ADMIN_CONVEX_SECRET`, and the ported Overview/Roles/Groups/Catalog panels. Nothing deploys yet — Vercel project and domain wiring is Stage 3, and `/app/admin` stays in place.
 
 - Restrict preview cleanup to the pinned Overlay project Preview credential and explicitly block the customer production backend, alongside existing project/type/PR ownership checks, to protect production and other products from automation deletion.
 
@@ -47,6 +60,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **Work is the home page.** Signing in, opening `/` or `/app`, clicking the Overlay logo, and the marketing site's app links now open Work (`/app/work`) instead of Agents, including password/SSO sign-in without an explicit return destination. Explicit Account/desktop returns are preserved. Agents is unchanged in the sidebar. A deployment with `OVERLAY_FEATURE_WORK=0` shows its "Work unavailable" notice, which now links to Agents.
 
 - **Command search uses cmdk and the shared modal primitives (shadcn Phase 5).** Preserve category drill-in, application-ranked async results, destinations and Overlay themes; keyboard selection, disabled rows, focus containment/return and scroll locking now share canonical owners. Long result descriptions leave their titles visible on mobile.
+
+- **Dialog and form internals use the shadcn primitives (shadcn Phases 1b and 6a).** Remaining centered dialogs and the link-open chooser now share canonical Dialog/Popover machinery, and Button/IconButton/Input/Textarea wrap the canonical implementations while preserving existing exports and appearance. Non-dialog panels and the mobile drawer are unchanged.
+
+- **Selection and status primitives use shadcn internals (shadcn Phase 6b).** Badge now uses variant-backed canonical classes; Toggle wraps the canonical Switch while preserving its checked callback API; Checkbox, Separator, and Skeleton are exported from `@overlay/ui` for later adoption.
+
+- **Tabs and scrolling internals use shadcn primitives (shadcn Phase 6c).** The existing `TabsList`/`TabButton` API now sits on Radix Tabs keyboard semantics, `Toggle` uses canonical Switch machinery, and `ScrollArea`/`ScrollBar` are exported for later surface adoption. Caller-controlled selection stays synchronized with accessible tab state; keyboard focus skips disabled tabs and Enter/Space use existing activation callbacks.
 
 - Keep model details open when opening their nested reasoning select; remove the legacy mobile account outside-click listener so Apps, Usage and Storage disclosures remain open.
 
@@ -117,6 +136,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **Agent accounts (Phase 1 of Overlay Cloud agents).** Settings → Agent accounts connects the Claude Code and Codex credentials an Overlay Cloud agent runs on: a `claude setup-token` token or Anthropic API key, or an OpenAI API key. Secrets go to the credential vault; only metadata and an opaque reference are stored, and no API response or log includes a credential. A cloud agent is bound to one of its creator's accounts, and the host fetches the credentials for each run (new `POST /api/v1/agent-environments/{id}/run-credentials`, Overlay Cloud environments only) and hands them to the agent process in memory. An agent that rejects its credentials ends the run with `auth_required` and flags the account "Needs reconnecting" until it is reconnected. `POST /api/v1/agent-environments/cloud` now requires `providerAccountId`. The agent image is now `overlay-agent-v2` (the bridge protocol gained the run-credentials method); `OVERLAY_CLOUD_AGENT_IMAGE` defaults to it.
 
 ### Fixed
+
+- Keep standalone admin navigation accessible when mobile labels collapse to icons.
 
 - **Deleting an account now deletes its stored credentials from the vault.** Account deletion removed the Convex rows for model-provider keys but left the secrets in the credential vault, now also true for agent accounts. It lists every vault reference the person stored and deletes each before the rows are removed; if any cannot be deleted, the deletion stops with an error and can be retried, so no secret is orphaned. Needs the new `listCredentialRefsByServer` Convex queries deployed first.
 - **Sandbox commands honour their own environment.** The Boat adapter applied only the machine-wide environment and silently dropped a command's `environment`.

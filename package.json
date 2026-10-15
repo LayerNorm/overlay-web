@@ -8,7 +8,8 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "convex:push:prod": "CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 convex deploy -y",
@@ -18,6 +19,11 @@
     "convex:deploy:dev": "npm run convex:push:dev",
     "convex:deploy:all": "npm run convex:push:all",
     "dev": "next dev",
+    "admin:dev": "npm --prefix apps/admin run dev",
+    "admin:build": "npm --prefix apps/admin run build",
+    "admin:typecheck": "npm --prefix apps/admin run typecheck",
+    "admin:lint": "npm --prefix apps/admin run lint",
+    "admin:test": "npm --prefix apps/admin run test",
     "showcase:generate-assets": "node scripts/ci/generate-public-showcase-assets.mjs",
     "dev:with-convex": "npm run convex:push:dev && next dev",
     "dev:better-auth": "node --env-file=.env.better-auth.local node_modules/next/dist/bin/next dev",
@@ -108,6 +114,7 @@
     "check:files-route-boundary": "node scripts/ci/check-files-route-boundary.mjs",
     "check:domain-service-boundaries": "node scripts/ci/check-domain-service-boundaries.mjs",
     "check:tenant-boundaries": "tsx scripts/ci/check-tenant-boundaries.ts",
+    "check:admin-separation": "tsx scripts/ci/check-admin-separation.ts",
     "license:check": "tsx scripts/ci/check-licensing.ts",
     "test:route-characterization": "NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud INTERNAL_API_SECRET=test-internal-secret NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/files/FileService.test.ts src/server/automations/AutomationService.test.ts src/server/billing/BillingCustomerService.test.ts src/server/conversations/ActConversationService.test.ts src/server/app-api/v1/route-characterization.test.ts",
     "test:lifecycle-events": "NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/lifecycle-events/LifecycleEventPublisher.test.ts src/server/users/UserService.test.ts src/server/automations/AutomationService.test.ts",

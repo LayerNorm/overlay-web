@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
 import { ListboxSelect } from '@overlay/ui/primitives'
-import { useDialogFocus } from '@overlay/ui'
+import { Dialog, DialogContent } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
@@ -623,28 +623,14 @@ function AddMemoryDialog({
   onSave: () => Promise<void>
   dialogButtonClass: string
 }) {
-  const addDialogRef = useDialogFocus(true)
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onDismiss()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onDismiss])
-
   return (
-    // Scrim click-to-dismiss is a pointer affordance; keyboard users dismiss via Escape or the close control.
-    // react-doctor-disable-next-line react-doctor/no-static-element-interactions
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-(--overlay-scrim)"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onDismiss()
-      }}
-    >
-      {/* Inline modal keeps a lightweight form flow; focus trapped via useDialogFocus. */}
-      {/* react-doctor-disable-next-line react-doctor/prefer-html-dialog */}
-      <div ref={addDialogRef} role="dialog" aria-modal="true" aria-labelledby="add-memory-title" className="w-[520px] max-w-[92vw] rounded-xl border border-(--border) bg-(--surface-elevated) p-6 shadow-xl">
+    <Dialog open onOpenChange={(open) => { if (!open) onDismiss() }}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-50 bg-(--overlay-scrim)"
+        aria-labelledby="add-memory-title"
+        className="block w-[520px] max-w-[92vw] gap-0 p-6"
+      >
         <div className="mb-4 flex items-center justify-between">
           <h3 id="add-memory-title" className="text-sm font-medium text-(--foreground)">Add memory</h3>
           <button
@@ -717,8 +703,8 @@ function AddMemoryDialog({
             {isSaving ? 'Saving...' : 'Save'}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
