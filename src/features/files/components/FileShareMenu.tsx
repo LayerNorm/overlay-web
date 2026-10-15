@@ -1,8 +1,10 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { Check, Globe, Loader2, Lock, MoreVertical, Share2 } from 'lucide-react'
+import { MoreVertical, Share2 } from 'lucide-react'
 import { buildSharePageUrl } from '@/shared/share/share-page-url'
 import { ShareVisibilitySubmenu } from './ShareVisibilitySubmenu'
 import type { ShareDialogRenderProps } from '@/shared/share/share-dialog-resource'
@@ -75,28 +77,28 @@ export function FileShareMenu({
 
   return (
     <div ref={menuRef} className={`relative ${className}`}>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => setShowMenu((v) => !v)}
-        className="rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90"
+        className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90`)}
         aria-label="More options"
       >
         <MoreVertical size={16} strokeWidth={1.75} />
-      </button>
+      </Button>
 
       {showMenu && (
         <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => setShowShareSubmenu((v) => !v)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+            className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors`)}
           >
             <Share2 size={14} />
             <span>Share</span>
             {shareVisibility === 'public' && (
               <span className="ml-auto text-[10px] font-medium text-emerald-500">On</span>
             )}
-          </button>
+          </Button>
           {showShareSubmenu && (
             <ShareVisibilitySubmenu
               shareVisibility={shareVisibility}

@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 // Compatibility wrapper: skill contracts/controllers live in @overlay/app-core;
 // shared React presentation lives in @overlay/modules-react.
@@ -118,13 +120,13 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           searchPlaceholder="Search skills…"
           searchTitle="Search skills"
           action={canAdd ? (
-            <button
+            <Button variant="ghost"
               onClick={() => setDialog({ mode: 'create' })}
-              className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)"
+              className={unstyledButton(`flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)`)}
             >
               <Plus size={12} />
               New Skill
-            </button>
+            </Button>
           ) : undefined}
           onSearchQueryChange={setSearchQuery}
         />
