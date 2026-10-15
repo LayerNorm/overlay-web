@@ -525,3 +525,42 @@ test('poll extension is omitted for strict legacy hosts and sent only after v2 n
     if (negotiated) assert.equal(wire.resolvedThroughSequence, 12)
   }
 })
+
+test('fresh tool delivery preserves signed scope and refuses a token from another run', async () => {
+  const { mintAgentMcpToken, verifyAgentMcpToken } = await import('./agent-mcp-token')
+  const previous = process.env.OVERLAY_AGENT_MCP_SECRET
+  process.env.OVERLAY_AGENT_MCP_SECRET = 'integration-test-mcp-secret'
+  try {
+    for (const runId of ['run-1', 'foreign-run']) {
+      const token = mintAgentMcpToken({ userId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
+        agentPrincipalId: 'principal-agent', conversationId: 'conversation-1', environmentId: 'environment-1',
+        runId, turnId: 'turn-1', invocationNonce: 'nonce-1', modelId: 'byo/codex', memoryEnabled: false,
+        grant: { allowedToolIds: [], isDefaultMaster: false }, ttlMs: 60_000 })!
+      const f = fixture({ capabilities: { remoteLifecycleVersion: 2 } })
+      f.repository.commandResolutionFloor = async () => 0
+      f.repository.claimCommands = async () => [{ id: 'command-1', workspaceId: 'workspace-1', environmentId: 'environment-1',
+        runId: 'run-1', type: 'start', sequence: 1, status: 'claimed', createdAt: NOW, updatedAt: NOW,
+        attemptId: 'attempt-2', executionGeneration: 2,
+        payload: { bindingId: 'binding-1', adapterId: 'codex', workingDirectory: '/workspace/project', prompt: 'Work', fresh: true,
+          metadata: { overlayMcp: { url: 'https://overlay.example/api/agent-mcp', token } } },
+      }]
+      const poll = f.service.pollCommands({ environment: f.environment, credential: f.credential }, 10)
+      if (runId !== 'run-1') {
+        await assert.rejects(poll, (error: unknown) => error instanceof ConnectedAgentControlPlaneError && error.code === 'recovery_credentials_invalid')
+      } else {
+        const { commands } = await poll
+        assert.equal(commands[0]?.type, 'start')
+        if (commands[0]?.type !== 'start') throw new Error('Expected a start command')
+        const mcp = commands[0].payload.metadata.overlayMcp
+        assert.ok(mcp && typeof mcp === 'object' && 'token' in mcp && typeof mcp.token === 'string')
+        const claims = verifyAgentMcpToken(mcp.token)
+        assert.equal(claims?.runId, 'run-1')
+        assert.deepEqual(claims?.grant, { allowedToolIds: [], isDefaultMaster: false })
+        assert.ok(claims!.expiresAt <= verifyAgentMcpToken(token)!.expiresAt + 1000)
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.OVERLAY_AGENT_MCP_SECRET
+    else process.env.OVERLAY_AGENT_MCP_SECRET = previous
+  }
+})
