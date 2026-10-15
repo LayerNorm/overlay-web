@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Scope Boat Preview machine creation to its isolated named environment while keeping account credentials excluded; document the approved one-year Preview key renewal requirement.
+
 - Preserve connected-agent approval/input waits across transcript batches and healthy long waits. Add opt-in versioned remote lifecycle coordination, fenced host observations, durable control/finalization intents, truthful recovery limits, and reconnect output protection. Host/protocol candidate: 0.3.11; image candidate: v6. New enrollment remains disabled pending hosted/provider acceptance.
 
 - Complete operator backend separation: retire customer-secret operator endpoints, keep operational audit append-only, and provision ordinary member permissions through a restricted initializer.
