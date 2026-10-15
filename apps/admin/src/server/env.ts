@@ -20,13 +20,7 @@ export function convexHttpUrl(): string {
   return url
 }
 
-/**
- * Stage 1: the deployment's internal server secret (the same value the web app
- * presents as `serverSecret`). Stage 2 renames this to ADMIN_API_SECRET once
- * dedicated admin functions exist; this accessor is the only place that reads
- * it. Until then local dev should point this at the dev backend's internal
- * secret.
- */
+/** Dedicated operator secret, distinct from the customer web server secret. */
 export function adminApiSecret(): string {
   const secret = (process.env.ADMIN_API_SECRET ?? '').trim()
   if (!secret) {

@@ -1,7 +1,8 @@
+import { choice } from '@/server/route-values'
 import { NextResponse } from 'next/server'
 
 import { getAdminServerContext } from '@/server/context'
-import { adminRoute, optionalString, parseJson, queryParams } from '@/server/guard'
+import { adminRoute, optionalString, parseJson, queryParams, requiredString } from '@/server/guard'
 
 import { authorizationActor } from '../_utils'
 
@@ -24,8 +25,8 @@ export const GET = adminRoute(async (request, context) => {
   const assignments = await service().listAssignments(
     authorizationActor(request, context),
     {
-      subjectId: query.subjectId as string,
-      subjectType: query.subjectType as 'group' | 'user',
+      subjectId: requiredString(query.subjectId),
+      subjectType: choice(query.subjectType, ['group', 'user']),
     },
   )
   return NextResponse.json({ assignments })
@@ -36,9 +37,9 @@ export const POST = adminRoute(async (request, context) => {
   const assignment = await service().assignRole(
     authorizationActor(request, context),
     {
-      roleId: body.roleId as string,
-      subjectId: body.subjectId as string,
-      subjectType: body.subjectType as 'group' | 'user',
+      roleId: requiredString(body.roleId),
+      subjectId: requiredString(body.subjectId),
+      subjectType: choice(body.subjectType, ['group', 'user']),
     },
   )
   return NextResponse.json({ assignment }, { status: 201 })
@@ -49,9 +50,9 @@ export const DELETE = adminRoute(async (request, context) => {
   const revoked = await service().revokeRole(
     authorizationActor(request, context),
     {
-      roleId: body.roleId as string,
-      subjectId: body.subjectId as string,
-      subjectType: body.subjectType as 'group' | 'user',
+      roleId: requiredString(body.roleId),
+      subjectId: requiredString(body.subjectId),
+      subjectType: choice(body.subjectType, ['group', 'user']),
     },
   )
   return NextResponse.json({ revoked })

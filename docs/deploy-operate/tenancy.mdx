@@ -99,7 +99,6 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `knowledgeChunkEmbeddings` | `userId` | Deployment boundary | Add `tenantId`; vector indexes must include `tenantId` as a filter field. |
 | `r2UploadIntents` | `userId` | Deployment boundary | Add `tenantId`; upload finalization must include tenant context. |
 | `files` | `userId` | Deployment boundary | Add `tenantId`; file/folder/share indexes must define cross-tenant behavior. |
-| `noteVersions` | `userId`; optional `workspaceId` | A version snapshot authorized through its owning note (`files` row) and recording user | Add `tenantId`; version lookups and `by_noteId` queries must resolve the note's tenant. |
 | `webhookSubscriptions` | `userId` | Deployment boundary | Add `tenantId`; subscriptions, signing secrets, and event ownership must be tenant-scoped. |
 | `webhookDeliveries` | `userId` | Deployment boundary | Add `tenantId`; delivery runner claims and retries must enforce tenant ownership. |
 | `emailSuppressions` | `userId` | Deployment boundary | Add `tenantId`; suppression lists must be tenant-scoped to prevent cross-tenant email leakage. |

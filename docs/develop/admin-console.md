@@ -7,12 +7,8 @@ in-app `/app/admin` surface, which stays in place until Stage 3.
 
 ## Status
 
-- Stage 1 (this change): app scaffold, auth, ported UI, API routes, tests.
-  Nothing deploys; the Vercel project and domain do not exist yet.
-- Stage 2 (planned): Convex functions that accept `ADMIN_API_SECRET`, rotated
-  secret plumbing.
-- Stage 3 (planned): `overlay-admin` Vercel project, `admin.getoverlay.io`
-  domain, secrets, web admin retirement.
+- Stages 1/2: standalone app and dedicated Convex operator endpoints implemented; integration QA in progress.
+- Stage 3: separate `overlay-admin` project created; domain, WorkOS and environment activation are being verified. The web admin remains until authenticated standalone acceptance passes.
 
 ## Access model
 
@@ -70,7 +66,7 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
   caller's WorkOS identity via Convex auth (`convex/auth.config.ts`, WorkOS
   JWKS customJwt providers) and requires an active `administrativePrincipals`
   row with a permitted role — writes require `admin`, reads any active
-  operator, audit list `admin`/`auditor`, user directory `admin`/`support`.
+  operator, audit list `admin`/`auditor`, user directory `admin`/`billing_admin`/`support`.
   Every write records its own `auditEvents` row in the same transaction.
   `admin/administration:*`, `admin/authorization:*`, and
   `auth/users:listUserDirectoryByServer` stay on `INTERNAL_API_SECRET` for the
@@ -116,7 +112,7 @@ stamps the nonce onto its own scripts instead. `next.config.ts` keeps the
 nonce-independent headers: `frame-ancestors 'none'` (also inside the CSP),
 `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Robots-Tag:
 noindex, nofollow`, and `poweredByHeader: false`. `apps/admin/vercel.json`
-disables all Git deployments until Stage 3 wires the project.
+allows native main production deployments and disables automatic non-main builds.
 
 ## CI
 
@@ -128,3 +124,11 @@ PRs and merge groups touching `apps/admin` or its workspace deps.
 Operator capabilities derive from the active administrative principal inside the admin app, independently of customer workspace role assignments. First-operator grants need no customer-role bootstrap. AuthKit sign-in requests `max_age=0`; mutations use the access token's `auth_time`, never callback or refresh time, for the 30-minute freshness check. Return destinations are normalized and constrained to the admin origin at both ends of OAuth.
 
 Admin lint/typecheck/build run as a reusable workflow called by Security Checks; the exhaustive shards execute every admin test under its own tsconfig once; the required quality aggregate fails if admin validation fails, is absent or is skipped. Separate import-boundary rule IDs preserve existing web architecture restrictions.
+
+## Token propagation and release safety
+
+Authenticated handlers and their error/audit paths share the same operator token context. The page derives capabilities from the principal and does not issue an unscoped permission request. Mutations require same-origin requests, valid JSON/enum/capability inputs and recent WorkOS authentication. Billing and support directory role policy is explicit in the backend.
+
+WorkOS native Convex verification follows the [official AuthKit configuration](https://docs.convex.dev/auth/authkit/): shared issuers require the client audience; client-scoped issuers use client-specific JWKS and do not require an absent audience claim. Fresh authentication follows [WorkOS reauthentication](https://workos.com/docs/authkit/reauthentication).
+
+Keep admin production settings limited to its Convex URL, dedicated admin API/session secrets, production WorkOS credentials and the owner's explicit operator allowlist. Never allowlist the release-QA or demo identity in production. Preview uses separate secrets and test identities. Credentials have no scheduled expiry.

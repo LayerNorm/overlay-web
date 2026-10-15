@@ -8,18 +8,19 @@ const workosJwks = workosClientId
 // user-management-scoped issuer; both verify against the same JWKS.
 const workosProviders = workosClientId
   ? [
-      {
+      ...['https://api.workos.com', 'https://api.workos.com/'].map((issuer) => ({
         type: 'customJwt' as const,
-        issuer: 'https://api.workos.com',
+        issuer,
         jwks: workosJwks,
         applicationID: workosClientId,
         algorithm: 'RS256' as const,
-      },
+      })),
       {
         type: 'customJwt' as const,
         issuer: `https://api.workos.com/user_management/${workosClientId}`,
         jwks: workosJwks,
-        applicationID: workosClientId,
+        // Scoped issuer + client-specific JWKS bind this token to our environment.
+        // These WorkOS tokens do not carry aud; match Convex's AuthKit guidance.
         algorithm: 'RS256' as const,
       },
     ]

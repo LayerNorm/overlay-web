@@ -25,7 +25,7 @@ const adminRole = v.union(
 const READ: readonly AdministrativeRole[] = ['admin', 'auditor', 'billing_admin', 'support']
 const WRITE: readonly AdministrativeRole[] = ['admin']
 const AUDIT_READ: readonly AdministrativeRole[] = ['admin', 'auditor']
-const USER_DIRECTORY: readonly AdministrativeRole[] = ['admin', 'support']
+const USER_DIRECTORY: readonly AdministrativeRole[] = ['admin', 'billing_admin', 'support']
 
 type AuditInput = {
   action: string

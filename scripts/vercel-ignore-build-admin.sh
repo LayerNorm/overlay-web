@@ -4,6 +4,8 @@
 # Builds only when admin-relevant paths changed since the previous deploy.
 set -euo pipefail
 
+cd "$(git rev-parse --show-toplevel)"
+
 PREV="${VERCEL_GIT_PREVIOUS_SHA:-}"
 CUR="${VERCEL_GIT_COMMIT_SHA:-HEAD}"
 
@@ -20,6 +22,9 @@ PATHS=(
   "convex/lib/auth.ts"
   "convex/schema.ts"
   "package-lock.json"
+  "package.json"
+  "convex/auth.config.ts"
+  "scripts/vercel-ignore-build-admin.sh"
 )
 
 if git diff --quiet "$PREV" "$CUR" -- "${PATHS[@]}"; then

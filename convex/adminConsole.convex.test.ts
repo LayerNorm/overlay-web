@@ -100,11 +100,11 @@ describe('admin console functions', () => {
     expect(rows[0].actorUserId).toBe('user_admin')
   })
 
-  test('support reads the user directory, billing_admin cannot', async () => {
+  test('support and billing_admin can read the user directory', async () => {
     const convex = convexTest(schema, modules)
     await seedPrincipal(convex, 'user_support', 'support')
     await seedPrincipal(convex, 'user_billing', 'billing_admin')
     await expect(convex.withIdentity({ subject: 'user_support' }).query(query('listUserDirectory'), { serverSecret: adminSecret })).resolves.toEqual([])
-    await expect(convex.withIdentity({ subject: 'user_billing' }).query(query('listUserDirectory'), { serverSecret: adminSecret })).rejects.toThrow(/Unauthorized/)
+    await expect(convex.withIdentity({ subject: 'user_billing' }).query(query('listUserDirectory'), { serverSecret: adminSecret })).resolves.toEqual([])
   })
 })

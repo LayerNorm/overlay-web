@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve operator tokens through denied-action auditing, align billing directory permissions, reject invalid/cross-origin admin mutations, and correct client-scoped WorkOS verification.
+
 - Harden the standalone operator console: fresh WorkOS authentication, safe local redirects, principal-derived operator permissions, preserved architecture boundaries, and mandatory admin CI.
 
 ### Changed

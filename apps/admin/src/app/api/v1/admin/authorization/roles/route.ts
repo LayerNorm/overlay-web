@@ -1,8 +1,8 @@
-import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import { capabilities } from '@/server/route-values'
 import { NextResponse } from 'next/server'
 
 import { getAdminServerContext } from '@/server/context'
-import { adminRoute, parseJson, queryParams } from '@/server/guard'
+import { adminRoute, parseJson, queryParams, requiredString, optionalString } from '@/server/guard'
 
 import { authorizationActor } from '../_utils'
 
@@ -25,9 +25,9 @@ export const POST = adminRoute(async (request, context) => {
   const role = await service().createRole(
     authorizationActor(request, context),
     {
-      capabilities: body.capabilities as AuthorizationCapability[],
-      description: body.description as string | undefined,
-      name: body.name as string,
+      capabilities: capabilities(body.capabilities),
+      description: optionalString(body.description),
+      name: requiredString(body.name),
     },
   )
   return NextResponse.json({ role }, { status: 201 })
@@ -38,10 +38,10 @@ export const PATCH = adminRoute(async (request, context) => {
   const role = await service().updateRole(
     authorizationActor(request, context),
     {
-      capabilities: body.capabilities as AuthorizationCapability[] | undefined,
-      description: body.description as string | undefined,
-      name: body.name as string | undefined,
-      roleId: body.roleId as string,
+      capabilities: body.capabilities === undefined ? undefined : capabilities(body.capabilities),
+      description: optionalString(body.description),
+      name: optionalString(body.name),
+      roleId: requiredString(body.roleId),
     },
   )
   return NextResponse.json({ role })
@@ -51,7 +51,7 @@ export const DELETE = adminRoute(async (request, context) => {
   const body = await parseJson(request)
   const archived = await service().archiveRole(
     authorizationActor(request, context),
-    body.roleId as string,
+    requiredString(body.roleId),
   )
   return NextResponse.json({ archived })
 }, { ...AUDIT('archive'), mutation: true })
