@@ -1070,3 +1070,5 @@ cards as `execution_replaced`, preserving decisions already recorded, and projec
 `recovering` on the same assistant row before dispatching the replacement.
 Replacement attempts clear the previous host boot and health lease; the first
 accepted replacement event binds the new boot, while old attempt events remain fenced.
+During web-first rollout, new control request IDs are sent to Convex only when
+lifecycle v2 is enabled; ordinary controls retain the legacy validator shape.

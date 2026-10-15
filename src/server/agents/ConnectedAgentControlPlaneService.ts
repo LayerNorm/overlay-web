@@ -401,8 +401,12 @@ export class ConnectedAgentControlPlaneService {
   }) {
     await this.assertEnabled(args.workspaceId)
     const now = this.now()
+    // Old Convex validators reject unknown arguments during web-first rollout.
+    // Enable the optional control extension only after the v2 backend is live.
+    const { controlRequestId, ...control } = args
     const result = await this.dependencies.repository.controlRemoteAgentTurn({
-      ...args,
+      ...control,
+      ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' && controlRequestId ? { controlRequestId } : {}),
       now,
       queueExpiresAt: now + INTERACTIVE_QUEUE_TTL_MS,
     })

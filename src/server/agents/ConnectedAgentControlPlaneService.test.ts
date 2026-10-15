@@ -526,6 +526,33 @@ test('poll extension is omitted for strict legacy hosts and sent only after v2 n
   }
 })
 
+test('legacy web-first controls omit the new argument until lifecycle v2 is enabled', async () => {
+  const previous = process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION
+  try {
+    for (const enabled of [false, true]) {
+      if (enabled) process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION = '2'
+      else delete process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION
+      const f = fixture()
+      const received: Array<Parameters<ConnectedAgentRepository['controlRemoteAgentTurn']>[0]> = []
+      f.repository.controlRemoteAgentTurn = async input => {
+        if (!enabled) assert.equal(Object.hasOwn(input, 'controlRequestId'), false)
+        received.push(input)
+        return { applied: true }
+      }
+      const service = new ConnectedAgentControlPlaneService({ repository: f.repository,
+        audit: { async record() {} } as unknown as AuditService, workspaces: {} as WorkspaceService,
+        now: () => NOW, isEnabled: () => true })
+      await service.controlRemoteTurn({ actorUserId: 'user-1', workspaceId: 'workspace-1',
+        conversationId: 'conversation-1', runId: 'run-1', action: 'cancel', controlRequestId: 'control-1' })
+      assert.equal(received[0]?.controlRequestId, enabled ? 'control-1' : undefined)
+      assert.equal(received[0]?.action, 'cancel')
+    }
+  } finally {
+    if (previous === undefined) delete process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION
+    else process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION = previous
+  }
+})
+
 test('fresh tool delivery preserves signed scope and refuses a token from another run', async () => {
   const { mintAgentMcpToken, verifyAgentMcpToken } = await import('./agent-mcp-token')
   const previous = process.env.OVERLAY_AGENT_MCP_SECRET
