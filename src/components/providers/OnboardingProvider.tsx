@@ -220,9 +220,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   const beginTour = useCallback(() => {
     setCurrentStep(0)
-    // Tour targets live on the chat surface; go there first so the tour never
-    // arms invisibly on a page that cannot render it. The mobile welcome card
-    // is not anchored, so it needs no navigation.
+    // Tour targets live on the chat surface; go there first. The tour chrome
+    // itself only mounts once a chat surface is live (see showTourChrome), so
+    // it can never sit invisible on a page that cannot render it. The mobile
+    // welcome card is not anchored, so it needs no navigation.
     if (!isMobile && pathname && resolveWorkspaceSurface(pathname) !== 'chat') {
       router.push(chatHref)
     }
@@ -330,7 +331,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   const onboardingValue = useMemo(() => ({ startTour }), [startTour])
 
-  const showTourChrome = (phase === 'tour' || isClosing) && !onInvitationRoute
+  // The tour only mounts where its spotlight targets exist. Mounting it in the
+  // same tick as the navigation above would measure an empty target set and
+  // leave it armed but invisible forever, so the chrome waits for a live chat
+  // surface. If navigation never lands on chat, nothing renders rather than a
+  // broken takeover.
+  const onChatSurface = Boolean(pathname && resolveWorkspaceSurface(pathname) === 'chat')
+  const showTourChrome = (phase === 'tour' || isClosing)
+    && !onInvitationRoute
+    && (isMobile || onChatSurface)
 
   return (
     <OnboardingContext.Provider value={onboardingValue}>
