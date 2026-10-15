@@ -66,17 +66,6 @@ function useModelPickerState() {
   }, [showModelPicker])
 
   useEffect(() => {
-    function openPicker() { setShowModelPicker(true) }
-    function closePicker() { setShowModelPicker(false) }
-    window.addEventListener('overlay:tour:open-model-picker', openPicker)
-    window.addEventListener('overlay:tour:close-model-picker', closePicker)
-    return () => {
-      window.removeEventListener('overlay:tour:open-model-picker', openPicker)
-      window.removeEventListener('overlay:tour:close-model-picker', closePicker)
-    }
-  }, [])
-
-  useEffect(() => {
     if (!showVideoSubModePicker) return
     function handleOutside(event: MouseEvent) {
       if (videoSubModePickerRef.current && !videoSubModePickerRef.current.contains(event.target as Node)) {

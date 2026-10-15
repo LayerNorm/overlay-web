@@ -911,23 +911,6 @@ export function OnboardingTour({
     }
   }, [currentStep, step, measure, postTourPhase])
 
-  // Open/close the model picker when step 0 is active
-  useEffect(() => {
-    if (currentStep !== 0 || isClosing) return
-    const target = steps[currentStep]?.target ?? 'model-picker'
-    // 1. Open the dropdown
-    const t1 = window.setTimeout(() => {
-      window.dispatchEvent(new Event('overlay:tour:open-model-picker'))
-    }, 150)
-    // 2. Re-measure after dropdown renders so querySelectorAll unions button + open dropdown
-    const t2 = window.setTimeout(() => measure(currentStep, target), 300)
-    return () => {
-      window.clearTimeout(t1)
-      window.clearTimeout(t2)
-      window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
-    }
-  }, [currentStep, isClosing, measure, steps])
-
   if (!step) return null
 
   if (postTourPhase === 'import-memories') {
