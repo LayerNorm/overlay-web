@@ -44,11 +44,11 @@ export async function GET(request: NextRequest) {
     tokens = await authenticateWithCode(code, stored.codeVerifier)
   } catch (error) {
     const details = error && typeof error === 'object' ? error : {}
-    process.stderr.write(JSON.stringify({ event: 'admin_oauth_exchange_failed',
+    console.error(JSON.stringify({ event: 'admin_oauth_exchange_failed',
       name: error instanceof Error ? error.name : 'unknown',
       code: 'code' in details && typeof details.code === 'string' && /^[a-z_]+$/i.test(details.code) ? details.code : undefined,
       status: 'status' in details && typeof details.status === 'number' ? details.status : undefined,
-    }) + '\n')
+    }))
     return redirectWithCookies('/sign-in?error=auth', request, [clearAuthStateCookie()])
   }
 
