@@ -720,6 +720,22 @@ export const controlRemoteAgentTurnByServer = mutation({
         delete nextState.cancelRequestedAt
         delete nextState.lastHealthAt
         await ctx.db.patch(run._id, { remoteLifecycle: nextState, status: remoteRunCoarseStatus(nextState.phase), updatedAt: now })
+        // A replacement cannot leave an executable card from the old process ahead
+        // of its new requests. Preserve answered decisions and close only old waits.
+        const oldRequests = await ctx.db.query('agentApprovalRequests')
+          .withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', session.sessionId)).take(100)
+        for (const request of oldRequests) if (!request.resolution) await ctx.db.patch(request._id, {
+          resolution: { decision: 'execution_replaced', resolvedByPrincipalId: actor.principalId, resolvedAt: now },
+        })
+        const message = await ctx.db.get(run.assistantMessageId)
+        if (message) {
+          const parts = reconcileRemoteRequestParts(message.parts ?? [], { ...state, phase: 'cancelling', cause: 'execution_replaced' }, now)
+            .map(part => part.type === 'data-remote-agent-status'
+              ? { ...part, data: { ...(part.data as Record<string, unknown>), state: 'recovering' } } : part)
+          if (!parts.some(part => part.type === 'data-remote-agent-status')) parts.push({ type: 'data-remote-agent-status',
+            data: { environmentName: environment.name, runId: args.runId, queueExpiresAt: state.claimDeadlineAt, state: 'recovering' } })
+          await ctx.db.patch(message._id, { parts: conversationParts(parts), status: 'generating', updatedAt: now })
+        }
         await ctx.db.insert('agentRemoteRunIntents', { intentId: `control:${operationId}`, runId: args.runId, kind: 'control', action: args.action,
           operationId, revision: nextState.revision, status: 'pending', createdAt: now, updatedAt: now })
         await ctx.db.insert('agentRunCommands', {

@@ -832,18 +832,27 @@ test('cancellation before coordinator claim delivers shutdown and cancel without
 })
 
 test('fresh lifecycle attempt uses a strict executable start rather than checkpoint references', async () => {
-  const { call, lifecycle, seeded, events } = await durableFixture()
+  const { convex, call, lifecycle, seeded, events } = await durableFixture()
   const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
   await lifecycle('claim', owner); await lifecycle('advance', owner)
   await call('claimCommandsByServer', { workspaceId, environmentId, now, leaseMs: 5000, limit: 10 })
   await call('acknowledgeCommandByServer', { workspaceId, environmentId, commandId: 'command-remote-turn', accepted: true, now: now + 1 })
   await events([event(1, 'session_started', { remoteSessionId: 'old', adapterId: 'acp' }),
-    event(2, 'process_observation', { process: 'lost' })], now + 2)
+    event(2, 'approval_requested', { requestKey: 'old-write', prompt: 'Old write?', options: [{ id: 'allow', label: 'Allow' }], context: {} }),
+    event(3, 'process_observation', { process: 'unknown' })], now + 2)
   const fresh = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
     actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn',
     action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 3,
   })
   expect(fresh.applied).toBe(true)
+  const run = await convex.run(ctx => ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique())
+  const message = await convex.run(ctx => ctx.db.get(run!.assistantMessageId))
+  expect(message?.parts).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'old-write', state: 'resolved' }) }),
+    expect.objectContaining({ type: 'data-remote-agent-status', data: expect.objectContaining({ state: 'recovering' }) }),
+  ]))
+  const oldRequest = await convex.run(ctx => ctx.db.query('agentApprovalRequests').withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', 'session-remote-turn').eq('requestKey', 'old-write')).unique())
+  expect(oldRequest?.resolution?.decision).toBe('execution_replaced')
   const commands = await call<Array<{ id: string; runId: string; sequence: number; type: string; payload: unknown }>>('claimCommandsByServer', {
     workspaceId, environmentId, now: now + 4, leaseMs: 5000, limit: 10,
   })

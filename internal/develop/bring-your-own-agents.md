@@ -1064,3 +1064,7 @@ Resolved legacy requests do not resurrect a wait when later output arrives.
 ACP cancellation waits for the complete process group to drain after termination;
 wrapper exit alone is not proof that descendants stopped. Stop confirmation fails
 closed if the bounded drain cannot establish that the group is gone.
+
+Starting a fresh attempt atomically resolves the old process's outstanding request
+cards as `execution_replaced`, preserving decisions already recorded, and projects
+`recovering` on the same assistant row before dispatching the replacement.
