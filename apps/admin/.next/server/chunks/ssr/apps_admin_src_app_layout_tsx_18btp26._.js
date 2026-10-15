@@ -1,0 +1,3 @@
+module.exports=[23227,a=>{"use strict";var b=a.i(7997);a.s(["default",0,function({children:a}){return(0,b.jsx)("html",{lang:"en","data-theme":"dark",suppressHydrationWarning:!0,children:(0,b.jsx)("body",{className:"bg-(--background) text-(--foreground) antialiased",children:a})})},"metadata",0,{robots:{follow:!1,index:!1},title:"Overlay Admin"}])},19858,function(a){a.n(a.i(23227))}];
+
+//# sourceMappingURL=apps_admin_src_app_layout_tsx_18btp26._.js.map

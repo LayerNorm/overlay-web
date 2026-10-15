@@ -1,0 +1,21 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/v1/admin/audit/route": "app/api/v1/admin/audit/route.js",
+  "/api/v1/admin/authorization/assignments/route": "app/api/v1/admin/authorization/assignments/route.js",
+  "/api/v1/admin/authorization/capabilities/route": "app/api/v1/admin/authorization/capabilities/route.js",
+  "/api/v1/admin/authorization/grants/route": "app/api/v1/admin/authorization/grants/route.js",
+  "/api/v1/admin/authorization/groups/route": "app/api/v1/admin/authorization/groups/route.js",
+  "/api/v1/admin/authorization/memberships/route": "app/api/v1/admin/authorization/memberships/route.js",
+  "/api/v1/admin/authorization/roles/route": "app/api/v1/admin/authorization/roles/route.js",
+  "/api/v1/admin/catalog/route": "app/api/v1/admin/catalog/route.js",
+  "/api/v1/admin/principals/route": "app/api/v1/admin/principals/route.js",
+  "/api/v1/admin/usage/route": "app/api/v1/admin/usage/route.js",
+  "/auth/callback/route": "app/auth/callback/route.js",
+  "/auth/sign-in/route": "app/auth/sign-in/route.js",
+  "/auth/sign-out/route": "app/auth/sign-out/route.js",
+  "/auth/touch/route": "app/auth/touch/route.js",
+  "/denied/page": "app/denied/page.js",
+  "/page": "app/page.js",
+  "/sign-in/page": "app/sign-in/page.js"
+}

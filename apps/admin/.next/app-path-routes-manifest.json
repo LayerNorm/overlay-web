@@ -1,0 +1,21 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/v1/admin/audit/route": "/api/v1/admin/audit",
+  "/api/v1/admin/authorization/assignments/route": "/api/v1/admin/authorization/assignments",
+  "/api/v1/admin/authorization/capabilities/route": "/api/v1/admin/authorization/capabilities",
+  "/api/v1/admin/authorization/grants/route": "/api/v1/admin/authorization/grants",
+  "/api/v1/admin/authorization/groups/route": "/api/v1/admin/authorization/groups",
+  "/api/v1/admin/authorization/memberships/route": "/api/v1/admin/authorization/memberships",
+  "/api/v1/admin/authorization/roles/route": "/api/v1/admin/authorization/roles",
+  "/api/v1/admin/catalog/route": "/api/v1/admin/catalog",
+  "/api/v1/admin/principals/route": "/api/v1/admin/principals",
+  "/api/v1/admin/usage/route": "/api/v1/admin/usage",
+  "/auth/callback/route": "/auth/callback",
+  "/auth/sign-in/route": "/auth/sign-in",
+  "/auth/sign-out/route": "/auth/sign-out",
+  "/auth/touch/route": "/auth/touch",
+  "/denied/page": "/denied",
+  "/page": "/",
+  "/sign-in/page": "/sign-in"
+}

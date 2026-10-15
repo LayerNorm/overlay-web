@@ -1,0 +1,182 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [
+    {
+      "headers": [
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ],
+      "source": "/:path*",
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+    }
+  ],
+  "onMatchHeaders": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/audit",
+      "regex": "^/api/v1/admin/audit(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/audit(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/authorization/assignments",
+      "regex": "^/api/v1/admin/authorization/assignments(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/authorization/assignments(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/authorization/capabilities",
+      "regex": "^/api/v1/admin/authorization/capabilities(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/authorization/capabilities(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/authorization/grants",
+      "regex": "^/api/v1/admin/authorization/grants(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/authorization/grants(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/authorization/groups",
+      "regex": "^/api/v1/admin/authorization/groups(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/authorization/groups(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/authorization/memberships",
+      "regex": "^/api/v1/admin/authorization/memberships(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/authorization/memberships(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/authorization/roles",
+      "regex": "^/api/v1/admin/authorization/roles(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/authorization/roles(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/catalog",
+      "regex": "^/api/v1/admin/catalog(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/catalog(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/principals",
+      "regex": "^/api/v1/admin/principals(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/principals(?:/)?$"
+    },
+    {
+      "page": "/api/v1/admin/usage",
+      "regex": "^/api/v1/admin/usage(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/v1/admin/usage(?:/)?$"
+    },
+    {
+      "page": "/auth/callback",
+      "regex": "^/auth/callback(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/auth/callback(?:/)?$"
+    },
+    {
+      "page": "/auth/sign-in",
+      "regex": "^/auth/sign\\-in(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/auth/sign\\-in(?:/)?$"
+    },
+    {
+      "page": "/auth/sign-out",
+      "regex": "^/auth/sign\\-out(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/auth/sign\\-out(?:/)?$"
+    },
+    {
+      "page": "/auth/touch",
+      "regex": "^/auth/touch(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/auth/touch(?:/)?$"
+    },
+    {
+      "page": "/denied",
+      "regex": "^/denied(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/denied(?:/)?$"
+    },
+    {
+      "page": "/sign-in",
+      "regex": "^/sign\\-in(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sign\\-in(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}
