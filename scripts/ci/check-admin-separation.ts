@@ -64,6 +64,13 @@ async function main() {
     }
   }
 
+  const administration = await readFile(path.join(root, 'convex/admin/administration.ts'), 'utf8')
+  const exports = [...administration.matchAll(/export const (\w+)/g)].map(match => match[1])
+  if (exports.length !== 1 || exports[0] !== 'appendAuditByServer') failures.push('Legacy operator endpoints reintroduced in Convex administration')
+  const authorization = await readFile(path.join(root, 'convex/admin/authorization.ts'), 'utf8')
+  if (/export const \w+ = mutation/.test(authorization)) failures.push('Legacy operator mutation reintroduced in Convex authorization')
+  if ((await readFile(path.join(root, 'convex/auth/users.ts'), 'utf8')).includes('export const listUserDirectoryByServer')) failures.push('Legacy operator directory reintroduced')
+
   if (failures.length > 0) {
     console.error('Admin separation check failed:')
     for (const failure of failures) console.error(`  - ${failure}`)

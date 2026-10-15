@@ -13,7 +13,7 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 
 | Setting | Development rule |
 | --- | --- |
-| Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
+| Customer-web Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
 | Build source | Main deploys automatically through Git. Root `git.deploymentEnabled` sets `"*": false, "main": true`. The trusted controller creates Preview deployments only for `needs-preview` PRs; Preview allows REST API only, also blocking automatic builds from older branches. |
 | Build machine | Keep **Basic**. Let slow builds finish; inspect concrete failures before changing configuration. |
 | Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
@@ -48,6 +48,14 @@ foundations through declared PR dependencies and land them before dependent work
 Integration reviews ready PRs in dependency order and uses GitHub's main merge
 queue to check combined revisions. Vercel's build concurrency does not replace
 that integration check.
+
+## Operator console releases
+
+`apps/admin` is the separate `overlay-admin` Vercel project at `admin.getoverlay.io`. It follows native Git production from main with its own WorkOS allowlist, session secret and dedicated backend secret. It is not an extra release gate for unrelated customer-web changes.
+
+For admin QA, bind both backend URL settings on the exact feature branch to that PR's isolated Convex backend, reuse the shared Preview admin credentials and provision the matching secret/test operator on that backend, register the test callback, then request an exact-SHA admin Preview through the connected Vercel tools. The existing customer-web preview controller does not configure or clean resources in the admin project. Shared admin Preview backend URLs are blank so unbound builds fail closed. Record the binding and clear branch backend URLs when QA ends; never point an admin PR at shared development or customer production.
+
+Deploy backend changes from clean current canonical main after matching customer web is live. For endpoint retirement, first ship and verify replacement callers; verify authenticated standalone admin acceptance before removing the old web admin. Keep ordinary member initialization and append-only operational audit separate from operator powers. See [Admin Console](../../docs/develop/admin-console.md).
 
 ## Local laptop owner path
 

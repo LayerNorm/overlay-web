@@ -134,6 +134,7 @@ function AdminSidebarNav({
           <button
             key={value}
             type="button"
+            aria-label={label}
             aria-current={section === value ? 'page' : undefined}
             onClick={() => onSelectSection(value)}
             className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${

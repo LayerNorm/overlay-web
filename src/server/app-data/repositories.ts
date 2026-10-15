@@ -54,9 +54,7 @@ import {
   type ApiKeyRepository,
 } from '@/server/auth/api-keys'
 import {
-  ConvexAdministrativeRepository,
   ConvexAuditRepository,
-  type AdministrativeRepository,
   type AuditRepository,
 } from '@/server/admin'
 import {
@@ -98,7 +96,6 @@ export interface AppDataRepositories {
   mcpGrants: McpGrantRepository
   agentProfiles: AgentProfileRepository
   accountDeletion: AccountDataDeletionRepository
-  administration: AdministrativeRepository
   apiKeys: ApiKeyRepository
   audit: AuditRepository
   authorization: AuthorizationRepositories
@@ -147,7 +144,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       cloudAgentProvisions: new ConvexCloudAgentProvisionRepository(),
       mcpGrants: new ConvexMcpGrantRepository(),
       agentProfiles: new ConvexAgentProfileRepository(),
-      administration: new ConvexAdministrativeRepository(),
       apiKeys: new ConvexApiKeyRepository(),
       audit: new ConvexAuditRepository(),
       authorization: createConvexAuthorizationRepositories(),

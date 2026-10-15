@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Complete operator backend separation: retire customer-secret operator endpoints, keep operational audit append-only, and provision ordinary member permissions through a restricted initializer.
+
 - Add a restricted ordinary-member initializer before retiring legacy operator writes, preserving safe web/backend release ordering.
 
 - Preserve operator tokens through denied-action auditing, align billing directory permissions, reject invalid/cross-origin admin mutations, and correct client-scoped WorkOS verification.
@@ -132,6 +134,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **Agent accounts (Phase 1 of Overlay Cloud agents).** Settings → Agent accounts connects the Claude Code and Codex credentials an Overlay Cloud agent runs on: a `claude setup-token` token or Anthropic API key, or an OpenAI API key. Secrets go to the credential vault; only metadata and an opaque reference are stored, and no API response or log includes a credential. A cloud agent is bound to one of its creator's accounts, and the host fetches the credentials for each run (new `POST /api/v1/agent-environments/{id}/run-credentials`, Overlay Cloud environments only) and hands them to the agent process in memory. An agent that rejects its credentials ends the run with `auth_required` and flags the account "Needs reconnecting" until it is reconnected. `POST /api/v1/agent-environments/cloud` now requires `providerAccountId`. The agent image is now `overlay-agent-v2` (the bridge protocol gained the run-credentials method); `OVERLAY_CLOUD_AGENT_IMAGE` defaults to it.
 
 ### Fixed
+
+- Keep standalone admin navigation accessible when mobile labels collapse to icons.
 
 - **Deleting an account now deletes its stored credentials from the vault.** Account deletion removed the Convex rows for model-provider keys but left the secrets in the credential vault, now also true for agent accounts. It lists every vault reference the person stored and deletes each before the rows are removed; if any cannot be deleted, the deletion stops with an error and can be retried, so no secret is orphaned. Needs the new `listCredentialRefsByServer` Convex queries deployed first.
 - **Sandbox commands honour their own environment.** The Boat adapter applied only the machine-wide environment and silently dropped a command's `environment`.

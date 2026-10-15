@@ -1,3 +1,4 @@
+import { ensureDefaultUserRole } from '@/server/authorization/ensure-default-user-role'
 import { Suspense } from 'react'
 import { Loader2 } from 'lucide-react'
 import { getOverlaySession } from '@/server/auth/session'
@@ -56,7 +57,7 @@ async function AppShellContent({
     appDataCapabilities = getAppDataCapabilitiesSync()
     if (session?.user) {
       const server = getOverlayServerContext()
-      await server.fixedRoleAuthorizationBridge.ensureDefaultUserRole(session.user.id)
+      await ensureDefaultUserRole(session.user.id)
       authorization = {
         ...(await server.authorizationService.resolveSubject(session.user.id)),
         enforcementMode: getAuthorizationEnforcementMode(),
