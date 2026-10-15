@@ -325,3 +325,10 @@ App startup renders a single loading screen wherever the shell is still resolvin
 ## Avatar colors
 
 The avatar picker offers the preset swatches plus a rainbow swatch that opens `AvatarColorPicker` (saturation/brightness square, hue strip, hex field; no opacity; helpers in `features/agents/lib/color-utils.ts`). Colors are stored as six-digit lowercase hex; the server accepts any such value.
+
+## Marketing FAQ and page metadata
+
+The landing FAQ uses native details/summary disclosures after the scroll story.
+Its visible answers and FAQ structured data share one source; describe available
+capabilities only. Public marketing pages define their own canonical paths so
+they do not inherit the root homepage canonical.

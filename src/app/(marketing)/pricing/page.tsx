@@ -3,7 +3,7 @@ import { PricingPage as WorkspacePricingPage } from '@/features/marketing/pricin
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 
 export const metadata: Metadata = {
-  title: 'Pricing — Overlay',
+  title: 'Pricing',
   description:
     'Every workspace is free or paid. Paid starts at $8 a month, becomes credit, and is billed as you go, one line per resource.',
   alternates: {
