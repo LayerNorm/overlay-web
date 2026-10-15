@@ -106,6 +106,7 @@ const factHandlers: FactHandlers = {
   started({ current, next, now }) {
     if (!['starting', 'recovering'].includes(current.phase)) return 'conflict'
     next.phase = phaseAfterAttach(current)
+    delete next.cause
     next.lastHealthAt = now
   },
   health({ current, next, now }, fact) {
@@ -123,6 +124,7 @@ const factHandlers: FactHandlers = {
   },
   progress({ next, now }) { next.lastProgressAt = now },
   request({ current, next }, fact) {
+    if (current.cause === 'approval_context_lost' || !['starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering'].includes(current.phase)) return 'conflict'
     const requests = allRemoteApprovals(current)
     if (requests.some(request => request.requestKey === fact.requestKey)) return 'unchanged'
     const pending = pendingRemoteApprovals(current)
@@ -151,9 +153,10 @@ const factHandlers: FactHandlers = {
     next.recoveryOutcome = fact.recoveryOutcome
     if (fact.recoveryOutcome === 'attached_live') {
       next.phase = phaseAfterAttach(current)
+      delete next.cause
       next.lastHealthAt = now
     } else if (fact.recoveryOutcome === 'restored' && fact.oldWriterStopped && pendingRemoteApprovals(current).length === 0) {
-      next.phase = 'running'; next.lastHealthAt = now
+      next.phase = 'running'; delete next.cause; next.lastHealthAt = now
     } else needsAttention(next, fact.oldWriterStopped ? 'continuation_unsupported' : 'old_writer_not_isolated')
   },
   complete({ current, next }) {

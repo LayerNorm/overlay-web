@@ -1,4 +1,4 @@
-import { currentRemoteAttempt, applyRemoteFact } from './remoteRunModel'
+import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
 import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
@@ -2408,7 +2408,7 @@ export const applyRemoteEventsByServer = mutation({
       projection.runStatus = remoteRunCoarseStatus(state.phase)
       projection.sessionStatus = state.phase as typeof projection.sessionStatus
       projection.terminal = ['completed', 'cancelled', 'failed'].includes(state.phase)
-      const parts = projection.parts.filter(part => part.type !== 'data-remote-agent-status')
+      const parts = reconcileRemoteRequestParts(projection.parts, state, args.now).filter(part => part.type !== 'data-remote-agent-status')
       projection.parts = [...parts, { type: 'data-remote-agent-status', data: {
         environmentName: snapshot.environmentName, queueExpiresAt: state.claimDeadlineAt, runId: session.runId,
         state: state.phase, cause: state.cause, revision: state.revision,

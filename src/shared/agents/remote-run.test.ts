@@ -47,6 +47,10 @@ test('process loss invalidates executable approval and restore cannot reuse it',
   assert.equal(lost.approval, undefined)
   assert.equal(lost.cause, 'approval_context_lost')
   assert.equal(apply(lost, { type: 'decision', requestKey: 'x', decision: 'allow' }).applied, false)
+  const recovering = apply(lost, { type: 'recovery_requested' }).state
+  assert.equal(apply(recovering, { type: 'request', requestKey: 'x', kind: 'permission', expiresAt: 99_000 }).applied, false)
+  const attached = apply(recovering, { type: 'recover', recoveryOutcome: 'attached_live' }).state
+  assert.equal(apply(attached, { type: 'request', requestKey: 'new-context', kind: 'permission', expiresAt: 99_000 }).state.phase, 'waiting_for_approval')
 })
 test('hard and approval deadlines fail closed and coarse status is consistent', () => {
   const s = state()

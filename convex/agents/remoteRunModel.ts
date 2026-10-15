@@ -34,6 +34,26 @@ export async function signalRemoteLifecycle(ctx: MutationCtx, run: Doc<'conversa
   else await ctx.db.insert('agentRemoteRunIntents', { intentId, runId: run.externalRunId, kind: 'signal', ...value, createdAt: now })
 }
 
+/** Canonical request state wins over an individual event's transcript projection. */
+export function reconcileRemoteRequestParts(parts: Array<Record<string, unknown>>, state: RemoteRunState, now: number) {
+  const requests = state.approvals ?? (state.approval ? [state.approval] : [])
+  const invalidated = ['cancelling', 'cancelled', 'failed'].includes(state.phase) || state.cause === 'approval_context_lost'
+  return parts.map(part => {
+    if (part.type !== 'data-remote-agent-request' || !part.data || typeof part.data !== 'object') return part
+    const data = part.data as Record<string, unknown>
+    const request = requests.find(request => request.requestKey === data.requestKey)
+    if (!invalidated && request && !request.delivered) {
+      const { resolution, ...pending } = data
+      return { ...part, data: { ...pending, state: request.decision ? 'decision_pending' : 'pending',
+        ...(request.decision && resolution ? { resolution } : {}) } }
+    }
+    if (!invalidated && !request?.delivered && state.phase !== 'completed') return part
+    return { ...part, data: { ...data, state: 'resolved', resolution: data.resolution ?? {
+      decision: request?.decision ?? state.cause ?? 'run_completed', resolvedAt: now, resolvedByPrincipalId: 'system:remote-lifecycle',
+    } } }
+  })
+}
+
 export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>, fact: RemoteRunFact, now: number) {
   if (!run.remoteLifecycle) return null
   const current = run.remoteLifecycle as RemoteRunState
@@ -56,15 +76,8 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
   if (message) {
     const phase = result.state.phase
     const visibleState = ['queued', 'waking', 'starting'].includes(phase) ? 'waiting' : phase
-    const parts = (message.parts ?? []).map(part => {
-      if (part.type === 'data-remote-agent-status' && 'data' in part) return { ...part, data: { ...part.data, state: visibleState } }
-      if (fact.type === 'decision_delivered' && part.type === 'data-remote-agent-request' && 'data' in part
-        && (part.data as Record<string, unknown>).requestKey === fact.requestKey) return { ...part, data: { ...(part.data as Record<string, unknown>), state: 'resolved' } }
-      if (invalidateRequests && part.type === 'data-remote-agent-request' && 'data' in part) return {
-        ...part, data: { ...(part.data as Record<string, unknown>), state: 'resolved', resolution: {
-          decision: result.state.cause, resolvedAt: now, resolvedByPrincipalId: 'system:remote-lifecycle',
-        } },
-      }
+    const parts = reconcileRemoteRequestParts((message.parts ?? []) as Array<Record<string, unknown>>, result.state, now).map(part => {
+      if (part.type === 'data-remote-agent-status' && 'data' in part) return { ...part, data: { ...(part.data as Record<string, unknown>), state: visibleState } }
       return part
     })
     if (!parts.some(part => part.type === 'data-remote-agent-status')) {
