@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve connected-agent approval/input waits across transcript batches and healthy long waits. Add opt-in versioned remote lifecycle coordination, fenced host observations, durable control/finalization intents, truthful recovery limits, and reconnect output protection. Host/protocol candidate: 0.3.11; image candidate: v6. New enrollment remains disabled pending hosted/provider acceptance.
+
 ### Changed
 
 - Update Vercel Speed Insights to 2.0 and patch the Agent Host Eve dependency to undici 8.10.2, removing the expired security-audit exception.

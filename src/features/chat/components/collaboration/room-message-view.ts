@@ -37,10 +37,13 @@ function remoteQueueStatus(parts: RoomMessagePart[] | undefined): RoomMessageVie
 }
 
 function remoteRequest(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteRequest'] {
-  const data = parts?.find((part) => part.type === 'data-remote-agent-request')?.data
-  if (!data || data.state !== 'pending' || typeof data.runId !== 'string' || typeof data.requestKey !== 'string') return undefined
+  const data = parts?.find((part) => part.type === 'data-remote-agent-request' && ['pending', 'decision_pending'].includes(String(part.data?.state)))?.data
+  if (!data || !['pending', 'decision_pending'].includes(String(data.state)) || typeof data.runId !== 'string' || typeof data.requestKey !== 'string') return undefined
   return {
     runId: data.runId, requestKey: data.requestKey,
+    ...(data.state === 'decision_pending' ? { pendingDelivery: true } : {}),
+    ...(typeof data.expiresAt === 'number' ? { expiresAt: data.expiresAt } : {}),
+    ...(data.machineCostContinues === true ? { machineCostContinues: true } : {}),
     kind: data.kind === 'elicitation' ? 'elicitation' : 'permission',
     prompt: typeof data.prompt === 'string' ? data.prompt : 'Agent request',
     options: Array.isArray(data.options) ? data.options.flatMap((option) => {
@@ -117,7 +120,11 @@ export function mergeRoomMessages(
   for (const message of current) {
     const key = message.clientNonce ? `nonce:${message.clientNonce}` : `id:${message.id}`
     const existing = merged.get(key)
-    if (!existing || (existing.delivery && !message.delivery)) merged.set(key, message)
+    const currentIsNewer = existing && !message.delivery && !existing.delivery && (
+      (message.eventSequence ?? 0) > (existing.eventSequence ?? 0)
+      || ((message.eventSequence ?? 0) === (existing.eventSequence ?? 0) && (message.updatedAt ?? 0) > (existing.updatedAt ?? 0))
+    )
+    if (!existing || (existing.delivery && !message.delivery) || currentIsNewer) merged.set(key, message)
   }
   return [...merged.values()].sort(compareRoomMessageRecords)
 }

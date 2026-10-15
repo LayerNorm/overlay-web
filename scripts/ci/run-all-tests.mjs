@@ -92,10 +92,11 @@ function classify(files) {
 
     if (VITEST.test(source)) {
       const convex = file.endsWith('.convex.test.ts')
-      add(convex ? 'vitest:convex' : 'vitest:unit', {
+      const workflow = file.endsWith('.workflow.test.ts')
+      add(convex ? 'vitest:convex' : workflow ? 'vitest:workflow' : 'vitest:unit', {
         kind: 'vitest',
-        config: convex ? 'vitest.config.mts' : 'vitest.unit.config.mts',
-        cwd: '.',
+        config: convex ? 'vitest.config.mts' : workflow ? '../../vitest.workflow.config.mts' : 'vitest.unit.config.mts',
+        cwd: workflow ? 'tests/workflow-runtime' : '.',
       }, file)
       continue
     }
@@ -138,7 +139,7 @@ function commandFor(group) {
     // node:test suites that live beside vitest ones.
     return {
       cmd: 'npx',
-      argv: ['vitest', 'run', '--config', group.config, '--reporter=dot', ...group.files],
+      argv: ['vitest', 'run', '--config', group.config, '--reporter=dot', ...group.files.map(file => group.cwd === '.' ? file : path.relative(group.cwd, file))],
       env,
     }
   }

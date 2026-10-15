@@ -2,8 +2,7 @@
 
 This is the living design for agents connected from user-owned computers, customer VPSs,
 hosted agent services, and Overlay-managed sandboxes. The rollout is provider-neutral:
-Convex and PostgreSQL must expose identical behavior, and PostgreSQL mode must never fall
-back to Convex.
+Convex is the canonical backend. Historical PostgreSQL rollout notes below describe retired implementation phases, not a second lifecycle authority.
 
 See the [Architecture](#architecture) section for diagrams of the environment topology, protocol
 layers, enrollment, Agent Host loop, ACP adapters, durable run flow, memory, and package
@@ -993,3 +992,53 @@ Use these files when tracing or changing the architecture:
 | Remote bridge schemas | `packages/overlay-agent-bridge-protocol` |
 | Generated enrollment command | `src/server/agents/agent-enrollment-command.ts` |
 | Remote dispatch and transcript projection | `src/server/agents` |
+
+## Versioned remote lifecycle (opt-in)
+
+The server enrolls a new run in lifecycle v2 only when
+`OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2` and the host advertises
+`remoteLifecycleVersion: 2`. Selection is persisted in `conversationAgentRuns.remoteLifecycle`;
+legacy runs retain their selected supervisor. Do not enable enrollment before the
+current-head hosted matrix and compatible package/image release pass.
+
+The logical run and assistant message remain stable. `agentRemoteSessions` rows
+are execution attempts, selected through `currentAttemptId`; historical attempts
+cannot publish into the current transcript. A shared typed reducer controls phase,
+revision, execution generation, coordinator generation, deadlines, decision delivery,
+and cancellation. Coordinator takeover requires the Workflow runtime to confirm the
+previous owner stopped, followed by a canonical compare-and-set. It does not start a
+second external writer.
+
+An atomic start transaction reserves the first environment command sequence and
+writes a durable start intent. Workflow 4.8.9 commits its hook registration before
+claiming/dispatching. The existing minute reconciliation bridge retries starts and
+coalesced ID/revision signals. Output continues to commit to Convex during Workflow
+outages. Workflow steps reread canonical state and do not replay an external task.
+Policy cancellation writes stop intent/command even when Workflow is unavailable.
+Terminal ingestion preserves undelivered command sequence slots as shutdowns and
+writes durable finalization intents; settlement retries retain existing ledger keys
+and cumulative machine baselines.
+
+The bridge remains protocol v1 with an explicitly negotiated lifecycle-v2 extension:
+optional execution fences and new observe/observation messages are sent only for v2
+runs. Hosts opt in using the same environment setting. Default legacy capability
+payloads omit the extension. Candidate packages are lockstep 0.3.11 and candidate
+image v6; publication is a separate main-only release workflow, not evidence from a
+source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
+compatible active runs drain on their persisted version.
+
+Direct ACP and acpx advertise live reattachment and session loading separately from
+interrupted-turn continuation. They do **not** restore an interrupted turn or an
+in-memory permission promise after host/process loss. Unknown process ownership is
+`needs_attention`, never permission to launch another writer. The Eve adapter has a
+native durable session/stream cursor; provider conformance still requires live QA.
+SQLite stores versioned nonsecret model/configuration references, execution identity,
+command deduplication and the exact-ack event outbox. Credentials stay in memory;
+restoration cannot reuse an old Overlay MCP token.
+
+Approval waits retain the same card through text/plans/commands. V2 approvals have a
+visible one-hour expiry bounded by the task hard deadline; cloud waits disclose
+continuing machine cost. A recorded decision remains pending delivery until the
+host accepts it. Browser refresh and subscription readers never own execution.
+Real hosted soak, stopped-machine wake, process recovery, deployment continuity and
+billing readbacks are required before declaring the incident class fixed.

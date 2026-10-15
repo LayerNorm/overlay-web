@@ -172,7 +172,7 @@ describe('Convex remote agent room turns', () => {
     expect(beforeDuplicate.message?.status).toBe('completed')
     expect(beforeDuplicate.run?.status).toBe('completed')
     expect(beforeDuplicate.session?.eventCursor).toBe(3)
-    expect(beforeDuplicate.command?.status).toBe('acknowledged')
+    expect(beforeDuplicate.command?.status).toBe('pending') // never claimed: preserve its sequence for shutdown delivery
 
     const duplicate = await call<{ accepted: boolean; duplicate: boolean }>('applyRemoteEventsByServer', {
       workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: now + 101,
@@ -472,10 +472,8 @@ describe('Convex remote agent room turns', () => {
       actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn',
       action: 'start_fresh', queueExpiresAt: now + 120_000, now: now + 5,
     })
-    expect(fresh.applied).toBe(true)
-    const freshCommand = await convex.run(async ctx => ctx.db.query('agentRunCommands')
-      .withIndex('by_commandId', q => q.eq('commandId', fresh.commandId)).unique())
-    expect(freshCommand).toEqual(expect.objectContaining({ type: 'start', payload: expect.objectContaining({ fresh: true }) }))
+    // Cancellation is final; a fresh execution requires a new logical task and budget.
+    expect(fresh.applied).toBe(false)
     expect((await call<{ expiredRunIds: string[] }>('sweepRemoteRunsByServer', {
       now: now + 6, hostOfflineBefore: 0, limit: 10,
     })).expiredRunIds).toEqual([])
@@ -570,3 +568,186 @@ async function projectedState(convex: ReturnType<typeof convexTest>, messageId: 
 }
 function mutationRef(operation: string) { return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`) }
 function queryRef(operation: string) { return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`) }
+
+async function durableFixture() {
+  const convex = convexTest(schema, modules)
+  const seeded = await seedRoom(convex)
+  const call = <T = Record<string, unknown>>(operation: string, args: Record<string, unknown>) =>
+    convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+  const lifecycle = <T = Record<string, unknown>>(operation: string, args: Record<string, unknown>) =>
+    convex.mutation(makeFunctionReference<'mutation'>(`agents/remoteRuns:${operation}ByServer`), { ...args, serverSecret: secret }) as Promise<T>
+  await call('upsertBindingByServer', bindingInput())
+  await convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    await ctx.db.patch(environment!._id, { kind: 'overlay_cloud', status: 'online', lastSeenAt: now, capabilities: { ...environment!.capabilities, remoteLifecycleVersion: 2 } })
+  })
+  await seedWorkspaceReservation(convex)
+  const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, { lifecycleVersion: 2, maxRunTimeMs: 3_600_000, reservationId: 'reservation-remote-turn' }))
+  const events = (items: Array<ReturnType<typeof event>>, at: number) => call('applyRemoteEventsByServer', {
+    workspaceId, environmentId, sessionId: 'session-remote-turn', now: at,
+    events: items.map(e => ({ ...e, execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1' } })),
+  })
+  return { convex, seeded, call, lifecycle, started, events }
+}
+
+test('durable API-exit intent survives and duplicate Workflow claims allow exactly one issuer', async () => {
+  const { convex, lifecycle, call } = await durableFixture()
+  const intents = await convex.run(ctx => ctx.db.query('agentRemoteRunIntents').withIndex('by_status_updatedAt', q => q.eq('status', 'pending')).collect())
+  expect(intents.some(i => i.kind === 'start')).toBe(true)
+  expect(await call<unknown[]>('claimCommandsByServer', { workspaceId, environmentId, now, leaseMs: 5000, limit: 10 })).toHaveLength(0)
+  expect(await lifecycle('claim', { runId: 'run-remote-turn', coordinatorId: 'winner', generation: 1, now })).toBe(true)
+  expect(await lifecycle('claim', { runId: 'run-remote-turn', coordinatorId: 'loser', generation: 1, now })).toBe(false)
+  expect(await lifecycle('advance', { runId: 'run-remote-turn', coordinatorId: 'loser', generation: 1, now })).toBeNull()
+  await lifecycle('advance', { runId: 'run-remote-turn', coordinatorId: 'winner', generation: 1, now })
+  const commands = await call<unknown[]>('claimCommandsByServer', { workspaceId, environmentId, now, leaseMs: 5000, limit: 10 })
+  expect(commands).toHaveLength(1)
+  expect(commands[0]).toEqual(expect.objectContaining({ attemptId: 'session-remote-turn', executionGeneration: 1, type: 'start' }))
+})
+
+test('durable approval crosses 20 minutes with health and unrelated output then finishes on the same row', async () => {
+  const { convex, lifecycle, call, started, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), event(2, 'approval_requested', {
+    requestKey: 'clone', prompt: 'Allow clone?', options: [{ id: 'allow', label: 'Allow' }], context: {},
+  })], now + 1)
+  for (let minute = 1; minute <= 20; minute++) {
+    const at = now + minute * 60_000
+    await events([event(minute + 2, 'process_observation', { process: 'live' })], at)
+    await call('sweepRemoteRunsByServer', { now: at, hostOfflineBefore: at - 45_000, limit: 100 })
+  }
+  await events([event(23, 'text_checkpoint', { text: 'Waiting for your decision.' }), event(24, 'commands_update', { commands: [] })], now + 1_200_001)
+  let result = await projectedState(convex, started.messageId)
+  expect(result.run?.status).toBe('waiting_for_approval')
+  expect(result.session?.status).toBe('waiting_for_approval')
+  expect(result.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ state: 'pending' }) })]))
+  const decision = await call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: result.run!.conversationId,
+    runId: 'run-remote-turn', requestKey: 'clone', decision: 'allow', now: now + 1_200_002 })
+  expect(decision.applied).toBe(true)
+  expect((await projectedState(convex, started.messageId)).run?.status).toBe('waiting_for_approval')
+  const duplicate = await call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: result.run!.conversationId,
+    runId: 'run-remote-turn', requestKey: 'clone', decision: 'allow', now: now + 1_200_003 })
+  expect(duplicate.commandId).toBe(decision.commandId)
+  await events([event(25, 'completed', { summary: 'Done', usage: {} })], now + 1_200_004)
+  result = await projectedState(convex, started.messageId)
+  expect(result.run?.status).toBe('completed')
+  expect(result.message?._id).toBe(started.messageId)
+})
+
+test('durable stale attempts are rejected, double Resume is one operation and cancel fences completion', async () => {
+  const { convex, seeded, call, lifecycle, started, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' })], now + 1)
+  const control = { actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn', action: 'resume', queueExpiresAt: now + 60_000, now: now + 2 }
+  const first = await call('controlRemoteAgentTurnByServer', control)
+  const second = await call('controlRemoteAgentTurnByServer', control)
+  expect(first.operationId).toBe(second.operationId)
+  expect(second.phase).toBe('recovering')
+  await expect(call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 3,
+    events: [{ ...event(2, 'completed', { usage: {} }), execution: { attemptId: 'old-attempt', generation: 1 } }],
+  })).rejects.toThrow(/STALE_EXECUTION/)
+  await call('controlRemoteAgentTurnByServer', { ...control, action: 'cancel', now: now + 4 })
+  await events([event(2, 'completed', { usage: { inputTokens: 9, outputTokens: 4 } })], now + 5)
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelling')
+  await events([event(3, 'cancelled', {})], now + 6)
+  expect((await projectedState(convex, started.messageId)).run?.status).toBe('cancelled')
+  expect((await projectedState(convex, started.messageId)).message?.tokens).toEqual({ input: 9, output: 4 })
+  const attempts = await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_runId', q => q.eq('runId', 'run-remote-turn')).collect())
+  expect(attempts).toHaveLength(1)
+})
+
+test('hard-deadline supervision persists a stop command while Workflow is unavailable', async () => {
+  const { convex, call, lifecycle, events, started } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' })], now + 1)
+  await call('sweepRemoteRunsByServer', { now: now + 3_600_001, hostOfflineBefore: now + 3_500_000, limit: 100 })
+  const state = await projectedState(convex, started.messageId)
+  expect(state.run?.remoteLifecycle?.phase).toBe('cancelling')
+  expect(state.run?.remoteLifecycle?.cause).toBe('hard_deadline_expired')
+  const stop = await convex.run(ctx => ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', 'stop:run-remote-turn:session-remote-turn')).unique())
+  expect(stop?.type).toBe('cancel')
+})
+
+test('a settled hold or revoked binding cannot be revived by coordination or recovery', async () => {
+  for (const reason of ['funding', 'binding']) {
+    const { convex, lifecycle, started } = await durableFixture()
+    await convex.run(async ctx => {
+      if (reason === 'funding') {
+        const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()
+        await ctx.db.patch(reservation!._id, { status: 'released' })
+      } else {
+        const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+        await ctx.db.patch(binding!._id, { enabled: false })
+      }
+    })
+    const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+    await lifecycle('claim', owner); await lifecycle('advance', owner)
+    expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelling')
+  }
+})
+
+test('terminal finalization persists and lost settlement acknowledgement leaves the same idempotent intent', async () => {
+  const { convex, call, lifecycle, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), event(2, 'completed', { usage: {} })], now + 1)
+  const first = await convex.query(queryRef('pendingRemoteFinalizationsByServer'), { serverSecret: secret })
+  const duplicate = await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), event(2, 'completed', { usage: {} })], now + 2)
+  expect(duplicate.duplicate).toBe(true)
+  expect(await convex.query(queryRef('pendingRemoteFinalizationsByServer'), { serverSecret: secret })).toEqual(first)
+  expect((first as unknown[])).toHaveLength(1)
+  await call('sweepRemoteRunsByServer', { now: now + 3, hostOfflineBefore: 0, limit: 100 })
+})
+
+test('stale-hold expiry cannot release potentially consumed credit during a wait or pending stop', async () => {
+  const { convex, call } = await durableFixture()
+  await convex.run(async ctx => {
+    const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()
+    await ctx.db.patch(reservation!._id, { expiresAt: now + 1, providerWorkStarted: true })
+  })
+  await call('sweepRemoteRunsByServer', { now: now + 3_600_001, hostOfflineBefore: 0, limit: 100 })
+  await convex.mutation(makeFunctionReference<'mutation'>('platform/usage:reconcileExpiredBudgetReservationsByServer'), {
+    serverSecret: secret, now: now + 3_600_002, limit: 10,
+  })
+  const reservation = await convex.run(ctx => ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique())
+  expect(reservation?.status).toBe('reserved')
+})
+
+test('native durable-session reattachment can change receiver boot without accepting stale ACP output', async () => {
+  const { convex, lifecycle, events, call, started } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'eve' })], now + 1)
+  await convex.run(async ctx => {
+    const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', 'session-remote-turn')).unique()
+    await ctx.db.patch(attempt!._id, { capabilitySnapshot: { ...attempt!.capabilitySnapshot,
+      startPayload: { adapterId: 'eve' }, adapters: [{ id: 'eve', protocol: 'eve', recovery: { interruptedTurnContinuation: true, approvalRestoration: true } }],
+    } })
+  })
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 2,
+    events: [{ ...event(2, 'process_observation', { process: 'live', recoveryOutcome: 'attached_live' }), execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-2' } }],
+  })
+  await expect(call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 3,
+    events: [{ ...event(3, 'completed', { usage: {} }), execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1' } }],
+  })).rejects.toThrow(/STALE_EXECUTION/)
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 4,
+    events: [{ ...event(3, 'completed', { usage: {} }), execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-2' } }],
+  })
+  expect((await projectedState(convex, started.messageId)).run?.status).toBe('completed')
+})
+
+test('a downgraded legacy host receives parseable shutdowns and an explicit canonical attention state', async () => {
+  const { convex, call, lifecycle, started } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    await ctx.db.patch(environment!._id, { capabilities: { adapters: ['acp'] } })
+  })
+  const commands = await call<Array<{ type: string; attemptId?: string }>>('claimCommandsByServer', { workspaceId, environmentId, now: now + 1, leaseMs: 5000, limit: 10 })
+  expect(commands[0].type).toBe('shutdown')
+  expect(commands[0].attemptId).toBeUndefined()
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('needs_attention')
+})

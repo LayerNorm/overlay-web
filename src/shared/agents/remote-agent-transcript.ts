@@ -17,7 +17,7 @@ export type RemoteAgentStatusPart = {
     environmentName: string
     queueExpiresAt: number
     runId: string
-    state: 'waiting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'completed' | 'failed' | 'cancelled'
+    state: 'waiting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'recovering' | 'needs_attention' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
     retryable?: boolean
     retryClass?: 'transient' | 'timeout' | 'host_offline' | 'permission' | 'fatal'
   }
@@ -58,15 +58,27 @@ export function projectRemoteAgentEvents(input: {
 }): RemoteAgentProjection {
   let content = input.content
   let parts = [...(input.parts ?? [])]
-  let runStatus: AgentRunStatus = 'running'
-  let sessionStatus: AgentRemoteSessionStatus = 'running'
+  // A batch is a delta, not a new execution context. In particular, command,
+  // plan and text updates do not resolve an outstanding human request.
+  const previous = parts.find((part) => part.type === REMOTE_AGENT_STATUS_PART_TYPE)
+  const previousState = objectValue(previous?.data)?.state
+  const pending = parts.filter((part) => part.type === REMOTE_AGENT_REQUEST_PART_TYPE
+    && ['pending', 'decision_pending'].includes(String(objectValue(part.data)?.state)))
+  const waitingForInput = pending.some((part) => objectValue(part.data)?.kind === 'elicitation')
+  let sessionStatus: AgentRemoteSessionStatus = pending.length > 0
+    ? waitingForInput ? 'waiting_for_input' : 'waiting_for_approval'
+    : previousState === 'waiting_for_input' ? 'waiting_for_input'
+    : previousState === 'waiting_for_approval' ? 'waiting_for_approval' : 'running'
+  let runStatus: AgentRunStatus = sessionStatus === 'waiting_for_approval' || sessionStatus === 'waiting_for_input'
+    ? 'waiting_for_approval' : 'running'
   let remoteSessionId: string | undefined
   let terminalError: AgentRunTerminalError | undefined
   let terminal = false
   let tokens = { input: 0, output: 0 }
 
   const removeWaiting = () => {
-    parts = parts.filter((part) => part.type !== REMOTE_AGENT_STATUS_PART_TYPE)
+    parts = parts.filter((part) => part.type !== REMOTE_AGENT_STATUS_PART_TYPE
+      || objectValue(part.data)?.state !== 'waiting')
     if (content === `Waiting for ${input.environmentName}`) content = ''
     parts = parts.filter((part) => !(
       part.type === 'text' && part.text === `Waiting for ${input.environmentName}`
@@ -74,10 +86,12 @@ export function projectRemoteAgentEvents(input: {
   }
 
   for (const event of input.events) {
+    if (terminal) break
     if (event.type === 'session_started') {
       removeWaiting()
       remoteSessionId = stringValue(event.payload.remoteSessionId)
-      parts = upsertStatusPart(parts, input, 'running')
+      parts = upsertStatusPart(parts, input, sessionStatus === 'waiting_for_input'
+        ? 'waiting_for_input' : sessionStatus === 'waiting_for_approval' ? 'waiting_for_approval' : 'running')
       continue
     }
     if (event.type === 'text_checkpoint') {
@@ -102,6 +116,8 @@ export function projectRemoteAgentEvents(input: {
         requestedSchema: objectValue(event.payload.requestedSchema),
         runId: input.runId,
         state: 'pending',
+        expiresAt: objectValue(event.payload.context)?.expiresAt,
+        machineCostContinues: objectValue(event.payload.context)?.machineCostContinues === true,
       })
       runStatus = 'waiting_for_approval'
       sessionStatus = kind === 'permission' ? 'waiting_for_approval' : 'waiting_for_input'
@@ -388,10 +404,11 @@ export function resolveRemoteRequestPart(
   parts: Array<Record<string, unknown>>,
   requestKey: string,
   resolution: { decision: string; resolvedByPrincipalId: string; resolvedAt: number },
+  pendingDelivery = false,
 ) {
   return parts.map((part) => {
     if (part.type !== REMOTE_AGENT_REQUEST_PART_TYPE || objectValue(part.data)?.requestKey !== requestKey) return part
-    return { ...part, data: { ...objectValue(part.data), state: 'resolved', resolution } }
+    return { ...part, data: { ...objectValue(part.data), state: pendingDelivery ? 'decision_pending' : 'resolved', resolution } }
   })
 }
 

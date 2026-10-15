@@ -263,3 +263,24 @@ test('a real new name replaces an old one, and an action that never had a name s
   ])
   assert.deepEqual(actionTitles(parts).map((action) => action.title), ['Read notes.md', 'Remote action'])
 })
+
+test('approval and elicitation survive separate text, plan and commands batches', () => {
+  for (const type of ['approval_requested', 'elicitation_requested'] as const) {
+    let projection = projectRemoteAgentEvents({ content: '', parts: [], environmentName: 'cloud', queueExpiresAt: 2_000, runId: 'run-1',
+      events: [event(1, type, { requestKey: 'clone', prompt: 'Allow clone?', options: [{ id: 'allow', label: 'Allow' }] })] })
+    for (const next of [event(2, 'text_checkpoint', { text: 'Still waiting' }), event(3, 'plan', { entries: [] }), event(4, 'commands_update', { commands: [] })]) {
+      projection = projectRemoteAgentEvents({ ...projection, environmentName: 'cloud', queueExpiresAt: 2_000, runId: 'run-1', events: [next] })
+      assert.equal(projection.runStatus, 'waiting_for_approval')
+      assert.equal(projection.sessionStatus, type === 'approval_requested' ? 'waiting_for_approval' : 'waiting_for_input')
+      assert.equal((projection.parts.find(p => p.type === 'data-remote-agent-request')?.data as Record<string, unknown>).state, 'pending')
+      assert.equal((projection.parts.find(p => p.type === 'data-remote-agent-status')?.data as Record<string, unknown>).state, projection.sessionStatus)
+    }
+  }
+})
+
+test('a terminal event freezes subsequent content and outcome within the same committed batch', () => {
+  const projection = projectRemoteAgentEvents({ content: 'Done', environmentName: 'cloud', queueExpiresAt: 1, runId: 'run-1',
+    events: [event(1, 'completed', { usage: {} }), event(2, 'text_checkpoint', { text: 'late stale replacement' }), event(3, 'failed', { code: 'late', message: 'late', retryable: true })] })
+  assert.equal(projection.content, 'Done')
+  assert.equal(projection.runStatus, 'completed')
+})

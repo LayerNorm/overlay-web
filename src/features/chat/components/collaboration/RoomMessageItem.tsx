@@ -84,7 +84,7 @@ export type RoomMessageView = {
   /** Set when this message is one agent's question to another, on a person's behalf: who asked, and how far down the chain it is. */
   askedBy?: { name: string; hop: number; parentConversationId?: string }
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
-  remoteRequest?: { runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
+  remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
   remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string }
   /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
@@ -873,14 +873,17 @@ function RemoteRequestControls({ request, onResolve }: {
   return (
     <div className="mt-3 max-w-xl rounded-lg border border-(--border) bg-(--surface-subtle) p-3">
       <p className='text-xs font-medium text-(--foreground)'>
-        {request.kind === 'permission'
+        {request.pendingDelivery ? 'Decision pending delivery' : request.kind === 'permission'
           ? 'Permission requested'
           : 'Input requested'}
       </p>
       <p className='mt-1 text-xs leading-5 text-(--muted)'>
         {request.prompt}
       </p>
-      {request.kind === 'elicitation'
+      {request.expiresAt ? <p className='mt-1 text-xs text-(--muted)'>Expires {new Date(request.expiresAt).toLocaleString()}</p> : null}
+      {request.machineCostContinues ? <p className='mt-1 text-xs text-(--muted)'>Machine time continues to be billed while waiting.</p> : null}
+      {request.pendingDelivery ? <p className='mt-2 text-xs text-(--muted)'>Waiting for the agent to accept your decision.</p> : null}
+      {!request.pendingDelivery && request.kind === 'elicitation'
         ? Object.entries(properties).map(([key, property]) =>
         property.type === 'boolean' ? (
           <div key={key} className="mt-2 flex items-center gap-3">
@@ -934,7 +937,7 @@ function RemoteRequestControls({ request, onResolve }: {
         )
         : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        {request.kind === 'permission' ? (
+        {request.pendingDelivery ? null : request.kind === 'permission' ? (
           request.options.map((option) => (
             <button
               key={option.id}
@@ -998,6 +1001,9 @@ function RemoteRunControls({ run, onControl }: {
   onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
 }) {
   if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
+  if (run.state === 'recovering') return <p className='mt-2 text-xs text-(--muted)' role='status'>Resuming…</p>
+  if (run.state === 'cancelling') return <p className='mt-2 text-xs text-(--muted)' role='status'>Cancellation requested. Waiting for execution to stop.</p>
+  if (run.state === 'needs_attention') return <p className='mt-2 text-xs text-(--muted)' role='status'>Execution needs attention. Inspect the original process before continuing this task.</p>
   if (run.state === 'recoverable') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
         <span>

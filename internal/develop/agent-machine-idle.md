@@ -14,9 +14,11 @@ The meter pass (`operations/reconcile`, called by the Convex cron every minute f
 
 ## "A run is going"
 
-`environmentHasActiveRunsByServer`: an `agentRemoteSessions` row for the environment in `starting`, `running`, `waiting_for_approval`, or `recovering`. This replaces trusting `usage.activeUntil` (a run's maximum duration, up to 24 hours), so a run that never settles no longer pins a machine; abandoned runs are failed by the supervisor after 15 minutes, and a failed lookup counts as "running" (keep it up, retry next pass). `activeUntil` is still written but no longer decides idleness.
+`environmentHasActiveRunsByServer`: an `agentRemoteSessions` row for the environment in `starting`, `running`, `waiting_for_approval`, `waiting_for_input`, `recovering`, `needs_attention`, or `cancelling`. This replaces trusting `usage.activeUntil` (a run's maximum duration, up to 24 hours), so a run that never settles no longer pins a machine; healthy human waits are protected through their hard deadline; v2 runs use canonical process observations and explicit stop/attention phases instead of the legacy abandonment decision, and a failed lookup counts as "running" (keep it up, retry next pass). `activeUntil` is still written but no longer decides idleness.
 
 ## Notes
 
 - The window is `min(lease.usage.idleTimeoutMs, default)`, so leases created under the old 15-minute default also use 10.
 - Cost: one scheduled function per run end, one Convex query per idle-window check, and the existing sweep; nothing per agent that is stopped.
+
+Quiet transcript output is not proof of process loss. A healthy pending approval keeps the machine active; automatic parking requires proven durable approval restoration and is not enabled. V2 attention/cancellation keeps execution protected until the old writer is proven stopped. Idle checks remain the existing timer/meter path after terminal settlement.

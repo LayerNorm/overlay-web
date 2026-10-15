@@ -58,7 +58,10 @@ export type ConnectedAgentInvocationTarget = {
 export type RemoteAgentUsageSettlement = NonNullable<Extract<ApplyRemoteEventsResult, { accepted: true }>['terminal']>
 
 export type ConnectedAgentControlRemoteTurnResult = {
+  operationId?: string
+  phase?: string
   applied: boolean
+  reason?: 'missing' | 'forbidden' | 'conflicting_state' | 'unsupported_recovery' | 'expired_deadline'
   messageId?: string
   commandId?: string
   terminal?: RemoteAgentUsageSettlement
@@ -123,6 +126,7 @@ export type ConnectedAgentMeterSandboxLeaseResult =
   | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget'; remainingCents?: number }
 
 export type ConnectedAgentStartRemoteTurn = {
+  lifecycleVersion?: 2
   actorUserId: string
   agentId: string
   authorPrincipalId: string
@@ -154,6 +158,7 @@ export type ConnectedAgentStartRemoteTurn = {
 }
 
 export type ConnectedAgentStartRemoteTurnResult = {
+  lifecycleVersion?: 1 | 2
   commandId: string
   environmentName: string
   messageId: string
@@ -255,6 +260,7 @@ export interface ConnectedAgentRepository {
     conversationId: string
     workspaceId: string
     runId: string
+    controlRequestId?: string
     action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
     queueExpiresAt: number
     now: number
@@ -361,6 +367,7 @@ export interface ConnectedAgentRepository {
     idleCheckInMs?: number
   }): Promise<AgentSandboxLease | null>
   /** Whether a run on the environment has not finished (its machine must stay up). */
+  environmentHasActiveExecution?(args: { environmentId: string }): Promise<boolean>
   environmentHasActiveRuns(args: { environmentId: string }): Promise<boolean>
   meterSandboxLease(args: {
     workspaceId: string

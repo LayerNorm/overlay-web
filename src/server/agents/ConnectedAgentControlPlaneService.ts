@@ -100,6 +100,7 @@ export class ConnectedAgentControlPlaneService {
     deliverMachineFiles?: (args: { workspaceId: string; environmentId: string; files: Array<{ path: string; contents: string; mode?: number }> }) => Promise<void>
     /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
     agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
+    wakeMachine?: (args: { workspaceId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
@@ -394,6 +395,7 @@ export class ConnectedAgentControlPlaneService {
     conversationId: string
     workspaceId: string
     runId: string
+    controlRequestId?: string
     action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }) {
     await this.assertEnabled(args.workspaceId)
@@ -403,7 +405,28 @@ export class ConnectedAgentControlPlaneService {
       now,
       queueExpiresAt: now + INTERACTIVE_QUEUE_TTL_MS,
     })
-    if (!result.applied) throw controlPlaneError('Queued remote run was not found', 404, 'remote_run_not_found')
+    if (!result.applied) {
+      const reason = result.reason ?? 'conflicting_state'
+      const errors = {
+        missing: [404, 'The remote run was not found.'],
+        forbidden: [403, 'You cannot control this remote run.'],
+        conflicting_state: [409, 'This remote run cannot accept that control in its current state.'],
+        unsupported_recovery: [409, 'This host cannot restore the interrupted execution. Inspect the original process before starting another attempt.'],
+        expired_deadline: [409, 'This task reached its hard deadline. Start a new task.'],
+      } as const
+      throw controlPlaneError(errors[reason][1], errors[reason][0], `remote_run_${reason}`)
+    }
+    if (args.action !== 'cancel' && this.dependencies.wakeMachine) {
+      const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
+      // Resolve the authorized run through its session; never wake a BYOA environment.
+      for (const environment of environments) {
+        const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
+        if (!session || environment.kind !== 'overlay_cloud') continue
+        const outcome = await this.dependencies.wakeMachine({ workspaceId: args.workspaceId, environmentId: environment.id })
+        if (outcome === 'unavailable') throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
+        break
+      }
+    }
     if (result.terminal && this.dependencies.settleUsage &&
       (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
       await this.settleWithAudit(result.terminal)
@@ -794,6 +817,7 @@ export class ConnectedAgentControlPlaneService {
       }
       const parsed = agentHostCommandSchema.safeParse({
         protocolVersion: 1,
+        ...(command.attemptId ? { execution: { attemptId: command.attemptId, generation: command.executionGeneration } } : {}),
         commandId: command.id,
         environmentId: command.environmentId,
         workspaceId: command.workspaceId,
@@ -985,6 +1009,11 @@ export class ConnectedAgentControlPlaneService {
     await this.dependencies.repository.finalizeArtifact({ workspaceId: artifact.workspaceId,
       environmentId: artifact.environmentId, artifactId: artifact.id, status: 'rejected', scanResult: result, now: this.now() })
     await this.requireObjectStore().deleteObject(artifact.objectKey).catch((_error) => undefined)
+  }
+
+  async finalizeRemoteRunUsage(settlement: RemoteAgentUsageSettlement) {
+    await this.settleWithAudit(settlement)
+    await this.dependencies.onTerminalMessage?.(settlement)
   }
 
   private async settleWithAudit(settlement: RemoteAgentUsageSettlement) {

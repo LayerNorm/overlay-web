@@ -162,6 +162,9 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   listSandboxLeases(input: Parameters<ConnectedAgentRepository['listSandboxLeases']>[0]) {
     return connectedQuery<AgentSandboxLease[]>('listSandboxLeasesByServer', input)
   }
+  environmentHasActiveExecution(input: { environmentId: string }) {
+    return connectedQuery<boolean>('environmentHasActiveExecutionByServer', input)
+  }
   environmentHasActiveRuns(input: Parameters<ConnectedAgentRepository['environmentHasActiveRuns']>[0]) {
     return connectedQuery<boolean>('environmentHasActiveRunsByServer', input)
   }

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getDescriptiveToolLabel } from '@overlay/chat-core'
-import { toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { mergeRoomMessages, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -101,4 +101,12 @@ test('the transcript stops at a pending permission card and continues once it is
   assert.deepEqual(blocks('pending'), [{ kind: 'text', text: 'Let me run that.' }])
   // Answered: everything, in order.
   assert.deepEqual(blocks('resolved'), [{ kind: 'text', text: 'Let me run that.\n\nIt printed 3 lines.' }])
+})
+
+test('an older HTTP snapshot cannot overwrite committed subscription output after reconnect', () => {
+  const base = { id: 'reply', turnId: 'turn', authorKind: 'agent' as const, createdAt: 1 }
+  const snapshot = { ...base, content: 'Earlier', updatedAt: 10, eventSequence: 2 }
+  const committed = { ...base, content: '**Finished**', updatedAt: 20, eventSequence: 3, status: 'completed' as const }
+  assert.equal(mergeRoomMessages([snapshot], [committed])[0]?.content, '**Finished**')
+  assert.equal(mergeRoomMessages([committed], [snapshot])[0]?.content, '**Finished**')
 })
