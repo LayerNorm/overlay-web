@@ -47,6 +47,7 @@ export interface ConnectedAgentContractRepository {
     'sequence' | 'status' | 'claimedAt' | 'claimExpiresAt' | 'acknowledgedAt' | 'createdAt' | 'updatedAt'
   > & { now: number }): Promise<AgentRunCommand>
   claimCommands(args: { workspaceId: string; environmentId: string; now: number; leaseMs: number; limit: number }): Promise<AgentRunCommand[]>
+  commandResolutionFloor(args: { workspaceId: string; environmentId: string }): Promise<number>
   acknowledgeCommand(args: { workspaceId: string; environmentId: string; commandId: string; now: number }): Promise<boolean>
   createApprovalRequest(input: AgentApprovalRequest): Promise<AgentApprovalRequest>
   resolveApprovalRequest(args: { workspaceId: string; approvalId: string; resolution: AgentApprovalResolution }): Promise<AgentApprovalRequest | null>

@@ -103,6 +103,9 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   claimCommands(input: Parameters<ConnectedAgentRepository['claimCommands']>[0]) {
     return mutation<AgentRunCommand[]>('claimCommandsByServer', input)
   }
+  commandResolutionFloor(input: Parameters<ConnectedAgentRepository['commandResolutionFloor']>[0]) {
+    return connectedQuery<number>('commandResolutionFloorByServer', input)
+  }
   acknowledgeCommand(input: Parameters<ConnectedAgentRepository['acknowledgeCommand']>[0]) {
     return mutation<boolean>('acknowledgeCommandByServer', input)
   }

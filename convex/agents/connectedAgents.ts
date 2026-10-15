@@ -972,9 +972,13 @@ export const acknowledgeCommandByServer = mutation({
       return false
     if (args.accepted === false) {
       if (command.status === 'acknowledged') return false
-      await ctx.db.patch(command._id, {
-        status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now,
-      })
+      // A sequence-gap rejection says the host never saw an earlier command; it is not a verdict
+      // on this command. Cancelling here would chain the missing row into a second hole, so the
+      // command stays claimable and re-delivers once its lease expires (or the host resyncs).
+      if (args.errorCode !== 'command_sequence_gap')
+        await ctx.db.patch(command._id, {
+          status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now,
+        })
       const run = await ctx.db
         .query('conversationAgentRuns')
         .withIndex('by_externalRunId', (q) =>
@@ -2239,6 +2243,35 @@ export const claimCommandsByServer = mutation({
         }
       }),
     )
+  },
+})
+
+// A host numbers the commands it receives per environment and rejects anything after a missing
+// number, so a row that resolves without ever being delivered leaves a permanent hole in the
+// stream. This floor tells the host the highest sequence it may skip: every row below the first
+// still-open command is resolved ('acknowledged' or 'cancelled' — the only two terminal states a
+// row reaches without further delivery). Any other status still owes the host a delivery.
+export const commandResolutionFloorByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const openStatuses = ['pending', 'claimed', 'coordinator_pending'] as const
+    const firstOpenRows = await Promise.all(openStatuses.map((status) =>
+      ctx.db
+        .query('agentRunCommands')
+        .withIndex('by_environmentId_status_sequence', (q) =>
+          q.eq('environmentId', args.environmentId).eq('status', status))
+        .first()))
+    const firstOpen = firstOpenRows.reduce((lowest, row) =>
+      row && row.workspaceId === args.workspaceId && row.sequence < lowest ? row.sequence : lowest,
+    Number.MAX_SAFE_INTEGER)
+    if (firstOpen !== Number.MAX_SAFE_INTEGER) return firstOpen - 1
+    const latest = await ctx.db
+      .query('agentRunCommands')
+      .withIndex('by_environmentId_sequence', (q) => q.eq('environmentId', args.environmentId))
+      .order('desc')
+      .first()
+    return latest ? latest.sequence : 0
   },
 })
 

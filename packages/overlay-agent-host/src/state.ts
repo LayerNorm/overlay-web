@@ -115,6 +115,15 @@ export class SqliteHostStateStore {
     return true
   }
 
+  // Forward-only cursor move used when the server attests that skipped numbers are resolved:
+  // unlike adoptCommandCursor this also runs once a cursor exists, and it can never move back.
+  resumeCommandCursor(resolvedThroughSequence: number): boolean {
+    if (resolvedThroughSequence < 1) return false
+    this.database.prepare(`INSERT INTO host_state(key, value) VALUES ('command_cursor', ?)
+      ON CONFLICT(key) DO UPDATE SET value=MAX(value, excluded.value)`).run(resolvedThroughSequence)
+    return true
+  }
+
   recordCommandResult(commandId: string, result: StoredCommandResult, now = Date.now()): void {
     this.database.exec('BEGIN IMMEDIATE')
     try {

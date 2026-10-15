@@ -804,14 +804,20 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async pollCommands(auth: HostAuthentication, limit: number) {
-    const commands = await this.dependencies.repository.claimCommands({
-      workspaceId: auth.credential.workspaceId,
-      environmentId: auth.credential.environmentId,
-      now: this.now(),
-      leaseMs: 30_000,
-      limit: Math.max(1, Math.min(limit, 50)),
-    })
-    return commands.map((command) => {
+    const [commands, resolvedThroughSequence] = await Promise.all([
+      this.dependencies.repository.claimCommands({
+        workspaceId: auth.credential.workspaceId,
+        environmentId: auth.credential.environmentId,
+        now: this.now(),
+        leaseMs: 30_000,
+        limit: Math.max(1, Math.min(limit, 50)),
+      }),
+      this.dependencies.repository.commandResolutionFloor({
+        workspaceId: auth.credential.workspaceId,
+        environmentId: auth.credential.environmentId,
+      }),
+    ])
+    const parsedCommands = commands.map((command) => {
       if (new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_COMMAND_BYTES) {
         throw controlPlaneError('Queued command exceeds the bridge protocol byte limit', 413, 'command_too_large')
       }
@@ -835,6 +841,7 @@ export class ConnectedAgentControlPlaneService {
       }
       return parsed.data
     })
+    return { commands: parsedCommands, resolvedThroughSequence }
   }
 
   async acknowledgeCommand(auth: HostAuthentication, acknowledgement: CommandAcknowledgement) {

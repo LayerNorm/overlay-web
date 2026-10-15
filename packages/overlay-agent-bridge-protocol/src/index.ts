@@ -194,6 +194,9 @@ export const commandPollResponseSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   commands: z.array(agentHostCommandSchema).max(MAX_COMMANDS_PER_POLL),
   retryAfterMs: z.number().int().min(100).max(60_000).optional(),
+  // Highest command sequence the host may skip: every row below it is resolved
+  // server-side. Older servers omit it; older hosts ignore it.
+  resolvedThroughSequence: z.number().int().min(0).optional(),
 }).strict().superRefine((response, context) => {
   for (let index = 0; index < response.commands.length; index += 1) {
     if (new TextEncoder().encode(JSON.stringify(response.commands[index])).byteLength > MAX_COMMAND_BYTES) {

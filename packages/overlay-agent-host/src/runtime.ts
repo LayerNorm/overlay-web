@@ -38,6 +38,7 @@ export class AgentHostRuntime {
   private lastHeartbeatAt = 0
   private readonly bootId = randomUUID()
   private readonly executions = new Map<string, { attemptId: string; generation: number; hostBootId?: string }>()
+  private resolvedThroughSequence = 0
 
   constructor(private readonly options: AgentHostRuntimeOptions) {
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.capability.id, adapter]))
@@ -54,6 +55,8 @@ export class AgentHostRuntime {
       if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) throw new Error('event outbox backpressure limit reached')
     }
     const response = await this.options.controlPlane.pollCommands({ waitMs, ...(signal ? { signal } : {}) })
+    if (response.resolvedThroughSequence !== undefined)
+      this.resolvedThroughSequence = Math.max(this.resolvedThroughSequence, response.resolvedThroughSequence)
     // Sequential on purpose: commands arrive ordered and may build on each
     // other (e.g. stop after start), so they must be processed in order.
     for (const command of response.commands) {
@@ -127,8 +130,14 @@ export class AgentHostRuntime {
     }
     const expectedSequence = this.options.state.commandCursor() + 1
     if (command.sequence !== expectedSequence) {
-      await this.acknowledge(command, false, `expected command sequence ${expectedSequence}`, 'command_sequence_gap')
-      throw new Error(`expected command sequence ${expectedSequence}, received ${command.sequence}`)
+      // The server attests which skipped numbers are already resolved; a hole it reports as
+      // resolved is safe to jump over instead of wedging the whole command stream behind it.
+      if (command.sequence > expectedSequence && command.sequence - 1 <= this.resolvedThroughSequence) {
+        this.options.state.resumeCommandCursor(command.sequence - 1)
+      } else {
+        await this.acknowledge(command, false, `expected command sequence ${expectedSequence}`, 'command_sequence_gap')
+        throw new Error(`expected command sequence ${expectedSequence}, received ${command.sequence}`)
+      }
     }
     if (!this.options.state.claimCommand(command.commandId)) {
       const message = 'The previous command outcome is unknown; inspect the current execution instead of replaying it.'
