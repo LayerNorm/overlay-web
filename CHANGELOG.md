@@ -135,6 +135,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Fixed
 
+- Keep standalone admin navigation accessible when mobile labels collapse to icons.
+
 - **Deleting an account now deletes its stored credentials from the vault.** Account deletion removed the Convex rows for model-provider keys but left the secrets in the credential vault, now also true for agent accounts. It lists every vault reference the person stored and deletes each before the rows are removed; if any cannot be deleted, the deletion stops with an error and can be retried, so no secret is orphaned. Needs the new `listCredentialRefsByServer` Convex queries deployed first.
 - **Sandbox commands honour their own environment.** The Boat adapter applied only the machine-wide environment and silently dropped a command's `environment`.
 

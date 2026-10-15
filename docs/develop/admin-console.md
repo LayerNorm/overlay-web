@@ -148,3 +148,7 @@ Responsive QA at 390px confirmed no document overflow. Icon-only navigation reta
 ## Operator MFA verification
 
 On 2026-10-14, Google Account security for `divyansh@layernorm.co` showed 2-Step Verification enabled since March 14, with an authenticator and a passkey. WorkOS has no separately enrolled factor for this user. This confirms Google-account MFA enrollment; it does not prove every AuthKit sign-in method requires a second factor. Production acceptance uses the verified Google identity.
+
+## Rollback boundary after Stage 3d
+
+The minimum compatible web revision after legacy backend contraction is the Stage 3d release (#233): its shell uses the restricted fixed-member initializer. Older web deployments may still call removed operator mutations during member initialization. Restore a compatible backend before rolling web back earlier than Stage 3d; do not blindly promote a retained older Vercel deployment.
