@@ -15,6 +15,7 @@ import { authenticateWithCode } from '@/server/workos'
 import { safeReturnTo } from '@/server/auth-redirect'
 
 type AuthState = {
+  codeVerifier: string
   issuedAt: number
   nonce: string
   returnTo: string
@@ -33,15 +34,21 @@ export async function GET(request: NextRequest) {
   const returnedState = request.nextUrl.searchParams.get('state')
   const stored = openPayload<AuthState>(request.cookies.get(ADMIN_AUTH_STATE_COOKIE)?.value)
 
-  if (!code || !stored || !returnedState || returnedState !== stored.nonce
+  if (!code || !stored?.codeVerifier || !returnedState || returnedState !== stored.nonce
     || Date.now() - stored.issuedAt > AUTH_STATE_TTL_MS) {
     return redirectWithCookies('/sign-in?error=state', request, [clearAuthStateCookie()])
   }
 
   let tokens: Awaited<ReturnType<typeof authenticateWithCode>>
   try {
-    tokens = await authenticateWithCode(code)
-  } catch {
+    tokens = await authenticateWithCode(code, stored.codeVerifier)
+  } catch (error) {
+    const details = error && typeof error === 'object' ? error : {}
+    console.error(JSON.stringify({ event: 'admin_oauth_exchange_failed',
+      name: error instanceof Error ? error.name : 'unknown',
+      code: 'code' in details && typeof details.code === 'string' && /^[a-z_]+$/i.test(details.code) ? details.code : undefined,
+      status: 'status' in details && typeof details.status === 'number' ? details.status : undefined,
+    }))
     return redirectWithCookies('/sign-in?error=auth', request, [clearAuthStateCookie()])
   }
 

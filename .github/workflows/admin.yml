@@ -23,7 +23,7 @@ jobs:
           node-version: 24
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --workspace=@overlay/admin --include-workspace-root=false
 
       - name: Typecheck
         run: npm run admin:typecheck

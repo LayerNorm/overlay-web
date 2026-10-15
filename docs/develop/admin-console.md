@@ -136,3 +136,7 @@ Keep admin production settings limited to its Convex URL, dedicated admin API/se
 ## Stage 3d backend retirement
 
 After the standalone console and web surface retirement are accepted, customer web loses operator principal/list/directory and authorization-write endpoints. `admin/administration` exposes only append-only operational audit; `admin/authorization` retains ordinary permission-check reads. Web repository writes fail locally with an operator-only error, and operator repositories are no longer part of the customer backend registry. Customer role initialization uses the previously deployed fixed-member endpoint, preserving explicit custom assignments. Operator CRUD parity and every operator endpoint's secret/identity boundary are covered by Convex regression suites.
+
+The admin CI install selects only the admin workspace and its dependency closure, matching Vercel’s monorepo install. Shared UI packages declare their runtime styling/Radix dependencies; root web dependencies must not mask missing admin dependencies.
+
+The OAuth state envelope holds a one-use PKCE verifier; AuthKit gets its S256 challenge and callback exchanges the code with that verifier. Exchange failures log only event, error class, bounded provider code and status, never codes, tokens or credentials.
