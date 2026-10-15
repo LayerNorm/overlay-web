@@ -104,7 +104,9 @@ export function sessionStatus(session: AdminSession, now: number = Date.now()): 
 }
 
 export function hasRecentSignIn(session: AdminSession, now: number = Date.now()): boolean {
-  return now - session.signedInAt <= RECENT_SIGN_IN_WINDOW_MS
+  const authenticatedAt = tokenAuthenticationTime(session.accessToken)
+  return authenticatedAt !== null && authenticatedAt <= now + 60_000
+    && now - authenticatedAt <= RECENT_SIGN_IN_WINDOW_MS
 }
 
 const COOKIE_FLAGS = 'Path=/; HttpOnly; Secure; SameSite=Lax'
@@ -128,4 +130,16 @@ export function clearAuthStateCookie(): string {
 /** Re-minted cookie that rolls the idle window forward. */
 export function touchSessionCookie(session: AdminSession, now: number = Date.now()): string {
   return sessionCookie({ ...session, lastActiveAt: now })
+}
+
+/** Tokens come from WorkOS authentication/refresh, never from request JSON. */
+export function tokenAuthenticationTime(token: string): number | null {
+  try {
+    const claims: unknown = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'))
+    if (!claims || typeof claims !== 'object' || !('auth_time' in claims)) return null
+    return typeof claims.auth_time === 'number' && Number.isFinite(claims.auth_time)
+      ? claims.auth_time * 1000 : null
+  } catch {
+    return null
+  }
 }

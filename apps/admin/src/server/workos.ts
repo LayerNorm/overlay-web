@@ -12,12 +12,15 @@ function client(): WorkOS {
 
 /** Hosted AuthKit sign-in: staff authenticate with whatever providers WorkOS has configured. */
 export function adminAuthorizationUrl(args: { origin: string; state: string }): string {
-  return client().userManagement.getAuthorizationUrl({
+  const url = new URL(client().userManagement.getAuthorizationUrl({
     clientId: workosClientId(),
     provider: 'authkit',
     redirectUri: `${args.origin}/auth/callback`,
     state: args.state,
-  })
+  }))
+  // The installed WorkOS SDK predates maxAge; AuthKit accepts the standard parameter.
+  url.searchParams.set('max_age', '0')
+  return url.toString()
 }
 
 export async function authenticateWithCode(code: string) {
