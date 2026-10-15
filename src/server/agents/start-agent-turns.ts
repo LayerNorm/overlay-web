@@ -101,13 +101,13 @@ export async function startWorkspaceAgentTurns(args: {
         workspaceId: args.workspaceId,
       }])
     } catch (error) {
-      logger.error('[conversations/message POST] Failed to start an agent turn', {
+      const turnErrorCode = error instanceof WorkspaceAgentInvocationError ? error.reasonCode : 'unexpected'
+      const turnErrorDetail = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)
+      logger.error(`[conversations/message POST] Failed to start an agent turn: ${turnErrorCode} ${turnErrorDetail}`, {
         agentId: invocation.agentId,
         conversationId: args.conversationId,
         error,
         messageId: args.messageId,
-        turnErrorCode: error instanceof WorkspaceAgentInvocationError ? error.reasonCode : 'unexpected',
-        turnErrorDetail: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
       })
       const failureMessage = agentStartFailureMessage(invocation.agentName, error)
       await collaboration.startAgentMessage({
