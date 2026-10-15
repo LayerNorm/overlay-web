@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from './control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
+
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Dialog, DialogContent } from '@overlay/ui'
@@ -50,26 +53,25 @@ export function NameWorkspaceStep({ onDone }: { onDone: () => void }) {
         <p className="mt-1 text-xs leading-5 text-(--muted)">
           Your chats, files, and agents live here, and you can invite people to it later. You can rename it any time in Settings.
         </p>
-        <input
+        <Input
           aria-label="Workspace name"
           value={name}
           maxLength={80}
           disabled={busy}
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- the dialog exists to ask for this one thing
           autoFocus
           onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => { if (event.key === 'Enter') void save() }}
-          className="mt-4 w-full rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-2 text-sm text-(--foreground) outline-hidden"
+          className={unstyledInput(`mt-4 w-full rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-2 text-sm text-(--foreground) outline-hidden`)}
         />
         {error ? <p role="alert" className="mt-2 text-xs text-red-500">{error}</p> : null}
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" disabled={busy} onClick={onDone} className="rounded-md px-3 py-1.5 text-xs text-(--muted) hover:bg-(--surface-subtle)">
+          <Button variant="ghost" type="button" disabled={busy} onClick={onDone} className={unstyledButton(`rounded-md px-3 py-1.5 text-xs text-(--muted) hover:bg-(--surface-subtle)`)}>
             Keep this name
-          </button>
-          <button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="inline-flex items-center gap-1.5 rounded-md bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) hover:opacity-80 disabled:opacity-50">
+          </Button>
+          <Button variant="ghost" type="button" disabled={busy || !name.trim()} onClick={() => void save()} className={unstyledButton(`inline-flex items-center gap-1.5 rounded-md bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) hover:opacity-80 disabled:opacity-50`)}>
             {busy ? <Loader2 size={12} className="animate-spin" /> : null}
             Continue
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
