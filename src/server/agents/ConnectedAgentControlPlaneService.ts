@@ -813,10 +813,11 @@ export class ConnectedAgentControlPlaneService {
         leaseMs: 30_000,
         limit: Math.max(1, Math.min(limit, 50)),
       }),
-      this.dependencies.repository.commandResolutionFloor({
-        workspaceId: auth.credential.workspaceId,
-        environmentId: auth.credential.environmentId,
-      }),
+      auth.environment.capabilities.remoteLifecycleVersion === 2
+        ? this.dependencies.repository.commandResolutionFloor({
+          workspaceId: auth.credential.workspaceId,
+          environmentId: auth.credential.environmentId,
+        }) : Promise.resolve(undefined),
     ])
     const parsedCommands = commands.map((command) => {
       if (new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_COMMAND_BYTES) {

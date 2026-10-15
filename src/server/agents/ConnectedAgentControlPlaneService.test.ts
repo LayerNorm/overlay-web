@@ -516,10 +516,12 @@ test('poll extension is omitted for strict legacy hosts and sent only after v2 n
   for (const negotiated of [false, true]) {
     const f = fixture({ capabilities: negotiated ? { remoteLifecycleVersion: 2 } : {} })
     f.repository.claimCommands = async () => []
-    f.repository.commandResolutionFloor = async () => 12
+    let floorReads = 0
+    f.repository.commandResolutionFloor = async () => { floorReads++; return 12 }
     const response = await f.service.pollCommands({ environment: f.environment, credential: f.credential }, 10)
     const wire = JSON.parse(JSON.stringify(response))
     assert.equal(Object.hasOwn(wire, 'resolvedThroughSequence'), negotiated)
+    assert.equal(floorReads, negotiated ? 1 : 0)
     if (negotiated) assert.equal(wire.resolvedThroughSequence, 12)
   }
 })
