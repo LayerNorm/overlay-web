@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve complete Unicode characters when bounding connected-agent history so an emoji at the limit cannot prevent the next turn from starting.
+
 - Load compiled conversation memory profiles from the default-runtime store query instead of the retired compilation-module path.
 
 - Keep hosted TypeScript validation enabled even when a CI skip flag is inherited, and resolve direct and transitive Convex bridge imports from canonical source in clean checkouts.

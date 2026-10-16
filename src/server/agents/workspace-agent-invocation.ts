@@ -458,6 +458,12 @@ export async function resolveWorkspaceAgentInvocations(args: {
 const REMOTE_CONTEXT_MESSAGE_CHARS = 2_000
 const REMOTE_CONTEXT_TOTAL_CHARS = 80_000
 
+function remoteContextPrefix(text: string, limit: number): string {
+  const prefix = text.slice(0, limit)
+  const last = prefix.charCodeAt(prefix.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? prefix.slice(0, -1) : prefix
+}
+
 /**
  * ACP currently accepts one prompt string, so connected agents receive the
  * same recalled context and recent room transcript as hosted agents inside a
@@ -479,7 +485,7 @@ export function buildRemoteAgentPrompt(args: {
   const history = args.messages.flatMap((message) => {
     if (typeof message.content !== 'string' || !message.content.trim()) return []
     const role = message.role === 'assistant' ? 'Agent' : 'Room participant'
-    return [`${role}: ${message.content.trim().slice(0, REMOTE_CONTEXT_MESSAGE_CHARS)}`]
+    return [`${role}: ${remoteContextPrefix(message.content.trim(), REMOTE_CONTEXT_MESSAGE_CHARS)}`]
   }).join('\n\n')
   const envelope = [
     'OVERLAY_CONTEXT_BEGIN',
@@ -489,7 +495,7 @@ export function buildRemoteAgentPrompt(args: {
     'OVERLAY_CONTEXT_END',
   ].filter(Boolean).join('\n\n')
   const boundedContext = envelope.length > REMOTE_CONTEXT_TOTAL_CHARS
-    ? `${envelope.slice(0, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
+    ? `${remoteContextPrefix(envelope, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
     : envelope
   return `${boundedContext}\n\nRESPONSE_STYLE: ${AGENT_CLOSING_SUMMARY_INSTRUCTION}\n\nCURRENT_USER_MESSAGE_BEGIN\n${args.prompt}\nCURRENT_USER_MESSAGE_END`
 }

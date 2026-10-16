@@ -75,6 +75,11 @@ settings model catalog uses this route for chat enablement and image/video defau
 
 ## Agent environments
 
+Connected-agent prompt context limits preserve complete UTF-16 characters. Both
+per-message history and the total context envelope must avoid splitting surrogate
+pairs; otherwise Convex rejects the next command before its handler executes.
+Canonical transcript bytes are preserved separately from bounded prompt context.
+
 `/api/v1/agent-environments/**` is the only public control plane for connected hosts. Browser
 clients use `AgentEnvironmentsClient` for list, enrollment creation, approval, root-scope changes,
 managed `Overlay Cloud` provisioning, and revocation. The portable host uses the bridge protocol for enrollment, credential issuance

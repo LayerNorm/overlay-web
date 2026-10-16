@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 0 follow-on turn QA exposed a Unicode boundary failure in bounded prompt history. Both context limits now preserve complete characters; local regressions pass. Compiled memory reads also target the store query. Hosted acceptance on the new revision remains pending.
+
 - Phase 0 clean Convex typechecking now mirrors the web bridge-package source aliases, including transitive shared imports. Resolver regressions exclude `dist` artifacts; clean snapshot typechecking is checked separately from web types. Hosted acceptance remains pending.
 
 - Phase 0 build safety now limits duplicate-typecheck skipping to the non-hosted GitHub compilation lane. Hosted checks cannot be bypassed by inherited flags. Convex drive metadata imports canonical protocol source so a clean deployment does not require package build artifacts. Local policy, bundle and Convex regressions pass; new-head hosted acceptance remains pending.
