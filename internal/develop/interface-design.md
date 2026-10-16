@@ -386,4 +386,4 @@ Cancelled and failed/recoverable remote replies keep their earlier narrative vis
 Cancelled remote replies show a small status label even when no text was produced
 and the viewer cannot control the run. History serialization retains status and other metadata alongside legacy text fallback, so reload preserves this label and any partial answer.
 
-A native terminal detail shares its command's call key. Collapsed work summaries count that action once while retaining both the command and terminal output, with distinct React row keys.
+A native terminal detail shares its command's call key. Both live tool groups and the completed Worked summary count that action once, even across separate timeline groups, while retaining both the command and terminal output, with distinct React row keys.

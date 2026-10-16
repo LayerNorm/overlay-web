@@ -138,6 +138,8 @@ If the feature depends on another PR, declare the dependency. Land shared founda
 
 Build the requested behavior and update affected living documentation and root `CHANGELOG.md` under Unreleased in the same change.
 
+Package render tests preload the shared Node stylesheet and JSX shims, matching ordinary CI rendering; run the package's own test command when adding render coverage.
+
 Run the smallest checks that cover the change. Use `npm run dev` for local web work with your engineer-owned dev backend. Run a smoke check of the affected route or behavior before pushing. Record the actual commands and results. Required repository CI remains mandatory.
 
 Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant boundaries, migrations, and backend changes need their relevant stronger checks. Read the installed Next.js guides before writing Next.js code.

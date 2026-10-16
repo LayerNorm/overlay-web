@@ -9,8 +9,10 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- CI exposed a package render-test harness missing the shared stylesheet/JSX preloads; its standalone command now matches CI rendering. CodeQL flagged modulo-based verification-word selection; bounded cryptographic sampling removes that vocabulary-size assumption. Browser QA also found the settled work summary independently double-counted attached terminal details; both live and settled paths now use call identity. CI and hosted verification of these follow-up fixes remain pending.
+
 - A fresh owned candidate machine enrolled through normal protected Preview provisioning without a manual bootstrap. Both smoke namespaces were absent before prompting; all 26 files later matched the pinned full-content Files hashes on the new machine. Fenced preparation remained healthy past the original claim window until native execution began. A foreground `sleep 180` completed with no approval cards, rejected batches or observed false stalls. Native hash/MCP acceptance remains pending: the provider selected unavailable `python` and correctly stopped rather than retrying; a follow-up will explicitly use installed `python3`. Browser samples cover bounded windows, not full-run latency.
-- Native UI acceptance found a terminal detail counted as a second tool beside its command. Collapsed summaries now count shared call keys once, retain both details and use distinct React row keys. Package render tests and typechecking pass; exact-head hosted acceptance remains pending.
+- Native UI acceptance found a terminal detail counted as a second tool beside its command. Live groups and completed work summaries now count shared call keys once, retain both details and use distinct React row keys. Package render tests and typechecking pass; exact-head hosted acceptance remains pending.
 
 - Hosted cancelled-row reload exposed history fallback dropping status-only parts. API serialization now retains lifecycle, approval and saved-file metadata together with legacy partial text; focused serialization and rendered-status regressions pass. Exact-head Preview API readback and actual browser reload now retain the visible cancelled label without running controls.
 

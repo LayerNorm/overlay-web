@@ -171,7 +171,7 @@ export function planAssistantWorkCollapse(
   collapsedToolCallCount: number
 } {
   const collapsedIndexes: number[] = []
-  let collapsedToolCallCount = 0
+  const collapsedToolCallKeys = new Set<string>()
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!
     if (seg.kind === 'reasoning' || seg.kind === 'browser') {
@@ -187,7 +187,7 @@ export function planAssistantWorkCollapse(
         }
       }
       collapsedIndexes.push(i)
-      collapsedToolCallCount += seg.items.filter((item) => item.kind === 'tool').length
+      for (const item of seg.items) if (item.kind === 'tool') collapsedToolCallKeys.add(item.key)
       continue
     }
   }
@@ -203,7 +203,7 @@ export function planAssistantWorkCollapse(
       collapsedIndexes.sort((left, right) => left - right)
     }
   }
-  return { collapsedIndexes, collapsedToolCallCount }
+  return { collapsedIndexes, collapsedToolCallCount: collapsedToolCallKeys.size }
 }
 
 function isToolChainSegment(segment: AssistantVisualSegment): boolean {

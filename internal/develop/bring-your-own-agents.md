@@ -787,6 +787,8 @@ A workspace owner or admin creates a ten-minute, single-use enrollment code in O
 Host proves possession of its device key, and the browser confirms the same short verification
 phrase before approving filesystem roots.
 
+Verification phrases select three words with cryptographic `randomInt`, avoiding modulo assumptions if the vocabulary changes.
+
 ```mermaid
 sequenceDiagram
     actor Owner as Workspace owner

@@ -4,6 +4,7 @@ import {
   createHash,
   createPublicKey,
   randomBytes,
+  randomInt,
   randomUUID,
   verify as verifySignature,
 } from 'node:crypto'
@@ -1311,8 +1312,7 @@ function scanArtifact(bytes: Uint8Array, mediaType: string): { clean: boolean; r
   return { clean: true, result: 'signature_scan_clean' }
 }
 function verificationPhrase() {
-  const bytes = randomBytes(3)
-  return [...bytes].map((value) => PHRASE_WORDS[value % PHRASE_WORDS.length]).join('-')
+  return Array.from({length: 3}, () => PHRASE_WORDS[randomInt(PHRASE_WORDS.length)]).join('-')
 }
 function controlPlaneError(message: string, statusCode: number, code: string) {
   return new ConnectedAgentControlPlaneError(message, statusCode, code)
