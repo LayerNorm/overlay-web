@@ -68,9 +68,10 @@ async function authorizedCall(ctx: QueryCtx | MutationCtx, args: AgentMcpExecuti
 }
 
 const publicCall = (call: Doc<'agentMcpCalls'>) => ({ callId: call.callId, requestKey: call.requestKey,
-  toolName: call.toolName, argumentsJson: call.argumentsJson, rpcId: call.rpcId, clientSessionId: call.clientSessionId, state: call.state })
+  toolName: call.toolName, argumentsJson: call.argumentsJson, rpcId: call.rpcId, clientSessionId: call.clientSessionId, state: call.state,
+  elicitationAnsweredAt: call.elicitationAnsweredAt })
 const callResult = v.object({ callId: v.string(), requestKey: v.string(), toolName: v.string(), argumentsJson: v.string(),
-  rpcId: v.string(), clientSessionId: v.string(), state: agentMcpCallState })
+  rpcId: v.string(), clientSessionId: v.string(), state: agentMcpCallState, elicitationAnsweredAt: v.optional(v.number()) })
 
 /** A JSON-RPC request identity is immutable, including its exact normalized arguments. */
 export const register = mutation({
@@ -108,6 +109,16 @@ export const register = mutation({
 
 export const read = query({ args: { ...authority, callId: v.string() }, returns: callResult,
   handler: async (ctx, args) => publicCall(await authorizedCall(ctx, args)) })
+
+/** Native form delivery is separate from the owner's persisted permission decision. */
+export const acknowledgeElicitation = mutation({
+  args: { ...authority, callId: v.string() }, returns: v.null(),
+  handler: async (ctx, args) => {
+    const call = await authorizedCall(ctx, args)
+    if (call.elicitationAnsweredAt === undefined) await ctx.db.patch(call._id, { elicitationAnsweredAt: Date.now() })
+    return null
+  },
+})
 
 /** There is no lease takeover. A lost executor has an unknown outcome, never permission to repeat a write. */
 export const claim = mutation({

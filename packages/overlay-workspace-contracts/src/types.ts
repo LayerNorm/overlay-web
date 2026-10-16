@@ -566,6 +566,9 @@ export type WorkspaceAgentDefinition = {
   instructions: string
   harness: WorkspaceAgentHarness
   modelId: string
+  /** Adapter-owned permission and effort ids; omitted uses the deployment default. */
+  permissionMode?: string
+  effort?: string
   avatarColor?: string
   /** Creature body shape for anthropomorphic agent avatars; absent means circle. */
   avatarShape?: WorkspaceAgentCreatureShape
@@ -585,6 +588,9 @@ export type WorkspaceAgentCreateInput = {
   instructions: string
   harness?: WorkspaceAgentHarness
   modelId: string
+  /** Adapter-owned permission and effort ids; omitted uses the deployment default. */
+  permissionMode?: string
+  effort?: string
   avatarColor?: string
   avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds?: string[]

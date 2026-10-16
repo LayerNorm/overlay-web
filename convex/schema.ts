@@ -2079,6 +2079,8 @@ export default defineSchema({
       v.literal('hermes'),
     ),
     modelId: v.string(),
+    permissionMode: v.optional(v.string()),
+    effort: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
     avatarShape: v.optional(v.string()),
     allowedToolIds: v.array(v.string()),
@@ -2495,6 +2497,7 @@ export default defineSchema({
     execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
     clientSessionId: v.string(), rpcId: v.string(), toolName: v.string(), argumentsJson: v.string(), requestKey: v.string(),
     state: agentMcpCallState, expiresAt: v.number(), retireAt: v.number(), createdAt: v.number(),
+    elicitationAnsweredAt: v.optional(v.number()),
   }).index('by_callId', ['callId'])
     .index('by_session_rpc', ['sessionId', 'clientSessionId', 'rpcId'])
     .index('by_retireAt', ['retireAt']),

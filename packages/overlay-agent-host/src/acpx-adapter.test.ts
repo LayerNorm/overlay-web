@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -82,6 +82,40 @@ test('a later run resumes the same acpx session after the connection was closed'
 test('discovery rejects agents acpx does not know', async () => {
   const adapter = new AcpxAgentAdapter({ id: 'nope', displayName: 'Nope', agent: 'definitely-not-an-agent', stateDirectory: tmpdir() })
   await assert.rejects(adapter.discover(), /does not know/)
+})
+
+test('acpx applies live model, effort and cloud mode before every prompt', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-options-'))
+  const log = join(directory, 'options.jsonl')
+  const agentFixture = join(dirname(fixture), 'acp-options-agent.ts')
+  const adapter = new AcpxAgentAdapter({
+    id: 'fixture', displayName: 'Options fixture', agent: 'fixture', stateDirectory: join(directory, 'state'),
+    registryOverrides: { fixture: [process.execPath, '--import', import.meta.resolve('tsx'), agentFixture] },
+  })
+  let session: Awaited<ReturnType<typeof adapter.start>> | undefined
+  try {
+    const discovered = await adapter.discover({ workingDirectory: directory, credentials: { FIXTURE_OPTIONS_LOG: log } })
+    assert.equal(discovered.options?.model?.values[1]?.id, 'future-model')
+    assert.deepEqual(await readdir(directory), [])
+    session = await adapter.start({ runId: 'options', workingDirectory: directory, additionalDirectories: [], prompt: '',
+      credentials: { FIXTURE_OPTIONS_LOG: log },
+      metadata: { model: 'future-model', effort: 'high', permissionContext: 'cloud' },
+    }, async () => {})
+    await session.prompt('first')
+    await session.prompt('second')
+    const records = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    const prompts = records.filter(record => record.kind === 'prompt')
+    assert.equal(prompts.length, 2)
+    for (const prompt of prompts) assert.deepEqual(prompt.values, [
+      { id: 'provider-model', value: 'future-model' },
+      { id: 'provider-effort', value: 'high' },
+      { id: 'permissions', value: 'auto' },
+    ])
+    assert.equal(adapter.capability.options?.model?.values[1]?.id, 'future-model')
+  } finally {
+    await session?.stop()
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
 })
 
 async function waitFor(predicate: () => boolean): Promise<void> {

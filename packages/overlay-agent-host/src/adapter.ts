@@ -37,6 +37,6 @@ export interface AgentAdapterSession {
 
 export interface AgentAdapter {
   readonly capability: AdapterCapability
-  discover(): Promise<AdapterCapability>
+  discover(input?: { workingDirectory: string; credentials?: Record<string, string> }): Promise<AdapterCapability>
   start(input: StartAdapterSessionInput, emit: EmitAgentEvent): Promise<AgentAdapterSession>
 }

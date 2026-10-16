@@ -91,6 +91,6 @@ test('a new host retries capability discovery without streaming against a strict
       async pollCommands() { controller.abort(); return { commands: [] } }, async acknowledgeCommand() {},
       async uploadEvents() { throw Error('no run should upload') },
     } })
-  try { await runtime.run(controller.signal); assert.equal(attempts.length, 2); assert.ok(JSON.stringify(attempts[0]).includes('streaming')); assert.ok(!JSON.stringify(attempts[1]).includes('streaming')) }
+  try { await runtime.run(controller.signal); assert.equal(attempts.length, 3); assert.ok(JSON.stringify(attempts[0]).includes('streaming')); assert.ok(!JSON.stringify(attempts[2]).includes('streaming')) }
   finally { runtime.stopBackgroundUploads(); state.close(); rmSync(dir, { recursive: true, force: true }) }
 })

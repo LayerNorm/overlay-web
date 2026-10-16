@@ -1,0 +1,25 @@
+import { adapterCapabilitySchema, type AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
+import { CHAT_MODEL_QUALITY_PRIORITY } from '@/shared/ai/gateway/model-data'
+import { CODEX_MODEL_CHOICES } from './agent-model'
+
+export function environmentAgentOptions(capabilities: Record<string, unknown>, adapterId: string): AdapterOptions | undefined {
+  if (!Array.isArray(capabilities.adapters)) return undefined
+  for (const value of capabilities.adapters) {
+    const parsed = adapterCapabilitySchema.safeParse(value)
+    if (parsed.success && parsed.data.id === adapterId) return parsed.data.options
+  }
+  return undefined
+}
+
+/** Default first, then known quality order; new vendor choices retain their relative order. */
+export function orderedAgentModels(values: NonNullable<AdapterOptions['model']>['values']) {
+  const rank = (value: typeof values[number]) => {
+    if (value.id === 'default') return -1
+    const codex = CODEX_MODEL_CHOICES.findIndex(choice => value.id === choice.slug)
+    if (codex >= 0) return codex
+    const family = /opus|sonnet|haiku/i.exec(`${value.id} ${value.label}`)?.[0]?.toLowerCase()
+    const index = CHAT_MODEL_QUALITY_PRIORITY.findIndex(id => id === value.id || Boolean(family && id.includes(family)))
+    return index < 0 ? Number.MAX_SAFE_INTEGER : index
+  }
+  return values.toSorted((left, right) => rank(left) - rank(right))
+}

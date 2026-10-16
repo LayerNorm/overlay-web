@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { platform, release } from 'node:os'
+import { homedir, platform, release } from 'node:os'
 import {
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
@@ -46,6 +46,8 @@ export class AgentHostRuntime {
   private readonly streams = new Map<string, ReturnType<typeof createRunStream>>()
   private readonly terminalRuns = new Set<string>()
   private lastHeartbeatAt = 0
+  private nextCapabilityRefreshAt = 0
+  private capabilityRefresh: Promise<void> | undefined
   private readonly bootId = randomUUID()
   private readonly executions = new Map<string, { attemptId: string; generation: number; hostBootId?: string }>()
   private resolvedThroughSequence = 0
@@ -56,7 +58,8 @@ export class AgentHostRuntime {
   }
 
   async discoverCapabilities() {
-    return Promise.all([...this.adapters.values()].map((adapter) => adapter.discover()))
+    const root = this.options.filesystem.mode === 'all_user_files' ? homedir() : this.options.filesystem.roots[0]
+    return Promise.all([...this.adapters.values()].map(adapter => adapter.discover(root ? { workingDirectory: root } : undefined)))
   }
 
   async pollOnce(waitMs = 25_000, signal?: AbortSignal): Promise<number> {
@@ -87,6 +90,7 @@ export class AgentHostRuntime {
     await this.refreshHostState()
     while (!signal.aborted) {
       try {
+        if (Date.now() >= this.nextCapabilityRefreshAt) this.scheduleCapabilityRefresh()
         if (Date.now() - this.lastHeartbeatAt >= 30_000) await this.heartbeat()
         const retryAfterMs = await this.pollOnce(25_000, signal)
         attempt = 0
@@ -107,7 +111,8 @@ export class AgentHostRuntime {
         protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
         ...(this.options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
         streaming: { textDeltas: true as const, heartbeats: true as const },
-        hostVersion: '0.4.0',
+        mcp: { approvalBridge: true as const },
+        hostVersion: '0.4.1',
         platform: `${platform()} ${release()}`,
         adapters: (await this.discoverCapabilities()).map((capability) => {
           if (this.options.durableLifecycle) return capability
@@ -121,12 +126,37 @@ export class AgentHostRuntime {
       try { await this.options.controlPlane.updateCapabilities(capabilities) }
       catch (error) {
         if (!(error instanceof ControlPlaneRequestError) || error.status !== 400) throw error
-        const { streaming: _streaming, ...legacy } = capabilities
-        void _streaming
-        await this.options.controlPlane.updateCapabilities(legacy)
+        const { mcp: _mcp, ...withoutMcp } = capabilities
+        void _mcp
+        try { await this.options.controlPlane.updateCapabilities(withoutMcp) }
+        catch (legacyError) {
+          if (!(legacyError instanceof ControlPlaneRequestError) || legacyError.status !== 400) throw legacyError
+          const withoutOptions = { ...withoutMcp, adapters: capabilities.adapters.map(capability => {
+            const { options: _options, ...legacy } = capability
+            void _options
+            return legacy
+          }) }
+          let accepted = false
+          if (capabilities.adapters.some(capability => capability.options)) {
+            try { await this.options.controlPlane.updateCapabilities(withoutOptions); accepted = true }
+            catch (retryError) { if (!(retryError instanceof ControlPlaneRequestError) || retryError.status !== 400) throw retryError }
+          }
+          const { streaming: _streaming, ...legacy } = withoutOptions
+          void _streaming
+          if (!accepted) await this.options.controlPlane.updateCapabilities(legacy)
+        }
       }
     }
+    this.nextCapabilityRefreshAt = Date.now() + 24 * 60 * 60_000
     await this.heartbeat()
+  }
+
+  private scheduleCapabilityRefresh(): void {
+    if (this.capabilityRefresh || this.uploadsStopped) return
+    this.capabilityRefresh = this.refreshHostState().catch(error => {
+      this.nextCapabilityRefreshAt = Date.now() + 60_000
+      this.logger.warn('adapter options refresh deferred', { error: safeError(error) })
+    }).finally(() => { this.capabilityRefresh = undefined })
   }
 
   private async heartbeat(): Promise<void> {
@@ -335,6 +365,7 @@ export class AgentHostRuntime {
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
     }, emit)
     this.sessions.set(command.runId, session)
+    this.scheduleCapabilityRefresh()
     this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory,
       config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...(typeof command.payload.metadata.model === 'string' ? { model: command.payload.metadata.model } : {}) },
       ...(command.execution ? { execution: { ...command.execution, hostBootId: this.bootId } } : {}),
@@ -369,6 +400,7 @@ export class AgentHostRuntime {
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),
     }, this.createStream(runId))
     this.sessions.set(runId, session)
+    this.scheduleCapabilityRefresh()
     return session
   }
 

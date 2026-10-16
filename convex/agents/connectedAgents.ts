@@ -1150,7 +1150,8 @@ export const createApprovalRequestByServer = mutation({
 /**
  * An Overlay tool a connected agent called over MCP needs the person's approval. Shows the same
  * approval card an agent's own permission request does, but the answer goes back to the waiting
- * MCP call (it reads this row), never to the host as a command. Safe to call repeatedly for one
+ * MCP call (it reads this row). A journal-bound elicitation bridge also answers the host's signed form.
+ * Safe to call repeatedly for one
  * `requestKey`: it reports the current state, and a resolved request stays resolved.
  */
 /** Marks an approval request that belongs to an Overlay MCP tool call, not to the host's agent. */
@@ -1160,6 +1161,7 @@ export const requestMcpApprovalByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
     sessionId: v.optional(v.string()), expiresAt: v.optional(v.number()),
+    bridge: v.optional(v.boolean()),
     execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
     requestKey: v.string(), prompt: v.string(), now: v.number(),
   },
@@ -1171,12 +1173,19 @@ export const requestMcpApprovalByServer = mutation({
     requireServerSecret(args.serverSecret)
     const session = await currentRemoteAttempt(ctx, args.runId)
     if (!session || !agentMcpAttemptMatches(args, { ...session, id: session.sessionId })) return { state: 'unavailable' as const }
+    if (args.bridge) {
+      const callId = args.requestKey.startsWith('mcp_call:') ? args.requestKey.slice('mcp_call:'.length) : ''
+      const call = callId ? await ctx.db.query('agentMcpCalls').withIndex('by_callId', q => q.eq('callId', callId)).unique() : null
+      if (!call || call.requestKey !== args.requestKey || call.workspaceId !== args.workspaceId || call.runId !== args.runId
+        || call.environmentId !== args.environmentId || call.sessionId !== session.sessionId || call.expiresAt <= args.now
+        || call.execution?.attemptId !== args.execution?.attemptId || call.execution?.generation !== args.execution?.generation) return { state: 'unavailable' as const }
+    }
     const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
     const existing = await ctx.db.query('agentApprovalRequests')
       .withIndex('by_remoteSessionId_requestKey', (q) => q.eq('remoteSessionId', session.sessionId).eq('requestKey', args.requestKey)).unique()
     // A request keeps reporting its answer after the run ends (the run's end closes it), so a call still waiting is told.
     if (existing) {
-      if (existing.resolution && run?.remoteLifecycle) await applyRemoteFact(ctx, run, { type: 'decision_delivered', requestKey: args.requestKey }, args.now)
+      if (existing.resolution && run?.remoteLifecycle && existing.payload?.bridge !== true) await applyRemoteFact(ctx, run, { type: 'decision_delivered', requestKey: args.requestKey }, args.now)
       return existing.resolution
         ? { state: 'resolved' as const, decision: existing.resolution.decision }
         : { state: 'pending' as const }
@@ -1190,7 +1199,7 @@ export const requestMcpApprovalByServer = mutation({
       approvalId: `approval_${crypto.randomUUID()}`, workspaceId: args.workspaceId, runId: args.runId,
       remoteSessionId: session.sessionId, requestKey: args.requestKey, kind: 'permission', prompt: args.prompt,
       options: options.map((option) => option.id),
-      payload: { source: MCP_APPROVAL_SOURCE, requestKey: args.requestKey, prompt: args.prompt, options },
+      payload: { source: MCP_APPROVAL_SOURCE, ...(args.bridge ? { bridge: true } : {}), requestKey: args.requestKey, prompt: args.prompt, options },
       requestedAt: args.now,
     })
     const snapshot = session.capabilitySnapshot && typeof session.capabilitySnapshot === 'object'
@@ -1346,7 +1355,9 @@ export const resolveRemoteRequestByServer = mutation({
       if (!applied?.applied) return { applied: false }
     }
     await ctx.db.patch(request._id, { resolution })
-    if ((request.payload as { source?: unknown } | undefined)?.source === MCP_APPROVAL_SOURCE) {
+    const mcpRequest = (request.payload as { source?: unknown; bridge?: unknown } | undefined)
+    const mcpBridge = mcpRequest?.source === MCP_APPROVAL_SOURCE && mcpRequest.bridge === true
+    if (mcpRequest?.source === MCP_APPROVAL_SOURCE && !mcpBridge) {
       // The waiting MCP call reads the resolution itself; the host has nothing to answer.
       if (!run.remoteLifecycle) {
         await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
@@ -1376,9 +1387,11 @@ export const resolveRemoteRequestByServer = mutation({
     await ctx.db.insert('agentRunCommands', { commandId, workspaceId: args.workspaceId,
       environmentId: session.environmentId, runId: args.runId,
       ...(run.remoteLifecycle ? { attemptId: run.remoteLifecycle.currentAttemptId, executionGeneration: run.remoteLifecycle.executionGeneration } : {}),
-      type: kind === 'permission' ? 'approval_response' : 'elicitation_response',
+      type: mcpBridge ? 'elicitation_response' : kind === 'permission' ? 'approval_response' : 'elicitation_response',
       sequence: (latest?.sequence ?? 0) + 1,
-      payload: kind === 'permission' ? { requestKey: args.requestKey, optionId: args.decision }
+      payload: mcpBridge ? { requestKey: args.requestKey, action: args.decision === 'allow' ? 'accept' : 'decline',
+        ...(args.decision === 'allow' ? { content: { confirm: true } } : {}) }
+        : kind === 'permission' ? { requestKey: args.requestKey, optionId: args.decision }
         : { requestKey: args.requestKey, action: args.decision, ...(args.response ? { content: args.response } : {}) },
       status: 'pending', createdAt: args.now, updatedAt: args.now })
     if (!run.remoteLifecycle) {

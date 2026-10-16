@@ -1,8 +1,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import * as acp from '@agentclientprotocol/sdk'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
+import type { AdapterCapability, AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
+import { verifyMcpApprovalBridge } from '@layernorm/overlay-agent-bridge-protocol'
+import { parseAgentOptions } from './agent-options.js'
+import { applyAcpSettings } from './acp-settings.js'
 import { orderedAcpUpdates } from './ordered-acp-updates.js'
 
 /**
@@ -31,12 +37,30 @@ export type AcpAdapterOptions = {
   args?: string[]
   env?: Record<string, string>
   verify?: () => Promise<void>
+  startupTimeoutMs?: number
 }
 
 type Deferred<T> = { promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void }
 
+export async function overlayMcpApproval(metadata: Record<string, unknown>, requestedSchema: unknown) {
+  const mcp = metadata.overlayMcp
+  if (!mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string') return null
+  return verifyMcpApprovalBridge(mcp.token, requestedSchema)
+}
+
+/** A control-plane answer can beat delivery of its signed form. Preserve it until that form arrives. */
+export function rememberOverlayMcpApproval<Response>(answers: Map<string, Response>, metadata: Record<string, unknown>, requestKey: string, response: Response): boolean {
+  const mcp = metadata.overlayMcp
+  if (!/^mcp_call:[a-f0-9-]{36}$/.test(requestKey) || !mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string') return false
+  const previous = answers.get(requestKey)
+  if (previous && JSON.stringify(previous) !== JSON.stringify(response)) throw Error('Canonical MCP approval was already answered differently')
+  if (!previous && answers.size >= 1000) throw Error('Canonical MCP approval cache is full')
+  answers.set(requestKey, response)
+  return true
+}
+
 export class AcpAgentAdapter implements AgentAdapter {
-  readonly capability
+  readonly capability: AdapterCapability
 
   constructor(private readonly options: AcpAdapterOptions) {
     this.capability = {
@@ -46,8 +70,23 @@ export class AcpAgentAdapter implements AgentAdapter {
     }
   }
 
-  async discover() {
+  async discover(input?: Parameters<AgentAdapter['discover']>[0]) {
     await this.options.verify?.()
+    if (!input || (this.capability.options && Date.now() - this.capability.options.discoveredAt < 24 * 60 * 60_000)) return this.capability
+    const directory = await mkdtemp(join(input.workingDirectory, '.overlay-discovery-'))
+    let probe: AgentAdapterSession | undefined
+    try {
+      // Session creation reads the agent's catalog; discovery never sends a prompt or offers workspace tools.
+      const adapter = new AcpAgentAdapter({ ...this.options, startupTimeoutMs: this.options.startupTimeoutMs ?? 15000 })
+      probe = await adapter.start({ runId: `discovery-${randomUUID()}`, workingDirectory: directory,
+        additionalDirectories: [], prompt: '', metadata: {}, ...(input.credentials ? { credentials: input.credentials } : {}) }, async () => {})
+      this.capability.options = adapter.capability.options
+    } catch {
+      // Missing provider sign-in keeps the static fallback until an authenticated session supplies options.
+    } finally {
+      try { await probe?.stop() }
+      finally { await rm(directory, { recursive: true, force: true }) }
+    }
     return this.capability
   }
 
@@ -56,11 +95,13 @@ export class AcpAgentAdapter implements AgentAdapter {
     const closed = deferred<void>()
     const permissions = new Map<string, { response: Deferred<string | undefined>; options: Set<string> }>()
     const elicitations = new Map<string, { response: Deferred<acp.CreateElicitationResponse> }>()
+    const completedMcpApprovals = new Map<string, acp.CreateElicitationResponse>()
     let child: ChildProcessWithoutNullStreams | undefined
     let activeContext: acp.ClientContext | undefined
     let sessionId = input.remoteSessionId
     let textCheckpoint = ''
     let promptActive = false
+    let sessionOptions: AdapterOptions = { discoveredAt: Date.now() }
     let updateOrder: ReturnType<typeof orderedAcpUpdates> | undefined
 
     const app = acp.client({ name: 'overlay-agent-host' })
@@ -83,12 +124,20 @@ export class AcpAgentAdapter implements AgentAdapter {
       })
       .onRequest(acp.methods.client.elicitation.create, async ({ params }) => {
         if (params.mode !== 'form') return { action: 'decline' as const }
-        const requestKey = randomUUID()
+        const bridge = await overlayMcpApproval(input.metadata, params.requestedSchema)
+        const requestKey = bridge?.requestKey ?? randomUUID()
+        const completed = bridge ? completedMcpApprovals.get(requestKey) : undefined
+        if (completed) return completed
+        const prior = elicitations.get(requestKey)
+        if (prior) return prior.response.promise
+        if (bridge && completedMcpApprovals.size >= 1000) return { action: 'cancel' as const }
         const response = deferred<acp.CreateElicitationResponse>()
         elicitations.set(requestKey, { response })
-        await emit({ type: 'elicitation_requested', payload: { requestKey, prompt: params.message,
+        // The server already wrote the canonical approval card. Register its host response without a second card.
+        if (!bridge) await emit({ type: 'elicitation_requested', payload: { requestKey, prompt: params.message,
           requestedSchema: params.requestedSchema as Record<string, unknown>, context: {} } })
         const result = await response.promise
+        if (bridge) completedMcpApprovals.set(requestKey, result)
         elicitations.delete(requestKey)
         return result
       })
@@ -131,15 +180,18 @@ export class AcpAgentAdapter implements AgentAdapter {
         }
         const mcpServers = overlayMcpServers(input.metadata, Boolean(initialized.agentCapabilities?.mcpCapabilities?.http))
         if (sessionId) {
-          await context.request(acp.methods.agent.session.load, {
+          const loaded = await context.request(acp.methods.agent.session.load, {
             sessionId, cwd: input.workingDirectory, additionalDirectories: input.additionalDirectories, mcpServers,
           })
+          sessionOptions = parseAgentOptions(loaded)
         } else {
           const created = await context.request(acp.methods.agent.session.new, {
             cwd: input.workingDirectory, additionalDirectories: input.additionalDirectories, mcpServers,
           })
           sessionId = created.sessionId
+          sessionOptions = parseAgentOptions(created)
         }
+        this.capability.options = sessionOptions
         ready.resolve({ sessionId, context })
         await closed.promise
       })
@@ -195,13 +247,25 @@ export class AcpAgentAdapter implements AgentAdapter {
       closed.resolve()
     }
 
-    const initialized = await ready.promise
+    let startupTimer: ReturnType<typeof setTimeout> | undefined
+    let initialized: Awaited<typeof ready.promise>
+    try {
+      initialized = await Promise.race([ready.promise, new Promise<never>((_, reject) => {
+        startupTimer = setTimeout(() => reject(new Error('ACP session initialization timed out')), this.options.startupTimeoutMs ?? 60000)
+      })])
+    } catch (error) {
+      if (child?.pid) await terminateProcess()
+      else closed.resolve()
+      throw error
+    } finally { if (startupTimer) clearTimeout(startupTimer) }
     const requireContext = () => activeContext ?? initialized.context
     return {
       remoteSessionId: initialized.sessionId,
       prompt: async (prompt) => {
         promptActive = true
         try {
+          sessionOptions = await applyAcpSettings(requireContext(), initialized.sessionId, input.metadata, sessionOptions)
+          this.capability.options = sessionOptions
           const result = await requireContext().request(acp.methods.agent.session.prompt, {
             sessionId: initialized.sessionId, prompt: [{ type: 'text', text: prompt }],
           })
@@ -216,8 +280,10 @@ export class AcpAgentAdapter implements AgentAdapter {
       },
       elicit: async (requestKey, action, content) => {
         const pending = elicitations.get(requestKey)
+        const response: acp.CreateElicitationResponse = action === 'accept' ? { action, content: content as Record<string, string | number | boolean | string[]> } : { action }
+        if (!pending && rememberOverlayMcpApproval(completedMcpApprovals, input.metadata, requestKey, response)) return
         if (!pending) throw new Error(`ACP elicitation request is not pending: ${requestKey}`)
-        pending.response.resolve(action === 'accept' ? { action, content: content as Record<string, string | number | boolean | string[]> } : { action })
+        pending.response.resolve(response)
       },
       cancel: async () => {
         await requireContext().notify(acp.methods.agent.session.cancel, { sessionId: initialized.sessionId }).catch(() => undefined)

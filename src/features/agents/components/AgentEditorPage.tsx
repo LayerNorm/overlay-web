@@ -11,6 +11,7 @@ import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCa
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
 import { buildAgentsDirectoryHref } from '../lib/agent-chat'
 import { getInitialEditorState, getShowcaseAgent } from '../lib/agent-editor-state'
@@ -127,6 +128,10 @@ export function AgentEditorPage({
     // Its model is likewise set by its own control (Model).
     if (runtime.cloudAgent) {
       delete built.allowedToolIds
+      delete (built as { modelId?: string }).modelId
+    }
+    if (agent && runtime.agentType === 'byo' && parseByoModelId(agent.modelId)?.adapterId === byo.adapterId) {
+      // The separate settings controls own this choice; an identity edit must not reset it.
       delete (built as { modelId?: string }).modelId
     }
     return built

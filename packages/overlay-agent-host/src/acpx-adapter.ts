@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createAcpRuntime,
@@ -15,7 +16,11 @@ import {
   type AcpRuntimeTurnResult,
 } from 'acpx/runtime'
 import type { McpServer } from '@agentclientprotocol/sdk'
-import { emitToolContent, overlayMcpServers } from './acp-adapter.js'
+import type { AdapterCapability } from '@layernorm/overlay-agent-bridge-protocol'
+import { emitToolContent, overlayMcpApproval, overlayMcpServers, rememberOverlayMcpApproval } from './acp-adapter.js'
+import { parseAgentOptions } from './agent-options.js'
+import { applyAgentSettings } from './acp-settings.js'
+import { pinnedAcpxLaunch } from './adapter-manifests.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 
 /**
@@ -83,7 +88,7 @@ type PendingElicitation = { response: Deferred<AcpElicitationResponse> }
  * record stays) and the next turn reconnects with that run's servers.
  */
 export class AcpxAgentAdapter implements AgentAdapter {
-  readonly capability
+  readonly capability: AdapterCapability
   private readonly registry: AcpAgentRegistry
   private readonly mcpBySession = new Map<string, McpServer[]>()
 
@@ -93,12 +98,32 @@ export class AcpxAgentAdapter implements AgentAdapter {
       supports: { prompt: true, approval: true, cancel: true, resume: true },
       recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false },
     }
-    this.registry = createAgentRegistry(options.registryOverrides ? { overrides: options.registryOverrides } : {})
+    const pinned = pinnedAcpxLaunch(options.agent)
+    this.registry = createAgentRegistry({ overrides: {
+      ...(pinned ? { [options.agent]: pinned } : {}), ...options.registryOverrides,
+    } })
   }
 
-  async discover() {
+  async discover(input?: Parameters<AgentAdapter['discover']>[0]) {
     if (!this.registry.list().includes(this.options.agent)) {
       throw new Error(`acpx does not know the agent "${this.options.agent}"`)
+    }
+    if (!input || (this.capability.options && Date.now() - this.capability.options.discoveredAt < 24 * 60 * 60_000)) return this.capability
+    const directory = await mkdtemp(join(input.workingDirectory, '.overlay-discovery-'))
+    const runtime = this.runtimeFor(directory, input.credentials, { stateDirectory: directory, timeoutMs: 15000 })
+    let handle: AcpRuntimeHandle | undefined
+    try {
+      handle = await runtime.ensureSession({ sessionKey: `discovery-${randomUUID()}`, agent: this.options.agent, mode: 'persistent', cwd: directory })
+      const status = await runtime.getStatus?.({ handle })
+      this.capability.options = parseAgentOptions({ configOptions: status?.details?.configOptions })
+    } catch {
+      // An unsigned-in agent keeps its fallback catalog; discovery sends no prompt.
+    } finally {
+      try { if (handle) await runtime.close({ handle, reason: 'option discovery complete' }) }
+      finally {
+        await runtime.shutdown?.()
+        await rm(directory, { recursive: true, force: true })
+      }
     }
     return this.capability
   }
@@ -108,11 +133,12 @@ export class AcpxAgentAdapter implements AgentAdapter {
    * runtime is created, and each run brings its own credentials. Session
    * records live on disk, so a later run's runtime resumes the same session.
    */
-  private runtimeFor(cwd: string, credentials?: Record<string, string>): AcpRuntime {
+  private runtimeFor(cwd: string, credentials?: Record<string, string>, discovery?: { stateDirectory: string; timeoutMs: number }): AcpRuntime {
     const env = { ...this.options.env, ...credentials }
     return createAcpRuntime({
       cwd,
-      sessionStore: createFileSessionStore({ stateDir: join(this.options.stateDirectory, 'acpx') }),
+      sessionStore: createFileSessionStore({ stateDir: join(discovery?.stateDirectory ?? this.options.stateDirectory, 'acpx') }),
+      ...(discovery ? { timeoutMs: discovery.timeoutMs } : {}),
       agentRegistry: this.registry,
       ...(Object.keys(env).length > 0 ? { agentProcessEnv: env } : {}),
       mcpServers: (session) => this.mcpBySession.get(session.sessionKey) ?? [],
@@ -133,14 +159,32 @@ export class AcpxAgentAdapter implements AgentAdapter {
     const requestedModel = typeof input.metadata?.model === 'string' && input.metadata.model.trim() ? input.metadata.model.trim() : null
     // The model an agent's owner chose, in the agent's own id (Claude Code `sonnet`, Codex `gpt-6-sol[high]`). A model the
     // agent does not offer fails the run with the agent's own message instead of silently running another model.
-    const applyModel = async (target: AcpRuntimeHandle) => {
-      if (requestedModel) await applyRequestedModel(runtime, target, requestedModel)
+    const applySettings = async (target: AcpRuntimeHandle) => {
+      const status = await runtime.getStatus?.({ handle: target })
+      const options = parseAgentOptions({ configOptions: status?.details?.configOptions })
+      // Preserve legacy Codex model[effort] ids when the agent has no modern model selector.
+      if (requestedModel && !options.model) await applyRequestedModel(runtime, target, requestedModel)
+      const selected = await applyAgentSettings({
+        setConfig: (key, value) => {
+          if (!runtime.setConfigOption) throw new Error('Agent runtime does not support configuration settings')
+          return runtime.setConfigOption({ handle: target, key, value })
+        },
+        setMode: mode => {
+          if (!runtime.setMode) throw new Error('Agent runtime does not support permission modes')
+          return runtime.setMode({ handle: target, mode })
+        },
+        setModel: model => {
+          if (!runtime.setModel) throw new Error('Agent runtime does not support model selection')
+          return runtime.setModel({ handle: target, model })
+        },
+      }, { ...input.metadata, ...(!options.model ? { model: undefined } : {}) }, options)
+      this.capability.options = selected
     }
     let handle: AcpRuntimeHandle = await ensure()
-    await applyModel(handle)
     let activeTurn: AcpRuntimeTurn | undefined
     const permissions = new Map<string, PendingPermission>()
     const elicitations = new Map<string, PendingElicitation>()
+    const completedMcpApprovals = new Map<string, AcpElicitationResponse>()
     let textCheckpoint = ''
     let connected = true
 
@@ -168,13 +212,20 @@ export class AcpxAgentAdapter implements AgentAdapter {
 
     const onElicitation = async (request: { mode?: string; message: string; requestedSchema?: unknown }) => {
       if (request.mode !== 'form') return { action: 'decline' as const }
-      const requestKey = randomUUID()
+      const bridge = await overlayMcpApproval(input.metadata, request.requestedSchema)
+      const requestKey = bridge?.requestKey ?? randomUUID()
+      const completed = bridge ? completedMcpApprovals.get(requestKey) : undefined
+      if (completed) return completed
+      const prior = elicitations.get(requestKey)
+      if (prior) return prior.response.promise
+      if (bridge && completedMcpApprovals.size >= 1000) return { action: 'cancel' as const }
       const response = deferred<AcpElicitationResponse>()
       elicitations.set(requestKey, { response })
-      await emit({ type: 'elicitation_requested', payload: {
+      if (!bridge) await emit({ type: 'elicitation_requested', payload: {
         requestKey, prompt: request.message, requestedSchema: (request.requestedSchema ?? {}) as Record<string, unknown>, context: {},
       } })
       const result = await response.promise
+      if (bridge) completedMcpApprovals.set(requestKey, result)
       elicitations.delete(requestKey)
       return result
     }
@@ -190,9 +241,9 @@ export class AcpxAgentAdapter implements AgentAdapter {
       prompt: async (prompt) => {
         if (!connected) {
           handle = await ensure()
-          await applyModel(handle)
           connected = true
         }
+        await applySettings(handle)
         textCheckpoint = ''
         const turn = runtime.startTurn({
           handle, text: prompt, mode: 'prompt', requestId: randomUUID(),
@@ -223,10 +274,11 @@ export class AcpxAgentAdapter implements AgentAdapter {
       },
       elicit: async (requestKey, action, content) => {
         const pending = elicitations.get(requestKey)
+        const response: AcpElicitationResponse = action === 'accept'
+          ? { action, content: content as Record<string, string | number | boolean | string[]> } : { action }
+        if (!pending && rememberOverlayMcpApproval(completedMcpApprovals, input.metadata, requestKey, response)) return
         if (!pending) throw new Error(`ACP elicitation request is not pending: ${requestKey}`)
-        pending.response.resolve(action === 'accept'
-          ? { action, content: content as Record<string, string | number | boolean | string[]> }
-          : { action })
+        pending.response.resolve(response)
       },
       cancel: async (reason) => {
         if (activeTurn) await activeTurn.cancel({ reason: reason ?? 'cancelled from Overlay' })
@@ -292,11 +344,11 @@ type ModelControls = Pick<AcpRuntime, 'setModel' | 'setConfigOption'>
 /**
  * Applies the model an agent's owner chose. The id is tried as given. Codex on a ChatGPT sign-in advertises plain model
  * names (`gpt-6-sol`) while an API key advertises `gpt-6-sol[high]`; so when a `name[level]` id is not offered, the
- * name is applied and the level is set as the reasoning effort (best effort: an agent without that setting keeps its
- * own). A model the agent does not offer at all still fails the run, with the agent's own message.
+ * name is applied and the level is set as the reasoning effort. Unsupported choices fail visibly instead of
+ * silently running a different model or effort.
  */
 export async function applyRequestedModel(runtime: ModelControls, handle: AcpRuntimeHandle, model: string): Promise<void> {
-  if (!runtime.setModel) return
+  if (!runtime.setModel) throw new Error('Agent runtime does not support model selection')
   try {
     await runtime.setModel({ handle, model })
     return
@@ -304,14 +356,17 @@ export async function applyRequestedModel(runtime: ModelControls, handle: AcpRun
     const split = /^(.+)\[([^\]]+)\]$/.exec(model)
     if (!split) throw error
     await runtime.setModel({ handle, model: split[1]! })
+    if (!runtime.setConfigOption) throw new Error('Agent runtime does not support reasoning effort')
+    let effortError: unknown
     for (const key of ['reasoning_effort', 'effort']) {
       try {
-        await runtime.setConfigOption?.({ handle, key, value: split[2]! })
+        await runtime.setConfigOption({ handle, key, value: split[2]! })
         return
-      } catch (_error) {
-        // Try the next name; an agent with no such setting keeps its own level.
+      } catch (error) {
+        effortError = error
       }
     }
+    throw effortError
   }
 }
 

@@ -122,6 +122,8 @@ function serviceFor(
           instructions: input.instructions,
           harness: input.harness,
           modelId: input.modelId,
+          ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
+          ...(input.effort ? { effort: input.effort } : {}),
           avatarColor: input.avatarColor,
           avatarShape: input.avatarShape,
           allowedToolIds: input.allowedToolIds,
@@ -277,6 +279,22 @@ test('a non-manager cannot archive a creator-only agent they cannot see', async 
   const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', seed)
   const error = await serviceError(service.archive({ actorUserId: 'user-other', workspaceId: WORKSPACE_ID, agentId: 'agent-private' }))
   assert.equal(error.code, 'not_found')
+})
+
+test('adapter-owned permission and effort ids persist on create and update, with bounded nonempty values', async () => {
+  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member')
+  const created = await fixture.service.create({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
+    input: { name: 'Runtime settings', instructions: 'Do the work', modelId: 'byo/claude-code', permissionMode: ' auto ', effort: ' high ' } })
+  assert.equal(created.permissionMode, 'auto')
+  assert.equal(created.effort, 'high')
+  const updated = await fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
+    input: { permissionMode: 'acceptEdits', effort: 'low' } })
+  assert.equal(updated.permissionMode, 'acceptEdits')
+  assert.equal(updated.effort, 'low')
+  await assert.rejects(fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
+    input: { permissionMode: ' ' } }), /Permission mode/)
+  await assert.rejects(fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
+    input: { effort: 'x'.repeat(201) } }), /Effort/)
 })
 
 test('create defaults to workspace visibility and passes creator visibility through', async () => {

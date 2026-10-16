@@ -388,6 +388,35 @@ describe('Convex remote agent room turns', () => {
     expect(resolvedCard.data.state).toBe('resolved')
   })
 
+  test('a bridged MCP approval uses one canonical card and delivers its answer as elicitation', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await call('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 10,
+      events: [event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' })] })
+    const callId = 'd3c2acb6-f09a-4ec6-97eb-39fad2eed724'
+    const requestKey = `mcp_call:${callId}`
+    const ask = () => call('requestMcpApprovalByServer', { workspaceId, environmentId, runId: 'run-remote-turn',
+      sessionId: 'session-remote-turn', requestKey, prompt: 'Allow synthetic tool?', bridge: true, now: now + 11 })
+    expect(await ask()).toEqual({ state: 'unavailable' })
+    await convex.run(ctx => ctx.db.insert('agentMcpCalls', { callId, workspaceId, environmentId, runId: 'run-remote-turn',
+      sessionId: 'session-remote-turn', clientSessionId: 'client', rpcId: '1', toolName: 'synthetic', argumentsJson: '{}',
+      requestKey, state: { kind: 'pending' }, expiresAt: now + 60000, retireAt: now + 86400000, createdAt: now }))
+    expect(await ask()).toEqual({ state: 'pending' })
+    expect(await ask()).toEqual({ state: 'pending' })
+    expect(await convex.run(ctx => ctx.db.query('agentApprovalRequests').collect())).toHaveLength(1)
+    const resolved = await call<{ commandId?: string }>('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey, decision: 'allow', now: now + 12 })
+    const command = await convex.run(ctx => ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', resolved.commandId!)).unique())
+    expect(command).toMatchObject({ type: 'elicitation_response', payload: { requestKey, action: 'accept', content: { confirm: true } } })
+    const replay = await call<{ commandId?: string }>('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey, decision: 'allow', now: now + 13 })
+    expect(replay.commandId).toBe(resolved.commandId)
+  })
+
   test('an MCP approval left unanswered is closed when the run ends, so the waiting call is refused', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)

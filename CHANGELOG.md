@@ -8,7 +8,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Preserve event upload retry boundaries across host restarts so a lost acknowledgement cannot turn a retry into an overlapping batch.
 
-- Add execution-fenced call storage and bounded result retention for resumable connected-agent tools. HTTP approval resumption is still pending.
+- Add execution-fenced call storage and bounded result retention for resumable connected-agent tools. Upgraded hosts resume the original approval-gated tool call across reconnects with one canonical decision card.
 
 - Clear open-tool liveness when lifecycle supervision confirms that a stopped agent process has exited.
 
@@ -43,6 +43,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Preserve safe drive rejection statuses when production Convex redacts developer error messages.
 
 - Prepare a dedicated connected-agent drive cache with bounded snapshots, hash-checked atomic hydration and traversal/symlink rejection. This foundation is not yet connected to Overlay Files or enabled for agent turns.
+
+- Prepare connected-agent model, effort and permission discovery with bound-environment settings, per-prompt application and explicit local Bypass confirmation. Candidate adapter pins: Claude ACP 0.91.0 and Codex ACP 2.2.2; image v9. Hosted acceptance and the remaining Phase 3 approval/release work are pending.
 
 - Resolve the bridge protocol from workspace source in Convex tests, so clean checkouts do not depend on package build order.
 

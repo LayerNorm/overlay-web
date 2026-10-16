@@ -42,6 +42,7 @@ export class McpCallJournal {
   }
 
   read(callId: string) { return this.client.query(api.agents.mcpCalls.read, { ...this.authority, callId }) }
+  acknowledgeElicitation(callId: string) { return this.client.mutation(api.agents.mcpCalls.acknowledgeElicitation, { ...this.authority, callId }) }
   claim(callId: string, executionId: string, approvalRequired: boolean) {
     return this.client.mutation(api.agents.mcpCalls.claim, { ...this.authority, callId, executionId, approvalRequired })
   }

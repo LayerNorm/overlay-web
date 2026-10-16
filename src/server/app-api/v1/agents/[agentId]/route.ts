@@ -49,6 +49,8 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
   assignString(input, body, 'description')
   assignString(input, body, 'instructions')
   assignString(input, body, 'modelId')
+  assignString(input, body, 'permissionMode')
+  assignString(input, body, 'effort')
   assignString(input, body, 'avatarColor')
   assignShape(input, body)
   assignStrings(input, body, 'allowedToolIds')
@@ -65,7 +67,7 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
 }
 
 function assignString<
-  Key extends 'name' | 'description' | 'instructions' | 'modelId' | 'avatarColor',
+  Key extends 'name' | 'description' | 'instructions' | 'modelId' | 'avatarColor' | 'permissionMode' | 'effort',
 >(input: WorkspaceAgentUpdateInput, body: Record<string, unknown>, key: Key) {
   const value = body[key]
   if (value === undefined) return

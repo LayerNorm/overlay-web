@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 pending; Phase 4 foundation in progress; Phase 5 in progress.
+Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 in progress; Phase 4 foundation in progress; Phase 5 in progress.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -13,7 +13,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 - Phase 1 lost-acknowledgement recovery now preserves the attempted batch boundary across SQLite restart. Newly queued events cannot enlarge a retry, and acknowledgements may advance only within the persisted attempted watermark. Legacy and fenced-stream regressions pass; hosted package acceptance remains pending.
 
-- Phase 3 MCP call storage now fences the current execution, claims side effects once, persists bounded immutable result chunks and returns exact cached results after reconnect. Membership/revocation, retention and quotas have real Convex coverage. HTTP resumability and canonical approval-card integration remain pending.
+- Phase 3 MCP call storage now fences the current execution, claims side effects once, persists bounded immutable result chunks and returns exact cached results after reconnect. Membership/revocation, retention and quotas have real Convex coverage. HTTP resumability and canonical approval-card integration now pass real Convex and native MCP SDK reconnect tests; hosted/provider acceptance remains pending.
 
 - Phase 2 Stop QA preserved the streamed prefix and closed tool rows. A stale terminal liveness tool list exposed by process-based confirmation is corrected locally; hosted verification remains pending.
 
@@ -33,9 +33,9 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 - Phase 4 expected drive failures now use structured Convex application data; redacted production responses retain safe HTTP statuses in both current-authority and pinned-snapshot queries. Local transport and Convex tests pass; hosted acceptance remains pending.
 
-- Phase 5 MCP authorization now binds delivered credentials to the current session and execution generation without extending expiry. Approval polling and final tool execution recheck authority; replaced attempts cannot create new approval cards. Legacy first-attempt compatibility remains. Interrupted-turn continuation, durable pending-tool follow-up and the 60-minute recovery acceptance remain pending.
-
 - Phase 0 CI corrections record the new drive route/readers in the reviewed on-prem inventory and remove a syntax-only zero-argument broker assertion. Native-auth boundary and token refresh tests remain enforced; current-head hosted acceptance is pending.
+
+- Phase 5 MCP authorization now binds delivered credentials to the current session and execution generation without extending expiry. Approval polling and final tool execution recheck authority; replaced attempts cannot create new approval cards. Legacy first-attempt compatibility remains. Interrupted-turn continuation, durable pending-tool follow-up and the 60-minute recovery acceptance remain pending.
 
 - Phase 0 preview build recovery now uses isolated Webpack compilation with memory optimizations and fixes an invalid reusable account-page export. Local cold compilation, TypeScript and route generation pass with hosted typechecks retained; exact-head Vercel acceptance remains pending.
 
@@ -57,9 +57,9 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - All later acceptance items remain unchecked until verified through the preview.
 - Phase 4 design is recorded below. The dedicated host-cache foundation has atomic hash-checked hydration, bounded snapshots and traversal/symlink checks with fresh-cache byte tests. Manifest candidate mapping preserves hierarchy and scope, rejects ambiguous paths and keeps full-object references. Real Files commits, journaling and runtime integration are still required; this is not a persistent-drive implementation or acceptance result.
 - Drive token and authorization helpers now fence the exact session/attempt and reread membership, binding, environment and agent visibility. Local/VPS requires opt-in. These helpers guard read HTTP requests; atomic file commits remain pending.
-- Clean-checkout Convex tests now resolve the protocol source directly, matching TypeScript. The full Convex suite passes without generated protocol output; a concurrent text/tool regression also verifies the coalescer captures pending text before later updates arrive. Required CI must be rerun on the fix.
-
 - The server manifest materializer verifies full source bytes and download size/hash, rejects changed or truncated reads and marks oversized entries explicitly deferred. Its reader now uses configured object storage and guarded Convex sources; runtime integration remains pending.
+- Phase 3 implementation now includes dynamic option parsing/discovery in direct ACP and acpx, per-prompt setting application, persistence fields and bound-environment editor controls. Exact adapter pins, image compatibility and a weekly conformance-gated draft-PR updater are implemented. Resumable MCP approval and lockstep 0.4.1 packaging are implemented locally; hosted/provider acceptance remains unfinished. Phase 3 is not accepted.
+- Clean-checkout Convex tests now resolve the protocol source directly, matching TypeScript. The full Convex suite passes without generated protocol output; a concurrent text/tool regression also verifies the coalescer captures pending text before later updates arrive. Required CI must be rerun on the fix.
 
 ## Outcome
 
@@ -269,14 +269,16 @@ message rewrites per run drop by at least 10×.
      approval card.
    - A mode or model the agent no longer offers fails the run with the agent's own message.
 6. **Overlay MCP approvals.** Under `auto` and `bypassPermissions`, Overlay tools allowed by the agent's
-   tool-access level are pre-approved, so the 25 s gate is skipped. For tools that still need approval, pick
-   one of these (decision needed):
+   tool-access level are pre-approved, so the 25 s gate is skipped. For tools that still need approval, choose a durable flow:
    - **(a) Preferred if supported:** MCP elicitation from the Overlay MCP server, so the agent sees a normal
      pending request rather than a failure. Verify Claude Code and Codex support for it first.
    - **(b)** Return a structured "approval pending" result immediately. Once the person decides, inject a
      short follow-up prompt into the same session.
 
-   Either way, remove the "call again" text.
+   Selected (a): native Claude and Codex form/reconnect probes pass. Upgraded hosts use one signed
+   canonical card and a durable result journal; remove "call again" instructions on that negotiated path.
+   Legacy hosts retain their compatibility flow until upgrade. Auto never bypasses an explicit owner
+   tool policy; ordinary granted tools are already immediate.
 7. **UI**, matching the mockup's settings card: a segmented Permissions control (Manual · Edits · Plan · Auto ·
    Bypass) with one line of help, a Model select and an Effort select. Lucide icons only, existing chrome.
 
@@ -432,7 +434,7 @@ Run the Phase 0 smoke through Overlay preview with Claude Code on a subscription
 
 ## Open questions
 
-1. MCP approvals: elicitation (needs agent support) or injected follow-up prompt? See Phase 3 step 6.
+1. MCP approvals use elicitation for verified Claude/Codex clients; retain hosted acceptance in Phase 3 step 6.
 2. Default for Overlay Cloud: `auto` or `bypassPermissions`? The plan proposes `auto`, so destructive
    commands still ask.
 3. Drive size cap and lazy hydration threshold.

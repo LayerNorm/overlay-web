@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
@@ -212,6 +213,8 @@ export type WorkspaceAgentInvocation = {
   /** Idempotency key for this (message, agent) pair. */
   invocationNonce: string
   modelId: string
+  permissionMode?: string
+  effort?: string
   /** The agent's tool grant — connected agents get their Overlay tools from it. */
   toolGrant?: AgentMcpToolGrant
   remoteTarget?: {
@@ -221,6 +224,7 @@ export type WorkspaceAgentInvocation = {
     environmentName: string
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
     /** The binding runs on a provider account; the host fetches its credentials for each run. */
+    supportsMcpApprovalBridge?: boolean
     usesProviderAccount: boolean
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
@@ -429,6 +433,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
       instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
+      permissionMode: agent.permissionMode,
+      effort: agent.effort,
       toolGrant: {
         allowedToolIds: [...agent.allowedToolIds],
         isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay'),
@@ -440,6 +446,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
           environmentId: target.environment.id,
           environmentKind: target.environment.kind,
           environmentName: target.environment.name,
+          supportsMcpApprovalBridge: ['claude-code', 'codex'].includes(adapterId) && z.object({ mcp: z.object({ approvalBridge: z.literal(true) }) })
+            .safeParse(target.environment.capabilities).success,
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
@@ -531,6 +539,7 @@ function overlayMcpMetadata(args: {
     environmentId: args.invocation.remoteTarget.environmentId,
     runId: args.runId,
     sessionId: args.sessionId,
+    ...(args.invocation.remoteTarget.supportsMcpApprovalBridge ? { approvalBridge: true as const } : {}),
     turnId: args.invocation.turnId,
     invocationNonce: args.invocation.invocationNonce,
     modelId: args.invocation.modelId,
@@ -676,6 +685,9 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           ...(args.invocation.remoteTarget.usesProviderAccount ? { runCredentials: true } : {}),
           // The agent's own model id, when its owner chose one; otherwise the agent uses its default.
           ...connectedAgentModelMetadata(args.invocation.modelId),
+          permissionContext: args.invocation.remoteTarget.environmentKind === 'overlay_cloud' ? 'cloud' : 'local',
+          ...(args.invocation.permissionMode ? { permissionMode: args.invocation.permissionMode } : {}),
+          ...(args.invocation.effort ? { effort: args.invocation.effort } : {}),
           ...overlayMcpMetadata({
             actorUserId: args.actorUserId,
             conversationId: args.conversationId,

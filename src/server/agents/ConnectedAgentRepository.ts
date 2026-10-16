@@ -301,6 +301,7 @@ export interface ConnectedAgentRepository {
     sessionId?: string
     execution?: { attemptId: string; generation: number }
     expiresAt?: number
+    bridge?: boolean
     requestKey: string
     prompt: string
     now: number

@@ -26,6 +26,7 @@ const claimsSchema = z.object({
   grant: z.object({ allowedToolIds: z.array(identity), isDefaultMaster: z.boolean() }),
   latestUserText: z.string().max(MAX_LATEST_TEXT_CHARS).optional(),
   sessionId: identity.optional(),
+  approvalBridge: z.literal(true).optional(),
   execution: z.object({ attemptId: identity, generation: z.number().int().nonnegative() }).optional(),
   expiresAt: z.number().int().positive(),
 }).refine(claims => !claims.execution || claims.execution.attemptId === claims.sessionId)

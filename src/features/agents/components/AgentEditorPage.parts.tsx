@@ -27,7 +27,7 @@ import type { useAgentSurfaces } from './use-agent-surfaces'
 import { AgentSurfacesField } from './AgentSurfacesField'
 import { CloudAgentPanel } from './CloudAgentPanel'
 import { CloudAgentAccess } from './CloudAgentAccess'
-import { CloudAgentModel } from './CloudAgentModel'
+import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
 
 type AgentEditorFormSectionProps = {
@@ -166,7 +166,9 @@ function AgentEditorFormSection({
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
         <div className="space-y-5">
-          {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} /><CloudAgentModel agentId={agent.id} modelId={agent.modelId} /></> : null}
+          {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} /></> : null}
+          {agent && connectedAgentsEnabled && (runtime.cloudAgent || agentType === 'byo') ? <ConnectedAgentSettings key={agent.id}
+            agentId={agent.id} modelId={agent.modelId} permissionMode={agent.permissionMode} effort={agent.effort} /> : null}
           {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}
             connectedAgentsEnabled={connectedAgentsEnabled}

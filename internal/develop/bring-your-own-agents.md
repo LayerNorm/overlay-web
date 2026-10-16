@@ -249,65 +249,6 @@ be publicly reachable. Eve connection
 authorization (`authorization.required`) is not bridged by the current host contract, so the
 adapter fails that run closed instead of leaving an OAuth pause unobservable. Use static or
 app-scoped Eve connection auth until a dedicated authorization capability is added.
-Phase 4 source includes a dedicated `AgentDriveCache` foundation for a child of an approved root.
-It validates portable relative paths, rejects symlink/special-file snapshots, bounds reads and
-checks downloaded hashes before atomic replacement. It is not wired into agent turns or Overlay
-Files yet; the current workspace remains the working folder until scoped server commits and
-the run-scoped drive protocol are implemented and verified.
-The manifest candidate mapper preserves canonical folder relationships and excludes archived,
-foreign-workspace and out-of-scope rows. It refuses inaccessible parents, cycles, duplicate ids,
-portable-name collisions and mismatched object ownership. Object-backed text stays an object
-reference rather than becoming the row's searchable prefix; the server materializer verifies
-full source bytes before issuing a host manifest.
-Run-scoped drive token and authorization helpers use a separate signing domain, bounded expiry,
-session/attempt fencing, live membership and binding readback, creator-derived personal scope
-and explicit local/VPS opt-in. The read endpoint uses these helpers; final Convex commits
-must repeat the authority checks atomically before publishing a file revision.
-
-`AgentDriveMaterializer` hashes full source bytes through a bounded reader, verifies download
-size/hash against the manifest and rejects changed or truncated sources. Files over the file
-or total-cache cap remain explicit deferred entries, with no empty local placeholder. The
-reader now uses bounded configured object-store downloads and authorized Convex storage metadata.
-Convex checks the exact file revision/source and run authority before resolving a storage URL; the
-server verifies the blob digest and never includes storage URLs in host manifests. Backend manifest
-pages repeat membership, scope, binding, run and attempt checks behind the default-off
-`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Metadata commits create folders, move existing rows and tombstone explicit entries under the same
-authority and edit policy. Revision checks and transaction receipts prevent stale or duplicate
-changes; folders must be empty before deletion. New names reuse the portable wire-path
-validator and reject case/Unicode aliases rather than creating an ambiguous cache. Object quota remains charged until cleanup.
-Content uploads and host synchronization remain pending. Convex imports portable-path validation
-from the protocol source module, without depending on package `dist` artifacts in hosted builds.
-
-Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
-do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;
-current authority is checked separately before each page and after materialization. The experimental
-`consistentQuery` API is isolated behind the repository, covered by a transport test and aborted
-after 20 seconds; never fall back to mixed-timestamp pages. Manifest metadata is capped at 32 MiB.
-Ready entries carry a purpose-separated download MAC bound to the run, scope, attempt, expiry,
-revision, path and content hash. Downloads reread Files and recheck authority after verifying bytes.
-Token issuance in start commands and host integration remain pending.
-
-`POST /api/agent-drive` accepts only a run-scoped `ovdrive_` bearer token, independent of app
-cookies or query parameters. It requires both web `connectedAgentControlPlane` and
-`connectedAgentDrive` features (`OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE=1` for the latter),
-plus backend `OVERLAY_CONNECTED_AGENT_DRIVE=1`. Drive access defaults off on both sides.
-Signing uses `OVERLAY_AGENT_DRIVE_SECRET` when configured, otherwise the existing service/API
-secret, with a separate signature domain; storage credentials never reach the host.
-Manifest responses stream NDJSON with explicit header and completion frames. Downloads verify
-canonical full bytes before returning ranges of at most 1 MiB; a host must hash the assembled
-file before replacement. Requests are capped at 32 KiB and rate limited by IP and hashed bearer.
-Revoked authority and changed revisions fail closed. Expected backend failures use structured
-`ConvexError` application data so production message redaction preserves the HTTP status.
-Only recognized codes are returned; legacy message parsing supports web-first deployment overlap.
-Stack/request details are never returned. Responses are private and never cached.
-`metadata` commits create folders or explicitly move/remove authenticated hydrated entries. A
-purpose-separated manifest MAC binds each existing entry to its run, path and revision; deferred
-files have no mutation grant. The transaction also checks current ancestors, so a remote parent
-move invalidates the old child path. Retry receipts prevent repeated mutation after a lost response.
-Content uploads, current-head hosted acceptance, start-command issuance and runtime synchronization
-remain required before the persistent drive can be enabled.
-
-
 Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
 is unavailable and the unchanged host conformance suite passes.
 
@@ -406,14 +347,15 @@ automations, connected apps, and MCP servers — built by the same pipeline (`bu
 the agent's grant intersected with workspace policy, entitlements, and the summoning message's
 mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
 duplicate the agent's own machine (`computer_*`) and generated UI are
-withheld. An MCP call whose server policy requires approval asks in the run's conversation
-(`createMcpApprovalGate`, `requestMcpApprovalByServer`): the same approval card an agent's own
-permission request shows, but the answer goes to the waiting call and never to the host as a command
-(`resolveRemoteRequestByServer` skips the host command for requests marked `source: overlay_mcp`). The
-call waits about 25 seconds, since agent hosts time MCP calls out in about a minute; if the person has
-not answered it returns "waiting for approval, call again with the same arguments", and the answer
-(remembered for the run, per tool and arguments) makes the retry run at once. A denial or the run ending
-refuses. Overlay skills are also offered as MCP prompts (Claude shows them as slash commands), so no
+withheld. A tool whose server policy requires approval creates one canonical card in the run's
+conversation. Host 0.4.1 advertises signed form-elicitation bridging: the original MCP call remains
+pending across bounded SSE connections, and `GET` with `Last-Event-ID` resumes the durable call.
+The host correlates the signed form to that card, including decisions delivered before the form,
+without creating a second permission card. Only the persisted human decision can authorize a tool;
+a client form answer acknowledges delivery. Granted tools without an owner-required decision run
+immediately, including under Auto. Auto and Bypass do not override workspace tool policy.
+Older hosts retain the legacy short-wait/retry path until upgraded. A denial or ended run refuses.
+Overlay skills are also offered as MCP prompts (Claude shows them as slash commands), so no
 writes into the harness's own skill folders are needed. `MCP_GROUP_COVERAGE` (`src/shared/mcp/access.ts`)
 records, per tool group, whether it reaches MCP clients or why not, and a contract test fails when a
 group is added without being placed.
@@ -914,8 +856,8 @@ flowchart LR
     Codex["Codex manifest"]
     Claude["Claude Code manifest"]
     Hermes["Hermes manifest"]
-    CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@1.7.0"]
-    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.70.0"]
+    CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@2.2.2"]
+    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.91.0"]
     HermesProcess["hermes acp<br/>Hermes 0.20.6 or newer"]
     Session["ACP session over stdio"]
 
@@ -928,6 +870,80 @@ For each run, the ACP adapter spawns the process in the validated working direct
 ACP, creates or loads a session, and sends the prompt. It converts ACP message chunks, plans, tool
 calls, diffs, terminal references, permissions, elicitations, completion, and failure into the
 normalized Agent Bridge Protocol.
+
+The Phase 3 candidate reads model, effort and mode selectors from `session/new` configuration
+options (legacy model/mode lists remain supported). Direct ACP and acpx apply settings before
+each prompt. Discovery creates a temporary session without a prompt or workspace MCP tools,
+cleans its directory, and refreshes after authenticated starts and every 24 hours. Options are
+reported on environment capabilities; the editor uses only its agent's bound environment.
+Cloud defaults to advertised Auto; local/VPS defaults to advertised Accept edits. Missing modes
+retain the agent's own default. Explicit unsupported settings fail visibly. acpx uses exact
+host/image adapter pins, preferring the matching installed image binary over its older registry
+ranges. These candidate changes still require hosted/provider acceptance before release.
+
+Phase 4 source includes a dedicated `AgentDriveCache` foundation for a child of an approved root.
+It validates portable relative paths, rejects symlink/special-file snapshots, bounds reads and
+checks downloaded hashes before atomic replacement. It is not wired into agent turns or Overlay
+Files yet; the current workspace remains the working folder until scoped server commits and
+the run-scoped drive protocol are implemented and verified.
+The manifest candidate mapper preserves canonical folder relationships and excludes archived,
+foreign-workspace and out-of-scope rows. It refuses inaccessible parents, cycles, duplicate ids,
+portable-name collisions and mismatched object ownership. Object-backed text stays an object
+reference rather than becoming the row's searchable prefix; the server materializer verifies
+full source bytes before issuing a host manifest.
+Run-scoped drive token and authorization helpers use a separate signing domain, bounded expiry,
+session/attempt fencing, live membership and binding readback, creator-derived personal scope
+and explicit local/VPS opt-in. The read endpoint uses these helpers; final Convex commits
+must repeat the authority checks atomically before publishing a file revision.
+`AgentDriveMaterializer` hashes full source bytes through a bounded reader, verifies download
+size/hash against the manifest and rejects changed or truncated sources. Files over the file
+or total-cache cap remain explicit deferred entries, with no empty local placeholder. The
+reader now uses bounded configured object-store downloads and authorized Convex storage metadata.
+Convex checks the exact file revision/source and run authority before resolving a storage URL; the
+server verifies the blob digest and never includes storage URLs in host manifests. Backend manifest
+pages repeat membership, scope, binding, run and attempt checks behind the default-off
+`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Metadata commits create folders, move existing rows and tombstone explicit entries under the same
+authority and edit policy. Revision checks and transaction receipts prevent stale or duplicate
+changes; folders must be empty before deletion. New names reuse the portable wire-path
+validator and reject case/Unicode aliases rather than creating an ambiguous cache. Object quota remains charged until cleanup.
+Content uploads and host synchronization remain pending. Convex imports portable-path validation
+from the protocol source module, without depending on package `dist` artifacts in hosted builds.
+
+Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
+do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;
+current authority is checked separately before each page and after materialization. The experimental
+`consistentQuery` API is isolated behind the repository, covered by a transport test and aborted
+after 20 seconds; never fall back to mixed-timestamp pages. Manifest metadata is capped at 32 MiB.
+Ready entries carry a purpose-separated download MAC bound to the run, scope, attempt, expiry,
+revision, path and content hash. Downloads reread Files and recheck authority after verifying bytes.
+Token issuance in start commands and host integration remain pending.
+
+`POST /api/agent-drive` accepts only a run-scoped `ovdrive_` bearer token, independent of app
+cookies or query parameters. It requires both web `connectedAgentControlPlane` and
+`connectedAgentDrive` features (`OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE=1` for the latter),
+plus backend `OVERLAY_CONNECTED_AGENT_DRIVE=1`. Drive access defaults off on both sides.
+Signing uses `OVERLAY_AGENT_DRIVE_SECRET` when configured, otherwise the existing service/API
+secret, with a separate signature domain; storage credentials never reach the host.
+Manifest responses stream NDJSON with explicit header and completion frames. Downloads verify
+canonical full bytes before returning ranges of at most 1 MiB; a host must hash the assembled
+file before replacement. Requests are capped at 32 KiB and rate limited by IP and hashed bearer.
+Revoked authority and changed revisions fail closed. Expected backend failures use structured
+`ConvexError` application data so production message redaction preserves the HTTP status.
+Only recognized codes are returned; legacy message parsing supports web-first deployment overlap.
+Stack/request details are never returned. Responses are private and never cached.
+`metadata` commits create folders or explicitly move/remove authenticated hydrated entries. A
+purpose-separated manifest MAC binds each existing entry to its run, path and revision; deferred
+files have no mutation grant. The transaction also checks current ancestors, so a remote parent
+move invalidates the old child path. Retry receipts prevent repeated mutation after a lost response.
+Content uploads, current-head hosted acceptance, start-command issuance and runtime synchronization
+remain required before the persistent drive can be enabled.
+
+`Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
+manually from main. It updates both adapter pins, the lockstep host/protocol patch version,
+image version/range and enrollment references, then requires `check:byo-agents:release` before
+creating a draft PR. Existing version branches are preserved. It never publishes or merges.
+Drafts still need ordinary required CI and subscription-provider Preview QA; the workflow token
+does not trigger normal PR workflows, so review must dispatch checks or trigger a trusted PR event.
 
 Hermes uses its official `hermes acp` server. Overlay does not translate Hermes through a private
 protocol. OpenClaw and other native adapters require the unchanged host conformance suite when ACP
@@ -1243,7 +1259,12 @@ a lost executor; its outcome must be checked rather than repeating a write.
 Completed results use immutable bounded chunks with size/hash verification on
 readback, so a reconnect returns the original result. The per-run journal budget
 is 1,000 calls and 64 MiB including inputs/results; expired entries retire after
-one day through bounded hourly cleanup. HTTP resumability is not wired yet.
+one day through bounded hourly cleanup. An execution-bound MCP session and stable event cursor
+resume the same JSON-RPC call through fresh server instances; concurrent reconnects share one
+execution claim. Lost executors produce an explicit unknown-outcome result, never automatic
+write replay. The new transport requires advertised host bridging and native form support, and is
+enabled for the verified Claude Code and Codex adapters;
+legacy hosts remain compatible. Hosted/provider acceptance remains a release gate.
 
 Outbox retries retain the persisted attempted sequence boundary. New events stay
 behind an unacknowledged batch, including after restart; migration does not raise

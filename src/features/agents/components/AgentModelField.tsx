@@ -1,6 +1,8 @@
 'use client'
 
 import { ListboxSelect } from '@overlay/ui/primitives'
+import type { AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
+import { orderedAgentModels } from '@/shared/agents/agent-options'
 import {
   AGENT_MODEL_CHOICES,
   CODEX_MODEL_CHOICES,
@@ -16,12 +18,27 @@ const DEFAULT_VALUE = ''
  * Which model a Claude Code or Codex agent uses on its subscription. Empty is the agent's own default.
  * Codex also takes a reasoning effort, which is part of its model id (`gpt-6-sol[high]`).
  */
-export function AgentModelField({ adapterId, model, onChange, disabled }: {
+export function AgentModelField({ adapterId, model, onChange, disabled, options }: {
   adapterId: string
   model: string
   onChange(model: string): void
   disabled?: boolean
+  options?: AdapterOptions
 }) {
+  if (options?.model) {
+    const values = orderedAgentModels(options.model.values)
+    const selected = model || 'default'
+    return <div>
+      <FieldLabel info="Models reported by this agent. A saved choice that is no longer offered will fail visibly when the agent starts.">Model</FieldLabel>
+      <ListboxSelect aria-label="Model" value={selected} disabled={disabled}
+        options={[
+          ...(values.some(value => value.id === 'default') ? [] : [{ value: 'default', label: 'Default · Agent chooses' }]),
+          ...values.map(value => ({ value: value.id, label: value.label })),
+          ...(model && !values.some(value => value.id === model) ? [{ value: model, label: `${model} · No longer offered` }] : []),
+        ]}
+        onChange={value => onChange(value === 'default' ? DEFAULT_VALUE : value)} portal />
+    </div>
+  }
   if (!agentOffersModelChoice(adapterId)) return null
 
   if (adapterId === 'claude-code') {

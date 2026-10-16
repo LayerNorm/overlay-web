@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
+import { McpDeferredCall } from '@/server/mcp/mcp-deferred-call'
 
 /**
  * Approval for an Overlay tool a connected agent called over MCP.
@@ -21,6 +22,23 @@ const MAX_PROMPT_ARGS_CHARS = 240
 export type McpApprovalOutcome = { allowed: true } | { allowed: false; message: string }
 
 type Gateway = Pick<ConnectedAgentRepository, 'requestMcpApproval'>
+
+/** One canonical Overlay card; the native MCP request remains unfinished while pending. */
+export function createDurableMcpApprovalGate(args: {
+  repository: Gateway
+  authority: Omit<Parameters<Gateway['requestMcpApproval']>[0], 'prompt' | 'now' | 'bridge'>
+  authorize: () => Promise<boolean>
+}): (toolName: string, input: unknown) => Promise<McpApprovalOutcome> {
+  return async (toolName, input) => {
+    if (!(await args.authorize())) return { allowed: false, message: 'This agent execution is no longer authorized.' }
+    const status = await args.repository.requestMcpApproval({ ...args.authority,
+      prompt: mcpApprovalPrompt(toolName, input), bridge: true, now: Date.now() })
+    if (status.state === 'pending') throw new McpDeferredCall('approval')
+    if (status.state === 'resolved' && status.decision === 'allow') return { allowed: true }
+    return { allowed: false, message: status.state === 'unavailable'
+      ? 'This execution can no longer request approval.' : `The user did not allow ${toolName}.` }
+  }
+}
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`

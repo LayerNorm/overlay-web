@@ -30,12 +30,25 @@ export const recoveryCapabilitiesSchema = z.object({
   approvalRestoration: z.boolean(), providerCheckpoints: z.boolean(),
 }).strict()
 
+export const adapterSelectOptionSchema = z.object({
+  id: identifier, label: z.string().trim().min(1).max(200), description: z.string().max(2000).optional(),
+}).strict()
+export const adapterSelectSchema = z.object({
+  configId: identifier.optional(), currentValue: identifier.optional(), values: z.array(adapterSelectOptionSchema).min(1).max(200),
+}).strict()
+export const adapterOptionsSchema = z.object({
+  model: adapterSelectSchema.optional(), mode: adapterSelectSchema.optional(), effort: adapterSelectSchema.optional(),
+  discoveredAt: z.number().int().nonnegative(),
+}).strict()
+export type AdapterOptions = z.infer<typeof adapterOptionsSchema>
+
 export const adapterCapabilitySchema = z.object({
   id: identifier,
   displayName: z.string().trim().min(1).max(200),
   protocol: z.enum(['fake', 'acp', 'eve', 'native']),
   version: z.string().trim().min(1).max(100).optional(),
   recovery: recoveryCapabilitiesSchema.optional(),
+  options: adapterOptionsSchema.optional(),
   supports: z.object({
     prompt: z.boolean(),
     approval: z.boolean(),
@@ -51,6 +64,7 @@ export const hostCapabilitiesSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   remoteLifecycleVersion: z.literal(2).optional(),
   streaming: streamingCapabilitiesSchema.optional(),
+  mcp: z.object({ approvalBridge: z.literal(true) }).strict().optional(),
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   adapters: z.array(adapterCapabilitySchema).max(100),
@@ -807,3 +821,4 @@ export const AGENT_PROFILE_TOP_LEVEL: Record<AgentProfileHarness, readonly strin
   codex: ['AGENTS.md', 'config.toml', 'prompts', 'skills'],
 }
 export { drivePathSegments, portableDrivePathKey } from './drive-path.js'
+export { createMcpApprovalBridge, verifyMcpApprovalBridge } from './mcp-approval-bridge.js'

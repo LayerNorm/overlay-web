@@ -42,6 +42,12 @@ closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
 in isolated Chromium. Use the Playwright browser or set
 `OVERLAY_QA_BROWSER_EXECUTABLE` to an installed compatible Chrome executable.
+Non-deletion confirmations pass a task-specific `busyLabel` (for example, “Saving…”).
+
+Connected-agent settings use the bound environment's advertised model, effort and permission
+choices. Each control saves for the next turn. Known permission modes use compact labels
+Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmation dialog.
+An identity edit must not overwrite choices saved through these independent controls.
 
 ## Command palette
 
