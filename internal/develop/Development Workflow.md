@@ -261,7 +261,11 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 `Security Checks` runs lint/types, production compilation and two complete test
 shards in parallel. `next typegen` generates current route validators before the
 required standalone typecheck; only the CI compilation job skips the duplicate
-Next TypeScript pass. Ordinary Vercel builds retain their existing type checks.
+Next TypeScript pass. Ordinary Vercel builds retain their existing type checks. Customer-web production
+compilation uses `next build --webpack` with `webpackBuildWorker` and
+`webpackMemoryOptimizations` enabled; the `.js` extension alias resolves NodeNext
+workspace imports to their TypeScript source; local development keeps the default dev engine.
+Keep reusable components outside route entry-point exports so generated route validators pass.
 Configuration and Convex boundary checks that depend on generated Workflow routes
 stay after compilation. Gateway tests retain their react-server condition in a
 dedicated discovered group; route and gateway suites run once through the shards.

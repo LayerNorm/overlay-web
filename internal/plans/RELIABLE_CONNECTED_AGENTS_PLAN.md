@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 0 preview build recovery now uses isolated Webpack compilation with memory optimizations and fixes an invalid reusable account-page export. Local cold compilation, TypeScript and route generation pass with hosted typechecks retained; exact-head Vercel acceptance remains pending.
+
 - Phase 4 read HTTP transport now exposes bearer-only, default-off NDJSON manifests and bounded download ranges with full-source verification, live authority checks, request limits and private responses. Real service/token integration and large-file reconstruction tests pass locally. Start-command token issuance, guarded writes, host sync and hosted acceptance remain pending.
 
 - Phase 1 stream recovery fixes now preserve message event revisions through room history and subscriptions, including chunk-only changes, and recover browser token issuance after a 401 using the shared session refresh. Real query-to-UI merge regressions cover stale snapshots; current-head hosted acceptance remains pending.

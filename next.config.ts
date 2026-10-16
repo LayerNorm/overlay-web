@@ -48,13 +48,18 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   output: process.env.NEXT_OUTPUT_MODE?.trim() === "standalone" ? "standalone" : undefined,
   transpilePackages: ["@overlay/app-core"],
-  // Vercel's build container OOMs in `Running TypeScript` on the externalized
-  // harness .d.ts trees; typecheck stays enforced via `npm run typecheck`.
+  // Only CI's compilation lane omits its duplicate TypeScript pass; the separate
+  // required typecheck remains enforced. Hosted builds retain Next's typecheck.
   typescript: process.env.OVERLAY_SKIP_BUILD_TYPECHECK === "1"
     ? { ignoreBuildErrors: true }
     : undefined,
   // Explicit server action body size limit. Prevents DoS via large payloads.
   experimental: {
+    // Keep compilation isolated from route collection on the Basic build machine.
+    webpackBuildWorker: true,
+    webpackMemoryOptimizations: true,
+    // NodeNext workspace packages name emitted .js files while web compiles their TS source.
+    extensionAlias: { ".js": [".ts", ".tsx", ".js"] },
     serverActions: {
       bodySizeLimit: "10mb",
     },
