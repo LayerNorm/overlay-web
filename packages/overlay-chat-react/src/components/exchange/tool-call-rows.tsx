@@ -118,7 +118,8 @@ export function ToolCallsCollapsedGroup({
 }) {
   const [open, setOpen] = useState(false)
   const tools = items.filter((it): it is ToolVisualBlock => it.kind === 'tool')
-  const n = tools.length
+  // Terminal details and their action share a call key; count the action once.
+  const n = new Set(tools.map(tool => tool.key)).size
   const anyRunning =
     tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state)) ||
     items.some((it) => it.kind === 'reasoning' && it.state !== 'done')
@@ -172,14 +173,14 @@ export function ToolCallsCollapsedGroup({
             }
             return isOverlayGatedToolOutput(it.toolOutput) ? (
               <GatedPaidFeatureCallout
-                key={it.key}
+                key={`${it.name}:${it.key}`}
                 block={it}
                 connectTop={top}
                 connectBottom={bot}
               />
             ) : (
               <ToolCallRowWithReasoning
-                key={it.key}
+                key={`${it.name}:${it.key}`}
                 block={it}
                 variant="nested"
                 connectTop={top}

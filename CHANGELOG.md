@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Count a native action and its attached terminal output once in collapsed tool summaries while retaining both details.
+
 - Keep cancelled remote replies visibly labelled when startup produced no text, including after reload and for viewers without run controls; preserve partial answers and saved-file/approval metadata in history.
 
 - Keep fresh-machine drive hydration authorized through a fenced preparation lease, without reporting provider execution before initialization finishes.
