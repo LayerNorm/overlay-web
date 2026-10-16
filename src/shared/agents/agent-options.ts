@@ -11,6 +11,15 @@ export function environmentAgentOptions(capabilities: Record<string, unknown>, a
   return undefined
 }
 
+/** Older Codex choices combine model and effort; live catalogs can advertise them separately. */
+export function resolvedAgentModelChoice(options: AdapterOptions | undefined, model: string, effort?: string) {
+  const combined = /^(.+)\[([^\]]+)\]$/.exec(model)
+  const split = combined && !options?.model?.values.some(value => value.id === model)
+    && options?.model?.values.some(value => value.id === combined[1])
+    && options.effort?.values.some(value => value.id === combined[2]) ? combined : undefined
+  return {model: split?.[1] ?? model, effort: effort ?? split?.[2]}
+}
+
 /** Default first, then known quality order; new vendor choices retain their relative order. */
 export function orderedAgentModels(values: NonNullable<AdapterOptions['model']>['values']) {
   const rank = (value: typeof values[number]) => {

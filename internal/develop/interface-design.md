@@ -48,6 +48,9 @@ Connected-agent settings use the bound environment's advertised model, effort an
 choices. Each control saves for the next turn. Known permission modes use compact labels
 Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmation dialog.
 An identity edit must not overwrite choices saved through these independent controls.
+Older combined model/effort ids resolve to separate live controls only when both choices
+are advertised. Show the effective effort, preserve it when changing models, and leave
+unsupported choices visibly marked; never replace them with discovery defaults.
 
 Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
 and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized

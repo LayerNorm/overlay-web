@@ -2,7 +2,7 @@
 
 import { ListboxSelect } from '@overlay/ui/primitives'
 import type { AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
-import { orderedAgentModels } from '@/shared/agents/agent-options'
+import { orderedAgentModels, resolvedAgentModelChoice } from '@/shared/agents/agent-options'
 import {
   AGENT_MODEL_CHOICES,
   CODEX_MODEL_CHOICES,
@@ -27,7 +27,8 @@ export function AgentModelField({ adapterId, model, onChange, disabled, options 
 }) {
   if (options) {
     const values = orderedAgentModels(options.model?.values ?? [])
-    const selected = model || 'default'
+    const choice = resolvedAgentModelChoice(options, model)
+    const selected = choice.model || 'default'
     return <div>
       <FieldLabel info={options.model
         ? 'Models reported by this agent. A saved choice that is no longer offered will fail visibly when the agent starts.'
@@ -36,10 +37,10 @@ export function AgentModelField({ adapterId, model, onChange, disabled, options 
         options={[
           ...(values.some(value => value.id === 'default') ? [] : [{ value: 'default', label: 'Default · Agent chooses' }]),
           ...values.map(value => ({ value: value.id, label: value.label })),
-          ...(model && !values.some(value => value.id === model) ? [{ value: model,
-            label: `${model} · ${options.model ? 'No longer offered' : 'Not reported by agent'}` }] : []),
+          ...(choice.model && !values.some(value => value.id === choice.model) ? [{ value: choice.model,
+            label: `${choice.model} · ${options.model ? 'No longer offered' : 'Not reported by agent'}` }] : []),
         ]}
-        onChange={value => onChange(value === 'default' ? DEFAULT_VALUE : value)} portal />
+        onChange={value => onChange(value === 'default' ? DEFAULT_VALUE : choice.effort ? `${value}[${choice.effort}]` : value)} portal />
     </div>
   }
   if (!agentOffersModelChoice(adapterId)) return null

@@ -20,3 +20,15 @@ test('a reported model uses its provider label while undiscovered legacy agents 
   const legacy = renderToStaticMarkup(<AgentModelField adapterId="claude-code" model="haiku" onChange={() => undefined} />)
   assert.match(legacy, /Haiku 4\.5/)
 })
+
+test('an older combined model renders the offered base model when the agent reports effort separately', () => {
+  const options = {discoveredAt: 1, model: {values: [{id: 'future-model', label: 'Future model'}]},
+    effort: {values: [{id: 'medium', label: 'Medium'}]}}
+  const html = renderToStaticMarkup(<AgentModelField adapterId="codex" model="future-model[medium]"
+    options={options} onChange={() => undefined} />)
+  assert.match(html, /Future model/)
+  assert.doesNotMatch(html, /No longer offered/)
+  const unsupported = renderToStaticMarkup(<AgentModelField adapterId="codex" model="future-model[unknown]"
+    options={options} onChange={() => undefined} />)
+  assert.match(unsupported, /future-model\[unknown\] · No longer offered/)
+})

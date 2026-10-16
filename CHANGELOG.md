@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Display supported legacy Codex model/effort choices correctly against live catalogs and preserve effort when changing models.
+
 - Show lifecycle-v2 agent task deadlines through queueing, execution and recovery, alongside the separate approval expiry.
 
 - Preserve selected permission mode and effort with the model in agent recovery checkpoints, while excluding credentials.

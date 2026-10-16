@@ -8,7 +8,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { agentOffersModelChoice, byoModelId, parseByoModelId } from '@/shared/agents/agent-model'
 import { AgentModelField } from './AgentModelField'
-import { environmentAgentOptions } from '@/shared/agents/agent-options'
+import { environmentAgentOptions, resolvedAgentModelChoice } from '@/shared/agents/agent-options'
 import { useAgentOptions } from './use-agent-options'
 import { FieldLabel } from './InfoTip'
 
@@ -53,10 +53,12 @@ export function ConnectedAgentSettings({ agentId, modelId, permissionMode, effor
   if (!current || (!options && !agentOffersModelChoice(current.adapterId))) {
     return error ? <p role="alert" className="text-xs text-red-500">{error}</p> : null
   }
+  const selected = resolvedAgentModelChoice(options, current.model, reasoning)
   return (
     <div className="space-y-4">
-      <AgentModelField adapterId={current.adapterId} model={current.model} options={options}
-        onChange={(model) => void choose({ modelId: byoModelId(current.adapterId, model) })} disabled={busy || !environment} />
+      <AgentModelField adapterId={current.adapterId} model={selected.model} options={options}
+        onChange={(model) => void choose({ modelId: byoModelId(current.adapterId, model),
+          ...(selected.effort ? {effort: selected.effort} : {}) })} disabled={busy || !environment} />
       {options?.mode ? <div>
         <FieldLabel info="The permission modes offered by this agent. Requests that still require a decision appear in the conversation.">Permissions</FieldLabel>
         <SegmentedControl ariaLabel="Permissions" layout="stretch" disabled={busy}
@@ -71,8 +73,12 @@ export function ConnectedAgentSettings({ agentId, modelId, permissionMode, effor
       </div> : null}
       {options?.effort ? <div>
         <FieldLabel info="The reasoning levels offered by this agent. Higher levels may take longer and use more of your subscription.">Effort</FieldLabel>
-        <ListboxSelect aria-label="Effort" value={reasoning ?? options.effort.currentValue ?? options.effort.values[0]!.id}
-          disabled={busy} options={options.effort.values.map(value => ({ value: value.id, label: value.label }))}
+        <ListboxSelect aria-label="Effort" value={selected.effort ?? options.effort.currentValue ?? options.effort.values[0]!.id}
+          disabled={busy} options={[
+            ...options.effort.values.map(value => ({ value: value.id, label: value.label })),
+            ...(selected.effort && !options.effort.values.some(value => value.id === selected.effort)
+              ? [{value: selected.effort, label: `${selected.effort} · No longer offered`}] : []),
+          ]}
           onChange={effort => void choose({ effort })} portal />
       </div> : null}
       <p className="-mt-2 text-[11px] leading-4 text-(--muted)">Applies from the agent&apos;s next message.</p>

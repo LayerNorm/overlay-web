@@ -968,6 +968,9 @@ A successful options discovery with no model catalog offers only the runtime def
 saved choice marked unreported; it never substitutes the legacy hard-coded list. The model
 control stays disabled while its bound environment is still loading. Older undiscovered hosts
 retain their existing fallback until upgraded.
+For older combined model/effort ids, the UI preserves exact advertised ids first, then
+resolves separate controls only when both values are offered. Explicit effort wins over
+the suffix; changing a model retains the effective effort instead of adopting discovery defaults.
 
 `Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
 manually from main. It updates both adapter pins, the lockstep host/protocol patch version,

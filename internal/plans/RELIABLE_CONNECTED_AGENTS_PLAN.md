@@ -30,6 +30,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Lifecycle-v2 task deadlines now reach the transcript and render for nonterminal turns independently of control permissions. Approval expiry remains on the request card. Current-head hosted deadline/expiry acceptance remains pending.
 - Smoke observers retain rate-limit headroom and distinguish observation gaps/timeouts from provider completion. Never restart or terminate a provider task because observation expired. Whole-plan acceptance below remains unchecked until its actual native-provider scope is proven.
 - Both native subscription long smokes completed and every task-folder file matched original-machine and full Files API hashes. Actual saved links open in Files. Full-run visible-latency coverage, fresh-machine hydration, risky-action approval and forced native recovery remain separate unproven gates; the manually bootstrapped fixtures do not prove unattended Cloud enrollment.
+- Native Codex settings exposed an older combined model falsely labeled unavailable and its effort shown from the discovery default. The UI now resolves an offered base/effort pair and preserves effective effort on model changes; unsupported values stay visible. Hosted readback on the new revision remains pending.
 
 ## Outcome
 
