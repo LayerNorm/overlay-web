@@ -1,11 +1,16 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createHash } from 'node:crypto'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { AgentDriveContentService, driveUploadRecordSchema, driveContentResultSchema } from '../src/server/agents/AgentDriveContentService'
 import { AgentDriveManifestService } from '../src/server/agents/AgentDriveManifestService'
 import { AgentDriveMaterializer } from '../src/server/agents/AgentDriveMaterializer'
 import { createAgentDriveTokens } from '../src/server/agents/agent-drive-token'
 import { cleanupDriveVersions } from '../src/server/agents/cleanup-agent-drive-versions'
 import { AgentDriveClient } from '../packages/overlay-agent-host/src/drive-client'
+import { SqliteDriveJournal } from '../packages/overlay-agent-host/src/drive-journal'
+import { AgentDriveWriter } from '../packages/overlay-agent-host/src/drive-writer'
 import { handleAgentDriveRequest } from '../src/server/agents/agent-drive-http'
 vi.mock('server-only', () => ({}))
 import { convexTest } from 'convex-test'
@@ -552,13 +557,45 @@ test('real drive transactions round-trip full object bytes despite staging races
   // Convex-backed readers, including range reconstruction beyond the row prefix.
   const host = new AgentDriveClient({ apiUrl: 'https://preview.invalid/api/agent-drive',
     credentials: async () => ({ protocolVersion: 1, token, expiresAt, scope: claims.scope }),
-    fetch: (input, init) => handleAgentDriveRequest(new Request(input, init), {
-      enabled: () => true, service: () => reader, writes: () => service, limit: async () => null,
-    }),
+    fetch: async (input, init) => {
+      if (String(input) === 'https://storage.test/staging-only') {
+        store.set(stagingKey, new Uint8Array(await new Response(init?.body).arrayBuffer()))
+        return new Response(null)
+      }
+      return handleAgentDriveRequest(new Request(input, init), {
+        enabled: () => true, service: () => reader, writes: () => service, limit: async () => null,
+      })
+    },
   })
   const hydrated = (await host.manifest()).find(item => item.fileId === result.fileId)
   if (!hydrated || hydrated.kind !== 'file' || hydrated.hydration !== 'ready') throw Error('Expected ready Files manifest entry')
   expect(Buffer.from(await host.download(hydrated)).equals(Buffer.from(full))).toBe(true)
   expect(await host.commit(intent.uploadId)).toEqual(result)
   expect(seals).toBe(1)
+  // Exercise a real host restart after Files committed but the BFF could not acknowledge it.
+  const directory = mkdtempSync(join(tmpdir(), 'drive-convex-journal-'))
+  const journalPath = join(directory, 'drive.sqlite')
+  const context = { environmentId: claims.environmentId, runId: claims.runId, sessionId: claims.sessionId,
+    scope: claims.scope, execution: claims.execution }
+  let journal = new SqliteDriveJournal(journalPath, context)
+  try {
+    loseAck = true
+    const durableRequest = { action: 'upload' as const, requestId: 'durable-upload-roundtrip',
+      operation: { kind: 'create' as const, name: 'durable.txt' }, sizeBytes: full.length, sha256, mimeType: 'text/plain' }
+    await expect(new AgentDriveWriter(journal, host).content(durableRequest, full)).rejects.toThrow()
+    expect(journal.pending()[0]?.phase.kind).toBe('committing')
+    journal.close()
+    journal = new SqliteDriveJournal(journalPath, context)
+    const receipts = await new AgentDriveWriter(journal, host).flush()
+    const receipt = receipts[0]
+    if (!receipt || receipt.kind !== 'content') throw Error('Expected durable content receipt')
+    expect(journal.pending()).toEqual([])
+    expect(seals).toBe(2)
+    const rows = await f.convex.run(ctx => ctx.db.query('files').filter(q => q.eq(q.field('name'), 'durable.txt')).collect())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?._id).toBe(receipt.result.fileId)
+    const restored = (await host.manifest()).find(item => item.fileId === receipt.result.fileId)
+    if (!restored || restored.kind !== 'file' || restored.hydration !== 'ready') throw Error('Expected durable Files entry')
+    expect(createHash('sha256').update(await host.download(restored)).digest('hex')).toBe(sha256)
+  } finally { journal.close(); rmSync(directory, { recursive: true, force: true }) }
 })
