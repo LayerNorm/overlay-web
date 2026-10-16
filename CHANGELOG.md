@@ -4,9 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep Stop visible while a chat reply is running.
+
 - Avoid advertising hard-coded models after a connected agent reports no model catalog.
 
-- Add default-off guarded drive content transactions with immutable upload identities, quota checks and conflict copies. Verify full staged bytes and seal a separate server-only object before commit. Retire superseded versions with reference checks and confirmed cleanup before releasing quota; collect staged/abandoned objects after execution retention. Add execution-scoped drive credential issuance/renewal; add bounded host transport with complete manifest framing and checksum verification. Runtime journaling and sync remain pending.
+- Add default-off guarded drive content transactions with immutable upload identities, quota checks and conflict copies. Verify full staged bytes and seal a separate server-only object before commit. Retire superseded versions with reference checks and confirmed cleanup before releasing quota; collect staged/abandoned objects after execution retention. Add execution-scoped drive credential issuance/renewal, bounded host transport, a persistent write journal and exclusive cache ownership. Runtime synchronization remains pending.
 
 - Keep connected-agent text streaming from repeatedly fetching sidebar conversation history.
 

@@ -1227,7 +1227,7 @@ function RoomMessageToolbar({
   const buttonClass =
     'rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30'
 
-  const railClass = toolbarRailClass(floating, pickerOpen, alignEnd)
+  const railClass = toolbarRailClass(floating, pickerOpen || Boolean(onStop), alignEnd)
 
   return (
     <div className={railClass}>

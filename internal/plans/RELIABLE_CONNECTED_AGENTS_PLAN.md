@@ -2,6 +2,8 @@
 
 Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 in progress; Phase 4 foundation in progress; Phase 5 in progress.
 
+- Browser QA found the active reply's Stop button inside a hover-hidden action rail. The local correction keeps the rail visible while Stop is offered; exact-head Preview verification is pending.
+
 - Phase 4 now has a private SQLite write journal and serialized HTTP writer. Complete payloads persist before network I/O, immutable request identities survive restart, and lost intent/upload/commit acknowledgements retain the same operation. Completed receipts suppress duplicate requests; foreign scope/execution pending writes fail visibly. Restart tests pass with actual SQLite and the host HTTP client. A separate OS-backed cache lease excludes concurrent owners and releases after actual process loss; cache inventories preserve empty folders and local file identity. Baseline reconciliation, runtime integration and hosted acceptance remain pending.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
