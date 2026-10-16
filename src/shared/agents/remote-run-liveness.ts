@@ -5,7 +5,7 @@ import type { RemoteRunLiveness } from '@overlay/workspace-contracts'
 export type { RemoteRunLiveness } from '@overlay/workspace-contracts'
 
 /** Liveness is separate from transcript text. A quiet but healthy tool is still running. */
-export function recordRemoteRunLiveness(previous: RemoteRunLiveness | undefined, events: AgentRemoteEvent[], now: number): RemoteRunLiveness | undefined {
+export function recordRemoteRunLiveness(previous: RemoteRunLiveness | undefined, events: AgentRemoteEvent[], now: number, terminal = false): RemoteRunLiveness | undefined {
   let result = previous
   for (const event of events) {
     if (event.type === 'heartbeat') {
@@ -28,7 +28,8 @@ export function recordRemoteRunLiveness(previous: RemoteRunLiveness | undefined,
         openTools: ['completed', 'cancelled', 'failed'].includes(event.type) ? [] : openTools.slice(-20), stalled: false }
     }
   }
-  return result
+  // Lifecycle v2 can confirm Stop through a process observation rather than a cancelled event.
+  return terminal && result ? { ...result, openTools: [], quietMs: 0, stalled: false } : result
 }
 
 export function remoteRunLivenessLabel(liveness: RemoteRunLiveness, now: number): string {

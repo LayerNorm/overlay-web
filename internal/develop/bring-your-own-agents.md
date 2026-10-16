@@ -1228,3 +1228,7 @@ advance that revision without rewriting the assistant row; a per-message event i
 bounded. The UI keeps the newest revision when history and live updates race. Browser Convex
 token issuance retries a 401 once through AuthContext’s shared session-refresh lock; failed
 network requests release the token broker without creating an unhandled rejection.
+
+Lifecycle Stop confirmation clears the run's liveness tool list even when the
+confirming event is a process observation. A terminal run must not advertise an
+open tool after its transcript actions have closed.

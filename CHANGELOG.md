@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Clear open-tool liveness when lifecycle supervision confirms that a stopped agent process has exited.
+
 - Preserve complete Unicode characters when bounding connected-agent history so an emoji at the limit cannot prevent the next turn from starting.
 
 - Load compiled conversation memory profiles from the default-runtime store query instead of the retired compilation-module path.

@@ -2611,7 +2611,7 @@ export const applyRemoteEventsByServer = mutation({
       || message.status !== messageStatus || !sameJson(message.tokens ?? { input: 0, output: 0 }, projection.tokens)
     await ctx.db.patch(run._id, {
       status: projection.runStatus,
-      liveness: recordRemoteRunLiveness(run.liveness, normalizedEvents, args.now),
+      liveness: recordRemoteRunLiveness(run.liveness, normalizedEvents, args.now, projection.terminal),
       streamStats: recordAcceptedBatch(run.streamStats, {
         events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage,
       }),

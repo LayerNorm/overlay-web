@@ -22,6 +22,17 @@ test('missing heartbeats are distinguished from quiet output on a live tool', ()
   assert.match(remoteRunLivenessLabel(liveness, 240000), /Waiting for agent connection/)
 })
 
+test('a Stop confirmed by process observation clears stale tool liveness', () => {
+  const previous = recordRemoteRunLiveness(undefined, [heartbeat], 200000)
+  const observed: AgentRemoteEvent = { ...heartbeat, type: 'process_observation', payload: { process: 'missing', confidence: 'confirmed' } }
+  assert.equal(recordRemoteRunLiveness(previous, [observed], 205000), previous)
+  const stopped = recordRemoteRunLiveness(previous, [observed], 205000, true)
+  assert.deepEqual(stopped?.openTools, [])
+  assert.equal(stopped?.quietMs, 0)
+  assert.equal(stopped?.stalled, false)
+  assert.equal(stopped?.lastActivityAt, previous?.lastActivityAt)
+})
+
 test('ongoing legacy checkpoint output proves connection health without negotiated heartbeats', () => {
   const checkpoint: AgentRemoteEvent = { ...heartbeat, type: 'text_checkpoint', payload: { text: 'Working' } }
   const first = recordRemoteRunLiveness(undefined, [checkpoint], 1000)
