@@ -1,7 +1,6 @@
 # shadcn/ui migration plan
 
-_Started 2026-10-13. Progress verified 2026-10-15 against GitHub and
-`origin/main` at `35d6fc49` (merge of #229). Companion visual
+_Started 2026-10-13. Progress updated during the Phase 8 rollout; phase statuses below track the current PR set and hosted QA results. Companion visual
 mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/internal/plans/mockups/shadcn-migration-preview.html)._
 
 ## Progress
@@ -16,13 +15,12 @@ mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/o
 | 4 select | Merged at `1beef931b`; authenticated current-head preview QA and all nine required merge-queue checks passed, including native-form compatibility, all 39 presets, keyboard focus and mobile | [#208](https://github.com/LayerNorm/overlay-web/pull/208), [final QA](https://github.com/LayerNorm/overlay-web/pull/208#issuecomment-6161640601) |
 | 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Included in verified native Git production at `905404c46`. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
 | 6 core form primitives | Merged on `main` at `35d6fc49`: Phase 6a in #227 (`button`, `input`, `textarea`, `label`); Phase 6b in #228 (`checkbox`, `switch`, `badge`, `separator`, `skeleton`); Phase 6c in #229 (`tabs`, `scroll-area`, Toggle-on-Switch) | [#227](https://github.com/LayerNorm/overlay-web/pull/227), [#228](https://github.com/LayerNorm/overlay-web/pull/228), [#229](https://github.com/LayerNorm/overlay-web/pull/229) |
-| 7 niche fills | Implemented in #232 (`sheet`, `card`, `avatar`, `sonner`, `alert`, `progress`); hosted preview QA passed on app revision `f7b5fda9` and all checks are green; merge pending | [#232](https://github.com/LayerNorm/overlay-web/pull/232) |
-| 8 ad-hoc markup sweep + guardrails | Ready to start after #232 merges; refreshed audit and sequencing below | Start with `chat` after #232 lands |
+| 7 niche fills | Merged in #232 (sheet, card, avatar, sonner, alert, progress); hosted preview QA passed on app revision f7b5fda9 | [#232](https://github.com/LayerNorm/overlay-web/pull/232) |
+| 8 ad-hoc markup sweep + guardrails | Implementation complete across the Phase 8 subplan: 8.1-8.8 in #234-#245, 8.9-8.11 in #249-#253, and the staged 8.12 guardrail in this rollout. Authenticated preview QA passed for #234-#237 and #240-#245 except #242, whose preview never served. | [Phase 8 subplan](./SHADCN_PHASE_8_SUBPLAN.md) |
 
-Phases 0–6 are included in current `main` at `35d6fc49`. Phase 7 is
-implemented and QA'd in #232, pending merge. New phases use current-head PR
-previews, then native Git production deployment after main integration; no
-separate staging promotion is required.
+Phases 0-7 are merged or verified through the PR record above. Phase 8 uses
+current-head PR previews, then native Git production deployment after main
+integration; no separate staging promotion is required.
 The baseline inventory below is historical, not the current dependency or
 consumer count. GitHub PRs and their checks remain the integration record.
 

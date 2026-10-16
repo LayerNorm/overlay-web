@@ -113,11 +113,50 @@ const serverGuardrailRules = {
   },
 };
 
+
+const rawInteractiveControlRules = {
+  files: [
+    "src/**/*.{tsx,jsx}",
+    "packages/overlay-chat-react/src/**/*.{tsx,jsx}",
+    "packages/overlay-modules-react/src/**/*.{tsx,jsx}",
+  ],
+  ignores: [
+    "**/*.test.{tsx,jsx}",
+    "**/*.spec.{tsx,jsx}",
+    "**/*.stories.{tsx,jsx}",
+    "**/fixtures/**",
+    "**/__fixtures__/**",
+    "**/__mocks__/**",
+  ],
+  rules: {
+    "no-restricted-syntax": [
+      "warn",
+      {
+        selector: "JSXOpeningElement[name.name='button']",
+        message: "Use @overlay/ui Button instead of a raw <button>.",
+      },
+      {
+        selector: "JSXOpeningElement[name.name='input']",
+        message: "Use @overlay/ui Input instead of a raw <input>. Browser-semantics exceptions must stay on the raw-control baseline or be annotated.",
+      },
+      {
+        selector: "JSXOpeningElement[name.name='textarea']",
+        message: "Use @overlay/ui Textarea instead of a raw <textarea>.",
+      },
+      {
+        selector: "JSXOpeningElement[name.name='select']",
+        message: "Use @overlay/ui Select instead of a raw <select>.",
+      },
+    ],
+  },
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   sharedIsomorphicRules,
   serverGuardrailRules,
+  rawInteractiveControlRules,
   ...createArchitectureBoundaryConfigs(),
   // Override default ignores of eslint-config-next.
   globalIgnores([

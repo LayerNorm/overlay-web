@@ -1,7 +1,20 @@
 # Phase 8 subplan: ad-hoc markup sweep
 
-Status: ready to implement after #232 merges. Last audited 2026-10-15 on
-the Phase 7 branch.
+Status: implementation complete through the staged 8.12 guardrail. Last audited
+2026-10-15; implementation status updated during the Phase 8 PR rollout.
+
+Implementation status:
+
+- 8.1-8.4: #234, #235, #236, #237; authenticated preview QA passed.
+- 8.5-8.8: #240, #241, #242, #243, #244, #245; authenticated preview QA passed
+  for every serving preview. #242 remains untested because its preview never
+  served; its code checks are green.
+- 8.9-8.11: #249, #250, #251, #252, #253; local checks passed and preview/CI
+  results are tracked on the PRs.
+- 8.12: staged guardrail: ESLint warns on raw interactive controls while
+  npm run check:raw-controls hard-fails any control outside the committed
+  baseline. Once the sweep PRs merge, remove the baseline debt and promote the
+  ESLint warning to an error for the final zero-count policy.
 
 ## Goal
 
@@ -197,15 +210,19 @@ Verify editors, dialogs, toolbar menus, file viewing, list actions, and forms.
 
 Land only after the sweeps are complete.
 
-- Add an `AGENTS.md` rule requiring `@overlay/ui` primitives for new
-  interactive controls, with documented exceptions.
-- Add ESLint `no-restricted-syntax` for raw `<button>`, `<input>`,
-  `<textarea>`, and `<select>` in production app/package paths.
-- Exempt `*.test.tsx`, `*.stories.tsx`, fixtures, `packages/overlay-ui`
-  internals, and explicitly annotated browser-semantics cases.
-- Consider a small inventory script before enabling errors if CI needs a
-  ratchet instead of a hard cutoff.
-
+- AGENTS.md now requires @overlay/ui primitives for new interactive controls,
+  with documented browser-semantics exceptions.
+- ESLint no-restricted-syntax warns on raw button, input, textarea, and select
+  JSX elements in production app/package paths while the in-flight Phase 8 PRs
+  are still open.
+- npm run check:raw-controls hard-fails any raw control outside
+  scripts/ci/raw-control-baseline.json, so new controls are blocked during
+  the rollout without breaking on the already-open sweep PRs.
+- *.test.tsx, *.stories.tsx, fixture directories, packages/overlay-ui
+  internals, semantic file/range/color/hidden inputs, and explicitly annotated
+  browser-semantics cases are exempt.
+- After the sweep PRs merge, clear the baseline and promote the ESLint warning
+  to an error for the final zero-count policy.
 ## Required checks per PR
 
 Run the smallest check covering the changed surface, plus the standard gates:
