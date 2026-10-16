@@ -346,3 +346,11 @@ The landing FAQ uses native details/summary disclosures after the scroll story.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
+
+
+## Streamed agent replies
+
+Render streamed text as complete formatted chunks. Markdown defaults to paragraph
+blocks plus a shimmed in-flight tail, with no per-character pacing or character
+spans. Room/agent transcripts suppress inline markers and keep one loading-dots
+row at the bottom throughout the run, including while tools are working.

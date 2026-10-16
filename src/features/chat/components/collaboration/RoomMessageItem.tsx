@@ -724,11 +724,12 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         foldWorkIntoSummary={collapseAgentWork}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
+        suppressTypingIndicator
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
       />
-      {message.streaming && message.blocks.length === 0 ? (
+      {message.streaming ? (
         <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
           {[0, 1, 2].map((dot) => (
             <span

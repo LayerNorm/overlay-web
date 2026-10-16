@@ -45,14 +45,13 @@ interface Props {
   /** Optional avatar renderer for mention chips (e.g. agent creatures). Falls back to the type icon. */
   renderMentionAvatar?: (mention: ChatMessageMention) => ReactNode
   /**
-   * 'token' (default): render the full normalized text through one ReactMarkdown pass
+   * 'token': render the full normalized text through one ReactMarkdown pass
    *   every update, with a shim that closes open structures so partial markdown still
    *   renders styled. Shows a pulsing Overlay logo at the tail of the most recent token
    *   (or standalone before any tokens arrive); each new block element fades in as it
    *   enters the DOM.
-   * 'chunk': split into completed paragraph blocks + a separate tail block, with the
-   *   pulsing Overlay logo as the trailing indicator. Steadier but content appears
-   *   in jumps.
+   * 'chunk' (default): split into completed paragraph blocks + a separate tail block, with the
+   *   pulsing Overlay logo as the trailing indicator. The in-flight tail updates as one formatted block; no character pacing.
   */
   streamingMode?: ChatStreamingMode
   onOpenAttachmentPreview?: (
@@ -67,7 +66,7 @@ function MarkdownMessageImpl({
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
-  streamingMode = 'token',
+  streamingMode = 'chunk',
   appBaseUrl = null,
   mentions,
   renderMentionAvatar,
@@ -273,7 +272,7 @@ function MarkdownMessageImpl({
     () => splitStreamingMarkdown(normalizedDisplay),
     [normalizedDisplay],
   )
-  const trailingBlock = !isStreaming && streamTail.trim() ? streamTail.trim() : ''
+  const trailingBlock = streamTail.trim() ? streamTail.trim() : ''
   const inChunkMode = streamingMode === 'chunk'
   const showInlineTypingDots = isStreaming && !suppressTypingIndicator && inChunkMode
 
@@ -328,7 +327,7 @@ function MarkdownMessageImpl({
             rehypePlugins={markdownRehypePlugins}
             components={mdRenderComponents}
           >
-            {trailingBlock}
+            {isStreaming ? shimIncompleteMarkdown(trailingBlock) : trailingBlock}
           </ReactMarkdown>
         </div>
       ) : null}
