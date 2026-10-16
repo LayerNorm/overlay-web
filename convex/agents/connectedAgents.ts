@@ -2517,7 +2517,7 @@ export const applyRemoteEventsByServer = mutation({
       const state = canonicalRun.remoteLifecycle as RemoteRunState
       if (event.type === 'completed') for (const request of pendingRemoteApprovals(state)) {
         if (!request.decision) continue
-        const delivered = await applyRemoteFact(ctx, canonicalRun, { type: 'decision_delivered', requestKey: request.requestKey }, args.now)
+        const delivered = await applyRemoteFact(ctx, canonicalRun, { type: 'decision_delivered', requestKey: request.requestKey }, args.now, { deferMessageProjection: true })
         if (delivered?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: delivered.state }
       }
       const fact = event.type === 'session_started' ? { type: 'started' as const }
@@ -2532,7 +2532,7 @@ export const applyRemoteEventsByServer = mutation({
         : event.type === 'cancelled' ? { type: 'stopped' as const }
         : event.type === 'failed' ? { type: 'health' as const, process: 'lost' as const }
         : { type: 'progress' as const }
-      const result = await applyRemoteFact(ctx, canonicalRun, fact, args.now)
+      const result = await applyRemoteFact(ctx, canonicalRun, fact, args.now, { deferMessageProjection: true })
       if (result?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: result.state }
       if (event.execution?.hostBootId && (!session.hostBootId || acceptsNativeReattachment)) await ctx.db.patch(session._id, { hostBootId: event.execution.hostBootId })
     }

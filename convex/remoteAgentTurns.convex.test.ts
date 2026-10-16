@@ -658,11 +658,13 @@ test('durable approval crosses 20 minutes with health and unrelated output then 
   await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), event(2, 'approval_requested', {
     requestKey: 'clone', prompt: 'Allow clone?', options: [{ id: 'allow', label: 'Allow' }], context: {},
   })], now + 1)
+  const beforeHealth = await projectedState(convex, started.messageId)
   for (let minute = 1; minute <= 20; minute++) {
     const at = now + minute * 60_000
     await events([event(minute + 2, 'process_observation', { process: 'live' })], at)
     await call('sweepRemoteRunsByServer', { now: at, hostOfflineBefore: at - 45_000, limit: 100 })
   }
+  expect((await projectedState(convex, started.messageId)).message?.updatedAt).toBe(beforeHealth.message?.updatedAt)
   await events([event(23, 'text_checkpoint', { text: 'Waiting for your decision.' }), event(24, 'commands_update', { commands: [] })], now + 1_200_001)
   let result = await projectedState(convex, started.messageId)
   expect(result.run?.status).toBe('waiting_for_approval')

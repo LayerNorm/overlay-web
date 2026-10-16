@@ -54,7 +54,7 @@ export function reconcileRemoteRequestParts(parts: Array<Record<string, unknown>
   })
 }
 
-export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>, fact: RemoteRunFact, now: number): Promise<RemoteRunReduction | null> {
+export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>, fact: RemoteRunFact, now: number, options: { deferMessageProjection?: boolean } = {}): Promise<RemoteRunReduction | null> {
   if (!run.remoteLifecycle) return null
   const current = run.remoteLifecycle as RemoteRunState
   const result = reduceRemoteRun(current, current.revision, { attemptId: current.currentAttemptId,
@@ -73,7 +73,7 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
     } })
   }
   const message = await ctx.db.get(run.assistantMessageId)
-  if (message) {
+  if (message && !options.deferMessageProjection) {
     const phase = result.state.phase
     const visibleState = ['queued', 'waking', 'starting'].includes(phase) ? 'waiting' : phase
     const parts = reconcileRemoteRequestParts((message.parts ?? []) as Array<Record<string, unknown>>, result.state, now).map(part => {

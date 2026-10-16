@@ -1124,5 +1124,7 @@ so tools and completion can still arrive. Deltas will remove this temporary limi
 Stop preserves written text, tools and resolved decisions. Legacy buffered text
 may commit until the host's stop event confirms termination; later output cannot
 change the cancelled result. Observation-only batches skip unchanged transcript
-writes. Candidate package/image updates still require current-preview acceptance
+writes. Lifecycle-v2 event ingestion defers reducer transcript projection until the
+batch boundary, so health facts cannot reintroduce per-event message writes.
+Candidate package/image updates still require current-preview acceptance
 and the separate main-only publication path; source changes do not upgrade hosts.
