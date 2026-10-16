@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Pin ACP conversation identity before prompting and reject accidental fresh conversations during acpx restoration.
+
 - Keep agent option-discovery scratch state outside the synced drive so it cannot appear as saved folders.
 
 - Select enrollment verification words with cryptographic bounded sampling independent of vocabulary size.

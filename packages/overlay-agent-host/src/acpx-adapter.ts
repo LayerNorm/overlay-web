@@ -24,6 +24,7 @@ import { pinnedAcpxLaunch } from './adapter-manifests.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 import { actionTitle } from './action-title.js'
 import {createDiscoveryWorkspace} from './discovery-workspace.js'
+import {ensureAcpxSessionIdentity} from './acpx-session-identity.js'
 
 /**
  * Overlay adapter ids → acpx agent names. acpx resolves each name to a pinned
@@ -156,8 +157,11 @@ export class AcpxAgentAdapter implements AgentAdapter {
     const runtime = this.runtimeFor(input.workingDirectory, input.credentials)
     const sessionKey = input.remoteSessionId ?? `overlay-${randomUUID()}`
     this.mcpBySession.set(sessionKey, overlayMcpServers(input.metadata, true))
-    const ensure = () => runtime.ensureSession({
-      sessionKey, agent: this.options.agent, mode: 'persistent', cwd: input.workingDirectory,
+    let checkpoint = input.adapterState
+    const ensure = () => ensureAcpxSessionIdentity({
+      runtime, sessionKey, agent: this.options.agent, workingDirectory: input.workingDirectory,
+      restoring: Boolean(input.remoteSessionId), checkpoint,
+      persist: async identity => { await input.persistAdapterState?.(identity); checkpoint = identity },
     })
     const requestedModel = typeof input.metadata?.model === 'string' && input.metadata.model.trim() ? input.metadata.model.trim() : null
     // The model an agent's owner chose, in the agent's own id (Claude Code `sonnet`, Codex `gpt-6-sol[high]`). A model the
@@ -183,7 +187,9 @@ export class AcpxAgentAdapter implements AgentAdapter {
       }, { ...input.metadata, ...(!options.model ? { model: undefined } : {}) }, options)
       this.capability.options = selected
     }
-    let handle: AcpRuntimeHandle = await ensure()
+    let handle: AcpRuntimeHandle
+    try { handle = await ensure() }
+    catch (error) { this.mcpBySession.delete(sessionKey); throw error }
     let activeTurn: AcpRuntimeTurn | undefined
     const permissions = new Map<string, PendingPermission>()
     const elicitations = new Map<string, PendingElicitation>()

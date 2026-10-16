@@ -79,6 +79,96 @@ test('a later run resumes the same acpx session after the connection was closed'
   }
 })
 
+test('a saved native identity loads the same ACP conversation when the acpx record is missing', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-identity-'))
+  const state = join(directory, 'state'), log = join(directory, 'sessions.jsonl')
+  let checkpoint: Record<string, unknown> | undefined
+  let session: Awaited<ReturnType<AcpxAgentAdapter['start']>> | undefined
+  const events: NormalizedAgentEvent[] = []
+  try {
+    session = await fixtureAdapter(state).start({runId: 'identity', workingDirectory: directory,
+      additionalDirectories: [], prompt: '', metadata: {}, credentials: {FIXTURE_SESSION_LOG: log, FIXTURE_SECRET: 'never-checkpoint-this'},
+      persistAdapterState: async value => {checkpoint = value},
+    }, async () => {})
+    const remoteSessionId = session.remoteSessionId
+    assert.ok(checkpoint)
+    assert.doesNotMatch(JSON.stringify(checkpoint), /never-checkpoint-this|FIXTURE_SECRET|credentials/)
+    await session.stop()
+    session = undefined
+    await rm(state, {recursive: true, force: true})
+    session = await fixtureAdapter(state).start({runId: 'identity', remoteSessionId, workingDirectory: directory,
+      additionalDirectories: [], prompt: '', metadata: {}, adapterState: checkpoint,
+      credentials: {FIXTURE_SESSION_LOG: log}, persistAdapterState: async value => {checkpoint = value},
+    }, async event => {
+      events.push(event)
+      if (event.type === 'approval_requested') await session?.approve(String(event.payload.requestKey), 'allow_once')
+      if (event.type === 'elicitation_requested') await session?.elicit(String(event.payload.requestKey), 'decline')
+    })
+    await session.prompt('Continue the saved conversation')
+    const records = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    assert.deepEqual(records.map(record => record.operation), ['new', 'load'])
+    assert.equal(records[1].sessionId, records[0].sessionId)
+    assert.equal(checkpoint?.backendSessionId, records[0].sessionId)
+    assert.equal(session.remoteSessionId, remoteSessionId)
+    assert.equal(events.at(-1)?.type, 'completed')
+  } finally {
+    await session?.stop()
+    await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100})
+  }
+})
+
+test('a missing identity or a mismatched checkpoint never starts a replacement conversation', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-missing-identity-'))
+  const log = join(directory, 'sessions.jsonl')
+  try {
+    for (const adapterState of [undefined, {version: 1, sessionKey: 'other', agent: 'fixture',
+      workingDirectory: directory, backendSessionId: 'old-native'}]) {
+      await assert.rejects(fixtureAdapter(join(directory, 'state')).start({runId: 'identity', remoteSessionId: 'saved-key',
+        workingDirectory: directory, additionalDirectories: [], prompt: '', metadata: {}, adapterState,
+        credentials: {FIXTURE_SESSION_LOG: log},
+      }, async () => {}), /session identity/)
+    }
+    await assert.rejects(readFile(log), {code: 'ENOENT'})
+  } finally { await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}) }
+})
+
+test('a provider load failure never falls back to a fresh session', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-load-refusal-'))
+  const state = join(directory, 'state'), log = join(directory, 'sessions.jsonl')
+  let checkpoint: Record<string, unknown> | undefined
+  try {
+    const first = await fixtureAdapter(state).start({runId: 'identity', workingDirectory: directory,
+      additionalDirectories: [], prompt: '', metadata: {}, credentials: {FIXTURE_SESSION_LOG: log},
+      persistAdapterState: async value => {checkpoint = value},
+    }, async () => {})
+    await first.stop()
+    await rm(state, {recursive: true, force: true})
+    await assert.rejects(fixtureAdapter(state).start({runId: 'identity', remoteSessionId: first.remoteSessionId,
+      workingDirectory: directory, additionalDirectories: [], prompt: '', metadata: {}, adapterState: checkpoint,
+      credentials: {FIXTURE_SESSION_LOG: log, FIXTURE_REJECT_SESSION_LOAD: '1'},
+    }, async () => {}), /load rejected|session.*failed/i)
+    const records = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    assert.deepEqual(records.map(record => record.operation), ['new', 'load'])
+    assert.equal(records[1].sessionId, records[0].sessionId)
+  } finally { await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}) }
+})
+
+test('checkpoint persistence failure closes the new native process before returning', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-checkpoint-failure-'))
+  const log = join(directory, 'sessions.jsonl')
+  try {
+    await assert.rejects(fixtureAdapter(join(directory, 'state')).start({runId: 'identity', workingDirectory: directory,
+      additionalDirectories: [], prompt: '', metadata: {}, credentials: {FIXTURE_SESSION_LOG: log},
+      persistAdapterState: async () => {throw Error('private checkpoint unavailable')},
+    }, async () => {}), /private checkpoint unavailable/)
+    const record = JSON.parse((await readFile(log, 'utf8')).trim())
+    await waitFor(() => {
+      try {process.kill(record.pid, 0); return false}
+      catch (error) {return error instanceof Error && 'code' in error && error.code === 'ESRCH'}
+    })
+  } finally { await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}) }
+})
+
 test('discovery rejects agents acpx does not know', async () => {
   const adapter = new AcpxAgentAdapter({ id: 'nope', displayName: 'Nope', agent: 'definitely-not-an-agent', stateDirectory: tmpdir() })
   await assert.rejects(adapter.discover(), /does not know/)

@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 5 identity foundation: acpx persists its ACP session id before prompting and explicitly loads that identity, even when its local acpx record is gone. Real child-process tests cover matching restoration, missing/mismatched identity refusal, load failure without fresh-session fallback, and closing the child after checkpoint persistence fails. Automatic continuation remains disabled pending provider isolation, execution fencing, fresh tool/drive credentials and pending-write reconciliation.
+
 - Native Codex Stop now passes on protected Preview: the UI cancels an executing foreground tool, independent process readback confirms it ended, and the same assistant row retains the full pre-Stop text and all three tool calls after API readback and browser reload. Expanded history keeps completed and interrupted tools available. A singular failed-tool label found during this check is corrected. Claude parity and restart recovery remain separate gates.
 
 - Native Codex readiness on protected Preview now completes the foreground three-minute tool, prints all 26 hashes matching the pinned baseline, and reads the exact canonical probe through Overlay MCP with zero approval cards or rejected batches. Actual native metadata identifies the default model and separate automatic reviews. Browser work summaries preserve the correct action count after reload. Whole-run latency and forced recovery remain separate gates.

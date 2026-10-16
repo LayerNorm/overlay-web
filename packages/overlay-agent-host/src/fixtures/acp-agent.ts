@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto'
+import {appendFileSync} from 'node:fs'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
 
 const sessions = new Set<string>()
+function recordSession(operation: string, sessionId: string) {
+  const path = process.env.FIXTURE_SESSION_LOG
+  if (path) appendFileSync(path, JSON.stringify({operation, sessionId, pid: process.pid}) + '\n')
+}
 const stream = acp.ndJsonStream(
   Writable.toWeb(process.stdout) as WritableStream<Uint8Array>,
   Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>,
@@ -16,9 +21,12 @@ await acp.agent({ name: 'overlay-agent-host-test-fixture' })
   .onRequest(acp.methods.agent.session.new, () => {
     const sessionId = randomUUID()
     sessions.add(sessionId)
+    recordSession('new', sessionId)
     return { sessionId }
   })
   .onRequest(acp.methods.agent.session.load, ({ params }) => {
+    recordSession('load', params.sessionId)
+    if (process.env.FIXTURE_REJECT_SESSION_LOAD === '1') throw new acp.RequestError(-32602, 'Fixture session load rejected')
     sessions.add(params.sessionId)
     return {}
   })
