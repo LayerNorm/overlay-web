@@ -28,13 +28,14 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false) {
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false) {
   return renderToStaticMarkup(
     <RoomMessageItem
       message={toRoomMessageView({
         message,
         currentPrincipalId: ME,
         authorName,
+        streaming,
         mentions: [{ type: 'person', id: 'principal_maya', name: 'Maya Chen' }],
       })}
       reactions={[{ emoji: '👍', count: 2, reactedByCurrentPrincipal: true }]}
@@ -273,4 +274,16 @@ test('a lifecycle run needing attention exposes a deliberate fresh-start control
   assert.match(html, /Start fresh/)
   assert.match(html, /Stop or isolate the original process/)
   assert.doesNotMatch(html, />Resume</)
+})
+
+
+test('a live agent reply renders formatted chunks and one bottom dots row without character spans', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'generating',
+    content: '# Result\n\n**Live formatted tail**',
+    parts: [{ type: 'text', text: '# Result\n\n**Live formatted tail**' }],
+  }), 'Agent', false, true)
+  assert.match(html, /<strong>Live formatted tail<\/strong>/)
+  assert.ok(!html.includes('md-char'))
+  assert.ok(!html.includes('overlay-stream-marker'))
+  assert.match(html, /aria-label="Agent is responding"/)
 })
