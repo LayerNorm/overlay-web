@@ -261,7 +261,7 @@ reference rather than becoming the row's searchable prefix; the server materiali
 full source bytes before issuing a host manifest.
 Run-scoped drive token and authorization helpers use a separate signing domain, bounded expiry,
 session/attempt fencing, live membership and binding readback, creator-derived personal scope
-and explicit local/VPS opt-in. They are not yet attached to HTTP endpoints; final Convex commits
+and explicit local/VPS opt-in. The read endpoint uses these helpers; final Convex commits
 must repeat the authority checks atomically before publishing a file revision.
 
 `AgentDriveMaterializer` hashes full source bytes through a bounded reader, verifies download
@@ -271,8 +271,7 @@ reader now uses bounded configured object-store downloads and authorized Convex 
 Convex checks the exact file revision/source and run authority before resolving a storage URL; the
 server verifies the blob digest and never includes storage URLs in host manifests. Backend manifest
 pages repeat membership, scope, binding, run and attempt checks behind the default-off
-`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Manifest HTTP/download endpoints, atomic file commits and
-host synchronization remain pending.
+`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Atomic file commits and host synchronization remain pending.
 
 Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
 do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;
@@ -281,7 +280,21 @@ current authority is checked separately before each page and after materializati
 after 20 seconds; never fall back to mixed-timestamp pages. Manifest metadata is capped at 32 MiB.
 Ready entries carry a purpose-separated download MAC bound to the run, scope, attempt, expiry,
 revision, path and content hash. Downloads reread Files and recheck authority after verifying bytes.
-This service still needs HTTP delivery, token issuance in start commands and host integration.
+Token issuance in start commands and host integration remain pending.
+
+`POST /api/agent-drive` accepts only a run-scoped `ovdrive_` bearer token, independent of app
+cookies or query parameters. It requires both web `connectedAgentControlPlane` and
+`connectedAgentDrive` features (`OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE=1` for the latter),
+plus backend `OVERLAY_CONNECTED_AGENT_DRIVE=1`. Drive access defaults off on both sides.
+Signing uses `OVERLAY_AGENT_DRIVE_SECRET` when configured, otherwise the existing service/API
+secret, with a separate signature domain; storage credentials never reach the host.
+Manifest responses stream NDJSON with explicit header and completion frames. Downloads verify
+canonical full bytes before returning ranges of at most 1 MiB; a host must hash the assembled
+file before replacement. Requests are capped at 32 KiB and rate limited by IP and hashed bearer.
+Revoked authority and changed revisions fail closed. Responses are private and never cached.
+This read transport still needs current-head hosted acceptance, start-command issuance, guarded
+file writes and runtime synchronization before the persistent drive can be enabled.
+
 
 Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
 is unavailable and the unchanged host conformance suite passes.

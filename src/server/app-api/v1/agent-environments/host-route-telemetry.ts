@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { withObservabilityContext } from '@/server/observability/context'
 import { logger } from '@/server/observability/logger'
 
-export type AgentHostRoute = 'commands.poll' | 'events.upload' | 'commands.ack' | 'heartbeat'
+export type AgentHostRoute = 'commands.poll' | 'events.upload' | 'commands.ack' | 'heartbeat' | 'drive.read'
 
 /** Requests slower than this are logged even when they succeed. */
 export const SLOW_AGENT_HOST_REQUEST_MS = 3_000

@@ -4,15 +4,17 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add default-off connected-agent drive reads with scoped bearer authorization, streamed manifests and verified bounded downloads. Token issuance, writes, host synchronization and hosted acceptance remain pending.
+
 - Restore live room updates by returning message revision metadata consistently in history and subscriptions, including chunk-only text. Recover browser realtime tokens after one session refresh and avoid unhandled token-request rejections.
 
 - Keep active smoke agents running when observation expires, honor API read cooldowns and leave request headroom for browser QA. Confirm cleanup responses before reporting deletion; observation gaps prevent a streaming acceptance pass.
 
-- Prepare consistent scoped drive manifests and authenticated download grants, with bounded metadata and exact-revision inline note reads. HTTP delivery and agent-turn integration remain pending.
+- Prepare consistent scoped drive manifests and authenticated download grants, with bounded metadata and exact-revision inline note reads. Agent-turn integration remains pending.
 
-- Prepare scoped drive reads with live Convex authorization, exact file revisions and verified storage bytes. Enforce R2/S3 download limits while streaming. Drive HTTP delivery, file commits and host sync remain pending.
+- Prepare scoped drive reads with live Convex authorization, exact file revisions and verified storage bytes. Enforce R2/S3 download limits while streaming. File commits and host sync remain pending.
 
-- Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. HTTP delivery and runtime integration remain pending.
+- Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. Runtime integration remains pending.
 
 - Prepare a dedicated connected-agent drive cache with bounded snapshots, hash-checked atomic hydration and traversal/symlink rejection. This foundation is not yet connected to Overlay Files or enabled for agent turns.
 
