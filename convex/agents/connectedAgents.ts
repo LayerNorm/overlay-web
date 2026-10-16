@@ -2,6 +2,7 @@ import { recordRemoteRunLiveness } from '../../src/shared/agents/remote-run-live
 import { agentMcpAttemptMatches, agentMcpSessionIsLive } from '../../src/shared/agents/agent-mcp-authority'
 import { applyRemoteText } from '../../src/shared/agents/remote-agent-text'
 import { hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
+import { recoveryStartPayload } from '../lib/remoteRecovery'
 import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
 import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
@@ -750,7 +751,8 @@ export const controlRemoteAgentTurnByServer = mutation({
           commandId: `command:${operationId}`, workspaceId: args.workspaceId, environmentId: session.environmentId,
           runId: args.runId, attemptId: newAttemptId, executionGeneration: nextGeneration,
           type: 'start', sequence: (latestFresh?.sequence ?? 0) + 1,
-          payload: { ...startPayload, fresh: true }, status: 'pending', createdAt: now, updatedAt: now })
+          payload: recoveryStartPayload(startPayload, message ? (await hydrateRemoteMessage(ctx, message)).content.length : 0),
+          status: 'pending', createdAt: now, updatedAt: now })
         return { applied: true, operationId, phase: nextState.phase, commandId: `command:${operationId}`, messageId: run.assistantMessageId }
       }
       const result = await applyRemoteFact(ctx, run, args.action === 'cancel'
@@ -887,17 +889,19 @@ export const controlRemoteAgentTurnByServer = mutation({
       .order('desc')
       .first()
     const commandId = `command_${crypto.randomUUID()}`
+    const existingMessage = await ctx.db.get(run.assistantMessageId)
+    const textOffset = mode === 'start_fresh' && existingMessage ? (await hydrateRemoteMessage(ctx, existingMessage)).content.length : 0
     await ctx.db.insert('agentRunCommands', { commandId, workspaceId: args.workspaceId,
       environmentId: session.environmentId, runId: args.runId, type: mode === 'resume' ? 'reconnect' : 'start',
       sequence: (latest?.sequence ?? 0) + 1,
-      payload: mode === 'resume' ? { remoteSessionId: session.remoteSessionId } : { ...startPayload, sessionId: undefined, fresh: true },
+      payload: mode === 'resume' ? { remoteSessionId: session.remoteSessionId }
+        : recoveryStartPayload({ ...startPayload, sessionId: undefined }, textOffset),
       status: 'pending', createdAt: args.now, updatedAt: args.now })
     await ctx.db.patch(run._id, { status: 'queued', leaseExpiresAt: args.queueExpiresAt,
       failedAt: undefined, cancelledAt: undefined, terminalError: undefined,
       metrics: { ...(run.metrics ?? {}), workflowRetryCount: (run.metrics?.workflowRetryCount ?? 0) + 1 }, updatedAt: args.now })
     await ctx.db.patch(session._id, { status: 'recovering', endedAt: undefined,
       capabilitySnapshot: { ...snapshot, queueExpiresAt: args.queueExpiresAt }, updatedAt: args.now })
-    const existingMessage = await ctx.db.get(run.assistantMessageId)
     const parts = (existingMessage?.parts ?? []).filter((part) => part.type !== 'data-remote-agent-status')
     await ctx.db.patch(run.assistantMessageId, { parts: conversationParts([...parts, {
       type: 'data-remote-agent-status', data: { environmentName: environment.name,

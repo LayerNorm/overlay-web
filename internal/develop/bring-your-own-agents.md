@@ -1215,6 +1215,12 @@ cards as `execution_replaced`, preserving decisions already recorded, and projec
 `recovering` on the same assistant row before dispatching the replacement.
 Replacement attempts clear the previous host boot and health lease; the first
 accepted replacement event binds the new boot, while old attempt events remain fenced.
+Fresh commands carry a server-derived `metadata.recoveryTextOffset` when the existing
+answer is nonempty. It is the full canonical UTF-16 length, including chunk-backed
+text, and overrides any old request metadata. The host adds that base to new deltas
+and bounded correction anchors, preserving the committed prefix in both negotiated
+and checkpoint-only streams. This preserves text during an explicit replacement;
+it does not establish native-session continuation or permission to replay old writes.
 During web-first rollout, new control request IDs are sent to Convex only when
 lifecycle v2 is enabled; ordinary controls retain the legacy validator shape.
 

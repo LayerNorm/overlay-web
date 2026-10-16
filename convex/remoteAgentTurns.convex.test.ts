@@ -21,6 +21,31 @@ const agentPrincipalId = 'principal-agent-remote-turn'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex remote agent room turns', () => {
+  test('a legacy fresh retry retains the committed prefix and receives its canonical offset', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    const prefix = 'Preserve this answer 🙂'
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(1, 'text_checkpoint', { text: prefix }), event(2, 'failed', { code: 'offline', message: 'Offline', retryable: true })], now: now + 1 })
+    const fresh = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
+      actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn',
+      action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 2,
+    })
+    expect(fresh.applied).toBe(true)
+    const commands = await call<Array<{ id: string; payload: { metadata: Record<string, unknown> } }>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: now + 3, leaseMs: 5000, limit: 10,
+    })
+    expect(commands.find(command => command.id === fresh.commandId)?.payload.metadata.recoveryTextOffset).toBe(prefix.length)
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(3, 'session_started', { remoteSessionId: 'new', adapterId: 'acp' }),
+        event(4, 'text_delta', { offset: prefix.length, text: '\nNew output' })], now: now + 4 })
+    expect((await projectedState(convex, started.messageId)).message?.content).toBe(prefix + '\nNew output')
+  })
+
   test('drive progress persists on the original assistant row and a retried batch settles exactly once', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)
@@ -937,6 +962,36 @@ test('cancellation before coordinator claim delivers shutdown and cancel without
   expect(commands.map(command => command.type)).toEqual(['shutdown', 'cancel'])
   expect(commands.map(command => command.sequence)).toEqual([1, 2])
   expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelled')
+})
+
+test('fresh lifecycle attempt appends to the full canonical text after a lost process', async () => {
+  const { convex, call, lifecycle, seeded, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  const prefix = 'Committed before restart 🙂\n'.repeat(4000)
+  await events([event(1, 'session_started', { remoteSessionId: 'old', adapterId: 'acp' }),
+    event(2, 'text_delta', { offset: 0, text: prefix }),
+    event(3, 'process_observation', { process: 'unknown' })], now + 2)
+  const fresh = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
+    actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn',
+    action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 3,
+  })
+  expect(fresh.applied).toBe(true)
+  const commands = await call<Array<{ id: string; payload: { metadata: Record<string, unknown> } }>>('claimCommandsByServer', {
+    workspaceId, environmentId, now: now + 4, leaseMs: 5000, limit: 10,
+  })
+  const command = commands.find(command => command.id === fresh.commandId)!
+  expect(command.payload.metadata.recoveryTextOffset).toBe(prefix.length)
+  const run = await convex.run(ctx => ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique())
+  const replacement = run!.remoteLifecycle!.currentAttemptId
+  expect(await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: replacement, now: now + 5,
+    events: [event(1, 'session_started', { remoteSessionId: 'new', adapterId: 'acp' }),
+      event(2, 'text_delta', { offset: command.payload.metadata.recoveryTextOffset, text: '\nRecovered output ✓' })]
+      .map(e => ({ ...e, execution: { attemptId: replacement, generation: 2, hostBootId: 'new-boot' } })),
+  })).toMatchObject({ accepted: true, acknowledgedSequence: 2 })
+  const message = await convex.run(async ctx => hydrateRemoteMessage(ctx, (await ctx.db.get(run!.assistantMessageId))!))
+  expect(message.content).toBe(prefix + '\nRecovered output ✓')
+  expect(message._id).toBe(run!.assistantMessageId)
 })
 
 test('fresh lifecycle attempt uses a strict executable start rather than checkpoint references', async () => {

@@ -2,6 +2,29 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { NormalizedAgentEvent } from './adapter.js'
 import { createRunStream } from './run-stream.js'
+import { applyRemoteText } from '../../../src/shared/agents/remote-agent-text.js'
+
+test('a replacement stream appends after the canonical prefix, including corrections and bounded anchors', async () => {
+  const prefix = 'Already committed 🙂\n'.repeat(4000)
+  for (const streaming of [true, false]) {
+    let content = prefix
+    const events: NormalizedAgentEvent[] = []
+    const stream = createRunStream(async event => {
+      events.push(event)
+      content = applyRemoteText(content, { ...event, protocolVersion: 1, eventId: 'test', environmentId: 'test', runId: 'test', sourceSequence: events.length, occurredAt: 1 })
+    }, { streaming: () => streaming, textBaseOffset: prefix.length, observe: async () => 'live', onError: error => { throw error } })
+    try {
+      const continuation = '\nContinued 🙃 '.repeat(8000)
+      await stream.emit({ type: 'text_checkpoint', payload: { text: continuation, final: true } })
+      assert.equal(content, prefix + continuation)
+      await stream.emit({ type: 'text_checkpoint', payload: { text: 'corrected continuation ✓', final: true } })
+      await stream.emit({ type: 'completed', payload: { usage: {} } })
+      assert.equal(content, prefix + 'corrected continuation ✓')
+      assert.ok(events.filter(event => event.type === 'text_delta' || event.type === 'text_checkpoint')
+        .every(event => event.payload.offset !== undefined && event.payload.offset >= prefix.length))
+    } finally { stream.stop() }
+  }
+})
 
 test('Unicode packet boundaries and provider corrections preserve complete code points', async () => {
   const events: NormalizedAgentEvent[] = []

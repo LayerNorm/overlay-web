@@ -101,6 +101,32 @@ test('unavailable provider credentials never acquire a drive lease or launch an 
   } finally { await f.cleanup() }
 })
 
+test('a fresh runtime stream uses the canonical continuation offset from its command', async () => {
+  const f = await fixture()
+  try {
+    if (f.command.type !== 'start') throw Error('Missing start fixture')
+    f.command.payload.fresh = true
+    f.command.payload.metadata.recoveryTextOffset = 28
+    await f.runtime.processCommand(f.command)
+    await f.emit({ type: 'text_checkpoint', payload: { text: 'Continued ✓', final: true } })
+    await f.emit({ type: 'completed', payload: { usage: {} } })
+    await f.runtime.flushOutbox()
+    assert.deepEqual(f.events.flatMap(batch => batch.events).find(event => event.type === 'text_checkpoint')?.payload,
+      { text: 'Continued ✓', offset: 28, final: true })
+  } finally { await f.cleanup() }
+})
+
+test('invalid recovery offsets fail before provider credentials, drive ownership or session start', async () => {
+  const f = await fixture()
+  try {
+    if (f.command.type !== 'start') throw Error('Missing start fixture')
+    f.command.payload.fresh = true
+    f.command.payload.metadata.recoveryTextOffset = -1
+    await assert.rejects(f.runtime.processCommand(f.command), /Invalid recovery text offset/)
+    assert.deepEqual(f.order, [])
+  } finally { await f.cleanup() }
+})
+
 test('a newly approved drive directory is prepared before resolving all physical grant roots', async () => {
   const f = await fixture()
   try {

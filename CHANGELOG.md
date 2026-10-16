@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve the saved answer when an explicit fresh connected-agent attempt continues streaming on the same message.
+
 - Persist connected-agent drive status in chat messages and sign staging checksum headers consistently for R2 and S3 uploads.
 
 - Keep host heartbeats running during initialization and create newly approved drive directories before resolving filesystem roots.

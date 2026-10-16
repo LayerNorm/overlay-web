@@ -328,6 +328,9 @@ export class AgentHostRuntime {
   }
 
   private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+    const offset = command.payload.metadata.recoveryTextOffset
+    if (offset !== undefined && (command.payload.fresh !== true || typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0))
+      throw Error('Invalid recovery text offset')
     if (command.payload.fresh) {
       // An explicit start_fresh authorizes teardown even when the persisted session is
       // not live here: the old process may be an orphan, and refusing would leave the
@@ -352,7 +355,7 @@ export class AgentHostRuntime {
       : await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
-    const emit = this.createStream(command.runId, execution, drive)
+    const emit = this.createStream(command.runId, execution, drive, offset)
     const session = await adapter.start({
       runId: command.runId,
       workingDirectory: scope.workingDirectory,
@@ -456,11 +459,12 @@ export class AgentHostRuntime {
     return adapter
   }
 
-  private createStream(runId: string, execution = this.executions.get(runId), drive?: RuntimeDrive) {
+  private createStream(runId: string, execution = this.executions.get(runId), drive?: RuntimeDrive, textBaseOffset?: number) {
     this.streams.get(runId)?.stop()
     const negotiated = this.streamingNegotiated
     const stream = createRunStream(event => this.emit(runId, event, execution), {
       streaming: () => negotiated,
+      textBaseOffset,
       active: () => this.sessions.has(runId),
       observe: async () => await this.sessions.get(runId)?.observe?.() ?? 'unknown',
       onError: error => this.logger.warn('run heartbeat deferred', { runId, error: safeError(error) }),

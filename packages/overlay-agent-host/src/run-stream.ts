@@ -13,12 +13,16 @@ function codePointBoundary(text: string, offset: number): number {
 /** One run's ordered text and liveness; legacy servers keep receiving coalesced checkpoints. */
 export function createRunStream(emit: EmitAgentEvent, options: {
   streaming: () => boolean
+  /** Canonical UTF-16 prefix retained by an explicitly replaced execution. */
+  textBaseOffset?: number
   active?: () => boolean
   observe: () => Promise<'live' | 'lost' | 'unknown'>
   onError: (error: unknown) => void
   heartbeatMs?: number
   now?: () => number
 }) {
+  const base = options.textBaseOffset ?? 0
+  if (!Number.isSafeInteger(base) || base < 0) throw Error('Invalid recovery text offset')
   const now = options.now ?? Date.now
   let lastActivityAt = now()
   let previousText = ''
@@ -35,7 +39,11 @@ export function createRunStream(emit: EmitAgentEvent, options: {
       else if (!openTools.has(event.payload.actionId)) openTools.set(event.payload.actionId, { title: event.payload.title, startedAt: now() })
     }
     if (['completed', 'failed', 'cancelled'].includes(event.type)) { terminal = true; clearInterval(timer); openTools.clear(); previousText = '' }
-    if (event.type !== 'text_checkpoint' || !options.streaming()) { await emit(event); return }
+    if (event.type !== 'text_checkpoint') { await emit(event); return }
+    if (!options.streaming()) {
+      await emit(base ? { ...event, payload: { ...event.payload, offset: base + (event.payload.offset ?? 0) } } : event)
+      return
+    }
     const text = event.payload.text
     let startOffset = previousText.length
     if (!text.startsWith(previousText)) {
@@ -43,13 +51,13 @@ export function createRunStream(emit: EmitAgentEvent, options: {
       while (startOffset < Math.min(text.length, previousText.length) && text[startOffset] === previousText[startOffset]) startOffset++
       startOffset = codePointBoundary(text, startOffset)
       // Trim only the corrected suffix, then resend it in bounded deltas even for a very large rewrite.
-      await emit({ type: 'text_checkpoint', payload: { offset: startOffset, text: '' } })
+      await emit({ type: 'text_checkpoint', payload: { offset: base + startOffset, text: '' } })
       bytesSinceAnchor = 0
     }
     for (let offset = startOffset; offset < text.length;) {
       const end = codePointBoundary(text, Math.min(text.length, offset + DELTA_CHARS))
       const delta = text.slice(offset, end)
-      await emit({ type: 'text_delta', payload: { offset, text: delta } })
+      await emit({ type: 'text_delta', payload: { offset: base + offset, text: delta } })
       bytesSinceAnchor += encoder.encode(delta).byteLength
       offset = end
     }
@@ -59,7 +67,7 @@ export function createRunStream(emit: EmitAgentEvent, options: {
       const target = Math.max(0, text.length - DELTA_CHARS)
       const boundary = codePointBoundary(text, target)
       const offset = boundary < target ? boundary + 2 : boundary
-      await emit({ type: 'text_checkpoint', payload: { offset, text: text.slice(offset), ...(event.payload.final ? { final: true } : {}) } })
+      await emit({ type: 'text_checkpoint', payload: { offset: base + offset, text: text.slice(offset), ...(event.payload.final ? { final: true } : {}) } })
       bytesSinceAnchor = 0
     }
   }
