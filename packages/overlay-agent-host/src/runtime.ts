@@ -38,7 +38,7 @@ export type AgentHostRuntimeOptions = {
   maxOutboxEvents?: number
   /** Overlay Cloud machines fetch their provider credentials from the control plane for each run. */
   fetchRunCredentials?: boolean
-  drive?: { stateDirectory: string; apiUrl: string; create?: typeof createRuntimeDrive; syncIntervalMs?: number }
+  drive?: { stateDirectory: string; apiUrl: string; create?: typeof createRuntimeDrive; syncIntervalMs?: number; fetch?: typeof globalThis.fetch }
 }
 
 export class AgentHostRuntime {
@@ -419,7 +419,7 @@ export class AgentHostRuntime {
     return (options.create ?? createRuntimeDrive)({ environmentId: this.options.environmentId, workspaceId: this.options.workspaceId,
       ...request, location: descriptor.location, filesystem: this.options.filesystem,
       approvedWorkingDirectory: command.payload.workingDirectory, stateDirectory: options.stateDirectory, apiUrl: options.apiUrl,
-      credentials: () => fetchDriveCredentials(request),
+      credentials: () => fetchDriveCredentials(request), ...(options.fetch ? {fetch: options.fetch} : {}),
     })
   }
 

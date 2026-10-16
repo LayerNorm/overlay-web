@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add host-only access for protected Preview machine enrollment, API calls and MCP without putting hosting credentials in provider environments or startup commands.
+
 - Display supported legacy Codex model/effort choices correctly against live catalogs and preserve effort when changing models.
 
 - Show lifecycle-v2 agent task deadlines through queueing, execution and recovery, alongside the separate approval expiry.

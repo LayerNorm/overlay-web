@@ -53,6 +53,7 @@ export function cloudAgentConnectCommand(args: {
   serverUrl: string
   name: string
   adapterId: CloudAgentAdapterId
+  hostingAuthFile?: string
 }, env: Record<string, string | undefined> = process.env): string {
   return detached([
     'overlay-agent-host connect', shellQuote(args.enrollmentCode),
@@ -61,6 +62,7 @@ export function cloudAgentConnectCommand(args: {
     '--adapter', shellQuote(args.adapterId),
     '--name', shellQuote(args.name),
     '--state-dir', shellQuote(CLOUD_AGENT_STATE_DIR),
+    ...(args.hostingAuthFile ? ['--hosting-auth-file', shellQuote(args.hostingAuthFile)] : []),
     '--run',
   ].join(' '), env)
 }
@@ -74,6 +76,7 @@ export function cloudAgentStopHostCommand(): string {
 }
 
 /** After a resume the host process is gone (the machine stopped). Restart it from saved state. */
-export function cloudAgentRunCommand(env: Record<string, string | undefined> = process.env): string {
-  return detached(`overlay-agent-host run --config ${shellQuote(CLOUD_AGENT_CONFIG_PATH)}`, env)
+export function cloudAgentRunCommand(env: Record<string, string | undefined> = process.env, hostingAuthFile?: string): string {
+  return detached(`overlay-agent-host run --config ${shellQuote(CLOUD_AGENT_CONFIG_PATH)}`
+    + (hostingAuthFile ? ` --hosting-auth-file ${shellQuote(hostingAuthFile)}` : ''), env)
 }

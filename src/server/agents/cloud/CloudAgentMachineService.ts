@@ -8,6 +8,7 @@ import type { AuditService } from '@/server/admin'
 import type { ConnectedAgentControlPlaneService } from '../ConnectedAgentControlPlaneService'
 import type { ConnectedAgentRepository } from '../ConnectedAgentRepository'
 import type { CloudAgentProvisionRepository } from './CloudAgentProvisionRepository'
+import { prepareCloudAgentPreviewAccess } from './cloud-agent-preview-access'
 import {
   deriveCloudAgentState,
   type CloudAgentAction,
@@ -111,11 +112,13 @@ export class CloudAgentMachineService {
         metadata: { overlay: 'true', kind: 'cloud-agent', workspace: args.workspaceId, agent: args.agentId },
       })
       await phase('booting')
+      const hostingAuthFile = await prepareCloudAgentPreviewAccess(machine, args.serverUrl)
       await this.runDetached(machine, cloudAgentConnectCommand({
         enrollmentCode: enrollment.code,
         serverUrl: args.serverUrl,
         name,
         adapterId: args.adapterId,
+        ...(hostingAuthFile ? {hostingAuthFile} : {}),
       }))
       await phase('connecting')
       environment = await this.waitForEnrollment(args.workspaceId, name)
@@ -389,8 +392,9 @@ export class CloudAgentMachineService {
       return 'unavailable'
     }
     if (status !== 'running') await machine.resume()
+    const hostingAuthFile = await prepareCloudAgentPreviewAccess(machine)
     await this.runDetached(machine, cloudAgentStopHostCommand())
-    await this.runDetached(machine, cloudAgentRunCommand())
+    await this.runDetached(machine, cloudAgentRunCommand(process.env, hostingAuthFile))
     await this.dependencies.repository.patchSandboxLeaseUsage({
       workspaceId: args.workspaceId,
       leaseId: lease.id,

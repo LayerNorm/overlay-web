@@ -7,6 +7,7 @@ import { ACP_ADAPTER_MANIFESTS, resolveAcpAdapterManifest } from './adapter-mani
 
 export const agentHostConfigSchema = z.object({
   durableLifecycle: z.boolean().optional(),
+  hostingAuthFile: z.string().min(1).optional(),
   environmentId: z.string().min(1),
   workspaceId: z.string().min(1),
   controlPlaneUrl: z.string().url(),

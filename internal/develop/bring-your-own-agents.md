@@ -538,6 +538,18 @@ same environment before that date, update shared Vercel Preview `BOAT_API_KEY`,
 verify Preview access and production denial, then revoke the predecessor. Do not
 copy the production key or treat the exception as permission to expire other
 shared Preview credentials. No automatic renewal is configured.
+
+Protected PR Preview machines receive the existing environment-scoped hosting credential in
+a mode-0600 `preview-hosting.json` under host state. Managed provisioning and host restart
+prepare it through the machine file API; commands and saved configuration carry only its path
+(`--hosting-auth-file`). A compatible host verifies ownership, mode and exact HTTPS origin,
+then consumes/unlinks it before provider startup. Windows rejects this POSIX-only Cloud path.
+The in-memory transport adds hosting authentication only to that Preview's `/api/` origin and
+refuses redirects. Provider MCP uses a loopback relay authorized by the original active run token;
+hosting access stays out of provider environment/configuration and response headers. Application
+authentication, device signing and run fences still apply. Production never receives this file.
+Candidate source tests do not prove unattended enrollment: the compatible candidate image must
+pass fresh-machine Preview provisioning and resume without a manual shim before activation.
 An Overlay Cloud agent uses the same connected-agent protocol and host:
 
 - **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,
@@ -1177,9 +1189,9 @@ and cumulative machine baselines.
 The bridge remains protocol v1 with an explicitly negotiated lifecycle-v2 extension:
 optional execution fences and new observe/observation messages are sent only for v2
 runs. Hosts opt in using the same environment setting. Default legacy capability
-payloads omit the extension. Candidate packages are lockstep 0.4.0 and candidate
-image v8; publication is a separate main-only release workflow, not evidence from a
-source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
+payloads omit the extension. Candidate package versions remain lockstep in their package manifests; the candidate image
+version and adapter pins live in `infra/agent-image/versions.json`. Publication is a separate
+main-only release workflow, not evidence from a source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
 compatible active runs drain on their persisted version.
 
 Direct ACP and acpx advertise live reattachment and session loading separately from

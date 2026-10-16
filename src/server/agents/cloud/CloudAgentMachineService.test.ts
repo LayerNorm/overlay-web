@@ -4,6 +4,7 @@ import type { SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@ove
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
 import { CloudAgentMachineService } from './CloudAgentMachineService'
 import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentRunCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
+import { CLOUD_AGENT_PREVIEW_ACCESS_PATH } from './cloud-agent-preview-access'
 
 function fakeMachine(status: 'running' | 'stopped' = 'running', files: Record<string, string> = {}) {
   const written: string[] = []
@@ -119,6 +120,29 @@ test('a machine that never enrolls is deleted', async () => {
   const { service } = deps(machine, { enrolled: false })
   await assert.rejects(service.provision(provisionArgs), /did not enroll/)
   assert.deepEqual(calls, ['delete'])
+})
+
+test('Preview provision and resume prepare private access before launching the host, without putting its secret in commands', async () => {
+  const preview = {VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview', NEXT_PUBLIC_APP_URL: 'https://pr-247.preview.getoverlay.io',
+    VERCEL_GIT_PULL_REQUEST_ID: '247', VERCEL_AUTOMATION_BYPASS_SECRET: 'preview-private-fixture-secret'}
+  const previous = new Map(Object.keys(preview).map(key => [key, process.env[key]]))
+  Object.assign(process.env, preview)
+  try {
+    for (const mode of ['provision', 'resume', 'already-online']) {
+      const f = fakeMachine(mode === 'resume' ? 'stopped' : 'running'), order: string[] = []
+      const write = f.machine.writeFiles.bind(f.machine), run = f.machine.runCommand.bind(f.machine)
+      f.machine.writeFiles = async files => {order.push('private-access'); assert.equal(files[0].mode, 0o600); await write(files)}
+      f.machine.runCommand = async request => {order.push('command'); return run(request)}
+      const {service} = deps(f.machine, mode === 'resume' ? {env: environment({status: 'offline'})} : {})
+      if (mode === 'provision') await service.provision({...provisionArgs, serverUrl: preview.NEXT_PUBLIC_APP_URL})
+      else await service.wake({workspaceId: 'ws', environmentId: 'env-1'})
+      if (mode === 'already-online') {assert.deepEqual(order, []); continue}
+      assert.equal(order[0], 'private-access')
+      assert.deepEqual(f.written, [CLOUD_AGENT_PREVIEW_ACCESS_PATH])
+      assert.ok(f.commands.some(command => command.includes(`--hosting-auth-file '${CLOUD_AGENT_PREVIEW_ACCESS_PATH}'`)))
+      assert.ok(f.commands.every(command => !command.includes(preview.VERCEL_AUTOMATION_BYPASS_SECRET)))
+    }
+  } finally {for (const [key, value] of previous) {if (value === undefined) delete process.env[key]; else process.env[key] = value}}
 })
 
 test('wake resumes a stopped machine and restarts its host', async () => {

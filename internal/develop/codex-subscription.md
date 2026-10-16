@@ -17,6 +17,12 @@ adapter are three independent parts of the connected-agent system.
 
 **Known limit.** `auth.json` (with a short-lived access token) stays on the machine's disk after a run, until the next run overwrites it.
 
+Protected PR Preview hosting access is separate from Codex sign-in. The compatible host consumes
+a private one-shot access file before starting adapters and keeps hosting headers on its exact
+Preview API origin; MCP crosses a host loopback relay with the original run token. Neither the
+provider environment nor Codex `auth.json` contains the hosting credential. Fresh-image acceptance
+is required before claiming unattended Preview enrollment; a manual QA bootstrap is insufficient.
+
 **Verification status.** Unit and Convex tests cover the flow, the lock, and delivery. Live verification (a real ChatGPT approval, and two Codex agents on one account) needs the account owner to approve a device code; record the result here when done.
 
 ## Model choice
