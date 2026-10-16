@@ -32,3 +32,12 @@ export function assertCurrentDriveRun(claims: AgentDriveAuthorityClaims, current
     throw Error('DRIVE_RUN_UNAVAILABLE')
   }
 }
+
+/** Strip token envelope fields before calling strict backend function validators. */
+export function agentDriveAuthorityArgs(claims: AgentDriveAuthorityClaims): AgentDriveAuthorityClaims {
+  return {
+    actorUserId: claims.actorUserId, agentId: claims.agentId, environmentId: claims.environmentId,
+    bindingId: claims.bindingId, runId: claims.runId, sessionId: claims.sessionId, expiresAt: claims.expiresAt,
+    scope: claims.scope, ...(claims.execution ? { execution: claims.execution } : {}),
+  }
+}

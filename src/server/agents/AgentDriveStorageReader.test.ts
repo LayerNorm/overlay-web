@@ -39,3 +39,16 @@ test('unbounded objects, missing sources, insecure URLs and failed downloads are
   const insecure = new AgentDriveStorageReader({ ...defaults, async convexSource() { return { ...metadata, url: 'http://storage.invalid' } } })
   await assert.rejects(insecure.read(source, 100), /DRIVE_INVALID_STORAGE_URL/)
 })
+
+test('inline references fetch only the exact canonical note and detect size changes', async () => {
+  const ref = { kind: 'inline-ref' as const, fileId: 'note', updatedAt: 10, sizeBytes: bytes.length }
+  let reads = 0
+  const reader = new AgentDriveStorageReader({ ...defaults, async inlineSource(value) { assert.deepEqual(value, ref); reads++; return new TextDecoder().decode(bytes) } })
+  assert.equal(await reader.size(ref), bytes.length)
+  assert.equal(reads, 0)
+  assert.deepEqual(await reader.read(ref, 100), bytes)
+  assert.equal(reads, 1)
+  const changed = new AgentDriveStorageReader({ ...defaults, async inlineSource() { return 'changed' } })
+  await assert.rejects(changed.read(ref, 100), /DRIVE_SOURCE_CHANGED/)
+  await assert.rejects(reader.read(ref, 1), /DRIVE_FILE_TOO_LARGE/)
+})

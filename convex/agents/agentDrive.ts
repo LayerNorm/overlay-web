@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import type { Doc, Id } from '../_generated/dataModel'
 import { query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { loadScopeContext } from '../lib/resourceScope'
@@ -63,7 +64,7 @@ export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: A
 
 /** Small pages cap Convex read/return size even when inline file bodies approach the document limit. */
 export const manifestPageByServer = query({
-  args: { ...driveAuthorityArgs, cursor: v.optional(v.string()) },
+  args: { ...driveAuthorityArgs, cursor: v.optional(v.string()), metadataOnly: v.optional(v.boolean()) },
   returns: v.object({
     // Canonical rows are validated by the Files table schema, including its evolving optional fields.
     rows: v.array(v.any()), scope: driveScopeValidator, nextCursor: v.union(v.string(), v.null()),
@@ -73,12 +74,13 @@ export const manifestPageByServer = query({
     const { scope, scopeContext } = await requireDriveAuthority(ctx, args)
     const page = scope.kind === 'personal'
       ? await ctx.db.query('files').withIndex('by_workspaceId_userId_archivedAt', q => q.eq('workspaceId', scope.workspaceId).eq('userId', scope.ownerUserId).eq('archivedAt', undefined))
-        .paginate({ cursor: args.cursor ?? null, numItems: 8 })
+        .paginate({ cursor: args.cursor ?? null, numItems: args.metadataOnly ? 128 : 8, maximumBytesRead: 4 * 1024 * 1024 })
       : await ctx.db.query('files').withIndex('by_workspaceId_scope_archivedAt', q => q.eq('workspaceId', scope.workspaceId).eq('scope', 'workspace').eq('archivedAt', undefined))
-        .paginate({ cursor: args.cursor ?? null, numItems: 8 })
+        .paginate({ cursor: args.cursor ?? null, numItems: args.metadataOnly ? 128 : 8, maximumBytesRead: 4 * 1024 * 1024 })
     const rows = page.page.filter(row => row.deletedAt === undefined && row.archivedAt === undefined
       && rowScope(row) === scope.kind && canReadResource(row, scopeContext.viewer))
-    return { rows, scope, viewer: scopeContext.viewer, nextCursor: page.isDone ? null : page.continueCursor }
+    const manifestRows = args.metadataOnly ? rows.map(driveMetadata) : rows
+    return { rows: manifestRows, scope, viewer: scopeContext.viewer, nextCursor: page.isDone ? null : page.continueCursor }
   },
 })
 
@@ -87,15 +89,52 @@ export const storageSourceByServer = query({
   args: { ...driveAuthorityArgs, fileId: v.id('files'), storageId: v.id('_storage'), updatedAt: v.number() },
   returns: v.object({ url: v.string(), sizeBytes: v.number(), sha256: v.string() }),
   handler: async (ctx, args) => {
-    const { scope, scopeContext } = await requireDriveAuthority(ctx, args)
-    const file = await ctx.db.get(args.fileId)
-    if (!file || file.workspaceId !== scope.workspaceId || file.type !== 'file' || file.deletedAt !== undefined
-      || file.archivedAt !== undefined || rowScope(file) !== scope.kind || !canReadResource(file, scopeContext.viewer)
-      || (scope.kind === 'personal' && file.userId !== scope.ownerUserId)
-      || file.r2Key || file.textInObjectStore || file.storageId !== args.storageId
-      || (file.updatedAt ?? file.createdAt) !== args.updatedAt) throw Error('DRIVE_SOURCE_CHANGED')
+    const file = await requireDriveFile(ctx, args)
+    if (file.r2Key || file.textInObjectStore || file.storageId !== args.storageId) throw Error('DRIVE_SOURCE_CHANGED')
     const [metadata, url] = await Promise.all([ctx.db.system.get(args.storageId), ctx.storage.getUrl(args.storageId)])
     if (!metadata || !url) throw Error('DRIVE_FILE_UNAVAILABLE')
     return { url, sizeBytes: metadata.size, sha256: metadata.sha256 }
   },
 })
+
+export const authorizeByServer = query({
+  args: driveAuthorityArgs,
+  returns: v.null(),
+  handler: async (ctx, args) => { await requireDriveAuthority(ctx, args); return null },
+})
+
+/** Inline notes are read by exact revision, not retained across all manifest pages. */
+export const inlineSourceByServer = query({
+  args: { ...driveAuthorityArgs, fileId: v.id('files'), updatedAt: v.number() },
+  returns: v.object({ text: v.string() }),
+  handler: async (ctx, args) => {
+    const file = await requireDriveFile(ctx, args)
+    if (file.r2Key || file.storageId || file.textInObjectStore) throw Error('DRIVE_SOURCE_CHANGED')
+    return { text: file.textContent ?? file.content ?? '' }
+  },
+})
+
+export const fileByServer = query({
+  args: { ...driveAuthorityArgs, fileId: v.id('files'), updatedAt: v.number() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    return requireDriveFile(ctx, args)
+  },
+})
+
+function driveMetadata(row: Doc<'files'>) {
+  const { _id, userId, workspaceId, scope, name, parentId, type, kind, textInObjectStore, r2Key, storageId, mimeType, sizeBytes, createdAt, updatedAt } = row
+  const metadata = { _id, userId, workspaceId, scope, name, parentId, type, kind, textInObjectStore, r2Key, storageId, mimeType, sizeBytes, createdAt, updatedAt }
+  return type === 'file' && !r2Key && !storageId && !textInObjectStore
+    ? { ...metadata, driveInline: { sizeBytes: new TextEncoder().encode(row.textContent ?? row.content ?? '').byteLength } } : metadata
+}
+
+async function requireDriveFile(ctx: QueryCtx, args: AgentDriveAuthorityClaims & { serverSecret: string; fileId: Id<'files'>; updatedAt: number }) {
+  const { scope, scopeContext } = await requireDriveAuthority(ctx, args)
+  const file = await ctx.db.get(args.fileId)
+  if (!file || file.workspaceId !== scope.workspaceId || file.type !== 'file' || file.deletedAt !== undefined
+    || file.archivedAt !== undefined || rowScope(file) !== scope.kind || !canReadResource(file, scopeContext.viewer)
+    || (scope.kind === 'personal' && file.userId !== scope.ownerUserId)
+    || (file.updatedAt ?? file.createdAt) !== args.updatedAt) throw Error('DRIVE_SOURCE_CHANGED')
+  return file
+}

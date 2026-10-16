@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 4 manifest/download service now pins metadata pages to one database timestamp while checking live authority separately. Inline notes use exact-revision references; ready-file grants bind the full entry to its run/scope/attempt/expiry. Download readback verifies canonical bytes and checks revocation again before return. HTTP delivery, start-command token issuance, writes and host sync remain pending.
+
 - Phase 4 reads now have a default-off Convex authority gate on every bounded manifest page and exact-revision storage lookup. The real server reader bounds configured object-store/Convex reads and verifies Convex blob hashes; R2/S3 caps are enforced during streaming. HTTP delivery, atomic file commits, journaling, runtime sync and hosted acceptance remain pending.
 
 - Phase 0: required CI passes on the current preview. Real host/API counters and rendered preview QA are being checked. Smoke readback now reconstructs omitted content from API text parts and cancellation verifies the exact retained prefix; provider quota currently prevents a successful subscription smoke. Historical production error details were redacted, so their underlying causes remain unproven.

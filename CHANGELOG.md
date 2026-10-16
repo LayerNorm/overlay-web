@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Prepare consistent scoped drive manifests and authenticated download grants, with bounded metadata and exact-revision inline note reads. HTTP delivery and agent-turn integration remain pending.
+
 - Prepare scoped drive reads with live Convex authorization, exact file revisions and verified storage bytes. Enforce R2/S3 download limits while streaming. Drive HTTP delivery, file commits and host sync remain pending.
 
 - Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. HTTP delivery and runtime integration remain pending.

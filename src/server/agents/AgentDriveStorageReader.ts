@@ -6,10 +6,11 @@ import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { headObject } from '@/server/storage/object-store'
 import { readBoundedStorageBody } from '@/server/storage/read-bounded-storage-body'
-import type { AgentDriveAuthorityClaims } from '@/shared/agents/agent-drive-authority'
+import { agentDriveAuthorityArgs, type AgentDriveAuthorityClaims } from '@/shared/agents/agent-drive-authority'
 import type { AgentDriveSourceReader } from './AgentDriveMaterializer'
 
 type StoredSource = Parameters<AgentDriveSourceReader['size']>[0]
+type InlineSource = Extract<StoredSource, { kind: 'inline-ref' }>
 type ConvexSource = Extract<StoredSource, { kind: 'convex' }>
 type ConvexStorageMetadata = { url: string; sizeBytes: number; sha256: string }
 
@@ -18,11 +19,12 @@ export class AgentDriveStorageReader implements AgentDriveSourceReader {
     objectSize(key: string): Promise<number | null>
     readObject(key: string, maximumBytes: number): Promise<Uint8Array>
     convexSource(source: ConvexSource): Promise<ConvexStorageMetadata>
+    inlineSource?(source: InlineSource): Promise<string>
     fetch?: typeof fetch
   }) {}
 
   async size(source: StoredSource): Promise<number> {
-    const size = source.kind === 'object' ? await this.dependencies.objectSize(source.key)
+    const size = source.kind === 'inline-ref' ? source.sizeBytes : source.kind === 'object' ? await this.dependencies.objectSize(source.key)
       : (await this.dependencies.convexSource(source)).sizeBytes
     if (size === null) throw Error('DRIVE_FILE_UNAVAILABLE')
     if (!Number.isSafeInteger(size) || size < 0) throw Error('DRIVE_INVALID_SOURCE_SIZE')
@@ -31,6 +33,13 @@ export class AgentDriveStorageReader implements AgentDriveSourceReader {
 
   async read(source: StoredSource, maximumBytes: number): Promise<Uint8Array> {
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) throw Error('DRIVE_LIMIT_INVALID')
+    if (source.kind === 'inline-ref') {
+      if (source.sizeBytes > maximumBytes) throw Error('DRIVE_FILE_TOO_LARGE')
+      if (!this.dependencies.inlineSource) throw Error('DRIVE_FILE_UNAVAILABLE')
+      const bytes = new TextEncoder().encode(await this.dependencies.inlineSource(source))
+      if (bytes.byteLength !== source.sizeBytes || bytes.byteLength > maximumBytes) throw Error('DRIVE_SOURCE_CHANGED')
+      return bytes
+    }
     if (source.kind === 'object') {
       const bytes = await this.dependencies.readObject(source.key, maximumBytes)
       if (bytes.byteLength > maximumBytes) throw Error('DRIVE_FILE_TOO_LARGE')
@@ -56,6 +65,7 @@ export class AgentDriveStorageReader implements AgentDriveSourceReader {
 
 /** Scoped server adapter. Neither storage credentials nor storage URLs become host manifest fields. */
 export function createAgentDriveStorageReader(claims: AgentDriveAuthorityClaims): AgentDriveStorageReader {
+  const authority = agentDriveAuthorityArgs(claims)
   return new AgentDriveStorageReader({
     async objectSize(key) { return (await headObject(key))?.sizeBytes ?? null },
     async readObject(key, maximumBytes) {
@@ -63,11 +73,16 @@ export function createAgentDriveStorageReader(claims: AgentDriveAuthorityClaims)
       if (!store.downloadBuffer) throw Error('DRIVE_BOUNDED_STORAGE_UNAVAILABLE')
       return store.downloadBuffer(key, maximumBytes)
     },
+    async inlineSource(source) {
+      const value = await lazyConvex.query<{ text: string }>('agents/agentDrive:inlineSourceByServer', {
+        ...authority, serverSecret: getInternalApiSecret(), fileId: source.fileId, updatedAt: source.updatedAt,
+      }, { throwOnError: true })
+      if (!value) throw Error('DRIVE_FILE_UNAVAILABLE')
+      return value.text
+    },
     async convexSource(source) {
       const metadata = await lazyConvex.query<ConvexStorageMetadata>('agents/agentDrive:storageSourceByServer', {
-        actorUserId: claims.actorUserId, agentId: claims.agentId, environmentId: claims.environmentId,
-        bindingId: claims.bindingId, runId: claims.runId, sessionId: claims.sessionId, expiresAt: claims.expiresAt,
-        scope: claims.scope, ...(claims.execution ? { execution: claims.execution } : {}),
+        ...authority,
         serverSecret: getInternalApiSecret(), fileId: source.fileId, storageId: source.storageId, updatedAt: source.updatedAt,
       }, { throwOnError: true })
       if (!metadata) throw Error('DRIVE_FILE_UNAVAILABLE')

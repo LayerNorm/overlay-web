@@ -274,6 +274,15 @@ pages repeat membership, scope, binding, run and attempt checks behind the defau
 `OVERLAY_CONNECTED_AGENT_DRIVE` flag. Manifest HTTP/download endpoints, atomic file commits and
 host synchronization remain pending.
 
+Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
+do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;
+current authority is checked separately before each page and after materialization. The experimental
+`consistentQuery` API is isolated behind the repository, covered by a transport test and aborted
+after 20 seconds; never fall back to mixed-timestamp pages. Manifest metadata is capped at 32 MiB.
+Ready entries carry a purpose-separated download MAC bound to the run, scope, attempt, expiry,
+revision, path and content hash. Downloads reread Files and recheck authority after verifying bytes.
+This service still needs HTTP delivery, token issuance in start commands and host integration.
+
 Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
 is unavailable and the unchanged host conformance suite passes.
 

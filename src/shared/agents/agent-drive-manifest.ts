@@ -8,6 +8,7 @@ const fileRowSchema = z.object({
   scope: z.enum(['personal', 'workspace']).optional(), archivedAt: z.number().optional(), deletedAt: z.number().optional(),
   name: z.string(), parentId: z.string().nullable().optional(), type: z.enum(['file', 'folder']),
   kind: z.string().optional(), content: z.string().optional(), textContent: z.string().optional(),
+  driveInline: z.object({ sizeBytes: z.number().int().nonnegative() }).optional(),
   textInObjectStore: z.boolean().optional(), r2Key: z.string().optional(), storageId: z.string().optional(),
   mimeType: z.string().optional(), sizeBytes: z.number().int().nonnegative().optional(),
   createdAt: z.number(), updatedAt: z.number().optional(),
@@ -21,7 +22,7 @@ export type AgentDriveScope =
 export type AgentDriveCandidate = {
   fileId: string; path: string; kind: 'file' | 'folder'; updatedAt: number; ownerUserId: string
   mimeType?: string
-  source?: { kind: 'object'; key: string } | { kind: 'convex'; storageId: string; fileId: string; updatedAt: number } | { kind: 'inline'; text: string }
+  source?: { kind: 'object'; key: string } | { kind: 'convex'; storageId: string; fileId: string; updatedAt: number } | { kind: 'inline-ref'; fileId: string; updatedAt: number; sizeBytes: number } | { kind: 'inline'; text: string }
 }
 
 function inScope(row: DriveRow, scope: AgentDriveScope, viewer: ResourceViewer): boolean {
@@ -38,6 +39,7 @@ function sourceFor(row: DriveRow): AgentDriveCandidate['source'] {
   }
   if (row.storageId) return { kind: 'convex', storageId: row.storageId, fileId: row._id, updatedAt: row.updatedAt ?? row.createdAt }
   if ((row.kind === 'upload' || row.kind === 'output') && !row.mimeType?.startsWith('text/')) throw Error('DRIVE_MISSING_CANONICAL_OBJECT')
+  if (row.driveInline) return { kind: 'inline-ref', fileId: row._id, updatedAt: row.updatedAt ?? row.createdAt, sizeBytes: row.driveInline.sizeBytes }
   return { kind: 'inline', text: row.textContent ?? row.content ?? '' }
 }
 

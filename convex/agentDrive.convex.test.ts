@@ -103,3 +103,20 @@ test('Convex downloads require the exact accessible Files revision and recheck a
   await f.convex.run(ctx => ctx.db.patch(f.ids.binding, { enabled: false }))
   await expect(read()).rejects.toThrow(/DRIVE_RUN_UNAVAILABLE/)
 })
+
+test('metadata-only pages omit inline bodies and inline downloads enforce exact current revision', async () => {
+  const f = await fixture()
+  const page = await f.read({ metadataOnly: true })
+  expect(page.rows).toHaveLength(12)
+  expect(page.rows.every(row => row.content === undefined && row.textContent === undefined && row.driveInline.sizeBytes > 0)).toBe(true)
+  const row = page.rows[0]
+  const inlineRef = makeFunctionReference<'query'>('agents/agentDrive:inlineSourceByServer')
+  const fileRef = makeFunctionReference<'query'>('agents/agentDrive:fileByServer')
+  const args = { ...f.args, fileId: row._id, updatedAt: row.updatedAt }
+  const source = await f.convex.query(inlineRef, args)
+  expect(new TextEncoder().encode(source.text).byteLength).toBe(row.driveInline.sizeBytes)
+  expect((await f.convex.query(fileRef, args)).content).toBe(source.text)
+  await f.convex.run(ctx => ctx.db.patch(row._id, { updatedAt: row.updatedAt + 1, content: 'new bytes' }))
+  await expect(f.convex.query(inlineRef, args)).rejects.toThrow(/DRIVE_SOURCE_CHANGED/)
+  await expect(f.convex.query(fileRef, args)).rejects.toThrow(/DRIVE_SOURCE_CHANGED/)
+})
