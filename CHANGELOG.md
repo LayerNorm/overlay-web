@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add guarded native-session takeover that preserves identity and committed text while rejecting duplicate or mismatched execution claims.
+
 - Bind recovery stop receipts to the original execution and machine lease, and require authorization before resuming that exact machine.
 
 - Preserve an unconfirmed native connection after a close error, block replacement prompts and allow Stop to retry.

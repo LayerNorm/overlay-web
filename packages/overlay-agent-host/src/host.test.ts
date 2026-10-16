@@ -8,6 +8,9 @@ import { OVERLAY_AGENT_PROTOCOL_VERSION, canonicalEnrollmentProof, canonicalHost
 import { loadOrCreateDeviceKeyPair } from './device-key'
 import { diagnoseHost } from './doctor'
 import { FakeAgentAdapter } from './fake-adapter'
+import {AcpAgentAdapter} from './acp-adapter'
+import type {AgentAdapter, AgentAdapterSession} from './adapter'
+import {fileURLToPath} from 'node:url'
 import { resolveFilesystemScope } from './filesystem-policy'
 import { redact } from './logger'
 import { AgentHostRuntime } from './runtime'
@@ -57,6 +60,71 @@ test('a host without fenced restoration admission rejects the command before sta
     assert.match(controlPlane.acknowledgements[0]?.error?.message ?? '', /cannot admit fenced native restoration/)
     assert.equal(state.getSession('run'), undefined)
     assert.equal(eventTypes(controlPlane).includes('session_started'), false)
+  } finally {state.close(); await rm(directory, {recursive: true, force: true})}
+})
+
+test('fenced restoration loads the original native session and appends only new output at the canonical offset', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-native-restore-')), root = await realpath(directory)
+  const state = new SqliteHostStateStore(join(directory, 'host.sqlite'))
+  let loaded: AgentAdapterSession | undefined
+  const real = new AcpAgentAdapter({id: 'history', displayName: 'History fixture', command: process.execPath,
+    args: [fileURLToPath(new URL('./fixtures/acp-load-history-agent.mjs', import.meta.url))]})
+  if (!real.capability.recovery) throw Error('Fixture requires session loading')
+  real.capability.recovery.fencedSessionRestoration = true
+  const adapter: AgentAdapter = {capability: real.capability, discover: input => real.discover(input), async start(input, emit) {
+    loaded = await real.start(input, emit); return loaded
+  }}
+  try {
+    state.claimExecution('run', 'previous')
+    state.saveSession({runId: 'run', adapterId: 'history', remoteSessionId: 'original-session', workingDirectory: root,
+      execution: {attemptId: 'previous', generation: 1, hostBootId: 'old-boot'}})
+    state.saveAdapterSessionState('run', 'history', {identity: 'must survive takeover'})
+    const plane = new FakeControlPlane()
+    plane.pollCommands = async () => ({commands: plane.commands.splice(0), streaming: {textDeltas: true, heartbeats: true}})
+    const runtime = new AgentHostRuntime({environmentId: 'environment-1', workspaceId: 'workspace-1', durableLifecycle: true,
+      filesystem: {mode: 'selected_roots', roots: [root]}, adapters: [adapter], state, controlPlane: plane})
+    const start = {...command('restore', 'run', 1, 'start', {bindingId: 'binding', adapterId: 'history', workingDirectory: root,
+      sessionId: 'original-session', prompt: 'Continue after interruption', metadata: {recoveryTextOffset: 17},
+      restore: {previousExecution: {attemptId: 'previous', generation: 1, hostBootId: 'old-boot'},
+        providerStop: {provider: 'box', leaseId: 'original-lease', providerReference: 'original-machine', observedAt: Date.now()}}}),
+      execution: {attemptId: 'restored', generation: 2}}
+    plane.commands.push(start)
+    await runtime.pollOnce(0)
+    await waitFor(() => eventTypes(plane).includes('completed'))
+    const events = plane.applied.flatMap(batch => batch.events)
+    assert.deepEqual(events.filter(e => e.type === 'text_delta').map(e => e.payload), [{offset: 17, text: 'NEW_OUTPUT'}])
+    assert.ok(events.every(e => e.execution?.attemptId === 'restored' && e.execution.generation === 2))
+    assert.equal(state.getSession('run')?.remoteSessionId, 'original-session')
+    assert.deepEqual(state.getAdapterSessionState('run', 'history'), {identity: 'must survive takeover'})
+    assert.equal(state.replaceExecutionClaim('run', 'previous', 'another-attempt'), false)
+    plane.commands.push({...start, commandId: 'duplicate-restore', sequence: 2})
+    await assert.rejects(runtime.pollOnce(0), /live session|previous execution fence/)
+  } finally {await loaded?.stop(); state.close(); await rm(directory, {recursive: true, force: true})}
+})
+
+test('restoration refuses a changed physical working directory before starting its adapter', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-restore-scope-')), root = await realpath(directory)
+  const original = join(root, 'original'), other = join(root, 'other')
+  await mkdir(original); await mkdir(other)
+  const state = new SqliteHostStateStore(join(root, 'host.sqlite'))
+  try {
+    const fake = new FakeAgentAdapter()
+    const adapter: AgentAdapter = {capability: {...fake.capability,
+      recovery: {...fake.capability.recovery, fencedSessionRestoration: true}}, discover: () => fake.discover(),
+      async start() {assert.fail('A mismatched scope must not start a provider')}}
+    state.claimExecution('run', 'previous')
+    state.saveSession({runId: 'run', adapterId: 'fake', remoteSessionId: 'original-native', workingDirectory: original,
+      execution: {attemptId: 'previous', generation: 1}})
+    const plane = new FakeControlPlane()
+    plane.commands.push({...command('restore', 'run', 1, 'start', {bindingId: 'binding', adapterId: 'fake', workingDirectory: other,
+      sessionId: 'original-native', prompt: 'Continue', metadata: {recoveryTextOffset: 0},
+      restore: {previousExecution: {attemptId: 'previous', generation: 1},
+        providerStop: {provider: 'box', leaseId: 'lease', providerReference: 'machine', observedAt: 1}}}),
+      execution: {attemptId: 'new', generation: 2}})
+    const runtime = new AgentHostRuntime({environmentId: 'environment-1', workspaceId: 'workspace-1', durableLifecycle: true,
+      filesystem: {mode: 'selected_roots', roots: [root]}, adapters: [adapter], state, controlPlane: plane})
+    await assert.rejects(runtime.pollOnce(0), /original working directory/)
+    assert.equal(state.getSession('run')?.remoteSessionId, 'original-native')
   } finally {state.close(); await rm(directory, {recursive: true, force: true})}
 })
 

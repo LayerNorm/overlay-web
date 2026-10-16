@@ -154,6 +154,12 @@ export class SqliteHostStateStore {
     return this.database.prepare('INSERT OR IGNORE INTO execution_claims(run_id, attempt_id) VALUES (?, ?)').run(runId, attemptId).changes === 1
   }
 
+  replaceExecutionClaim(runId: string, previousAttemptId: string, nextAttemptId: string): boolean {
+    if (previousAttemptId === nextAttemptId) return false
+    return this.database.prepare('UPDATE execution_claims SET attempt_id=? WHERE run_id=? AND attempt_id=?')
+      .run(nextAttemptId, runId, previousAttemptId).changes === 1
+  }
+
   saveSession(session: StoredRemoteSession, now = Date.now()): void {
     this.database.prepare(`
       INSERT INTO remote_sessions(run_id, adapter_id, remote_session_id, working_directory, updated_at)

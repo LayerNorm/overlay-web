@@ -18,6 +18,8 @@ import { updateHostCapabilities } from './host-capabilities.js'
 import { PendingHostPrompts, quiesceHostRuns } from './runtime-shutdown.js'
 import {withRunPreparation} from './run-preparation.js'
 import {fetchProviderRunCredentials} from './provider-run-credentials.js'
+import {requireNativeRestorationSource} from './native-restoration.js'
+import {admitHostSession} from './runtime-session-admission.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
@@ -341,12 +343,17 @@ export class AgentHostRuntime {
     // The server delivers shutdowns for runs this host may never have seen (or whose
     // attempt was replaced): they cannot start a writer, so they bypass the fence.
     if (command.type === 'shutdown') return
+    const restoring = command.type === 'start' && command.payload.restore
+    if (restoring && command.type === 'start') {
+      if (this.sessions.has(command.runId)) throw Error('Cannot restore over a live session')
+      requireNativeRestorationSource(command, this.options.state.getSession(command.runId))
+    }
     const previous = this.executions.get(command.runId) ?? this.options.state.getSession(command.runId)?.execution
     const replacesPrevious = previous && (previous.attemptId !== command.execution.attemptId || previous.generation !== command.execution.generation)
     // The server only emits `fresh` on an explicit start_fresh: that user action is the
     // proof-of-intent that authorizes replacing a persisted execution whose writer state
     // is unknown (e.g. this host restarted while a detached adapter child was running).
-    if (replacesPrevious && !(command.type === 'start' && command.payload.fresh === true))
+    if (replacesPrevious && !restoring && !(command.type === 'start' && command.payload.fresh === true))
       throw new Error('execution replacement requires proof that the old writer stopped')
     this.executions.set(command.runId, { ...command.execution, hostBootId: this.bootId })
     if (replacesPrevious) this.terminalRuns.delete(command.runId)
@@ -363,33 +370,19 @@ export class AgentHostRuntime {
   }
 
   private async initializeSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
-    if (command.payload.restore) throw Error('This host cannot admit fenced native restoration yet')
-    const settings = agentSettingsSchema.parse(command.payload.metadata)
-    const offset = command.payload.metadata.recoveryTextOffset
-    if (offset !== undefined && (command.payload.fresh !== true || typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0))
-      throw Error('Invalid recovery text offset')
-    if (command.payload.fresh) {
-      // An explicit start_fresh authorizes teardown even when the persisted session is
-      // not live here: the old process may be an orphan, and refusing would leave the
-      // run unrecoverable.
-      await this.sessions.get(command.runId)?.stop('Starting a fresh session')
-      this.sessions.delete(command.runId)
-      this.options.state.deleteSession(command.runId)
-      this.options.state.deleteAdapterSessionState(command.runId)
-    } else if (this.sessions.has(command.runId)) return
-    else if (this.options.state.getSession(command.runId)) {
-      // A crash after the external write but before the local ack leaves an unknown outcome.
-      // Do not create another process or re-prompt it merely because delivery was repeated.
-      throw new Error('persisted execution exists; observe or inspect its outcome before starting again')
-    }
-    if (command.execution && !this.options.state.claimExecution(command.runId, command.execution.attemptId))
-      throw new Error('execution start outcome is unknown; inspect the existing process before continuing')
     const adapter = this.requireAdapter(command.payload.adapterId)
+    const admission = await admitHostSession({command, adapter, state: this.options.state, sessions: this.sessions})
+    if (admission.kind === 'already-active') return
+    const {settings, offset, restored} = admission
     const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
     if (credentials === 'unavailable') return
     const drive = await this.prepareDrive(command)
     const scope = drive ? { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
       : await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
+    if (restored && scope.workingDirectory !== restored.workingDirectory) {
+      await drive?.close()
+      throw Error('Native restoration cannot change its original working directory')
+    }
     if (this.shuttingDown) { await drive?.close(); throw Error('Host stopped before provider start') }
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
