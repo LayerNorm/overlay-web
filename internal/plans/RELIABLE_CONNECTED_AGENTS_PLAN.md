@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Hosted cancelled-row reload exposed history fallback dropping status-only parts. API serialization now retains lifecycle, approval and saved-file metadata together with legacy partial text; focused serialization and rendered-status regressions pass. Exact-head hosted reload verification remains pending.
+
 - Phase 0: current source passes required CI, all three host OS jobs and the exact-head Enhanced Preview build with hosted TypeScript validation. Clean Convex imports resolve canonical protocol source. Bounded history preserves Unicode; compiled memory reads use the store query. Historical production 500s had redacted diagnostics, so their underlying causes remain unproven.
 - Phase 1: byte-budget packing, ordered/coalesced streaming, independent command polling/background uploads and immutable retry boundaries are implemented. Cancellation preserves output. Buffered-wire regressions cover final-notification ordering and synchronous pending-text capture. Synthetic long-output/Stop/reload checks pass; full native-provider acceptance and package publication remain pending.
 - Phase 2: negotiated deltas, bounded anchors, canonical chunk storage and process-based liveness are implemented. Sidebar invalidation excludes text-only changes. A clean synthetic 30-minute Preview soak completed with exact full-byte/hash readback, no rejected batches or false stalls, and browser sampling below two seconds at p95. These limited browser windows are not a full-run latency trace or native-provider acceptance. Stop remains visible and cancelled output survives exact-head reload.
