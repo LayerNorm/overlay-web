@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add scoped receipt lookup for interrupted file writes so native recovery can distinguish committed work from writes fenced out by the replacement execution.
+
 - Connect run coordination to stopped-machine recovery, requiring durable continuation authorization before resume and preserving the original source fence on replay.
 
 - Queue native session continuation under a new execution generation while preserving the full answer, original settings and fixed deadline; reject stale authority and unresolved approvals.

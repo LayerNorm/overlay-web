@@ -1,10 +1,10 @@
 import {z} from 'zod'
-import type {MutationCtx} from '../_generated/server'
+import type {MutationCtx, QueryCtx} from '../_generated/server'
 import {currentRemoteAttempt} from '../agents/remoteRunModel'
 
-const recoveryMachineBinding = z.object({sandboxBilling: z.object({leaseId: z.string().min(1)})})
+export const recoveryMachineBinding = z.object({sandboxBilling: z.object({leaseId: z.string().min(1)})})
 
-export async function matchesCurrentRecoveryMachine(ctx: MutationCtx, input: {
+export async function matchesCurrentRecoveryMachine(ctx: MutationCtx | QueryCtx, input: {
   runId: string; environmentId: string; leaseId: string; providerReference: string
 }) {
   const [attempt, environment] = await Promise.all([

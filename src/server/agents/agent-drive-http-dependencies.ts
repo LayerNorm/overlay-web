@@ -6,10 +6,12 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { connectedAgentDriveEnabled, createAgentDriveService } from './create-agent-drive-service'
 import type { DriveHttpDependencies } from './agent-drive-http'
 import { createAgentDriveContentService } from './create-agent-drive-content-service'
+import {createAgentDriveRecoveryService} from './create-agent-drive-recovery-service'
 
 export const agentDriveHttpDependencies: DriveHttpDependencies = {
   enabled: connectedAgentDriveEnabled, service: createAgentDriveService,
   writes: createAgentDriveContentService,
+  recovery: createAgentDriveRecoveryService,
   limit: (request, token) => enforceRateLimits(request as NextRequest, [
     { bucket: 'agent-drive:ip', key: getClientIp(request), limit: 1200, windowMs: 60000 },
     { bucket: 'agent-drive:credential', key: hashOperationalIdentifier('agent-drive:v1', token), limit: 600, windowMs: 60000 },

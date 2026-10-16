@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { AgentDriveContentService, driveUploadRecordSchema, driveContentResultSchema } from '../src/server/agents/AgentDriveContentService'
 import { AgentDriveManifestService } from '../src/server/agents/AgentDriveManifestService'
 import { AgentDriveMaterializer } from '../src/server/agents/AgentDriveMaterializer'
-import { createAgentDriveTokens } from '../src/server/agents/agent-drive-token'
+import { agentDriveTokenInputSchema, createAgentDriveTokens } from '../src/server/agents/agent-drive-token'
 import { cleanupDriveVersions } from '../src/server/agents/cleanup-agent-drive-versions'
 import { AgentDriveClient } from '../packages/overlay-agent-host/src/drive-client'
 import { SqliteDriveJournal } from '../packages/overlay-agent-host/src/drive-journal'
@@ -15,6 +15,8 @@ import { AgentDriveCache } from '../packages/overlay-agent-host/src/drive-cache'
 import { SqliteDriveSyncState } from '../packages/overlay-agent-host/src/drive-sync-state'
 import { AgentDriveSynchronizer } from '../packages/overlay-agent-host/src/drive-sync'
 import { handleAgentDriveRequest } from '../src/server/agents/agent-drive-http'
+import {AgentDriveRecoveryService} from '../src/server/agents/AgentDriveRecoveryService'
+import {agentDriveAuthorityArgs} from '../src/shared/agents/agent-drive-authority'
 vi.mock('server-only', () => ({}))
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
@@ -285,6 +287,129 @@ function writeInput(sequence = 1) {
     uploadId: `24b3d8ed-21b2-43f3-9617-${String(sequence).padStart(12, '0')}`,
     operation: { kind: 'create', name: 'report.txt' }, sha256: writeHash, sizeBytes: 40000, mimeType: 'text/plain' }
 }
+
+const recoveryRead = makeFunctionReference<'query'>('agents/agentDriveRecovery:readByServer')
+async function replaceForDriveRecovery(f: Awaited<ReturnType<typeof fixture>>) {
+  await f.convex.run(async ctx => {
+    const source = await ctx.db.get(f.ids.session)
+    if (!source?.hardDeadlineAt) throw Error('Missing source fixture')
+    const now = Date.now()
+    await ctx.db.patch(source._id, {status: 'failed', recoveryCause: 'provider_isolated', endedAt: now, remoteSessionId: 'native-id',
+      capabilitySnapshot: {sandboxBilling: {leaseId: 'lease'}}})
+    await ctx.db.insert('agentRemoteSessions', {sessionId: 'next-session', attemptId: 'next-session', executionGeneration: 2,
+      workspaceId: 'w', environmentId: 'e', bindingId: 'b', runId: 'r', status: 'recovering', remoteSessionId: 'native-id',
+      commandCursor: 0, eventCursor: 0, hardDeadlineAt: source.hardDeadlineAt, createdAt: now, updatedAt: now,
+      capabilitySnapshot: {sandboxBilling: {leaseId: 'lease'}, nativeRestoration: {
+        previousExecution: {attemptId: 's', generation: 1}, nativeSessionId: 'native-id', commandId: 'restore-command',
+        providerStop: {provider: 'box', leaseId: 'lease', providerReference: 'machine', observedAt: now}}}})
+    await ctx.db.insert('agentSandboxLeases', {leaseId: 'lease', workspaceId: 'w', environmentId: 'e', provider: 'box',
+      providerReference: 'machine', status: 'running', reservedUntil: source.hardDeadlineAt, usage: {}, cleanupAttempts: 0, createdAt: now, updatedAt: now})
+    await ctx.db.patch(f.ids.run, {remoteLifecycle: {version: 2, revision: 2, phase: 'recovering', cause: 'native_restoration',
+      currentAttemptId: 'next-session', executionGeneration: 2, coordinatorGeneration: 1, coordinatorId: 'owner',
+      hardDeadlineAt: source.hardDeadlineAt, claimDeadlineAt: now + 120000,
+      providerStop: {provider: 'box', environmentId: 'e', leaseId: 'lease', providerReference: 'machine',
+        attemptId: 's', executionGeneration: 1, observedAt: now, recordedAtRevision: 0}}})
+  })
+  return {...f.args, sessionId: 'next-session', execution: {attemptId: 'next-session', generation: 2}}
+}
+function recoveryRequest(requestId: string, fingerprint: string, kind: 'content' | 'metadata' = 'content') {
+  return {action: 'recover', requestId, fingerprint, kind, previousExecution: {attemptId: 's', generation: 1}}
+}
+
+test('replacement reads immutable content and metadata receipts without replaying writes or exposing object keys', async () => {
+  const f = await fixture(), input = writeInput()
+  const upload = await f.convex.mutation(uploadIntent, {...f.args, ...input})
+  const content = await f.convex.mutation(uploadCommit, {...f.args, uploadId: input.uploadId,
+    verifiedSha256: input.sha256, verifiedSizeBytes: input.sizeBytes})
+  const metadataInput = {...f.args, requestId: 'recovery-mkdir-001', operation: {kind: 'mkdir', name: 'saved-folder'}}
+  const folder = await f.convex.mutation(metadataRef, metadataInput)
+  const metadata = await f.convex.run(ctx => ctx.db.query('agentDriveMetadataReceipts').withIndex('by_runId_requestId', q =>
+    q.eq('runId', 'r').eq('requestId', metadataInput.requestId)).unique())
+  if (!metadata) throw Error('Missing receipt')
+  const args = await replaceForDriveRecovery(f)
+  const read = (request: ReturnType<typeof recoveryRequest>) => f.convex.query(recoveryRead, {...args, request})
+  const request = recoveryRequest(input.requestId, upload.fingerprint)
+  const first = await read(request)
+  expect(first.resolution).toEqual({state: 'content_committed', result: content})
+  expect(await read(request)).toEqual(first)
+  expect(JSON.stringify(first)).not.toMatch(/stagingKey|finalKey|agent-staging|token/)
+  expect((await read(recoveryRequest(metadataInput.requestId, metadata.fingerprint, 'metadata'))).resolution)
+    .toEqual({state: 'metadata_committed', result: folder})
+  await expect(f.convex.mutation(uploadCommit, {...f.args, uploadId: input.uploadId,
+    verifiedSha256: input.sha256, verifiedSizeBytes: input.sizeBytes})).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+  await expect(f.convex.mutation(metadataRef, metadataInput)).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+})
+
+test('missing and pending old writes have definitive uncommitted outcomes only after the source is fenced', async () => {
+  const f = await fixture(), input = writeInput()
+  const upload = await f.convex.mutation(uploadIntent, {...f.args, ...input})
+  const request = recoveryRequest(input.requestId, upload.fingerprint)
+  await expect(f.convex.query(recoveryRead, {...f.args, request})).rejects.toMatchObject({data: 'DRIVE_RECOVERY_UNAVAILABLE'})
+  const args = await replaceForDriveRecovery(f)
+  expect((await f.convex.query(recoveryRead, {...args, request})).resolution).toEqual({state: 'uncommitted'})
+  for (const kind of ['content', 'metadata'] as const) expect((await f.convex.query(recoveryRead, {...args,
+    request: recoveryRequest('not-sent-request-001', 'not-sent-fingerprint', kind)})).resolution).toEqual({state: 'uncommitted'})
+  await expect(f.convex.mutation(uploadIntent, {...f.args, ...input})).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+  await expect(f.convex.mutation(uploadCommit, {...f.args, uploadId: input.uploadId,
+    verifiedSha256: input.sha256, verifiedSizeBytes: input.sizeBytes})).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+  expect((await f.convex.run(ctx => ctx.db.query('agentDriveUploads').withIndex('by_uploadId', q => q.eq('uploadId', input.uploadId)).unique()))?.state.kind).toBe('pending')
+})
+
+test('the recovery HTTP transport uses a current drive token and returns only the fenced immutable receipt', async () => {
+  const f = await fixture(), input = writeInput()
+  const upload = await f.convex.mutation(uploadIntent, {...f.args, ...input})
+  const args = await replaceForDriveRecovery(f)
+  const tokens = createAgentDriveTokens({secret: secret.padEnd(40, '0')})
+  const token = tokens.mint(agentDriveTokenInputSchema.strip().parse(args), args.expiresAt)
+  const oldToken = tokens.mint(agentDriveTokenInputSchema.strip().parse(f.args), f.args.expiresAt)
+  const service = new AgentDriveRecoveryService({verifyToken: tokens.verify,
+    read: (authority, request) => f.convex.query(recoveryRead, {serverSecret: secret, ...agentDriveAuthorityArgs(authority), request})})
+  const request = recoveryRequest(input.requestId, upload.fingerprint)
+  const send = (credential: string, body: unknown = request) => handleAgentDriveRequest(new Request('https://preview.invalid/api/agent-drive', {
+    method: 'POST', headers: {authorization: `Bearer ${credential}`, 'content-type': 'application/json'}, body: JSON.stringify(body),
+  }), {enabled: () => true, limit: async () => null, recovery: () => service,
+    service: () => {throw Error('Recovery must not enumerate or hydrate files')},
+    writes: () => {throw Error('Recovery must not access writable storage')}})
+  const response = await send(token)
+  expect(response.status).toBe(200)
+  expect(response.headers.get('cache-control')).toMatch(/no-store/)
+  expect(await response.json()).toEqual({requestId: request.requestId, previousExecution: request.previousExecution,
+    resolution: {state: 'uncommitted'}})
+  expect((await send(oldToken)).status).toBe(403)
+  expect((await send(token, {...request, scope: 'foreign'})).status).toBe(400)
+  await f.convex.run(ctx => ctx.db.patch(f.ids.environment, {revokedAt: Date.now()}))
+  expect((await send(token)).status).toBe(403)
+})
+
+test('recovery rejects changed request identity, source generation, scope, receipt, lease and revoked authority', async () => {
+  for (const scenario of ['fingerprint', 'kind', 'source', 'proof', 'lease', 'membership', 'source-scope', 'source-live', 'source-lease', 'retention', 'expiry']) {
+    const f = await fixture(), input = writeInput()
+    const upload = await f.convex.mutation(uploadIntent, {...f.args, ...input})
+    const args = await replaceForDriveRecovery(f), request = recoveryRequest(input.requestId, upload.fingerprint)
+    if (scenario === 'fingerprint') request.fingerprint = 'different'
+    if (scenario === 'kind') request.kind = 'metadata'
+    if (scenario === 'source') request.previousExecution.generation = 7
+    await f.convex.run(async ctx => {
+      if (scenario === 'membership') await ctx.db.patch(f.ids.membership, {status: 'suspended'})
+      if (scenario === 'source-scope') await ctx.db.patch(f.ids.session, {workspaceId: 'foreign'})
+      if (scenario === 'source-live') await ctx.db.patch(f.ids.session, {status: 'running'})
+      if (scenario === 'source-lease') await ctx.db.patch(f.ids.session, {capabilitySnapshot: {sandboxBilling: {leaseId: 'foreign-lease'}}})
+      if (scenario === 'retention') await ctx.db.patch(upload._id, {retireAt: Date.now() - 1})
+      if (scenario === 'proof') {
+        const run = await ctx.db.get(f.ids.run)
+        if (!run?.remoteLifecycle?.providerStop) throw Error('Missing proof')
+        await ctx.db.patch(run._id, {remoteLifecycle: {...run.remoteLifecycle,
+          providerStop: {...run.remoteLifecycle.providerStop, providerReference: 'foreign-machine'}}})
+      }
+      if (scenario === 'lease') {
+        const lease = await ctx.db.query('agentSandboxLeases').withIndex('by_leaseId', q => q.eq('leaseId', 'lease')).unique()
+        if (!lease) throw Error('Missing lease')
+        await ctx.db.patch(lease._id, {status: 'released'})
+      }
+    })
+    await expect(f.convex.query(recoveryRead, {...args, ...(scenario === 'expiry' ? {expiresAt: Date.now() - 1} : {}), request})).rejects.toThrow()
+  }
+})
 
 test('renewed authority retries an expired pending upload without changing its identity or consuming quota twice', async () => {
   vi.useFakeTimers({ toFake: ['Date'] })

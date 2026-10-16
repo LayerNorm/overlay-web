@@ -7,6 +7,8 @@ import type { AgentDriveManifestService, AgentDriveHostManifestEntry } from './A
 
 import { driveMetadataBodySchema } from './agent-drive-metadata'
 import { driveUploadBodySchema, driveCommitBodySchema, type AgentDriveContentService } from './AgentDriveContentService'
+import {driveRecoveryRequestSchema} from '@layernorm/overlay-agent-bridge-protocol'
+import type {AgentDriveRecoveryService} from './AgentDriveRecoveryService'
 
 const MAX_BODY_BYTES = 32 * 1024
 const MAX_RANGE_BYTES = 1024 * 1024
@@ -15,6 +17,7 @@ const bodySchema = z.discriminatedUnion('action', [
   driveMetadataBodySchema,
   driveUploadBodySchema,
   driveCommitBodySchema,
+  driveRecoveryRequestSchema,
   z.object({ action: z.literal('download'), entry: z.record(z.unknown()), downloadMac: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
     offset: z.number().int().nonnegative().max(16 * 1024 * 1024), length: z.number().int().positive().max(MAX_RANGE_BYTES) }).strict(),
 ])
@@ -23,6 +26,7 @@ export type DriveHttpDependencies = {
   enabled(): boolean
   service(): Pick<AgentDriveManifestService, 'manifest' | 'download' | 'metadata'>
   writes?(): Pick<AgentDriveContentService, 'intent' | 'commit'>
+  recovery?(): Pick<AgentDriveRecoveryService, 'recover'>
   limit(request: Request, token: string): Promise<Response | null>
 }
 /** Bearer-only machine transport. Cookies, URL tokens and host-selected scope do not authorize it. */
@@ -36,6 +40,11 @@ export async function handleAgentDriveRequest(request: Request, dependencies: Dr
     if (limited) { for (const [name, value] of Object.entries(headers)) limited.headers.set(name, value); return limited }
     if (request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json') return failure(415, 'DRIVE_JSON_REQUIRED')
     const body = await readBody(request)
+    if (body.action === 'recover') {
+      const recovery = dependencies.recovery?.()
+      if (!recovery) return failure(503, 'DRIVE_RECOVERY_UNAVAILABLE')
+      return Response.json(await recovery.recover(token, body), {headers})
+    }
     if (body.action === 'upload' || body.action === 'commit') {
       const writes = dependencies.writes?.()
       if (!writes) return failure(503, 'DRIVE_WRITE_UNAVAILABLE')
@@ -78,6 +87,7 @@ export function driveErrorResponse(error: unknown): Response {
     DRIVE_TOO_MANY_ENTRIES: 413, DRIVE_METADATA_LIMIT: 413, DRIVE_FILE_TOO_LARGE: 413,
     STORAGE_READ_LIMIT_EXCEEDED: 413, STORAGE_READ_SIZE_CHANGED: 409,
     DRIVE_SNAPSHOT_UNAVAILABLE: 503, DRIVE_BACKEND_UNAVAILABLE: 503,
+    DRIVE_RECOVERY_UNAVAILABLE: 409,
   }
   return failure(statuses[code] ?? 500, statuses[code] ? code : 'DRIVE_REQUEST_FAILED')
 }

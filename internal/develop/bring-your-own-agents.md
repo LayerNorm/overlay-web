@@ -1441,6 +1441,14 @@ only while the exact queued command remains pending; claimed or unknown outcomes
 Old unfinished commands become ordered shutdowns, retaining the host's command sequence.
 The queued restoration has a bounded preparation window without asserting provider health;
 queueing alone does not claim successful restoration or enable the capability.
+A current drive credential can use the read-only `recover` action for the immediately previous
+execution's immutable request receipt. The backend requires the native restoration snapshot, exact
+provider-stop proof, isolated source attempt, unchanged unique machine lease and current scope/access.
+The request selects only its original id, kind and fingerprint. A committed result contains no storage
+keys; a missing or pending request is definitively uncommitted because the old generation cannot
+write after replacement. A conflicting identity, unavailable receipt retention or unknown response
+blocks recovery. This lookup neither replays a write nor authorizes adopting another execution's
+local journal. Host journal reconciliation remains required before enabling fenced restoration.
 The machine recovery gate observes a stopped Boat machine without resuming it, waits for the
 backend to authorize a queued restoration, and rechecks the same active lease before and after
 resume. The run coordinator retries this inspection only for an eligible recovery state and an
