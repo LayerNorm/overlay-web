@@ -946,8 +946,8 @@ all staged bytes within the file limit, verifies size/SHA-256, and writes that v
 a separate server-only final key before the guarded Files transaction. Retrying a confirmed commit
 returns its original result without resealing. Signed size/checksum constraints include empty files.
 Only the configured store supplies reads/writes; there is no silent cross-provider fallback.
-Current-head hosted acceptance, start-command issuance and runtime synchronization
-remain required before the persistent drive can be enabled.
+Start-command issuance and runtime synchronization are implemented. Keep general activation
+gated on current-head native-provider, Files and recovery acceptance.
 
 Device-signed `POST /api/v1/agent-environments/[environmentId]/drive-credentials` issues or
 renews a separate run-scoped drive token. The new method is granted only after drive v1 capability
@@ -961,7 +961,8 @@ wire schemas. The client requires a manifest header and matching terminal entry 
 streams/ranges, verifies full hashes, keeps tokens in memory and renews through a single flight.
 Renewal cannot switch scope; only an explicit 401 receives one retry. Signed staging PUTs omit
 drive/device credentials and refuse redirects. Ambiguous writes require a journaled same-id retry.
-Persistent journaling and runtime hydration/synchronization remain pending.
+Persistent journals, hydration and runtime synchronization are implemented; their ownership
+and shutdown rules are described below. Package/image activation remains gated on acceptance.
 
 A successful options discovery with no model catalog offers only the runtime default and the
 saved choice marked unreported; it never substitutes the legacy hard-coded list. The model
@@ -1374,6 +1375,13 @@ Prepare a newly approved dedicated drive before resolving the complete physical 
 the Cloud drive may legitimately not exist yet. Provider credentials are checked before acquiring
 the cache lease; no adapter starts until hydration succeeds. Independent, single-flight host
 heartbeats continue while initialization waits, and shutdown drains an already-started heartbeat.
+Host shutdown first stops command intake and periodic drive work, then confirms adapter stops,
+settles background prompts and drains pending text before closing drive journals and leases.
+It waits for an in-flight upload to finish its SQLite acknowledgement; unattempted events stay
+durable for the next host. Shutdown-induced provider errors are not terminal run outcomes.
+If a provider stop is unconfirmed, cache ownership is retained and the CLI does not explicitly
+close its state store while callbacks can still arrive. This does not establish restart recovery.
+An abort during hydration cannot launch a provider afterwards.
 The host transport exposes that refresh through the existing signed credential-rotation endpoint.
 Concurrent refresh callers share one rotation; callbacks retain its complete method grant and
 filesystem policy, and a response for another environment is rejected before replacing credentials.

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { homedir, platform, release } from 'node:os'
+import { setTimeout as wait } from 'node:timers/promises'
 import {
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
@@ -13,7 +14,8 @@ import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
 import { RuntimeDriveController } from './runtime-drive-controller.js'
 import { HostHeartbeat } from './host-heartbeat.js'
 import { updateHostCapabilities } from './host-capabilities.js'
-import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter.js'
+import { PendingHostPrompts, quiesceHostRuns } from './runtime-shutdown.js'
+import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
 import { createRunStream } from './run-stream.js'
@@ -59,6 +61,11 @@ export class AgentHostRuntime {
   private readonly executions = new Map<string, { attemptId: string; generation: number; hostBootId?: string }>()
   private resolvedThroughSequence = 0
   private readonly drives = new Map<string, RuntimeDriveController>()
+  private shuttingDown = false
+  private shutdownDrained = false
+  private readonly prompts = new PendingHostPrompts(error => this.logger.warn('prompt callbacks failed', {error: safeError(error)}))
+
+  get canCloseState(): boolean { return this.shutdownDrained }
 
   constructor(private readonly options: AgentHostRuntimeOptions) {
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.capability.id, adapter]))
@@ -91,6 +98,7 @@ export class AgentHostRuntime {
     // Sequential on purpose: commands arrive ordered and may build on each
     // other (e.g. stop after start), so they must be processed in order.
     for (const command of response.commands) {
+      if (signal?.aborted) break
       // react-doctor-disable-next-line react-doctor/async-await-in-loop
       await this.processCommand(command)
     }
@@ -100,26 +108,38 @@ export class AgentHostRuntime {
 
   async run(signal: AbortSignal): Promise<void> {
     let attempt = 0
-    await this.refreshHostState()
-    this.hostHeartbeat.start(signal, error => this.logger.warn('host heartbeat deferred', { error: safeError(error) }))
+    const abort = () => { this.shuttingDown = true }
+    signal.addEventListener('abort', abort, { once: true })
+    if (signal.aborted) abort()
     try {
+      if (signal.aborted) return
+      await this.refreshHostState()
+      this.hostHeartbeat.start(signal, error => this.logger.warn('host heartbeat deferred', { error: safeError(error) }))
       while (!signal.aborted) {
         try {
           if (Date.now() >= this.nextCapabilityRefreshAt) this.scheduleCapabilityRefresh()
           if (this.hostHeartbeat.due()) await this.hostHeartbeat.send()
           const retryAfterMs = await this.pollOnce(25_000, signal)
           attempt = 0
-          if (retryAfterMs > 0) await abortableDelay(retryAfterMs, signal)
+          if (retryAfterMs > 0) await wait(retryAfterMs, undefined, {signal})
         } catch (error) {
           if (signal.aborted) break
           const delay = nextReconnectDelay(attempt++)
           this.logger.warn('agent host poll failed', { error: safeError(error), delay })
-          await abortableDelay(delay, signal).catch(() => undefined)
+          await wait(delay, undefined, {signal}).catch(() => undefined)
         }
       }
     } finally {
-      await this.hostHeartbeat.stop()
-      this.stopBackgroundUploads()
+      this.shuttingDown = true
+      const heartbeatStopped = this.hostHeartbeat.stop()
+      try {
+        await quiesceHostRuns({sessions: this.sessions.values(), prompts: this.prompts, streams: this.streams.values(), drives: this.drives.values()})
+        await heartbeatStopped
+        await this.capabilityRefresh
+        this.stopBackgroundUploads()
+        await this.flushing?.catch(error => this.logger.warn('queued events retained during shutdown', {error: safeError(error)}))
+        this.shutdownDrained = true
+      } finally { this.stopBackgroundUploads(); await heartbeatStopped; signal.removeEventListener('abort', abort) }
     }
   }
 
@@ -149,7 +169,7 @@ export class AgentHostRuntime {
   }
 
   private scheduleCapabilityRefresh(): void {
-    if (this.capabilityRefresh || this.uploadsStopped) return
+    if (this.capabilityRefresh || this.uploadsStopped || this.shuttingDown) return
     this.capabilityRefresh = this.refreshHostState().catch(error => {
       this.nextCapabilityRefreshAt = Date.now() + 60_000
       this.logger.warn('adapter options refresh deferred', { error: safeError(error) })
@@ -166,6 +186,7 @@ export class AgentHostRuntime {
   }
 
   async processCommand(command: AgentHostCommand): Promise<void> {
+    if (this.shuttingDown) throw Error('Agent host shutdown is in progress')
     if (command.environmentId !== this.options.environmentId || command.workspaceId !== this.options.workspaceId) {
       throw new Error('command scope does not match this host')
     }
@@ -230,6 +251,7 @@ export class AgentHostRuntime {
 
   private async flushOutboxInternal(): Promise<void> {
     for (;;) {
+      if (this.shuttingDown && this.uploadsStopped) return
       const events = this.options.state.pendingUploadEvents(100)
       if (events.length === 0) return
       const packed = packEventBatch(this.options.environmentId, events)
@@ -291,8 +313,8 @@ export class AgentHostRuntime {
     const session = await this.requireSession(command.runId, command.type === 'reconnect' ? command.payload.remoteSessionId : undefined)
     if (command.type === 'prompt') {
       const execution = this.executions.get(command.runId)
-      void session.prompt(command.payload.prompt).catch(error => this.emit(command.runId,
-        { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }, execution))
+      this.prompts.track(session.prompt(command.payload.prompt).catch(error => this.emit(command.runId,
+        { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }, execution)))
     }
     else if (command.type === 'approval_response') await session.approve(command.payload.requestKey, command.payload.optionId)
     else if (command.type === 'elicitation_response') await session.elicit(command.payload.requestKey, command.payload.action, command.payload.content)
@@ -302,7 +324,7 @@ export class AgentHostRuntime {
       if (command.execution && stored && this.requireAdapter(stored.adapterId).capability.protocol === 'eve') {
         const process = await session.observe?.() ?? 'unknown'
         await this.emit(command.runId, { type: 'process_observation', payload: { process, recoveryOutcome: process === 'live' ? 'attached_live' : 'unavailable' } })
-        if (process === 'live') void session.resume().catch(error => this.emit(command.runId, { type: 'failed', payload: { code: 'native_stream_unavailable', message: safeError(error), retryable: true } }))
+        if (process === 'live') this.prompts.track(session.resume().catch(error => this.emit(command.runId, { type: 'failed', payload: { code: 'native_stream_unavailable', message: safeError(error), retryable: true } })))
         return
       }
       await session.resume()
@@ -353,6 +375,7 @@ export class AgentHostRuntime {
     const drive = await this.prepareDrive(command)
     const scope = drive ? { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
       : await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
+    if (this.shuttingDown) { await drive?.close(); throw Error('Host stopped before provider start') }
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
     const emit = this.createStream(command.runId, execution, drive, offset)
@@ -374,8 +397,8 @@ export class AgentHostRuntime {
       ...(command.execution ? { execution: { ...command.execution, hostBootId: this.bootId } } : {}),
     })
     await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
-    if (!session.initialPromptHandled) {
-      void session.prompt(command.payload.prompt).catch((error) => emit({ type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
+    if (!this.shuttingDown && !session.initialPromptHandled) {
+      this.prompts.track(session.prompt(command.payload.prompt).catch((error) => emit({ type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } })))
     }
     return
   }
@@ -459,7 +482,7 @@ export class AgentHostRuntime {
     return adapter
   }
 
-  private createStream(runId: string, execution = this.executions.get(runId), drive?: RuntimeDrive, textBaseOffset?: number) {
+  private createStream(runId: string, execution = this.executions.get(runId), drive?: RuntimeDrive, textBaseOffset?: number): EmitAgentEvent {
     this.streams.get(runId)?.stop()
     const negotiated = this.streamingNegotiated
     const stream = createRunStream(event => this.emit(runId, event, execution), {
@@ -470,10 +493,13 @@ export class AgentHostRuntime {
       onError: error => this.logger.warn('run heartbeat deferred', { runId, error: safeError(error) }),
     })
     this.streams.set(runId, stream)
-    if (!drive) return stream.emit
-    const controller = new RuntimeDriveController(drive, stream.emit, this.options.drive?.syncIntervalMs)
-    this.drives.set(runId, controller)
-    return controller.emit
+    let forward: EmitAgentEvent = stream.emit
+    if (drive) {
+      const controller = new RuntimeDriveController(drive, stream.emit, this.options.drive?.syncIntervalMs)
+      this.drives.set(runId, controller)
+      forward = controller.emit
+    }
+    return event => this.shuttingDown && ['completed', 'failed', 'cancelled'].includes(event.type) ? Promise.resolve() : forward(event)
   }
 
   /**
@@ -482,6 +508,7 @@ export class AgentHostRuntime {
    */
   private async emit(runId: string, event: NormalizedAgentEvent,
     execution = this.executions.get(runId)): Promise<void> {
+    if (this.shuttingDown && ['completed', 'failed', 'cancelled'].includes(event.type)) return
     const stored: Omit<AgentHostEvent, 'sourceSequence'> = {
       protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
       ...(execution ? { execution } : {}),
@@ -536,10 +563,3 @@ export class AgentHostRuntime {
 function safeError(error: unknown): string { return error instanceof Error ? error.message.slice(0, 2_000) : 'Unknown host error' }
 
 function streamKey(runId: string, attemptId?: string) { return `${runId}\u0000${attemptId ?? ''}` }
-
-function abortableDelay(milliseconds: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds)
-    signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason) }, { once: true })
-  })
-}

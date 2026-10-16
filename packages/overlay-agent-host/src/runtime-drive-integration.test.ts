@@ -180,7 +180,7 @@ test('host heartbeats continue during slow hydration and concurrent attempts sha
     const afterShutdown = heartbeats
     context.mock.timers.tick(120000)
     assert.equal(heartbeats, afterShutdown, 'shutdown must clear the host heartbeat timer')
-    await f.emit({ type: 'completed', payload: { usage: {} } })
+    assert.equal(f.starts.length, 0, 'a shutdown during hydration must not launch a provider afterwards')
   } finally {
     controller.abort(); releaseHydration(); releaseHeartbeat(); await running
     await f.cleanup()
@@ -194,8 +194,8 @@ test('strict old servers can decline drive capability without losing supported e
       f.options.controlPlane.updateCapabilities = async capabilities => {
         attempts.push(capabilities)
         if (capabilities.drive) throw new ControlPlaneRequestError(status)
+        controller.abort()
       }
-      controller.abort()
       if (status === 401) {
         await assert.rejects(f.runtime.run(controller.signal), error => error instanceof ControlPlaneRequestError && error.status === 401)
         assert.equal(attempts.length, 1)
@@ -208,4 +208,38 @@ test('strict old servers can decline drive capability without losing supported e
       }
     } finally { await f.cleanup() }
   }
+})
+
+test('shutdown during adapter initialization stops the returned session without sending its first prompt', async () => {
+  const f = await fixture(), controller = new AbortController()
+  const adapter = f.options.adapters[0], start = adapter.start.bind(adapter)
+  let stopped = false
+  try {
+    adapter.start = async (input, emit) => {
+      const session = await start(input, emit)
+      controller.abort()
+      return {...session, async stop() { stopped = true; await session.stop() }}
+    }
+    f.options.controlPlane.pollCommands = async () => ({ commands: [f.command] })
+    await f.runtime.run(controller.signal)
+    assert.equal(f.starts.length, 1)
+    assert.equal(stopped, true)
+    assert.equal(f.order.includes('prompt'), false)
+    assert.equal(f.runtime.canCloseState, true)
+  } finally { controller.abort(); await f.cleanup() }
+})
+
+test('an already aborted host does not discover capabilities, heartbeat or poll commands', async () => {
+  const f = await fixture(), controller = new AbortController()
+  let requests = 0
+  try {
+    f.options.controlPlane.updateCapabilities = async () => { requests++ }
+    f.options.controlPlane.heartbeat = async () => { requests++ }
+    f.options.controlPlane.pollCommands = async () => { requests++; return { commands: [f.command] } }
+    controller.abort()
+    await f.runtime.run(controller.signal)
+    assert.equal(requests, 0)
+    assert.equal(f.starts.length, 0)
+    assert.equal(f.runtime.canCloseState, true)
+  } finally { await f.cleanup() }
 })

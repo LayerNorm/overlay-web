@@ -88,5 +88,5 @@ export function createRunStream(emit: EmitAgentEvent, options: {
   const timer = setInterval(() => { void heartbeat().catch(options.onError) }, options.heartbeatMs ?? 10_000)
   timer.unref?.()
   const coalesced = coalesceTextCheckpoints(forward)
-  return { emit: coalesced, heartbeat, stop() { terminal = true; clearInterval(timer); openTools.clear(); previousText = '' } }
+  return { emit: coalesced, heartbeat, drain: coalesced.flush, stop() { terminal = true; clearInterval(timer); openTools.clear(); previousText = '' } }
 }

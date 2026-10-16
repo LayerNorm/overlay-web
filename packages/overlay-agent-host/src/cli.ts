@@ -193,7 +193,7 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
   process.once('SIGINT', () => controller.abort(new Error('SIGINT')))
   process.once('SIGTERM', () => controller.abort(new Error('SIGTERM')))
   logger.info('agent host started', { environmentId: config.environmentId, adapters: adapters.map((adapter) => adapter.capability.id) })
-  try { await runtime.run(controller.signal) } finally { state.close() }
+  try { await runtime.run(controller.signal) } finally { if (runtime.canCloseState) state.close() }
 }
 
 function buildAdapters(configs: AgentHostConfigAdapter[], stateDirectory: string): AgentAdapter[] {
