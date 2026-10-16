@@ -214,6 +214,7 @@ function buildAdapters(configs: AgentHostConfigAdapter[], stateDirectory: string
     if (adapter.protocol === 'fake') return new FakeAgentAdapter()
     if (adapter.protocol === 'acpx') return new AcpxAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, agent: adapter.agent, stateDirectory,
+      ...(adapter.fencedSessionRestoration === true ? {fencedSessionRestoration: true} : {}),
       ...(adapter.env ? { env: adapter.env } : {}),
       ...(ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent] ? { registryOverrides: { [adapter.agent]: ACPX_AGENT_LAUNCH_OVERRIDES[adapter.agent]! } } : {}),
     })
@@ -227,6 +228,7 @@ function buildAdapters(configs: AgentHostConfigAdapter[], stateDirectory: string
     })
     return new AcpAgentAdapter({
       id: adapter.id, displayName: adapter.displayName, command: adapter.command,
+      ...(adapter.fencedSessionRestoration === true ? {fencedSessionRestoration: true} : {}),
       ...(adapter.args ? { args: adapter.args } : {}), ...(adapter.env ? { env: adapter.env } : {}),
       ...(isHermesManifestAdapter(adapter) ? { verify: verifyHermesAcpReadiness } : {}),
     })

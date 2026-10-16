@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Allow explicit per-adapter native restoration acceptance on durable hosts while keeping existing agents opted out.
+
 - Receive Stop during native startup preparation without discarding buffered output or admitting a new provider, while preserving ordered command acknowledgements.
 
 - Drain isolated native output before a server-acknowledged startup boundary, preserving buffered work and cancellation while fencing new provider health and approvals.

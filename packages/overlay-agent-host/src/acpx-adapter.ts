@@ -66,6 +66,8 @@ export function acpxAgentNameFor(adapterId: string): string | undefined {
 export type AcpxAdapterOptions = {
   id: string
   displayName: string
+  /** Explicit per-adapter opt-in after native restoration acceptance. Defaults off. */
+  fencedSessionRestoration?: boolean
   /** acpx agent name (`claude`, `codex`, …) or a key of `registryOverrides`. */
   agent: string
   /** Where acpx keeps session records so a later run can resume the session. */
@@ -100,7 +102,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
     this.capability = {
       id: options.id, displayName: options.displayName, protocol: 'acp' as const,
       supports: { prompt: true, approval: true, cancel: true, resume: true },
-      recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false },
+      recovery: { ...(options.fencedSessionRestoration === true ? {fencedSessionRestoration: true} : {}), liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false },
     }
     const pinned = pinnedAcpxLaunch(options.agent)
     this.registry = createAgentRegistry({ overrides: {

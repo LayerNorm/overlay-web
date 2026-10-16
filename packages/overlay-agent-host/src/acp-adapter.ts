@@ -35,6 +35,8 @@ export function overlayMcpServers(metadata: Record<string, unknown>, agentSuppor
 export type AcpAdapterOptions = {
   id: string
   displayName: string
+  /** Explicit per-adapter opt-in after native restoration acceptance. Defaults off. */
+  fencedSessionRestoration?: boolean
   command: string
   args?: string[]
   env?: Record<string, string>
@@ -68,7 +70,7 @@ export class AcpAgentAdapter implements AgentAdapter {
     this.capability = {
       id: options.id, displayName: options.displayName, protocol: 'acp' as const,
       supports: { prompt: true, approval: true, cancel: true, resume: true },
-      recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false },
+      recovery: { ...(options.fencedSessionRestoration === true ? {fencedSessionRestoration: true} : {}), liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false },
     }
   }
 

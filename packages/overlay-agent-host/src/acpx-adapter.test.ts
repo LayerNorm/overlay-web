@@ -300,3 +300,15 @@ test('sign-in failures are recognised, and ordinary failures are not', () => {
     assert.equal(isAuthFailureMessage(message), false, message)
   }
 })
+
+
+test('acpx advertises fenced restoration only for an explicitly opted-in adapter', async () => {
+  for (const enabled of [undefined, false, true]) {
+    const adapter = new AcpxAgentAdapter({id: 'native', displayName: 'Native', agent: 'codex', stateDirectory: tmpdir(),
+      ...(enabled === undefined ? {} : {fencedSessionRestoration: enabled})})
+    const capability = await adapter.discover()
+    assert.equal(capability.recovery?.fencedSessionRestoration, enabled === true ? true : undefined)
+    assert.equal(capability.recovery?.interruptedTurnContinuation, false)
+    assert.equal(capability.recovery?.approvalRestoration, false)
+  }
+})

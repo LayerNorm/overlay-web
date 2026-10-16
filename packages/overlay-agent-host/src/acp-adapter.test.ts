@@ -177,3 +177,15 @@ test('the Overlay MCP server is offered only to HTTP-capable agents over a safe 
   assert.deepEqual(overlayMcpServers({ overlayMcp: { url: 'http://evil.example/mcp', token: 't' } }, true), [])
   assert.equal(overlayMcpServers({ overlayMcp: { url: 'http://localhost:3000/api/agent-mcp', token: 't' } }, true).length, 1)
 })
+
+
+test('direct ACP advertises fenced restoration only for an explicitly opted-in adapter', async () => {
+  for (const enabled of [undefined, false, true]) {
+    const adapter = new AcpAgentAdapter({id: 'native', displayName: 'Native', command: process.execPath,
+      ...(enabled === undefined ? {} : {fencedSessionRestoration: enabled})})
+    const capability = await adapter.discover()
+    assert.equal(capability.recovery?.fencedSessionRestoration, enabled === true ? true : undefined)
+    assert.equal(capability.recovery?.interruptedTurnContinuation, false)
+    assert.equal(capability.recovery?.approvalRestoration, false)
+  }
+})

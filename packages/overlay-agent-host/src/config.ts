@@ -15,28 +15,29 @@ export const agentHostConfigSchema = z.object({
   stateDirectory: z.string().min(1),
   filesystem: filesystemGrantSchema,
   adapters: z.array(z.union([
-    z.object({ manifest: z.enum(Object.keys(ACP_ADAPTER_MANIFESTS) as [keyof typeof ACP_ADAPTER_MANIFESTS, ...(keyof typeof ACP_ADAPTER_MANIFESTS)[]]), env: z.record(z.string(), z.string()).optional() }).strict(),
+    z.object({ manifest: z.enum(Object.keys(ACP_ADAPTER_MANIFESTS) as [keyof typeof ACP_ADAPTER_MANIFESTS, ...(keyof typeof ACP_ADAPTER_MANIFESTS)[]]), env: z.record(z.string(), z.string()).optional(), fencedSessionRestoration: z.boolean().optional() }).strict(),
     z.object({ id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('fake') }).strict(),
     z.object({
       id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('acp'),
-      command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional(),
+      command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional(), fencedSessionRestoration: z.boolean().optional(),
     }).strict(),
     z.object({
       id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('acpx'),
-      agent: z.string().min(1), env: z.record(z.string(), z.string()).optional(),
+      agent: z.string().min(1), env: z.record(z.string(), z.string()).optional(), fencedSessionRestoration: z.boolean().optional(),
     }).strict(),
     z.object({
       id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('eve'),
       host: z.string().url(), bearerTokenEnv: z.string().min(1).optional(),
     }).strict(),
   ])).min(1),
-}).strict()
+}).strict().refine(config => config.durableLifecycle === true || !config.adapters.some(adapter => 'fencedSessionRestoration' in adapter && adapter.fencedSessionRestoration === true),
+  {message: 'Fenced session restoration requires durable lifecycle negotiation'})
 type AgentHostFileConfig = z.infer<typeof agentHostConfigSchema>
 export type AgentHostConfig = Omit<AgentHostFileConfig, 'adapters'> & {
   adapters: Array<
     | { id: string; displayName: string; protocol: 'fake' }
-    | { id: string; displayName: string; protocol: 'acp'; command: string; args?: string[]; env?: Record<string, string> }
-    | { id: string; displayName: string; protocol: 'acpx'; agent: string; env?: Record<string, string> }
+    | { id: string; displayName: string; protocol: 'acp'; command: string; args?: string[]; env?: Record<string, string>; fencedSessionRestoration?: boolean }
+    | { id: string; displayName: string; protocol: 'acpx'; agent: string; env?: Record<string, string>; fencedSessionRestoration?: boolean }
     | { id: string; displayName: string; protocol: 'eve'; host: string; bearerTokenEnv?: string }
   >
   credential?: string
@@ -50,7 +51,7 @@ export async function loadAgentHostConfig(path: string): Promise<AgentHostConfig
       if (!('manifest' in adapter)) return adapter
       const manifest = resolveAcpAdapterManifest(adapter.manifest)
       if (!manifest) throw new Error(`unknown ACP adapter manifest: ${adapter.manifest}`)
-      return { ...manifest, args: [...manifest.args], ...('env' in adapter && adapter.env ? { env: adapter.env } : {}) }
+      return { ...manifest, args: [...manifest.args], ...(adapter.fencedSessionRestoration !== undefined ? {fencedSessionRestoration: adapter.fencedSessionRestoration} : {}), ...('env' in adapter && adapter.env ? { env: adapter.env } : {}) }
     }),
   }
   const stored = await loadStoredConnection(config.stateDirectory)

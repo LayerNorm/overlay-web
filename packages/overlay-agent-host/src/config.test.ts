@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { saveAgentHostConfig } from './config.js'
+import { agentHostConfigSchema, loadAgentHostConfig, saveAgentHostConfig } from './config.js'
 
 test('enrollment restart configuration is private and excludes credentials', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-host-config-'))
@@ -37,4 +37,32 @@ test('enrollment restart configuration is private and excludes credentials', asy
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
+})
+
+
+test('native restoration is an explicit per-adapter opt-in requiring durable lifecycle and survives private config reload', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-native-config-'))
+  const path = join(directory, 'config.json')
+  const base = {environmentId: 'environment', workspaceId: 'workspace', controlPlaneUrl: 'https://example.com/host/',
+    stateDirectory: directory, filesystem: {mode: 'selected_roots' as const, roots: ['/workspace']}}
+  try {
+    for (const adapter of [
+      {manifest: 'claude-code' as const},
+      {id: 'direct', displayName: 'Direct', protocol: 'acp' as const, command: 'agent'},
+      {id: 'codex', displayName: 'Codex', protocol: 'acpx' as const, agent: 'codex'},
+    ]) {
+      assert.equal(agentHostConfigSchema.safeParse({...base, adapters: [adapter]}).success, true)
+      assert.equal(agentHostConfigSchema.safeParse({...base, adapters: [{...adapter, fencedSessionRestoration: true}]}).success, false)
+      await writeFile(path, JSON.stringify({...base, durableLifecycle: true, adapters: [{...adapter, fencedSessionRestoration: true}]}), {mode: 0o600})
+      const loaded = await loadAgentHostConfig(path)
+      assert.equal(loaded.durableLifecycle, true)
+      assert.equal('fencedSessionRestoration' in loaded.adapters[0] && loaded.adapters[0].fencedSessionRestoration, true)
+    }
+    assert.equal(agentHostConfigSchema.safeParse({...base, durableLifecycle: true, adapters: [
+      {id: 'fake', displayName: 'Fake', protocol: 'fake', fencedSessionRestoration: true},
+    ]}).success, false)
+    assert.equal(agentHostConfigSchema.safeParse({...base, durableLifecycle: true, adapters: [
+      {id: 'eve', displayName: 'Eve', protocol: 'eve', host: 'https://example.com', fencedSessionRestoration: true},
+    ]}).success, false)
+  } finally {await rm(directory, {recursive: true, force: true})}
 })

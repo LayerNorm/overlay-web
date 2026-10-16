@@ -1468,7 +1468,10 @@ The bridge reserves an explicit `restore` start payload with the original native
 previous execution fence and stopped-provider receipt. Its independent optional
 `fencedSessionRestoration` capability does not enable live interrupted-turn reattachment.
 Hosts without the completed admission path reject that payload before starting a session;
-the capability remains unadvertised until the full restoration path is implemented.
+the capability defaults off. An individual ACP/acpx adapter or manifest entry may explicitly set
+`fencedSessionRestoration: true` in its private host configuration, only with `durableLifecycle: true`.
+This opt-in is for owned native acceptance before rollout; existing agents and shared machine images
+remain unchanged. It does not enable live interrupted-turn continuation or approval restoration.
 Host admission checks the original native id, adapter, previous execution/boot, next generation,
 canonical text offset and new-attempt drive descriptor. It rejects an in-memory writer, atomically
 transfers the durable execution claim once, retains adapter identity and requires the same physical

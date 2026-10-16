@@ -156,3 +156,11 @@ Unknown/orphaned execution needs inspection before another writer can start.
 Upgrade only idle/drained hosts; do not restart active non-restorable work.
 
 Streaming uses a durable background outbox with byte-budget uploads and coalesced text. Checkpoints exceeding one upload are visibly shortened; completion continues. Never rewrite attempted sequences on retry. Upgrade only idle/drained hosts.
+
+
+An ACP/acpx adapter (including a manifest entry) may opt into guarded native recovery with
+`fencedSessionRestoration: true` in its private configuration. This requires
+`durableLifecycle: true` on the host and defaults off. Enable it only for adapters that have passed
+native recovery acceptance. The server still requires isolation of the old provider, the original
+conversation identity, current authority and a startup acknowledgement; the option does not allow
+live interrupted-turn continuation or restore pending approvals.
