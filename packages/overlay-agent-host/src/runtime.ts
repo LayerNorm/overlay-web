@@ -11,6 +11,8 @@ import {
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
 import { RuntimeDriveController } from './runtime-drive-controller.js'
+import { HostHeartbeat } from './host-heartbeat.js'
+import { updateHostCapabilities } from './host-capabilities.js'
 import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
@@ -50,7 +52,7 @@ export class AgentHostRuntime {
   private streamingNegotiated = false
   private readonly streams = new Map<string, ReturnType<typeof createRunStream>>()
   private readonly terminalRuns = new Set<string>()
-  private lastHeartbeatAt = 0
+  private readonly hostHeartbeat: HostHeartbeat
   private nextCapabilityRefreshAt = 0
   private capabilityRefresh: Promise<void> | undefined
   private readonly bootId = randomUUID()
@@ -61,6 +63,7 @@ export class AgentHostRuntime {
   constructor(private readonly options: AgentHostRuntimeOptions) {
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.capability.id, adapter]))
     this.logger = options.logger ?? new StructuredLogger()
+    this.hostHeartbeat = new HostHeartbeat(() => this.heartbeat())
   }
 
   updateFilesystemGrant(grant: FilesystemGrant): void {
@@ -98,21 +101,26 @@ export class AgentHostRuntime {
   async run(signal: AbortSignal): Promise<void> {
     let attempt = 0
     await this.refreshHostState()
-    while (!signal.aborted) {
-      try {
-        if (Date.now() >= this.nextCapabilityRefreshAt) this.scheduleCapabilityRefresh()
-        if (Date.now() - this.lastHeartbeatAt >= 30_000) await this.heartbeat()
-        const retryAfterMs = await this.pollOnce(25_000, signal)
-        attempt = 0
-        if (retryAfterMs > 0) await abortableDelay(retryAfterMs, signal)
-      } catch (error) {
-        if (signal.aborted) break
-        const delay = nextReconnectDelay(attempt++)
-        this.logger.warn('agent host poll failed', { error: safeError(error), delay })
-        await abortableDelay(delay, signal).catch(() => undefined)
+    this.hostHeartbeat.start(signal, error => this.logger.warn('host heartbeat deferred', { error: safeError(error) }))
+    try {
+      while (!signal.aborted) {
+        try {
+          if (Date.now() >= this.nextCapabilityRefreshAt) this.scheduleCapabilityRefresh()
+          if (this.hostHeartbeat.due()) await this.hostHeartbeat.send()
+          const retryAfterMs = await this.pollOnce(25_000, signal)
+          attempt = 0
+          if (retryAfterMs > 0) await abortableDelay(retryAfterMs, signal)
+        } catch (error) {
+          if (signal.aborted) break
+          const delay = nextReconnectDelay(attempt++)
+          this.logger.warn('agent host poll failed', { error: safeError(error), delay })
+          await abortableDelay(delay, signal).catch(() => undefined)
+        }
       }
+    } finally {
+      await this.hostHeartbeat.stop()
+      this.stopBackgroundUploads()
     }
-    this.stopBackgroundUploads()
   }
 
   private async refreshHostState(): Promise<void> {
@@ -134,42 +142,10 @@ export class AgentHostRuntime {
         filesystem: this.options.filesystem,
         maxConcurrentRuns: Math.max(1, this.adapters.size),
       }
-      try { await this.updateCapabilitiesWithDriveFallback(capabilities) }
-      catch (error) {
-        if (!(error instanceof ControlPlaneRequestError) || error.status !== 400) throw error
-        const { mcp: _mcp, ...withoutMcp } = capabilities
-        void _mcp
-        try { await this.updateCapabilitiesWithDriveFallback(withoutMcp) }
-        catch (legacyError) {
-          if (!(legacyError instanceof ControlPlaneRequestError) || legacyError.status !== 400) throw legacyError
-          const withoutOptions = { ...withoutMcp, adapters: capabilities.adapters.map(capability => {
-            const { options: _options, ...legacy } = capability
-            void _options
-            return legacy
-          }) }
-          let accepted = false
-          if (capabilities.adapters.some(capability => capability.options)) {
-            try { await this.updateCapabilitiesWithDriveFallback(withoutOptions); accepted = true }
-            catch (retryError) { if (!(retryError instanceof ControlPlaneRequestError) || retryError.status !== 400) throw retryError }
-          }
-          const { streaming: _streaming, ...legacy } = withoutOptions
-          void _streaming
-          if (!accepted) await this.updateCapabilitiesWithDriveFallback(legacy)
-        }
-      }
+      await updateHostCapabilities(this.options.controlPlane, capabilities)
     }
     this.nextCapabilityRefreshAt = Date.now() + 24 * 60 * 60_000
-    await this.heartbeat()
-  }
-
-  private async updateCapabilitiesWithDriveFallback(capabilities: Parameters<NonNullable<AgentControlPlaneClient['updateCapabilities']>>[0]) {
-    try { await this.options.controlPlane.updateCapabilities?.(capabilities) }
-    catch (error) {
-      if (!(error instanceof ControlPlaneRequestError) || error.status !== 400 || !capabilities.drive) throw error
-      const { drive: _drive, ...legacy } = capabilities
-      void _drive
-      await this.options.controlPlane.updateCapabilities?.(legacy)
-    }
+    await this.hostHeartbeat.send()
   }
 
   private scheduleCapabilityRefresh(): void {
@@ -182,7 +158,6 @@ export class AgentHostRuntime {
 
   private async heartbeat(): Promise<void> {
     await this.options.controlPlane.heartbeat?.()
-    this.lastHeartbeatAt = Date.now()
     if (this.options.durableLifecycle) for (const [runId, session] of this.sessions) {
       const execution = this.executions.get(runId)
       if (!execution || this.terminalRuns.has(runId)) continue
@@ -370,11 +345,11 @@ export class AgentHostRuntime {
     if (command.execution && !this.options.state.claimExecution(command.runId, command.execution.attemptId))
       throw new Error('execution start outcome is unknown; inspect the existing process before continuing')
     const adapter = this.requireAdapter(command.payload.adapterId)
-    let scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
     const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
     if (credentials === 'unavailable') return
     const drive = await this.prepareDrive(command)
-    if (drive) scope = { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
+    const scope = drive ? { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
+      : await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
     const emit = this.createStream(command.runId, execution, drive)

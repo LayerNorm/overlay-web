@@ -26,3 +26,8 @@ Quiet transcript output is not proof of process loss. A healthy pending approval
 Lifecycle-v2 runs awaiting cancellation remain unresolved until a host stop or
 provider isolation is confirmed. A disconnected host exceeding a grace period
 cannot be treated as stopped; its execution and billing hold may still be active.
+
+The host's thirty-second environment heartbeat runs independently of command polling,
+including hydration and provider startup. Concurrent heartbeat requests coalesce, and
+shutdown clears the timer and drains a request already in flight. This reports host
+connectivity; it does not claim that a provider process is live before it starts.

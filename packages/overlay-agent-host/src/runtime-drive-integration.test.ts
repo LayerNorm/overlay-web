@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import type { AgentHostCommand, DriveCredentialsRequest, EventBatch, FilesystemGrant } from '@layernorm/overlay-agent-bridge-protocol'
+import type { AgentHostCommand, DriveCredentialsRequest, EventBatch, FilesystemGrant, HostCapabilities } from '@layernorm/overlay-agent-bridge-protocol'
 import type { AgentAdapter, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 import { AgentHostRuntime, type AgentHostRuntimeOptions } from './runtime.js'
 import { SqliteHostStateStore } from './state.js'
@@ -101,6 +101,20 @@ test('unavailable provider credentials never acquire a drive lease or launch an 
   } finally { await f.cleanup() }
 })
 
+test('a newly approved drive directory is prepared before resolving all physical grant roots', async () => {
+  const f = await fixture()
+  try {
+    await rm(f.drive, { recursive: true })
+    if (f.options.filesystem.mode !== 'selected_roots' || !f.options.drive?.create) throw Error('Missing fixture filesystem')
+    f.options.filesystem.roots.push(f.drive)
+    const create = f.options.drive.create
+    f.options.drive.create = async input => { await mkdir(f.drive); return create(input) }
+    await f.runtime.processCommand(f.command)
+    assert.equal(f.starts[0]?.workingDirectory, f.drive)
+    await f.emit({ type: 'completed', payload: { usage: {} } })
+  } finally { await f.cleanup() }
+})
+
 test('drive metadata is refused on hosts without signed refresh support, before adapter start', async () => {
   const f = await fixture()
   try {
@@ -109,4 +123,63 @@ test('drive metadata is refused on hosts without signed refresh support, before 
     assert.equal(f.starts.length, 0)
     assert.equal(f.order.includes('hydrate'), false)
   } finally { await f.cleanup() }
+})
+
+test('host heartbeats continue during slow hydration and concurrent attempts share one request', async context => {
+  const f = await fixture()
+  let releaseHydration: () => void = () => {}, releaseHeartbeat: () => void = () => {}, enteredHydration: () => void = () => {}
+  const hydrationGate = new Promise<void>(resolve => { releaseHydration = resolve })
+  const heartbeatGate = new Promise<void>(resolve => { releaseHeartbeat = resolve })
+  const hydrating = new Promise<void>(resolve => { enteredHydration = resolve })
+  const controller = new AbortController()
+  let running: Promise<void> | undefined, heartbeats = 0
+  try {
+    context.mock.timers.enable({ apis: ['Date', 'setInterval'] })
+    const create = f.options.drive?.create
+    if (!create || !f.options.drive) throw Error('Missing fixture drive')
+    f.options.drive.create = async input => { enteredHydration(); await hydrationGate; return create(input) }
+    f.options.controlPlane.heartbeat = async () => { if (++heartbeats > 1) await heartbeatGate }
+    f.options.controlPlane.pollCommands = async () => ({ commands: [f.command] })
+    running = f.runtime.run(controller.signal)
+    await hydrating
+    assert.equal(heartbeats, 1)
+    assert.equal(f.starts.length, 0)
+    context.mock.timers.tick(30000)
+    assert.equal(heartbeats, 2)
+    context.mock.timers.tick(90000)
+    assert.equal(heartbeats, 2, 'slow heartbeat requests must not accumulate')
+    controller.abort()
+    releaseHydration(); releaseHeartbeat()
+    await running
+    const afterShutdown = heartbeats
+    context.mock.timers.tick(120000)
+    assert.equal(heartbeats, afterShutdown, 'shutdown must clear the host heartbeat timer')
+    await f.emit({ type: 'completed', payload: { usage: {} } })
+  } finally {
+    controller.abort(); releaseHydration(); releaseHeartbeat(); await running
+    await f.cleanup()
+  }
+})
+
+test('strict old servers can decline drive capability without losing supported extensions or masking auth errors', async () => {
+  for (const status of [400, 401]) {
+    const f = await fixture(), attempts: HostCapabilities[] = [], controller = new AbortController()
+    try {
+      f.options.controlPlane.updateCapabilities = async capabilities => {
+        attempts.push(capabilities)
+        if (capabilities.drive) throw new ControlPlaneRequestError(status)
+      }
+      controller.abort()
+      if (status === 401) {
+        await assert.rejects(f.runtime.run(controller.signal), error => error instanceof ControlPlaneRequestError && error.status === 401)
+        assert.equal(attempts.length, 1)
+      } else {
+        await f.runtime.run(controller.signal)
+        assert.equal(attempts.length, 2)
+        assert.equal(attempts[1]?.drive, undefined)
+        assert.deepEqual(attempts[1]?.mcp, { approvalBridge: true })
+        assert.deepEqual(attempts[1]?.streaming, { textDeltas: true, heartbeats: true })
+      }
+    } finally { await f.cleanup() }
+  }
 })

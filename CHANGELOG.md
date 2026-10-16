@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep host heartbeats running during initialization and create newly approved drive directories before resolving filesystem roots.
+
 - Let already enrolled drive-capable hosts renew their scoped drive credential method without changing other credential permissions.
 
 - Keep Stop visible while a chat reply is running.
