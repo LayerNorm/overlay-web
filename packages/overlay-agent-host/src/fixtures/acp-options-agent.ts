@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
 
@@ -17,7 +17,14 @@ function record(value: unknown) {
 const stream = acp.ndJsonStream(Writable.toWeb(process.stdout) as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>)
 await acp.agent({ name: 'options-fixture' })
   .onRequest(acp.methods.agent.initialize, () => ({ protocolVersion: acp.PROTOCOL_VERSION, agentCapabilities: { loadSession: true } }))
-  .onRequest(acp.methods.agent.session.new, () => ({ sessionId: 'options-session', configOptions: choices }))
+  .onRequest(acp.methods.agent.session.new, async ({params}) => {
+    const gate = process.env.FIXTURE_DISCOVERY_GATE
+    if (gate) {
+      record({kind: 'discovery', cwd: params.cwd})
+      while (!existsSync(gate)) await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    return { sessionId: 'options-session', configOptions: choices }
+  })
   .onRequest(acp.methods.agent.session.load, () => ({ configOptions: choices }))
   .onRequest(acp.methods.agent.session.setConfigOption, ({ params }) => {
     const option = choices.find(choice => choice.id === params.configId)

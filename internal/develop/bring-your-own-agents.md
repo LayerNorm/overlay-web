@@ -900,13 +900,14 @@ normalized Agent Bridge Protocol.
 
 The Phase 3 candidate reads model, effort and mode selectors from `session/new` configuration
 options (legacy model/mode lists remain supported). Direct ACP and acpx apply settings before
-each prompt. Discovery creates a temporary session without a prompt or workspace MCP tools,
+each prompt. Discovery uses a private OS temporary directory outside the working drive and creates a temporary session without a prompt or workspace MCP tools,
 cleans its directory, and refreshes after authenticated starts and every 24 hours. Options are
 reported on environment capabilities; the editor uses only its agent's bound environment.
 Cloud defaults to advertised Auto; local/VPS defaults to advertised Accept edits. Missing modes
 retain the agent's own default. Explicit unsupported settings fail visibly. acpx uses exact
 host/image adapter pins, preferring the matching installed image binary over its older registry
 ranges. These candidate changes still require hosted/provider acceptance before release.
+If no separate temporary directory is available, discovery retains the default catalog; it never puts scratch state into synced Files.
 
 Phase 4 source includes a dedicated `AgentDriveCache` foundation for a child of an approved root.
 It validates portable relative paths, rejects symlink/special-file snapshots, bounds reads and

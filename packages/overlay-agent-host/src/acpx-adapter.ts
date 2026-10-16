@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createAcpRuntime,
@@ -23,6 +23,7 @@ import { applyAgentSettings } from './acp-settings.js'
 import { pinnedAcpxLaunch } from './adapter-manifests.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 import { actionTitle } from './action-title.js'
+import {createDiscoveryWorkspace} from './discovery-workspace.js'
 
 /**
  * Overlay adapter ids → acpx agent names. acpx resolves each name to a pinned
@@ -110,7 +111,8 @@ export class AcpxAgentAdapter implements AgentAdapter {
       throw new Error(`acpx does not know the agent "${this.options.agent}"`)
     }
     if (!input || (this.capability.options && Date.now() - this.capability.options.discoveredAt < 24 * 60 * 60_000)) return this.capability
-    const directory = await mkdtemp(join(input.workingDirectory, '.overlay-discovery-'))
+    const directory = await createDiscoveryWorkspace(input)
+    if (!directory) return this.capability
     const runtime = this.runtimeFor(directory, input.credentials, { stateDirectory: directory, timeoutMs: 15000 })
     let handle: AcpRuntimeHandle | undefined
     try {

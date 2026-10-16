@@ -1,8 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 import * as acp from '@agentclientprotocol/sdk'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 import type { AdapterCapability, AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
@@ -12,6 +11,7 @@ import { applyAcpSettings } from './acp-settings.js'
 import { orderedAcpUpdates } from './ordered-acp-updates.js'
 import { actionTitle } from './action-title.js'
 import {processGroupHasLiveMembers, signalProcessGroup} from './process-group.js'
+import {createDiscoveryWorkspace} from './discovery-workspace.js'
 
 /**
  * Overlay sends each turn an MCP server (its workspace tools: notes, files,
@@ -75,7 +75,8 @@ export class AcpAgentAdapter implements AgentAdapter {
   async discover(input?: Parameters<AgentAdapter['discover']>[0]) {
     await this.options.verify?.()
     if (!input || (this.capability.options && Date.now() - this.capability.options.discoveredAt < 24 * 60 * 60_000)) return this.capability
-    const directory = await mkdtemp(join(input.workingDirectory, '.overlay-discovery-'))
+    const directory = await createDiscoveryWorkspace(input)
+    if (!directory) return this.capability
     let probe: AgentAdapterSession | undefined
     try {
       // Session creation reads the agent's catalog; discovery never sends a prompt or offers workspace tools.

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep agent option-discovery scratch state outside the synced drive so it cannot appear as saved folders.
+
 - Select enrollment verification words with cryptographic bounded sampling independent of vocabulary size.
 
 - Count a native action and its attached terminal output once in live tool groups and completed work summaries while retaining both details.
