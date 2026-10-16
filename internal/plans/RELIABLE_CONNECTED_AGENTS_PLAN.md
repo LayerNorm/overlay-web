@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- The current candidate now passes fresh unattended Claude enrollment, native full-file hash/MCP checks and a foreground integrity monitor. Its nonsecret ACP identity matches the actual native conversation, and independent OS readback finds no remaining native task process after completion. Reload preserves the completed answer and settled tool count. Full-run visible latency and forced continuation remain unproven.
+
 - The native restoration wire contract now distinguishes loading the original session under a stopped-provider receipt from starting fresh. It rejects contradictory or incomplete payloads, preserves legacy capability shapes and negotiates fenced loading separately from live reattachment. Host admission still rejects restoration until the execution takeover and drive reconciliation path is implemented; no recovery capability is enabled by this contract alone.
 
 - Phase 5 has an authorization-before-resume machine gate: it observes an already-stopped Boat machine, waits for the durable restoration authorization and rechecks the exact lease around resume. Orchestration tests cover rejection, live work, concurrent resume, unsupported providers and replacement during authorization or boot. The native continuation caller remains pending.
