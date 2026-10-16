@@ -354,3 +354,5 @@ Render streamed text as complete formatted chunks. Markdown defaults to paragrap
 blocks plus a shimmed in-flight tail, with no per-character pacing or character
 spans. Room/agent transcripts suppress inline markers and keep one loading-dots
 row at the bottom throughout the run, including while tools are working.
+
+Cancelled and failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.

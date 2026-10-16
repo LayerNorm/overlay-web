@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep written narrative visible when a connected-agent run is cancelled or fails; only tool details fold into the work summary.
+
 - Refresh preview API sessions during long smoke runs before retrying an unauthenticated request once, preserving test continuity across access-token expiry.
 
 - Render live agent replies in formatted chunks with bottom loading dots. Correct smoke text readback for API responses that expose text only in message parts, and require exact prefix preservation for cancellation acceptance.

@@ -3,6 +3,7 @@ import { buildAssistantVisualSequence, splitUserDisplayText } from '@overlay/cha
 import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
 
 export type RoomMessagePart = {
+  toolInvocation?: Record<string, unknown>
   type?: string
   text?: string
   url?: string

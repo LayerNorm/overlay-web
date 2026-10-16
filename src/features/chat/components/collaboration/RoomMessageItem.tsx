@@ -721,7 +721,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         blockKeyPrefix={message.id}
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}
-        foldWorkIntoSummary={collapseAgentWork}
+        foldWorkIntoSummary={collapseAgentWork && !['cancelled', 'failed', 'recoverable'].includes(message.remoteRun?.state ?? '')}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
         suppressTypingIndicator

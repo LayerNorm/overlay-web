@@ -287,3 +287,19 @@ test('a live agent reply renders formatted chunks and one bottom dots row withou
   assert.ok(!html.includes('overlay-stream-marker'))
   assert.match(html, /aria-label="Agent is responding"/)
 })
+
+
+test('stopping an agent keeps its earlier narrative visible while tool details remain folded', () => {
+  const intro = '**Retained introduction**\n\n'
+  const tail = 'Retained buffered tail.'
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'completed', content: intro + tail,
+    parts: [
+      { type: 'text', text: intro },
+      { type: 'tool-invocation', toolInvocation: { toolCallId: 't', toolName: 'remote_action', state: 'output-error', toolInput: { title: 'Research' }, toolOutput: { status: 'cancelled' } } },
+      { type: 'text', text: tail },
+      { type: 'data-remote-agent-status', data: { runId: 'r', state: 'cancelled', environmentName: 'QA', queueExpiresAt: 0 } },
+    ],
+  }), 'Agent')
+  assert.match(html, /<strong>Retained introduction<\/strong>/)
+  assert.ok(html.includes('Retained buffered tail.'))
+})
