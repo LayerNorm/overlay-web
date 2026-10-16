@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Authenticate server-side workspace-tool calls to their own protected Preview so native MCP tools receive API responses instead of a hosting login page.
+
 - Open text uploads in Files with their full stored content; reserve the Notes editor for note records so saved drive links do not stall on an inaccessible note.
 
 - Renew expired pending drive uploads under current run authority, retaining immutable write identities and avoiding duplicate quota charges after an outage.

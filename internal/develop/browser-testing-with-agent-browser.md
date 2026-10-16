@@ -150,6 +150,18 @@ files. The Vercel automation secret is project-scoped, not PR-scoped; restrict
 its distribution to trusted repository agents. It bypasses Vercel's hosting
 gate only; Overlay sandbox login and exact-head/backend verification still apply.
 
+Server-side workspace-tool calls into the same isolated Preview also need hosting
+authentication. The internal tool transport reuses Vercel's runtime
+`VERCEL_AUTOMATION_BYPASS_SECRET` only for `/api/` requests to the verified canonical
+PR origin, retains Overlay's bearer/service authentication, and refuses redirects.
+Never forward that header to another origin, another PR or Production.
+
+An owned Cloud QA machine may use a private loopback MCP relay when a provider cannot
+attach the hosting header. Bind it only to loopback, accept only the exact MCP path,
+preserve the original run bearer, and forward only to the verified PR origin through
+the host's private transport. Keep the hosting secret out of provider child environments
+and record this QA intervention separately from unattended Cloud/image acceptance.
+
 For unattended Agent Host acceptance on a protected Preview, use a disposable
 QA image with a transport wrapper that attaches an existing access cookie only
 to that exact PR origin. Keep the cookie in a mode-0600 file under the machine's
