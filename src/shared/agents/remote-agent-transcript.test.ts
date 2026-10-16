@@ -16,6 +16,24 @@ function event(sequence: number, type: AgentRemoteEvent['type'], payload: Record
   }
 }
 
+test('drive progress replaces one bounded summary without changing provider text or settling the run', () => {
+  const projection = projectRemoteAgentEvents({ content: '# Report', parts: [{ type: 'text', text: '# Report' }],
+    events: [event(1, 'drive_sync', { state: 'saving' }), event(2, 'drive_sync', {
+      state: 'saved', fileCount: 1, folderCount: 1, entries: [
+        { fileId: 'folder', path: 'reports', kind: 'folder' },
+        { fileId: 'report', path: 'reports/result.md', kind: 'file' },
+      ],
+    })], environmentName: 'Cloud', queueExpiresAt: 5000, runId: 'run-1',
+  })
+  assert.equal(projection.content, '# Report')
+  assert.equal(projection.terminal, false)
+  const summaries = projection.parts.filter(part => part.type === 'data-remote-agent-drive')
+  assert.equal(summaries.length, 1)
+  assert.deepEqual(summaries[0].data, { key: 'drive', state: 'saved', fileCount: 1, folderCount: 1, entries: [
+    { fileId: 'folder', path: 'reports', kind: 'folder' }, { fileId: 'report', path: 'reports/result.md', kind: 'file' },
+  ] })
+})
+
 test('remote checkpoints replace one stable markdown block and actions update in place', () => {
   const projection = projectRemoteAgentEvents({
     content: 'Waiting for MacBook',

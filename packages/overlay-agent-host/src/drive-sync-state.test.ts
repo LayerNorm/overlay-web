@@ -15,7 +15,7 @@ test('baseline, saved links and pending hydration survive reopening without mixi
   let state = new SqliteDriveSyncState(path, cache, scope)
   try {
     const value = { phase: 'hydrating' as const, initialized: true, baseline: [{ entry, local }],
-      turn: { runId: 'run', saved: [{ fileId: entry.fileId, path: entry.path }] }, entry, path: entry.path, prior: local }
+      turn: { runId: 'run', saved: [{ fileId: entry.fileId, path: entry.path, kind: entry.kind }] }, entry, path: entry.path, prior: local }
     state.write(value)
     state.close()
     assert.throws(() => new SqliteDriveSyncState(path, cache, { kind: 'workspace', workspaceId: 'other' }), /SCOPE_CHANGED/)

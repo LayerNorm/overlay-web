@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { driveCredentialsResponseSchema, type DriveCredentialsResponse, type FilesystemGrant } from '@layernorm/overlay-agent-bridge-protocol'
+import { driveCredentialsResponseSchema, type DriveCredentialsResponse, type DriveSavedEntry, type FilesystemGrant } from '@layernorm/overlay-agent-bridge-protocol'
 import { AgentDriveCache } from './drive-cache.js'
 import { AgentDriveClient } from './drive-client.js'
 import { SqliteDriveJournal, type DriveJournalContext } from './drive-journal.js'
@@ -12,7 +12,7 @@ import { resolveFilesystemScope } from './filesystem-policy.js'
 export type RuntimeDrive = {
   workingDirectory: string
   additionalDirectories: string[]
-  sync(final?: boolean): Promise<Array<{ fileId: string; path: string }>>
+  sync(final?: boolean): Promise<DriveSavedEntry[]>
   close(): Promise<void>
 }
 

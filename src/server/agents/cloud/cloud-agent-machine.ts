@@ -11,6 +11,7 @@ import type { SandboxCreateRequest } from '@overlay/sandbox-runtime'
  */
 export const CLOUD_AGENT_HOME = '/home/user'
 export const CLOUD_AGENT_WORKSPACE = `${CLOUD_AGENT_HOME}/workspace`
+export const CLOUD_AGENT_DRIVE = `${CLOUD_AGENT_HOME}/drive`
 export const CLOUD_AGENT_STATE_DIR = `${CLOUD_AGENT_HOME}/.overlay/agent-host`
 export const CLOUD_AGENT_CONFIG_PATH = `${CLOUD_AGENT_STATE_DIR}/config.json`
 export const CLOUD_AGENT_LOG_PATH = `${CLOUD_AGENT_HOME}/.overlay/agent-host.log`

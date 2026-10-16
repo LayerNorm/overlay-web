@@ -4,9 +4,22 @@ import test from 'node:test'
 import {
   buildRemoteAgentPrompt,
   reconcileUnverifiedAgentActionClaims,
+  shouldPrepareConnectedAgentDrive,
 } from './workspace-agent-invocation'
 
 const root = process.cwd()
+
+test('drive starts require the rollout flag, current host capability and local opt-in', () => {
+  const cloud = { enabled: true, environmentKind: 'overlay_cloud', optedIn: false, capabilities: { drive: { version: 1 } } }
+  assert.equal(shouldPrepareConnectedAgentDrive(cloud), true)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, enabled: false }), false)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: {} }), false)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: { drive: { version: 2 } } }), false)
+  for (const environmentKind of ['local', 'vps', 'external']) {
+    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind }), false)
+    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind, optedIn: true }), true)
+  }
+})
 
 test('agent external-action claims require a successful tool result', () => {
   const corrected = reconcileUnverifiedAgentActionClaims({

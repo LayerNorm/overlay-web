@@ -6,7 +6,11 @@ import {
   type AgentHostCommand,
   type AgentHostEvent,
   type FilesystemGrant,
+  driveStartDescriptorSchema,
+  filesystemGrantSchema,
 } from '@layernorm/overlay-agent-bridge-protocol'
+import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
+import { RuntimeDriveController } from './runtime-drive-controller.js'
 import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
@@ -29,6 +33,7 @@ export type AgentHostRuntimeOptions = {
   maxOutboxEvents?: number
   /** Overlay Cloud machines fetch their provider credentials from the control plane for each run. */
   fetchRunCredentials?: boolean
+  drive?: { stateDirectory: string; apiUrl: string; create?: typeof createRuntimeDrive; syncIntervalMs?: number }
 }
 
 export class AgentHostRuntime {
@@ -51,10 +56,15 @@ export class AgentHostRuntime {
   private readonly bootId = randomUUID()
   private readonly executions = new Map<string, { attemptId: string; generation: number; hostBootId?: string }>()
   private resolvedThroughSequence = 0
+  private readonly drives = new Map<string, RuntimeDriveController>()
 
   constructor(private readonly options: AgentHostRuntimeOptions) {
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.capability.id, adapter]))
     this.logger = options.logger ?? new StructuredLogger()
+  }
+
+  updateFilesystemGrant(grant: FilesystemGrant): void {
+    this.options.filesystem = filesystemGrantSchema.parse(grant)
   }
 
   async discoverCapabilities() {
@@ -112,7 +122,8 @@ export class AgentHostRuntime {
         ...(this.options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
         streaming: { textDeltas: true as const, heartbeats: true as const },
         mcp: { approvalBridge: true as const },
-        hostVersion: '0.4.1',
+        ...(this.options.drive ? { drive: { version: 1 as const } } : {}),
+        hostVersion: '0.4.2',
         platform: `${platform()} ${release()}`,
         adapters: (await this.discoverCapabilities()).map((capability) => {
           if (this.options.durableLifecycle) return capability
@@ -123,12 +134,12 @@ export class AgentHostRuntime {
         filesystem: this.options.filesystem,
         maxConcurrentRuns: Math.max(1, this.adapters.size),
       }
-      try { await this.options.controlPlane.updateCapabilities(capabilities) }
+      try { await this.updateCapabilitiesWithDriveFallback(capabilities) }
       catch (error) {
         if (!(error instanceof ControlPlaneRequestError) || error.status !== 400) throw error
         const { mcp: _mcp, ...withoutMcp } = capabilities
         void _mcp
-        try { await this.options.controlPlane.updateCapabilities(withoutMcp) }
+        try { await this.updateCapabilitiesWithDriveFallback(withoutMcp) }
         catch (legacyError) {
           if (!(legacyError instanceof ControlPlaneRequestError) || legacyError.status !== 400) throw legacyError
           const withoutOptions = { ...withoutMcp, adapters: capabilities.adapters.map(capability => {
@@ -138,17 +149,27 @@ export class AgentHostRuntime {
           }) }
           let accepted = false
           if (capabilities.adapters.some(capability => capability.options)) {
-            try { await this.options.controlPlane.updateCapabilities(withoutOptions); accepted = true }
+            try { await this.updateCapabilitiesWithDriveFallback(withoutOptions); accepted = true }
             catch (retryError) { if (!(retryError instanceof ControlPlaneRequestError) || retryError.status !== 400) throw retryError }
           }
           const { streaming: _streaming, ...legacy } = withoutOptions
           void _streaming
-          if (!accepted) await this.options.controlPlane.updateCapabilities(legacy)
+          if (!accepted) await this.updateCapabilitiesWithDriveFallback(legacy)
         }
       }
     }
     this.nextCapabilityRefreshAt = Date.now() + 24 * 60 * 60_000
     await this.heartbeat()
+  }
+
+  private async updateCapabilitiesWithDriveFallback(capabilities: Parameters<NonNullable<AgentControlPlaneClient['updateCapabilities']>>[0]) {
+    try { await this.options.controlPlane.updateCapabilities?.(capabilities) }
+    catch (error) {
+      if (!(error instanceof ControlPlaneRequestError) || error.status !== 400 || !capabilities.drive) throw error
+      const { drive: _drive, ...legacy } = capabilities
+      void _drive
+      await this.options.controlPlane.updateCapabilities?.(legacy)
+    }
   }
 
   private scheduleCapabilityRefresh(): void {
@@ -282,6 +303,8 @@ export class AgentHostRuntime {
     if (command.type === 'shutdown') {
       const session = this.sessions.get(command.runId)
       if (session) await session.stop(command.payload.reason)
+      await this.drives.get(command.runId)?.closeAfterStopped()
+      this.drives.delete(command.runId)
       this.sessions.delete(command.runId)
       return
     }
@@ -347,12 +370,14 @@ export class AgentHostRuntime {
     if (command.execution && !this.options.state.claimExecution(command.runId, command.execution.attemptId))
       throw new Error('execution start outcome is unknown; inspect the existing process before continuing')
     const adapter = this.requireAdapter(command.payload.adapterId)
-    const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
+    let scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
     const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
     if (credentials === 'unavailable') return
+    const drive = await this.prepareDrive(command)
+    if (drive) scope = { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
-    const emit = this.createStream(command.runId, execution)
+    const emit = this.createStream(command.runId, execution, drive)
     const session = await adapter.start({
       runId: command.runId,
       workingDirectory: scope.workingDirectory,
@@ -375,6 +400,24 @@ export class AgentHostRuntime {
       void session.prompt(command.payload.prompt).catch((error) => emit({ type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
     }
     return
+  }
+
+  private async prepareDrive(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<RuntimeDrive | undefined> {
+    const input = command.payload.metadata.overlayDrive
+    if (input === undefined) return undefined
+    const descriptor = driveStartDescriptorSchema.parse(input)
+    const options = this.options.drive, controlPlane = this.options.controlPlane
+    if (!options || !controlPlane.refreshFilesystemGrant || !controlPlane.fetchDriveCredentials) throw Error('DRIVE_HOST_UPGRADE_REQUIRED')
+    const fetchDriveCredentials = controlPlane.fetchDriveCredentials.bind(controlPlane)
+    this.options.filesystem = await controlPlane.refreshFilesystemGrant()
+    const execution = this.executions.get(command.runId)
+    const request = { runId: command.runId, sessionId: descriptor.sessionId,
+      ...(execution ? { execution: { attemptId: execution.attemptId, generation: execution.generation } } : {}) }
+    return (options.create ?? createRuntimeDrive)({ environmentId: this.options.environmentId, workspaceId: this.options.workspaceId,
+      ...request, location: descriptor.location, filesystem: this.options.filesystem,
+      approvedWorkingDirectory: command.payload.workingDirectory, stateDirectory: options.stateDirectory, apiUrl: options.apiUrl,
+      credentials: () => fetchDriveCredentials(request),
+    })
   }
 
   private async requireSession(runId: string, requestedRemoteSessionId?: string): Promise<AgentAdapterSession> {
@@ -438,7 +481,7 @@ export class AgentHostRuntime {
     return adapter
   }
 
-  private createStream(runId: string, execution = this.executions.get(runId)) {
+  private createStream(runId: string, execution = this.executions.get(runId), drive?: RuntimeDrive) {
     this.streams.get(runId)?.stop()
     const negotiated = this.streamingNegotiated
     const stream = createRunStream(event => this.emit(runId, event, execution), {
@@ -448,7 +491,10 @@ export class AgentHostRuntime {
       onError: error => this.logger.warn('run heartbeat deferred', { runId, error: safeError(error) }),
     })
     this.streams.set(runId, stream)
-    return stream.emit
+    if (!drive) return stream.emit
+    const controller = new RuntimeDriveController(drive, stream.emit, this.options.drive?.syncIntervalMs)
+    this.drives.set(runId, controller)
+    return controller.emit
   }
 
   /**
@@ -474,6 +520,7 @@ export class AgentHostRuntime {
   stopBackgroundUploads(): void {
     this.uploadsStopped = true
     for (const stream of this.streams.values()) stream.stop()
+    for (const drive of this.drives.values()) drive.stopScheduling()
     if (this.flushRetry) clearTimeout(this.flushRetry)
     this.flushRetry = undefined
   }

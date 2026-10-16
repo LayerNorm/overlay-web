@@ -330,6 +330,7 @@ export function createOverlayServerContext(
         : connectedAgentRolloutEnabled(rollout)
     },
     artifactsEnabled: () => runtimeConfig?.features.connectedAgentArtifacts === true,
+    driveEnabled: () => runtimeConfig?.features.connectedAgentDrive === true,
     policyLimits: async ({ userId, workspaceId }) => {
       const entitlements = await chatUsagePolicy.getEntitlements({ userId, workspaceId })
       if (!entitlements) throw new Error('connected_agent_entitlements_unavailable')

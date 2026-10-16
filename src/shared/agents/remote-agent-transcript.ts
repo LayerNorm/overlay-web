@@ -2,6 +2,7 @@ import { applyRemoteText } from './remote-agent-text'
 import type { AgentRemoteEvent, AgentRemoteSessionStatus } from '@overlay/workspace-contracts'
 import type { AgentRunStatus, AgentRunTerminalError } from './agent-run'
 import { AGENT_AUTH_FAILURE_CODE } from './provider-accounts'
+import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
 
 const AGENT_ACCOUNTS_SETTINGS_HREF = '/app/settings?section=agent-accounts'
 
@@ -11,6 +12,7 @@ export const REMOTE_AGENT_PLAN_PART_TYPE = 'data-remote-agent-plan'
 export const REMOTE_AGENT_DIFF_PART_TYPE = 'data-remote-agent-diff'
 export const REMOTE_AGENT_TERMINAL_PART_TYPE = 'data-remote-agent-terminal'
 export const REMOTE_AGENT_COMMANDS_PART_TYPE = 'data-remote-agent-commands'
+export const REMOTE_AGENT_DRIVE_PART_TYPE = 'data-remote-agent-drive'
 
 export type RemoteAgentStatusPart = {
   type: typeof REMOTE_AGENT_STATUS_PART_TYPE
@@ -101,6 +103,11 @@ export function projectRemoteAgentEvents(input: {
     if (event.type === 'action') {
       removeWaiting()
       parts = upsertActionPart(parts, event.payload)
+      continue
+    }
+    if (event.type === 'drive_sync') {
+      const status = driveSyncStatusSchema.parse(event.payload)
+      parts = upsertDataPart(parts, REMOTE_AGENT_DRIVE_PART_TYPE, 'drive', status)
       continue
     }
     if (event.type === 'approval_requested' || event.type === 'elicitation_requested') {

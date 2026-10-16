@@ -1,6 +1,7 @@
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { buildAssistantVisualSequence, splitUserDisplayText } from '@overlay/chat-core'
 import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
+import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
 
 export type RoomMessagePart = {
   toolInvocation?: Record<string, unknown>
@@ -62,6 +63,16 @@ function remoteRunStatus(parts: RoomMessagePart[] | undefined) {
   if (!data || typeof data.runId !== 'string' || typeof data.state !== 'string') return undefined
   return { runId: data.runId, state: data.state,
     retryable: data.retryable === true, retryClass: typeof data.retryClass === 'string' ? data.retryClass : undefined }
+}
+
+function remoteDriveStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteDrive'] {
+  const data = parts?.find(part => part.type === 'data-remote-agent-drive')?.data
+  if (!data) return undefined
+  // Data parts add a stable projection key; the wire status itself is strict.
+  const { key: _key, ...status } = data
+  void _key
+  const parsed = driveSyncStatusSchema.safeParse(status)
+  return parsed.success ? parsed.data : undefined
 }
 
 export type RemoteAgentCommand = { name: string; description?: string; inputHint?: string }
@@ -264,6 +275,7 @@ export function toRoomMessageView({
     remoteQueue,
     remoteRequest: remoteRequest(message.parts),
     remoteRun: remoteRunStatus(message.parts),
+    remoteDrive: remoteDriveStatus(message.parts),
     // Assistant rows are inserted with status 'generating' at turn start and
     // patched through settle, so createdAt→updatedAt brackets the run.
     workedDurationMs: isAgent && message.updatedAt && message.updatedAt > message.createdAt

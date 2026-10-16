@@ -2,7 +2,7 @@ import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, realp
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { z } from 'zod'
-import { driveCredentialsResponseSchema, driveManifestEntrySchema, driveMetadataBodySchema,
+import { driveCredentialsResponseSchema, driveManifestEntrySchema, driveMetadataBodySchema, driveSavedEntrySchema,
   drivePathSegments, driveUploadBodySchema, portableDrivePathKey } from '@layernorm/overlay-agent-bridge-protocol'
 
 const identity = z.object({ device: z.string(), inode: z.string(), birthtimeNs: z.string() }).strict()
@@ -13,7 +13,7 @@ export const driveSyncOperationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('metadata'), request: driveMetadataBodySchema, target: local }).strict(),
 ])
 const common = { initialized: z.boolean(), baseline: z.array(baseline).max(10000),
-  turn: z.object({ runId: z.string().min(1), saved: z.array(z.object({ fileId: z.string(), path: z.string() }).strict()).max(10000) }).strict().nullable() }
+  turn: z.object({ runId: z.string().min(1), saved: z.array(driveSavedEntrySchema).max(10000) }).strict().nullable() }
 const snapshot = z.discriminatedUnion('phase', [
   z.object({ phase: z.literal('idle'), ...common }).strict(),
   z.object({ phase: z.literal('writing'), ...common, operation: driveSyncOperationSchema }).strict(),

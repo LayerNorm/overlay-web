@@ -49,6 +49,11 @@ choices. Each control saves for the next turn. Known permission modes use compac
 Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmation dialog.
 An identity edit must not overwrite choices saved through these independent controls.
 
+Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
+and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
+Files links, with a link to Files for larger results. Folders navigate by folder id; files open by
+file id using the current workspace route. Successful turn completion waits for the final save.
+
 ## Command palette
 
 `CommandPalette` keeps its controlled `@overlay/ui` API over canonical cmdk

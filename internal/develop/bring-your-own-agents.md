@@ -1335,14 +1335,22 @@ Lost write or manifest responses remain unsaved and restart from the original re
 canonical edits preserve a separate complete conflict copy; bootstrap normalizes that local alias
 before restoring the newer canonical file. Deferred files are never inferred deleted. The current
 implementation refreshes the manifest after each committed effect; operations and cache sizes remain
-bounded. Runtime wiring, scheduled/final synchronization and hosted acceptance are still required;
-this is not yet an enabled write-through drive.
+bounded. The host now hydrates before adapter start, coalesces completed-action and 15-second
+background synchronization outside the streaming path, and waits for final synchronization before
+forwarding completion. A final write failure emits an unsaved summary and a failed turn; Stop
+forwards cancellation before draining an existing write and preserves the pending journal. Saved
+summaries carry bounded Files links separately from provider text. Hosted acceptance remains required
+before enabling the feature.
 
 The runtime drive wrapper consumes the signed execution's fixed scope, checks local parents
 physically before creating a dedicated child, and requires an explicit approved Cloud drive root.
 It holds the cache lease through initialization and the turn, drains synchronization before close,
 and releases ownership after failed hydration so that the same execution can retry safely. Host
-command/runtime wiring must refresh the approved filesystem policy before invoking this wrapper.
+command/runtime wiring refreshes the approved filesystem policy before invoking this wrapper.
 The host transport exposes that refresh through the existing signed credential-rotation endpoint.
 Concurrent refresh callers share one rotation; callbacks retain its complete method grant and
 filesystem policy, and a response for another environment is rejected before replacing credentials.
+Cloud drive preparation may add only `/home/user/drive` to an existing approved, drive-capable
+environment and audits that scope change. Local/VPS grants never expand automatically; these
+bindings must explicitly opt in. Start metadata selects the cache location and internal remote
+session id; token issuance derives workspace, owner and permissions from the persisted binding.

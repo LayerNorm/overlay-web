@@ -2,9 +2,11 @@
 
 Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 in progress; Phase 4 foundation in progress; Phase 5 in progress.
 
+- Phase 4 runtime now refreshes approved policy, hydrates before adapter start, schedules coalesced background saves, and gates completion on final synchronization. Failed saves retain local data and emit an unsaved failure; cancellation is forwarded before an in-flight write drains. Saved file/folder summaries project separately from provider text. Local runtime, projection and boundary tests pass; hosted Files UI, native-provider and fresh-machine acceptance remain pending. Host/protocol candidate versions advance together to 0.4.2; publication/image activation remain gated.
+
 - Phase 4 now has a persistent synchronizer with baseline/effect recovery and saved-file links. Real client/BFF/Convex/object-store tests cover complete hydration, nested and empty folders, inode-preserving moves, atomic editor replacement, full-byte fresh-cache restore, deletion, conflict copies, and restart after lost write or manifest acknowledgements. Private hydration temporaries cannot become deliverables after a crash. Runtime scheduling/final-completion gating and hosted acceptance remain pending.
 
-- The Phase 4 runtime drive wrapper now validates the renewed scope and approved physical parent, hydrates before returning, and holds ownership until drained close. Failure releases the lease for an explicit same-execution retry. Escaping parent symlinks and an unapproved Cloud root are refused before cache creation. Command/runtime integration and approved Cloud grant refresh remain pending.
+- The Phase 4 runtime drive wrapper validates the renewed scope and approved physical parent, hydrates before returning, and holds ownership until drained close. Failure releases the lease for an explicit same-execution retry. Escaping parent symlinks and an unapproved Cloud root are refused before cache creation. Cloud preparation audits the addition of the dedicated drive root; local/VPS grants never expand automatically.
 
 - Host transport now exposes signed filesystem-policy refresh through credential rotation, shares concurrent refreshes and retains newly issued methods. Real HTTP signature tests pass, including continued requests under the rotated credential and refusal of another environment's response. Server-approved Cloud root migration and runtime consumption remain pending.
 

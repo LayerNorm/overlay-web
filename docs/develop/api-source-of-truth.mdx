@@ -46,8 +46,8 @@ issues staging uploads, verifies full size/SHA-256 and seals the verified byte b
 server-only object key before asking Convex to publish the Files pointer. A mutable staging key
 never becomes a canonical file. Retries use the same intent and commit result; newer revisions
 produce conflict copies. The configured object-store contract supplies bounded reads and server
-writes for both R2 and S3-compatible storage. Runtime credential renewal, synchronization and
-hosted acceptance remain required before enabling the drive. Superseded versions are retired
+writes for both R2 and S3-compatible storage. Hosted acceptance remains required before enabling
+the drive. Superseded versions are retired
 atomically with replacement; the authenticated artifact-cleanup tick checks indexed Files
 references and confirms deletion before releasing retained quota. Staging and abandoned final
 keys are registered before upload, then collected after the full run deadline plus one day;
@@ -62,8 +62,11 @@ required on every operation. The credential method is advertised only to drive v
 The bridge protocol package owns public drive wire schemas; server validators re-export those
 schemas and retain private storage records locally. The host client requires complete framed
 manifests and verifies full download hashes across bounded ranges. Token renewal preserves the
-execution and scope, while ambiguous write responses require an explicit same-id retry. Runtime
-journaling and synchronization remain pending.
+execution and scope, while ambiguous write responses retain their durable journal identity.
+The runtime hydrates the dedicated approved cache before prompting, synchronizes in the background
+after actions and periodically, and awaits a final save before forwarding successful completion.
+Failed final writes preserve local recovery data and report an unsaved failure. Bounded saved-file
+summaries project separately from provider text and link to authorized Files rows.
 
 ## Memory profiles
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { drivePathSegments, portableDrivePathKey } from './drive-path.js'
 
 const id = z.string().min(1).max(200)
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
@@ -7,6 +8,31 @@ const bytes = z.number().int().nonnegative().max(16 * 1024 * 1024)
 const revision = z.number().int().nonnegative()
 const requestId = z.string().regex(/^[A-Za-z0-9_-]{16,128}$/)
 const identity = { fileId: id, path: z.string().min(1).max(4096), updatedAt: revision }
+
+export const driveStartDescriptorSchema = z.object({ version: z.literal(1), sessionId: id,
+  location: z.enum(['cloud', 'approved-root']) }).strict()
+export const driveSavedEntrySchema = z.object({ fileId: id, path: z.string().min(1).max(4096).refine(path => {
+  try { drivePathSegments(path); return true } catch { return false }
+}), kind: z.enum(['file', 'folder']) }).strict()
+export const driveSyncStatusSchema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('saving') }).strict(),
+  z.object({ state: z.literal('saved'), fileCount: z.number().int().nonnegative().max(10000),
+    folderCount: z.number().int().nonnegative().max(10000), entries: z.array(driveSavedEntrySchema).max(32) }).strict(),
+  z.object({ state: z.literal('unsaved'), code: z.string().regex(/^DRIVE_[A-Z_]+$/).max(200), message: z.string().max(1000) }).strict(),
+]).superRefine((value, context) => {
+  if (value.state !== 'saved') return
+  let paths: string[]
+  try { paths = value.entries.map(entry => portableDrivePathKey(entry.path)) }
+  catch { context.addIssue({ code: z.ZodIssueCode.custom, message: 'Drive save paths must be portable' }); return }
+  if (value.entries.filter(entry => entry.kind === 'file').length > value.fileCount
+    || value.entries.filter(entry => entry.kind === 'folder').length > value.folderCount
+    || new Set(value.entries.map(entry => entry.fileId)).size !== value.entries.length
+    || new Set(paths).size !== value.entries.length)
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Drive save summary must contain unique entries within its totals' })
+})
+export type DriveStartDescriptor = z.infer<typeof driveStartDescriptorSchema>
+export type DriveSavedEntry = z.infer<typeof driveSavedEntrySchema>
+export type DriveSyncStatus = z.infer<typeof driveSyncStatusSchema>
 
 /** Metadata operations intentionally select only identity/revision from a full manifest entry. */
 export const driveMetadataEntrySchema = z.object({ ...identity, kind: z.enum(['file', 'folder']) })

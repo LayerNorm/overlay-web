@@ -8,6 +8,7 @@ import {
   verify as verifySignature,
 } from 'node:crypto'
 import { posix, win32 } from 'node:path'
+import { CLOUD_AGENT_DRIVE } from './cloud/cloud-agent-machine'
 import {
   AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE,
   AGENT_ENVIRONMENT_CREDENTIAL_METHODS,
@@ -109,6 +110,7 @@ export class ConnectedAgentControlPlaneService {
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
+    driveEnabled?: () => boolean | Promise<boolean>
     policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
     onTerminalMessage?: (input: RemoteAgentUsageSettlement) => Promise<void>
@@ -284,6 +286,30 @@ export class ConnectedAgentControlPlaneService {
       filesystemGrant: grant,
     }, args.environmentId)
     return publicEnvironment(environment)
+  }
+
+  /** Internal Cloud policy migration. Local/VPS roots remain exclusively owner-approved. */
+  async prepareDriveEnvironment(args: { workspaceId: string; environmentId: string }): Promise<void> {
+    await this.assertEnabled(args.workspaceId)
+    if (!await this.dependencies.driveEnabled?.()) throw controlPlaneError('Connected-agent drive is disabled', 404, 'capability_disabled')
+    const environment = await this.dependencies.repository.getEnvironment(args)
+    if (!environment || ['revoked', 'pending'].includes(environment.status) || !environment.filesystemGrant)
+      throw controlPlaneError('Agent filesystem policy is unavailable', 409, 'drive_unavailable')
+    if (environment.kind !== 'overlay_cloud') return
+    const capability = environment.capabilities.drive
+    if (!capability || typeof capability !== 'object' || !('version' in capability) || capability.version !== 1)
+      throw controlPlaneError('Upgrade the Cloud host before using the drive', 409, 'drive_unsupported')
+    const grant = validateFilesystemGrant(environment.filesystemGrant)
+    if (grant.mode === 'all_user_files' || grant.roots.some(root => {
+      const tail = posix.relative(root, CLOUD_AGENT_DRIVE)
+      return tail === '' || tail !== '..' && !tail.startsWith('../') && !posix.isAbsolute(tail)
+    })) return
+    const filesystemGrant = validateFilesystemGrant({ mode: 'selected_roots', roots: [...grant.roots, CLOUD_AGENT_DRIVE] })
+    const updated = await this.dependencies.repository.updateEnvironmentFilesystemGrant({ ...args, filesystemGrant, now: this.now() })
+    if (!updated || updated.status === 'revoked') throw controlPlaneError('Agent filesystem policy is unavailable', 409, 'drive_unavailable')
+    await this.audit('agent_environment.scope_changed', 'service', undefined, {
+      workspaceId: args.workspaceId, filesystemGrant, reason: 'connected_agent_drive',
+    }, args.environmentId)
   }
 
   async revokeEnvironment(args: { actorUserId: string; workspaceId: string; environmentId: string }) {

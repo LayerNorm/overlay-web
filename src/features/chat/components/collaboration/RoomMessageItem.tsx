@@ -35,6 +35,8 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { roomMessageDomId } from './room-message-view'
+import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
+import { RemoteDriveStatus } from './RemoteDriveStatus'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -87,6 +89,7 @@ export type RoomMessageView = {
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
   remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string }
+  remoteDrive?: DriveSyncStatus
   /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
   workedDurationMs?: number
 }
@@ -734,6 +737,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
       />
+      {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
       {message.streaming ? (
         <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
           {[0, 1, 2].map((dot) => (

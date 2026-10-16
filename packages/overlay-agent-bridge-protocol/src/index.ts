@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { driveSyncStatusSchema } from './drive.js'
 export * from './drive.js'
 
 export const OVERLAY_AGENT_PROTOCOL_VERSION = 1 as const
@@ -285,6 +286,7 @@ export const agentHostEventSchema = z.discriminatedUnion('type', [
   eventBase.extend({ type: z.literal('diff'), payload: z.object({ diffId: identifier, title: z.string().max(2_000), patch: z.string().max(200_000), language: z.string().max(100).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('terminal'), payload: z.object({ terminalId: identifier, title: z.string().max(2_000), summary: z.string().max(20_000), exitCode: z.number().int().optional(), status: z.enum(['running', 'completed', 'failed']) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('artifact'), payload: z.object({ name: z.string().min(1).max(500), mediaType: z.string().min(1).max(200), size: z.number().int().nonnegative(), sha256: z.string().regex(/^[a-f0-9]{64}$/), uploadReference: identifier }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('drive_sync'), payload: driveSyncStatusSchema }).strict(),
   eventBase.extend({ type: z.literal('completed'), payload: z.object({ summary: z.string().max(20_000).optional(), usage: jsonObject.default({}) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('failed'), payload: z.object({ code: identifier, message: z.string().max(20_000), retryable: z.boolean() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('cancelled'), payload: z.object({ reason: z.string().max(2_000).optional() }).strict() }).strict(),

@@ -147,7 +147,7 @@ a tool/resource protocol; it is not used as the execution lifecycle transport.
 
 ### Durable lifecycle extension
 
-Candidate 0.4.1 can opt in with `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2`
+Candidate 0.4.2 can opt in with `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2`
 against a server that supports the same negotiated extension. Keep this unset
 against older servers. Live reattachment, session loading, interrupted-turn
 continuation, approval restoration and provider checkpoints are separate

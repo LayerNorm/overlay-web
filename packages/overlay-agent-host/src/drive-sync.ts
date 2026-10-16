@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { DriveContentResult, DriveManifestEntry, DriveMetadataResult } from '@layernorm/overlay-agent-bridge-protocol'
+import type { DriveContentResult, DriveManifestEntry, DriveMetadataResult, DriveSavedEntry } from '@layernorm/overlay-agent-bridge-protocol'
 import { AgentDriveCache, type DriveCacheEntry, type DriveCacheIdentity } from './drive-cache.js'
 import { AgentDriveClient } from './drive-client.js'
 import { SqliteDriveJournal } from './drive-journal.js'
@@ -111,7 +111,7 @@ export class AgentDriveSynchronizer {
       baseline: state.baseline.filter(row => manifest.some(entry => entry.fileId === row.entry.fileId)) })
   }
 
-  sync(final = false): Promise<Array<{ fileId: string; path: string }>> {
+  sync(final = false): Promise<DriveSavedEntry[]> {
     return this.serial(async () => {
       if (!this.prepared) throw Error('DRIVE_NOT_HYDRATED')
       await this.recover()
@@ -238,7 +238,7 @@ export class AgentDriveSynchronizer {
     if (state.turn?.runId !== this.options.runId) throw Error('DRIVE_SYNC_EXECUTION_CHANGED')
     const manifest = await this.options.client.manifest()
     let baseline = [...state.baseline]
-    const saved = new Map(state.turn.saved.map(item => [item.fileId, item.path]))
+    const saved = new Map(state.turn.saved.map(item => [item.fileId, item]))
     if (operation.kind === 'content' && record.kind === 'content' && record.phase.kind === 'committed')
       baseline = this.applyContentEffect(operation, record.phase.result, manifest, baseline, saved)
     else if (operation.kind === 'metadata' && record.kind === 'metadata' && record.phase.kind === 'committed')
@@ -246,15 +246,15 @@ export class AgentDriveSynchronizer {
     else throw Error('DRIVE_JOURNAL_REQUEST_CONFLICT')
     for (const fileId of saved.keys()) {
       const current = manifest.find(entry => entry.fileId === fileId)
-      if (current) saved.set(fileId, current.path)
+      if (current) saved.set(fileId, { fileId, path: current.path, kind: current.kind })
     }
     this.options.state.write({ phase: 'idle', initialized: state.initialized, baseline,
-      turn: { runId: this.options.runId, saved: [...saved].map(([fileId, path]) => ({ fileId, path })) } })
+      turn: { runId: this.options.runId, saved: [...saved.values()] } })
     this.options.journal.forgetCompleted(operation.request.requestId)
   }
 
   private applyContentEffect(operation: Extract<DriveSyncOperation, { kind: 'content' }>, result: DriveContentResult,
-    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, string>): DriveBaseline[] {
+    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, DriveSavedEntry>): DriveBaseline[] {
     const entry = manifest.find(item => item.fileId === result.fileId)
     if (!entry || entry.kind !== 'file' || entry.hydration !== 'ready' || entry.updatedAt !== result.updatedAt
       || entry.sha256 !== result.sha256 || entry.sizeBytes !== result.sizeBytes) throw Error('DRIVE_COMMITTED_VERSION_CHANGED')
@@ -262,12 +262,12 @@ export class AgentDriveSynchronizer {
       .filter(row => row.entry.fileId !== result.fileId)
     baseline.push({ entry, local: operation.target })
     if (operation.priorFileId) this.forceCopies.delete(operation.priorFileId)
-    saved.set(entry.fileId, entry.path)
+    saved.set(entry.fileId, { fileId: entry.fileId, path: entry.path, kind: entry.kind })
     return baseline
   }
 
   private applyMetadataEffect(operation: Extract<DriveSyncOperation, { kind: 'metadata' }>, result: DriveMetadataResult,
-    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, string>): DriveBaseline[] {
+    manifest: DriveManifestEntry[], baseline: DriveBaseline[], saved: Map<string, DriveSavedEntry>): DriveBaseline[] {
     const op = operation.request.operation
     if (op.kind === 'remove') {
       if (manifest.some(entry => entry.fileId === result.fileId)) throw Error('DRIVE_DELETE_CONFLICT')
@@ -288,7 +288,7 @@ export class AgentDriveSynchronizer {
         })
       }
       baseline.push({ entry, local: operation.target })
-      saved.set(entry.fileId, entry.path)
+      saved.set(entry.fileId, { fileId: entry.fileId, path: entry.path, kind: entry.kind })
     }
     return baseline
   }

@@ -43,6 +43,13 @@ import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
 import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
 
+export function shouldPrepareConnectedAgentDrive(input: {
+  enabled: boolean; environmentKind: string; optedIn: boolean; capabilities: unknown
+}): boolean {
+  return input.enabled && (input.environmentKind === 'overlay_cloud' || input.optedIn)
+    && z.object({ drive: z.object({ version: z.literal(1) }) }).safeParse(input.capabilities).success
+}
+
 /**
  * Step budgets.
  *
@@ -225,6 +232,7 @@ export type WorkspaceAgentInvocation = {
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
     /** The binding runs on a provider account; the host fetches its credentials for each run. */
     supportsMcpApprovalBridge?: boolean
+    drive?: boolean
     usesProviderAccount: boolean
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
@@ -448,6 +456,9 @@ export async function resolveWorkspaceAgentInvocations(args: {
           environmentName: target.environment.name,
           supportsMcpApprovalBridge: ['claude-code', 'codex'].includes(adapterId) && z.object({ mcp: z.object({ approvalBridge: z.literal(true) }) })
             .safeParse(target.environment.capabilities).success,
+          drive: shouldPrepareConnectedAgentDrive({ enabled: runtime.features.connectedAgentDrive === true,
+            environmentKind: target.environment.kind, optedIn: target.binding.adapterConfig.connectedAgentDrive === true,
+            capabilities: target.environment.capabilities }),
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
@@ -635,6 +646,9 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   })
   let sandboxBilling: Awaited<ReturnType<ManagedAgentSandboxBilling['reserve']>> | undefined
   try {
+    if (args.invocation.remoteTarget.drive) await server.connectedAgentControlPlane.prepareDriveEnvironment({
+      workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId,
+    })
     if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
       sandboxBilling = await sandboxBillingService.reserve({
         agentId: args.invocation.agentId,
@@ -683,6 +697,8 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           initiatorPrincipalId: args.initiatorPrincipalId,
           // A flag only: the host asks the control plane for the credentials, so no secret is stored in the command.
           ...(args.invocation.remoteTarget.usesProviderAccount ? { runCredentials: true } : {}),
+          ...(args.invocation.remoteTarget.drive ? { overlayDrive: { version: 1, sessionId: remoteSessionId,
+            location: args.invocation.remoteTarget.environmentKind === 'overlay_cloud' ? 'cloud' : 'approved-root' } } : {}),
           // The agent's own model id, when its owner chose one; otherwise the agent uses its default.
           ...connectedAgentModelMetadata(args.invocation.modelId),
           permissionContext: args.invocation.remoteTarget.environmentKind === 'overlay_cloud' ? 'cloud' : 'local',

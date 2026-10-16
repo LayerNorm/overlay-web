@@ -8,7 +8,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Avoid advertising hard-coded models after a connected agent reports no model catalog.
 
-- Add default-off guarded drive content transactions with immutable upload identities, quota checks and conflict copies. Verify full staged bytes and seal a separate server-only object before commit. Retire superseded versions with reference checks and confirmed cleanup before releasing quota; collect staged/abandoned objects after execution retention. Add execution-scoped drive credential issuance/renewal, bounded host transport, persistent write/baseline recovery, folder synchronization and exclusive cache ownership. Runtime wiring remains pending.
+- Add default-off guarded drive transactions with immutable uploads, quota checks, conflict copies and full-byte verification. The host hydrates an approved dedicated cache, saves after actions and periodically, and waits for the final save before reporting success. Failed saves preserve local recovery data; saved files and folders link from the answer to Files. Hosted acceptance remains pending.
 
 - Keep connected-agent text streaming from repeatedly fetching sidebar conversation history.
 

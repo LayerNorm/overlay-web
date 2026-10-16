@@ -23,7 +23,7 @@ import { checkOverlayImage } from './image-check.js'
 import { exportConfig } from './export-config.js'
 import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.1'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.2'
 
 assertSupportedNodeVersion()
 
@@ -173,6 +173,7 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
     environmentId: config.environmentId,
     workspaceId: config.workspaceId,
     filesystem: stored?.filesystemGrant ?? config.filesystem,
+    drive: { stateDirectory: config.stateDirectory, apiUrl: new URL('/api/agent-drive', config.controlPlaneUrl).toString() },
     adapters,
     state,
     controlPlane: new HttpAgentControlPlaneClient({
@@ -183,6 +184,7 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
       privateKey: keys.privateKey,
       onCredentialRotated: stored ? async (credential) => {
         await saveStoredConnection(config.stateDirectory, { ...stored, ...credential })
+        runtime.updateFilesystemGrant(credential.filesystemGrant)
       } : undefined,
     }),
     logger,

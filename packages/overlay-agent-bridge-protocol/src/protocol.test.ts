@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { agentHostCommandSchema, agentHostEventSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
-import { driveCredentialsRequestSchema, driveCredentialsResponseSchema } from './index'
+import { driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema } from './index'
+
+test('drive start descriptors carry no host-selected scope and save summaries are bounded and consistent', () => {
+  assert.equal(driveStartDescriptorSchema.safeParse({ version: 1, sessionId: 'session', location: 'cloud' }).success, true)
+  assert.equal(driveStartDescriptorSchema.safeParse({ version: 1, sessionId: 'session', location: 'cloud', scope: { kind: 'workspace', workspaceId: 'foreign' } }).success, false)
+  const entry = { fileId: 'file', path: 'Research/report.md', kind: 'file' }
+  const status = { state: 'saved', fileCount: 1, folderCount: 0, entries: [entry] }
+  assert.equal(driveSyncStatusSchema.safeParse(status).success, true)
+  for (const patch of [{ fileCount: 0 }, { entries: [entry, entry] }, { entries: [{ ...entry, path: '../secret' }] },
+    { entries: Array.from({ length: 33 }, (_, i) => ({ ...entry, fileId: `f${i}`, path: `f${i}.md` })) }])
+    assert.equal(driveSyncStatusSchema.safeParse({ ...status, ...patch }).success, false)
+})
 
 test('drive credential wire requests bind exact execution and reject host-selected authority', () => {
   const request = { protocolVersion: 1, runId: 'run', sessionId: 'session', execution: { attemptId: 'attempt', generation: 1 } }

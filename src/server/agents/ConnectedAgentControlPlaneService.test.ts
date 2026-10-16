@@ -7,7 +7,8 @@ import { canonicalEnrollmentProof, canonicalHostRequestProof, MAX_HOST_REQUEST_B
 import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
 import type { AgentArtifact, AgentEnvironment, AgentEnvironmentCredential, AgentRemoteSession } from '@overlay/workspace-contracts'
-import type { AuditService } from '@/server/admin'
+import { AuditService } from '@/server/admin'
+import type { AuditEventRecord } from '@/server/admin/AuditRepository'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
 import {
@@ -22,7 +23,7 @@ const TOKEN = 'test-environment-credential-with-enough-entropy'
 const { privateKey, publicKey } = generateKeyPairSync('ed25519')
 const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
 
-function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides: Partial<AgentEnvironmentCredential> = {}) {
+function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides: Partial<AgentEnvironmentCredential> = {}, options = { driveEnabled: false }) {
   const environment: AgentEnvironment = {
     id: 'environment-1', workspaceId: 'workspace-1', kind: 'local', name: 'Test host',
     status: 'online', publicKey: publicKeyPem, capabilities: {},
@@ -37,6 +38,8 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
     expiresAt: NOW + 60_000, createdAt: NOW - 1_000, ...credentialOverrides,
   }
   const consumed = new Set<string>()
+  const scopeUpdates: Array<Parameters<ConnectedAgentRepository['updateEnvironmentFilesystemGrant']>[0]> = []
+  const audits: AuditEventRecord[] = []
   const repository = {
     async findEnvironmentCredential({ tokenHash }: { tokenHash: string }) {
       return tokenHash === credential.tokenHash ? credential : null
@@ -45,6 +48,12 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
       return args.workspaceId === environment.workspaceId && args.environmentId === environment.id
         ? environment
         : null
+    },
+    async updateEnvironmentFilesystemGrant(args: Parameters<ConnectedAgentRepository['updateEnvironmentFilesystemGrant']>[0]) {
+      if (args.workspaceId !== environment.workspaceId || args.environmentId !== environment.id) return null
+      scopeUpdates.push(args)
+      environment.filesystemGrant = args.filesystemGrant
+      return environment
     },
     async consumeEnvironmentProofNonce(args: { credentialId: string; nonceHash: string; expiredGraceMs?: number }) {
       if (credential.expiresAt <= NOW && NOW - credential.expiresAt >= (args.expiredGraceMs ?? 0)) return false
@@ -55,13 +64,48 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
   } as unknown as ConnectedAgentRepository
   const service = new ConnectedAgentControlPlaneService({
     repository,
-    audit: {} as AuditService,
+    audit: new AuditService({ async append(input) {
+      const entry = { ...input, id: input.id ?? `audit-${audits.length}`, createdAt: input.createdAt ?? NOW }
+      audits.push(entry); return entry
+    }, async list() { return audits } }),
     workspaces: {} as WorkspaceService,
     now: () => NOW,
     isEnabled: () => true,
+    driveEnabled: () => options.driveEnabled,
   })
-  return { service, environment, repository, credential }
+  return { service, environment, repository, credential, scopeUpdates, audits }
 }
+
+test('drive activation persists only the managed Cloud root and is idempotent', async () => {
+  const f = fixture({ kind: 'overlay_cloud', capabilities: { drive: { version: 1 } },
+    filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] } }, {}, { driveEnabled: true })
+  await f.service.prepareDriveEnvironment({ workspaceId: f.environment.workspaceId, environmentId: f.environment.id })
+  assert.deepEqual(f.environment.filesystemGrant, { mode: 'selected_roots', roots: ['/home/user/workspace', '/home/user/drive'] })
+  assert.equal(f.scopeUpdates.length, 1)
+  assert.equal(f.audits[0]?.actorType, 'service')
+  assert.equal(f.audits[0]?.metadata.reason, 'connected_agent_drive')
+  await f.service.prepareDriveEnvironment({ workspaceId: f.environment.workspaceId, environmentId: f.environment.id })
+  assert.equal(f.scopeUpdates.length, 1)
+})
+
+test('drive activation never expands local/VPS grants and refuses disabled, unupgraded or revoked Cloud hosts', async () => {
+  for (const kind of ['local', 'vps', 'external'] as const) {
+    const f = fixture({ kind, capabilities: { drive: { version: 1 } } }, {}, { driveEnabled: true })
+    await f.service.prepareDriveEnvironment({ workspaceId: f.environment.workspaceId, environmentId: f.environment.id })
+    assert.deepEqual(f.environment.filesystemGrant, { mode: 'selected_roots', roots: ['/workspace/project'] })
+    assert.equal(f.scopeUpdates.length, 0)
+  }
+  for (const input of [{ enabled: false, capabilities: { drive: { version: 1 } }, status: 'online' as const },
+    { enabled: true, capabilities: {}, status: 'online' as const },
+    { enabled: true, capabilities: { drive: { version: 1 } }, status: 'revoked' as const }]) {
+    const f = fixture({ kind: 'overlay_cloud', capabilities: input.capabilities, status: input.status }, {}, { driveEnabled: input.enabled })
+    await assert.rejects(f.service.prepareDriveEnvironment({ workspaceId: f.environment.workspaceId, environmentId: f.environment.id }))
+    assert.equal(f.scopeUpdates.length, 0)
+  }
+  const f = fixture({ kind: 'overlay_cloud', capabilities: { drive: { version: 1 } } }, {}, { driveEnabled: true })
+  await assert.rejects(f.service.prepareDriveEnvironment({ workspaceId: 'foreign', environmentId: f.environment.id }))
+  assert.equal(f.scopeUpdates.length, 0)
+})
 
 function signedRequest(args: {
   target: string
