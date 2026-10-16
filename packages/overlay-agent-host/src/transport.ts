@@ -17,6 +17,8 @@ import {
   type CommandPollResponse,
   type ArtifactUploadRequest,
   type ArtifactUploadResponse,
+  type EnvironmentCredentialResponse,
+  type FilesystemGrant,
   artifactUploadResponseSchema,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { createHash, randomBytes, sign } from 'node:crypto'
@@ -42,6 +44,8 @@ export interface AgentControlPlaneClient {
   /** Overlay Cloud only: the provider credentials for one of this host's runs. */
   fetchRunCredentials?(runId: string): Promise<Record<string, string>>
   fetchDriveCredentials?(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse>
+  /** Refresh the approved policy through the existing device-signed credential rotation. */
+  refreshFilesystemGrant?(): Promise<FilesystemGrant>
 }
 
 export type HttpControlPlaneClientOptions = {
@@ -53,7 +57,8 @@ export type HttpControlPlaneClientOptions = {
   onCredentialRotated?: (credential: {
     token: string
     expiresAt: number
-    filesystemGrant: import('@layernorm/overlay-agent-bridge-protocol').FilesystemGrant
+    filesystemGrant: FilesystemGrant
+    methods: EnvironmentCredentialResponse['methods']
   }) => Promise<void> | void
   fetch?: typeof globalThis.fetch
   requestTimeoutMs?: number
@@ -64,6 +69,7 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
   private readonly requestTimeoutMs: number
   private credential: string
   private credentialExpiresAt?: number
+  private refreshing?: Promise<EnvironmentCredentialResponse>
 
   constructor(private readonly options: HttpControlPlaneClientOptions) {
     this.fetch = options.fetch ?? globalThis.fetch
@@ -149,6 +155,10 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     return driveCredentialsResponseSchema.parse(await response.json())
   }
 
+  async refreshFilesystemGrant(): Promise<FilesystemGrant> {
+    return (await this.refreshCredential()).filesystemGrant
+  }
+
   private async request(url: URL, init: RequestInit): Promise<Response> {
     if (this.options.privateKey && this.credentialExpiresAt &&
       this.credentialExpiresAt - Date.now() < 60_000 && !url.pathname.endsWith('/credentials/refresh')) {
@@ -189,17 +199,26 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     return response
   }
 
-  private async refreshCredential(): Promise<void> {
+  private async refreshCredential(): Promise<EnvironmentCredentialResponse> {
+    if (!this.refreshing) this.refreshing = this.rotateCredential()
+    const pending = this.refreshing
+    try { return await pending } finally { if (this.refreshing === pending) this.refreshing = undefined }
+  }
+
+  private async rotateCredential(): Promise<EnvironmentCredentialResponse> {
     const url = new URL('credentials/refresh', withSlash(this.options.baseUrl))
     const response = await this.request(url, { method: 'POST', body: '' })
     const rotated = environmentCredentialResponseSchema.parse(await response.json())
+    if (rotated.environmentId !== this.options.environmentId) throw Error('Credential refresh scope does not match this host')
     this.credential = rotated.token
     this.credentialExpiresAt = rotated.expiresAt
     await this.options.onCredentialRotated?.({
       token: rotated.token,
       expiresAt: rotated.expiresAt,
       filesystemGrant: rotated.filesystemGrant,
+      methods: rotated.methods,
     })
+    return rotated
   }
 }
 

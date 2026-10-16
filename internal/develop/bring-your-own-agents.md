@@ -1343,3 +1343,6 @@ physically before creating a dedicated child, and requires an explicit approved 
 It holds the cache lease through initialization and the turn, drains synchronization before close,
 and releases ownership after failed hydration so that the same execution can retry safely. Host
 command/runtime wiring must refresh the approved filesystem policy before invoking this wrapper.
+The host transport exposes that refresh through the existing signed credential-rotation endpoint.
+Concurrent refresh callers share one rotation; callbacks retain its complete method grant and
+filesystem policy, and a response for another environment is rejected before replacing credentials.
