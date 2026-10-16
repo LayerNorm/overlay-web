@@ -178,14 +178,16 @@ const factHandlers: FactHandlers = {
   stopped({ next }) { needsAttention(next, 'execution_stopped') },
   observe({ current, next, now }) {
     if (current.phase === 'needs_attention' && current.cause !== 'process_health_required') return 'unchanged'
+    const awaitingStart = ['queued', 'waking', 'starting'].includes(current.phase)
+      || (current.phase === 'recovering' && current.cause === 'native_restoration')
     if (pendingRemoteApprovals(current).some(request => now >= request.expiresAt)) {
       next.phase = 'cancelling'; next.cause = 'approval_expired'; next.cancelRequestedAt = now
     } else if (current.lastPreparationAt !== undefined && ['starting', 'recovering'].includes(current.phase)) {
       if (now - current.lastPreparationAt < 90_000) return 'unchanged'
       needsAttention(next, 'preparation_health_required')
-    } else if (['queued', 'waking', 'starting'].includes(current.phase) && now >= current.claimDeadlineAt) {
+    } else if (awaitingStart && now >= current.claimDeadlineAt) {
       needsAttention(next, 'command_unclaimed')
-    } else if (!['queued', 'waking', 'starting'].includes(current.phase) && now - (current.lastHealthAt ?? 0) >= 90_000) needsAttention(next, 'process_health_required')
+    } else if (!awaitingStart && now - (current.lastHealthAt ?? 0) >= 90_000) needsAttention(next, 'process_health_required')
     else return 'unchanged'
   },
 }

@@ -2,6 +2,19 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { reduceRemoteRun, remoteRunCoarseStatus, type RemoteRunState, type RemoteRunFact } from './remote-run'
 const state = (): RemoteRunState => ({ version: 2, revision: 0, phase: 'running', currentAttemptId: 'attempt', executionGeneration: 1, coordinatorGeneration: 1, coordinatorId: 'owner', hardDeadlineAt: 86_400_000, claimDeadlineAt: 120_000 })
+test('native restoration gets a bounded startup window, not a fabricated live-provider observation', () => {
+  const recovery: RemoteRunState = {...state(), phase: 'recovering', cause: 'native_restoration'}
+  assert.equal(apply(recovery, {type: 'observe'}, 30_000).state.phase, 'recovering')
+  assert.equal(apply(recovery, {type: 'observe'}, 120_000).state.cause, 'command_unclaimed')
+  let preparing = recovery
+  for (let now = 10_000; now <= 300_000; now += 10_000) {
+    preparing = apply(preparing, {type: 'preparing'}, now).state
+    preparing = apply(preparing, {type: 'observe'}, now).state
+    assert.equal(preparing.phase, 'recovering')
+    assert.equal(preparing.lastHealthAt, undefined)
+    assert.equal(preparing.hardDeadlineAt, recovery.hardDeadlineAt)
+  }
+})
 function apply(s: RemoteRunState, f: RemoteRunFact, now = 1000) {
   return reduceRemoteRun(s, s.revision, { attemptId: s.currentAttemptId, executionGeneration: s.executionGeneration, coordinatorGeneration: s.coordinatorGeneration }, f, now)
 }

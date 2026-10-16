@@ -802,6 +802,174 @@ test('provider stop proof refuses a foreign, released, unsupported or revoked ma
   expect(await lifecycle('recordProviderStop', input)).toBe(false)
 })
 
+async function nativeQueueFixture() {
+  const f = await providerStopFixture()
+  await f.convex.run(async ctx => {
+    const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.input.attemptId)).unique()
+    const command = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', 'command-remote-turn')).unique()
+    if (!attempt || !command) throw Error('Missing native fixture')
+    await ctx.db.patch(attempt._id, {capabilitySnapshot: {...attempt.capabilitySnapshot,
+      adapters: [{id: 'acp', protocol: 'acp', recovery: {sessionLoading: true, fencedSessionRestoration: true}}]}})
+    await ctx.db.patch(command._id, {payload: {...command.payload, metadata: {...command.payload.metadata,
+      model: 'original-model', effort: 'high', overlayMcp: {url: 'https://preview.invalid/api/agent-mcp', token: 'original-grant'},
+      overlayDrive: {version: 1, sessionId: f.input.attemptId, location: 'cloud'}}}})
+  })
+  const prefix = 'Keep the full answer before interruption 🙂\n'.repeat(100)
+  await f.events([event(3, 'text_delta', {offset: 0, text: prefix})], now + 3)
+  const before = await projectedState(f.convex, f.started.messageId)
+  if (!before.run?.remoteLifecycle) throw Error('Missing lifecycle')
+  const stop = {...f.input, expectedRevision: before.run.remoteLifecycle.revision, now: now + 4}
+  expect(await f.lifecycle('recordProviderStop', stop)).toBe(true)
+  const input = {runId: stop.runId, attemptId: stop.attemptId, generation: stop.generation, leaseId: stop.leaseId,
+    providerReference: stop.providerReference, coordinatorId: 'owner', coordinatorGeneration: 1,
+    expectedRevision: stop.expectedRevision + 1, now: now + 5}
+  const begin = (change: Record<string, unknown> = {}) => f.convex.mutation(makeFunctionReference<'mutation'>('agents/nativeRecovery:beginByServer'),
+    {...input, ...change, serverSecret: secret})
+  return {...f, input, begin, prefix}
+}
+
+test('native continuation queues one new generation on the same assistant with original settings and fresh drive scope', async () => {
+  const {convex, started, begin, prefix, input} = await nativeQueueFixture()
+  expect(await begin()).toBe(true)
+  expect(await begin()).toBe(true)
+  const result = await projectedState(convex, started.messageId)
+  expect(result.run?.assistantMessageId).toBe(started.messageId)
+  const hydrated = await convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', input.runId)).unique()
+    const message = run && await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing restored message')
+    return hydrateRemoteMessage(ctx, message)
+  })
+  expect(hydrated.content).toBe(prefix)
+  expect(result.run?.remoteLifecycle).toMatchObject({executionGeneration: 2, phase: 'recovering', cause: 'native_restoration',
+    hardDeadlineAt: now + 3_600_000, claimDeadlineAt: input.now + 120_000})
+  const commands = await convex.run(ctx => ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', input.runId)).take(10))
+  const continuation = commands.find(command => command.type === 'start')
+  expect(continuation?.payload).toMatchObject({sessionId: 'native-session', fresh: false,
+    metadata: {model: 'original-model', effort: 'high', recoveryTextOffset: prefix.length,
+      overlayMcp: {token: 'original-grant'}, overlayDrive: {sessionId: result.run?.remoteLifecycle?.currentAttemptId}},
+    restore: {previousExecution: {attemptId: input.attemptId, generation: 1, hostBootId: 'boot-1'},
+      providerStop: {leaseId: input.leaseId, providerReference: input.providerReference}}})
+  expect(continuation?.payload.prompt).toContain('You were interrupted')
+  expect(commands.filter(command => command.type === 'start')).toHaveLength(1)
+  expect(commands.find(command => command.commandId === 'command-remote-turn')?.type).toBe('shutdown')
+  const attempts = await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_runId', q => q.eq('runId', input.runId)).take(10))
+  expect(attempts).toHaveLength(2)
+})
+
+test('native continuation refuses stale coordinator, execution, receipt and machine facts', async () => {
+  const {begin, input} = await nativeQueueFixture()
+  for (const change of [{coordinatorId: 'other'}, {coordinatorGeneration: 2}, {attemptId: 'other'}, {generation: 2},
+    {expectedRevision: input.expectedRevision - 1}, {leaseId: 'other'}, {providerReference: 'other'}, {now: now + 3_600_001}])
+    expect(await begin(change)).toBe(false)
+})
+
+test('a queued native continuation appends on the original assistant and fences buffered old execution output', async () => {
+  const {convex, call, events, begin, prefix, input, started} = await nativeQueueFixture()
+  expect(await begin()).toBe(true)
+  const state = (await projectedState(convex, started.messageId)).run?.remoteLifecycle
+  if (!state) throw Error('Missing recovery state')
+  expect(await events([event(4, 'text_delta', {offset: prefix.length, text: 'STALE_WRITER'})], now + 6))
+    .toMatchObject({accepted: true, stale: 'stale_attempt'})
+  const tail = '\nContinued in the original native conversation.'
+  const continuationEvents = [event(1, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp'}),
+    event(2, 'text_delta', {offset: prefix.length, text: tail}), event(3, 'completed', {usage: {}})]
+    .map(e => ({...e, eventId: `restored-${e.eventId}`, execution: {attemptId: state.currentAttemptId,
+      generation: state.executionGeneration, hostBootId: 'new-boot'}}))
+  expect(await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: state.currentAttemptId,
+    events: continuationEvents, now: now + 7})).toMatchObject({accepted: true})
+  await convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', input.runId)).unique()
+    if (!run) throw Error('Missing run')
+    expect(run.assistantMessageId).toBe(started.messageId)
+    expect(run.status).toBe('completed')
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing message')
+    expect((await hydrateRemoteMessage(ctx, message)).content).toBe(prefix + tail)
+  })
+})
+
+test('native continuation never replaces a cancelled run or a lost approval context', async () => {
+  const cancelled = await nativeQueueFixture()
+  await cancelled.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: cancelled.seeded.conversationId,
+    runId: cancelled.input.runId, action: 'cancel', queueExpiresAt: now + 60_000, now: now + 6})
+  expect(await cancelled.begin()).toBe(false)
+  const approval = await nativeQueueFixture()
+  await approval.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', approval.input.runId)).unique()
+    if (!run?.remoteLifecycle) throw Error('Missing lifecycle')
+    await ctx.db.patch(run._id, {remoteLifecycle: {...run.remoteLifecycle, cause: 'approval_context_lost'}})
+  })
+  expect(await approval.begin()).toBe(false)
+})
+
+test('native continuation refuses unavailable capabilities, missing native identity and oversized commands', async () => {
+  for (const scenario of ['unsupported', 'missing-identity', 'oversized']) {
+    const {convex, begin, input, started} = await nativeQueueFixture()
+    await convex.run(async ctx => {
+      const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', input.attemptId)).unique()
+      const command = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', 'command-remote-turn')).unique()
+      if (!attempt || !command) throw Error('Missing native fixture')
+      if (scenario === 'unsupported') await ctx.db.patch(attempt._id, {capabilitySnapshot: {...attempt.capabilitySnapshot,
+        adapters: [{id: 'acp', protocol: 'acp', recovery: {sessionLoading: true}}]}})
+      if (scenario === 'missing-identity') await ctx.db.patch(attempt._id, {remoteSessionId: undefined})
+      if (scenario === 'oversized') await ctx.db.patch(command._id, {payload: {...command.payload,
+        metadata: {...command.payload.metadata, oversized: 'x'.repeat(128 * 1024)}}})
+    })
+    expect(await begin()).toBe(false)
+    expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.currentAttemptId).toBe(input.attemptId)
+  }
+})
+
+test('native continuation checks current membership, binding, funding and unresolved database approvals', async () => {
+  for (const scenario of ['membership', 'binding', 'funding', 'approval']) {
+    const {convex, begin, input} = await nativeQueueFixture()
+    await convex.run(async ctx => {
+      if (scenario === 'membership') {
+        const member = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspaceId).eq('principalId', actorPrincipalId)).unique()
+        if (!member) throw Error('Missing membership')
+        await ctx.db.delete(member._id)
+      }
+      if (scenario === 'binding') {
+        const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+        if (!binding) throw Error('Missing binding')
+        await ctx.db.patch(binding._id, {enabled: false})
+      }
+      if (scenario === 'funding') {
+        const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', input.attemptId)).unique()
+        if (!attempt) throw Error('Missing attempt')
+        await ctx.db.patch(attempt._id, {capabilitySnapshot: {...attempt.capabilitySnapshot, billing: {reservationId: 'missing-reservation'}}})
+      }
+      if (scenario === 'approval') await ctx.db.insert('agentApprovalRequests', {approvalId: 'unresolved', workspaceId,
+        runId: input.runId, remoteSessionId: input.attemptId, requestKey: 'pending-decision', prompt: 'Allow?',
+        options: ['allow', 'deny'], payload: {}, requestedAt: now})
+    })
+    expect(await begin()).toBe(false)
+  }
+})
+
+test('native continuation rejects claimed replay and receipts from another environment or the future', async () => {
+  const queued = await nativeQueueFixture()
+  expect(await queued.begin()).toBe(true)
+  await queued.convex.run(async ctx => {
+    const commands = await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', queued.input.runId)).take(10)
+    const command = commands.find(candidate => candidate.type === 'start')
+    if (!command) throw Error('Missing continuation')
+    await ctx.db.patch(command._id, {status: 'claimed'})
+  })
+  expect(await queued.begin()).toBe(false)
+  for (const receipt of [{environmentId: 'foreign'}, {observedAt: now + 100}]) {
+    const {convex, begin, input} = await nativeQueueFixture()
+    await convex.run(async ctx => {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', input.runId)).unique()
+      if (!run?.remoteLifecycle?.providerStop) throw Error('Missing stop receipt')
+      await ctx.db.patch(run._id, {remoteLifecycle: {...run.remoteLifecycle,
+        providerStop: {...run.remoteLifecycle.providerStop, ...receipt}}})
+    })
+    expect(await begin()).toBe(false)
+  }
+})
+
 test('fresh-drive preparation survives the two-minute claim window without granting authority to stale startup', async () => {
   const {convex, lifecycle, call, started, events} = await durableFixture()
   const previous = process.env.OVERLAY_CONNECTED_AGENT_DRIVE

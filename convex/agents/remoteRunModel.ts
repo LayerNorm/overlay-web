@@ -6,10 +6,10 @@ import { reduceRemoteRun, remoteRunCoarseStatus, type RemoteRunFact, type Remote
 const remoteApprovalValidator = v.object({ requestKey: v.string(), expiresAt: v.number(), kind: v.optional(v.union(v.literal('permission'), v.literal('elicitation'))), decision: v.optional(v.string()), delivered: v.optional(v.boolean()) })
 
 export const remoteLifecycleValidator = v.object({
-  version: v.literal(2), revision: v.number(), phase: v.union(...[
-    'queued', 'waking', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering',
-    'needs_attention', 'cancelling', 'completed', 'cancelled', 'failed',
-  ].map(phase => v.literal(phase))),
+  version: v.literal(2), revision: v.number(), phase: v.union(
+    v.literal('queued'), v.literal('waking'), v.literal('starting'), v.literal('running'),
+    v.literal('waiting_for_approval'), v.literal('waiting_for_input'), v.literal('recovering'),
+    v.literal('needs_attention'), v.literal('cancelling'), v.literal('completed'), v.literal('cancelled'), v.literal('failed')),
   currentAttemptId: v.string(), executionGeneration: v.number(), coordinatorGeneration: v.number(),
   coordinatorId: v.optional(v.string()), hardDeadlineAt: v.number(), claimDeadlineAt: v.number(),
   lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()), lastPreparationAt: v.optional(v.number()),

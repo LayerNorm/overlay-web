@@ -1431,7 +1431,16 @@ The server can record a provider-stop receipt only against the current execution
 attempt, generation, environment and the immutable sandbox lease captured when that attempt
 was admitted. The lease must remain the unique active machine for that scope. Cancellation,
 revocation, stale observations and a replacement machine cannot authorize the old execution;
-fresh attempts clear the receipt. Recording this prerequisite does not start a continuation.
+fresh attempts clear the receipt. Recording this prerequisite does not start a continuation. A separate server transaction can queue
+one native continuation against that receipt and the current coordinator revision. It rechecks active
+conversation membership, binding, funding, the unique admitted machine lease, native identity,
+explicit adapter capability and unresolved database approvals. It keeps the assistant message and
+full chunked answer, advances the execution generation once, rebinds the drive descriptor and
+preserves validated original settings. The hard deadline never moves. Duplicate delivery is safe
+only while the exact queued command remains pending; claimed or unknown outcomes are not retried.
+Old unfinished commands become ordered shutdowns, retaining the host's command sequence.
+The queued restoration has a bounded preparation window without asserting provider health;
+queueing alone does not claim successful restoration or enable the capability.
 The machine recovery gate observes a stopped Boat machine without resuming it, waits for the
 backend to authorize a queued restoration, and rechecks the same active lease before and after
 resume. It restarts only that captured machine's host. Live machines, rejected authorization,
