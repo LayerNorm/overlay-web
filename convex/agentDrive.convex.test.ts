@@ -5,6 +5,8 @@ import { AgentDriveManifestService } from '../src/server/agents/AgentDriveManife
 import { AgentDriveMaterializer } from '../src/server/agents/AgentDriveMaterializer'
 import { createAgentDriveTokens } from '../src/server/agents/agent-drive-token'
 import { cleanupDriveVersions } from '../src/server/agents/cleanup-agent-drive-versions'
+import { AgentDriveClient } from '../packages/overlay-agent-host/src/drive-client'
+import { handleAgentDriveRequest } from '../src/server/agents/agent-drive-http'
 vi.mock('server-only', () => ({}))
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
@@ -546,4 +548,17 @@ test('real drive transactions round-trip full object bytes despite staging races
   if (!entry?.downloadMac) throw Error('Expected ready download')
   const { downloadMac, ...downloadEntry } = entry
   expect(Buffer.from(await reader.download(token, { entry: downloadEntry, downloadMac })).equals(Buffer.from(full))).toBe(true)
+  // The packaged host client crosses the actual BFF request handler and current
+  // Convex-backed readers, including range reconstruction beyond the row prefix.
+  const host = new AgentDriveClient({ apiUrl: 'https://preview.invalid/api/agent-drive',
+    credentials: async () => ({ protocolVersion: 1, token, expiresAt, scope: claims.scope }),
+    fetch: (input, init) => handleAgentDriveRequest(new Request(input, init), {
+      enabled: () => true, service: () => reader, writes: () => service, limit: async () => null,
+    }),
+  })
+  const hydrated = (await host.manifest()).find(item => item.fileId === result.fileId)
+  if (!hydrated || hydrated.kind !== 'file' || hydrated.hydration !== 'ready') throw Error('Expected ready Files manifest entry')
+  expect(Buffer.from(await host.download(hydrated)).equals(Buffer.from(full))).toBe(true)
+  expect(await host.commit(intent.uploadId)).toEqual(result)
+  expect(seals).toBe(1)
 })

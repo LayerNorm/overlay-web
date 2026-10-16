@@ -950,7 +950,12 @@ run, session and execution fence; the backend resolves actor, binding and scope 
 authority, including local/VPS opt-in. Tokens last at most one hour and never outlive the execution.
 Download and metadata grants bind the execution and revision, allowing a renewed token to use an
 existing grant; expiry, revocation and stale-execution checks still apply on every operation.
-The signed host transport is implemented; runtime consumption/renewal and synchronization remain pending.
+The signed host transport and drive HTTP client are implemented. The shared bridge package owns
+wire schemas. The client requires a manifest header and matching terminal entry count, bounds
+streams/ranges, verifies full hashes, keeps tokens in memory and renews through a single flight.
+Renewal cannot switch scope; only an explicit 401 receives one retry. Signed staging PUTs omit
+drive/device credentials and refuse redirects. Ambiguous writes require a journaled same-id retry.
+Persistent journaling and runtime hydration/synchronization remain pending.
 
 `Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
 manually from main. It updates both adapter pins, the lockstep host/protocol patch version,

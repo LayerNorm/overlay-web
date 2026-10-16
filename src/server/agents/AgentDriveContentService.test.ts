@@ -86,6 +86,8 @@ test('replace grants bind the hydrated entry and reject changed revisions before
   const f = fixture()
   const entry = { fileId: 'file', path: 'report.txt', kind: 'file' as const, updatedAt: 1 }
   const metadataMac = driveMetadataMac(f.secret, f.claims, entry).toString('base64url')
+  assert.equal(driveMetadataMac(f.secret, f.claims, { updatedAt: entry.updatedAt, kind: entry.kind,
+    path: entry.path, fileId: entry.fileId }).toString('base64url'), metadataMac)
   await assert.rejects(f.service.intent(f.token, { ...f.intent,
     operation: { kind: 'replace', entry: { ...entry, updatedAt: 2 }, metadataMac } }), /DRIVE_INVALID_METADATA/)
   assert.equal(f.registrations(), 0)

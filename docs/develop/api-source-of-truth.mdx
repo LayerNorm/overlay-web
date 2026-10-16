@@ -55,6 +55,12 @@ run/session/attempt. The host cannot choose actor or scope. Credentials expire w
 and the hard deadline; execution-bound file grants survive renewal while live authority remains
 required on every operation. The credential method is advertised only to drive v1 hosts.
 
+The bridge protocol package owns public drive wire schemas; server validators re-export those
+schemas and retain private storage records locally. The host client requires complete framed
+manifests and verifies full download hashes across bounded ranges. Token renewal preserves the
+execution and scope, while ambiguous write responses require an explicit same-id retry. Runtime
+journaling and synchronization remain pending.
+
 ## Memory profiles
 
 Compiled profiles are read through `knowledge/memoryProfileStore:getProfile` in

@@ -3,7 +3,8 @@ import 'server-only'
 import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { AgentDriveTokenClaims } from './agent-drive-token'
-import { driveMetadataEntrySchema } from './agent-drive-metadata'
+import { driveUploadBodySchema, driveCommitBodySchema, driveContentResultSchema } from '@layernorm/overlay-agent-bridge-protocol'
+export { driveUploadBodySchema, driveCommitBodySchema, driveContentResultSchema }
 import { verifyDriveMetadataMac } from './agent-drive-entry-grants'
 import { drivePathSegments } from '../../../packages/overlay-agent-bridge-protocol/src/drive-path'
 
@@ -11,14 +12,6 @@ const id = z.string().min(1).max(200)
 const hash = z.string().regex(/^[a-f0-9]{64}$/)
 const bytes = z.number().int().nonnegative().max(16 * 1024 * 1024)
 const create = z.object({ kind: z.literal('create'), name: z.string().min(1).max(255), parentId: id.optional() }).strict()
-const replace = z.object({ kind: z.literal('replace'), entry: driveMetadataEntrySchema,
-  metadataMac: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict()
-export const driveUploadBodySchema = z.object({ action: z.literal('upload'), requestId: z.string().regex(/^[A-Za-z0-9_-]{16,128}$/),
-  operation: z.discriminatedUnion('kind', [create, replace]), sha256: hash, sizeBytes: bytes,
-  mimeType: z.string().max(200).regex(/^[\w.+-]+\/[\w.+-]+$/) }).strict()
-export const driveCommitBodySchema = z.object({ action: z.literal('commit'), uploadId: z.string().uuid() }).strict()
-export const driveContentResultSchema = z.object({ fileId: id, updatedAt: z.number().int().nonnegative(), name: z.string(),
-  conflict: z.boolean(), objectStored: z.boolean(), sha256: hash, sizeBytes: bytes }).strict()
 const operation = z.discriminatedUnion('kind', [create,
   z.object({ kind: z.literal('replace'), fileId: id, path: z.string().min(1).max(4096), updatedAt: z.number().int().nonnegative() }).strict()])
 export const driveUploadRecordSchema = z.object({ uploadId: z.string().uuid(), operation,

@@ -13,7 +13,8 @@ export function driveGrantAuthorityHash(claims: AgentDriveAuthorityClaims): stri
 }
 
 export function driveMetadataMac(secret: string, claims: AgentDriveAuthorityClaims, entry: DriveMetadataEntry): Buffer {
-  return createHmac('sha256', secret).update('overlay-agent-drive-metadata:v2.').update(driveGrantAuthorityHash(claims)).update(JSON.stringify(entry)).digest()
+  return createHmac('sha256', secret).update('overlay-agent-drive-metadata:v2.').update(driveGrantAuthorityHash(claims))
+    .update(JSON.stringify([entry.fileId, entry.path, entry.kind, entry.updatedAt])).digest()
 }
 export function verifyDriveMetadataMac(secret: string, claims: AgentDriveAuthorityClaims, entry: DriveMetadataEntry, encoded: string): void {
   const actual = Buffer.from(encoded, 'base64url')
