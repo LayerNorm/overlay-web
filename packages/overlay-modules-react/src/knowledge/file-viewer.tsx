@@ -1,5 +1,6 @@
 'use client'
-
+import { Button, Textarea } from '@overlay/ui/primitives'
+import { unstyledButton, unstyledTextarea } from '../control-reset'
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -216,23 +217,23 @@ function ViewerOperationButtons({
   return (
     <div className="flex flex-wrap items-center justify-center gap-2">
       {operations?.download ? (
-        <button type="button" className={buttonClass} onClick={() => void operations.download?.(asset)}>
+        <Button variant="ghost" type="button" className={unstyledButton(buttonClass)} onClick={() => void operations.download?.(asset)}>
           <Download size={12} /> Download
-        </button>
+        </Button>
       ) : downloadUrl ? (
         <a href={downloadUrl} download={name} className={buttonClass}>
           <Download size={12} /> Download
         </a>
       ) : null}
       {operations?.openExternal && externalUrl ? (
-        <button type="button" className={buttonClass} onClick={() => void operations.openExternal?.({ name, url: externalUrl })}>
+        <Button variant="ghost" type="button" className={unstyledButton(buttonClass)} onClick={() => void operations.openExternal?.({ name, url: externalUrl })}>
           <ExternalLink size={12} /> Open externally
-        </button>
+        </Button>
       ) : null}
       {operations?.revealLocal ? (
-        <button type="button" className={buttonClass} onClick={() => void operations.revealLocal?.(asset)}>
+        <Button variant="ghost" type="button" className={unstyledButton(buttonClass)} onClick={() => void operations.revealLocal?.(asset)}>
           <FolderSearch size={12} /> Show locally
-        </button>
+        </Button>
       ) : null}
     </div>
   )
@@ -508,13 +509,13 @@ function PdfViewerStatusBar({
     <div className="flex shrink-0 items-center justify-between gap-3 border-t border-(--border) bg-(--surface-elevated) px-4 py-2 text-xs text-(--muted)">
       <span>{status}</span>
       {hasExtractedText ? (
-        <button
+        <Button variant="ghost"
           type="button"
-          className="shrink-0 rounded-md border border-(--border) px-2.5 py-1.5 text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+          className={unstyledButton("shrink-0 rounded-md border border-(--border) px-2.5 py-1.5 text-(--foreground) transition-colors hover:bg-(--surface-subtle)")}
           onClick={onToggleText}
         >
           {showingText ? 'Try PDF preview' : 'Show extracted text'}
-        </button>
+        </Button>
       ) : null}
     </div>
   )
@@ -582,12 +583,12 @@ export function FileViewerPanel({
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-col">
       {editable ? (
         <>
-          <textarea
+          <Textarea
             aria-label="File contents"
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start typing..."
-            className="min-h-0 flex-1 resize-none bg-(--background) px-8 py-6 font-mono text-sm leading-relaxed text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
+            className={unstyledTextarea("min-h-0 flex-1 resize-none bg-(--background) px-8 py-6 font-mono text-sm leading-relaxed text-(--foreground) outline-hidden placeholder:text-(--muted-light)")}
           />
           <div className="shrink-0 border-t border-(--border) px-8 py-2 text-[11px] text-(--muted-light)">
             Reference in chat with{' '}
