@@ -20,6 +20,11 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 | Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
 | Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
 
+For a diagnosed build stall, `OVERLAY_BUILD_DIAGNOSTICS=1` enables build-only Node
+resource samples (heap limit/usage, RSS, CPU and GC totals) in the hosted web command.
+Keep it scoped to the affected Preview branch, then remove it after investigation.
+The sampler reports no environment values, arguments or heap contents and does not skip checks.
+
 The trusted `PR Preview` workflow uses the existing `VERCEL_PREVIEW_TOKEN` in
 GitHub's `release-control` environment for ordinary custom URL assignment and
 cleanup, plus the existing scoped Convex Preview credential for backend renewal.
