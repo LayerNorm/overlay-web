@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 5 adds a server-only provider-stop receipt bound to the exact execution revision, attempt, generation, environment and its admitted sandbox lease. Real Convex tests reject stale/cross-scope facts, replacement or ambiguous machines, revocation and cancellation; stable duplicate delivery is idempotent. The stopped-provider caller and native continuation are not yet wired.
+
 - Phase 5 acpx closure now propagates failure, joins concurrent callers and blocks new prompts until closure is confirmed. Terminal outcomes follow native connection closure. A real subprocess/storage-failure regression verifies Stop can retry without starting another writer; native forced-restart recovery remains pending.
 
 - Phase 5 direct-ACP loading now consumes historical answer/tool frames without republishing them as new output, including a buffered history tail after the load response. Current command metadata is retained. A real NDJSON subprocess regression verifies only the subsequent prompt contributes new answer text; execution-fenced recovery admission and its hosted smoke remain pending.

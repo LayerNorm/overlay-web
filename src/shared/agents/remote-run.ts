@@ -26,6 +26,10 @@ export type RemoteRunState = {
   approvals?: RemoteRunApproval[]
   cause?: string
   recoveryOutcome?: RemoteRecoveryOutcome
+  providerStop?: {
+    provider: 'box'; environmentId: string; leaseId: string; providerReference: string
+    attemptId: string; executionGeneration: number; observedAt: number; recordedAtRevision: number
+  }
 }
 export type RemoteRunFact =
   | { type: 'claim_coordinator'; coordinatorId: string }

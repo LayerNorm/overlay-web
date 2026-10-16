@@ -736,6 +736,7 @@ export const controlRemoteAgentTurnByServer = mutation({
         delete nextState.cancelRequestedAt
         delete nextState.lastHealthAt
         delete nextState.lastPreparationAt
+        delete nextState.providerStop
         await ctx.db.patch(run._id, { remoteLifecycle: nextState, status: remoteRunCoarseStatus(nextState.phase), updatedAt: now })
         // A replacement cannot leave an executable card from the old process ahead
         // of its new requests. Preserve answered decisions and close only old waits.

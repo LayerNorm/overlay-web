@@ -1427,6 +1427,11 @@ Session checkpoints retain the validated model, permission mode, effort and Clou
 alongside nonsecret configuration references. Restoration reuses that same settings schema;
 MCP tokens and provider credentials are excluded and must be reissued by the control plane.
 Preserving settings does not authorize native continuation without old-writer isolation proof.
+The server can record a provider-stop receipt only against the current execution revision,
+attempt, generation, environment and the immutable sandbox lease captured when that attempt
+was admitted. The lease must remain the unique active machine for that scope. Cancellation,
+revocation, stale observations and a replacement machine cannot authorize the old execution;
+fresh attempts clear the receipt. Recording this prerequisite does not start a continuation.
 Acpx records a versioned, nonsecret ACP session identity before the first prompt: its local session key, provider agent, working directory and ACP backend session id. Restoration requires a matching record or checkpoint and explicitly requests that backend id; missing identities, conflicting records and provider load refusal cannot create a replacement conversation. Checkpoint failure closes the new runtime before initialization returns. This identity safeguard does not enable interrupted-turn continuation. Direct ACP session loading consumes replayed answer/work notifications through first-prompt admission, including buffered frames after the load response, without appending them to the canonical answer; current command catalogs remain available.
 Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
 control actions and event projection. The UI shows that absolute UTC deadline for nonterminal

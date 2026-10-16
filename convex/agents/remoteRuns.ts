@@ -3,6 +3,30 @@ import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { applyRemoteFact, currentRemoteAttempt } from './remoteRunModel'
 import type { RemoteRunState } from '../../src/shared/agents/remote-run'
+import type {MutationCtx} from '../_generated/server'
+import {z} from 'zod'
+
+const recoveryMachineBinding = z.object({sandboxBilling: z.object({leaseId: z.string().min(1)})})
+
+async function matchesCurrentRecoveryMachine(ctx: MutationCtx, input: {
+  runId: string; environmentId: string; leaseId: string; providerReference: string
+}) {
+  const [attempt, environment] = await Promise.all([
+    currentRemoteAttempt(ctx, input.runId),
+    ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', input.environmentId)).unique(),
+  ])
+  if (!attempt || !environment || environment.kind !== 'overlay_cloud' || environment.revokedAt
+    || attempt.environmentId !== input.environmentId || environment.workspaceId !== attempt.workspaceId) return false
+  const binding = recoveryMachineBinding.safeParse(attempt.capabilitySnapshot)
+  if (!binding.success || binding.data.sandboxBilling.leaseId !== input.leaseId) return false
+  const leases = await ctx.db.query('agentSandboxLeases').withIndex('by_workspaceId_environmentId', q =>
+    q.eq('workspaceId', attempt.workspaceId).eq('environmentId', input.environmentId)).order('desc').take(101)
+  if (leases.length === 101) return false
+  const active = leases.filter(lease => ['reserved', 'provisioning', 'running'].includes(lease.status))
+  const lease = active.length === 1 ? active[0] : undefined
+  return Boolean(lease && lease.leaseId === input.leaseId && lease.provider === 'box'
+    && lease.status === 'running' && lease.providerReference === input.providerReference)
+}
 
 export const readByServer = query({
   args: { serverSecret: v.string(), runId: v.string() }, returns: v.any(),
@@ -139,5 +163,31 @@ export const confirmStoppedByServer = mutation({
     if (!run?.remoteLifecycle || run.remoteLifecycle.phase !== 'cancelling' || run.remoteLifecycle.currentAttemptId !== args.attemptId
       || run.remoteLifecycle.executionGeneration !== args.generation) return false
     return (await applyRemoteFact(ctx, run, { type: 'stopped' }, args.now))?.applied === true
+  },
+})
+
+/** The trusted caller must read the provider's stopped state before recording it, and before resuming. */
+export const recordProviderStopByServer = mutation({
+  args: {serverSecret: v.string(), runId: v.string(), environmentId: v.string(), leaseId: v.string(),
+    providerReference: v.string(), attemptId: v.string(), generation: v.number(), expectedRevision: v.number(), now: v.number()},
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique()
+    const state = run?.remoteLifecycle
+    if (!state || !['needs_attention', 'recovering'].includes(state.phase) || state.currentAttemptId !== args.attemptId
+      || state.executionGeneration !== args.generation || run.environmentId !== args.environmentId
+      || !Number.isSafeInteger(args.now) || args.now < run.createdAt || args.now >= state.hardDeadlineAt) return false
+    if (!await matchesCurrentRecoveryMachine(ctx, args)) return false
+    const prior = state.providerStop
+    if (state.revision === args.expectedRevision + 1 && prior?.recordedAtRevision === args.expectedRevision
+      && prior.attemptId === args.attemptId && prior.executionGeneration === args.generation
+      && prior.leaseId === args.leaseId && prior.providerReference === args.providerReference) return true
+    if (state.revision !== args.expectedRevision) return false
+    await ctx.db.patch(run._id, {remoteLifecycle: {...state, revision: state.revision + 1, providerStop: {
+      provider: 'box', environmentId: args.environmentId, leaseId: args.leaseId, providerReference: args.providerReference,
+      attemptId: args.attemptId, executionGeneration: args.generation, observedAt: args.now, recordedAtRevision: state.revision,
+    }}, updatedAt: args.now})
+    return true
   },
 })

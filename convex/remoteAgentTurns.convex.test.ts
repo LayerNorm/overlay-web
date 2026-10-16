@@ -701,7 +701,7 @@ async function projectedState(convex: ReturnType<typeof convexTest>, messageId: 
 function mutationRef(operation: string) { return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`) }
 function queryRef(operation: string) { return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`) }
 
-async function durableFixture() {
+async function durableFixture(overrides: Record<string, unknown> = {}) {
   const convex = convexTest(schema, modules)
   const seeded = await seedRoom(convex)
   const call = <T = Record<string, unknown>>(operation: string, args: Record<string, unknown>) =>
@@ -714,13 +714,93 @@ async function durableFixture() {
     await ctx.db.patch(environment!._id, { kind: 'overlay_cloud', status: 'online', lastSeenAt: now, capabilities: { ...environment!.capabilities, remoteLifecycleVersion: 2 } })
   })
   await seedWorkspaceReservation(convex)
-  const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, { lifecycleVersion: 2, maxRunTimeMs: 3_600_000, reservationId: 'reservation-remote-turn' }))
+  const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, { lifecycleVersion: 2, maxRunTimeMs: 3_600_000, reservationId: 'reservation-remote-turn', ...overrides }))
   const events = (items: Array<ReturnType<typeof event>>, at: number) => call('applyRemoteEventsByServer', {
     workspaceId, environmentId, sessionId: 'session-remote-turn', now: at,
     events: items.map(e => ({ ...e, execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1' } })),
   })
   return { convex, seeded, call, lifecycle, started, events }
 }
+
+async function providerStopFixture() {
+  const fixture = await durableFixture({sandboxBilling: {leaseId: 'recovery-lease'}})
+  const owner = {runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now}
+  await fixture.lifecycle('claim', owner)
+  await fixture.lifecycle('advance', owner)
+  await fixture.events([event(1, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp'}),
+    event(2, 'process_observation', {process: 'unknown'})], now + 2)
+  const lease = {leaseId: 'recovery-lease', workspaceId, environmentId, provider: 'box', providerReference: 'owned-machine',
+    status: 'running', reservedUntil: now + 3_600_000, usage: {}, cleanupAttempts: 0, createdAt: now - 100, updatedAt: now}
+  const leaseDocId = await fixture.convex.run(ctx => ctx.db.insert('agentSandboxLeases', lease))
+  const snapshot = await projectedState(fixture.convex, fixture.started.messageId)
+  if (!snapshot.run?.remoteLifecycle) throw Error('Missing lifecycle fixture')
+  return {...fixture, lease, leaseDocId, input: {runId: 'run-remote-turn', environmentId, leaseId: lease.leaseId,
+    providerReference: lease.providerReference, attemptId: 'session-remote-turn', generation: 1,
+    expectedRevision: snapshot.run.remoteLifecycle.revision, now: now + 3}}
+}
+
+test('provider stop proof is durable and idempotent for its exact execution, but cannot revive cancellation', async () => {
+  const {convex, lifecycle, call, seeded, started, input} = await providerStopFixture()
+  const before = await projectedState(convex, started.messageId)
+  expect(await lifecycle('recordProviderStop', input)).toBe(true)
+  expect(await lifecycle('recordProviderStop', input)).toBe(true)
+  const after = await projectedState(convex, started.messageId)
+  expect(after.run?.remoteLifecycle).toMatchObject({phase: 'needs_attention', revision: input.expectedRevision + 1,
+    providerStop: {provider: 'box', environmentId, leaseId: input.leaseId, providerReference: input.providerReference,
+      attemptId: input.attemptId, executionGeneration: input.generation, observedAt: input.now, recordedAtRevision: input.expectedRevision}})
+  expect(after.message).toEqual(before.message)
+  await call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: seeded.conversationId,
+    runId: input.runId, action: 'cancel', queueExpiresAt: now + 60_000, now: now + 4})
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+})
+
+test('provider stop proof rejects stale and cross-scope facts and requires the server credential', async () => {
+  const {convex, lifecycle, started, input} = await providerStopFixture()
+  for (const change of [{attemptId: 'old-attempt'}, {generation: 2}, {expectedRevision: input.expectedRevision - 1},
+    {environmentId: 'other-environment'}, {leaseId: 'other-lease'}, {providerReference: 'other-machine'},
+    {runId: 'other-run'}, {now: now - 1}, {now: now + 3_600_001}]) {
+    expect(await lifecycle('recordProviderStop', {...input, ...change})).toBe(false)
+  }
+  await expect(convex.mutation(makeFunctionReference<'mutation'>('agents/remoteRuns:recordProviderStopByServer'), {
+    ...input, serverSecret: 'wrong-secret',
+  })).rejects.toThrow(/Unauthorized/)
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.providerStop).toBeUndefined()
+})
+
+test('a fresh attempt clears the previous provider stop receipt', async () => {
+  const {convex, lifecycle, call, seeded, started, input} = await providerStopFixture()
+  expect(await lifecycle('recordProviderStop', input)).toBe(true)
+  expect(await call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: seeded.conversationId,
+    runId: input.runId, action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 4})).toMatchObject({applied: true})
+  const state = (await projectedState(convex, started.messageId)).run?.remoteLifecycle
+  expect(state?.executionGeneration).toBe(2)
+  expect(state?.providerStop).toBeUndefined()
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+})
+
+test('stopping a replacement or ambiguous machine cannot authorize the original native execution', async () => {
+  const {convex, lifecycle, input, lease, leaseDocId} = await providerStopFixture()
+  await convex.run(ctx => ctx.db.insert('agentSandboxLeases', {...lease, leaseId: 'replacement-lease',
+    providerReference: 'replacement-machine', createdAt: now + 1, updatedAt: now + 1}))
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+  await convex.run(ctx => ctx.db.patch(leaseDocId, {status: 'released'}))
+  expect(await lifecycle('recordProviderStop', {...input, leaseId: 'replacement-lease', providerReference: 'replacement-machine'})).toBe(false)
+})
+
+test('provider stop proof refuses a foreign, released, unsupported or revoked machine scope', async () => {
+  const {convex, lifecycle, input, lease, leaseDocId} = await providerStopFixture()
+  for (const change of [{provider: 'e2b'}, {workspaceId: 'other-workspace'}, {environmentId: 'other-environment'}, {status: 'released'}]) {
+    await convex.run(ctx => ctx.db.patch(leaseDocId, change))
+    expect(await lifecycle('recordProviderStop', input)).toBe(false)
+    await convex.run(ctx => ctx.db.patch(leaseDocId, lease))
+  }
+  await convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    if (!environment) throw Error('Missing environment fixture')
+    await ctx.db.patch(environment._id, {revokedAt: now + 2})
+  })
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+})
 
 test('fresh-drive preparation survives the two-minute claim window without granting authority to stale startup', async () => {
   const {convex, lifecycle, call, started, events} = await durableFixture()

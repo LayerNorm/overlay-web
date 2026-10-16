@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Bind recovery stop receipts to the original execution and machine lease, rejecting stale or replacement-machine evidence.
+
 - Preserve an unconfirmed native connection after a close error, block replacement prompts and allow Stop to retry.
 
 - Keep loaded ACP history from duplicating an existing answer or tool timeline while retaining the command catalog.

@@ -14,6 +14,8 @@ export const remoteLifecycleValidator = v.object({
   coordinatorId: v.optional(v.string()), hardDeadlineAt: v.number(), claimDeadlineAt: v.number(),
   lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()), lastPreparationAt: v.optional(v.number()),
   approval: v.optional(remoteApprovalValidator), approvals: v.optional(v.array(remoteApprovalValidator)),
+  providerStop: v.optional(v.object({provider: v.literal('box'), environmentId: v.string(), leaseId: v.string(),
+    providerReference: v.string(), attemptId: v.string(), executionGeneration: v.number(), observedAt: v.number(), recordedAtRevision: v.number()})),
   cause: v.optional(v.string()), cancelRequestedAt: v.optional(v.number()), recoveryOutcome: v.optional(v.union(v.literal('attached_live'), v.literal('restored'), v.literal('requires_new_attempt'), v.literal('unavailable'))),
 })
 
