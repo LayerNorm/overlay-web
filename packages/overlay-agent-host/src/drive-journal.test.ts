@@ -23,8 +23,9 @@ function fixture() {
 
 test('restart recovers immutable pending bytes and a lost commit acknowledgement without a second write identity', () => {
   const f = fixture()
+  let journal: SqliteDriveJournal | undefined
   try {
-    let journal = new SqliteDriveJournal(f.path, context)
+    journal = new SqliteDriveJournal(f.path, context)
     const localBytes = Buffer.from(bytes)
     journal.prepareContent(request, localBytes)
     localBytes.fill(0)
@@ -33,7 +34,9 @@ test('restart recovers immutable pending bytes and a lost commit acknowledgement
     journal.advanceContent(request.requestId, 'committing', uploadId)
     journal.close()
     journal = new SqliteDriveJournal(f.path, context)
-    assert.equal(statSync(f.path).mode & 0o777, 0o600)
+    // Windows chmod exposes only the read-only bit, not POSIX owner/group modes.
+    if (process.platform !== 'win32') assert.equal(statSync(f.path).mode & 0o777, 0o600)
+    else assert.ok(statSync(f.path).isFile())
     assert.deepEqual(Buffer.from(journal.content(request.requestId)), bytes)
     assert.equal(journal.prepareContent(request, bytes).phase.kind, 'committing')
     journal.commitContent(request.requestId, uploadId, result)
@@ -45,7 +48,7 @@ test('restart recovers immutable pending bytes and a lost commit acknowledgement
     assert.throws(() => journal.content(request.requestId), /CONTENT_UNAVAILABLE/)
     assert.throws(() => journal.commitContent(request.requestId, uploadId, { ...result, fileId: 'duplicate' }), /RECEIPT_CHANGED/)
     journal.close()
-  } finally { f.clean() }
+  } finally { try { journal?.close() } catch { /* A successful path already closed it. */ } f.clean() }
 })
 
 test('scope and execution changes cannot silently adopt pending writes', () => {

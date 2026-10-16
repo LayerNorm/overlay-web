@@ -17,9 +17,11 @@ function fixture() {
 
 test('a held cache lease excludes another connection and releases explicitly without changing scope', () => {
   const f = fixture()
+  let first: AgentDriveLease | undefined
   try {
-    const first = AgentDriveLease.acquire(f.path, f.cache, scope)
-    assert.equal(statSync(f.path).mode & 0o777, 0o600)
+    first = AgentDriveLease.acquire(f.path, f.cache, scope)
+    if (process.platform !== 'win32') assert.equal(statSync(f.path).mode & 0o777, 0o600)
+    else assert.ok(statSync(f.path).isFile())
     assert.throws(() => AgentDriveLease.acquire(f.path, f.cache, scope), /DRIVE_CACHE_BUSY/)
     first.release()
     first.release()
@@ -29,7 +31,7 @@ test('a held cache lease excludes another connection and releases explicitly wit
     const otherCache = join(f.root, 'other-cache')
     mkdirSync(otherCache)
     assert.throws(() => AgentDriveLease.acquire(f.path, otherCache, scope), /SCOPE_CHANGED/)
-  } finally { f.clean() }
+  } finally { first?.release(); f.clean() }
 })
 
 test('lease database must remain outside the agent cache, including parent-directory aliases', () => {
