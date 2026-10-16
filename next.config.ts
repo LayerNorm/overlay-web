@@ -55,6 +55,9 @@ const nextConfig: NextConfig = {
     : undefined,
   // Explicit server action body size limit. Prevents DoS via large payloads.
   experimental: {
+    // The persistent build cache raises Turbopack peak memory past the
+    // Basic Vercel build container limit; keep builds cold but bounded.
+    turbopackFileSystemCacheForBuild: false,
     serverActions: {
       bodySizeLimit: "10mb",
     },
