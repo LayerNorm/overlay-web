@@ -15,7 +15,7 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 | --- | --- |
 | Customer-web Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
 | Build source | Main deploys automatically through Git. Root `git.deploymentEnabled` sets `"*": false, "main": true`. The trusted controller creates Preview deployments only for `needs-preview` PRs; Preview allows REST API only, also blocking automatic builds from older branches. |
-| Build machine | Keep **Basic**. Let slow builds finish; inspect concrete failures before changing configuration. |
+| Build machine | Keep the owner-selected **Enhanced** machine (8 vCPUs, 16 GB memory). Let running builds finish; inspect concrete failures before changing configuration. |
 | Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
 | Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
 | Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
