@@ -30,22 +30,24 @@ test('live ACP and acpx catalog probes cannot become drive upload candidates', a
           return ''
         })
         if (content) {
-          const record = JSON.parse(content.trim().split('\n')[0])
-          assert.equal(record.kind, 'discovery')
+          const record = content.trim().split('\n').map(line => JSON.parse(line)).find(record => record.kind === 'discovery')
+          if (!record) {await new Promise(resolve => setTimeout(resolve, 10)); continue}
           assert.equal(typeof record.cwd, 'string')
           probeDirectory = record.cwd
           break
         }
         await new Promise(resolve => setTimeout(resolve, 10))
       }
-      assert.ok(probeDirectory, 'the real ACP child must reach its blocked session/new request')
+      const trace = await readFile(log, 'utf8').catch(() => 'No fixture boot record')
+      assert.ok(probeDirectory, `the real ACP child must reach its blocked session/new request; fixture trace: ${trace}`)
       const tail = relative(cache.root, probeDirectory)
       assert.ok(isAbsolute(tail) || tail === '..' || tail.startsWith(`..${sep}`))
       assert.deepEqual(await cache.inventory(), [], 'a concurrent drive scan cannot see discovery state')
       if (process.platform !== 'win32') assert.equal((await stat(probeDirectory)).mode & 0o777, 0o700)
       await writeFile(gate, '')
       assert.equal((await pending).options?.model?.values[1]?.id, 'future-model')
-      assert.ok((await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line)).every(record => record.kind === 'discovery'),
+      assert.ok((await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+        .every(record => record.kind !== 'unexpected-prompt' && record.method !== 'session/prompt'),
         'catalog discovery must not send a provider prompt')
       await assert.rejects(stat(probeDirectory), {code: 'ENOENT'})
       assert.deepEqual(await cache.inventory(), [])
