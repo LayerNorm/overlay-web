@@ -424,6 +424,8 @@ export class AgentHostRuntime {
       ...(execution ? { execution: { attemptId: execution.attemptId, generation: execution.generation } } : {}) }
     return (options.create ?? createRuntimeDrive)({ environmentId: this.options.environmentId, workspaceId: this.options.workspaceId,
       ...request, location: descriptor.location, filesystem: this.options.filesystem,
+      ...(command.payload.restore ? {previousExecution: {attemptId: command.payload.restore.previousExecution.attemptId,
+        generation: command.payload.restore.previousExecution.generation}} : {}),
       approvedWorkingDirectory: command.payload.workingDirectory, stateDirectory: options.stateDirectory, apiUrl: options.apiUrl,
       credentials: () => fetchDriveCredentials(request), ...(options.fetch ? {fetch: options.fetch} : {}),
     })

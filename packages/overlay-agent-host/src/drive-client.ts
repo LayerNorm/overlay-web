@@ -6,6 +6,7 @@ import {
   driveMetadataBodySchema, driveMetadataResultSchema, driveReadyEntrySchema,
   type DriveCredentialsResponse, type DriveManifestEntry, type DriveReadyEntry,
   type DriveUploadRequest, type DriveUploadResponse, type DriveMetadataRequest,
+  driveRecoveryRequestSchema, driveRecoveryResultSchema, type DriveRecoveryRequest,
 } from '@layernorm/overlay-agent-bridge-protocol'
 
 export class DriveRequestError extends Error {
@@ -36,6 +37,16 @@ export class AgentDriveClient {
     if (this.url.pathname !== '/api/agent-drive' || this.url.search) throw Error('DRIVE_INVALID_ORIGIN')
     this.fetch = options.fetch ?? globalThis.fetch
     this.now = options.now ?? Date.now
+  }
+
+  async recover(input: DriveRecoveryRequest) {
+    const request = validated(driveRecoveryRequestSchema, input)
+    const result = validated(driveRecoveryResultSchema, await json(await this.request(request)))
+    if (result.requestId !== request.requestId || result.previousExecution.attemptId !== request.previousExecution.attemptId
+      || result.previousExecution.generation !== request.previousExecution.generation
+      || (result.resolution.state === 'content_committed' && request.kind !== 'content')
+      || (result.resolution.state === 'metadata_committed' && request.kind !== 'metadata')) throw Error('DRIVE_RECOVERY_UNAVAILABLE')
+    return result
   }
 
   private async token(): Promise<DriveCredentialsResponse> {

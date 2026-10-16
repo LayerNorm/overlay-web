@@ -17,6 +17,8 @@ import { AgentDriveSynchronizer } from '../packages/overlay-agent-host/src/drive
 import { handleAgentDriveRequest } from '../src/server/agents/agent-drive-http'
 import {AgentDriveRecoveryService} from '../src/server/agents/AgentDriveRecoveryService'
 import {agentDriveAuthorityArgs} from '../src/shared/agents/agent-drive-authority'
+import {driveRecoveryRequest} from '../packages/overlay-agent-host/src/drive-restoration'
+import {driveUploadBodySchema} from '@layernorm/overlay-agent-bridge-protocol'
 vi.mock('server-only', () => ({}))
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
@@ -328,9 +330,12 @@ test('replacement reads immutable content and metadata receipts without replayin
   if (!metadata) throw Error('Missing receipt')
   const args = await replaceForDriveRecovery(f)
   const read = (request: ReturnType<typeof recoveryRequest>) => f.convex.query(recoveryRead, {...args, request})
-  const request = recoveryRequest(input.requestId, upload.fingerprint)
+  const request = driveRecoveryRequest({kind: 'content', request: driveUploadBodySchema.parse({action: 'upload',
+    requestId: input.requestId, operation: input.operation, sha256: input.sha256, sizeBytes: input.sizeBytes, mimeType: input.mimeType}),
+    phase: {kind: 'queued'}}, {attemptId: 's', generation: 1})
+  expect(request.fingerprint).toBe(upload.fingerprint)
   const first = await read(request)
-  expect(first.resolution).toEqual({state: 'content_committed', result: content})
+  expect(first.resolution).toEqual({state: 'content_committed', uploadId: input.uploadId, result: content})
   expect(await read(request)).toEqual(first)
   expect(JSON.stringify(first)).not.toMatch(/stagingKey|finalKey|agent-staging|token/)
   expect((await read(recoveryRequest(metadataInput.requestId, metadata.fingerprint, 'metadata'))).resolution)
@@ -365,11 +370,19 @@ test('the recovery HTTP transport uses a current drive token and returns only th
   const service = new AgentDriveRecoveryService({verifyToken: tokens.verify,
     read: (authority, request) => f.convex.query(recoveryRead, {serverSecret: secret, ...agentDriveAuthorityArgs(authority), request})})
   const request = recoveryRequest(input.requestId, upload.fingerprint)
+  const dependencies = {enabled: () => true, limit: async () => null, recovery: () => service,
+    service: () => {throw Error('Recovery must not enumerate or hydrate files')},
+    writes: () => {throw Error('Recovery must not access writable storage')}}
   const send = (credential: string, body: unknown = request) => handleAgentDriveRequest(new Request('https://preview.invalid/api/agent-drive', {
     method: 'POST', headers: {authorization: `Bearer ${credential}`, 'content-type': 'application/json'}, body: JSON.stringify(body),
-  }), {enabled: () => true, limit: async () => null, recovery: () => service,
-    service: () => {throw Error('Recovery must not enumerate or hydrate files')},
-    writes: () => {throw Error('Recovery must not access writable storage')}})
+  }), dependencies)
+  const host = new AgentDriveClient({apiUrl: 'https://preview.invalid/api/agent-drive', credentials: async () => ({
+    protocolVersion: 1, token, scope: args.scope, expiresAt: args.expiresAt}),
+    fetch: (input, init) => handleAgentDriveRequest(new Request(input, init), dependencies)})
+  const hostRequest = driveRecoveryRequest({kind: 'content', request: driveUploadBodySchema.parse({action: 'upload',
+    requestId: input.requestId, operation: input.operation, sha256: input.sha256, sizeBytes: input.sizeBytes, mimeType: input.mimeType}),
+    phase: {kind: 'queued'}}, {attemptId: 's', generation: 1})
+  expect((await host.recover(hostRequest)).resolution).toEqual({state: 'uncommitted'})
   const response = await send(token)
   expect(response.status).toBe(200)
   expect(response.headers.get('cache-control')).toMatch(/no-store/)

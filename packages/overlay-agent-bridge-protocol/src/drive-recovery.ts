@@ -10,7 +10,7 @@ export const driveRecoveryRequestSchema = z.object({action: z.literal('recover')
 }).strict()
 export const driveRecoveryResultSchema = z.object({...identity, resolution: z.discriminatedUnion('state', [
   z.object({state: z.literal('uncommitted')}).strict(),
-  z.object({state: z.literal('content_committed'), result: driveContentResultSchema}).strict(),
+  z.object({state: z.literal('content_committed'), uploadId: z.string().uuid(), result: driveContentResultSchema}).strict(),
   z.object({state: z.literal('metadata_committed'), result: driveMetadataResultSchema}).strict(),
 ])}).strict()
 export type DriveRecoveryRequest = z.infer<typeof driveRecoveryRequestSchema>

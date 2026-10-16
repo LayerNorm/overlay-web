@@ -365,6 +365,7 @@
     "src/server/agents/cloud/ConvexCloudAgentProvisionRepository.ts",
     "src/server/agents/create-agent-drive-content-service.ts",
     "src/server/agents/create-agent-drive-credential-service.ts",
+    "src/server/agents/create-agent-drive-recovery-service.ts",
     "src/server/agents/index.ts",
     "src/server/agents/profiles/ConvexAgentProfileRepository.ts",
     "src/server/agents/provider-accounts/ConvexAgentProviderAccountRepository.ts",

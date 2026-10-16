@@ -37,6 +37,26 @@ export class AgentDriveSynchronizer {
     })
   }
 
+  /** Recovery admission only: consume settled receipts without flushing any previous execution's writes. */
+  settlePreviousWrite(): Promise<void> {
+    return this.serial(async () => {
+      const state = this.options.state.read()
+      if (this.options.journal.pending().length) throw Error('DRIVE_WRITE_UNSAVED')
+      if (state.phase !== 'writing') return
+      if (state.turn?.runId !== this.options.runId) throw Error('DRIVE_SYNC_EXECUTION_CHANGED')
+      const requestId = state.operation.request.requestId
+      const record = this.options.journal.find(requestId)
+      if (record && (record.kind !== state.operation.kind || JSON.stringify(record.request) !== JSON.stringify(state.operation.request)))
+        throw Error('DRIVE_JOURNAL_REQUEST_CONFLICT')
+      if (!record || this.options.journal.recoveryOutcome(requestId)?.resolution.state === 'uncommitted') {
+        this.options.state.write({phase: 'idle', initialized: state.initialized, baseline: state.baseline, turn: state.turn})
+        return
+      }
+      if (record.phase.kind !== 'committed') throw Error('DRIVE_WRITE_UNSAVED')
+      await this.applyWrite(state.operation)
+    })
+  }
+
   private async refreshKnownEntries(remote: DriveManifestEntry[], inventory: DriveCacheEntry[]) {
     const snapshot = this.options.state.read()
     // Refresh only unchanged versions. A newer remote file cannot silently become the

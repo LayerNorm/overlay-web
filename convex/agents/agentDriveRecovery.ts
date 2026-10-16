@@ -17,7 +17,7 @@ export const readByServer = query({
     kind: v.union(v.literal('content'), v.literal('metadata')), fingerprint: v.string()})},
   returns: v.object({requestId: v.string(), previousExecution: v.object({attemptId: v.string(), generation: v.number()}),
     resolution: v.union(v.object({state: v.literal('uncommitted')}),
-      v.object({state: v.literal('content_committed'), result: driveContentResult}),
+      v.object({state: v.literal('content_committed'), uploadId: v.string(), result: driveContentResult}),
       v.object({state: v.literal('metadata_committed'), result: v.object({fileId: v.id('files'), updatedAt: v.number()})}))}),
   handler: async (ctx, args) => {
     const {run, session} = await requireDriveAuthority(ctx, args)
@@ -53,7 +53,7 @@ export const readByServer = query({
     if (prior && (prior.retireAt === undefined || prior.retireAt <= Date.now())) throw new ConvexError('DRIVE_RECOVERY_UNAVAILABLE')
     const identity = {requestId: request.requestId, previousExecution: previous}
     if (request.kind === 'content' && upload?.state.kind === 'committed') return {...identity,
-      resolution: {state: 'content_committed' as const, result: upload.state.result}}
+      resolution: {state: 'content_committed' as const, uploadId: upload.uploadId, result: upload.state.result}}
     if (request.kind === 'metadata' && metadata) return {...identity,
       resolution: {state: 'metadata_committed' as const, result: metadata.result}}
     // Absence is definitive only under the above current-generation fence. Neither old uploads nor metadata can commit now.

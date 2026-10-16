@@ -7,6 +7,7 @@ import { SqliteDriveJournal, type DriveJournalContext } from './drive-journal.js
 import { AgentDriveLease } from './drive-lease.js'
 import { SqliteDriveSyncState } from './drive-sync-state.js'
 import { AgentDriveSynchronizer } from './drive-sync.js'
+import {settleInterruptedDrive} from './drive-restoration.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 
 export type RuntimeDrive = {
@@ -20,6 +21,7 @@ export type RuntimeDrive = {
 export async function createRuntimeDrive(options: {
   environmentId: string; workspaceId: string; runId: string; sessionId: string
   execution?: DriveJournalContext['execution']
+  previousExecution?: NonNullable<DriveJournalContext['execution']>
   location: 'cloud' | 'approved-root'
   approvedWorkingDirectory: string
   filesystem: FilesystemGrant
@@ -45,13 +47,23 @@ export async function createRuntimeDrive(options: {
   const lease = AgentDriveLease.acquire(join(stateRoot, 'lease.sqlite'), cache.root, scope)
   let journal: SqliteDriveJournal | undefined, state: SqliteDriveSyncState | undefined
   try {
-    journal = new SqliteDriveJournal(join(stateRoot, 'writes.sqlite'), { environmentId: options.environmentId,
-      runId: options.runId, sessionId: options.sessionId, scope, ...(options.execution ? { execution: options.execution } : {}) })
     state = new SqliteDriveSyncState(join(stateRoot, 'baseline.sqlite'), cache.root, scope)
     const client = new AgentDriveClient({ apiUrl: options.apiUrl, ...(options.fetch ? { fetch: options.fetch } : {}), credentials: async () => {
       if (initial) { const value = initial; initial = undefined; return value }
       return options.credentials()
     } })
+    const context = {environmentId: options.environmentId, runId: options.runId, sessionId: options.sessionId,
+      scope, ...(options.execution ? {execution: options.execution} : {})}
+    if (options.previousExecution) {
+      if (!options.execution || options.execution.attemptId === options.previousExecution.attemptId
+        || options.execution.generation !== options.previousExecution.generation + 1) throw Error('DRIVE_JOURNAL_EXECUTION_CHANGED')
+      journal = new SqliteDriveJournal(join(stateRoot, 'writes.sqlite'), {...context,
+        sessionId: options.previousExecution.attemptId, execution: options.previousExecution})
+      const synchronizer = new AgentDriveSynchronizer({runId: options.runId, cache, client, journal, state})
+      await settleInterruptedDrive({previousExecution: options.previousExecution, journal, state, client, synchronizer})
+      journal.close(); journal = undefined
+    }
+    journal = new SqliteDriveJournal(join(stateRoot, 'writes.sqlite'), context)
     const synchronizer = new AgentDriveSynchronizer({ runId: options.runId, cache, client, journal, state })
     await synchronizer.initialize()
     const ownedJournal = journal, ownedState = state
