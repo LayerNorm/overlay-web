@@ -1311,5 +1311,14 @@ through the hard deadline plus two days, then prune in bounded batches. Metadata
 the same retention; older receipts migrate in bounded pages with at least seven days and the
 complete session deadline preserved. Notes retain complete inline Markdown; edits beyond the inline prefix
 limit save a separate object-backed file so the Notes source is never truncated. Server-side
-byte verification/sealing and upload/commit transport are implemented locally. Host credential consumption/renewal and synchronization are still required; these transactions are not an enabled
-write-through drive.
+byte verification/sealing and upload/commit transport are implemented locally.
+
+The host's private SQLite journal stores complete pending payloads before network I/O and binds
+each immutable request to its environment, drive scope and execution. The serialized writer
+reuses that identity after lost acknowledgements and persists confirmed receipts before dropping
+payloads. Completed replays make no network request. Pending operations from another execution
+fail visibly instead of being adopted without reconciliation. Tokens and signed URLs remain
+memory-only; runtime integration must place the journal outside the agent's working directory
+and hold exclusive cache ownership throughout the turn. Journal capacity fails closed rather
+than dropping unsaved writes. Runtime hydration, reconciliation and synchronization are still
+required; these foundations are not an enabled write-through drive.

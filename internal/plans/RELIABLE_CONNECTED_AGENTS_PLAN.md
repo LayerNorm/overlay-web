@@ -1,6 +1,8 @@
 # Reliable connected agents
 
 Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 in progress; Phase 4 foundation in progress; Phase 5 in progress.
+
+- Phase 4 now has a private SQLite write journal and serialized HTTP writer. Complete payloads persist before network I/O, immutable request identities survive restart, and lost intent/upload/commit acknowledgements retain the same operation. Completed receipts suppress duplicate requests; foreign scope/execution pending writes fail visibly. Restart tests pass with actual SQLite and the host HTTP client. Cache ownership, baseline reconciliation, runtime integration and hosted acceptance remain pending.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -11,7 +13,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 - Phase 3 Preview QA exposed a discovered adapter with no model catalog still receiving hard-coded model choices. The local UI correction offers Default and marks the saved choice unreported; bound-environment loading disables selection. Rendered regressions pass; new-head hosted verification remains pending.
 
-- Phase 4 host HTTP transport now consumes shared wire schemas, validates complete framed manifests, reconstructs bounded/checksummed ranges and separates signed staging PUTs from drive credentials. Renewal is single-flight, preserves scope, and retries only explicit 401 responses once; ambiguous writes retain their caller's identity. Actual host-client-to-BFF-to-Convex round trips pass. Persistent journaling and runtime hydration/sync remain pending.
+- Phase 4 host HTTP transport now consumes shared wire schemas, validates complete framed manifests, reconstructs bounded/checksummed ranges and separates signed staging PUTs from drive credentials. Renewal is single-flight, preserves scope, and retries only explicit 401 responses once; ambiguous writes retain their caller's identity. Actual host-client-to-BFF-to-Convex round trips pass. Runtime hydration/sync remain pending.
 
 - Phase 4 server credential issuance/renewal now resolves authority from persisted execution state, requires an exact session/attempt and grants the new method only to drive v1 hosts. Tokens remain bounded by one hour and the run deadline. Existing execution/revision grants survive token renewal; expired credentials, replaced attempts and revoked membership remain rejected. Signed host transport passes real HTTP proof checks; runtime credential consumption/renewal, synchronization and hosted acceptance remain pending.
 
