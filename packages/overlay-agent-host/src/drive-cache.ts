@@ -8,6 +8,8 @@ export { drivePathSegments } from '@layernorm/overlay-agent-bridge-protocol'
 export const DRIVE_CACHE_LIMITS = { fileBytes: 16 * 1024 * 1024, totalBytes: 256 * 1024 * 1024, entries: 10000 } as const
 export type DriveCacheLimits = { fileBytes: number; totalBytes: number; entries: number }
 export type DriveCacheFile = { path: string; size: number; sha256: string; bytes: Uint8Array }
+export type DriveCacheIdentity = { device: string; inode: string; birthtimeMs: number }
+export type DriveCacheEntry = ({ kind: 'folder'; path: string } | { kind: 'file' } & DriveCacheFile) & { identity: DriveCacheIdentity }
 
 function within(root: string, path: string): boolean {
   const tail = relative(root, path)
@@ -72,8 +74,23 @@ export class AgentDriveCache {
     }
   }
 
+  async ensureFolder(path: string): Promise<void> {
+    const absolute = await this.checkedPath(path, true)
+    await mkdir(absolute, { mode: 0o700 }).catch(error => {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    })
+    const stat = await lstat(absolute)
+    if (!stat.isDirectory() || stat.isSymbolicLink() || !within(this.root, await realpath(absolute))) throw Error('DRIVE_UNSAFE_PATH')
+  }
+
   async snapshot(): Promise<DriveCacheFile[]> {
-    const files: DriveCacheFile[] = []
+    return (await this.inventory()).flatMap(entry => entry.kind === 'file'
+      ? [{ path: entry.path, size: entry.size, sha256: entry.sha256, bytes: entry.bytes }] : [])
+  }
+
+  /** Include empty folders and stable local identities; equal hashes alone never prove a rename. */
+  async inventory(): Promise<DriveCacheEntry[]> {
+    const files: DriveCacheEntry[] = []
     const names = new Set<string>()
     let totalBytes = 0, entries = 0
     const visit = async (prefix: string) => {
@@ -90,7 +107,8 @@ export class AgentDriveCache {
         names.add(portable)
         const stat = await lstat(absolute)
         if (stat.isSymbolicLink()) throw Error('DRIVE_UNSAFE_PATH')
-        if (stat.isDirectory()) { await visit(path); continue }
+        const identity = { device: String(stat.dev), inode: String(stat.ino), birthtimeMs: stat.birthtimeMs }
+        if (stat.isDirectory()) { files.push({ kind: 'folder', path, identity }); await visit(path); continue }
         if (!stat.isFile()) throw Error('DRIVE_SPECIAL_FILE')
         if (stat.nlink !== 1) throw Error('DRIVE_HARD_LINK')
         if (stat.size > this.limits.fileBytes) throw Error('DRIVE_FILE_TOO_LARGE')
@@ -109,7 +127,7 @@ export class AgentDriveCache {
           const after = await handle.stat()
           if (after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs
             || !within(this.root, await realpath(absolute))) throw Error('DRIVE_FILE_CHANGED')
-          files.push({ path, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), bytes })
+          files.push({ kind: 'file', path, identity, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), bytes })
         } finally { await handle.close() }
       }
     }

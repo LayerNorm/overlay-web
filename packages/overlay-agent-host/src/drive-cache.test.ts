@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { link, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { link, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -42,6 +42,28 @@ test('bad download hashes never replace existing files and temporary writes are 
   await assert.rejects(cache.hydrate('file.txt', new TextEncoder().encode('different'), hash(original)), /DRIVE_HASH_MISMATCH/)
   assert.equal(await readFile(join(cache.root, 'file.txt'), 'utf8'), 'original')
   assert.deepEqual(await readdir(cache.root), ['file.txt'])
+}))
+
+test('inventory preserves empty folders and distinguishes renamed files from equal-content copies', async () => fixture(async directory => {
+  const cache = await AgentDriveCache.create(directory, 'cache')
+  await cache.ensureFolder('Empty/nested')
+  await writeFile(join(cache.root, 'original.txt'), 'equal bytes')
+  const before = await cache.inventory()
+  assert.deepEqual(before.filter(entry => entry.kind === 'folder').map(entry => entry.path), ['Empty', 'Empty/nested'])
+  const original = before.find(entry => entry.path === 'original.txt')!
+  await rename(join(cache.root, 'original.txt'), join(cache.root, 'renamed.txt'))
+  await writeFile(join(cache.root, 'copied.txt'), 'equal bytes')
+  const after = await cache.inventory()
+  const renamed = after.find(entry => entry.path === 'renamed.txt')!, copied = after.find(entry => entry.path === 'copied.txt')!
+  assert.deepEqual(renamed.identity, original.identity)
+  assert.notDeepEqual(copied.identity, original.identity)
+  assert.equal(renamed.kind === 'file' && copied.kind === 'file' && renamed.sha256 === copied.sha256, true)
+  const fresh = await AgentDriveCache.create(directory, 'fresh')
+  for (const entry of after) {
+    if (entry.kind === 'folder') await fresh.ensureFolder(entry.path)
+    else await fresh.hydrate(entry.path, entry.bytes, entry.sha256)
+  }
+  assert.deepEqual((await fresh.inventory()).map(({ kind, path }) => ({ kind, path })), after.map(({ kind, path }) => ({ kind, path })))
 }))
 
 test('a caller cannot change the verified download while its atomic write is awaiting I/O', async () => fixture(async directory => {

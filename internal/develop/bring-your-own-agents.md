@@ -1320,5 +1320,9 @@ payloads. Completed replays make no network request. Pending operations from ano
 fail visibly instead of being adopted without reconciliation. Tokens and signed URLs remain
 memory-only; runtime integration must place the journal outside the agent's working directory
 and hold exclusive cache ownership throughout the turn. Journal capacity fails closed rather
-than dropping unsaved writes. Runtime hydration, reconciliation and synchronization are still
+than dropping unsaved writes. A separate private SQLite lease excludes concurrent cache owners
+through a lifetime OS lock; process death releases it without timeout-based takeover. Its immutable
+identity pins the canonical cache path and drive scope, and its database must remain outside the
+working directory. Cache inventories include empty folders and local file identities so equal
+content alone cannot identify a rename. Runtime hydration, reconciliation and synchronization are still
 required; these foundations are not an enabled write-through drive.
