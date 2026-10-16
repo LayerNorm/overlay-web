@@ -11,7 +11,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 - Phase 4 metadata names now reuse the portable wire-path validator and reject reserved names, trailing-dot aliases and case/Unicode collisions. Real Convex regressions pass; metadata HTTP wiring remains pending.
 
-- Phase 0 hosted compilation still requires acceptance. An opt-in build resource sampler now records Node worker heap limits, RSS, CPU and GC totals to distinguish memory pressure from idle waits; it preserves worker isolation and TypeScript checks.
+- Phase 0 hosted compilation still requires acceptance. An opt-in build resource sampler now records Node worker heap limits, RSS, CPU and GC totals to distinguish memory pressure from idle waits; it preserves worker isolation and TypeScript checks. Samples use stderr so compiler JSON stdout stays parseable; an actual `tsc --showConfig` subprocess regression enforces that boundary.
 
 - Phase 4 backend metadata commits now create folders, preserve file identity on moves and require explicit child deletion. Same-transaction receipts fence retries to the run/attempt; scope, edit policy, revisions and parent cycles are checked. Object bytes remain charged until cleanup. Uploads, HTTP wiring and host synchronization remain pending.
 

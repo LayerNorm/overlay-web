@@ -19,9 +19,19 @@ test('resource diagnostics run in a real child, preserve node options and disclo
   assert.ok(env.NODE_OPTIONS.startsWith('--conditions=react-server --import='))
   const result = spawnSync(process.execPath, ['-e', 'void 0'], { env, encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)
-  const reports = result.stdout.trim().split('\n').map(line => JSON.parse(line))
+  assert.equal(result.stdout, '')
+  const reports = result.stderr.trim().split('\n').map(line => JSON.parse(line))
   assert.deepEqual(reports.map(report => report.phase), ['start', 'exit'])
   assert.ok(reports.every(report => report.event === 'build-resource-usage' && report.heapLimitMiB > 0 && report.rssMiB > 0))
-  assert.equal(result.stdout.includes('never-print-this-value'), false)
-  assert.equal(result.stdout.includes('PRIVATE_DIAGNOSTIC_SENTINEL'), false)
+  assert.equal(result.stderr.includes('never-print-this-value'), false)
+  assert.equal(result.stderr.includes('PRIVATE_DIAGNOSTIC_SENTINEL'), false)
+})
+
+
+test('diagnostics preserve TypeScript showConfig machine-readable stdout', () => {
+  const env = buildWebEnvironment({ ...process.env, ...base, OVERLAY_BUILD_DIAGNOSTICS: '1' })
+  const result = spawnSync(process.execPath, ['node_modules/typescript/bin/tsc', '--showConfig', '--project', 'tsconfig.json'], { env, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(JSON.parse(result.stdout).compilerOptions)
+  assert.ok(result.stderr.includes('build-resource-usage'))
 })

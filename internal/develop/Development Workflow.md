@@ -21,7 +21,8 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 | Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
 
 For a diagnosed build stall, `OVERLAY_BUILD_DIAGNOSTICS=1` enables build-only Node
-resource samples (heap limit/usage, RSS, CPU and GC totals) in the hosted web command.
+resource samples (heap limit/usage, RSS, CPU and GC totals) on stderr in the hosted web command.
+Machine-readable subprocess stdout, including TypeScript `--showConfig`, stays clean.
 Keep it scoped to the affected Preview branch, then remove it after investigation.
 The sampler reports no environment values, arguments or heap contents and does not skip checks.
 
