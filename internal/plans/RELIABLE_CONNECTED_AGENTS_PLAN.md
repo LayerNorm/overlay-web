@@ -13,6 +13,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Phase 1: byte-budget packing, ordered text coalescing, independent command polling/background uploads, immutable attempted sequences, cancellation preservation and unchanged-observation write suppression are implemented. Focused streaming and Convex regressions pass; deterministic current-head transport/UI checks pass, while successful provider acceptance and publication remain pending.
 - Phase 1 current-preview deterministic transport completion and browser Stop/reload checks pass. This does not substitute for successful subscription-provider acceptance.
 - Phase 2: negotiated deltas, bounded anchors, heartbeat status and chunked canonical text storage are implemented with focused regressions. Large text, tenant boundaries, cancellation buffering, Unicode boundaries and fewer assistant-row writes are covered locally; current-head hosted and timed acceptance remains pending.
+- Hosted compatibility QA exposed a final-notification ordering race. A buffered-wire regression now verifies that all text precedes completion in both streaming modes; the direct ACP transport drains updates in wire order. Full-text hosted readback remains an acceptance gate.
 - All later acceptance items remain unchecked until verified through the preview.
 
 ## Outcome

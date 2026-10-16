@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { AcpAgentAdapter, overlayMcpServers } from './acp-adapter'
 import type { NormalizedAgentEvent } from './adapter'
+import { createRunStream } from './run-stream'
 
 test('official ACP SDK adapter streams supervised updates and bridges approval and elicitation', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-'))
@@ -31,6 +32,9 @@ test('official ACP SDK adapter streams supervised updates and bridges approval a
     assert.ok(elicitation?.payload.requestKey)
     await session.elicit(String(elicitation.payload.requestKey), 'accept', { label: 'approved fixture' })
     await prompt
+    const tailIndex = events.findIndex(event => event.type === 'text_checkpoint' && event.payload.text.endsWith('FINAL_NOTIFICATION_TAIL\n'))
+    assert.ok(tailIndex >= 0, 'final notification must be consumed before prompt completion')
+    assert.ok(tailIndex < events.findIndex(event => event.type === 'completed'), 'terminal must follow the final notification')
     assert.ok(events.some((event) => event.type === 'text_checkpoint' && event.payload.text === 'ACP fixture output'))
     assert.ok(events.some((event) => event.type === 'action' && event.payload.status === 'completed'))
     assert.ok(events.some((event) => event.type === 'plan'))
@@ -84,4 +88,23 @@ test('the Overlay MCP server is offered only to HTTP-capable agents over a safe 
   assert.deepEqual(overlayMcpServers({}, true), [])
   assert.deepEqual(overlayMcpServers({ overlayMcp: { url: 'http://evil.example/mcp', token: 't' } }, true), [])
   assert.equal(overlayMcpServers({ overlayMcp: { url: 'http://localhost:3000/api/agent-mcp', token: 't' } }, true).length, 1)
+})
+
+
+test('a buffered wire response cannot overtake the final text notification in either streaming mode', async () => {
+  for (const streaming of [false, true]) {
+    const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-tail-'))
+    const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-tail-agent.mjs')
+    const adapter = new AcpAgentAdapter({ id: 'tail-fixture', displayName: 'Tail fixture', command: process.execPath, args: [fixture] })
+    const events: NormalizedAgentEvent[] = []
+    const stream = createRunStream(async event => { events.push(event) }, { streaming: () => streaming, observe: async () => 'live', onError: error => { throw error } })
+    let session: Awaited<ReturnType<typeof adapter.start>> | undefined
+    try {
+      session = await adapter.start({ runId: 'tail-run', workingDirectory: directory, additionalDirectories: [], prompt: '', metadata: {} }, stream.emit)
+      await session.prompt('buffered response')
+      const tail = events.filter(event => event.type === 'text_checkpoint' || event.type === 'text_delta').at(-1)
+      assert.ok(tail?.payload.text.endsWith('FINAL_NOTIFICATION_TAIL\n'), 'tail must reach the durable stream before completion')
+      assert.equal(events.at(-1)?.type, 'completed')
+    } finally { stream.stop(); await session?.stop(); await rm(directory, { recursive: true, force: true }) }
+  }
 })

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
+import { orderedAcpUpdates } from './ordered-acp-updates.js'
 
 /**
  * Overlay sends each turn an MCP server (its workspace tools: notes, files,
@@ -60,6 +61,7 @@ export class AcpAgentAdapter implements AgentAdapter {
     let sessionId = input.remoteSessionId
     let textCheckpoint = ''
     let promptActive = false
+    let updateOrder: ReturnType<typeof orderedAcpUpdates> | undefined
 
     const app = acp.client({ name: 'overlay-agent-host' })
       .onRequest(acp.methods.client.session.requestPermission, async ({ params }) => {
@@ -91,12 +93,15 @@ export class AcpAgentAdapter implements AgentAdapter {
         return result
       })
       .onNotification(acp.methods.client.session.update, async ({ params }) => {
-        await normalizeAcpUpdate(params.update, emit, {
-          appendText(chunk) {
-            textCheckpoint += chunk
-            return textCheckpoint
-          },
-        })
+        try {
+          await normalizeAcpUpdate(params.update, emit, {
+            appendText(chunk) {
+              textCheckpoint += chunk
+              return textCheckpoint
+            },
+          })
+          updateOrder?.complete()
+        } catch (error) { updateOrder?.fail(error) }
       })
 
     const background = async () => {
@@ -114,7 +119,8 @@ export class AcpAgentAdapter implements AgentAdapter {
         Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
         Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
       )
-      await app.connectWith(stream, async (context) => {
+      updateOrder = orderedAcpUpdates(stream)
+      await app.connectWith(updateOrder.stream, async (context) => {
         activeContext = context
         const initialized = await context.request(acp.methods.agent.initialize, {
           protocolVersion: acp.PROTOCOL_VERSION,

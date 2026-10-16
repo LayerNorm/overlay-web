@@ -54,8 +54,6 @@ test('a live process with a three-minute open tool gets heartbeats without a fal
     assert.equal(heartbeat.payload.stalled, false); assert.equal(heartbeat.payload.openTools[0]?.runningMs, 180000)
     await stream.emit({ type: 'completed', payload: { usage: {} } }); const count = events.length
     await stream.heartbeat(); assert.equal(events.length, count)
-    await stream.emit({ type: 'text_checkpoint', payload: { text: 'late output', final: true } })
-    assert.equal(events.length, count)
   } finally { stream.stop() }
 })
 

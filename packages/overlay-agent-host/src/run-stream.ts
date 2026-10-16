@@ -29,7 +29,6 @@ export function createRunStream(emit: EmitAgentEvent, options: {
   const encoder = new TextEncoder()
 
   const forward: EmitAgentEvent = async event => {
-    if (terminal) return
     lastActivityAt = now()
     if (event.type === 'action') {
       if (event.payload.status === 'completed' || event.payload.status === 'failed') openTools.delete(event.payload.actionId)

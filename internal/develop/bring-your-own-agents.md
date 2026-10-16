@@ -1148,3 +1148,9 @@ Per-run ten-second heartbeats carry process proof, quiet time and open-tool ages
 They update run liveness without transcript parts. A live three-minute tool remains
 running; quiet output alone cannot prove a stall. The bottom loading row distinguishes
 tool activity from missing heartbeats and scopes its read to the exact run and workspace.
+
+The direct ACP transport drains session-update notifications in wire order before
+forwarding later responses. SDK notifications are otherwise dispatched independently,
+which lets prompt completion overtake final text in a shared input buffer. The drain
+waits on local event persistence, never network upload; malformed or stuck update
+processing fails within a bounded timeout instead of declaring incomplete output done.

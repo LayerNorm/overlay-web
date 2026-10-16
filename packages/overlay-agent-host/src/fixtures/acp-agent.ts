@@ -70,6 +70,10 @@ await acp.agent({ name: 'overlay-agent-host-test-fixture' })
       sessionId: params.sessionId, mode: 'form', message: 'Choose the fixture label',
       requestedSchema: { type: 'object', properties: { label: { type: 'string', title: 'Label' } }, required: ['label'] },
     })
+    await client.notify(acp.methods.client.session.update, {
+      sessionId: params.sessionId,
+      update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '\nFINAL_NOTIFICATION_TAIL\n' } },
+    })
     return { stopReason: 'end_turn' }
   })
   .onNotification(acp.methods.agent.session.cancel, () => undefined)
