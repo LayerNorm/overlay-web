@@ -416,6 +416,15 @@ group is added without being placed.
   live. Older hosts ignore the metadata key, so no protocol version change was needed; a published
   host release is required for connected agents to use the tools.
 
+Delivered MCP grants bind the Overlay session and lifecycle execution generation. Command polling
+re-signs each start for its current attempt without extending the original expiry or changing its
+scope/grant. A replaced attempt cannot execute tools or create approval requests in its replacement.
+Authority is read again during approval waits and immediately before execution. Older unfenced grants
+remain compatible with legacy sessions and the first lifecycle-v2 generation only; subsequent
+generations require an exact fence. Canonical token encoding rejects trailing segments and aliases.
+Interrupted-turn continuation and durable pending-tool follow-up still require implementation and
+hosted acceptance before Phase 5 is complete.
+
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
   transcript projections, audit, and artifact policy. A host owns only private harness state,

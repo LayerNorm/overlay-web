@@ -47,6 +47,10 @@ export function createMcpApprovalGate(args: {
   workspaceId: string
   environmentId: string
   runId: string
+  sessionId?: string
+  execution?: { attemptId: string; generation: number }
+  expiresAt?: number
+  authorize?: () => Promise<boolean>
   now?: () => number
   sleep?: (ms: number) => Promise<void>
   waitMs?: number
@@ -59,8 +63,12 @@ export function createMcpApprovalGate(args: {
     const prompt = mcpApprovalPrompt(toolName, input)
     const deadline = now() + waitMs
     for (;;) {
+      if (args.authorize && !(await args.authorize())) return { allowed: false, message: 'This agent execution is no longer authorized.' }
       const status = await args.repository.requestMcpApproval({
         workspaceId: args.workspaceId, environmentId: args.environmentId, runId: args.runId, requestKey, prompt, now: now(),
+        ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+        ...(args.execution ? { execution: args.execution } : {}),
+        ...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
       })
       if (status.state === 'unavailable') {
         return { allowed: false, message: `${toolName} needs approval in Overlay, but this run can no longer ask for it.` }

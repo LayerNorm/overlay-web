@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 pending; Phase 4 foundation in progress; Phase 5 pending.
+Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 pending; Phase 4 foundation in progress; Phase 5 in progress.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -8,6 +8,8 @@ mockup [`mockups/reliable-agents-mockup.html`](./mockups/reliable-agents-mockup.
 smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agent-long-horizon/).
 
 ## Progress
+
+- Phase 5 MCP authorization now binds delivered credentials to the current session and execution generation without extending expiry. Approval polling and final tool execution recheck authority; replaced attempts cannot create new approval cards. Legacy first-attempt compatibility remains. Interrupted-turn continuation, durable pending-tool follow-up and the 60-minute recovery acceptance remain pending.
 
 - Phase 0 CI corrections record the new drive route/readers in the reviewed on-prem inventory and remove a syntax-only zero-argument broker assertion. Native-auth boundary and token refresh tests remain enforced; current-head hosted acceptance is pending.
 

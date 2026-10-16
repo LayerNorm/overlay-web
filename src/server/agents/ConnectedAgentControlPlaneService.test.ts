@@ -553,22 +553,23 @@ test('legacy web-first controls omit the new argument until lifecycle v2 is enab
   }
 })
 
-test('fresh tool delivery preserves signed scope and refuses a token from another run', async () => {
+test('every delivered start binds MCP scope to its execution without extending expiry', async () => {
   const { mintAgentMcpToken, verifyAgentMcpToken } = await import('./agent-mcp-token')
   const previous = process.env.OVERLAY_AGENT_MCP_SECRET
   process.env.OVERLAY_AGENT_MCP_SECRET = 'integration-test-mcp-secret'
   try {
-    for (const runId of ['run-1', 'foreign-run']) {
+    for (const fresh of [false, true]) for (const runId of ['run-1', 'foreign-run']) {
       const token = mintAgentMcpToken({ userId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
         agentPrincipalId: 'principal-agent', conversationId: 'conversation-1', environmentId: 'environment-1',
         runId, turnId: 'turn-1', invocationNonce: 'nonce-1', modelId: 'byo/codex', memoryEnabled: false,
+        sessionId: 'attempt-1', execution: { attemptId: 'attempt-1', generation: 1 },
         grant: { allowedToolIds: [], isDefaultMaster: false }, ttlMs: 60_000 })!
       const f = fixture({ capabilities: { remoteLifecycleVersion: 2 } })
       f.repository.commandResolutionFloor = async () => 0
       f.repository.claimCommands = async () => [{ id: 'command-1', workspaceId: 'workspace-1', environmentId: 'environment-1',
         runId: 'run-1', type: 'start', sequence: 1, status: 'claimed', createdAt: NOW, updatedAt: NOW,
         attemptId: 'attempt-2', executionGeneration: 2,
-        payload: { bindingId: 'binding-1', adapterId: 'codex', workingDirectory: '/workspace/project', prompt: 'Work', fresh: true,
+        payload: { bindingId: 'binding-1', adapterId: 'codex', workingDirectory: '/workspace/project', prompt: 'Work', fresh,
           metadata: { overlayMcp: { url: 'https://overlay.example/api/agent-mcp', token } } },
       }]
       const poll = f.service.pollCommands({ environment: f.environment, credential: f.credential }, 10)
@@ -582,8 +583,11 @@ test('fresh tool delivery preserves signed scope and refuses a token from anothe
         assert.ok(mcp && typeof mcp === 'object' && 'token' in mcp && typeof mcp.token === 'string')
         const claims = verifyAgentMcpToken(mcp.token)
         assert.equal(claims?.runId, 'run-1')
+        assert.equal(claims?.sessionId, 'attempt-2')
+        assert.deepEqual(claims?.execution, { attemptId: 'attempt-2', generation: 2 })
+        assert.equal(verifyAgentMcpToken(token)?.execution?.generation, 1)
         assert.deepEqual(claims?.grant, { allowedToolIds: [], isDefaultMaster: false })
-        assert.ok(claims!.expiresAt <= verifyAgentMcpToken(token)!.expiresAt + 1000)
+        assert.ok(claims!.expiresAt <= verifyAgentMcpToken(token)!.expiresAt)
       }
     }
   } finally {

@@ -511,6 +511,7 @@ function overlayMcpMetadata(args: {
   latestUserText?: string
   memoryEnabled: boolean
   runId: string
+  sessionId: string
   ttlMs: number
   workspaceId: string
 }): { overlayMcp?: { url: string; token: string } } {
@@ -523,6 +524,7 @@ function overlayMcpMetadata(args: {
     conversationId: args.conversationId,
     environmentId: args.invocation.remoteTarget.environmentId,
     runId: args.runId,
+    sessionId: args.sessionId,
     turnId: args.invocation.turnId,
     invocationNonce: args.invocation.invocationNonce,
     modelId: args.invocation.modelId,
@@ -675,6 +677,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
             latestUserText: room.latestUserText,
             memoryEnabled: args.memoryEnabled,
             runId,
+            sessionId: remoteSessionId,
             ttlMs: policy.maxRunTimeMs + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS + AGENT_MCP_TOKEN_SLACK_MS,
             workspaceId: args.workspaceId,
           }),

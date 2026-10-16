@@ -298,6 +298,9 @@ export interface ConnectedAgentRepository {
     workspaceId: string
     environmentId: string
     runId: string
+    sessionId?: string
+    execution?: { attemptId: string; generation: number }
+    expiresAt?: number
     requestKey: string
     prompt: string
     now: number

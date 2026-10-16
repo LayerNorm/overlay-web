@@ -7,6 +7,7 @@ import { rpcError, serveMcpJsonRpc, type McpPromptSource } from '@/server/mcp/mc
 import { overlaySkillPrompts } from '@/server/mcp/skill-prompts'
 import { verifyAgentMcpToken, type AgentMcpTokenClaims } from './agent-mcp-token'
 import { buildAgentMcpTools } from './agent-mcp-tools'
+import { agentMcpSessionIsLive } from '@/shared/agents/agent-mcp-authority'
 
 /**
  * Overlay's MCP server for connected agents (Claude Code, Codex, Hermes… on a
@@ -18,7 +19,12 @@ import { buildAgentMcpTools } from './agent-mcp-tools'
  * rebuilt from its grant, and responses are plain JSON (no SSE stream).
  */
 
-const LIVE_SESSION_STATUSES = new Set(['starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering'])
+async function isCurrentMcpRunLive(claims: AgentMcpTokenClaims): Promise<boolean> {
+  const session = await getOverlayServerContext().appData.repositories.connectedAgents.getRemoteSessionForRun({
+    workspaceId: claims.workspaceId, environmentId: claims.environmentId, runId: claims.runId,
+  }).catch((_error) => null)
+  return agentMcpSessionIsLive(claims, session)
+}
 
 export type AgentMcpDependencies = {
   verifyToken: (token: string | null) => AgentMcpTokenClaims | null
@@ -33,14 +39,7 @@ const defaultDependencies: AgentMcpDependencies = {
   buildPrompts: (claims) => (claims.grant.isDefaultMaster || claims.grant.allowedToolIds.includes('list_skills')
     ? overlaySkillPrompts({ userId: claims.userId, workspaceId: claims.workspaceId })
     : null),
-  async isRunLive(claims) {
-    const session = await getOverlayServerContext().appData.repositories.connectedAgents.getRemoteSessionForRun({
-      workspaceId: claims.workspaceId,
-      environmentId: claims.environmentId,
-      runId: claims.runId,
-    }).catch((_error) => null)
-    return Boolean(session && LIVE_SESSION_STATUSES.has(session.status))
-  },
+  isRunLive: isCurrentMcpRunLive,
   buildTools: (claims) => buildAgentMcpTools({
     actorUserId: claims.userId,
     agentId: claims.agentId,
@@ -51,9 +50,12 @@ const defaultDependencies: AgentMcpDependencies = {
     memoryEnabled: claims.memoryEnabled,
     modelId: claims.modelId,
     toolGrant: claims.grant,
-    run: { environmentId: claims.environmentId, runId: claims.runId },
+    run: { environmentId: claims.environmentId, runId: claims.runId,
+      ...(claims.sessionId ? { sessionId: claims.sessionId } : {}),
+      ...(claims.execution ? { execution: claims.execution } : {}), expiresAt: claims.expiresAt },
     turnId: claims.turnId,
     workspaceId: claims.workspaceId,
+    authorize: () => isCurrentMcpRunLive(claims),
   }),
 }
 

@@ -848,21 +848,23 @@ export class ConnectedAgentControlPlaneService {
       }
       if (parsed.data.type === 'start') {
         this.assertWorkingDirectory(auth.environment, parsed.data.payload.workingDirectory)
-        if (parsed.data.payload.fresh) {
-          const mcp = parsed.data.payload.metadata.overlayMcp
-          if (mcp !== undefined) {
-            if (!mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string')
-              throw controlPlaneError('Recovery tool credentials are invalid', 409, 'recovery_credentials_invalid')
-            const claims = verifyAgentMcpToken(mcp.token)
-            if (!claims || claims.runId !== command.runId || claims.workspaceId !== command.workspaceId
-              || claims.environmentId !== command.environmentId)
-              throw controlPlaneError('Recovery tool credentials expired or do not match this run', 409, 'recovery_credentials_invalid')
-            const { expiresAt, ...scope } = claims
-            // Refresh delivery without extending the original grant's authority or lifetime.
-            const token = mintAgentMcpToken({ ...scope, ttlMs: expiresAt - Date.now() })
-            if (!token) throw controlPlaneError('Recovery tool credentials unavailable', 409, 'recovery_credentials_invalid')
-            parsed.data.payload.metadata.overlayMcp = { ...mcp, token }
-          }
+        const mcp = parsed.data.payload.metadata.overlayMcp
+        if (mcp !== undefined) {
+          if (!mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string')
+            throw controlPlaneError('Recovery tool credentials are invalid', 409, 'recovery_credentials_invalid')
+          const claims = verifyAgentMcpToken(mcp.token)
+          if (!claims || claims.runId !== command.runId || claims.workspaceId !== command.workspaceId
+            || claims.environmentId !== command.environmentId)
+            throw controlPlaneError('Recovery tool credentials expired or do not match this run', 409, 'recovery_credentials_invalid')
+          const { expiresAt, ...scope } = claims
+          // Bind every delivered start to its attempt without extending the signed grant.
+          const execution = parsed.data.execution
+          if (!execution && scope.execution) throw controlPlaneError('Recovery execution fence is missing', 409, 'recovery_credentials_invalid')
+          const token = mintAgentMcpToken({ ...scope,
+            ...(execution ? { sessionId: execution.attemptId, execution } : {}),
+            ttlMs: expiresAt - Date.now(), expiresAt })
+          if (!token) throw controlPlaneError('Recovery tool credentials unavailable', 409, 'recovery_credentials_invalid')
+          parsed.data.payload.metadata.overlayMcp = { ...mcp, token }
         }
       }
       return parsed.data

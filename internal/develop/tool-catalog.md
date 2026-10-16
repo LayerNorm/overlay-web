@@ -65,6 +65,11 @@ purpose, but there is no per-message opt-in yet.
 | **Claude Code / Codex on Overlay Cloud, or on your machine** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` (it has its own machine) and `present_generated_ui`. Tools that need approval show an approval card. |
 | **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
 
+Connected-agent MCP calls revalidate the current session and execution generation before running,
+including after a human approval wait. Start-command credentials keep their original scope, grant
+and absolute expiry when rebound to a replacement attempt. Stale attempts cannot create approvals
+in the replacement session. Legacy unfenced grants work only before an attempt has been replaced.
+
 ## Outside-app access levels (`src/shared/mcp/access.ts`)
 
 - **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`.

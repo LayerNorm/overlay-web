@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fence connected-agent workspace tools to the current execution, recheck authority after approval waits and preserve signed expiry across restart delivery. Reject malformed token suffixes and stale approval requests.
+
 - Use Webpack worker compilation with memory optimizations for customer-web builds, retaining hosted TypeScript checks. Move reusable account content out of the route module so route validation passes.
 
 - Preserve safe drive rejection statuses through Convex error envelopes; reject unsafe download paths before storage access.

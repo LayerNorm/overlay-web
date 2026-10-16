@@ -927,6 +927,16 @@ test('fresh lifecycle attempt uses a strict executable start rather than checkpo
   expect(active.message?.parts).toEqual(expect.arrayContaining([
     expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'new-write', state: 'pending' }) }),
   ]))
+  const mcp = { workspaceId, environmentId, runId: 'run-remote-turn', prompt: 'Allow old MCP call?', now: now + 6 }
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:replayed' })).toEqual({ state: 'unavailable' })
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:replayed', sessionId: 'session-remote-turn',
+    execution: { attemptId: 'session-remote-turn', generation: 1 } })).toEqual({ state: 'unavailable' })
+  expect(await convex.run(ctx => ctx.db.query('agentApprovalRequests')
+    .withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', replacement).eq('requestKey', 'mcp:replayed')).unique())).toBeNull()
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:expired', sessionId: replacement,
+    execution: { attemptId: replacement, generation: 2 }, expiresAt: now + 6 })).toEqual({ state: 'unavailable' })
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:current', sessionId: replacement,
+    execution: { attemptId: replacement, generation: 2 }, expiresAt: now + 60000 })).toEqual({ state: 'pending' })
 })
 
 test('legacy Stop preserves text and tools, accepts buffered output until stop confirmation and fences later text', async () => {

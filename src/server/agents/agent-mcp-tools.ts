@@ -9,6 +9,7 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { createMcpApprovalGate } from './mcp-approval-gate'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
+import type { AgentMcpExecutionAuthority } from '@/shared/agents/agent-mcp-authority'
 
 /**
  * Overlay workspace tools for agents that connect over MCP (`/api/agent-mcp`).
@@ -55,6 +56,8 @@ export function adaptToolsForMcp(args: {
   approvalRefusal?: string
   /** Asks the person for approval and waits for the answer; without it a tool that needs approval is refused. */
   requestApproval?: (toolName: string, input: unknown) => Promise<{ allowed: true } | { allowed: false; message: string }>
+  /** Rechecked after any human wait and immediately before executing a tool. */
+  authorize?: () => Promise<boolean>
 }): ToolSet {
   const adapted: ToolSet = {}
   const withheld = new Set(args.withheldToolIds ?? [])
@@ -79,6 +82,7 @@ export function adaptToolsForMcp(args: {
           const outcome = await args.requestApproval(name, input ?? {})
           if (!outcome.allowed) return { success: false, error: outcome.message }
         }
+        if (args.authorize && !(await args.authorize())) return { success: false, error: 'This agent execution is no longer authorized.' }
         const context = args.toolsContext?.[name]
         return await execute(input, context === undefined ? options : { ...options, context })
       },
@@ -127,7 +131,8 @@ export async function buildAgentMcpTools(input: {
   turnId: string
   workspaceId: string
   /** The run this request belongs to, so a tool that needs approval can ask in its conversation. */
-  run?: { environmentId: string; runId: string }
+  run: Omit<AgentMcpExecutionAuthority, 'workspaceId'> & { expiresAt: number }
+  authorize: () => Promise<boolean>
 }): Promise<{ tools: ToolSet; instructions: string }> {
   if (!input.toolGrant) return { tools: {}, instructions: '' }
   try {
@@ -156,12 +161,11 @@ export async function buildAgentMcpTools(input: {
     const run = input.run
     const tools = adaptToolsForMcp({
       ...tooling,
-      ...(run ? {
-        requestApproval: createMcpApprovalGate({
-          repository: getOverlayServerContext().appData.repositories.connectedAgents,
-          workspaceId: input.workspaceId, environmentId: run.environmentId, runId: run.runId,
-        }),
-      } : {}),
+      authorize: input.authorize,
+      requestApproval: createMcpApprovalGate({
+        repository: getOverlayServerContext().appData.repositories.connectedAgents,
+        workspaceId: input.workspaceId, ...run, authorize: input.authorize,
+      }),
     })
     return { tools, instructions: overlayMcpInstructions(Object.keys(tools)) }
   } catch (error) {

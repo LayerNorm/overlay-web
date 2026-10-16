@@ -1,4 +1,5 @@
 import { recordRemoteRunLiveness } from '../../src/shared/agents/remote-run-liveness'
+import { agentMcpAttemptMatches, agentMcpSessionIsLive } from '../../src/shared/agents/agent-mcp-authority'
 import { applyRemoteText } from '../../src/shared/agents/remote-agent-text'
 import { hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
 import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
@@ -1158,6 +1159,8 @@ const MCP_APPROVAL_SOURCE = 'overlay_mcp'
 export const requestMcpApprovalByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
+    sessionId: v.optional(v.string()), expiresAt: v.optional(v.number()),
+    execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
     requestKey: v.string(), prompt: v.string(), now: v.number(),
   },
   returns: v.object({
@@ -1167,7 +1170,7 @@ export const requestMcpApprovalByServer = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const session = await currentRemoteAttempt(ctx, args.runId)
-    if (!session || session.workspaceId !== args.workspaceId || session.environmentId !== args.environmentId) return { state: 'unavailable' as const }
+    if (!session || !agentMcpAttemptMatches(args, { ...session, id: session.sessionId })) return { state: 'unavailable' as const }
     const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
     const existing = await ctx.db.query('agentApprovalRequests')
       .withIndex('by_remoteSessionId_requestKey', (q) => q.eq('remoteSessionId', session.sessionId).eq('requestKey', args.requestKey)).unique()
@@ -1178,7 +1181,7 @@ export const requestMcpApprovalByServer = mutation({
         ? { state: 'resolved' as const, decision: existing.resolution.decision }
         : { state: 'pending' as const }
     }
-    if (['completed', 'failed', 'cancelled'].includes(session.status)) return { state: 'unavailable' as const }
+    if (!agentMcpSessionIsLive(args, { ...session, id: session.sessionId }, args.now)) return { state: 'unavailable' as const }
     const message = run?.assistantMessageId ? await ctx.db.get(run.assistantMessageId) : null
     if (!run || !message) return { state: 'unavailable' as const }
     if (run.remoteLifecycle && !['running', 'waiting_for_approval', 'waiting_for_input'].includes(run.remoteLifecycle.phase)) return { state: 'unavailable' as const }
