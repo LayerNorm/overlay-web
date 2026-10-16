@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import {
@@ -65,12 +66,12 @@ export function NotebookFloatingFormatToolbar({
 
   return (
     <div className="absolute bottom-5 right-5 z-30 flex max-w-[calc(100%-2.5rem)] items-center gap-1 overflow-x-auto rounded-xl border border-(--border) bg-(--surface-elevated) p-1.5 shadow-lg">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => onOpenChange(!open)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
         aria-label={open ? 'Close formatting toolbar' : 'Open formatting toolbar'}
         aria-expanded={open}
         title={open ? 'Close formatting toolbar' : 'Formatting'}
@@ -82,7 +83,7 @@ export function NotebookFloatingFormatToolbar({
         ) : (
           <Pencil size={16} />
         )}
-      </button>
+      </Button>
 
       {open && <NotebookFormatToolbarActions editor={editor} />}
     </div>
@@ -102,15 +103,15 @@ interface NotebookFormatToolbarButtonProps {
 
 function NotebookFormatToolbarButton({ label, active, onClick, children }: NotebookFormatToolbarButtonProps) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
-      className={`${floatingToolbarButtonClass} ${active ? floatingToolbarActiveButtonClass : ''}`}
+      className={unstyledButton(`${floatingToolbarButtonClass} ${active ? floatingToolbarActiveButtonClass : ''}`)}
       aria-label={label}
       title={label}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
