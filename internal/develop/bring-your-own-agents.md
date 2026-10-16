@@ -1382,6 +1382,10 @@ durable for the next host. Shutdown-induced provider errors are not terminal run
 If a provider stop is unconfirmed, cache ownership is retained and the CLI does not explicitly
 close its state store while callbacks can still arrive. This does not establish restart recovery.
 An abort during hydration cannot launch a provider afterwards.
+Session checkpoints retain the validated model, permission mode, effort and Cloud/local context
+alongside nonsecret configuration references. Restoration reuses that same settings schema;
+MCP tokens and provider credentials are excluded and must be reissued by the control plane.
+Preserving settings does not authorize native continuation without old-writer isolation proof.
 The host transport exposes that refresh through the existing signed credential-rotation endpoint.
 Concurrent refresh callers share one rotation; callbacks retain its complete method grant and
 filesystem policy, and a response for another environment is rejected before replacing credentials.

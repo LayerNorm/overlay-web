@@ -31,7 +31,8 @@ async function fixture() {
     execution: { attemptId: 'attempt', generation: 1 }, type, payload,
   } as AgentHostCommand)
   const start = command(1, 'start', { bindingId: 'binding', adapterId: 'fixture', workingDirectory: root, prompt: 'do one write',
-    metadata: { model: 'chosen-model', overlayMcp: { token: 'must-not-be-checkpointed', url: 'https://example.test/mcp' } } })
+    metadata: { model: 'chosen-model', permissionMode: 'auto', effort: 'high', permissionContext: 'cloud',
+      overlayMcp: { token: 'must-not-be-checkpointed', url: 'https://example.test/mcp' } } })
   return { state, events, emitters, capabilities, create, command, start, starts: () => starts,
     async cleanup() { state.close(); await rm(directory, { recursive: true, force: true }) } }
 }
@@ -44,9 +45,21 @@ test('live reconnect keeps one process/attempt and checkpoints only nonsecret co
     await runtime.processCommand(f.command(2, 'reconnect', { remoteSessionId: 'native' }))
     assert.equal(f.starts(), 1)
     assert.equal(f.events.flatMap(b => b.events).at(-1)?.type, 'process_observation')
-    assert.equal(f.state.getSession('run')?.config?.model, 'chosen-model')
+    assert.deepEqual(f.state.getSession('run')?.config, {version: 1, configReference: 'binding', toolsReference: 'run',
+      model: 'chosen-model', permissionMode: 'auto', effort: 'high', permissionContext: 'cloud'})
     assert.ok(!JSON.stringify(f.state.getSession('run')).includes('must-not-be-checkpointed'))
     assert.equal(f.events[0].events[0].execution?.attemptId, 'attempt')
+  } finally { await f.cleanup() }
+})
+
+test('invalid settings are rejected before an execution can start', async () => {
+  const f = await fixture()
+  try {
+    if (f.start.type !== 'start') throw Error('Missing start fixture')
+    f.start.payload.metadata.permissionContext = 'invalid'
+    await assert.rejects(f.create().processCommand(f.start), /permissionContext/)
+    assert.equal(f.starts(), 0)
+    assert.equal(f.state.getSession('run'), undefined)
   } finally { await f.cleanup() }
 })
 

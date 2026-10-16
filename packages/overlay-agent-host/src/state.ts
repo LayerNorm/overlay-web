@@ -2,8 +2,9 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { agentHostEventSchema, type AgentHostEvent } from '@layernorm/overlay-agent-bridge-protocol'
+import type { AgentSettings } from './acp-settings.js'
 
-export type StoredRemoteSession = { config?: { version: 1; model?: string; configReference?: string; toolsReference?: string }; execution?: { attemptId: string; generation: number; hostBootId?: string };  runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
+export type StoredRemoteSession = { config?: AgentSettings & { version: 1; configReference?: string; toolsReference?: string }; execution?: { attemptId: string; generation: number; hostBootId?: string };  runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
 export type StoredCommandResult = { accepted: boolean; errorCode?: string; errorMessage?: string; sequence: number }
 export type StoredAdapterSessionState = { runId: string; adapterId: string; state: Record<string, unknown> }
 export type HostStateScope = { environmentId: string; workspaceId: string }

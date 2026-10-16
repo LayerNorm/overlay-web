@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { homedir, platform, release } from 'node:os'
 import { setTimeout as wait } from 'node:timers/promises'
+import { agentSettingsSchema } from './acp-settings.js'
 import {
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
@@ -350,6 +351,7 @@ export class AgentHostRuntime {
   }
 
   private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+    const settings = agentSettingsSchema.parse(command.payload.metadata)
     const offset = command.payload.metadata.recoveryTextOffset
     if (offset !== undefined && (command.payload.fresh !== true || typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0))
       throw Error('Invalid recovery text offset')
@@ -393,7 +395,7 @@ export class AgentHostRuntime {
     this.sessions.set(command.runId, session)
     this.scheduleCapabilityRefresh()
     this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory,
-      config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...(typeof command.payload.metadata.model === 'string' ? { model: command.payload.metadata.model } : {}) },
+      config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...settings },
       ...(command.execution ? { execution: { ...command.execution, hostBootId: this.bootId } } : {}),
     })
     await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
@@ -438,7 +440,7 @@ export class AgentHostRuntime {
     if (credentials === 'unavailable') throw new Error('provider credentials are unavailable for this run')
     const session = await this.requireAdapter(stored.adapterId).start({
       runId, workingDirectory: scope.workingDirectory, additionalDirectories: scope.additionalDirectories,
-      prompt: '', remoteSessionId: stored.remoteSessionId, metadata: { ...(stored.config?.model ? { model: stored.config.model } : {}) },
+      prompt: '', remoteSessionId: stored.remoteSessionId, metadata: agentSettingsSchema.parse(stored.config ?? {}),
       ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(runId, stored.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),

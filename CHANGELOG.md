@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve selected permission mode and effort with the model in agent recovery checkpoints, while excluding credentials.
+
 - Drain provider callbacks, buffered text, drive work and active upload acknowledgements before closing an agent host; retain ownership when provider termination cannot be confirmed.
 
 - Connected agents keep running when a provider uses a long shell script as its tool title; display labels stay within the bridge limit without splitting Unicode.

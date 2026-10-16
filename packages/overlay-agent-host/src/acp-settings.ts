@@ -3,12 +3,13 @@ import { z } from 'zod'
 import type { AdapterOptions } from '@layernorm/overlay-agent-bridge-protocol'
 import { parseAgentOptions } from './agent-options.js'
 
-const settingsSchema = z.object({
+export const agentSettingsSchema = z.object({
   model: z.string().trim().min(1).optional(),
   permissionMode: z.string().trim().min(1).optional(),
   effort: z.string().trim().min(1).optional(),
   permissionContext: z.enum(['cloud', 'local']).optional(),
 })
+export type AgentSettings = z.infer<typeof agentSettingsSchema>
 
 /** Apply choices through the session's own config IDs; legacy agents retain their protocol controls. */
 export async function applyAcpSettings(context: ClientContext, sessionId: string, metadata: Record<string, unknown>, initial: AdapterOptions): Promise<AdapterOptions> {
@@ -26,7 +27,7 @@ export type AgentSettingControls = {
 }
 
 export async function applyAgentSettings(controls: AgentSettingControls, metadata: Record<string, unknown>, initial: AdapterOptions): Promise<AdapterOptions> {
-  const selected = settingsSchema.parse(metadata)
+  const selected = agentSettingsSchema.parse(metadata)
   let options = initial
   const choose = async (kind: 'model' | 'mode' | 'effort', value: string | undefined) => {
     if (!value) return
