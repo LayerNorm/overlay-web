@@ -6,6 +6,7 @@ import { drivePathSegments } from '@layernorm/overlay-agent-bridge-protocol'
 import { agentDriveAuthorityArgs } from '@/shared/agents/agent-drive-authority'
 import { buildAgentDriveCandidates } from '@/shared/agents/agent-drive-manifest'
 import type { AgentDriveTokenClaims } from './agent-drive-token'
+import { driveMetadataBodySchema, driveMetadataEntrySchema, type DriveMetadataEntry, type DriveMetadataOperation, type DriveMetadataRequest, type DriveMetadataResult } from './agent-drive-metadata'
 import type { AgentDriveManifestRepository } from './AgentDriveManifestRepository'
 import { AgentDriveMaterializer, type AgentDriveManifestEntry } from './AgentDriveMaterializer'
 
@@ -13,11 +14,11 @@ const readyFileSchema = z.object({
   fileId: z.string().min(1).max(200), path: z.string().min(1).max(4096), updatedAt: z.number().int().nonnegative(),
   kind: z.literal('file'), hydration: z.literal('ready'), sizeBytes: z.number().int().nonnegative().max(16 * 1024 * 1024),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
-}).strict()
+}).extend({ metadataMac: z.string().optional() }).strict().transform(({ metadataMac: _metadataMac, ...entry }) => entry)
 type ReadyFile = z.infer<typeof readyFileSchema>
-export type AgentDriveHostManifestEntry = AgentDriveManifestEntry & { downloadMac?: string }
+export type AgentDriveHostManifestEntry = AgentDriveManifestEntry & { downloadMac?: string; metadataMac?: string }
 
-/** Builds scoped manifests and verifies downloads; immutable uploads and guarded commits are a separate write path. */
+/** Scoped read grants and metadata commits. Immutable content uploads use a separate write path. */
 export class AgentDriveManifestService {
   constructor(private readonly dependencies: {
     secret: string
@@ -52,8 +53,10 @@ export class AgentDriveManifestService {
     const candidates = buildAgentDriveCandidates({ rows, scope: claims.scope, viewer: { userId: claims.actorUserId, role: 'member' } })
     const entries = await this.dependencies.materializer(claims).manifest(candidates)
     await repository.authorize()
-    return { entries: entries.map(entry => entry.kind === 'file' && entry.hydration === 'ready'
-      ? { ...entry, downloadMac: this.mac(claims, readyFileSchema.parse(entry)).toString('base64url') } : entry) }
+    return { entries: entries.map(entry => ({ ...entry,
+      ...(entry.kind === 'file' && entry.hydration === 'ready' ? { downloadMac: this.mac(claims, readyFileSchema.parse(entry)).toString('base64url') } : {}),
+      ...(entry.kind === 'folder' || entry.hydration === 'ready' ? { metadataMac: this.metadataMac(claims, driveMetadataEntrySchema.parse(entry)).toString('base64url') } : {}),
+    })) }
   }
 
   async download(token: string | null, input: { entry: unknown; downloadMac: string }): Promise<Uint8Array> {
@@ -73,6 +76,32 @@ export class AgentDriveManifestService {
     const bytes = await this.dependencies.materializer(claims).read(candidate, entry)
     await repository.authorize()
     return bytes
+  }
+
+  async metadata(token: string | null, input: DriveMetadataRequest): Promise<DriveMetadataResult> {
+    const { claims, repository } = await this.authorize(token)
+    const request = driveMetadataBodySchema.parse(input)
+    const operation = request.operation
+    let commit: DriveMetadataOperation
+    if (operation.kind === 'mkdir') {
+      if (drivePathSegments(operation.name).length !== 1) throw Error('DRIVE_UNSAFE_PATH')
+      commit = operation
+    } else {
+      const entry = driveMetadataEntrySchema.parse(operation.entry)
+      drivePathSegments(entry.path)
+      const actual = Buffer.from(operation.metadataMac, 'base64url')
+      const expected = this.metadataMac(claims, entry)
+      if (actual.toString('base64url') !== operation.metadataMac || actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw Error('DRIVE_INVALID_METADATA')
+      commit = operation.kind === 'remove' ? { kind: 'remove', fileId: entry.fileId, path: entry.path, updatedAt: entry.updatedAt }
+        : { kind: 'move', fileId: entry.fileId, path: entry.path, updatedAt: entry.updatedAt, name: operation.name, ...(operation.parentId ? { parentId: operation.parentId } : {}) }
+    }
+    // The mutation rechecks authority, edit policy and revision atomically with the receipt.
+    return repository.metadata(request.requestId, commit)
+  }
+
+  private metadataMac(claims: AgentDriveTokenClaims, entry: DriveMetadataEntry): Buffer {
+    const authority = createHash('sha256').update(JSON.stringify(agentDriveAuthorityArgs(claims))).digest('hex')
+    return createHmac('sha256', this.dependencies.secret).update('overlay-agent-drive-metadata:v1.').update(authority).update(JSON.stringify(entry)).digest()
   }
 
   private async authorize(token: string | null) {

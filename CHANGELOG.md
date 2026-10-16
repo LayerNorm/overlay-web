@@ -24,7 +24,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. Runtime integration remains pending.
 
-- Add guarded, retry-safe drive metadata commits with revision checks, scoped edit permissions and nonrecursive deletion. Host synchronization remains in progress.
+- Expose scoped drive folder, move and delete commits through HTTP with hydrated-entry grants, current path/revision checks and retry receipts. Content uploads and host synchronization remain in progress.
 
 - Preserve safe drive rejection statuses when production Convex redacts developer error messages.
 

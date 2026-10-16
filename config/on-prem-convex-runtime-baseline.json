@@ -445,6 +445,7 @@
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [
+    "convex/agents/agentDriveMetadata.ts",
     "convex/agents/connectedAgents.ts",
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",

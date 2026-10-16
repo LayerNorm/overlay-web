@@ -14,6 +14,7 @@ function fixture() {
   let calls = 0
   const dependencies = { enabled: () => true, limit: async () => null as Response | null,
     service: () => ({
+      async metadata() { throw Error('unexpected metadata mutation') },
       async manifest(value: string | null) { calls++; assert.equal(value, token); return { entries: [{ fileId: 'folder', path: 'folder', updatedAt: 1, kind: 'folder' as const }, { ...entry, downloadMac: mac }] } },
       async download(value: string | null) { calls++; assert.equal(value, token); return new Uint8Array([1, 2, 3]) },
     }),
@@ -81,7 +82,7 @@ test('bounded ranges reconstruct a large verified file exactly and reject invali
 })
 
 test('revocation and changed sources are explicit, unknown server errors are sanitized, and rate limits preserve cooldowns', async () => {
-  for (const [code, status] of [['DRIVE_UNAUTHORIZED', 401], ['DRIVE_RUN_UNAVAILABLE', 403], ['DRIVE_SOURCE_CHANGED', 409], ['DRIVE_SNAPSHOT_UNAVAILABLE', 503]] as const) {
+  for (const [code, status] of [['DRIVE_UNAUTHORIZED', 401], ['DRIVE_RUN_UNAVAILABLE', 403], ['DRIVE_SOURCE_CHANGED', 409], ['DRIVE_SNAPSHOT_UNAVAILABLE', 503], ['DRIVE_EDIT_DENIED', 403], ['DRIVE_DIRECTORY_NOT_EMPTY', 409], ['DRIVE_PATH_CONFLICT', 409], ['DRIVE_REQUEST_CONFLICT', 409]] as const) {
     const f = fixture()
     f.dependencies.service = () => ({ ...fixture().dependencies.service(), async manifest() { throw Error(code) } })
     assert.equal((await handleAgentDriveRequest(request({ action: 'manifest' }), f.dependencies)).status, status)
@@ -108,6 +109,7 @@ test('HTTP transport composes with real token and manifest verification, includi
   const row = { _id: 'file', name: 'report.md', userId: 'u', workspaceId: 'w', type: 'file', kind: 'note', content: 'original bytes', createdAt: 1, updatedAt: 2 }
   const service = new AgentDriveManifestService({ secret, verifyToken: token => tokens.verify(token),
     repository: () => ({
+      async metadata() { throw Error('unexpected metadata mutation') },
       async authorize() { if (!active) throw Error('DRIVE_RUN_UNAVAILABLE') },
       async page() { return { rows: [row], scope: { kind: 'personal' as const, workspaceId: 'w', ownerUserId: 'u' }, viewer: { userId: 'u', role: 'member' as const }, nextCursor: null } },
       async file() { return row },

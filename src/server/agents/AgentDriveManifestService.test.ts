@@ -15,7 +15,9 @@ function fixture() {
     { _id: 'note', parentId: 'folder', name: 'note.md', userId: 'u', workspaceId: 'w', type: 'file', kind: 'note', content: 'Exact full note 🙂', createdAt: 1, updatedAt: 2 },
   ]
   let active = true; let reads = 0; let authorizeCount = 0
+  const commits: unknown[] = []
   const repository: AgentDriveManifestRepository = {
+    async metadata(requestId, operation) { commits.push({ requestId, operation }); return { fileId: 'note', updatedAt: 3 } },
     async authorize() { authorizeCount++; if (!active) throw Error('DRIVE_RUN_UNAVAILABLE') },
     async page(cursor) {
       reads++
@@ -31,7 +33,7 @@ function fixture() {
     async inlineSource(source) { const row = rows.find(row => row._id === source.fileId); if (!row || row.updatedAt !== source.updatedAt) throw Error('DRIVE_SOURCE_CHANGED'); return row.content ?? '' },
   }))
   const service = new AgentDriveManifestService({ secret, verifyToken: token => tokens.verify(token), repository: () => repository, materializer: () => materializer })
-  return { service, token, rows, repository, materializer, revoke() { active = false }, get reads() { return reads }, get authorizeCount() { return authorizeCount }, tokens }
+  return { service, token, rows, commits, repository, materializer, revoke() { active = false }, get reads() { return reads }, get authorizeCount() { return authorizeCount }, tokens }
 }
 
 test('paged manifest preserves hierarchy without retaining inline text and its download round-trips exact bytes', async () => {
@@ -96,4 +98,41 @@ test('entry limits and revocation while downloading fail before publishing any r
   const read = g.materializer.read.bind(g.materializer)
   g.materializer.read = async (...args) => { const result = await read(...args); g.revoke(); return result }
   await assert.rejects(g.service.download(g.token, { entry, downloadMac: downloadMac! }), /DRIVE_RUN_UNAVAILABLE/)
+})
+
+
+test('metadata HTTP commits require an exact hydrated-entry grant bound to the current token', async () => {
+  const { handleAgentDriveRequest } = await import('./agent-drive-http')
+  const f = fixture()
+  const entry = (await f.service.manifest(f.token)).entries.find(entry => entry.fileId === 'note')!
+  const invoke = (operation: unknown, token = f.token) => handleAgentDriveRequest(new Request('https://preview.invalid/api/agent-drive', {
+    method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'metadata', requestId: 'metadata-test-001', operation }),
+  }), { enabled: () => true, service: () => f.service, limit: async () => null })
+  const operation = { kind: 'remove', entry, metadataMac: entry.metadataMac }
+  for (const patch of [{ fileId: 'other' }, { updatedAt: 3 }, { path: 'other.md' }, { kind: 'folder' }]) {
+    assert.equal((await invoke({ ...operation, entry: { ...entry, ...patch } })).status, 403)
+  }
+  assert.equal((await invoke({ ...operation, metadataMac: entry.downloadMac })).status, 403)
+  const claims = f.tokens.verify(f.token)!
+  const another = f.tokens.mint({ ...claims, execution: { attemptId: 'new', generation: 2 } }, claims.expiresAt)
+  assert.equal((await invoke(operation, another)).status, 403)
+  assert.equal(f.commits.length, 0)
+  const success = await invoke(operation)
+  assert.equal(success.status, 200)
+  assert.match(success.headers.get('cache-control')!, /no-store/)
+  assert.deepEqual(await success.json(), { fileId: 'note', updatedAt: 3 })
+  assert.deepEqual(f.commits, [{ requestId: 'metadata-test-001', operation: { kind: 'remove', fileId: 'note', path: 'Research/note.md', updatedAt: 2 } }])
+  f.revoke()
+  assert.equal((await invoke(operation)).status, 403)
+  assert.equal(f.commits.length, 1)
+})
+
+test('metadata grants include folders but exclude unhydrated file entries', async () => {
+  const f = fixture()
+  f.materializer.manifest = async () => [{ fileId: 'folder', path: 'Research', kind: 'folder', updatedAt: 2 },
+    { fileId: 'note', path: 'Research/large.bin', kind: 'file', updatedAt: 2, hydration: 'deferred', reason: 'file_limit', sizeBytes: 17000000 }]
+  const entries = (await f.service.manifest(f.token)).entries
+  assert.equal(entries[0]?.metadataMac?.length, 43)
+  assert.equal(entries[1]?.metadataMac, undefined)
 })

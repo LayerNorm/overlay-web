@@ -6,5 +6,5 @@ export async function POST(request: Request) {
     import('@/server/agents/agent-drive-http'), import('@/server/agents/agent-drive-http-dependencies'),
     import('@/server/app-api/v1/agent-environments/host-route-telemetry'),
   ])
-  return withAgentHostRouteTelemetry('drive.read', request, () => handleAgentDriveRequest(request, agentDriveHttpDependencies))
+  return withAgentHostRouteTelemetry('drive', request, () => handleAgentDriveRequest(request, agentDriveHttpDependencies))
 }

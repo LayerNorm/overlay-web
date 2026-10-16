@@ -5,17 +5,20 @@ import { ConvexError } from 'convex/values'
 import { readBoundedStorageBody } from '@/server/storage/read-bounded-storage-body'
 import type { AgentDriveManifestService, AgentDriveHostManifestEntry } from './AgentDriveManifestService'
 
+import { driveMetadataBodySchema } from './agent-drive-metadata'
+
 const MAX_BODY_BYTES = 32 * 1024
 const MAX_RANGE_BYTES = 1024 * 1024
 const bodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('manifest') }).strict(),
+  driveMetadataBodySchema,
   z.object({ action: z.literal('download'), entry: z.record(z.unknown()), downloadMac: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
     offset: z.number().int().nonnegative().max(16 * 1024 * 1024), length: z.number().int().positive().max(MAX_RANGE_BYTES) }).strict(),
 ])
 const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', Vary: 'Authorization' }
 export type DriveHttpDependencies = {
   enabled(): boolean
-  service(): Pick<AgentDriveManifestService, 'manifest' | 'download'>
+  service(): Pick<AgentDriveManifestService, 'manifest' | 'download' | 'metadata'>
   limit(request: Request, token: string): Promise<Response | null>
 }
 /** Bearer-only machine transport. Cookies, URL tokens and host-selected scope do not authorize it. */
@@ -31,6 +34,9 @@ export async function handleAgentDriveRequest(request: Request, dependencies: Dr
     const body = await readBody(request)
     const service = dependencies.service()
     if (body.action === 'manifest') return manifestResponse((await service.manifest(token)).entries)
+    if (body.action === 'metadata') {
+      return Response.json(await service.metadata(token, body), { headers })
+    }
     const bytes = await service.download(token, body)
     if (body.offset > bytes.length || (bytes.length > 0 && body.offset === bytes.length)) return failure(416, 'DRIVE_RANGE_INVALID')
     const chunk = bytes.slice(body.offset, body.offset + body.length)
@@ -50,6 +56,7 @@ export async function handleAgentDriveRequest(request: Request, dependencies: Dr
       : /(?:^|\n)(?:Uncaught Error: )?((?:DRIVE|STORAGE_READ)_[A-Z_]+)[ \t]*(?=\n|$)/.exec(message)?.[1] ?? ''
     const statuses: Record<string, number> = {
       DRIVE_DISABLED: 404, DRIVE_UNAUTHORIZED: 401, DRIVE_RUN_UNAVAILABLE: 403, DRIVE_SCOPE_CHANGED: 403,
+      DRIVE_EDIT_DENIED: 403, DRIVE_INVALID_METADATA: 403, DRIVE_REQUEST_CONFLICT: 409, DRIVE_PATH_CONFLICT: 409, DRIVE_DIRECTORY_NOT_EMPTY: 409,
       DRIVE_UNSAFE_PATH: 400, DRIVE_INVALID_DOWNLOAD: 403, DRIVE_SOURCE_CHANGED: 409, DRIVE_FILE_UNAVAILABLE: 404,
       DRIVE_TOO_MANY_ENTRIES: 413, DRIVE_METADATA_LIMIT: 413, DRIVE_FILE_TOO_LARGE: 413,
       STORAGE_READ_LIMIT_EXCEEDED: 413, STORAGE_READ_SIZE_CHANGED: 409,

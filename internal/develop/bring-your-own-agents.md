@@ -275,7 +275,7 @@ pages repeat membership, scope, binding, run and attempt checks behind the defau
 authority and edit policy. Revision checks and transaction receipts prevent stale or duplicate
 changes; folders must be empty before deletion. New names reuse the portable wire-path
 validator and reject case/Unicode aliases rather than creating an ambiguous cache. Object quota remains charged until cleanup.
-Content uploads, metadata HTTP wiring and host synchronization remain pending.
+Content uploads and host synchronization remain pending.
 
 Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
 do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;
@@ -299,8 +299,12 @@ Revoked authority and changed revisions fail closed. Expected backend failures u
 `ConvexError` application data so production message redaction preserves the HTTP status.
 Only recognized codes are returned; legacy message parsing supports web-first deployment overlap.
 Stack/request details are never returned. Responses are private and never cached.
-This read transport still needs current-head hosted acceptance, start-command issuance, guarded
-file writes and runtime synchronization before the persistent drive can be enabled.
+`metadata` commits create folders or explicitly move/remove authenticated hydrated entries. A
+purpose-separated manifest MAC binds each existing entry to its run, path and revision; deferred
+files have no mutation grant. The transaction also checks current ancestors, so a remote parent
+move invalidates the old child path. Retry receipts prevent repeated mutation after a lost response.
+Content uploads, current-head hosted acceptance, start-command issuance and runtime synchronization
+remain required before the persistent drive can be enabled.
 
 
 Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP

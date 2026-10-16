@@ -8,6 +8,7 @@ import { deploymentEnv } from '@/server/env/deployment-env'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { agentDriveAuthorityArgs, type AgentDriveAuthorityClaims } from '@/shared/agents/agent-drive-authority'
 import type { AgentDriveScope } from '@/shared/agents/agent-drive-manifest'
+import { driveMetadataResultSchema, type DriveMetadataOperation, type DriveMetadataResult } from './agent-drive-metadata'
 import type { ResourceViewer } from '@/shared/workspaces/resource-scope'
 
 export type AgentDriveManifestPage = { rows: unknown[]; scope: AgentDriveScope; viewer: ResourceViewer; nextCursor: string | null }
@@ -16,6 +17,7 @@ export interface AgentDriveManifestRepository {
   /** All pages from this repository instance must describe the same database snapshot. */
   page(cursor: string | null): Promise<AgentDriveManifestPage>
   file(fileId: string, updatedAt: number): Promise<unknown>
+  metadata(requestId: string, operation: DriveMetadataOperation): Promise<DriveMetadataResult>
 }
 
 /** One short-lived SDK client per manifest. Never share its pinned timestamp with another request. */
@@ -40,6 +42,11 @@ export function createAgentDriveManifestRepository(claims: AgentDriveAuthorityCl
     },
     async file(fileId, updatedAt) {
       return lazyConvex.query('agents/agentDrive:fileByServer', { ...args, fileId, updatedAt }, { throwOnError: true })
+    },
+    async metadata(requestId, operation) {
+      const result = driveMetadataResultSchema.safeParse(await lazyConvex.mutation('agents/agentDriveMetadata:commitByServer', { ...args, requestId, operation }, { throwOnError: true }))
+      if (!result.success) throw Error('DRIVE_BACKEND_UNAVAILABLE')
+      return result.data
     },
   }
 }

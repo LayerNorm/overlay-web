@@ -9,8 +9,8 @@ import { driveAuthorityArgs, requireDriveAuthority } from './agentDrive'
 
 const operationValidator = v.union(
   v.object({ kind: v.literal('mkdir'), name: v.string(), parentId: v.optional(v.id('files')) }),
-  v.object({ kind: v.literal('move'), fileId: v.id('files'), updatedAt: v.number(), name: v.string(), parentId: v.optional(v.id('files')) }),
-  v.object({ kind: v.literal('remove'), fileId: v.id('files'), updatedAt: v.number() }),
+  v.object({ kind: v.literal('move'), fileId: v.id('files'), path: v.string(), updatedAt: v.number(), name: v.string(), parentId: v.optional(v.id('files')) }),
+  v.object({ kind: v.literal('remove'), fileId: v.id('files'), path: v.string(), updatedAt: v.number() }),
 )
 const resultValidator = v.object({ fileId: v.id('files'), updatedAt: v.number() })
 type Authority = Awaited<ReturnType<typeof requireDriveAuthority>>
@@ -70,8 +70,8 @@ export const commitByServer = mutation({
     const operation = args.operation
     // Explicit property order makes retry identity independent of JSON object key order.
     const fingerprint = operation.kind === 'mkdir' ? JSON.stringify(['mkdir', operation.name, operation.parentId ?? null])
-      : operation.kind === 'move' ? JSON.stringify(['move', operation.fileId, operation.updatedAt, operation.name, operation.parentId ?? null])
-        : JSON.stringify(['remove', operation.fileId, operation.updatedAt])
+      : operation.kind === 'move' ? JSON.stringify(['move', operation.fileId, operation.path, operation.updatedAt, operation.name, operation.parentId ?? null])
+        : JSON.stringify(['remove', operation.fileId, operation.path, operation.updatedAt])
     const prior = await ctx.db.query('agentDriveMetadataReceipts').withIndex('by_runId_requestId', q => q.eq('runId', args.runId).eq('requestId', args.requestId)).unique()
     if (prior) {
       if (prior.sessionId !== args.sessionId || prior.attemptId !== args.execution?.attemptId || prior.generation !== args.execution?.generation || prior.fingerprint !== fingerprint) throw new ConvexError('DRIVE_REQUEST_CONFLICT')
@@ -92,6 +92,16 @@ export const commitByServer = mutation({
       if (!file) throw new ConvexError('DRIVE_SOURCE_CHANGED')
       writable(file, authority)
       if (!Number.isSafeInteger(operation.updatedAt) || operation.updatedAt < 0 || file.updatedAt !== operation.updatedAt) throw new ConvexError('DRIVE_SOURCE_CHANGED')
+      const names = [file.name]; const parents = new Set<string>([file._id]); let parentId = file.parentId
+      while (parentId !== undefined) {
+        if (parents.size >= 64 || parents.has(parentId)) throw new ConvexError('DRIVE_SOURCE_CHANGED')
+        parents.add(parentId)
+        const normalized = ctx.db.normalizeId('files', parentId)
+        const parent = normalized ? await ctx.db.get(normalized) : null
+        if (!parent || parent.type !== 'folder' || !inScope(parent, authority)) throw new ConvexError('DRIVE_SOURCE_CHANGED')
+        names.unshift(parent.name); parentId = parent.parentId
+      }
+      if (names.join('/') !== operation.path) throw new ConvexError('DRIVE_SOURCE_CHANGED')
       const updatedAt = Math.max(Date.now(), file.updatedAt + 1)
       if (operation.kind === 'move') {
         safeName(operation.name)
