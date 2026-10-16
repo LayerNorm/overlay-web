@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Patch Next.js to 16.4.1 in both web apps and Better Auth/SSO to 1.7.7. Replace the privileged PR preview trigger with a secret-free PR request that dispatches the protected main controller.
+
 - Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
 
 - Scope Boat Preview machine creation to its isolated named environment while keeping account credentials excluded; document the approved one-year Preview key renewal requirement.
