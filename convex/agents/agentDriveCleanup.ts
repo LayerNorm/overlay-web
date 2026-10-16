@@ -23,12 +23,19 @@ export const claimByServer = mutation({
     requireServerSecret(args.serverSecret)
     if (!/^[a-zA-Z0-9_-]{16,128}$/.test(args.claim)) throw Error('Invalid cleanup claim')
     const now = Date.now()
+    // Receipt/budget retention exceeds the complete execution, not just a
+    // short-lived credential. Object cleanup tickets survive these rows.
+    for (const row of await ctx.db.query('agentDriveUploads').withIndex('by_retireAt', q => q.lte('retireAt', now)).take(32)) await ctx.db.delete(row._id)
+    for (const row of await ctx.db.query('agentDriveWriteBudgets').withIndex('by_expiresAt', q => q.lte('expiresAt', now)).take(32)) await ctx.db.delete(row._id)
     const due = await ctx.db.query('agentDriveRetiredObjects').withIndex('by_nextAttemptAt', q => q.lte('nextAttemptAt', now)).take(32)
     const objects: { id: Retired['_id']; key: string }[] = []
     let convexDeleted = 0
     for (const row of due) {
       if (await referenced(ctx, row)) {
-        await ctx.db.patch(row._id, { nextAttemptAt: now + RETRY_MS })
+        // A lost commit response may have published this final object. Its live
+        // Files pointer owns it; only a later replacement can retire that version.
+        if (row.purpose === 'uncommitted') await ctx.db.delete(row._id)
+        else await ctx.db.patch(row._id, { nextAttemptAt: now + RETRY_MS })
         continue
       }
       if (row.source.kind === 'convex') {

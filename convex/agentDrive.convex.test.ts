@@ -4,6 +4,7 @@ import { AgentDriveContentService, driveUploadRecordSchema, driveContentResultSc
 import { AgentDriveManifestService } from '../src/server/agents/AgentDriveManifestService'
 import { AgentDriveMaterializer } from '../src/server/agents/AgentDriveMaterializer'
 import { createAgentDriveTokens } from '../src/server/agents/agent-drive-token'
+import { cleanupDriveVersions } from '../src/server/agents/cleanup-agent-drive-versions'
 vi.mock('server-only', () => ({}))
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
@@ -303,7 +304,7 @@ test('superseded drive versions remain charged through retention, shared referen
   const claim = { serverSecret: secret, claim: 'cleanup-attempt-0001' }
   expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [], convexDeleted: 0 })
   const retired = await f.convex.run(async ctx => {
-    const row = await ctx.db.query('agentDriveRetiredObjects').unique()
+    const row = (await ctx.db.query('agentDriveRetiredObjects').collect()).find(row => row.purpose === 'version')
     if (!row) throw Error('retirement must be atomic with replacement')
     await ctx.db.patch(row._id, { nextAttemptAt: 0 })
     return row
@@ -337,7 +338,7 @@ test('retired Convex blobs delete transactionally only after their last Files re
     const storageId = await ctx.storage.store(new Blob(['retained']))
     const fileId = await ctx.db.insert('files', { userId: 'u', workspaceId: 'w', name: 'retained.txt', type: 'file', kind: 'upload',
       storageId, sizeBytes: 8, createdAt: Date.now(), updatedAt: Date.now(), deletedAt: Date.now() })
-    await ctx.db.insert('agentDriveRetiredObjects', { ownerUserId: 'u', sizeBytes: 8, source: { kind: 'convex', storageId },
+    await ctx.db.insert('agentDriveRetiredObjects', { ownerUserId: 'u', purpose: 'version', sizeBytes: 8, source: { kind: 'convex', storageId },
       retiredAt: 0, nextAttemptAt: 0, state: { kind: 'waiting' } })
     await ctx.db.insert('subscriptions', { userId: 'u', overlayStorageBytesUsed: 8 })
     return { storageId, fileId }
@@ -353,6 +354,48 @@ test('retired Convex blobs delete transactionally only after their last Files re
   expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [], convexDeleted: 1 })
   expect(await f.convex.run(async ctx => await ctx.storage.get(stored.storageId) === null)).toBe(true)
   expect(await f.convex.run(async ctx => (await ctx.db.query('subscriptions').withIndex('by_userId', q => q.eq('userId', 'u')).unique())?.overlayStorageBytesUsed)).toBe(0)
+})
+
+test('upload cleanup removes abandoned bytes and staging while preserving a committed final after a lost response', async () => {
+  const f = await fixture()
+  const first = writeInput()
+  const committed = await f.convex.mutation(uploadIntent, { ...f.args, ...first })
+  // A response can be lost after this transaction has already published Files.
+  const result = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: first.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: first.sizeBytes, textPrefix: 'retained canonical bytes' })
+  const abandoned = await f.convex.mutation(uploadIntent, { ...f.args, ...writeInput(2) })
+  await f.convex.mutation(uploadIntent, { ...f.args, ...writeInput(2), uploadId: writeInput(3).uploadId })
+  const objects = new Set([committed.stagingKey, committed.finalKey, abandoned.stagingKey, abandoned.finalKey])
+  const queued = await f.convex.run(ctx => ctx.db.query('agentDriveRetiredObjects').collect())
+  expect(queued).toHaveLength(4)
+  expect(queued.every(row => row.nextAttemptAt > committed.expiresAt + 24 * 60 * 60_000)).toBe(true)
+  expect(committed.retireAt).toBeGreaterThan(Math.max(...queued.map(row => row.nextAttemptAt)))
+  expect(await f.convex.mutation(cleanupClaim, { serverSecret: secret, claim: 'cleanup-before-deadline' })).toEqual({ objects: [], convexDeleted: 0 })
+  await f.convex.run(async ctx => {
+    for (const row of queued) await ctx.db.patch(row._id, { nextAttemptAt: 0 })
+    for (const row of await ctx.db.query('agentDriveUploads').collect()) await ctx.db.patch(row._id, { retireAt: 0 })
+    for (const row of await ctx.db.query('agentDriveWriteBudgets').collect()) await ctx.db.patch(row._id, { expiresAt: 0 })
+  })
+  // Cleanup must remain available if the feature is subsequently switched off.
+  process.env.OVERLAY_CONNECTED_AGENT_DRIVE = '0'
+  const cleanup = await cleanupDriveVersions({
+    claim: claim => f.convex.mutation(cleanupClaim, { serverSecret: secret, claim }),
+    deleteObject: async key => { objects.delete(key) }, absent: async key => !objects.has(key),
+    acknowledge: ({ id, claim }) => {
+      const row = queued.find(row => row._id === id)
+      if (!row) throw Error('unexpected cleanup ticket')
+      return f.convex.mutation(cleanupAck, { serverSecret: secret, id: row._id, claim })
+    },
+  })
+  expect(cleanup).toEqual({ deleted: 3, deferred: 0 })
+  expect([...objects]).toEqual([committed.finalKey])
+  const canonical = await f.convex.run(ctx => ctx.db.get(result.fileId))
+  expect(canonical?.r2Key).toBe(committed.finalKey)
+  expect(canonical?.content).toBe('retained canonical bytes')
+  expect(await f.convex.run(ctx => ctx.db.query('agentDriveRetiredObjects').collect())).toEqual([])
+  expect(await f.convex.run(ctx => ctx.db.query('agentDriveUploads').collect())).toEqual([])
+  expect(await f.convex.run(ctx => ctx.db.query('agentDriveWriteBudgets').collect())).toEqual([])
+  expect(await f.convex.run(async ctx => (await ctx.db.query('subscriptions').withIndex('by_userId', q => q.eq('userId', 'u')).unique())?.overlayStorageBytesUsed)).toBe(first.sizeBytes)
 })
 
 test('commit rechecks scope, current attempt, membership and storage quota before publishing a pointer', async () => {

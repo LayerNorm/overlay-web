@@ -59,7 +59,7 @@ export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: A
     ...(session.attemptId !== undefined && session.executionGeneration !== undefined
       ? { execution: { attemptId: session.attemptId, generation: session.executionGeneration } } : {}),
   })) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
-  return { scope: currentScope, scopeContext, agent, run, session }
+  return { scope: currentScope, scopeContext, agent, run, session, hardDeadlineAt }
 }
 
 /** Small pages cap Convex read/return size even when inline file bodies approach the document limit. */

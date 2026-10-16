@@ -8,7 +8,7 @@ import { safeName, writable, requireParent, requireVacantName, requireFilePath, 
 import { canCreateInScope } from '../../src/shared/workspaces/resource-scope'
 import { keyForFile } from '../../src/shared/storage/storage-keys'
 import { ensureStorageAvailable, applyStorageUsageDelta, StorageQuotaExceededError } from '../files/lib/storageQuota'
-import { retireDriveContent } from '../lib/agentDriveRetiredObjects'
+import { retireDriveContent, queueDriveUploadObjects } from '../lib/agentDriveRetiredObjects'
 
 const MAX_FILE_BYTES = 16 * 1024 * 1024
 const MAX_RUN_BYTES = 256 * 1024 * 1024
@@ -75,15 +75,19 @@ export const intentByServer = mutation({
     const budget = await ctx.db.query('agentDriveWriteBudgets').withIndex('by_runId', q => q.eq('runId', args.runId)).unique()
     if ((budget?.uploads ?? 0) >= 1000 || (budget?.bytes ?? 0) + args.sizeBytes > MAX_RUN_BYTES) throw new ConvexError('DRIVE_UPLOAD_QUOTA')
     const now = Date.now()
-    if (budget) await ctx.db.patch(budget._id, { uploads: budget.uploads + 1, bytes: budget.bytes + args.sizeBytes })
-    else await ctx.db.insert('agentDriveWriteBudgets', { runId: args.runId, uploads: 1, bytes: args.sizeBytes, expiresAt: args.expiresAt })
+    const retireAt = authority.hardDeadlineAt + 48 * 60 * 60_000
+    if (budget) await ctx.db.patch(budget._id, { uploads: budget.uploads + 1, bytes: budget.bytes + args.sizeBytes,
+      expiresAt: Math.max(budget.expiresAt, retireAt) })
+    else await ctx.db.insert('agentDriveWriteBudgets', { runId: args.runId, uploads: 1, bytes: args.sizeBytes, expiresAt: retireAt })
+    const stagingKey = keyForFile(ownerUserId, `agent-staging/${args.uploadId}`, 'upload')
+    const finalKey = keyForFile(ownerUserId, args.uploadId, name)
+    await queueDriveUploadObjects(ctx, { ownerUserId, stagingKey, finalKey, hardDeadlineAt: authority.hardDeadlineAt, now })
     const uploadId = await ctx.db.insert('agentDriveUploads', {
       uploadId: args.uploadId, runId: args.runId, sessionId: args.sessionId, requestId: args.requestId,
       attemptId: args.execution?.attemptId, generation: args.execution?.generation, fingerprint, operation: op,
       ownerUserId, name, parentId, sha256: args.sha256, sizeBytes: args.sizeBytes, mimeType: args.mimeType,
-      stagingKey: keyForFile(ownerUserId, `agent-staging/${args.uploadId}`, 'upload'),
-      finalKey: keyForFile(ownerUserId, args.uploadId, name), state: { kind: 'pending' },
-      expiresAt: Math.min(args.expiresAt, now + 15 * 60_000), createdAt: now,
+      stagingKey, finalKey, state: { kind: 'pending' },
+      expiresAt: Math.min(args.expiresAt, now + 15 * 60_000), retireAt, createdAt: now,
     })
     const stored = await ctx.db.get(uploadId)
     if (!stored) throw new ConvexError('DRIVE_UPLOAD_UNAVAILABLE')

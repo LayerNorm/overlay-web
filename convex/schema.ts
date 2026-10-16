@@ -1606,6 +1606,7 @@ export default defineSchema({
     .index('by_status_createdAt', ['status', 'createdAt']),
 
   agentDriveRetiredObjects: defineTable({
+    purpose: v.union(v.literal('version'), v.literal('staging'), v.literal('uncommitted')),
     ownerUserId: v.string(), sizeBytes: v.number(), retiredAt: v.number(), nextAttemptAt: v.number(),
     source: v.union(v.object({ kind: v.literal('object'), key: v.string() }),
       v.object({ kind: v.literal('convex'), storageId: v.id('_storage') })),
@@ -1614,7 +1615,7 @@ export default defineSchema({
   }).index('by_nextAttemptAt', ['nextAttemptAt']),
 
   agentDriveUploads: defineTable(driveUploadFields).index('by_uploadId', ['uploadId']).index('by_runId_requestId', ['runId', 'requestId'])
-    .index('by_expiresAt', ['expiresAt']),
+    .index('by_expiresAt', ['expiresAt']).index('by_retireAt', ['retireAt']),
 
   agentDriveWriteBudgets: defineTable({ runId: v.string(), uploads: v.number(), bytes: v.number(), expiresAt: v.number() })
     .index('by_runId', ['runId']).index('by_expiresAt', ['expiresAt']),

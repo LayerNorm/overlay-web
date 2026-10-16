@@ -940,7 +940,7 @@ all staged bytes within the file limit, verifies size/SHA-256, and writes that v
 a separate server-only final key before the guarded Files transaction. Retrying a confirmed commit
 returns its original result without resealing. Signed size/checksum constraints include empty files.
 Only the configured store supplies reads/writes; there is no silent cross-provider fallback.
-Cleanup, current-head hosted acceptance, start-command issuance and runtime synchronization
+Current-head hosted acceptance, start-command issuance and runtime synchronization
 remain required before the persistent drive can be enabled.
 
 `Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
@@ -1279,7 +1279,18 @@ newly packed batch after an upgrade only within that stream's attempted watermar
 Drive write transactions allocate a distinct staging key and immutable final version key,
 with fixed expected size/hash and an attempt-bound request receipt. Commits recheck file/parent
 edit policy and quota and preserve newer revisions as named conflict copies. Retained object
-versions are queued atomically for retirement and remain charged for at least 24 hours. The existing authenticated artifact-cleanup tick processes at most 32 retired versions, checks indexed Files references (including archived/deleted rows), and releases quota only after confirmed deletion. Object-store deletion requires absence readback and a matching retryable claim; Convex blob deletion and quota release are transactional. Staging/abandoned-upload cleanup remains pending. Notes retain complete inline Markdown; edits beyond the inline prefix
+versions are queued atomically and remain charged for at least 24 hours. The existing authenticated
+artifact-cleanup tick processes at most 32 retired objects, checks indexed Files references
+(including archived/deleted rows), and releases quota only after confirmed deletion. Object-store
+deletion requires absence readback and a matching retryable claim; Convex blob deletion and quota
+release are transactional.
+
+Upload intents pre-register both staging and final keys, with zero additional quota release,
+for cleanup after the complete execution deadline plus one day. Cleanup preserves referenced
+final objects even when commit responses were lost. Upload receipts and per-run budgets remain
+through the hard deadline plus two days, then prune in bounded batches. Metadata-receipt
+retention remains pending. Notes retain complete inline Markdown; edits beyond the inline prefix
 limit save a separate object-backed file so the Notes source is never truncated. Server-side
-byte verification/sealing and upload/commit transport are implemented locally. Cleanup and host synchronization are still required;
-these transactions are not an enabled write-through drive.
+byte verification/sealing and upload/commit transport are implemented locally. Metadata-receipt
+retention and host synchronization are still required; these transactions are not an enabled
+write-through drive.

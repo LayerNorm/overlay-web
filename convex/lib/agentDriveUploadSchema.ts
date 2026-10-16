@@ -16,5 +16,5 @@ export const driveUploadFields = {
   attemptId: v.optional(v.string()), generation: v.optional(v.number()), fingerprint: v.string(),
   operation: driveUploadOperation, ownerUserId: v.string(), name: v.string(), parentId: v.optional(v.id('files')),
   sha256: v.string(), sizeBytes: v.number(), mimeType: v.string(), stagingKey: v.string(), finalKey: v.string(),
-  state: driveUploadState, expiresAt: v.number(), createdAt: v.number(),
+  state: driveUploadState, expiresAt: v.number(), retireAt: v.number(), createdAt: v.number(),
 }
