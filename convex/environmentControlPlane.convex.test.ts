@@ -15,6 +15,38 @@ const challengeHash = 'b'.repeat(64)
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex agent-environment control plane', () => {
+  test('rotation adds only a newly negotiated drive method without expanding other scopes', async () => {
+    for (const input of [
+      { capabilities: { drive: { version: 1 } }, omitEventWrite: false, accepted: true },
+      { capabilities: {}, omitEventWrite: false, accepted: false },
+      { capabilities: { drive: { version: 2 } }, omitEventWrite: false, accepted: false },
+      { capabilities: { drive: { version: 1 } }, omitEventWrite: true, accepted: false },
+    ]) {
+      const convex = convexTest(schema, modules)
+      const call = (operation: string, args: Record<string, unknown>) =>
+        convex.mutation(controlMutation(operation), { ...args, serverSecret: secret })
+      await call('createEnrollmentSessionByServer', enrollmentInput())
+      await call('redeemEnrollmentSessionByServer', { codeHash, now,
+        environment: environmentInput({ kind: 'overlay_cloud' }), proofChallenge: proofChallengeInput() })
+      await call('approveEnvironmentByServer', { workspaceId, environmentId, approvedByUserId: 'owner-user',
+        filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] }, now: now + 1 })
+      const methods = AGENT_ENVIRONMENT_CREDENTIAL_METHODS.filter(method => method !== 'agent:drive-credentials'
+        && !(input.omitEventWrite && method === 'agent:events:write'))
+      await call('issueEnvironmentCredentialByServer', { workspaceId, environmentId, proofChallengeId: 'challenge-owner',
+        proofChallengeHash: challengeHash, credential: credentialInput({ methods }), now: now + 2 })
+      await call('updateEnvironmentCapabilitiesByServer', { workspaceId, environmentId,
+        capabilities: { protocolVersion: 1, ...input.capabilities }, now: now + 3 })
+      const rotated = await call('rotateEnvironmentCredentialByServer', { currentCredentialId: 'credential-owner',
+        credential: credentialInput({ id: 'credential-rotated', tokenHash: 'f'.repeat(64), tokenNonce: 'rotated-nonce',
+          createdAt: now + 4 }), now: now + 4 })
+      expect(rotated !== null).toBe(input.accepted)
+      const old = await convex.query(controlQuery('findEnvironmentCredentialByServer'), {
+        serverSecret: secret, tokenHash: 'c'.repeat(64) })
+      expect(old.revokedAt).toBe(input.accepted ? now + 4 : undefined)
+      if (input.accepted) expect(rotated.methods).toContain('agent:drive-credentials')
+    }
+  })
+
   test('rejects invalid service authority and expired enrollment codes', async () => {
     const convex = convexTest(schema, modules)
     await expect(convex.mutation(controlMutation('createEnrollmentSessionByServer'), {

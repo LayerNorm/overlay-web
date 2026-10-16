@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Let already enrolled drive-capable hosts renew their scoped drive credential method without changing other credential permissions.
+
 - Keep Stop visible while a chat reply is running.
 
 - Avoid advertising hard-coded models after a connected agent reports no model catalog.

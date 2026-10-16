@@ -1350,6 +1350,9 @@ command/runtime wiring refreshes the approved filesystem policy before invoking 
 The host transport exposes that refresh through the existing signed credential-rotation endpoint.
 Concurrent refresh callers share one rotation; callbacks retain its complete method grant and
 filesystem policy, and a response for another environment is rejected before replacing credentials.
+Rotation may add the drive-credentials method only when the environment's current capabilities
+advertise drive v1. Convex checks that capability atomically with credential replacement and keeps
+all other method scopes unchanged, so an already enrolled host can negotiate the extension.
 Cloud drive preparation may add only `/home/user/drive` to an existing approved, drive-capable
 environment and audits that scope change. Local/VPS grants never expand automatically; these
 bindings must explicitly opt in. Start metadata selects the cache location and internal remote

@@ -2,11 +2,13 @@ import { v } from 'convex/values'
 import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { z } from 'zod'
 
 const MAX_ENROLLMENT_LIFETIME_MS = 15 * 60 * 1000
 const MAX_CREDENTIAL_LIFETIME_MS = 15 * 60 * 1000
 const MAX_PROOF_NONCE_LIFETIME_MS = 5 * 60 * 1000
 const MAX_CAPABILITY_BYTES = 128 * 1024
+const driveCapability = z.object({ drive: z.object({ version: z.literal(1) }) })
 const anyObject = v.any()
 const filesystemGrant = v.union(
   v.object({ mode: v.literal('selected_roots'), roots: v.array(v.string()) }),
@@ -76,6 +78,15 @@ async function requireActiveEnvironment(ctx: MutationCtx, workspaceId: string, e
   const environment = await requireEnvironment(ctx, workspaceId, environmentId)
   if (!environment.approvedAt || environment.status === 'pending' || environment.status === 'revoked') throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
   return environment
+}
+
+function compatibleCredentialMethods(current: string[], next: string[], capabilities: unknown): boolean {
+  const prior = new Set(current), requested = new Set(next)
+  // All existing scopes remain fixed except the negotiated drive extension.
+  // Check capability in the same transaction that revokes/issues credentials.
+  return current.every(method => requested.has(method) || method === 'agent:drive-credentials')
+    && next.every(method => prior.has(method)
+      || method === 'agent:drive-credentials' && driveCapability.safeParse(capabilities).success)
 }
 
 export const createEnrollmentSessionByServer = mutation({
@@ -253,9 +264,9 @@ export const rotateEnvironmentCredentialByServer = mutation({
     requireServerSecret(args.serverSecret)
     assertCredentialClaims(args.credential, args.now)
     const current = await ctx.db.query('agentEnvironmentCredentials').withIndex('by_credentialId', q => q.eq('credentialId', args.currentCredentialId)).unique()
-    const credentialMethods = new Set(args.credential.methods)
-    if (!current || current.revokedAt || current.workspaceId !== args.credential.workspaceId || current.environmentId !== args.credential.environmentId || current.audience !== args.credential.audience || current.methods.length !== args.credential.methods.length || current.methods.some(method => !credentialMethods.has(method))) return null
-    await requireActiveEnvironment(ctx, current.workspaceId, current.environmentId)
+    if (!current || current.revokedAt || current.workspaceId !== args.credential.workspaceId || current.environmentId !== args.credential.environmentId || current.audience !== args.credential.audience) return null
+    const environment = await requireActiveEnvironment(ctx, current.workspaceId, current.environmentId)
+    if (!compatibleCredentialMethods(current.methods, args.credential.methods, environment.capabilities)) return null
     const [idCollision, hashCollision, nonceCollision] = await Promise.all([
       ctx.db.query('agentEnvironmentCredentials').withIndex('by_credentialId', q => q.eq('credentialId', args.credential.id)).unique(),
       ctx.db.query('agentEnvironmentCredentials').withIndex('by_tokenHash', q => q.eq('tokenHash', args.credential.tokenHash)).unique(),
