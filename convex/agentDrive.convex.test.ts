@@ -150,9 +150,12 @@ test('metadata commits preserve identity, monotonic revisions and exact retry re
 test('metadata writes reject unsafe paths, collisions, cycles and cross-scope parents', async () => {
   const f = await fixture()
   const create = (name: string, requestId: string, parentId?: string) => f.convex.mutation(metadataRef, { ...f.args, requestId, operation: { kind: 'mkdir', name, ...(parentId ? { parentId } : {}) } })
-  for (const name of ['..', 'a/b', 'a\\b', 'x\u0000']) await expect(create(name, 'unsafe-path-00001')).rejects.toMatchObject({ data: 'DRIVE_UNSAFE_PATH' })
+  for (const name of ['..', 'a/b', 'a\\b', 'x\u0000', 'CON', 'nul.txt', 'file.', 'x:y']) await expect(create(name, 'unsafe-path-00001')).rejects.toMatchObject({ data: 'DRIVE_UNSAFE_PATH' })
   const folder = await create('folder', 'safe-folder-00001')
   await expect(create('folder', 'collision-000001')).rejects.toMatchObject({ data: 'DRIVE_PATH_CONFLICT' })
+  await expect(create('FOLDER', 'case-collision01')).rejects.toMatchObject({ data: 'DRIVE_PATH_CONFLICT' })
+  await create('café', 'unicode-folder01')
+  await expect(create('cafe\u0301', 'unicode-conflict')).rejects.toMatchObject({ data: 'DRIVE_PATH_CONFLICT' })
   await expect(f.convex.mutation(metadataRef, { ...f.args, requestId: 'parent-cycle-001', operation: { kind: 'move', fileId: folder.fileId, updatedAt: folder.updatedAt, name: 'folder', parentId: folder.fileId } })).rejects.toMatchObject({ data: 'DRIVE_UNSAFE_PATH' })
   const foreign = await f.convex.run(ctx => ctx.db.insert('files', { workspaceId: 'foreign', userId: 'u', name: 'foreign', type: 'folder', kind: 'folder', createdAt: 1, updatedAt: 1 }))
   await expect(create('child', 'foreign-parent-01', foreign)).rejects.toMatchObject({ data: 'DRIVE_EDIT_DENIED' })

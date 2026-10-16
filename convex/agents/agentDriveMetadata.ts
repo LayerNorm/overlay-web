@@ -1,4 +1,5 @@
 import { ConvexError, v } from 'convex/values'
+import { drivePathSegments, portableDrivePathKey } from '@layernorm/overlay-agent-bridge-protocol'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { mutation, type MutationCtx } from '../_generated/server'
@@ -15,7 +16,8 @@ const resultValidator = v.object({ fileId: v.id('files'), updatedAt: v.number() 
 type Authority = Awaited<ReturnType<typeof requireDriveAuthority>>
 
 function safeName(name: string) {
-  if (!name || name.length > 255 || name === '.' || name === '..' || /[\\/\x00-\x1f\x7f]/.test(name)) throw new ConvexError('DRIVE_UNSAFE_PATH')
+  try { if (drivePathSegments(name).length === 1) return } catch { /* Convert the shared wire validator's failure to application data. */ }
+  throw new ConvexError('DRIVE_UNSAFE_PATH')
 }
 function inScope(row: Doc<'files'>, authority: Authority) {
   const { scope } = authority
@@ -55,7 +57,7 @@ async function requireVacantName(ctx: MutationCtx, authority: Authority, name: s
       ? await ctx.db.query('files').withIndex('by_workspaceId_userId_archivedAt', q => q.eq('workspaceId', scope.workspaceId).eq('userId', scope.ownerUserId).eq('archivedAt', undefined)).take(10001)
       : await ctx.db.query('files').withIndex('by_workspaceId_scope_archivedAt', q => q.eq('workspaceId', scope.workspaceId).eq('scope', 'workspace').eq('archivedAt', undefined)).take(10001)
   if (rows.length > 10000) throw new ConvexError('DRIVE_TOO_MANY_ENTRIES')
-  if (rows.some(row => row._id !== except && row.parentId === parentId && row.name === name && inScope(row, authority))) throw new ConvexError('DRIVE_PATH_CONFLICT')
+  if (rows.some(row => row._id !== except && row.parentId === parentId && inScope(row, authority) && portableDrivePathKey(row.name) === portableDrivePathKey(name))) throw new ConvexError('DRIVE_PATH_CONFLICT')
 }
 
 /** Metadata-only changes are atomic with their receipt. Hosts must delete hydrated children explicitly. */
