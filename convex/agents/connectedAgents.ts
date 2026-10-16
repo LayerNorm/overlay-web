@@ -6,6 +6,9 @@ import { recoveryStartPayload } from '../lib/remoteRecovery'
 import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
 import {retryNativePreparation} from '../lib/nativePreparationRetry'
 import {nativeRestorationStarted} from '../lib/nativeRestorationStarted'
+import {admitNativeStart} from '../lib/nativeStartAdmission'
+import {acceptsNativeHistory} from '../lib/nativeHistoricalEvents'
+import type {NativeStartAdmission} from '@layernorm/overlay-agent-bridge-protocol'
 import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
@@ -2418,11 +2421,18 @@ export const applyRemoteEventsByServer = mutation({
       .unique()
     const storedMessage = run ? await ctx.db.get(run.assistantMessageId) : null
     const message = storedMessage ? await hydrateRemoteMessage(ctx, storedMessage) : null
-    const duplicateResult = () => ({
-      accepted: true as const, acknowledgedSequence: session.eventCursor, duplicate: true,
-      ...(run && message && ['completed', 'failed', 'cancelled'].includes(run.status)
-        ? { terminal: terminalBilling(session.capabilitySnapshot, message.tokens, run.status as 'completed' | 'failed' | 'cancelled') } : {}),
-    })
+    const duplicateResult = async () => {
+      const request = args.events.find(event => event.type === 'native_start_requested')
+      const admission = request && session.nativeStartAdmission && run?.remoteLifecycle?.phase === 'recovering'
+        && run.remoteLifecycle.currentAttemptId === session.sessionId && args.now < run.remoteLifecycle.hardDeadlineAt
+        ? await admitNativeStart(ctx, run, session, {payload: request.payload, execution: request.execution, now: args.now}) : undefined
+      return {
+        accepted: true as const, acknowledgedSequence: session.eventCursor, duplicate: true,
+        ...(admission ? {nativeStartAdmission: admission} : {}),
+        ...(run && message && ['completed', 'failed', 'cancelled'].includes(run.status)
+          ? { terminal: terminalBilling(session.capabilitySnapshot, message.tokens, run.status as 'completed' | 'failed' | 'cancelled') } : {}),
+      }
+    }
     if (last <= session.eventCursor) return duplicateResult()
     const expected = session.eventCursor + 1
     if (first !== expected) {
@@ -2456,7 +2466,9 @@ export const applyRemoteEventsByServer = mutation({
       await ctx.db.patch(session._id, { eventCursor: last, updatedAt: args.now })
       return { accepted: true as const, acknowledgedSequence: last, duplicate: false, stale }
     }
-    if (run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId) return swallowStaleEvents('stale_attempt')
+    const historical = Boolean(run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId
+      && await acceptsNativeHistory(ctx, run, session, args.events, args.now))
+    if (run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId && !historical) return swallowStaleEvents('stale_attempt')
     if (run.runner !== 'remote' || run.environmentId !== args.environmentId) throw new Error('AGENT_REMOTE_RUN_NOT_FOUND')
     if (!message || !storedMessage) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
     if (run.status === 'cancelled' && !run.remoteLifecycle && !session.stopConfirmedAt) {
@@ -2490,7 +2502,7 @@ export const applyRemoteEventsByServer = mutation({
       }) })
       return { accepted: true, acknowledgedSequence: last, duplicate: false }
     }
-    if (['completed', 'failed', 'cancelled'].includes(run.status)) {
+    if (['completed', 'failed', 'cancelled'].includes(run.status) && !historical) {
       if (!isCompatibleTerminalAcknowledgement(run.status, args.events))
         return swallowStaleEvents('stale_terminal')
       await ctx.db.patch(session._id, {
@@ -2513,22 +2525,29 @@ export const applyRemoteEventsByServer = mutation({
       typeof session.capabilitySnapshot === 'object'
         ? (session.capabilitySnapshot as Record<string, unknown>)
         : {}
-    const restoresNativeSession = Boolean(snapshot.nativeRestoration) || run.remoteLifecycle?.cause === 'native_restoration'
+    const restoresNativeSession = !historical && (Boolean(snapshot.nativeRestoration) || run.remoteLifecycle?.cause === 'native_restoration')
+    if (historical && !session.hostBootId && args.events.some(event =>
+      !['session_preparing', 'native_start_requested', 'drive_sync', 'failed', 'cancelled', 'process_observation'].includes(event.type)))
+      return swallowStaleEvents('stale_execution')
+    if (restoresNativeSession && !session.nativeStartAdmission && args.events.some(event =>
+      !['session_preparing', 'native_start_requested', 'drive_sync', 'failed'].includes(event.type)
+      && !(event.type === 'process_observation' && event.payload.process === 'unknown'))) return swallowStaleEvents('stale_execution')
     if (restoresNativeSession) for (const event of args.events) {
       if (event.type === 'session_started' && !await nativeRestorationStarted(ctx, run, session, {
         remoteSessionId: event.payload.remoteSessionId, adapterId: event.payload.adapterId,
+        restorationCommandId: event.payload.restorationCommandId, hostBootId: event.execution?.hostBootId,
       })) return swallowStaleEvents('stale_execution')
     }
     const adapters = Array.isArray(snapshot.adapters) ? snapshot.adapters as Array<{ id?: string; protocol?: string; recovery?: { interruptedTurnContinuation?: boolean; approvalRestoration?: boolean } }> : []
     const nativeAdapter = adapters.find(adapter => adapter.id === (snapshot.startPayload as { adapterId?: string } | undefined)?.adapterId && adapter.protocol === 'eve')
-    const acceptsNativeReattachment = Boolean(nativeAdapter?.recovery?.interruptedTurnContinuation
+    const acceptsNativeReattachment = Boolean(!historical && nativeAdapter?.recovery?.interruptedTurnContinuation
       && (!run.remoteLifecycle?.approval || nativeAdapter.recovery.approvalRestoration)
       && args.events[0]?.type === 'process_observation' && args.events[0].payload.process === 'live'
       && args.events[0].payload.recoveryOutcome === 'attached_live')
     let acceptedBoot = acceptsNativeReattachment ? args.events[0]?.execution?.hostBootId : session.hostBootId
     if (run.remoteLifecycle) for (const event of args.events) {
       if (!event.execution || event.execution.attemptId !== session.sessionId
-        || event.execution.generation !== run.remoteLifecycle.executionGeneration
+        || event.execution.generation !== (historical ? session.executionGeneration : run.remoteLifecycle.executionGeneration)
         || (acceptedBoot && acceptedBoot !== event.execution.hostBootId
           && event.type !== 'session_preparing'
           && !(event.type === 'process_observation' && event.payload.process === 'unknown'))) return swallowStaleEvents('stale_execution')
@@ -2544,6 +2563,10 @@ export const applyRemoteEventsByServer = mutation({
       if (!(error instanceof Error) || error.message !== 'AGENT_TEXT_OFFSET_MISMATCH') throw error
       await ctx.db.patch(run._id, { streamStats: recordRejectedBatch(run.streamStats) })
       return { accepted: false, expectedSequence: session.eventCursor + 1 }
+    }
+    let nativeStartAdmission: NativeStartAdmission | undefined
+    for (const event of args.events) if (!historical && event.type === 'native_start_requested') {
+      nativeStartAdmission = await admitNativeStart(ctx, run, session, {payload: event.payload, execution: event.execution, now: args.now})
     }
     let canonicalRun = run
     const normalizedEvents: AgentRemoteEvent[] = []
@@ -2572,7 +2595,8 @@ export const applyRemoteEventsByServer = mutation({
             workspaceId: args.workspaceId, runId: session.runId, remoteSessionId: session.sessionId,
             requestKey, kind: event.type === 'approval_requested' ? 'permission' : 'elicitation',
             prompt: typeof event.payload.prompt === 'string' ? event.payload.prompt : 'Agent request',
-            options, payload: event.payload, requestedAt: event.occurredAt })
+            options, payload: event.payload, requestedAt: event.occurredAt,
+            ...(historical ? {resolution: {decision: 'approval_context_lost', resolvedByPrincipalId: 'system:isolated-source', resolvedAt: args.now}} : {}) })
         }
       }
       if (event.type === 'artifact') {
@@ -2597,6 +2621,15 @@ export const applyRemoteEventsByServer = mutation({
     }
     if (run.remoteLifecycle) for (const event of normalizedEvents) {
       const state = canonicalRun.remoteLifecycle as RemoteRunState
+      if (historical) {
+        const outcome = event.type === 'completed' ? 'completed' : event.type === 'failed' ? 'failed'
+          : event.type === 'cancelled' ? 'cancelled' : event.type === 'approval_requested' || event.type === 'elicitation_requested' ? 'approval_context_lost' : undefined
+        if (outcome) {
+          const result = await applyRemoteFact(ctx, canonicalRun, {type: 'isolated_source', outcome}, args.now, {deferMessageProjection: true})
+          if (result?.applied) canonicalRun = {...canonicalRun, remoteLifecycle: result.state}
+        }
+        continue
+      }
       if (event.type === 'completed') for (const request of pendingRemoteApprovals(state)) {
         if (!request.decision) continue
         const delivered = await applyRemoteFact(ctx, canonicalRun, { type: 'decision_delivered', requestKey: request.requestKey }, args.now, { deferMessageProjection: true })
@@ -2605,7 +2638,7 @@ export const applyRemoteEventsByServer = mutation({
       const fact = event.type === 'session_started' ? restoresNativeSession
         ? {type: 'recover' as const, recoveryOutcome: 'restored' as const, oldWriterStopped: true}
         : { type: 'started' as const }
-        : event.type === 'session_preparing' ? {type: 'preparing' as const}
+        : event.type === 'session_preparing' || event.type === 'native_start_requested' ? {type: 'preparing' as const}
         : event.type === 'process_observation' && event.payload.process === 'live' && event.payload.recoveryOutcome === 'attached_live'
           ? { type: 'recover' as const, recoveryOutcome: 'attached_live' as const }
         : event.type === 'heartbeat' || event.type === 'process_observation' ? { type: 'health' as const, process: event.payload.process === 'live' ? 'live' as const : event.payload.process === 'lost' ? 'lost' as const : 'unknown' as const }
@@ -2641,7 +2674,8 @@ export const applyRemoteEventsByServer = mutation({
       projection.runStatus = remoteRunCoarseStatus(state.phase)
       projection.sessionStatus = state.phase as typeof projection.sessionStatus
       projection.terminal = ['completed', 'cancelled', 'failed'].includes(state.phase)
-      const parts = reconcileRemoteRequestParts(projection.parts, state, args.now).filter(part => part.type !== 'data-remote-agent-status')
+      const parts = reconcileRemoteRequestParts(projection.parts, historical ? {...state, cause: 'approval_context_lost'} : state, args.now)
+        .filter(part => part.type !== 'data-remote-agent-status')
       projection.parts = [...parts, { type: 'data-remote-agent-status', data: {
         environmentName: snapshot.environmentName, queueExpiresAt: state.claimDeadlineAt, runId: session.runId,
         hardDeadlineAt: state.hardDeadlineAt,
@@ -2649,8 +2683,8 @@ export const applyRemoteEventsByServer = mutation({
         recoveryOutcome: state.recoveryOutcome,
       } }]
     }
-    const providerStarted = !run.remoteLifecycle || normalizedEvents.some(event => event.type === 'session_started')
-    await ctx.db.patch(session._id, {
+    const providerStarted = !historical && (!run.remoteLifecycle || normalizedEvents.some(event => event.type === 'session_started'))
+    await ctx.db.patch(session._id, historical ? {eventCursor: last, updatedAt: args.now} : {
       eventCursor: last, status: projection.sessionStatus,
       ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
       ...(!session.startedAt && providerStarted ? { startedAt: args.now } : {}),
@@ -2666,17 +2700,17 @@ export const applyRemoteEventsByServer = mutation({
       || message.status !== messageStatus || !sameJson(message.tokens ?? { input: 0, output: 0 }, projection.tokens)
     await ctx.db.patch(run._id, {
       status: projection.runStatus,
-      liveness: recordRemoteRunLiveness(run.liveness, normalizedEvents, args.now, projection.terminal),
+      ...(!historical ? {liveness: recordRemoteRunLiveness(run.liveness, normalizedEvents, args.now, projection.terminal)} : {}),
       streamStats: recordAcceptedBatch(run.streamStats, {
         events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage,
       }),
-      ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
+      ...(!historical && projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
       ...(!run.startedAt && providerStarted ? { startedAt: args.now } : {}),
       ...(projection.runStatus === 'completed' ? { completedAt: args.now } : {}),
       ...(projection.runStatus === 'failed' ? { failedAt: args.now, terminalError: projection.terminalError } : {}),
       ...(projection.runStatus === 'cancelled' ? { cancelledAt: args.now } : {}),
       ...(projection.terminal ? { metrics: { ...(run.metrics ?? {}), inputTokens: projection.tokens.input, outputTokens: projection.tokens.output } } : {}),
-      ...(!projection.terminal ? { leaseExpiresAt: Math.min(
+      ...(!projection.terminal && !historical ? { leaseExpiresAt: Math.min(
         args.now + REMOTE_RUN_LEASE_MS,
         typeof snapshot.hardExpiresAt === 'number' ? snapshot.hardExpiresAt : args.now + REMOTE_RUN_LEASE_MS,
       ) } : {}),
@@ -2720,6 +2754,8 @@ export const applyRemoteEventsByServer = mutation({
           acknowledgedAt: command.acknowledgedAt ?? args.now, claimExpiresAt: undefined, updatedAt: args.now })))
     }
     return { accepted: true, acknowledgedSequence: last, duplicate: false,
+      ...(nativeStartAdmission && canonicalRun.remoteLifecycle?.phase === 'recovering'
+        && canonicalRun.remoteLifecycle.cause === 'native_restoration' ? {nativeStartAdmission} : {}),
       ...(projection.terminal ? { terminal: terminalBilling(session.capabilitySnapshot, projection.tokens, terminalOutcome(projection.runStatus)) } : {}) }
   },
 })

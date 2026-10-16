@@ -21,6 +21,8 @@ import {fetchProviderRunCredentials} from './provider-run-credentials.js'
 import {requireNativeRestorationSource} from './native-restoration.js'
 import {admitHostSession} from './runtime-session-admission.js'
 import {nativePreparationFingerprint} from './native-start-preparation.js'
+import {drainNativeSource, requestNativeStart} from './native-start-barrier.js'
+import {OutboxReceipts} from './outbox-receipts.js'
 import {processHostCommand} from './process-host-command.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
@@ -53,6 +55,7 @@ export class AgentHostRuntime {
   private readonly sessions = new Map<string, AgentAdapterSession>()
   private readonly logger: StructuredLogger
   private flushing?: Promise<void>
+  private readonly outboxReceipts = new OutboxReceipts()
   /** Highest sequence being uploaded per event stream; queued checkpoints above it may still be replaced. */
   private readonly inFlight = new Map<string, number>()
   private flushRetry?: ReturnType<typeof setTimeout>
@@ -258,6 +261,7 @@ export class AgentHostRuntime {
           throw new Error(`server acknowledged ${acknowledgement.acknowledgedSequence}, expected ${lastSentSequence}`)
         }
         this.options.state.acknowledgeEvents(batch.runId, acknowledgement.acknowledgedSequence, batch.events[0].execution?.attemptId)
+        this.outboxReceipts.record(acknowledgement)
         continue
       }
       const lastSentSequence = batch.events.at(-1)!.sourceSequence
@@ -349,6 +353,7 @@ export class AgentHostRuntime {
     const admission = await admitHostSession({command, adapter, state: this.options.state, sessions: this.sessions})
     if (admission.kind === 'already-active') return
     const {settings, offset, restored} = admission
+    let canonicalOffset = offset
     const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true, Boolean(restored))
     if (credentials === 'unavailable') return
     const drive = await this.prepareDrive(command)
@@ -360,13 +365,21 @@ export class AgentHostRuntime {
     }
     if (this.shuttingDown) { await drive?.close(); throw Error('Host stopped before provider start') }
     if (restored && command.execution) {
-      try {this.options.state.enterNativeProviderStart({commandId: command.commandId, fingerprint: nativePreparationFingerprint(command),
-        previous: restored, nextExecution: {...command.execution, hostBootId: this.bootId}})}
+      try {
+        if (command.payload.metadata.overlayNativeAdmission === 1) await drainNativeSource({command, state: this.options.state,
+          receipts: this.outboxReceipts, flush: () => this.flushOutbox()})
+        this.options.state.enterNativeProviderStart({commandId: command.commandId, fingerprint: nativePreparationFingerprint(command),
+        previous: restored, nextExecution: {...command.execution, hostBootId: this.bootId}})
+        if (command.payload.metadata.overlayNativeAdmission === 1) canonicalOffset = await requestNativeStart({command,
+          state: this.options.state, hostBootId: this.bootId, receipts: this.outboxReceipts,
+          emit: event => this.emit(command.runId, event), flush: () => this.flushOutbox()})
+      }
       catch (error) {await drive?.close(); throw error}
     }
+    if (this.shuttingDown) {await drive?.close(); throw Error('Host stopped before provider start')}
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
-    const emit = this.createStream(command.runId, execution, drive, offset)
+    const emit = this.createStream(command.runId, execution, drive, canonicalOffset)
     const session = await adapter.start({
       runId: command.runId,
       workingDirectory: scope.workingDirectory,
@@ -384,12 +397,14 @@ export class AgentHostRuntime {
       config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...settings },
       ...(command.execution ? { execution: { ...command.execution, hostBootId: this.bootId } } : {}),
     })
-    await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
+    await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId,
+      ...(restored ? {restorationCommandId: command.commandId} : {}) } })
     if (!this.shuttingDown && !session.initialPromptHandled) {
       this.prompts.track(session.prompt(command.payload.prompt).catch((error) => emit({ type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } })))
     }
     return
   }
+
 
   private async prepareDrive(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<RuntimeDrive | undefined> {
     const input = command.payload.metadata.overlayDrive

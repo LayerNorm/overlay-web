@@ -282,10 +282,20 @@ export const agentHeartbeatPayloadSchema = z.object({ quietMs: z.number().int().
   stalled: z.boolean().optional(), process: z.enum(['live', 'lost', 'unknown']).optional(),
 }).strict()
 
+export const nativeStartRequestSchema = z.object({commandId: identifier, remoteSessionId: identifier, adapterId: identifier,
+  sourceEventCursor: z.number().int().nonnegative().safe()}).strict()
+export const nativeStartAdmissionSchema = z.object({commandId: identifier, attemptId: identifier,
+  generation: z.number().int().positive().safe(), hostBootId: identifier,
+  sourceEventCursor: z.number().int().nonnegative().safe(), canonicalTextOffset: z.number().int().nonnegative().safe(),
+  hardDeadlineAt: z.number().int().positive().safe()}).strict()
+export type NativeStartAdmission = z.infer<typeof nativeStartAdmissionSchema>
+
 export const agentHostEventSchema = z.discriminatedUnion('type', [
   eventBase.extend({ type: z.literal('session_preparing'), payload: z.object({}).strict() }).strict(),
+  eventBase.extend({ type: z.literal('native_start_requested'), payload: nativeStartRequestSchema }).strict(),
   eventBase.extend({ type: z.literal('process_observation'), payload: z.object({ process: z.enum(['live', 'lost', 'unknown']), recoveryOutcome: z.enum(['attached_live', 'restored', 'requires_new_attempt', 'unavailable']).optional() }).strict() }).strict(),
-  eventBase.extend({ type: z.literal('session_started'), payload: z.object({ remoteSessionId: identifier, adapterId: identifier }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('session_started'), payload: z.object({ remoteSessionId: identifier, adapterId: identifier,
+    restorationCommandId: identifier.optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional(), offset: z.number().int().nonnegative().optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('text_delta'), payload: z.object({ offset: z.number().int().nonnegative(), text: z.string().min(1).max(64 * 1024) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('heartbeat'), payload: agentHeartbeatPayloadSchema }).strict(),
@@ -355,7 +365,8 @@ export const eventBatchSchema = z.object({
 export type EventBatch = z.infer<typeof eventBatchSchema>
 
 export const eventAcknowledgementSchema = z.discriminatedUnion('accepted', [
-  z.object({ protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), accepted: z.literal(true), acknowledgedSequence: z.number().int().nonnegative() }).strict(),
+  z.object({ protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), accepted: z.literal(true), acknowledgedSequence: z.number().int().nonnegative(),
+    nativeStartAdmission: nativeStartAdmissionSchema.optional() }).strict(),
   z.object({ protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), accepted: z.literal(false), expectedSequence: z.number().int().positive() }).strict(),
 ])
 export type EventAcknowledgement = z.infer<typeof eventAcknowledgementSchema>

@@ -28,13 +28,17 @@ export function matchesNativeRestoration(state: RemoteRunState, session: Doc<'ag
     && JSON.stringify(payload.data.restore) === JSON.stringify({previousExecution: previous, providerStop: restoration.providerStop})
 }
 
-/** Called only for the authenticated host's confirmed pre-provider transient failure. No new execution is created. */
+/** Retry a confirmed pre-provider failure or an isolated preparation; host admission still fences uncertain native starts. */
 export async function retryNativePreparation(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>,
-  session: Doc<'agentRemoteSessions'>, command: Doc<'agentRunCommands'>, now: number): Promise<boolean> {
+  session: Doc<'agentRemoteSessions'>, command: Doc<'agentRunCommands'>, now: number,
+  options: {afterProviderStop?: true} = {}): Promise<boolean> {
   const state = run.remoteLifecycle, snapshot = nativeRecoverySnapshotSchema.safeParse(session.capabilitySnapshot)
-  if (!state || state.phase !== 'recovering' || state.cause !== 'native_restoration' || !snapshot.success
-    || command.status !== 'claimed' || session.restorationCommandId !== command.commandId
-    || state.lastHealthAt !== undefined || session.startedAt !== undefined || pendingRemoteApprovals(state).length
+  const preparing = state?.phase === 'recovering' && state.cause === 'native_restoration'
+  const timedOut = options.afterProviderStop && state?.phase === 'needs_attention'
+    && ['preparation_health_required', 'command_unclaimed'].includes(state.cause ?? '')
+  if (!state || (!preparing && !timedOut) || !snapshot.success
+    || (command.status !== 'claimed' && !(options.afterProviderStop && command.status === 'pending')) || session.restorationCommandId !== command.commandId
+    || state.lastHealthAt !== undefined || session.startedAt !== undefined || session.nativeStartAdmission !== undefined || pendingRemoteApprovals(state).length
     || !Number.isSafeInteger(now) || now < command.createdAt || now >= state.hardDeadlineAt
     || (session.preparationRetryCount ?? 0) >= MAX_PREPARATION_RETRIES || !matchesNativeRestoration(state, session, command)) return false
   const start = startAdapterPayloadSchema.parse(command.payload)
@@ -52,7 +56,7 @@ export async function retryNativePreparation(ctx: MutationCtx, run: Doc<'convers
     runId: command.runId, attemptId: session.sessionId, executionGeneration: state.executionGeneration,
     type: 'start', payload: start, sequence: (latest?.sequence ?? 0) + 1, status: 'pending', createdAt: now, updatedAt: now})
   const claimDeadlineAt = Math.min(state.hardDeadlineAt, now + 120000)
-  const next = {...state, revision: state.revision + 1, claimDeadlineAt}
+  const next: RemoteRunState = {...state, phase: 'recovering', cause: 'native_restoration', revision: state.revision + 1, claimDeadlineAt}
   delete next.lastPreparationAt
   await ctx.db.patch(run._id, {remoteLifecycle: next, updatedAt: now})
   await ctx.db.patch(session._id, {restorationCommandId: commandId, preparationRetryCount: (session.preparationRetryCount ?? 0) + 1,

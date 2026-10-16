@@ -1,4 +1,5 @@
 import 'server-only'
+import type {NativeStartAdmission} from '@layernorm/overlay-agent-bridge-protocol'
 
 import type {
   AgentApprovalRequest, AgentApprovalResolution, AgentArtifact, AgentBinding, AgentEnrollmentSession,
@@ -27,6 +28,7 @@ export type ApplyRemoteEventsResult =
       accepted: true
       acknowledgedSequence: number
       duplicate: boolean
+      nativeStartAdmission?: NativeStartAdmission
       stale?: 'stale_attempt' | 'stale_execution' | 'stale_terminal'
       terminal?: {
         agentId: string

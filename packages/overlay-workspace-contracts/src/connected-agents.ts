@@ -251,6 +251,7 @@ export type AgentSandboxLease = {
 export const AGENT_REMOTE_EVENT_TYPES = [
   'process_observation',
   'session_preparing',
+  'native_start_requested',
   'session_started', 'text_checkpoint', 'text_delta', 'heartbeat', 'action', 'approval_requested', 'elicitation_requested',
   'plan', 'commands_update', 'diff', 'terminal', 'artifact', 'drive_sync', 'completed', 'failed', 'cancelled',
 ] as const

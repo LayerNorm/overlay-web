@@ -5,7 +5,8 @@ import { createCloudAgentMachineService } from './cloud/create-cloud-agent-machi
 import type { RemoteRunState } from '@/shared/agents/remote-run'
 
 type Coordinator = { runId: string; coordinatorId: string; generation: number }
-export type RemoteRunSnapshot = { runId: string; workspaceId: string; environmentId: string; environmentKind: string; lifecycle: RemoteRunState; nativeRestorationAdvertised?: boolean }
+export type RemoteRunSnapshot = { runId: string; workspaceId: string; environmentId: string; environmentKind: string; lifecycle: RemoteRunState;
+  nativeRestorationAdvertised?: boolean; nativePreparationPending?: boolean }
 export async function readRemoteRun(runId: string): Promise<RemoteRunSnapshot | null> {
   'use step'
   return lazyConvex.query('agents/remoteRuns:readByServer', { serverSecret: getInternalApiSecret(), runId }, { throwOnError: true })
@@ -40,13 +41,16 @@ export async function restoreStoppedRemoteRun(input: Coordinator): Promise<void>
   if (!snapshot || snapshot.environmentKind !== 'overlay_cloud' || !snapshot.nativeRestorationAdvertised
     || snapshot.lifecycle.coordinatorId !== input.coordinatorId || snapshot.lifecycle.coordinatorGeneration !== input.generation
     || !['needs_attention', 'recovering'].includes(snapshot.lifecycle.phase)
-    || !['process_health_unknown', 'process_health_required', 'process_lost', 'execution_stopped', 'old_writer_not_isolated', 'native_restoration'].includes(snapshot.lifecycle.cause ?? '')
+    || !['process_health_unknown', 'process_health_required', 'process_lost', 'execution_stopped', 'old_writer_not_isolated',
+      'native_restoration', 'preparation_health_required', 'command_unclaimed'].includes(snapshot.lifecycle.cause ?? '')
     || Date.now() >= snapshot.lifecycle.hardDeadlineAt) return
   // This service only observes already-stopped machines. It never stops a live writer for recovery.
   await createCloudAgentMachineService().resumeStoppedExecution({workspaceId: snapshot.workspaceId, environmentId: snapshot.environmentId,
     authorize: async proof => {
       const state = snapshot.lifecycle
-      const queued = state.phase === 'recovering' && state.cause === 'native_restoration' ? state.providerStop : undefined
+      const queued = snapshot.nativePreparationPending && state.providerStop && state.lastHealthAt === undefined
+        && state.executionGeneration === state.providerStop.executionGeneration + 1 && state.currentAttemptId !== state.providerStop.attemptId
+        && ['native_restoration', 'preparation_health_required', 'command_unclaimed'].includes(state.cause ?? '') ? state.providerStop : undefined
       const source = queued ? {attemptId: queued.attemptId, generation: queued.executionGeneration,
         expectedRevision: queued.recordedAtRevision + 1} : {attemptId: state.currentAttemptId,
         generation: state.executionGeneration, expectedRevision: state.revision}
@@ -58,6 +62,7 @@ export async function restoreStoppedRemoteRun(input: Coordinator): Promise<void>
         serverSecret, runId: input.runId, coordinatorId: input.coordinatorId, coordinatorGeneration: input.generation,
         ...source, expectedRevision: queued ? source.expectedRevision : source.expectedRevision + 1,
         leaseId: proof.leaseId, providerReference: proof.providerReference, now: Date.now(),
+        ...(queued ? {observedStoppedAt: proof.observedAt} : {}),
       }, {throwOnError: true}) ?? false
     }})
 }

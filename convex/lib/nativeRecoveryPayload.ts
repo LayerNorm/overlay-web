@@ -18,7 +18,7 @@ export const nativeRestorationSnapshotSchema = z.object({nativeRestoration: nati
 export function nativeRecoveryPayload(input: {original: unknown; nativeSessionId: string; newAttemptId: string;
   previousExecution: z.infer<typeof executionFenceSchema>; providerStop: NonNullable<RemoteRunState['providerStop']>; textOffset: number}) {
   const original = startAdapterPayloadSchema.parse(input.original)
-  const metadata: typeof original.metadata = {...original.metadata, recoveryTextOffset: input.textOffset}
+  const metadata: typeof original.metadata = {...original.metadata, recoveryTextOffset: input.textOffset, overlayNativeAdmission: 1}
   if (original.metadata.overlayDrive !== undefined) metadata.overlayDrive = {
     ...driveStartDescriptorSchema.parse(original.metadata.overlayDrive), sessionId: input.newAttemptId,
   }

@@ -352,6 +352,16 @@ export class SqliteHostStateStore {
     const row = this.database.prepare('SELECT COUNT(*) AS count FROM event_outbox').get() as { count: number }
     return Number(row.count)
   }
+
+  lastEventSequence(runId: string, attemptId: string): number {
+    const row = this.database.prepare('SELECT last_sequence FROM run_sequences WHERE run_id = ?').get(eventStreamId(runId, attemptId))
+    return Number(row?.last_sequence ?? 0)
+  }
+
+  hasPendingEventsThrough(runId: string, attemptId: string, throughSequence: number): boolean {
+    return Boolean(this.database.prepare('SELECT 1 FROM event_outbox WHERE run_id = ? AND source_sequence <= ? LIMIT 1')
+      .get(eventStreamId(runId, attemptId), throughSequence))
+  }
 }
 
 function eventStreamId(runId: string, attemptId?: string) { return attemptId ? JSON.stringify([runId, attemptId]) : runId }

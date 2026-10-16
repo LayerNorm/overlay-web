@@ -8,13 +8,14 @@ import {nativeRecoveryIsAuthorized} from '../lib/nativeRecoveryAuthority'
 import {nativeRecoveryPayload, nativeRecoverySnapshotSchema} from '../lib/nativeRecoveryPayload'
 import {MAX_COMMAND_BYTES, startAdapterPayloadSchema} from '@layernorm/overlay-agent-bridge-protocol'
 import {hydrateRemoteMessage} from '../lib/remoteMessageText'
-import {matchesNativeRestoration} from '../lib/nativePreparationRetry'
+import {matchesNativeRestoration, retryNativePreparation} from '../lib/nativePreparationRetry'
 import {projectNativePreparation} from '../lib/nativePreparationProjection'
 
 /** The machine remains stopped until the caller receives this durable authorization. */
 export const beginByServer = mutation({
   args: {serverSecret: v.string(), runId: v.string(), coordinatorId: v.string(), coordinatorGeneration: v.number(),
-    attemptId: v.string(), generation: v.number(), expectedRevision: v.number(), leaseId: v.string(), providerReference: v.string(), now: v.number()},
+    attemptId: v.string(), generation: v.number(), expectedRevision: v.number(), leaseId: v.string(), providerReference: v.string(),
+    observedStoppedAt: v.optional(v.number()), now: v.number()},
   returns: v.boolean(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -38,13 +39,26 @@ export const beginByServer = mutation({
       const deliveryId = attempt.restorationCommandId
       const pending = deliveryId && deliveryId !== existing.commandId
         ? await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', deliveryId)).unique() : existing
-      return state.phase === 'recovering' && state.cause === 'native_restoration' && state.executionGeneration === args.generation + 1
-        && pending?.status === 'pending' && matchesNativeRestoration(state, attempt, pending)
+      const preparing = state.phase === 'recovering' && state.cause === 'native_restoration'
+      const timedOut = state.phase === 'needs_attention' && ['preparation_health_required', 'command_unclaimed'].includes(state.cause ?? '')
+      if ((!preparing && !timedOut) || state.executionGeneration !== args.generation + 1
+        || !pending || !matchesNativeRestoration(state, attempt, pending)) return false
+      if (preparing && pending.status === 'pending') return true
+      // A new disk-only stop proves no earlier receiver can race preparation. The host still
+      // refuses admission if its durable checkpoint already crossed the provider-start boundary.
+      const stoppedAt = args.observedStoppedAt
+      if (stoppedAt === undefined || !Number.isSafeInteger(stoppedAt) || stoppedAt > args.now || stoppedAt < pending.createdAt
+        || stoppedAt <= (attempt.lastPreparationStopAt ?? -1)
+        || !await retryNativePreparation(ctx, run, attempt, pending, args.now, {afterProviderStop: true})) return false
+      await ctx.db.patch(pending._id, {status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now})
+      await ctx.db.patch(attempt._id, {lastPreparationStopAt: stoppedAt})
+      return true
     }
     if (state.revision !== args.expectedRevision || state.currentAttemptId !== args.attemptId || state.executionGeneration !== args.generation
       || !proof || proof.attemptId !== args.attemptId || proof.executionGeneration !== args.generation
       || proof.leaseId !== args.leaseId || proof.providerReference !== args.providerReference
-      || !['process_health_unknown', 'process_health_required', 'process_lost', 'execution_stopped', 'old_writer_not_isolated'].includes(state.cause ?? '')
+      || (!['process_health_unknown', 'process_health_required', 'process_lost', 'execution_stopped', 'old_writer_not_isolated'].includes(state.cause ?? '')
+        && !(attempt.nativeStartAdmission && ['native_restoration', 'preparation_health_required', 'command_unclaimed'].includes(state.cause ?? '')))
       || !attempt.remoteSessionId) return false
     const requests = await ctx.db.query('agentApprovalRequests').withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', attempt.sessionId)).take(101)
     if (requests.length === 101 || requests.some(request => !request.resolution)) return false
@@ -69,6 +83,7 @@ export const beginByServer = mutation({
       workspaceId: attempt.workspaceId, environmentId: attempt.environmentId, bindingId: attempt.bindingId, runId: args.runId,
       remoteSessionId: attempt.remoteSessionId, status: 'recovering', commandCursor: 0, eventCursor: 0,
       restorationCommandId: commandId, preparationRetryCount: 0,
+      nativeStartAdmissionRequired: true,
       hardDeadlineAt: state.hardDeadlineAt, claimDeadlineAt, capabilitySnapshot: {...parsed.data,
         nativeRestoration: {...payload.restore, nativeSessionId: attempt.remoteSessionId, commandId}}, createdAt: args.now, updatedAt: args.now})
     await ctx.db.patch(attempt._id, {status: 'failed', recoveryCause: 'provider_isolated', endedAt: args.now, updatedAt: args.now})

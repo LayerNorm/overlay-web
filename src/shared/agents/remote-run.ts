@@ -40,6 +40,7 @@ export type RemoteRunFact =
   | { type: 'preparing' }
   | { type: 'health'; process: 'live' | 'lost' | 'unknown' }
   | { type: 'progress' }
+  | { type: 'isolated_source'; outcome: 'completed' | 'failed' | 'cancelled' | 'approval_context_lost' }
   | { type: 'request'; requestKey: string; kind: 'permission' | 'elicitation'; expiresAt: number }
   | { type: 'decision'; requestKey: string; decision: string }
   | { type: 'decision_delivered'; requestKey: string }
@@ -135,6 +136,13 @@ const factHandlers: FactHandlers = {
     } else needsAttention(next, 'process_health_unknown')
   },
   progress({ next, now }) { next.lastProgressAt = now },
+  isolated_source({current, next}, fact) {
+    if (!['recovering', 'needs_attention'].includes(current.phase)) return 'conflict'
+    delete next.lastPreparationAt
+    if (fact.outcome === 'completed' && pendingRemoteApprovals(current).length === 0) {
+      next.phase = 'completed'; delete next.cause
+    } else needsAttention(next, fact.outcome === 'approval_context_lost' ? 'approval_context_lost' : `isolated_source_${fact.outcome}`)
+  },
   request({ current, next }, fact) {
     if (current.cause === 'approval_context_lost' || !['starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering'].includes(current.phase)) return 'conflict'
     const requests = allRemoteApprovals(current)

@@ -1,12 +1,13 @@
 import { SignJWT } from 'jose'
 import { mergeRoomMessages, type RoomMessageRecord } from '../src/features/chat/components/collaboration/room-message-view'
-import { agentHostCommandSchema } from '../packages/overlay-agent-bridge-protocol/src/index'
+import { agentHostCommandSchema, nativeStartAdmissionSchema } from '../packages/overlay-agent-bridge-protocol/src/index'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import { internal } from './_generated/api'
 import { hydrateRemoteMessage } from './lib/remoteMessageText'
+import {nativeRestorationSnapshotSchema} from './lib/nativeRecoveryPayload'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'remote-agent-turn-test-secret'
@@ -882,6 +883,101 @@ async function nativeRetryFixture() {
   return {...f, command, reject}
 }
 
+async function admitNativeFixture(f: Pick<Awaited<ReturnType<typeof nativeQueueFixture>>, 'convex' | 'call' | 'started'>,
+  boot = 'new-boot', at = now + 7) {
+  const current = await f.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique()
+    if (!run?.remoteLifecycle) throw Error('Missing lifecycle')
+    const attemptId = run.remoteLifecycle.currentAttemptId
+    const session = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', attemptId)).unique()
+    if (!session?.restorationCommandId) throw Error('Missing restoration delivery')
+    const restoration = nativeRestorationSnapshotSchema.parse(session.capabilitySnapshot).nativeRestoration
+    const source = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', restoration.previousExecution.attemptId)).unique()
+    if (!source) throw Error('Missing restoration source')
+    return {session, source, restoration}
+  })
+  const request = {workspaceId, environmentId, sessionId: current.session.sessionId, now: at,
+    events: [{...event(current.session.eventCursor + 1, 'native_start_requested', {commandId: current.session.restorationCommandId,
+      remoteSessionId: current.restoration.nativeSessionId, adapterId: 'acp', sourceEventCursor: current.source.eventCursor}),
+      eventId: `admit-${current.session.sessionId}`, execution: {attemptId: current.session.sessionId,
+        generation: current.session.executionGeneration, hostBootId: boot}}]}
+  const response = await f.call('applyRemoteEventsByServer', request)
+  return {request, admitted: nativeStartAdmissionSchema.parse(response.nativeStartAdmission)}
+}
+
+test('native start admission binds a drained source and full canonical cursor without claiming health, and its lost ACK is idempotent', async () => {
+  const f = await nativeRetryFixture()
+  const {request, admitted} = await admitNativeFixture(f)
+  expect(admitted).toMatchObject({commandId: f.command.commandId, attemptId: f.command.attemptId, generation: 2,
+    hostBootId: 'new-boot', sourceEventCursor: 3, canonicalTextOffset: f.prefix.length, hardDeadlineAt: now + 3600000})
+  const before = await projectedState(f.convex, f.started.messageId)
+  expect(before.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+  expect(before.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+  expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true, nativeStartAdmission: admitted})
+  expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.revision).toBe(before.run?.remoteLifecycle?.revision)
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(false, 'an admitted provider start is no longer retryable preparation')
+  await f.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: f.seeded.conversationId,
+    runId: f.input.runId, action: 'cancel', queueExpiresAt: now + 60000, now: now + 11})
+  expect(await f.call('applyRemoteEventsByServer', {...request, now: now + 12})).not.toHaveProperty('nativeStartAdmission')
+})
+
+test('native admission refuses an undrained source without consuming the request or recording startup', async () => {
+  const f = await nativeRetryFixture()
+  const request = {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+    events: [{...event(1, 'native_start_requested', {commandId: f.command.commandId, remoteSessionId: 'native-session', adapterId: 'acp', sourceEventCursor: 4}),
+      execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}]}
+  await expect(f.call('applyRemoteEventsByServer', request)).rejects.toThrow('AGENT_NATIVE_SOURCE_NOT_DRAINED')
+  const session = await f.convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.command.attemptId ?? '')).unique())
+  expect(session?.nativeStartAdmission).toBeUndefined()
+  expect(session?.eventCursor).toBe(0)
+  expect(session?.hostBootId).toBeUndefined()
+  expect(session?.startedAt).toBeUndefined()
+  await admitNativeFixture(f)
+})
+
+test('native admission rechecks current access and funding even after the restoration command was claimed', async () => {
+  for (const scenario of ['binding', 'funding', 'principal']) {
+    const f = await nativeRetryFixture()
+    await f.convex.run(async ctx => {
+      if (scenario === 'binding') {
+        const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+        if (!binding) throw Error('Missing binding')
+        await ctx.db.patch(binding._id, {enabled: false})
+      } else if (scenario === 'funding') {
+        const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()
+        if (!reservation) throw Error('Missing reservation')
+        await ctx.db.patch(reservation._id, {status: 'released'})
+      } else {
+        const principal = await ctx.db.query('workspacePrincipals').withIndex('by_principalId', q => q.eq('principalId', actorPrincipalId)).unique()
+        if (!principal) throw Error('Missing principal')
+        await ctx.db.patch(principal._id, {archivedAt: now + 6})
+      }
+    })
+    await expect(admitNativeFixture(f)).rejects.toThrow('AGENT_NATIVE_START_NOT_ADMITTED')
+  }
+})
+
+test('a lost native-admission ACK cannot reauthorize a revoked binding', async () => {
+  const f = await nativeRetryFixture(), {request} = await admitNativeFixture(f)
+  await f.convex.run(async ctx => {
+    const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+    if (!binding) throw Error('Missing binding')
+    await ctx.db.patch(binding._id, {enabled: false})
+  })
+  await expect(f.call('applyRemoteEventsByServer', request)).rejects.toThrow('AGENT_NATIVE_START_NOT_ADMITTED')
+})
+
+test('a same-batch failure cannot return permission to launch a native process', async () => {
+  const f = await nativeRetryFixture()
+  const response = await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+    events: [event(1, 'native_start_requested', {commandId: f.command.commandId, remoteSessionId: 'native-session', adapterId: 'acp', sourceEventCursor: 3}),
+      event(2, 'failed', {code: 'preparation_failed', message: 'The preparation failed', retryable: false})]
+      .map(item => ({...item, execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}))})
+  expect(response).toMatchObject({accepted: true})
+  expect(response).not.toHaveProperty('nativeStartAdmission')
+  expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.phase).toBe('needs_attention')
+})
+
 test('a confirmed preparation failure queues one new delivery on the same execution without extending its hard deadline', async () => {
   const {convex, started, command, reject, begin, input, prefix} = await nativeRetryFixture()
   expect(await reject()).toBe(true)
@@ -978,8 +1074,9 @@ test('preparation rejection cannot retry unknown native starts, permanent failur
     })
     if (scenario === 'cancel') await f.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: f.seeded.conversationId,
       runId: f.input.runId, action: 'cancel', queueExpiresAt: now + 60000, now: now + 7})
+    if (scenario === 'started') await admitNativeFixture(f)
     if (scenario === 'started') await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId,
-      events: [{...event(1, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp'}), eventId: 'already-started',
+      events: [{...event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: f.command.commandId}), eventId: 'already-started',
         execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}], now: now + 7})
     await f.reject(f.command.commandId, scenario === 'unknown' ? 'command_outcome_unknown' : scenario === 'permanent' ? 'command_rejected' : 'native_preparation_retryable',
       scenario === 'deadline' ? now + 3_600_001 : now + 10)
@@ -1003,13 +1100,14 @@ test('preparation does not bind a receiver boot or provider start time, and the 
   expect(attempt?.startedAt).toBeUndefined()
   expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
   expect(await send(2, 'session_preparing', {}, 'resumed-preparation-boot')).not.toHaveProperty('stale')
-  expect(await send(3, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp'}, 'resumed-preparation-boot')).not.toHaveProperty('stale')
-  expect(await send(4, 'session_preparing', {}, 'preparation-boot')).not.toHaveProperty('stale')
-  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle).toMatchObject({phase: 'running', lastHealthAt: now + 9})
-  expect(await send(5, 'text_delta', {offset: prefix.length, text: 'old writer'}, 'preparation-boot')).toMatchObject({stale: 'stale_execution'})
+  await admitNativeFixture({convex, call, started}, 'resumed-preparation-boot', now + 9)
+  expect(await send(4, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: command.commandId}, 'resumed-preparation-boot')).not.toHaveProperty('stale')
+  expect(await send(5, 'session_preparing', {}, 'preparation-boot')).not.toHaveProperty('stale')
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle).toMatchObject({phase: 'running', lastHealthAt: now + 10})
+  expect(await send(6, 'text_delta', {offset: prefix.length, text: 'old writer'}, 'preparation-boot')).toMatchObject({stale: 'stale_execution'})
   const current = await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', command.attemptId ?? '')).unique())
   expect(current?.hostBootId).toBe('resumed-preparation-boot')
-  expect(current?.startedAt).toBe(now + 9)
+  expect(current?.startedAt).toBe(now + 10)
 })
 
 test('a queued native continuation appends on the original assistant and fences buffered old execution output', async () => {
@@ -1019,11 +1117,12 @@ test('a queued native continuation appends on the original assistant and fences 
   if (!state) throw Error('Missing recovery state')
   expect(state.recoveryOutcome).toBeUndefined()
   await call('claimCommandsByServer', {workspaceId, environmentId, now: now + 6, leaseMs: 5000, limit: 10})
-  expect(await events([event(4, 'text_delta', {offset: prefix.length, text: 'STALE_WRITER'})], now + 6))
+  const {admitted} = await admitNativeFixture({convex, call, started})
+  expect(await events([event(4, 'text_delta', {offset: prefix.length, text: 'STALE_WRITER'})], now + 8))
     .toMatchObject({accepted: true, stale: 'stale_attempt'})
   const tail = '\nContinued in the original native conversation.'
-  const continuationEvents = [event(1, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp'}),
-    event(2, 'text_delta', {offset: prefix.length, text: tail}), event(3, 'completed', {usage: {}})]
+  const continuationEvents = [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: admitted.commandId}),
+    event(3, 'text_delta', {offset: prefix.length, text: tail}), event(4, 'completed', {usage: {}})]
     .map(e => ({...e, eventId: `restored-${e.eventId}`, execution: {attemptId: state.currentAttemptId,
       generation: state.executionGeneration, hostBootId: 'new-boot'}}))
   expect(await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: state.currentAttemptId,
@@ -1041,9 +1140,191 @@ test('a queued native continuation appends on the original assistant and fences 
   })
 })
 
+test('a new stopped-machine readback can redeliver claimed preparation without replacing its execution or source proof', async () => {
+  const f = await nativeRetryFixture()
+  const before = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+  for (const observedStoppedAt of [now + 4, now + 11, NaN]) {
+    expect(await f.begin({observedStoppedAt, now: now + 10})).toBe(false)
+  }
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(true)
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(true)
+  const after = await projectedState(f.convex, f.started.messageId)
+  expect(after.run?.remoteLifecycle).toMatchObject({currentAttemptId: before?.currentAttemptId,
+    executionGeneration: before?.executionGeneration, providerStop: before?.providerStop, hardDeadlineAt: before?.hardDeadlineAt})
+  const result = await f.convex.run(async ctx => ({
+    session: await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.command.attemptId ?? '')).unique(),
+    commands: await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', f.input.runId)).take(20),
+  }))
+  expect(result.commands.find(command => command.commandId === f.command.commandId)?.status).toBe('cancelled')
+  expect(result.commands.filter(command => command.type === 'start' && command.status === 'pending')).toHaveLength(1)
+  expect(result.session).toMatchObject({preparationRetryCount: 1, lastPreparationStopAt: now + 9})
+  await f.call('claimCommandsByServer', {workspaceId, environmentId, now: now + 11, leaseMs: 5000, limit: 10})
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 12})).toBe(false)
+})
+
+async function isolatedNativeFixture() {
+  const f = await nativeRetryFixture()
+  await admitNativeFixture(f, 'pre-stop-boot')
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(false)
+  const before = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+  if (!before) throw Error('Missing admitted lifecycle')
+  expect(await f.lifecycle('recordProviderStop', {runId: f.input.runId, environmentId, leaseId: f.input.leaseId,
+    providerReference: f.input.providerReference, attemptId: before.currentAttemptId, generation: 2,
+    expectedRevision: before.revision, now: now + 9})).toBe(true)
+  expect(await f.begin({attemptId: before.currentAttemptId, generation: 2, expectedRevision: before.revision + 1, now: now + 10})).toBe(true)
+  return {...f, sourceAttemptId: before.currentAttemptId}
+}
+
+test('buffered native startup and output survive isolation when startup acknowledgement had not reached the server', async () => {
+  const f = await isolatedNativeFixture()
+  const tail = '\nDurable output produced before the second machine stop.'
+  await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 11,
+    events: [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: f.command.commandId}),
+      event(3, 'text_delta', {offset: f.prefix.length, text: tail})].map(item => ({...item, occurredAt: now + 8,
+        eventId: `buffered-${item.eventId}`, execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'pre-stop-boot'}}))})
+  const content = await f.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+    const message = run && await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing original assistant')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(content).toBe(f.prefix + tail)
+  const retained = await projectedState(f.convex, f.started.messageId)
+  expect(retained.run?.remoteLifecycle).toMatchObject({phase: 'recovering', executionGeneration: 3})
+  expect(retained.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+  expect(retained.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+  await f.call('claimCommandsByServer', {workspaceId, environmentId, now: now + 12, leaseMs: 5000, limit: 10})
+  const {admitted} = await admitNativeFixture(f, 'second-native-boot', now + 13)
+  expect(admitted.canonicalTextOffset).toBe(f.prefix.length + tail.length)
+  expect(admitted.sourceEventCursor).toBe(3)
+  const source = await f.convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.sourceAttemptId)).unique())
+  expect(source).toMatchObject({status: 'failed', recoveryCause: 'provider_isolated', hostBootId: 'pre-stop-boot'})
+  const nextTail = '\nContinued after the fully drained source.'
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: admitted.attemptId, now: now + 14,
+    events: [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: admitted.commandId}),
+      event(3, 'text_delta', {offset: admitted.canonicalTextOffset, text: nextTail}), event(4, 'completed', {usage: {}})]
+      .map(item => ({...item, eventId: `next-${item.eventId}`, execution: {attemptId: admitted.attemptId, generation: 3, hostBootId: admitted.hostBootId}}))})).toMatchObject({accepted: true})
+  const final = await projectedState(f.convex, f.started.messageId)
+  expect(final.run?.remoteLifecycle).toMatchObject({phase: 'completed', recoveryOutcome: 'restored', lastHealthAt: now + 14})
+  const text = await f.convex.run(async ctx => {
+    const message = final.run && await ctx.db.get(final.run.assistantMessageId)
+    if (!message) throw Error('Missing final assistant')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(text).toBe(f.prefix + tail + nextTail)
+})
+
+test('isolated-source completion, failure and approval history never recreates live health or executable requests', async () => {
+  for (const outcome of ['completed', 'failed', 'cancelled', 'approval_requested']) {
+    const f = await isolatedNativeFixture(), tail = `\nRetained ${outcome} history.`
+    const payload = outcome === 'approval_requested' ? {requestKey: 'old-risky-action', prompt: 'Allow the old action?', options: [{id: 'allow_once', label: 'Allow once'}]}
+      : outcome === 'failed' ? {code: 'provider_failed', message: 'Old provider failed', retryable: false} : {}
+    const events = [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: f.command.commandId}),
+      event(3, 'text_delta', {offset: f.prefix.length, text: tail}), event(4, outcome, payload)]
+      .map(item => ({...item, eventId: `old-${item.eventId}`, execution: {attemptId: f.sourceAttemptId, generation: 2, hostBootId: 'pre-stop-boot'}}))
+    const request = {workspaceId, environmentId, sessionId: f.sourceAttemptId, events, now: now + 11}
+    expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true})
+    expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true})
+    const result = await projectedState(f.convex, f.started.messageId)
+    expect(result.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+    expect(result.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+    const rows = await f.convex.run(async ctx => {
+      const message = result.run && await ctx.db.get(result.run.assistantMessageId)
+      if (!message) throw Error('Missing retained assistant')
+      return {text: (await hydrateRemoteMessage(ctx, message)).content,
+        current: await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', result.run?.remoteLifecycle?.currentAttemptId ?? '')).unique(),
+        approvals: await ctx.db.query('agentApprovalRequests').withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', f.sourceAttemptId)).take(10)}
+    })
+    expect(rows.text).toContain(f.prefix + tail)
+    expect(rows.current?.hostBootId).toBeUndefined()
+    expect(rows.current?.startedAt).toBeUndefined()
+    expect(rows.current?.nativeStartAdmission).toBeUndefined()
+    if (outcome === 'completed') expect(result.run?.remoteLifecycle?.phase).toBe('completed')
+    else expect(result.run?.remoteLifecycle?.phase).toBe('needs_attention')
+    if (outcome === 'approval_requested') {
+      expect(result.run?.remoteLifecycle?.cause).toBe('approval_context_lost')
+      expect(rows.approvals).toHaveLength(1)
+      expect(rows.approvals[0].resolution?.decision).toBe('approval_context_lost')
+      expect(result.message?.parts?.filter(part => part.type === 'data-remote-agent-request')).toMatchObject([{data: {state: 'resolved'}}])
+    }
+  }
+})
+
+test('cancel wins over isolated-source outcomes while already-produced text still drains after confirmed stop', async () => {
+  const f = await isolatedNativeFixture()
+  await f.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: f.seeded.conversationId,
+    runId: f.input.runId, action: 'cancel', queueExpiresAt: now + 60000, now: now + 11})
+  const send = (sequence: number, text: string, offset: number) => f.call('applyRemoteEventsByServer', {workspaceId, environmentId,
+    sessionId: f.sourceAttemptId, now: now + 12 + sequence,
+    events: [{...event(sequence, 'text_delta', {offset, text}), execution: {attemptId: f.sourceAttemptId, generation: 2, hostBootId: 'pre-stop-boot'}}]})
+  expect(await send(2, '\nBefore stop.', f.prefix.length)).toMatchObject({accepted: true})
+  const cancelling = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+  if (!cancelling) throw Error('Missing cancellation')
+  expect(cancelling.phase).toBe('cancelling')
+  await f.lifecycle('confirmStopped', {runId: f.input.runId, attemptId: cancelling.currentAttemptId, generation: 3, now: now + 15})
+  expect(await send(3, '\nBuffered tail.', f.prefix.length + '\nBefore stop.'.length)).toMatchObject({accepted: true})
+  const result = await projectedState(f.convex, f.started.messageId)
+  expect(result.run?.remoteLifecycle?.phase).toBe('cancelled')
+  expect(result.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+  const text = await f.convex.run(async ctx => {
+    const message = result.run && await ctx.db.get(result.run.assistantMessageId)
+    if (!message) throw Error('Missing cancelled assistant')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(text).toBe(f.prefix + '\nBefore stop.\nBuffered tail.')
+})
+
+test('historical ingestion rejects another source, receipt, boot or legacy admission contract', async () => {
+  for (const scenario of ['receipt', 'source', 'source_running', 'legacy', 'boot']) {
+    const f = await isolatedNativeFixture()
+    await f.convex.run(async ctx => {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+      if (!run?.remoteLifecycle?.providerStop) throw Error('Missing receipt')
+      const state = run.remoteLifecycle, id = state.currentAttemptId
+      const current = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', id)).unique()
+      const source = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.sourceAttemptId)).unique()
+      if (!current || !source) throw Error('Missing isolated source')
+      if (scenario === 'receipt') await ctx.db.patch(run._id, {remoteLifecycle: {...state, providerStop: {...run.remoteLifecycle.providerStop, providerReference: 'foreign-machine'}}})
+      if (scenario === 'source') await ctx.db.patch(source._id, {bindingId: 'foreign-binding'})
+      if (scenario === 'source_running') await ctx.db.patch(source._id, {status: 'running'})
+      if (scenario === 'legacy') await ctx.db.patch(current._id, {nativeStartAdmissionRequired: undefined})
+    })
+    const response = await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.sourceAttemptId, now: now + 11,
+      events: [{...event(2, 'text_delta', {offset: f.prefix.length, text: 'MUST_NOT_APPEND'}), execution: {
+        attemptId: f.sourceAttemptId, generation: 2, hostBootId: scenario === 'boot' ? 'foreign-boot' : 'pre-stop-boot'}}]})
+    expect(response).toHaveProperty('stale')
+    const run = (await projectedState(f.convex, f.started.messageId)).run
+    const text = await f.convex.run(async ctx => {
+      const message = run && await ctx.db.get(run.assistantMessageId)
+      if (!message) throw Error('Missing assistant')
+      return (await hydrateRemoteMessage(ctx, message)).content
+    })
+    expect(text).toBe(f.prefix)
+  }
+})
+
+test('preparation timeout requires a fresh isolation receipt before another delivery can resume the same execution', async () => {
+  for (const cause of ['preparation_health_required', 'command_unclaimed']) {
+    const f = await nativeRetryFixture()
+    await f.convex.run(async ctx => {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+      if (!run?.remoteLifecycle) throw Error('Missing lifecycle')
+      await ctx.db.patch(run._id, {remoteLifecycle: {...run.remoteLifecycle, phase: 'needs_attention', cause}})
+      if (cause === 'command_unclaimed') await ctx.db.patch(f.command._id, {status: 'pending'})
+    })
+    expect(await f.begin({now: now + 130000})).toBe(false)
+    expect(await f.begin({observedStoppedAt: now + 129999, now: now + 130000})).toBe(true)
+    const current = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+    expect(current).toMatchObject({phase: 'recovering', cause: 'native_restoration', currentAttemptId: f.command.attemptId,
+      executionGeneration: 2, claimDeadlineAt: now + 250000, hardDeadlineAt: now + 3600000})
+    expect(current?.lastHealthAt).toBeUndefined()
+  }
+})
+
 test('native restoration start rejects a replacement conversation, adapter, delivery, source receipt or machine', async () => {
   for (const scenario of ['conversation', 'missing_identity', 'adapter', 'pending_delivery', 'superseded_delivery', 'missing_receipt', 'machine', 'approval']) {
     const f = await nativeRetryFixture()
+    await admitNativeFixture(f)
     await f.convex.run(async ctx => {
       if (scenario === 'pending_delivery') await ctx.db.patch(f.command._id, {status: 'pending'})
       if (scenario === 'machine') await ctx.db.patch(f.leaseDocId, {providerReference: 'another-machine'})
@@ -1063,7 +1344,7 @@ test('native restoration start rejects a replacement conversation, adapter, deli
       }
     })
     const result = await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
-      events: [{...event(1, 'session_started', {remoteSessionId: scenario === 'conversation' ? 'replacement-native' : scenario === 'missing_identity' ? '' : 'native-session',
+      events: [{...event(2, 'session_started', {restorationCommandId: f.command.commandId, remoteSessionId: scenario === 'conversation' ? 'replacement-native' : scenario === 'missing_identity' ? '' : 'native-session',
         adapterId: scenario === 'adapter' ? 'another-adapter' : 'acp'}), eventId: `invalid-start-${scenario}`,
         execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}]})
     expect(result).toMatchObject({accepted: true, stale: 'stale_execution'})

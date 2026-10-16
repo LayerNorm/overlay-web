@@ -1498,6 +1498,27 @@ restoration delivery and canonical isolation receipt, retain the exact machine l
 unresolved approval. Only that receipt projects a restored outcome. The transcript retains a small
 Recovered status through history reload and completion; queueing, preparation and live reattachment
 do not claim native restoration. A refused continuation cannot retain a restored outcome.
+
+Restoration commands require `overlayNativeAdmission: 1`. Before the local durable startup boundary,
+the host drains its isolated source's persisted event watermark, then crosses the boundary and emits `native_start_requested`.
+Its acknowledgement supplies a fixed canonical text offset and binds the delivery, attempt, generation,
+receiver boot, source event cursor and original hard deadline. Only then may adapter code start.
+Lost acknowledgement replay rechecks current access, funding, source proof and machine ownership;
+missing, expired or mismatched admission fails closed. Waiting targets those watermarks, not unrelated
+upload activity. The admission itself proves no live process and does not set Recovered.
+
+Before admission, the immediately isolated source may drain buffered output under its original boot
+and exact stored source receipt. Text, work and usage remain on the original assistant; source health
+does not refresh the current execution. Buffered completion can complete the task without a new writer.
+Buffered approvals are closed as lost context and cannot be executed. Cancellation still wins while
+already-produced text drains. Admission seals this historical window before fixing the new cursor.
+This path is available only to restorations explicitly requiring startup admission; legacy replacement
+attempts retain their stale-event fence.
+
+A stopped preparation with no startup admission may receive another bounded delivery on the same
+execution after a fresh provider-isolation readback, retaining its original source proof and deadline.
+An admitted startup cannot use that retry: a later stop requires a new isolated generation because
+the provider-start outcome may be unknown. Local SQLite still refuses reusing an uncertain start.
 Acpx records a versioned, nonsecret ACP session identity before the first prompt: its local session key, provider agent, working directory and ACP backend session id. Restoration requires a matching record or checkpoint and explicitly requests that backend id; missing identities, conflicting records and provider load refusal cannot create a replacement conversation. Checkpoint failure closes the new runtime before initialization returns. This identity safeguard does not enable interrupted-turn continuation. Direct ACP session loading consumes replayed answer/work notifications through first-prompt admission, including buffered frames after the load response, without appending them to the canonical answer; current command catalogs remain available.
 Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
 control actions and event projection. The UI shows that absolute UTC deadline for nonterminal

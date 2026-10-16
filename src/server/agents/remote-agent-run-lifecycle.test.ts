@@ -82,6 +82,7 @@ test('live work and rejected proof or queue authorization cannot trigger a resum
 
 test('a replay after durable queueing reauthorizes the original receipt without recording a new source generation', async () => {
   const current = snapshot()
+  current.nativePreparationPending = true
   current.lifecycle = {...current.lifecycle, phase: 'recovering', cause: 'native_restoration', revision: 10,
     currentAttemptId: 'next-attempt', executionGeneration: 2, providerStop: {provider: 'box', environmentId: 'environment',
       attemptId: 'attempt', executionGeneration: 1, leaseId: 'lease', providerReference: 'machine', observedAt, recordedAtRevision: 8}}
@@ -90,4 +91,13 @@ test('a replay after durable queueing reauthorizes the original receipt without 
   assert.equal(result.calls[0].operation, 'agents/nativeRecovery:beginByServer')
   assert.equal(result.calls[0].args.attemptId, 'attempt'); assert.equal(result.calls[0].args.generation, 1)
   assert.equal(result.calls[0].args.expectedRevision, 9)
+  assert.equal(result.calls[0].args.observedStoppedAt, observedAt)
+  for (const cause of ['preparation_health_required', 'command_unclaimed']) {
+    const timedOut = await exercise({...current, lifecycle: {...current.lifecycle, phase: 'needs_attention', cause}})
+    assert.equal(timedOut.resumed, true)
+    assert.equal(timedOut.calls.length, 1)
+    assert.equal(timedOut.calls[0].args.attemptId, 'attempt')
+    assert.equal(timedOut.calls[0].args.generation, 1)
+    assert.equal(timedOut.calls[0].args.observedStoppedAt, observedAt)
+  }
 })

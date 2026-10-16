@@ -1,6 +1,6 @@
 import type {Doc} from '../_generated/dataModel'
 import type {MutationCtx} from '../_generated/server'
-import {startAdapterPayloadSchema} from '@layernorm/overlay-agent-bridge-protocol'
+import {startAdapterPayloadSchema, nativeStartAdmissionSchema} from '@layernorm/overlay-agent-bridge-protocol'
 import {nativeRecoverySnapshotSchema, nativeRestorationSnapshotSchema} from './nativeRecoveryPayload'
 import {matchesNativeRestoration} from './nativePreparationRetry'
 import {matchesCurrentRecoveryMachine} from './remoteRecoveryMachine'
@@ -8,7 +8,7 @@ import {pendingRemoteApprovals} from '../../src/shared/agents/remote-run'
 
 /** A start receipt must confirm the admitted conversation, delivery and isolated predecessor. */
 export async function nativeRestorationStarted(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>,
-  session: Doc<'agentRemoteSessions'>, input: {remoteSessionId: unknown; adapterId: unknown}): Promise<boolean> {
+  session: Doc<'agentRemoteSessions'>, input: {remoteSessionId: unknown; adapterId: unknown; restorationCommandId: unknown; hostBootId: unknown}): Promise<boolean> {
   const state = run.remoteLifecycle, stored = nativeRestorationSnapshotSchema.safeParse(session.capabilitySnapshot)
   const snapshot = nativeRecoverySnapshotSchema.safeParse(session.capabilitySnapshot)
   if (!state || !stored.success || !snapshot.success || pendingRemoteApprovals(state).length
@@ -18,6 +18,12 @@ export async function nativeRestorationStarted(ctx: MutationCtx, run: Doc<'conve
   if (!command || !['claimed', 'acknowledged'].includes(command.status) || !matchesNativeRestoration(state, session, command)) return false
   const start = startAdapterPayloadSchema.safeParse(command.payload)
   if (!start.success || input.adapterId !== start.data.adapterId) return false
+  if (start.data.metadata.overlayNativeAdmission === 1) {
+    const admitted = nativeStartAdmissionSchema.safeParse(session.nativeStartAdmission)
+    if (!admitted.success || input.restorationCommandId !== command.commandId || admitted.data.commandId !== command.commandId
+      || admitted.data.attemptId !== state.currentAttemptId || admitted.data.generation !== state.executionGeneration
+      || admitted.data.hostBootId !== input.hostBootId || admitted.data.hardDeadlineAt !== state.hardDeadlineAt) return false
+  }
   const adapter = snapshot.data.adapters.find(candidate => candidate.id === start.data.adapterId && candidate.protocol === 'acp')
   if (!adapter?.recovery?.sessionLoading || !adapter.recovery.fencedSessionRestoration) return false
   const requests = await ctx.db.query('agentApprovalRequests').withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', session.sessionId)).take(101)

@@ -182,6 +182,10 @@ test('restoration keeps the old claim through failed preparation and joins dupli
     assert.equal(starts, 1)
     assert.equal(preparations, 2)
     assert.equal(state.getSession('run')?.remoteSessionId, 'original-native')
+    const restarted = new AgentHostRuntime({environmentId: 'environment-1', workspaceId: 'workspace-1', durableLifecycle: true,
+      filesystem: {mode: 'selected_roots', roots: [root]}, adapters: [adapter], state, controlPlane: plane})
+    await assert.rejects(restarted.processCommand({...retry, commandId: 'post-boundary-delivery', sequence: 3}), /previous execution fence/)
+    assert.equal(starts, 1, 'a new receiver cannot replay an uncertain provider start under another delivery')
   } finally {release?.(); await loaded?.stop(); state.close(); await rm(directory, {recursive: true, force: true})}
 })
 

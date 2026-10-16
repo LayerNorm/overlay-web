@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Drain isolated native output before a server-acknowledged startup boundary, preserving buffered work and cancellation while fencing new provider health and approvals.
+
 - Bound message marker parsing, provider error matching and Boat URL cleanup to linear scans for malformed or oversized input.
 
 - Show Recovered after a fenced native startup confirms the original conversation, preserving the status through history reload and completion; reject replacement identities and unresolved approvals.

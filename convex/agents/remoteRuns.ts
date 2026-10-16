@@ -19,8 +19,10 @@ export const readByServer = query({
         && adapter.recovery?.sessionLoading && adapter.recovery.fencedSessionRestoration))
     const environment = run.environmentId ? await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', run.environmentId!)).unique() : null
     // No start payload, credentials or transcript crosses the Workflow boundary.
+    const nativePreparationPending = Boolean(attempt?.restorationCommandId && !attempt.nativeStartAdmission
+      && attempt.startedAt === undefined && run.remoteLifecycle.lastHealthAt === undefined)
     return { runId: args.runId, workspaceId: attempt?.workspaceId, environmentId: run.environmentId,
-      environmentKind: environment?.kind, lifecycle: run.remoteLifecycle, nativeRestorationAdvertised }
+      environmentKind: environment?.kind, lifecycle: run.remoteLifecycle, nativeRestorationAdvertised, nativePreparationPending }
   },
 })
 

@@ -25,7 +25,8 @@ export async function POST(request: Request, context: { params: Promise<Record<s
       const batch = checked.data
       const result = await service.applyEvents(auth, batch)
       const acknowledgement = result.accepted
-        ? { protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, accepted: true as const, acknowledgedSequence: result.acknowledgedSequence }
+        ? { protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, accepted: true as const, acknowledgedSequence: result.acknowledgedSequence,
+          ...(result.nativeStartAdmission ? {nativeStartAdmission: result.nativeStartAdmission} : {}) }
         : { protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, accepted: false as const, expectedSequence: result.expectedSequence }
       return NextResponse.json(acknowledgement, {
         headers: { 'Cache-Control': 'no-store' },

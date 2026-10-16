@@ -1,5 +1,6 @@
 import { driveUploadFields } from './lib/agentDriveUploadSchema'
 import { remoteLifecycleValidator } from './agents/remoteRunModel'
+import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
@@ -2479,6 +2480,9 @@ export default defineSchema({
     runId: v.string(), remoteSessionId: v.optional(v.string()), status: v.string(),
     attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
     restorationCommandId: v.optional(v.string()), preparationRetryCount: v.optional(v.number()),
+    lastPreparationStopAt: v.optional(v.number()),
+    nativeStartAdmission: v.optional(nativeStartAdmissionValidator),
+    nativeStartAdmissionRequired: v.optional(v.literal(true)),
     hostBootId: v.optional(v.string()), lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()),
     checkpointReference: v.optional(v.string()), recoveryCause: v.optional(v.string()), recoveryResult: v.optional(v.string()),
     hardDeadlineAt: v.optional(v.number()), claimDeadlineAt: v.optional(v.number()), executionLeaseExpiresAt: v.optional(v.number()),
