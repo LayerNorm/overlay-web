@@ -957,6 +957,11 @@ Renewal cannot switch scope; only an explicit 401 receives one retry. Signed sta
 drive/device credentials and refuse redirects. Ambiguous writes require a journaled same-id retry.
 Persistent journaling and runtime hydration/synchronization remain pending.
 
+A successful options discovery with no model catalog offers only the runtime default and the
+saved choice marked unreported; it never substitutes the legacy hard-coded list. The model
+control stays disabled while its bound environment is still loading. Older undiscovered hosts
+retain their existing fallback until upgraded.
+
 `Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
 manually from main. It updates both adapter pins, the lockstep host/protocol patch version,
 image version/range and enrollment references, then requires `check:byo-agents:release` before

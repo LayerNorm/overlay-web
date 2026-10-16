@@ -25,16 +25,19 @@ export function AgentModelField({ adapterId, model, onChange, disabled, options 
   disabled?: boolean
   options?: AdapterOptions
 }) {
-  if (options?.model) {
-    const values = orderedAgentModels(options.model.values)
+  if (options) {
+    const values = orderedAgentModels(options.model?.values ?? [])
     const selected = model || 'default'
     return <div>
-      <FieldLabel info="Models reported by this agent. A saved choice that is no longer offered will fail visibly when the agent starts.">Model</FieldLabel>
+      <FieldLabel info={options.model
+        ? 'Models reported by this agent. A saved choice that is no longer offered will fail visibly when the agent starts.'
+        : 'This agent has not reported model choices. Default uses its own model; a saved choice is shown without assuming support.'}>Model</FieldLabel>
       <ListboxSelect aria-label="Model" value={selected} disabled={disabled}
         options={[
           ...(values.some(value => value.id === 'default') ? [] : [{ value: 'default', label: 'Default · Agent chooses' }]),
           ...values.map(value => ({ value: value.id, label: value.label })),
-          ...(model && !values.some(value => value.id === model) ? [{ value: model, label: `${model} · No longer offered` }] : []),
+          ...(model && !values.some(value => value.id === model) ? [{ value: model,
+            label: `${model} · ${options.model ? 'No longer offered' : 'Not reported by agent'}` }] : []),
         ]}
         onChange={value => onChange(value === 'default' ? DEFAULT_VALUE : value)} portal />
     </div>

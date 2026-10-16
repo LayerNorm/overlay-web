@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 3 Preview QA exposed a discovered adapter with no model catalog still receiving hard-coded model choices. The local UI correction offers Default and marks the saved choice unreported; bound-environment loading disables selection. Rendered regressions pass; new-head hosted verification remains pending.
+
 - Phase 4 host HTTP transport now consumes shared wire schemas, validates complete framed manifests, reconstructs bounded/checksummed ranges and separates signed staging PUTs from drive credentials. Renewal is single-flight, preserves scope, and retries only explicit 401 responses once; ambiguous writes retain their caller's identity. Actual host-client-to-BFF-to-Convex round trips pass. Persistent journaling and runtime hydration/sync remain pending.
 
 - Phase 4 server credential issuance/renewal now resolves authority from persisted execution state, requires an exact session/attempt and grants the new method only to drive v1 hosts. Tokens remain bounded by one hour and the run deadline. Existing execution/revision grants survive token renewal; expired credentials, replaced attempts and revoked membership remain rejected. Signed host transport passes real HTTP proof checks; runtime credential consumption/renewal, synchronization and hosted acceptance remain pending.

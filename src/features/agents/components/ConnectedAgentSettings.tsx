@@ -56,7 +56,7 @@ export function ConnectedAgentSettings({ agentId, modelId, permissionMode, effor
   return (
     <div className="space-y-4">
       <AgentModelField adapterId={current.adapterId} model={current.model} options={options}
-        onChange={(model) => void choose({ modelId: byoModelId(current.adapterId, model) })} disabled={busy} />
+        onChange={(model) => void choose({ modelId: byoModelId(current.adapterId, model) })} disabled={busy || !environment} />
       {options?.mode ? <div>
         <FieldLabel info="The permission modes offered by this agent. Requests that still require a decision appear in the conversation.">Permissions</FieldLabel>
         <SegmentedControl ariaLabel="Permissions" layout="stretch" disabled={busy}
