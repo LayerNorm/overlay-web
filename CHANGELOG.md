@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Connected agents keep running when a provider uses a long shell script as its tool title; display labels stay within the bridge limit without splitting Unicode.
+
 - Authenticate server-side workspace-tool calls to their own protected Preview so native MCP tools receive API responses instead of a hosting login page.
 
 - Open text uploads in Files with their full stored content; reserve the Notes editor for note records so saved drive links do not stall on an inaccessible note.

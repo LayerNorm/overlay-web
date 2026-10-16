@@ -22,6 +22,7 @@ import { parseAgentOptions } from './agent-options.js'
 import { applyAgentSettings } from './acp-settings.js'
 import { pinnedAcpxLaunch } from './adapter-manifests.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
+import { actionTitle } from './action-title.js'
 
 /**
  * Overlay adapter ids → acpx agent names. acpx resolves each name to a pinned
@@ -383,7 +384,7 @@ export async function normalizeAcpxEvent(
   }
   if (event.type === 'tool_call') {
     const actionId = event.toolCallId ?? randomUUID()
-    const title = event.title ?? event.text ?? 'Tool call'
+    const title = actionTitle(event.title ?? event.text ?? 'Tool call')
     await emit({ type: 'action', payload: { actionId, title, status: normalizeStatus(event.status) } })
     await emitToolContent(actionId, title, event.content as never, emit)
     return

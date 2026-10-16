@@ -10,6 +10,7 @@ import { verifyMcpApprovalBridge } from '@layernorm/overlay-agent-bridge-protoco
 import { parseAgentOptions } from './agent-options.js'
 import { applyAcpSettings } from './acp-settings.js'
 import { orderedAcpUpdates } from './ordered-acp-updates.js'
+import { actionTitle } from './action-title.js'
 
 /**
  * Overlay sends each turn an MCP server (its workspace tools: notes, files,
@@ -314,12 +315,12 @@ async function normalizeAcpUpdate(
     return
   }
   if (update.sessionUpdate === 'tool_call') {
-    await emit({ type: 'action', payload: { actionId: update.toolCallId, title: update.title, status: normalizeStatus(update.status) } })
+    await emit({ type: 'action', payload: { actionId: update.toolCallId, title: actionTitle(update.title), status: normalizeStatus(update.status) } })
     await emitToolContent(update.toolCallId, update.title, update.content, emit)
     return
   }
   if (update.sessionUpdate === 'tool_call_update') {
-    await emit({ type: 'action', payload: { actionId: update.toolCallId, title: update.title ?? 'Tool call', status: normalizeStatus(update.status) } })
+    await emit({ type: 'action', payload: { actionId: update.toolCallId, title: actionTitle(update.title ?? 'Tool call'), status: normalizeStatus(update.status) } })
     await emitToolContent(update.toolCallId, update.title ?? 'Tool call', update.content, emit)
     return
   }
@@ -365,13 +366,13 @@ export async function emitToolContent(
       // react-doctor-disable-next-line react-doctor/async-await-in-loop
       await emit({ type: 'diff', payload: {
         diffId: `${toolCallId}-diff-${index}`,
-        title: item.path.slice(0, 2_000),
+        title: actionTitle(item.path),
         patch: unifiedDiff(item.path, oldText, item.newText),
       } })
     } else if (item.type === 'terminal') {
       await emit({ type: 'terminal', payload: {
         terminalId: item.terminalId,
-        title: title.slice(0, 2_000),
+        title: actionTitle(title),
         summary: `Terminal ${item.terminalId} is attached to this action.`,
         status: 'running',
       } })

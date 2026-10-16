@@ -58,6 +58,12 @@ Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
   stream position on first delivery (a previous host incarnation may have consumed earlier
   sequences); once a cursor exists, out-of-order commands still fail closed as replays.
 
+ACP and acpx tool titles are display labels, not command inputs. Both adapters shorten
+oversized labels to the bridge's 2,000-character limit with an ellipsis at a complete
+Unicode boundary before action, terminal and liveness events are emitted. A long shell
+script must not fail a turn merely because its provider uses the script as its title.
+The original command, approval decision and streamed answer are unaffected.
+
 The host executable supports `connect <code> --server <origin>`. The agent editor emits a single
 harness-specific command with `--adapter <id> --run`; the same command works on a local computer,
 VPS, or customer sandbox. It creates or reuses an Ed25519 device key, displays the same short
