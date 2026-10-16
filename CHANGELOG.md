@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve an unconfirmed native connection after a close error, block replacement prompts and allow Stop to retry.
+
 - Keep loaded ACP history from duplicating an existing answer or tool timeline while retaining the command catalog.
 
 - Pin ACP conversation identity before prompting and reject accidental fresh conversations during acpx restoration.

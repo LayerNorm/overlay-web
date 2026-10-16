@@ -80,6 +80,7 @@ type Deferred<T> = { promise: Promise<T>; resolve(value: T): void }
 
 type PendingPermission = { options: Map<string, string>; response: Deferred<AcpPermissionDecision> }
 type PendingElicitation = { response: Deferred<AcpElicitationResponse> }
+type ConnectionState = {state: 'connected' | 'closed' | 'uncertain'} | {state: 'closing'; completion: Promise<void>}
 
 /**
  * ACP sessions run through acpx's runtime (`acpx/runtime`): process lifecycle,
@@ -195,7 +196,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
     const elicitations = new Map<string, PendingElicitation>()
     const completedMcpApprovals = new Map<string, AcpElicitationResponse>()
     let textCheckpoint = ''
-    let connected = true
+    let connection: ConnectionState = {state: 'connected'}
 
     const onPermissionRequest = async (request: AcpPermissionRequest): Promise<AcpPermissionDecision> => {
       const raw = request.raw
@@ -239,18 +240,27 @@ export class AcpxAgentAdapter implements AgentAdapter {
       return result
     }
 
-    const disconnect = async (reason: string) => {
-      if (!connected) return
-      connected = false
-      await runtime.close({ handle, reason }).catch(() => undefined)
+    const disconnect = (reason: string): Promise<void> => {
+      if (connection.state === 'closed') return Promise.resolve()
+      if (connection.state === 'closing') return connection.completion
+      const completion = runtime.close({handle, reason}).then(() => {
+        connection = {state: 'closed'}
+      }, error => {
+        connection = {state: 'uncertain'}
+        throw error
+      })
+      connection = {state: 'closing', completion}
+      return completion
     }
 
     return {
       remoteSessionId: sessionKey,
       prompt: async (prompt) => {
-        if (!connected) {
+        if (connection.state === 'closing') await connection.completion
+        if (connection.state === 'uncertain') throw Error('Native process closure is unconfirmed; stop it before prompting again')
+        if (connection.state === 'closed') {
           handle = await ensure()
-          connected = true
+          connection = {state: 'connected'}
         }
         await applySettings(handle)
         textCheckpoint = ''
@@ -259,6 +269,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
           onPermissionRequest, onElicitation: onElicitation as never,
         })
         activeTurn = turn
+        let result: Awaited<typeof turn.result>
         try {
           for await (const event of turn.events) {
             await normalizeAcpxEvent(event, emit, {
@@ -268,11 +279,12 @@ export class AcpxAgentAdapter implements AgentAdapter {
               },
             })
           }
-          await emitTurnResult(await turn.result, emit, this.options.id)
+          result = await turn.result
         } finally {
           activeTurn = undefined
           await disconnect('overlay turn finished')
         }
+        await emitTurnResult(result, emit, this.options.id)
       },
       approve: async (requestKey, optionId) => {
         const pending = permissions.get(requestKey)

@@ -1420,6 +1420,9 @@ durable for the next host. Shutdown-induced provider errors are not terminal run
 If a provider stop is unconfirmed, cache ownership is retained and the CLI does not explicitly
 close its state store while callbacks can still arrive. This does not establish restart recovery.
 An abort during hydration cannot launch a provider afterwards.
+Acpx closes its native connection before publishing a terminal outcome. Concurrent close callers
+join the same operation; a failed close remains unconfirmed, rejects further prompts and allows
+an explicit Stop to retry. Cache ownership cannot be released on a swallowed close error.
 Session checkpoints retain the validated model, permission mode, effort and Cloud/local context
 alongside nonsecret configuration references. Restoration reuses that same settings schema;
 MCP tokens and provider credentials are excluded and must be reissued by the control plane.

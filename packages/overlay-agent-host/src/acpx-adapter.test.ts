@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +20,7 @@ function fixtureAdapter(stateDirectory: string) {
 test('acpx adapter streams updates and bridges approval and elicitation like the direct adapter', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-'))
   const workspace = join(directory, 'workspace')
+  const log = join(directory, 'sessions.jsonl')
   await mkdir(workspace)
   const adapter = fixtureAdapter(join(directory, 'state'))
   const events: NormalizedAgentEvent[] = []
@@ -28,7 +29,14 @@ test('acpx adapter streams updates and bridges approval and elicitation like the
     assert.equal((await adapter.discover()).id, 'fixture-acpx')
     session = await adapter.start({
       runId: 'run-acpx', workingDirectory: workspace, additionalDirectories: [], prompt: 'test', metadata: {},
-    }, async (event) => { events.push(event) })
+      credentials: {FIXTURE_SESSION_LOG: log},
+    }, async (event) => {
+      if (event.type === 'completed') {
+        const record = JSON.parse((await readFile(log, 'utf8')).trim())
+        assert.throws(() => process.kill(record.pid, 0), {code: 'ESRCH'}, 'completion must follow native process closure')
+      }
+      events.push(event)
+    })
     const prompt = session.prompt('test ACP via acpx')
     await waitFor(() => events.some((event) => event.type === 'approval_requested'))
     await session.approve('fixture-write', 'allow_once')
@@ -167,6 +175,39 @@ test('checkpoint persistence failure closes the new native process before return
       catch (error) {return error instanceof Error && 'code' in error && error.code === 'ESRCH'}
     })
   } finally { await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}) }
+})
+
+test('an unconfirmed acpx close rejects Stop and further prompts, and Stop can retry after storage recovers', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-close-failure-'))
+  const state = join(directory, 'state'), records = join(state, 'acpx'), backup = join(state, 'acpx-backup')
+  const log = join(directory, 'sessions.jsonl')
+  let session: Awaited<ReturnType<AcpxAgentAdapter['start']>> | undefined
+  let unavailable = false
+  try {
+    session = await fixtureAdapter(state).start({runId: 'close-failure', workingDirectory: directory,
+      additionalDirectories: [], prompt: '', metadata: {}, credentials: {FIXTURE_SESSION_LOG: log},
+    }, async () => {})
+    const record = JSON.parse((await readFile(log, 'utf8')).trim())
+    process.kill(record.pid, 0)
+    await rename(records, backup)
+    await writeFile(records, 'storage unavailable')
+    unavailable = true
+    await assert.rejects(session.stop(), /ENOTDIR|EEXIST/)
+    await assert.rejects(session.prompt('Must not start a new writer'), /closure is unconfirmed/)
+    await rm(records)
+    await rename(backup, records)
+    unavailable = false
+    await session.stop()
+    await waitFor(() => {
+      try {process.kill(record.pid, 0); return false}
+      catch (error) {return error instanceof Error && 'code' in error && error.code === 'ESRCH'}
+    })
+    assert.equal((await readFile(log, 'utf8')).trim().split('\n').length, 1, 'failed closure must not create a replacement process')
+  } finally {
+    if (unavailable) { await rm(records, {force: true}); await rename(backup, records) }
+    await session?.stop()
+    await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100})
+  }
 })
 
 test('discovery rejects agents acpx does not know', async () => {
