@@ -1,4 +1,5 @@
 import { remoteLifecycleValidator } from './agents/remoteRunModel'
+import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
@@ -2486,6 +2487,21 @@ export default defineSchema({
   agentWorkspacePolicyUsage: defineTable({
     workspaceId: v.string(), activeArtifactBytes: v.number(), updatedAt: v.number(),
   }).index('by_workspaceId', ['workspaceId']),
+
+  agentMcpCalls: defineTable({
+    callId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(), sessionId: v.string(),
+    execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
+    clientSessionId: v.string(), rpcId: v.string(), toolName: v.string(), argumentsJson: v.string(), requestKey: v.string(),
+    state: agentMcpCallState, expiresAt: v.number(), retireAt: v.number(), createdAt: v.number(),
+  }).index('by_callId', ['callId'])
+    .index('by_session_rpc', ['sessionId', 'clientSessionId', 'rpcId'])
+    .index('by_retireAt', ['retireAt']),
+
+  agentMcpResultChunks: defineTable({ callId: v.string(), index: v.number(), data: v.bytes() })
+    .index('by_callId_index', ['callId', 'index']),
+
+  agentMcpCallBudgets: defineTable({ runId: v.string(), calls: v.number(), bytes: v.number(), retireAt: v.number() })
+    .index('by_runId', ['runId']).index('by_retireAt', ['retireAt']),
 
   agentApprovalRequests: defineTable({
     approvalId: v.string(), workspaceId: v.string(), runId: v.string(), remoteSessionId: v.string(),

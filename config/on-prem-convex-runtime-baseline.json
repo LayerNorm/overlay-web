@@ -263,6 +263,11 @@
       "target": "internal.chat.conversations.runEmptyConversationCleanup"
     },
     {
+      "cadence": "{ hours: 1 }",
+      "name": "expired connected-agent MCP results",
+      "target": "internal.agents.mcpCalls.cleanupExpired"
+    },
+    {
       "cadence": "{ hours: 6 }",
       "name": "function metrics cleanup",
       "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
@@ -354,6 +359,7 @@
     "src/server/agents/AgentDriveStorageReader.ts",
     "src/server/agents/ConvexConnectedAgentRepository.ts",
     "src/server/agents/ConvexWorkspaceAgentRepository.ts",
+    "src/server/agents/McpCallJournal.ts",
     "src/server/agents/agent-drive-http.ts",
     "src/server/agents/cloud/ConvexCloudAgentProvisionRepository.ts",
     "src/server/agents/index.ts",
@@ -447,6 +453,7 @@
   "convexScheduledCallFiles": [
     "convex/agents/agentDriveMetadata.ts",
     "convex/agents/connectedAgents.ts",
+    "convex/agents/mcpCalls.ts",
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/chat/conversations.ts",

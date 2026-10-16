@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 3 MCP call storage now fences the current execution, claims side effects once, persists bounded immutable result chunks and returns exact cached results after reconnect. Membership/revocation, retention and quotas have real Convex coverage. HTTP resumability and canonical approval-card integration remain pending.
+
 - Phase 2 Stop QA preserved the streamed prefix and closed tool rows. A stale terminal liveness tool list exposed by process-based confirmation is corrected locally; hosted verification remains pending.
 
 - Phase 0 follow-on turn QA exposed a Unicode boundary failure in bounded prompt history. Both context limits now preserve complete characters; local regressions pass. Compiled memory reads also target the store query. Hosted acceptance on the new revision remains pending.

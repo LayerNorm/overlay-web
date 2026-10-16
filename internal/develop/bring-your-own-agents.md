@@ -1232,3 +1232,11 @@ network requests release the token broker without creating an unhandled rejectio
 Lifecycle Stop confirmation clears the run's liveness tool list even when the
 confirming event is a process observation. A terminal run must not advertise an
 open tool after its transcript actions have closed.
+
+MCP call storage binds each client request identity and normalized arguments to
+the current run/session/attempt. Execution ownership cannot be taken over after
+a lost executor; its outcome must be checked rather than repeating a write.
+Completed results use immutable bounded chunks with size/hash verification on
+readback, so a reconnect returns the original result. The per-run journal budget
+is 1,000 calls and 64 MiB including inputs/results; expired entries retire after
+one day through bounded hourly cleanup. HTTP resumability is not wired yet.
