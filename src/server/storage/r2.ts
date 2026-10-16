@@ -311,7 +311,7 @@ export class R2ObjectStore implements ObjectStore {
           Bucket: this.bucketName(),
           Key: key,
           ContentType: contentType,
-          ...(constraints?.contentLength ? { ContentLength: constraints.contentLength } : {}),
+          ...(constraints?.contentLength !== undefined ? { ContentLength: constraints.contentLength } : {}),
           ...(constraints?.checksumSha256 ? { ChecksumSHA256: Buffer.from(constraints.checksumSha256, 'hex').toString('base64') } : {}),
         }),
         { expiresIn: Math.min(this.presignTtlSeconds(), constraints?.expiresIn ?? this.presignTtlSeconds()) },

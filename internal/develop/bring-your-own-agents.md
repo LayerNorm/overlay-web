@@ -935,7 +935,12 @@ Stack/request details are never returned. Responses are private and never cached
 purpose-separated manifest MAC binds each existing entry to its run, path and revision; deferred
 files have no mutation grant. The transaction also checks current ancestors, so a remote parent
 move invalidates the old child path. Retry receipts prevent repeated mutation after a lost response.
-Content uploads, current-head hosted acceptance, start-command issuance and runtime synchronization
+`upload` allocates an immutable expected size/hash and a staging-only signed PUT. `commit` reads
+all staged bytes within the file limit, verifies size/SHA-256, and writes that verified buffer to
+a separate server-only final key before the guarded Files transaction. Retrying a confirmed commit
+returns its original result without resealing. Signed size/checksum constraints include empty files.
+Only the configured store supplies reads/writes; there is no silent cross-provider fallback.
+Cleanup, current-head hosted acceptance, start-command issuance and runtime synchronization
 remain required before the persistent drive can be enabled.
 
 `Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
@@ -1276,5 +1281,5 @@ with fixed expected size/hash and an attempt-bound request receipt. Commits rech
 edit policy and quota and preserve newer revisions as named conflict copies. Retained object
 versions remain charged. Notes retain complete inline Markdown; edits beyond the inline prefix
 limit save a separate object-backed file so the Notes source is never truncated. Server-side
-byte verification/sealing, transport, cleanup and host synchronization are still required;
+byte verification/sealing and upload/commit transport are implemented locally. Cleanup and host synchronization are still required;
 these transactions are not an enabled write-through drive.

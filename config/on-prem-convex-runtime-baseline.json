@@ -362,6 +362,7 @@
     "src/server/agents/McpCallJournal.ts",
     "src/server/agents/agent-drive-http.ts",
     "src/server/agents/cloud/ConvexCloudAgentProvisionRepository.ts",
+    "src/server/agents/create-agent-drive-content-service.ts",
     "src/server/agents/index.ts",
     "src/server/agents/profiles/ConvexAgentProfileRepository.ts",
     "src/server/agents/provider-accounts/ConvexAgentProviderAccountRepository.ts",
@@ -451,7 +452,7 @@
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [
-    "convex/agents/agentDriveMetadata.ts",
+    "convex/agents/agentDriveUploads.ts",
     "convex/agents/connectedAgents.ts",
     "convex/agents/mcpCalls.ts",
     "convex/automations/automationRunner.ts",
@@ -465,6 +466,7 @@
     "convex/knowledge/knowledge.ts",
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",
+    "convex/lib/agentDriveFiles.ts",
     "convex/platform/usage.ts",
     "convex/webhooks/deliveryRunner.ts"
   ]

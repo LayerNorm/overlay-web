@@ -132,3 +132,26 @@ test('HTTP transport composes with real token and manifest verification, includi
   assert.equal((await invoke(download)).status, 403)
   assert.equal((await invoke({ action: 'manifest' })).status, 403)
 })
+
+test('upload and commit actions use the scoped write service and retain private response headers', async () => {
+  const f = fixture()
+  const seen: unknown[] = []
+  const uploadId = '45e2a73c-0b76-4ded-a655-6233689eaa61'
+  const dependencies = { ...f.dependencies, writes: () => ({
+    async intent(value: string | null, body: unknown) { assert.equal(value, token); seen.push(body); return { uploadId, state: 'pending' as const,
+      url: 'https://storage.test/staging', headers: { 'content-type': 'text/plain', 'x-amz-checksum-sha256': 'hash' }, sizeBytes: 0, expiresIn: 120 } },
+    async commit(value: string | null, body: unknown) { assert.equal(value, token); seen.push(body); return { fileId: 'file', updatedAt: 1,
+      name: 'report.txt', conflict: false, objectStored: true, sizeBytes: 0, sha256: 'a'.repeat(64) } },
+  }) }
+  const body = { action: 'upload', requestId: 'http-write-request', operation: { kind: 'create', name: 'report.txt' },
+    sha256: 'a'.repeat(64), sizeBytes: 0, mimeType: 'text/plain' }
+  const upload = await handleAgentDriveRequest(request(body), dependencies)
+  assert.equal(upload.status, 200)
+  assert.match(upload.headers.get('cache-control') ?? '', /private, no-store/)
+  assert.equal((await upload.json()).uploadId, uploadId)
+  assert.equal((await handleAgentDriveRequest(request({ action: 'commit', uploadId }), dependencies)).status, 200)
+  assert.equal((await handleAgentDriveRequest(request({ ...body, sizeBytes: 17 * 1024 * 1024 }), dependencies)).status, 400)
+  assert.equal((await handleAgentDriveRequest(request({ action: 'commit', uploadId, finalKey: 'untrusted' }), dependencies)).status, 400)
+  assert.equal(seen.length, 2)
+  assert.equal(f.calls, 0)
+})

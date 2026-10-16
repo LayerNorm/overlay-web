@@ -6,7 +6,8 @@ import { drivePathSegments } from '@layernorm/overlay-agent-bridge-protocol'
 import { agentDriveAuthorityArgs } from '@/shared/agents/agent-drive-authority'
 import { buildAgentDriveCandidates } from '@/shared/agents/agent-drive-manifest'
 import type { AgentDriveTokenClaims } from './agent-drive-token'
-import { driveMetadataBodySchema, driveMetadataEntrySchema, type DriveMetadataEntry, type DriveMetadataOperation, type DriveMetadataRequest, type DriveMetadataResult } from './agent-drive-metadata'
+import { driveMetadataBodySchema, driveMetadataEntrySchema, type DriveMetadataOperation, type DriveMetadataRequest, type DriveMetadataResult } from './agent-drive-metadata'
+import { driveMetadataMac, verifyDriveMetadataMac } from './agent-drive-entry-grants'
 import type { AgentDriveManifestRepository } from './AgentDriveManifestRepository'
 import { AgentDriveMaterializer, type AgentDriveManifestEntry } from './AgentDriveMaterializer'
 
@@ -55,7 +56,7 @@ export class AgentDriveManifestService {
     await repository.authorize()
     return { entries: entries.map(entry => ({ ...entry,
       ...(entry.kind === 'file' && entry.hydration === 'ready' ? { downloadMac: this.mac(claims, readyFileSchema.parse(entry)).toString('base64url') } : {}),
-      ...(entry.kind === 'folder' || entry.hydration === 'ready' ? { metadataMac: this.metadataMac(claims, driveMetadataEntrySchema.parse(entry)).toString('base64url') } : {}),
+      ...(entry.kind === 'folder' || entry.hydration === 'ready' ? { metadataMac: driveMetadataMac(this.dependencies.secret, claims, driveMetadataEntrySchema.parse(entry)).toString('base64url') } : {}),
     })) }
   }
 
@@ -89,19 +90,12 @@ export class AgentDriveManifestService {
     } else {
       const entry = driveMetadataEntrySchema.parse(operation.entry)
       drivePathSegments(entry.path)
-      const actual = Buffer.from(operation.metadataMac, 'base64url')
-      const expected = this.metadataMac(claims, entry)
-      if (actual.toString('base64url') !== operation.metadataMac || actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw Error('DRIVE_INVALID_METADATA')
+      verifyDriveMetadataMac(this.dependencies.secret, claims, entry, operation.metadataMac)
       commit = operation.kind === 'remove' ? { kind: 'remove', fileId: entry.fileId, path: entry.path, updatedAt: entry.updatedAt }
         : { kind: 'move', fileId: entry.fileId, path: entry.path, updatedAt: entry.updatedAt, name: operation.name, ...(operation.parentId ? { parentId: operation.parentId } : {}) }
     }
     // The mutation rechecks authority, edit policy and revision atomically with the receipt.
     return repository.metadata(request.requestId, commit)
-  }
-
-  private metadataMac(claims: AgentDriveTokenClaims, entry: DriveMetadataEntry): Buffer {
-    const authority = createHash('sha256').update(JSON.stringify(agentDriveAuthorityArgs(claims))).digest('hex')
-    return createHmac('sha256', this.dependencies.secret).update('overlay-agent-drive-metadata:v1.').update(authority).update(JSON.stringify(entry)).digest()
   }
 
   private async authorize(token: string | null) {

@@ -1,4 +1,10 @@
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
+import { createHash } from 'node:crypto'
+import { AgentDriveContentService, driveUploadRecordSchema, driveContentResultSchema } from '../src/server/agents/AgentDriveContentService'
+import { AgentDriveManifestService } from '../src/server/agents/AgentDriveManifestService'
+import { AgentDriveMaterializer } from '../src/server/agents/AgentDriveMaterializer'
+import { createAgentDriveTokens } from '../src/server/agents/agent-drive-token'
+vi.mock('server-only', () => ({}))
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
@@ -321,4 +327,63 @@ test('note writes preserve full inline Markdown; larger versions become object-b
   expect(copy).toMatchObject({ conflict: true, objectStored: true })
   expect(copy.fileId).not.toBe(note._id)
   expect((await f.convex.run(ctx => ctx.db.get(note._id)))?.content).toBe(text)
+})
+
+test('real drive transactions round-trip full object bytes despite staging races and a lost commit acknowledgement', async () => {
+  const f = await fixture()
+  const signingSecret = secret.padEnd(40, '0')
+  const tokens = createAgentDriveTokens({ secret: signingSecret })
+  const { serverSecret: _serverSecret, expiresAt, ...claims } = f.args
+  const token = tokens.mint(claims, expiresAt)
+  const store = new Map<string, Uint8Array>()
+  let stagingKey = ''
+  let sealedKey = ''
+  let seals = 0
+  let loseAck = true
+  const authorize = async () => { await f.convex.query(makeFunctionReference<'query'>('agents/agentDrive:authorizeByServer'), f.args) }
+  const service = new AgentDriveContentService({ secret: signingSecret, verifyToken: tokens.verify,
+    repository: () => ({ authorize,
+      intent: async input => driveUploadRecordSchema.parse(await f.convex.mutation(uploadIntent, { ...f.args, ...input })),
+      read: async uploadId => driveUploadRecordSchema.parse(await f.convex.query(uploadRead, { ...f.args, uploadId })),
+      commit: async input => {
+        const result = driveContentResultSchema.parse(await f.convex.mutation(uploadCommit, { ...f.args, ...input }))
+        if (loseAck) { loseAck = false; throw Error('simulated lost acknowledgement') }
+        return result
+      },
+    }), storage: {
+      checkBudget: async () => {},
+      uploadUrl: async (key, _mime, _size, _hash, ttl) => { stagingKey = key; expect(ttl).toBeLessThanOrEqual(120); return 'https://storage.test/staging-only' },
+      read: async key => { const bytes = store.get(key)?.slice(); if (!bytes) throw Error('missing staging'); store.set(key, new Uint8Array([255])); return bytes },
+      seal: async (key, bytes) => { seals++; sealedKey = key; store.set(key, bytes.slice()) },
+    },
+  })
+  const full = new TextEncoder().encode('🙂 Full canonical deliverable\n'.repeat(50000))
+  const sha256 = createHash('sha256').update(full).digest('hex')
+  const intent = await service.intent(token, { action: 'upload', requestId: 'real-upload-roundtrip',
+    operation: { kind: 'create', name: 'deliverable.txt' }, sizeBytes: full.length, sha256, mimeType: 'text/plain' })
+  expect(intent.state).toBe('pending')
+  expect(JSON.stringify(intent)).not.toContain('users/u/files/')
+  store.set(stagingKey, full)
+  await expect(service.commit(token, { action: 'commit', uploadId: intent.uploadId })).rejects.toThrow('lost acknowledgement')
+  const result = await service.commit(token, { action: 'commit', uploadId: intent.uploadId })
+  expect(result).toMatchObject({ conflict: false, objectStored: true, sha256, sizeBytes: full.length })
+  expect(seals).toBe(1)
+  expect(Buffer.from(store.get(sealedKey) ?? []).equals(Buffer.from(full))).toBe(true)
+  const file = await f.convex.run(ctx => ctx.db.get(result.fileId))
+  expect(new TextEncoder().encode(file?.content).length).toBeLessThan(full.length)
+  expect(file?.textInObjectStore).toBe(true)
+  // A fresh reader uses the actual Files pointer, never the searchable prefix.
+  const reader = new AgentDriveManifestService({ secret: signingSecret, verifyToken: tokens.verify,
+    repository: () => ({ authorize, page: async cursor => f.read(cursor === null ? {} : { cursor }),
+      file: async (fileId, updatedAt) => f.convex.query(makeFunctionReference<'query'>('agents/agentDrive:fileByServer'), { ...f.args, fileId, updatedAt }),
+      metadata: async () => { throw Error('unexpected metadata write') },
+    }), materializer: () => new AgentDriveMaterializer({
+      size: async source => source.kind === 'object' ? store.get(source.key)?.length ?? 0 : 0,
+      read: async source => { if (source.kind !== 'object') throw Error('expected canonical object'); return store.get(source.key)?.slice() ?? new Uint8Array() },
+    }),
+  })
+  const entry = (await reader.manifest(token)).entries.find(entry => entry.fileId === result.fileId)
+  if (!entry?.downloadMac) throw Error('Expected ready download')
+  const { downloadMac, ...downloadEntry } = entry
+  expect(Buffer.from(await reader.download(token, { entry: downloadEntry, downloadMac })).equals(Buffer.from(full))).toBe(true)
 })
