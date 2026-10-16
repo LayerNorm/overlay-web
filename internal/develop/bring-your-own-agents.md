@@ -1183,6 +1183,15 @@ and cancellation. Coordinator takeover requires the Workflow runtime to confirm 
 previous owner stopped, followed by a canonical compare-and-set. It does not start a
 second external writer.
 
+Lifecycle-v2 starts request `metadata.overlayPreparation: 1` on delivery. Supporting
+hosts emit fenced `session_preparing` receipts while credentials, drive hydration
+and provider initialization are pending. These renew a 90-second preparation lease
+without reporting a live provider or extending the task deadline. The two-minute
+claim window applies only until receipt; a lost preparation lease requires attention
+and cannot be revived by a late receipt. Older hosts ignore the request, and newer
+hosts send no preparation event to servers that did not request it. Starting work
+retains `starting` in the transcript rather than reconnect/Retry controls.
+
 An atomic start transaction reserves the first environment command sequence and
 writes a durable start intent. Workflow 4.8.9 commits its hook registration before
 claiming/dispatching. The existing minute reconciliation bridge retries starts and

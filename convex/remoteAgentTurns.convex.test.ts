@@ -722,6 +722,51 @@ async function durableFixture() {
   return { convex, seeded, call, lifecycle, started, events }
 }
 
+test('fresh-drive preparation survives the two-minute claim window without granting authority to stale startup', async () => {
+  const {convex, lifecycle, call, started, events} = await durableFixture()
+  const previous = process.env.OVERLAY_CONNECTED_AGENT_DRIVE
+  process.env.OVERLAY_CONNECTED_AGENT_DRIVE = '1'
+  try {
+    await convex.run(async ctx => {
+      const existing = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', agentId)).unique()
+      if (!existing) await ctx.db.insert('workspaceAgentDefinitions', {agentId, workspaceId, principalId: agentPrincipalId,
+        name: 'Drive agent', instructions: '', harness: 'codex', modelId: 'byo/codex', allowedToolIds: [], visibility: 'creator',
+        createdByPrincipalId: actorPrincipalId, invocationPolicy: 'mention', createdAt: now, updatedAt: now})
+    })
+    const owner = {runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1}
+    await lifecycle('claim', {...owner, now})
+    await lifecycle('advance', {...owner, now})
+    const authority = () => convex.query(makeFunctionReference<'query'>('agents/agentDrive:credentialAuthorityByServer'), {
+      serverSecret: secret, workspaceId, environmentId, runId: 'run-remote-turn', sessionId: 'session-remote-turn',
+      execution: {attemptId: 'session-remote-turn', generation: 1},
+    })
+    await authority()
+    const initial = await convex.run(async ctx => (await ctx.db.query('conversationMessages').collect()).find(row => row._id === started.messageId))
+    expect(initial?.parts).toContainEqual(expect.objectContaining({type: 'data-remote-agent-status', data: expect.objectContaining({state: 'starting'})}))
+    for (let sequence = 1; sequence <= 6; sequence++) {
+      const receipt = now + sequence * 50_000
+      await events([event(sequence, 'session_preparing', {})], receipt)
+      const state = await lifecycle('advance', {...owner, now: receipt})
+      expect(state).toMatchObject({phase: 'starting', lastPreparationAt: receipt, hardDeadlineAt: now + 3_600_000})
+      expect(state.lastHealthAt).toBeUndefined()
+      await authority()
+    }
+    const commands = await call<Array<{type: string}>>('claimCommandsByServer', {workspaceId, environmentId, now: now + 300_001, leaseMs: 5000, limit: 10})
+    expect(commands[0]?.type).toBe('start')
+    await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 350_000,
+      events: [{...event(7, 'session_preparing', {}), execution: {attemptId: 'session-remote-turn', generation: 0, hostBootId: 'old-boot'}}]})
+    expect(await lifecycle('advance', {...owner, now: now + 350_000})).toMatchObject({phase: 'starting', lastPreparationAt: now + 300_000})
+    const stale = await lifecycle('advance', {...owner, now: now + 390_000})
+    expect(stale).toMatchObject({phase: 'needs_attention', cause: 'preparation_health_required'})
+    await expect(authority()).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+    await events([event(7, 'session_preparing', {})], now + 390_001)
+    await expect(authority()).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+  } finally {
+    if (previous === undefined) delete process.env.OVERLAY_CONNECTED_AGENT_DRIVE
+    else process.env.OVERLAY_CONNECTED_AGENT_DRIVE = previous
+  }
+})
+
 test('durable API-exit intent survives and duplicate Workflow claims allow exactly one issuer', async () => {
   const { convex, lifecycle, call } = await durableFixture()
   const intents = await convex.run(ctx => ctx.db.query('agentRemoteRunIntents').withIndex('by_status_updatedAt', q => q.eq('status', 'pending')).collect())

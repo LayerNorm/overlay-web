@@ -874,6 +874,8 @@ export class ConnectedAgentControlPlaneService {
       }
       if (parsed.data.type === 'start') {
         this.assertWorkingDirectory(auth.environment, parsed.data.payload.workingDirectory)
+        // Per-command negotiation: older servers never request the new preparation event.
+        if (parsed.data.execution) parsed.data.payload.metadata.overlayPreparation = 1
         const mcp = parsed.data.payload.metadata.overlayMcp
         if (mcp !== undefined) {
           if (!mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string')

@@ -12,7 +12,7 @@ export const remoteLifecycleValidator = v.object({
   ].map(phase => v.literal(phase))),
   currentAttemptId: v.string(), executionGeneration: v.number(), coordinatorGeneration: v.number(),
   coordinatorId: v.optional(v.string()), hardDeadlineAt: v.number(), claimDeadlineAt: v.number(),
-  lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()),
+  lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()), lastPreparationAt: v.optional(v.number()),
   approval: v.optional(remoteApprovalValidator), approvals: v.optional(v.array(remoteApprovalValidator)),
   cause: v.optional(v.string()), cancelRequestedAt: v.optional(v.number()), recoveryOutcome: v.optional(v.union(v.literal('attached_live'), v.literal('restored'), v.literal('requires_new_attempt'), v.literal('unavailable'))),
 })
@@ -75,7 +75,7 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
   const message = await ctx.db.get(run.assistantMessageId)
   if (message && !options.deferMessageProjection) {
     const phase = result.state.phase
-    const visibleState = ['queued', 'waking', 'starting'].includes(phase) ? 'waiting' : phase
+    const visibleState = ['queued', 'waking'].includes(phase) ? 'waiting' : phase
     const parts = reconcileRemoteRequestParts((message.parts ?? []) as Array<Record<string, unknown>>, result.state, now).map(part => {
       if (part.type === 'data-remote-agent-status' && 'data' in part) return { ...part, data: { ...(part.data as Record<string, unknown>), state: visibleState, hardDeadlineAt: result.state.hardDeadlineAt } }
       return part

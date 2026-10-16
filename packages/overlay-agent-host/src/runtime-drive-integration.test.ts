@@ -3,11 +3,18 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import {setImmediate} from 'node:timers/promises'
 import type { AgentHostCommand, DriveCredentialsRequest, EventBatch, FilesystemGrant, HostCapabilities } from '@layernorm/overlay-agent-bridge-protocol'
 import type { AgentAdapter, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 import { AgentHostRuntime, type AgentHostRuntimeOptions } from './runtime.js'
 import { SqliteHostStateStore } from './state.js'
 import { ControlPlaneRequestError, type AgentControlPlaneClient } from './transport.js'
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {throw Error('not initialized')}
+  const promise = new Promise<T>(accept => {resolve = accept})
+  return {promise, resolve}
+}
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), 'runtime-drive-integration-'))
@@ -72,6 +79,37 @@ async function fixture() {
     async cleanup() { runtime.stopBackgroundUploads(); await runtime.flushOutbox(); state.close(); await rm(directory, { recursive: true, force: true }) },
   }
 }
+
+test('negotiated preparation stays fenced and visible while hydration blocks provider startup', async t => {
+  t.mock.timers.enable({apis: ['setInterval']})
+  const f = await fixture(), blocked = deferred<void>(), began = deferred<void>()
+  const drive = f.options.drive
+  assert.ok(drive?.create)
+  const create = drive.create
+  drive.create = async options => {began.resolve(); await blocked.promise; return create(options)}
+  f.command.payload.metadata.overlayPreparation = 1
+  try {
+    const pending = f.runtime.processCommand(f.command)
+    await began.promise
+    await f.runtime.flushOutbox()
+    assert.equal(f.starts.length, 0)
+    const preparing = f.events.flatMap(batch => batch.events).filter(event => event.type === 'session_preparing')
+    assert.equal(preparing.length, 1)
+    assert.equal(preparing[0].execution?.attemptId, 'attempt')
+    assert.ok(preparing[0].execution?.hostBootId)
+    t.mock.timers.tick(10_000)
+    await setImmediate()
+    await f.runtime.flushOutbox()
+    assert.equal(f.starts.length, 0)
+    assert.equal(f.events.flatMap(batch => batch.events).filter(event => event.type === 'session_preparing').length, 2)
+    blocked.resolve()
+    await pending
+    await f.runtime.flushOutbox()
+    assert.equal(f.starts.length, 1)
+    const started = f.events.flatMap(batch => batch.events).find(event => event.type === 'session_started')
+    assert.deepEqual(started?.execution, preparing[0].execution)
+  } finally {blocked.resolve(); await f.cleanup()}
+})
 
 test('runtime hydrates the fixed scope before provider start, then saves before terminal outbox delivery', async () => {
   const f = await fixture()

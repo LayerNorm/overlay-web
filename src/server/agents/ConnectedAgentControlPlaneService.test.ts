@@ -628,6 +628,7 @@ test('every delivered start binds MCP scope to its execution without extending e
         const { commands } = await poll
         assert.equal(commands[0]?.type, 'start')
         if (commands[0]?.type !== 'start') throw new Error('Expected a start command')
+        assert.equal(commands[0].payload.metadata.overlayPreparation, 1)
         const mcp = commands[0].payload.metadata.overlayMcp
         assert.ok(mcp && typeof mcp === 'object' && 'token' in mcp && typeof mcp.token === 'string')
         const claims = verifyAgentMcpToken(mcp.token)

@@ -89,6 +89,13 @@ export function projectRemoteAgentEvents(input: {
 
   for (const event of input.events) {
     if (terminal) break
+    if (event.type === 'session_preparing') {
+      removeWaiting()
+      sessionStatus = 'starting'
+      runStatus = 'queued'
+      parts = upsertStatusPart(parts, input, 'starting')
+      continue
+    }
     if (event.type === 'session_started') {
       removeWaiting()
       remoteSessionId = stringValue(event.payload.remoteSessionId)

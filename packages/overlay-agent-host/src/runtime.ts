@@ -16,6 +16,8 @@ import { RuntimeDriveController } from './runtime-drive-controller.js'
 import { HostHeartbeat } from './host-heartbeat.js'
 import { updateHostCapabilities } from './host-capabilities.js'
 import { PendingHostPrompts, quiesceHostRuns } from './runtime-shutdown.js'
+import {withRunPreparation} from './run-preparation.js'
+import {fetchProviderRunCredentials} from './provider-run-credentials.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
@@ -23,7 +25,7 @@ import { createRunStream } from './run-stream.js'
 import { StructuredLogger } from './logger.js'
 import { SqliteHostStateStore } from './state.js'
 import type { AgentControlPlaneClient } from './transport.js'
-import { ControlPlaneRequestError, nextReconnectDelay } from './transport.js'
+import { nextReconnectDelay } from './transport.js'
 
 export type AgentHostRuntimeOptions = {
   /** Opt in only against a server supporting the negotiated lifecycle extension. */
@@ -351,6 +353,16 @@ export class AgentHostRuntime {
   }
 
   private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+    const execution = this.executions.get(command.runId)
+    return withRunPreparation({
+      enabled: Boolean(this.options.durableLifecycle && command.execution && command.payload.metadata.overlayPreparation === 1),
+      active: () => !this.shuttingDown,
+      emit: () => this.emit(command.runId, {type: 'session_preparing', payload: {}}, execution),
+      onError: error => this.logger.warn('run preparation heartbeat deferred', {runId: command.runId, error: safeError(error)}),
+    }, () => this.initializeSession(command))
+  }
+
+  private async initializeSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
     const settings = agentSettingsSchema.parse(command.payload.metadata)
     const offset = command.payload.metadata.recoveryTextOffset
     if (offset !== undefined && (command.payload.fresh !== true || typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0))
@@ -450,32 +462,10 @@ export class AgentHostRuntime {
     return session
   }
 
-  /**
-   * The provider credentials for a run. `undefined` means the run uses none
-   * (no account bound, or this host does not fetch them); 'unavailable' means
-   * the run cannot start, and the failure has already been reported.
-   */
-  private async runCredentials(runId: string, requested: boolean): Promise<Record<string, string> | undefined | 'unavailable'> {
-    const fetchCredentials = this.options.controlPlane.fetchRunCredentials?.bind(this.options.controlPlane)
-    // Only a host holding the run-credentials method (Overlay Cloud) asks, and only when the run says it has an account.
-    if (!fetchCredentials || !this.options.fetchRunCredentials || !requested) return undefined
-    try {
-      return await fetchCredentials(runId)
-    } catch (error) {
-      const code = error instanceof ControlPlaneRequestError ? error.code : undefined
-      // No account on this binding: nothing to inject, the run proceeds as configured.
-      if (code === 'provider_account_missing') return undefined
-      const needsSignIn = code === 'account_needs_reauth' || code === 'account_unavailable'
-      await this.emit(runId, { type: 'failed', payload: {
-        code: needsSignIn ? 'auth_required' : 'credentials_unavailable',
-        message: needsSignIn
-          ? 'This agent’s account needs to be reconnected in Settings → Agent accounts.'
-          : 'The agent could not get its credentials. Try again.',
-        retryable: !needsSignIn,
-      } })
-      this.logger.warn('run credentials unavailable', { runId, code: code ?? 'unknown' })
-      return 'unavailable'
-    }
+  private runCredentials(runId: string, requested: boolean) {
+    const execution = this.executions.get(runId)
+    return fetchProviderRunCredentials({runId, requested: Boolean(this.options.fetchRunCredentials && requested),
+      client: this.options.controlPlane, emit: event => this.emit(runId, event, execution), logger: this.logger})
   }
 
   private requireAdapter(adapterId: string): AgentAdapter {

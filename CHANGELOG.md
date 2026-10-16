@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep fresh-machine drive hydration authorized through a fenced preparation lease, without reporting provider execution before initialization finishes.
+
 - Run ordinary CI test shards on Node 24 so built Agent Host CLI contracts exercise its supported runtime.
 
 - Confirm ACP process-group termination on macOS when only exited zombies remain, while retaining live permission failures.

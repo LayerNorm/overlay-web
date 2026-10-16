@@ -269,6 +269,7 @@ export const agentHeartbeatPayloadSchema = z.object({ quietMs: z.number().int().
 }).strict()
 
 export const agentHostEventSchema = z.discriminatedUnion('type', [
+  eventBase.extend({ type: z.literal('session_preparing'), payload: z.object({}).strict() }).strict(),
   eventBase.extend({ type: z.literal('process_observation'), payload: z.object({ process: z.enum(['live', 'lost', 'unknown']), recoveryOutcome: z.enum(['attached_live', 'restored', 'requires_new_attempt', 'unavailable']).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('session_started'), payload: z.object({ remoteSessionId: identifier, adapterId: identifier }).strict() }).strict(),
   eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional(), offset: z.number().int().nonnegative().optional() }).strict() }).strict(),

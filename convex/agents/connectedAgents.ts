@@ -735,6 +735,7 @@ export const controlRemoteAgentTurnByServer = mutation({
         delete nextState.approvals
         delete nextState.cancelRequestedAt
         delete nextState.lastHealthAt
+        delete nextState.lastPreparationAt
         await ctx.db.patch(run._id, { remoteLifecycle: nextState, status: remoteRunCoarseStatus(nextState.phase), updatedAt: now })
         // A replacement cannot leave an executable card from the old process ahead
         // of its new requests. Preserve answered decisions and close only old waits.
@@ -2279,7 +2280,8 @@ export const claimCommandsByServer = mutation({
       // Fresh-attempt starts are user-authorized recovery, not queue leftovers: the
       // initial start's claim deadline must not neutralize them into a shutdown.
       const isFreshStart = row.type === 'start' && (row.payload as { fresh?: unknown } | null)?.fresh === true
-      if (run?.remoteLifecycle && row.type === 'start' && !isFreshStart && args.now >= run.remoteLifecycle.claimDeadlineAt) {
+      if (run?.remoteLifecycle && row.type === 'start' && !isFreshStart
+        && run.remoteLifecycle.lastPreparationAt === undefined && args.now >= run.remoteLifecycle.claimDeadlineAt) {
         await applyRemoteFact(ctx, run, { type: 'observe' }, args.now)
         neutralized.add(row.commandId)
       }
@@ -2580,6 +2582,7 @@ export const applyRemoteEventsByServer = mutation({
         if (delivered?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: delivered.state }
       }
       const fact = event.type === 'session_started' ? { type: 'started' as const }
+        : event.type === 'session_preparing' ? {type: 'preparing' as const}
         : event.type === 'process_observation' && event.payload.process === 'live' && event.payload.recoveryOutcome === 'attached_live'
           ? { type: 'recover' as const, recoveryOutcome: 'attached_live' as const }
         : event.type === 'heartbeat' || event.type === 'process_observation' ? { type: 'health' as const, process: event.payload.process === 'live' ? 'live' as const : event.payload.process === 'lost' ? 'lost' as const : 'unknown' as const }

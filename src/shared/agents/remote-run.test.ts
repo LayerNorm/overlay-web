@@ -5,6 +5,25 @@ const state = (): RemoteRunState => ({ version: 2, revision: 0, phase: 'running'
 function apply(s: RemoteRunState, f: RemoteRunFact, now = 1000) {
   return reduceRemoteRun(s, s.revision, { attemptId: s.currentAttemptId, executionGeneration: s.executionGeneration, coordinatorGeneration: s.coordinatorGeneration }, f, now)
 }
+test('a received command can hydrate beyond its claim deadline without pretending the provider started', () => {
+  let s: RemoteRunState = {...state(), phase: 'starting'}
+  for (let now = 10_000; now <= 600_000; now += 10_000) {
+    s = apply(s, {type: 'preparing'}, now).state
+    s = apply(s, {type: 'observe'}, now).state
+    assert.equal(s.phase, 'starting')
+    assert.equal(s.lastHealthAt, undefined, 'preparation cannot attest to an executing provider')
+    assert.equal(s.hardDeadlineAt, 86_400_000)
+  }
+  assert.equal(apply(s, {type: 'observe'}, 690_000).state.cause, 'preparation_health_required')
+  const started = apply(s, {type: 'started'}, 600_001).state
+  assert.equal(started.phase, 'running')
+  assert.equal(started.lastPreparationAt, undefined)
+  assert.equal(apply(started, {type: 'preparing'}, 600_002).applied, false)
+  const missed = apply({...state(), phase: 'starting'}, {type: 'observe'}, 120_000).state
+  assert.equal(missed.cause, 'command_unclaimed')
+  assert.equal(apply(missed, {type: 'preparing'}, 120_001).applied, false, 'a late heartbeat cannot resurrect a refused startup')
+  assert.equal(apply(s, {type: 'preparing'}, s.hardDeadlineAt).state.phase, 'cancelling')
+})
 test('healthy approval wait beyond 15 minutes survives text and observation; deadline never resets', () => {
   let s = apply(state(), { type: 'request', requestKey: 'clone', kind: 'permission', expiresAt: 3_600_000 }).state
   for (let now = 30_000; now <= 1_200_000; now += 30_000) {

@@ -21,6 +21,7 @@ export type RemoteRunState = {
   cancelRequestedAt?: number
   lastHealthAt?: number
   lastProgressAt?: number
+  lastPreparationAt?: number
   approval?: RemoteRunApproval
   approvals?: RemoteRunApproval[]
   cause?: string
@@ -32,6 +33,7 @@ export type RemoteRunFact =
   | { type: 'wake' }
   | { type: 'dispatch' }
   | { type: 'started' }
+  | { type: 'preparing' }
   | { type: 'health'; process: 'live' | 'lost' | 'unknown' }
   | { type: 'progress' }
   | { type: 'request'; requestKey: string; kind: 'permission' | 'elicitation'; expiresAt: number }
@@ -104,11 +106,16 @@ const factHandlers: FactHandlers = {
     if (!current.coordinatorId || !['queued', 'waking', 'starting'].includes(current.phase)) return 'conflict'
     next.phase = 'starting'
   },
+  preparing({current, next, now}) {
+    if (!['starting', 'recovering'].includes(current.phase)) return 'conflict'
+    next.lastPreparationAt = now
+  },
   started({ current, next, now }) {
     if (!['starting', 'recovering'].includes(current.phase)) return 'conflict'
     next.phase = phaseAfterAttach(current)
     delete next.cause
     next.lastHealthAt = now
+    delete next.lastPreparationAt
   },
   health({ current, next, now }, fact) {
     if (fact.process === 'live') {
@@ -149,7 +156,7 @@ const factHandlers: FactHandlers = {
     replaceApprovals(next, requests.map(request => request.requestKey === fact.requestKey ? { ...request, delivered: true } : request))
     next.phase = phaseAfterAttach(next)
   },
-  recovery_requested({ next }) { next.phase = 'recovering' },
+  recovery_requested({ next }) { next.phase = 'recovering'; delete next.lastPreparationAt },
   recover({ current, next, now }, fact) {
     next.recoveryOutcome = fact.recoveryOutcome
     if (fact.recoveryOutcome === 'attached_live') {
@@ -169,6 +176,9 @@ const factHandlers: FactHandlers = {
     if (current.phase === 'needs_attention' && current.cause !== 'process_health_required') return 'unchanged'
     if (pendingRemoteApprovals(current).some(request => now >= request.expiresAt)) {
       next.phase = 'cancelling'; next.cause = 'approval_expired'; next.cancelRequestedAt = now
+    } else if (current.lastPreparationAt !== undefined && ['starting', 'recovering'].includes(current.phase)) {
+      if (now - current.lastPreparationAt < 90_000) return 'unchanged'
+      needsAttention(next, 'preparation_health_required')
     } else if (['queued', 'waking', 'starting'].includes(current.phase) && now >= current.claimDeadlineAt) {
       needsAttention(next, 'command_unclaimed')
     } else if (!['queued', 'waking', 'starting'].includes(current.phase) && now - (current.lastHealthAt ?? 0) >= 90_000) needsAttention(next, 'process_health_required')
