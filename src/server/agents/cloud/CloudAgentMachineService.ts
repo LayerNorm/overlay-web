@@ -393,6 +393,35 @@ export class CloudAgentMachineService {
       return 'unavailable'
     }
     if (status !== 'running') await machine.resume()
+    await this.restartManagedHost(machine, lease, args)
+    return status === 'running' ? 'running' : 'resumed'
+  }
+
+  /** The callback must persist the stopped-machine fence and authorize its queued restoration before resume. */
+  async resumeStoppedExecution(args: {workspaceId: string; environmentId: string;
+    authorize: (proof: {leaseId: string; providerReference: string; observedAt: number}) => Promise<boolean>
+  }): Promise<'resumed' | 'unavailable'> {
+    const scope = {workspaceId: args.workspaceId, environmentId: args.environmentId}
+    const lease = await this.dependencies.repository.getActiveSandboxLease(scope)
+    // Only Boat's disk-only stop/resume contract proves that the previous OS processes cannot return.
+    if (!lease?.providerReference || lease.status !== 'running' || lease.provider !== 'box') return 'unavailable'
+    const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, {resume: false})
+    if (await machine.status() !== 'stopped') return 'unavailable'
+    if (!await args.authorize({leaseId: lease.id, providerReference: lease.providerReference, observedAt: this.now()})) return 'unavailable'
+    if (!await this.ownsRecoveryMachine(scope, lease) || await machine.status() !== 'stopped') return 'unavailable'
+    await machine.resume()
+    if (!await this.ownsRecoveryMachine(scope, lease)) return 'unavailable'
+    await this.restartManagedHost(machine, lease, scope)
+    return 'resumed'
+  }
+
+  private async ownsRecoveryMachine(args: {workspaceId: string; environmentId: string}, expected: AgentSandboxLease) {
+    const current = await this.dependencies.repository.getActiveSandboxLease(args)
+    return current?.id === expected.id && current.status === 'running' && current.provider === expected.provider
+      && current.providerReference === expected.providerReference
+  }
+
+  private async restartManagedHost(machine: SandboxInstance, lease: AgentSandboxLease, args: {workspaceId: string; environmentId: string}) {
     const hostingAuthFile = lease.usage?.previewHostingAccessVersion === 1 ? await prepareCloudAgentPreviewAccess(machine) : undefined
     await this.runDetached(machine, cloudAgentStopHostCommand())
     await this.runDetached(machine, cloudAgentRunCommand(process.env, hostingAuthFile))
@@ -403,7 +432,6 @@ export class CloudAgentMachineService {
       now: this.now(),
       idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
     })
-    return status === 'running' ? 'running' : 'resumed'
   }
 
   /** Stop a machine without waking it; only a provider state readback proves isolation. */

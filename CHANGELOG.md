@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Bind recovery stop receipts to the original execution and machine lease, rejecting stale or replacement-machine evidence.
+- Bind recovery stop receipts to the original execution and machine lease, and require authorization before resuming that exact machine.
 
 - Preserve an unconfirmed native connection after a close error, block replacement prompts and allow Stop to retry.
 
