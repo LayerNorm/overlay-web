@@ -128,15 +128,28 @@ test('Preview provision and resume prepare private access before launching the h
   const previous = new Map(Object.keys(preview).map(key => [key, process.env[key]]))
   Object.assign(process.env, preview)
   try {
-    for (const mode of ['provision', 'resume', 'already-online']) {
-      const f = fakeMachine(mode === 'resume' ? 'stopped' : 'running'), order: string[] = []
+    for (const mode of ['provision', 'resume', 'legacy-resume', 'already-online']) {
+      const resuming = mode === 'resume' || mode === 'legacy-resume'
+      const f = fakeMachine(resuming ? 'stopped' : 'running'), order: string[] = []
       const write = f.machine.writeFiles.bind(f.machine), run = f.machine.runCommand.bind(f.machine)
       f.machine.writeFiles = async files => {order.push('private-access'); assert.equal(files[0].mode, 0o600); await write(files)}
       f.machine.runCommand = async request => {order.push('command'); return run(request)}
-      const {service} = deps(f.machine, mode === 'resume' ? {env: environment({status: 'offline'})} : {})
+      const lease: AgentSandboxLease = {id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', status: 'running',
+        provider: 'box', providerReference: 'bx_agent', reservedUntil: 10000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0,
+        usage: mode === 'resume' ? {previewHostingAccessVersion: 1} : {}}
+      const {service, log} = deps(f.machine, resuming ? {env: environment({status: 'offline'}), lease} : {})
       if (mode === 'provision') await service.provision({...provisionArgs, serverUrl: preview.NEXT_PUBLIC_APP_URL})
       else await service.wake({workspaceId: 'ws', environmentId: 'env-1'})
       if (mode === 'already-online') {assert.deepEqual(order, []); continue}
+      if (mode === 'legacy-resume') {
+        assert.deepEqual(f.written, [])
+        assert.ok(f.commands.every(command => !command.includes('--hosting-auth-file')))
+        continue
+      }
+      if (mode === 'provision') {
+        const created = log.find(([kind]) => kind === 'lease')?.[1]
+        assert.partialDeepStrictEqual(created, {usage: {previewHostingAccessVersion: 1}})
+      }
       assert.equal(order[0], 'private-access')
       assert.deepEqual(f.written, [CLOUD_AGENT_PREVIEW_ACCESS_PATH])
       assert.ok(f.commands.some(command => command.includes(`--hosting-auth-file '${CLOUD_AGENT_PREVIEW_ACCESS_PATH}'`)))

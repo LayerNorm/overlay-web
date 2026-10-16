@@ -130,6 +130,7 @@ export class CloudAgentMachineService {
       })
       const lease = await this.createLease(args.workspaceId, environment.id, runtime.provider, machine.reference, {
         resources, adapterId: args.adapterId, agentId: args.agentId, image: this.dependencies.image ?? cloudAgentImageFromEnv(),
+        ...(hostingAuthFile ? {previewHostingAccessVersion: 1 as const} : {}),
       })
       const binding = await this.bindWhenOnline({ ...args, environmentId: environment.id })
       await this.dependencies.audit.record({
@@ -392,7 +393,7 @@ export class CloudAgentMachineService {
       return 'unavailable'
     }
     if (status !== 'running') await machine.resume()
-    const hostingAuthFile = await prepareCloudAgentPreviewAccess(machine)
+    const hostingAuthFile = lease.usage?.previewHostingAccessVersion === 1 ? await prepareCloudAgentPreviewAccess(machine) : undefined
     await this.runDetached(machine, cloudAgentStopHostCommand())
     await this.runDetached(machine, cloudAgentRunCommand(process.env, hostingAuthFile))
     await this.dependencies.repository.patchSandboxLeaseUsage({
@@ -425,7 +426,7 @@ export class CloudAgentMachineService {
     environmentId: string,
     provider: string,
     providerReference: string,
-    details: { resources: unknown; adapterId: string; agentId: string; image: string },
+    details: { resources: unknown; adapterId: string; agentId: string; image: string; previewHostingAccessVersion?: 1 },
   ): Promise<AgentSandboxLease> {
     const now = this.now()
     const created = await this.dependencies.repository.createSandboxLease({

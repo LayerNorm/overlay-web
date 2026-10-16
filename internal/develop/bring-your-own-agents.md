@@ -550,6 +550,9 @@ hosting access stays out of provider environment/configuration and response head
 authentication, device signing and run fences still apply. Production never receives this file.
 Candidate source tests do not prove unattended enrollment: the compatible candidate image must
 pass fresh-machine Preview provisioning and resume without a manual shim before activation.
+Only leases enrolled through this path record `previewHostingAccessVersion: 1` and receive
+a new access file on restart. Older leases retain their original restart path until explicitly
+upgraded, so an older host cannot leave a newly delivered hosting file unconsumed.
 An Overlay Cloud agent uses the same connected-agent protocol and host:
 
 - **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,
