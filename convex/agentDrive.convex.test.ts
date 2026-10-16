@@ -398,6 +398,25 @@ test('upload cleanup removes abandoned bytes and staging while preserving a comm
   expect(await f.convex.run(async ctx => (await ctx.db.query('subscriptions').withIndex('by_userId', q => q.eq('userId', 'u')).unique())?.overlayStorageBytesUsed)).toBe(first.sizeBytes)
 })
 
+test('metadata receipts retain the complete execution retry window and migrate older records before pruning', async () => {
+  const f = await fixture()
+  const command = { ...f.args, requestId: 'retained-metadata-001', operation: { kind: 'mkdir', name: 'kept' } }
+  const result = await f.convex.mutation(metadataRef, command)
+  const receipt = await f.convex.run(ctx => ctx.db.query('agentDriveMetadataReceipts').unique())
+  expect(receipt?.retireAt).toBeGreaterThan(f.args.expiresAt + 48 * 60 * 60_000)
+  await f.convex.mutation(cleanupClaim, { serverSecret: secret, claim: 'cleanup-live-receipt' })
+  expect(await f.convex.mutation(metadataRef, command)).toEqual(result)
+  if (!receipt) throw Error('missing receipt')
+  await f.convex.run(ctx => ctx.db.patch(receipt._id, { retireAt: undefined }))
+  await f.convex.mutation(cleanupClaim, { serverSecret: secret, claim: 'cleanup-legacy-receipt' })
+  const migrated = await f.convex.run(ctx => ctx.db.get(receipt._id))
+  expect(migrated?.retireAt).toBeGreaterThanOrEqual(receipt.createdAt + 7 * 24 * 60 * 60_000)
+  await f.convex.run(ctx => ctx.db.patch(receipt._id, { retireAt: 1 }))
+  await f.convex.mutation(cleanupClaim, { serverSecret: secret, claim: 'cleanup-expired-receipt' })
+  expect(await f.convex.run(ctx => ctx.db.get(receipt._id))).toBeNull()
+  expect(await f.convex.run(ctx => ctx.db.get(result.fileId))).toMatchObject({ name: 'kept', type: 'folder' })
+})
+
 test('commit rechecks scope, current attempt, membership and storage quota before publishing a pointer', async () => {
   const f = await fixture()
   const input = writeInput()

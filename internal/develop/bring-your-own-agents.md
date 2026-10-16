@@ -1288,9 +1288,9 @@ release are transactional.
 Upload intents pre-register both staging and final keys, with zero additional quota release,
 for cleanup after the complete execution deadline plus one day. Cleanup preserves referenced
 final objects even when commit responses were lost. Upload receipts and per-run budgets remain
-through the hard deadline plus two days, then prune in bounded batches. Metadata-receipt
-retention remains pending. Notes retain complete inline Markdown; edits beyond the inline prefix
+through the hard deadline plus two days, then prune in bounded batches. Metadata receipts use
+the same retention; older receipts migrate in bounded pages with at least seven days and the
+complete session deadline preserved. Notes retain complete inline Markdown; edits beyond the inline prefix
 limit save a separate object-backed file so the Notes source is never truncated. Server-side
-byte verification/sealing and upload/commit transport are implemented locally. Metadata-receipt
-retention and host synchronization are still required; these transactions are not an enabled
+byte verification/sealing and upload/commit transport are implemented locally. Credential issuance and host synchronization are still required; these transactions are not an enabled
 write-through drive.

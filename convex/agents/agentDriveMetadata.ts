@@ -78,7 +78,8 @@ export const commitByServer = mutation({
       result = { fileId: file._id, updatedAt }
     }
     await ctx.db.insert('agentDriveMetadataReceipts', { runId: args.runId, sessionId: args.sessionId, requestId: args.requestId,
-      attemptId: args.execution?.attemptId, generation: args.execution?.generation, fingerprint, result, createdAt: Date.now() })
+      attemptId: args.execution?.attemptId, generation: args.execution?.generation, fingerprint, result, createdAt: Date.now(),
+      retireAt: authority.hardDeadlineAt + 48 * 60 * 60_000 })
     return result
   },
 })

@@ -1624,8 +1624,8 @@ export default defineSchema({
     runId: v.string(), sessionId: v.string(), requestId: v.string(),
     attemptId: v.optional(v.string()), generation: v.optional(v.number()),
     fingerprint: v.string(), result: v.object({ fileId: v.id('files'), updatedAt: v.number() }),
-    createdAt: v.number(),
-  }).index('by_runId_requestId', ['runId', 'requestId']),
+    createdAt: v.number(), retireAt: v.optional(v.number()),
+  }).index('by_runId_requestId', ['runId', 'requestId']).index('by_retireAt', ['retireAt']),
 
   files: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
