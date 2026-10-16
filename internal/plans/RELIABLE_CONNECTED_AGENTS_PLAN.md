@@ -1,11 +1,17 @@
 # Reliable connected agents
 
-Status: Phase 0 implemented on `codex/reliable-connected-agents` (pending preview QA); Phases 1–5 not started.
+Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation in progress; Phases 2–5 pending.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
 mockup [`mockups/reliable-agents-mockup.html`](./mockups/reliable-agents-mockup.html),
 smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agent-long-horizon/).
+
+## Progress
+
+- Phase 0: required CI passes on the current preview. Real host/API counters and rendered preview QA are being checked; provider quota currently prevents a successful subscription smoke. Historical production error details were redacted, so their underlying causes remain unproven.
+- Phase 1: byte-budget outbox packing, coalescing and background uploads inherited from the previous session; cancellation preservation, retry durability and regression coverage are in progress.
+- All later acceptance items remain unchecked until verified through the preview.
 
 ## Outcome
 
