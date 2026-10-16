@@ -234,6 +234,8 @@ test('a moved ancestor invalidates a hydrated child path even when its own revis
 const uploadIntent = makeFunctionReference<'mutation'>('agents/agentDriveUploads:intentByServer')
 const uploadCommit = makeFunctionReference<'mutation'>('agents/agentDriveUploads:commitByServer')
 const uploadRead = makeFunctionReference<'query'>('agents/agentDriveUploads:readByServer')
+const cleanupClaim = makeFunctionReference<'mutation'>('agents/agentDriveCleanup:claimByServer')
+const cleanupAck = makeFunctionReference<'mutation'>('agents/agentDriveCleanup:acknowledgeByServer')
 const writeHash = 'a'.repeat(64)
 function writeInput(sequence = 1) {
   return { requestId: `write-request-${String(sequence).padStart(4, '0')}`,
@@ -286,6 +288,71 @@ test('stale revisions and colliding creates save distinct conflict copies while 
   expect(await f.convex.mutation(uploadCommit, { ...f.args, uploadId: collision.uploadId,
     verifiedSha256: writeHash, verifiedSizeBytes: collision.sizeBytes, textPrefix: 'collision' }))
     .toMatchObject({ name: 'report (agent 2).txt', conflict: true })
+})
+
+test('superseded drive versions remain charged through retention, shared references and cleanup retries', async () => {
+  const f = await fixture()
+  const first = writeInput()
+  const original = await f.convex.mutation(uploadIntent, { ...f.args, ...first })
+  const initial = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: first.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: first.sizeBytes, textPrefix: 'first' })
+  const next = { ...writeInput(2), operation: { kind: 'replace', fileId: initial.fileId, path: 'report.txt', updatedAt: initial.updatedAt } }
+  await f.convex.mutation(uploadIntent, { ...f.args, ...next })
+  await f.convex.mutation(uploadCommit, { ...f.args, uploadId: next.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: next.sizeBytes, textPrefix: 'new version' })
+  const claim = { serverSecret: secret, claim: 'cleanup-attempt-0001' }
+  expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [], convexDeleted: 0 })
+  const retired = await f.convex.run(async ctx => {
+    const row = await ctx.db.query('agentDriveRetiredObjects').unique()
+    if (!row) throw Error('retirement must be atomic with replacement')
+    await ctx.db.patch(row._id, { nextAttemptAt: 0 })
+    return row
+  })
+  const shared = await f.convex.run(ctx => ctx.db.insert('files', { userId: 'u', workspaceId: 'w', name: 'archived-copy.txt',
+    type: 'file', kind: 'upload', r2Key: original.finalKey, archivedAt: Date.now(), sizeBytes: first.sizeBytes, createdAt: Date.now(), updatedAt: Date.now() }))
+  expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [], convexDeleted: 0 })
+  await f.convex.run(async ctx => { await ctx.db.delete(shared); await ctx.db.patch(retired._id, { nextAttemptAt: 0 }) })
+  await expect(f.convex.mutation(cleanupClaim, { ...claim, serverSecret: 'wrong' })).rejects.toThrow('Unauthorized')
+  expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [{ id: retired._id, key: original.finalKey }], convexDeleted: 0 })
+  expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [], convexDeleted: 0 })
+  const usage = () => f.convex.run(async ctx => (await ctx.db.query('subscriptions').withIndex('by_userId', q => q.eq('userId', 'u')).unique())?.overlayStorageBytesUsed)
+  expect(await usage()).toBe(first.sizeBytes + next.sizeBytes)
+  // A crashed worker leaves its claim retryable; its late acknowledgement cannot win a newer claim.
+  await f.convex.run(ctx => ctx.db.patch(retired._id, { nextAttemptAt: 0 }))
+  const retry = { ...claim, claim: 'cleanup-attempt-0002' }
+  expect((await f.convex.mutation(cleanupClaim, retry)).objects).toHaveLength(1)
+  expect(await f.convex.mutation(cleanupAck, { ...claim, id: retired._id })).toBe(false)
+  expect(await usage()).toBe(first.sizeBytes + next.sizeBytes)
+  expect(await f.convex.mutation(cleanupAck, { ...retry, id: retired._id })).toBe(true)
+  expect(await f.convex.mutation(cleanupAck, { ...retry, id: retired._id })).toBe(true)
+  expect(await usage()).toBe(next.sizeBytes)
+  const current = await f.convex.run(ctx => ctx.db.get(initial.fileId))
+  expect(current?.content).toBe('new version')
+  expect(current?.r2Key).not.toBe(original.finalKey)
+})
+
+test('retired Convex blobs delete transactionally only after their last Files reference disappears', async () => {
+  const f = await fixture()
+  const stored = await f.convex.run(async ctx => {
+    const storageId = await ctx.storage.store(new Blob(['retained']))
+    const fileId = await ctx.db.insert('files', { userId: 'u', workspaceId: 'w', name: 'retained.txt', type: 'file', kind: 'upload',
+      storageId, sizeBytes: 8, createdAt: Date.now(), updatedAt: Date.now(), deletedAt: Date.now() })
+    await ctx.db.insert('agentDriveRetiredObjects', { ownerUserId: 'u', sizeBytes: 8, source: { kind: 'convex', storageId },
+      retiredAt: 0, nextAttemptAt: 0, state: { kind: 'waiting' } })
+    await ctx.db.insert('subscriptions', { userId: 'u', overlayStorageBytesUsed: 8 })
+    return { storageId, fileId }
+  })
+  const claim = { serverSecret: secret, claim: 'cleanup-convex-attempt' }
+  expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [], convexDeleted: 0 })
+  expect(await f.convex.run(async ctx => await (await ctx.storage.get(stored.storageId))?.text())).toBe('retained')
+  await f.convex.run(async ctx => {
+    await ctx.db.delete(stored.fileId)
+    const retired = await ctx.db.query('agentDriveRetiredObjects').unique()
+    if (retired) await ctx.db.patch(retired._id, { nextAttemptAt: 0 })
+  })
+  expect(await f.convex.mutation(cleanupClaim, claim)).toEqual({ objects: [], convexDeleted: 1 })
+  expect(await f.convex.run(async ctx => await ctx.storage.get(stored.storageId) === null)).toBe(true)
+  expect(await f.convex.run(async ctx => (await ctx.db.query('subscriptions').withIndex('by_userId', q => q.eq('userId', 'u')).unique())?.overlayStorageBytesUsed)).toBe(0)
 })
 
 test('commit rechecks scope, current attempt, membership and storage quota before publishing a pointer', async () => {

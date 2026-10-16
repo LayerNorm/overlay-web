@@ -1279,7 +1279,7 @@ newly packed batch after an upgrade only within that stream's attempted watermar
 Drive write transactions allocate a distinct staging key and immutable final version key,
 with fixed expected size/hash and an attempt-bound request receipt. Commits recheck file/parent
 edit policy and quota and preserve newer revisions as named conflict copies. Retained object
-versions remain charged. Notes retain complete inline Markdown; edits beyond the inline prefix
+versions are queued atomically for retirement and remain charged for at least 24 hours. The existing authenticated artifact-cleanup tick processes at most 32 retired versions, checks indexed Files references (including archived/deleted rows), and releases quota only after confirmed deletion. Object-store deletion requires absence readback and a matching retryable claim; Convex blob deletion and quota release are transactional. Staging/abandoned-upload cleanup remains pending. Notes retain complete inline Markdown; edits beyond the inline prefix
 limit save a separate object-backed file so the Notes source is never truncated. Server-side
 byte verification/sealing and upload/commit transport are implemented locally. Cleanup and host synchronization are still required;
 these transactions are not an enabled write-through drive.

@@ -1605,6 +1605,14 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
 
+  agentDriveRetiredObjects: defineTable({
+    ownerUserId: v.string(), sizeBytes: v.number(), retiredAt: v.number(), nextAttemptAt: v.number(),
+    source: v.union(v.object({ kind: v.literal('object'), key: v.string() }),
+      v.object({ kind: v.literal('convex'), storageId: v.id('_storage') })),
+    state: v.union(v.object({ kind: v.literal('waiting') }),
+      v.object({ kind: v.literal('deleting'), claim: v.string() })),
+  }).index('by_nextAttemptAt', ['nextAttemptAt']),
+
   agentDriveUploads: defineTable(driveUploadFields).index('by_uploadId', ['uploadId']).index('by_runId_requestId', ['runId', 'requestId'])
     .index('by_expiresAt', ['expiresAt']),
 
@@ -1698,6 +1706,8 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
+    .index('by_r2Key', ['r2Key'])
+    .index('by_storageId', ['storageId'])
     .index('by_parentId', ['parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])

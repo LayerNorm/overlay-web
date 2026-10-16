@@ -8,6 +8,7 @@ import { safeName, writable, requireParent, requireVacantName, requireFilePath, 
 import { canCreateInScope } from '../../src/shared/workspaces/resource-scope'
 import { keyForFile } from '../../src/shared/storage/storage-keys'
 import { ensureStorageAvailable, applyStorageUsageDelta, StorageQuotaExceededError } from '../files/lib/storageQuota'
+import { retireDriveContent } from '../lib/agentDriveRetiredObjects'
 
 const MAX_FILE_BYTES = 16 * 1024 * 1024
 const MAX_RUN_BYTES = 256 * 1024 * 1024
@@ -169,6 +170,7 @@ export const commitByServer = mutation({
     let fileId: Id<'files'>
     if (existing && !conflict) {
       await promoteDriveDuplicate(ctx, existing, now)
+      await retireDriveContent(ctx, existing, now)
       await ctx.db.patch(existing._id, fields)
       fileId = existing._id
     } else fileId = await ctx.db.insert('files', { ...fields, userId: upload.ownerUserId,
