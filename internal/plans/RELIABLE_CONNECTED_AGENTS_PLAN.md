@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 4 content transactions now reserve immutable staging/final identities, deduplicate requests, fence commit authority, enforce quota and preserve newer files as conflict copies. Notes keep complete inline Markdown; oversized note edits become full object-backed file copies. Real database tests pass. Server byte verification/sealing, HTTP writes, cleanup, token issuance and host sync remain pending.
+
 - Phase 2 soak completed with exact full-text readback, but a rejected batch and observation gaps prevent acceptance. Sidebar invalidation now excludes text deltas through scoped event indexes; hosted latency and clean timed acceptance remain pending.
 
 - Phase 1 lost-acknowledgement recovery now preserves the attempted batch boundary across SQLite restart. Newly queued events cannot enlarge a retry, and acknowledgements may advance only within the persisted attempted watermark. Legacy and fenced-stream regressions pass; hosted package acceptance remains pending.

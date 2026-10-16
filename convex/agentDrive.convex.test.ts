@@ -224,3 +224,101 @@ test('a moved ancestor invalidates a hydrated child path even when its own revis
   await expect(f.convex.mutation(metadataRef, { ...f.args, requestId: 'stale-parent-001', operation: { kind: 'remove', fileId: ids.child, path: 'old/report.md', updatedAt: 1 } })).rejects.toMatchObject({ data: 'DRIVE_SOURCE_CHANGED' })
   expect((await f.convex.run(ctx => ctx.db.get(ids.child)))?.content).toBe('preserve')
 })
+
+const uploadIntent = makeFunctionReference<'mutation'>('agents/agentDriveUploads:intentByServer')
+const uploadCommit = makeFunctionReference<'mutation'>('agents/agentDriveUploads:commitByServer')
+const uploadRead = makeFunctionReference<'query'>('agents/agentDriveUploads:readByServer')
+const writeHash = 'a'.repeat(64)
+function writeInput(sequence = 1) {
+  return { requestId: `write-request-${String(sequence).padStart(4, '0')}`,
+    uploadId: `24b3d8ed-21b2-43f3-9617-${String(sequence).padStart(12, '0')}`,
+    operation: { kind: 'create', name: 'report.txt' }, sha256: writeHash, sizeBytes: 40000, mimeType: 'text/plain' }
+}
+
+test('upload intents and verified commits keep immutable identities and publish one real Files row', async () => {
+  const f = await fixture()
+  const input = writeInput()
+  const intent = await f.convex.mutation(uploadIntent, { ...f.args, ...input })
+  expect(intent.stagingKey).not.toBe(intent.finalKey)
+  expect(intent.finalKey).toBe(`users/u/files/${input.uploadId}/report.txt`)
+  expect(await f.convex.mutation(uploadIntent, { ...f.args, ...input, uploadId: writeInput(2).uploadId })).toEqual(intent)
+  await expect(f.convex.mutation(uploadIntent, { ...f.args, ...input, sizeBytes: 1 })).rejects.toMatchObject({ data: 'DRIVE_REQUEST_CONFLICT' })
+  const commit = { ...f.args, uploadId: input.uploadId, verifiedSha256: writeHash, verifiedSizeBytes: 40000, textPrefix: 'searchable prefix' }
+  await expect(f.convex.mutation(uploadCommit, { ...commit, verifiedSha256: 'b'.repeat(64) })).rejects.toMatchObject({ data: 'DRIVE_UPLOAD_CHANGED' })
+  const result = await f.convex.mutation(uploadCommit, commit)
+  expect(result).toMatchObject({ name: 'report.txt', conflict: false, sizeBytes: 40000, sha256: writeHash })
+  expect(await f.convex.mutation(uploadCommit, commit)).toEqual(result)
+  const state = await f.convex.run(async ctx => ({ row: await ctx.db.get(result.fileId),
+    usage: await ctx.db.query('subscriptions').withIndex('by_userId', q => q.eq('userId', 'u')).unique(),
+    uploads: await ctx.db.query('agentDriveWriteBudgets').withIndex('by_runId', q => q.eq('runId', 'r')).unique() }))
+  expect(state.row).toMatchObject({ r2Key: intent.finalKey, textInObjectStore: true, content: 'searchable prefix', sizeBytes: 40000 })
+  expect(state.usage?.overlayStorageBytesUsed).toBe(40000)
+  expect(state.uploads).toMatchObject({ uploads: 1, bytes: 40000 })
+})
+
+test('stale revisions and colliding creates save distinct conflict copies while normal replacement preserves identity', async () => {
+  const f = await fixture()
+  const first = writeInput()
+  await f.convex.mutation(uploadIntent, { ...f.args, ...first })
+  const initial = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: first.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: first.sizeBytes, textPrefix: 'first' })
+  const second = { ...writeInput(2), operation: { kind: 'replace', fileId: initial.fileId, path: 'report.txt', updatedAt: initial.updatedAt } }
+  await f.convex.mutation(uploadIntent, { ...f.args, ...second })
+  const replacement = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: second.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: second.sizeBytes, textPrefix: 'replacement' })
+  expect(replacement.fileId).toBe(initial.fileId)
+  const stale = { ...writeInput(3), operation: second.operation }
+  await f.convex.mutation(uploadIntent, { ...f.args, ...stale })
+  const conflict = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: stale.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: stale.sizeBytes, textPrefix: 'conflict' })
+  expect(conflict).toMatchObject({ name: 'report (agent).txt', conflict: true })
+  expect(conflict.fileId).not.toBe(initial.fileId)
+  const original = await f.convex.run(ctx => ctx.db.get(initial.fileId))
+  expect(original?.content).toBe('replacement')
+  const collision = writeInput(4)
+  await f.convex.mutation(uploadIntent, { ...f.args, ...collision })
+  expect(await f.convex.mutation(uploadCommit, { ...f.args, uploadId: collision.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: collision.sizeBytes, textPrefix: 'collision' }))
+    .toMatchObject({ name: 'report (agent 2).txt', conflict: true })
+})
+
+test('commit rechecks scope, current attempt, membership and storage quota before publishing a pointer', async () => {
+  const f = await fixture()
+  const input = writeInput()
+  await f.convex.mutation(uploadIntent, { ...f.args, ...input })
+  await expect(f.convex.query(uploadRead, { ...f.args, uploadId: input.uploadId, scope: { kind: 'workspace', workspaceId: 'w' } }))
+    .rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  const commit = { ...f.args, uploadId: input.uploadId, verifiedSha256: writeHash, verifiedSizeBytes: input.sizeBytes, textPrefix: 'prefix' }
+  await expect(f.convex.mutation(uploadCommit, { ...commit, execution: { attemptId: 's', generation: 2 } })).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  await f.convex.run(ctx => ctx.db.patch(f.ids.membership, { status: 'suspended' }))
+  await expect(f.convex.mutation(uploadCommit, commit)).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  await f.convex.run(async ctx => {
+    await ctx.db.patch(f.ids.membership, { status: 'active' })
+    const subscription = await ctx.db.query('subscriptions').withIndex('by_userId', q => q.eq('userId', 'u')).unique()
+    if (!subscription) throw Error('Expected quota row')
+    await ctx.db.patch(subscription._id, { overlayStorageBytesUsed: 1e15 })
+  })
+  await expect(f.convex.mutation(uploadCommit, commit)).rejects.toMatchObject({ data: 'DRIVE_STORAGE_QUOTA' })
+  expect((await f.convex.query(uploadRead, { ...f.args, uploadId: input.uploadId })).state.kind).toBe('pending')
+  expect((await f.read()).rows.some(row => row.r2Key?.includes(input.uploadId))).toBe(false)
+})
+
+test('note writes preserve full inline Markdown; larger versions become object-backed file copies', async () => {
+  const f = await fixture()
+  const [note] = (await f.read()).rows
+  const text = '# Updated note\n'
+  const input = { ...writeInput(), sizeBytes: new TextEncoder().encode(text).length,
+    operation: { kind: 'replace', fileId: note._id, path: note.name, updatedAt: note.updatedAt } }
+  await f.convex.mutation(uploadIntent, { ...f.args, ...input })
+  const result = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: input.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: input.sizeBytes, textPrefix: text })
+  expect(result).toMatchObject({ fileId: note._id, conflict: false, objectStored: false })
+  expect(await f.convex.run(ctx => ctx.db.get(note._id))).toMatchObject({ kind: 'note', content: text, textInObjectStore: false })
+  const large = { ...writeInput(2), operation: { kind: 'replace', fileId: note._id, path: note.name, updatedAt: result.updatedAt } }
+  await f.convex.mutation(uploadIntent, { ...f.args, ...large })
+  const copy = await f.convex.mutation(uploadCommit, { ...f.args, uploadId: large.uploadId,
+    verifiedSha256: writeHash, verifiedSizeBytes: large.sizeBytes, textPrefix: 'searchable prefix' })
+  expect(copy).toMatchObject({ conflict: true, objectStored: true })
+  expect(copy.fileId).not.toBe(note._id)
+  expect((await f.convex.run(ctx => ctx.db.get(note._id)))?.content).toBe(text)
+})

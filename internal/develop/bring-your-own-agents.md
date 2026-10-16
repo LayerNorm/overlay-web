@@ -1270,3 +1270,11 @@ Outbox retries retain the persisted attempted sequence boundary. New events stay
 behind an unacknowledged batch, including after restart; migration does not raise
 an existing watermark to cover unattempted rows. Acknowledgements may exceed a
 newly packed batch after an upgrade only within that stream's attempted watermark.
+
+Drive write transactions allocate a distinct staging key and immutable final version key,
+with fixed expected size/hash and an attempt-bound request receipt. Commits recheck file/parent
+edit policy and quota and preserve newer revisions as named conflict copies. Retained object
+versions remain charged. Notes retain complete inline Markdown; edits beyond the inline prefix
+limit save a separate object-backed file so the Notes source is never truncated. Server-side
+byte verification/sealing, transport, cleanup and host synchronization are still required;
+these transactions are not an enabled write-through drive.

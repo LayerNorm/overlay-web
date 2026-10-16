@@ -1,3 +1,4 @@
+import { driveUploadFields } from './lib/agentDriveUploadSchema'
 import { remoteLifecycleValidator } from './agents/remoteRunModel'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { defineSchema, defineTable } from 'convex/server'
@@ -1603,6 +1604,12 @@ export default defineSchema({
     .index('by_userId_status', ['userId', 'status'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
+
+  agentDriveUploads: defineTable(driveUploadFields).index('by_uploadId', ['uploadId']).index('by_runId_requestId', ['runId', 'requestId'])
+    .index('by_expiresAt', ['expiresAt']),
+
+  agentDriveWriteBudgets: defineTable({ runId: v.string(), uploads: v.number(), bytes: v.number(), expiresAt: v.number() })
+    .index('by_runId', ['runId']).index('by_expiresAt', ['expiresAt']),
 
   agentDriveMetadataReceipts: defineTable({
     runId: v.string(), sessionId: v.string(), requestId: v.string(),

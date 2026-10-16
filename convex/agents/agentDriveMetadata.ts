@@ -1,11 +1,11 @@
 import { ConvexError, v } from 'convex/values'
-import { drivePathSegments, portableDrivePathKey } from '../../packages/overlay-agent-bridge-protocol/src/drive-path'
-import type { Doc, Id } from '../_generated/dataModel'
+import type { Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
-import { mutation, type MutationCtx } from '../_generated/server'
-import { canCreateInScope, canEditResource, rowScope } from '../../src/shared/workspaces/resource-scope'
+import { mutation } from '../_generated/server'
+import { canCreateInScope } from '../../src/shared/workspaces/resource-scope'
 import { applyStorageUsageDelta } from '../files/lib/storageQuota'
 import { driveAuthorityArgs, requireDriveAuthority } from './agentDrive'
+import { safeName, writable, requireFilePath, promoteDriveDuplicate, children, requireParent, requireVacantName } from '../lib/agentDriveFiles'
 
 const operationValidator = v.union(
   v.object({ kind: v.literal('mkdir'), name: v.string(), parentId: v.optional(v.id('files')) }),
@@ -13,53 +13,6 @@ const operationValidator = v.union(
   v.object({ kind: v.literal('remove'), fileId: v.id('files'), path: v.string(), updatedAt: v.number() }),
 )
 const resultValidator = v.object({ fileId: v.id('files'), updatedAt: v.number() })
-type Authority = Awaited<ReturnType<typeof requireDriveAuthority>>
-
-function safeName(name: string) {
-  try { if (drivePathSegments(name).length === 1) return } catch { /* Convert the shared wire validator's failure to application data. */ }
-  throw new ConvexError('DRIVE_UNSAFE_PATH')
-}
-function inScope(row: Doc<'files'>, authority: Authority) {
-  const { scope } = authority
-  return row.workspaceId === scope.workspaceId && rowScope(row) === scope.kind
-    && (scope.kind === 'workspace' || row.userId === scope.ownerUserId)
-    && row.archivedAt === undefined && row.deletedAt === undefined
-}
-function writable(row: Doc<'files'>, authority: Authority) {
-  if (!inScope(row, authority) || !canEditResource(row, authority.scopeContext.viewer)) throw new ConvexError('DRIVE_EDIT_DENIED')
-}
-async function requireParent(ctx: MutationCtx, parentId: Id<'files'> | undefined, authority: Authority, name: string, movingId?: Id<'files'>) {
-  const visited = new Set<string>()
-  let id: string | undefined = parentId
-  let pathLength = name.length
-  for (let depth = 0; id !== undefined; depth++) {
-    if (depth >= 64 || id === movingId || visited.has(id)) throw new ConvexError('DRIVE_UNSAFE_PATH')
-    visited.add(id)
-    const normalized = ctx.db.normalizeId('files', id)
-    const row = normalized ? await ctx.db.get(normalized) : null
-    if (!row || row.type !== 'folder') throw new ConvexError('DRIVE_SOURCE_CHANGED')
-    writable(row, authority)
-    pathLength += row.name.length + 1
-    if (pathLength > 4096) throw new ConvexError('DRIVE_UNSAFE_PATH')
-    id = row.parentId
-  }
-}
-async function children(ctx: MutationCtx, parentId: Id<'files'>) {
-  const rows = await ctx.db.query('files').withIndex('by_parentId', q => q.eq('parentId', parentId)).take(10001)
-  if (rows.length > 10000) throw new ConvexError('DRIVE_TOO_MANY_ENTRIES')
-  return rows.filter(row => row.deletedAt === undefined && row.archivedAt === undefined)
-}
-async function requireVacantName(ctx: MutationCtx, authority: Authority, name: string, parentId?: Id<'files'>, except?: Id<'files'>) {
-  // Root names must be checked across the fixed scope, including other owners' shared files.
-  const { scope } = authority
-  const rows = parentId !== undefined ? await children(ctx, parentId)
-    : scope.kind === 'personal'
-      ? await ctx.db.query('files').withIndex('by_workspaceId_userId_archivedAt', q => q.eq('workspaceId', scope.workspaceId).eq('userId', scope.ownerUserId).eq('archivedAt', undefined)).take(10001)
-      : await ctx.db.query('files').withIndex('by_workspaceId_scope_archivedAt', q => q.eq('workspaceId', scope.workspaceId).eq('scope', 'workspace').eq('archivedAt', undefined)).take(10001)
-  if (rows.length > 10000) throw new ConvexError('DRIVE_TOO_MANY_ENTRIES')
-  if (rows.some(row => row._id !== except && row.parentId === parentId && inScope(row, authority) && portableDrivePathKey(row.name) === portableDrivePathKey(name))) throw new ConvexError('DRIVE_PATH_CONFLICT')
-}
-
 /** Metadata-only changes are atomic with their receipt. Hosts must delete hydrated children explicitly. */
 export const commitByServer = mutation({
   args: { ...driveAuthorityArgs, requestId: v.string(), operation: operationValidator },
@@ -92,16 +45,7 @@ export const commitByServer = mutation({
       if (!file) throw new ConvexError('DRIVE_SOURCE_CHANGED')
       writable(file, authority)
       if (!Number.isSafeInteger(operation.updatedAt) || operation.updatedAt < 0 || file.updatedAt !== operation.updatedAt) throw new ConvexError('DRIVE_SOURCE_CHANGED')
-      const names = [file.name]; const parents = new Set<string>([file._id]); let parentId = file.parentId
-      while (parentId !== undefined) {
-        if (parents.size >= 64 || parents.has(parentId)) throw new ConvexError('DRIVE_SOURCE_CHANGED')
-        parents.add(parentId)
-        const normalized = ctx.db.normalizeId('files', parentId)
-        const parent = normalized ? await ctx.db.get(normalized) : null
-        if (!parent || parent.type !== 'folder' || !inScope(parent, authority)) throw new ConvexError('DRIVE_SOURCE_CHANGED')
-        names.unshift(parent.name); parentId = parent.parentId
-      }
-      if (names.join('/') !== operation.path) throw new ConvexError('DRIVE_SOURCE_CHANGED')
+      await requireFilePath(ctx, file, authority, operation.path)
       const updatedAt = Math.max(Date.now(), file.updatedAt + 1)
       if (operation.kind === 'move') {
         safeName(operation.name)
@@ -125,17 +69,7 @@ export const commitByServer = mutation({
         // Tombstones keep immutable object versions recoverable. No storage deletion precedes the commit.
         if (file.type === 'file') {
           await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, { sourceKind: 'file', sourceId: file._id, userId: file.userId })
-          if (!file.duplicateOfFileId) {
-            const duplicates = await ctx.db.query('files').withIndex('by_duplicateOfFileId', q => q.eq('duplicateOfFileId', file._id)).take(10001)
-            if (duplicates.length > 10000) throw new ConvexError('DRIVE_TOO_MANY_ENTRIES')
-            const active = duplicates.filter(row => row.userId === file.userId && row.deletedAt === undefined)
-            const [promoted, ...rest] = active
-            if (promoted) {
-              await ctx.db.patch(promoted._id, { duplicateOfFileId: undefined, indexStatus: 'pending', updatedAt: Math.max(updatedAt, promoted.updatedAt + 1) })
-              for (const duplicate of rest) await ctx.db.patch(duplicate._id, { duplicateOfFileId: promoted._id, updatedAt: Math.max(updatedAt, duplicate.updatedAt + 1) })
-              await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: promoted._id })
-            }
-          }
+          await promoteDriveDuplicate(ctx, file, updatedAt)
           // Existing Files policy keeps bytes charged until object cleanup is confirmed.
           if (!file.r2Key && !file.storageId && file.kind !== 'output' && (file.sizeBytes ?? 0) > 0) await applyStorageUsageDelta(ctx, file.userId, -(file.sizeBytes ?? 0))
         }

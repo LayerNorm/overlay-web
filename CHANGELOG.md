@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add default-off guarded drive content transactions with immutable upload identities, quota checks and conflict copies. HTTP upload verification and host sync remain pending.
+
 - Keep connected-agent text streaming from repeatedly fetching sidebar conversation history.
 
 - Preserve event upload retry boundaries across host restarts so a lost acknowledgement cannot turn a retry into an overlapping batch.
