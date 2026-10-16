@@ -923,3 +923,38 @@ test('fresh lifecycle attempt uses a strict executable start rather than checkpo
     expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'new-write', state: 'pending' }) }),
   ]))
 })
+
+test('legacy Stop preserves text and tools, accepts buffered output until stop confirmation and fences later text', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const apply = (events: ReturnType<typeof event>[], at: number) => call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at })
+  await apply([event(1, 'text_checkpoint', { text: 'Keep this answer' }), event(2, 'action', { actionId: 'tool', title: 'Research', status: 'started' })], now + 1)
+  await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 2 })
+  let state = await projectedState(convex, started.messageId)
+  expect(state.message?.content).toBe('Keep this answer')
+  expect(state.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'tool-invocation', toolInvocation: expect.objectContaining({ toolOutput: expect.objectContaining({ status: 'cancelled' }) }) })]))
+  await apply([event(3, 'text_checkpoint', { text: 'Keep this answer and its buffered tail' }), event(4, 'completed', { usage: {} }), event(5, 'cancelled', {})], now + 3)
+  state = await projectedState(convex, started.messageId)
+  expect(state.run?.status).toBe('cancelled')
+  expect(state.message?.content).toBe('Keep this answer and its buffered tail')
+  await apply([event(6, 'text_checkpoint', { text: 'Should never replace cancelled output' })], now + 4)
+  expect((await projectedState(convex, started.messageId)).message?.content).toBe('Keep this answer and its buffered tail')
+})
+
+test('Stop before any text uses Cancelled and observations do not rewrite an unchanged message', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const apply = (events: ReturnType<typeof event>[], at: number) => call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at })
+  await apply([event(1, 'session_started', { remoteSessionId: 'provider-session', adapterId: 'fake' })], now + 1)
+  const before = await projectedState(convex, started.messageId)
+  await apply([event(2, 'process_observation', { process: 'live' })], now + 2)
+  const after = await projectedState(convex, started.messageId)
+  expect(after.message?.updatedAt).toBe(before.message?.updatedAt)
+  expect(after.run?.streamStats?.messageWrites).toBe(before.run?.streamStats?.messageWrites)
+  await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 3 })
+  expect((await projectedState(convex, started.messageId)).message?.content).toBe('Cancelled')
+})

@@ -1059,8 +1059,8 @@ and cumulative machine baselines.
 The bridge remains protocol v1 with an explicitly negotiated lifecycle-v2 extension:
 optional execution fences and new observe/observation messages are sent only for v2
 runs. Hosts opt in using the same environment setting. Default legacy capability
-payloads omit the extension. Candidate packages are lockstep 0.3.11 and candidate
-image v6; publication is a separate main-only release workflow, not evidence from a
+payloads omit the extension. Candidate packages are lockstep 0.3.12 and candidate
+image v7; publication is a separate main-only release workflow, not evidence from a
 source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
 compatible active runs drain on their persisted version.
 
@@ -1109,3 +1109,20 @@ Replacement attempts clear the previous host boot and health lease; the first
 accepted replacement event binds the new boot, while old attempt events remain fenced.
 During web-first rollout, new control request IDs are sent to Convex only when
 lifecycle v2 is enabled; ordinary controls retain the legacy validator shape.
+
+
+### Reliable streaming transport
+
+Host 0.3.12 coalesces text at 250 ms or 2 KiB and flushes before non-text events.
+The SQLite outbox drains independently of command polling and agent callbacks,
+packing each upload under the byte limit. Unsent tail checkpoints may be replaced;
+once an upload is attempted its sequences are immutable, including after restart
+or a lost acknowledgement. Existing queued rows are protected during upgrade.
+Oversized legacy checkpoints retain a bounded prefix and visible truncation marker
+so tools and completion can still arrive. Deltas will remove this temporary limit.
+
+Stop preserves written text, tools and resolved decisions. Legacy buffered text
+may commit until the host's stop event confirms termination; later output cannot
+change the cancelled result. Observation-only batches skip unchanged transcript
+writes. Candidate package/image updates still require current-preview acceptance
+and the separate main-only publication path; source changes do not upgrade hosts.

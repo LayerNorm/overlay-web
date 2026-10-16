@@ -9,6 +9,8 @@ import {
 } from '@layernorm/overlay-agent-bridge-protocol'
 import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
+import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
+import { coalesceTextCheckpoints } from './text-coalescer.js'
 import { StructuredLogger } from './logger.js'
 import { SqliteHostStateStore } from './state.js'
 import type { AgentControlPlaneClient } from './transport.js'
@@ -34,6 +36,12 @@ export class AgentHostRuntime {
   private readonly sessions = new Map<string, AgentAdapterSession>()
   private readonly logger: StructuredLogger
   private flushing?: Promise<void>
+  /** Highest sequence being uploaded per event stream; queued checkpoints above it may still be replaced. */
+  private readonly inFlight = new Map<string, number>()
+  private flushRetry?: ReturnType<typeof setTimeout>
+  private flushFailures = 0
+  private outboxWarned = false
+  private uploadsStopped = false
   private readonly terminalRuns = new Set<string>()
   private lastHeartbeatAt = 0
   private readonly bootId = randomUUID()
@@ -50,9 +58,13 @@ export class AgentHostRuntime {
   }
 
   async pollOnce(waitMs = 25_000, signal?: AbortSignal): Promise<number> {
+    // A large backlog must not stop the host from receiving commands (a Stop most of all); it only gets reported.
     if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) {
-      await this.flushOutbox()
-      if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) throw new Error('event outbox backpressure limit reached')
+      this.scheduleFlush()
+      if (!this.outboxWarned && this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) {
+        this.outboxWarned = true
+        this.logger.warn('event outbox is backed up', { events: this.options.state.outboxSize() })
+      }
     }
     const response = await this.options.controlPlane.pollCommands({ waitMs, ...(signal ? { signal } : {}) })
     if (response.resolvedThroughSequence !== undefined)
@@ -63,7 +75,7 @@ export class AgentHostRuntime {
       // react-doctor-disable-next-line react-doctor/async-await-in-loop
       await this.processCommand(command)
     }
-    await this.flushOutbox()
+    this.scheduleFlush()
     return response.retryAfterMs ?? 0
   }
 
@@ -80,9 +92,10 @@ export class AgentHostRuntime {
         if (signal.aborted) break
         const delay = nextReconnectDelay(attempt++)
         this.logger.warn('agent host poll failed', { error: safeError(error), delay })
-        await abortableDelay(delay, signal)
+        await abortableDelay(delay, signal).catch(() => undefined)
       }
     }
+    this.stopBackgroundUploads()
   }
 
   private async refreshHostState(): Promise<void> {
@@ -90,7 +103,7 @@ export class AgentHostRuntime {
       await this.options.controlPlane.updateCapabilities({
         protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
         ...(this.options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
-        hostVersion: '0.3.11',
+        hostVersion: '0.3.12',
         platform: `${platform()} ${release()}`,
         adapters: (await this.discoverCapabilities()).map((capability) => {
           if (this.options.durableLifecycle) return capability
@@ -182,16 +195,23 @@ export class AgentHostRuntime {
     for (;;) {
       const events = this.options.state.pendingEvents(100)
       if (events.length === 0) return
-      const batch = eventBatchSchema.parse({
-        protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
-        environmentId: this.options.environmentId,
-        runId: events[0].runId,
-        events,
-      })
+      const packed = packEventBatch(this.options.environmentId, events)
+      if (!packed.batch) {
+        // One event larger than any upload: shrink it once, in place, so the stream keeps moving.
+        const shrunk = packed.oversized && shrinkOversizedEvent(packed.oversized)
+        if (!shrunk) throw new Error(`event ${packed.oversized?.sourceSequence} cannot fit in an upload`)
+        this.options.state.replaceQueuedEvent(shrunk)
+        this.logger.warn('shortened an oversized text checkpoint', { runId: shrunk.runId, sequence: shrunk.sourceSequence })
+        continue
+      }
+      const batch = eventBatchSchema.parse(packed.batch)
+      const stream = streamKey(batch.runId, batch.events[0].execution?.attemptId)
+      this.inFlight.set(stream, batch.events.at(-1)!.sourceSequence)
+      this.options.state.markUploadAttempt(batch.events)
       // Sequential on purpose: batches carry ordered sequences; the next
       // iteration reads pendingEvents after this batch is acknowledged.
       // react-doctor-disable-next-line react-doctor/async-await-in-loop
-      const acknowledgement = await this.options.controlPlane.uploadEvents(batch)
+      const acknowledgement = await this.options.controlPlane.uploadEvents(batch).finally(() => this.inFlight.delete(stream))
       if (acknowledgement.accepted) {
         const lastSentSequence = batch.events.at(-1)!.sourceSequence
         if (acknowledgement.acknowledgedSequence !== lastSentSequence) {
@@ -229,7 +249,11 @@ export class AgentHostRuntime {
       return
     }
     const session = await this.requireSession(command.runId, command.type === 'reconnect' ? command.payload.remoteSessionId : undefined)
-    if (command.type === 'prompt') await session.prompt(command.payload.prompt)
+    if (command.type === 'prompt') {
+      const execution = this.executions.get(command.runId)
+      void session.prompt(command.payload.prompt).catch(error => this.emit(command.runId,
+        { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }, execution))
+    }
     else if (command.type === 'approval_response') await session.approve(command.payload.requestKey, command.payload.optionId)
     else if (command.type === 'elicitation_response') await session.elicit(command.payload.requestKey, command.payload.action, command.payload.content)
     else if (command.type === 'cancel') await session.cancel(command.payload.reason)
@@ -286,7 +310,7 @@ export class AgentHostRuntime {
     if (credentials === 'unavailable') return
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
-    const emit = (event: NormalizedAgentEvent) => this.emit(command.runId, event, execution)
+    const emit = coalesceTextCheckpoints((event: NormalizedAgentEvent) => this.emit(command.runId, event, execution))
     const session = await adapter.start({
       runId: command.runId,
       workingDirectory: scope.workingDirectory,
@@ -331,7 +355,7 @@ export class AgentHostRuntime {
       ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(runId, stored.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),
-    }, (event) => this.emit(runId, event))
+    }, coalesceTextCheckpoints((event) => this.emit(runId, event)))
     this.sessions.set(runId, session)
     return session
   }
@@ -370,22 +394,48 @@ export class AgentHostRuntime {
     return adapter
   }
 
+  /**
+   * Records an event and returns once it is durable on disk. Uploading happens in the background: an adapter that
+   * reports progress never waits on the network, so slow or failing uploads cannot hold back the agent's own output.
+   */
   private async emit(runId: string, event: NormalizedAgentEvent,
     execution = this.executions.get(runId)): Promise<void> {
-    if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) {
-      throw new Error('event outbox backpressure limit reached')
-    }
     const stored: Omit<AgentHostEvent, 'sourceSequence'> = {
       protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
       ...(execution ? { execution } : {}),
       eventId: randomUUID(), environmentId: this.options.environmentId, runId,
       occurredAt: Date.now(), ...event,
     } as Omit<AgentHostEvent, 'sourceSequence'>
-    this.options.state.appendEvent(stored)
+    this.options.state.appendOrReplaceTextCheckpoint(stored, this.inFlight.get(streamKey(runId, execution?.attemptId)) ?? 0)
     const currentExecution = this.executions.get(runId)
     if (this.options.durableLifecycle && execution?.attemptId === currentExecution?.attemptId
       && execution?.generation === currentExecution?.generation && ['completed', 'cancelled', 'failed'].includes(event.type)) this.terminalRuns.add(runId)
-    try { await this.flushOutbox() } catch (error) { this.logger.warn('event upload deferred', { runId, error: safeError(error) }) }
+    this.scheduleFlush()
+  }
+
+  /** Stops background upload passes, e.g. when the host shuts down; queued events stay on disk for next start. */
+  stopBackgroundUploads(): void {
+    this.uploadsStopped = true
+    if (this.flushRetry) clearTimeout(this.flushRetry)
+    this.flushRetry = undefined
+  }
+
+  /** Starts an upload pass unless one is running (it drains new events too); retries failures with backoff. */
+  private scheduleFlush(): void {
+    if (this.uploadsStopped || this.flushing || this.flushRetry) return
+    void this.flushOutbox().then(() => {
+      this.flushFailures = 0
+      // An event recorded while the pass was finishing would otherwise wait for the next poll.
+      let queued = 0
+      try { queued = this.options.state.outboxSize() } catch { return } // state closed: the host is shutting down
+      if (queued > 0) this.scheduleFlush()
+    }, (error) => {
+      if (this.uploadsStopped || (error as NodeJS.ErrnoException)?.code === 'ERR_INVALID_STATE') return
+      const delay = nextReconnectDelay(this.flushFailures++)
+      this.logger.warn('event upload deferred', { error: safeError(error), retryInMs: delay })
+      this.flushRetry = setTimeout(() => { this.flushRetry = undefined; this.scheduleFlush() }, delay)
+      this.flushRetry.unref?.()
+    })
   }
 
   private acknowledge(command: AgentHostCommand, accepted: boolean, message?: string, errorCode = 'command_rejected'): Promise<void> {
@@ -400,6 +450,8 @@ export class AgentHostRuntime {
 }
 
 function safeError(error: unknown): string { return error instanceof Error ? error.message.slice(0, 2_000) : 'Unknown host error' }
+
+function streamKey(runId: string, attemptId?: string) { return `${runId}\u0000${attemptId ?? ''}` }
 
 function abortableDelay(milliseconds: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

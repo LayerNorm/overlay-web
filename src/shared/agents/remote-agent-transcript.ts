@@ -228,8 +228,8 @@ export function projectRemoteAgentEvents(input: {
 function closePendingRequestParts(parts: Array<Record<string, unknown>>, decision: string, resolvedAt: number) {
   return parts.map((part) => {
     const data = objectValue(part.data)
-    if (part.type !== REMOTE_AGENT_REQUEST_PART_TYPE || data?.state !== 'pending') return part
-    return { ...part, data: { ...data, state: 'resolved', resolution: {
+    if (part.type !== REMOTE_AGENT_REQUEST_PART_TYPE || !data || !['pending', 'decision_pending'].includes(String(data.state))) return part
+    return { ...part, data: { ...data, state: 'resolved', resolution: data.resolution ?? {
       decision, resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt,
     } } }
   })

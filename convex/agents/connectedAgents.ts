@@ -820,9 +820,13 @@ export const controlRemoteAgentTurnByServer = mutation({
         ctx.db.patch(request._id, { resolution: {
           decision: 'cancelled', resolvedByPrincipalId: actor.principalId, resolvedAt: args.now,
         } })))
-      await ctx.db.patch(run.assistantMessageId, { content: 'Cancelled',
-        parts: [{ type: 'text', text: 'Cancelled' }, { type: 'data-remote-agent-status', data: {
-          environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId, state: 'cancelled' } }],
+      const message = await ctx.db.get(run.assistantMessageId)
+      if (!message) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
+      const stopped = projectRemoteAgentEvents({ content: message.content, parts: message.parts ?? [],
+        environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId,
+        events: [{ protocolVersion: 1, eventId: `cancel:${args.runId}`, environmentId: environment.environmentId,
+          runId: args.runId, sourceSequence: session.eventCursor, occurredAt: args.now, type: 'cancelled', payload: {} }] })
+      await ctx.db.patch(message._id, { content: stopped.content, parts: conversationParts(stopped.parts),
         status: 'completed', updatedAt: args.now })
       await ctx.db.insert('conversationEvents', { conversationId: run.conversationId, workspaceId: args.workspaceId,
         messageId: run.assistantMessageId, type: 'message.completed', userId: run.userId, createdAt: args.now })
@@ -2401,6 +2405,30 @@ export const applyRemoteEventsByServer = mutation({
     if (run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId) return swallowStaleEvents('stale_attempt')
     if (run.runner !== 'remote' || run.environmentId !== args.environmentId) throw new Error('AGENT_REMOTE_RUN_NOT_FOUND')
     if (!message) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
+    if (run.status === 'cancelled' && !run.remoteLifecycle && !session.stopConfirmedAt) {
+      const beforeStop = args.events.slice(0, args.events.findIndex(event => event.type === 'cancelled') < 0
+        ? args.events.length : args.events.findIndex(event => event.type === 'cancelled'))
+      const checkpoints = beforeStop.filter(event => event.type === 'text_checkpoint')
+      const snapshot = session.capabilitySnapshot as Record<string, unknown>
+      const projection = projectRemoteAgentEvents({ content: message.content, parts: message.parts ?? [],
+        environmentName: typeof snapshot.environmentName === 'string' ? snapshot.environmentName : environment.name,
+        queueExpiresAt: args.now, runId: session.runId,
+        events: [...checkpoints as AgentRemoteEvent[], { protocolVersion: 1, eventId: `cancel:${last}`,
+          environmentId: args.environmentId, runId: session.runId, sourceSequence: last,
+          occurredAt: args.now, type: 'cancelled', payload: {} }] })
+      const wroteMessage = !sameJson(message.parts, projection.parts) || message.content !== projection.content
+      if (wroteMessage) {
+        await ctx.db.patch(message._id, { content: projection.content, parts: conversationParts(projection.parts), updatedAt: args.now })
+        await ctx.db.insert('conversationEvents', { conversationId: run.conversationId, workspaceId: args.workspaceId,
+          messageId: message._id, type: 'message.completed', userId: run.userId, createdAt: args.now })
+      }
+      await ctx.db.patch(session._id, { eventCursor: last, updatedAt: args.now,
+        ...(args.events.some(event => event.type === 'cancelled') ? { stopConfirmedAt: args.now } : {}) })
+      await ctx.db.patch(run._id, { streamStats: recordAcceptedBatch(run.streamStats, {
+        events: args.events as AgentRemoteEvent[], bytes: jsonByteLength(args.events), now: args.now, wroteMessage,
+      }) })
+      return { accepted: true, acknowledgedSequence: last, duplicate: false }
+    }
     if (['completed', 'failed', 'cancelled'].includes(run.status)) {
       if (!isCompatibleTerminalAcknowledgement(run.status, args.events))
         return swallowStaleEvents('stale_terminal')
@@ -2538,10 +2566,13 @@ export const applyRemoteEventsByServer = mutation({
       ...(!session.startedAt ? { startedAt: args.now } : {}),
       ...(projection.terminal ? { endedAt: args.now } : {}), updatedAt: args.now,
     })
+    const messageStatus = projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating'
+    const wroteMessage = message.content !== projection.content || !sameJson(message.parts ?? [], conversationParts(projection.parts))
+      || message.status !== messageStatus || !sameJson(message.tokens ?? { input: 0, output: 0 }, projection.tokens)
     await ctx.db.patch(run._id, {
       status: projection.runStatus,
       streamStats: recordAcceptedBatch(run.streamStats, {
-        events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage: true,
+        events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage,
       }),
       ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
       ...(!run.startedAt ? { startedAt: args.now } : {}),
@@ -2555,18 +2586,20 @@ export const applyRemoteEventsByServer = mutation({
       ) } : {}),
       updatedAt: args.now,
     })
-    await ctx.db.patch(message._id, {
-      content: projection.content, parts: conversationParts(projection.parts),
-      ...(projection.terminal || projection.tokens.input > 0 || projection.tokens.output > 0 ? { tokens: projection.tokens } : {}),
-      status: projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating',
-      updatedAt: args.now,
-    })
-    await ctx.db.patch(run.conversationId, { lastModified: args.now, updatedAt: args.now })
-    await ctx.db.insert('conversationEvents', {
-      conversationId: run.conversationId, workspaceId: args.workspaceId, messageId: message._id,
-      type: projection.runStatus === 'failed' ? 'message.failed' : projection.terminal ? 'message.completed' : 'message.delta',
-      userId: run.userId, createdAt: args.now,
-    })
+    if (wroteMessage) {
+      await ctx.db.patch(message._id, {
+        content: projection.content, parts: conversationParts(projection.parts),
+        ...(projection.terminal || projection.tokens.input > 0 || projection.tokens.output > 0 ? { tokens: projection.tokens } : {}),
+        status: projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating',
+        updatedAt: args.now,
+      })
+      await ctx.db.patch(run.conversationId, { lastModified: args.now, updatedAt: args.now })
+      await ctx.db.insert('conversationEvents', {
+        conversationId: run.conversationId, workspaceId: args.workspaceId, messageId: message._id,
+        type: projection.runStatus === 'failed' ? 'message.failed' : projection.terminal ? 'message.completed' : 'message.delta',
+        userId: run.userId, createdAt: args.now,
+      })
+    }
     if (projection.terminal) {
       if (run.remoteLifecycle) {
         const intentId = `finalize:${session.runId}:${run.remoteLifecycle.currentAttemptId}`

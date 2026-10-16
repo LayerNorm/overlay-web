@@ -57,12 +57,17 @@ export class SqliteHostStateStore {
         created_at INTEGER NOT NULL,
         UNIQUE(run_id, source_sequence)
       );
+      CREATE TABLE IF NOT EXISTS attempted_uploads (run_id TEXT PRIMARY KEY, through_sequence INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS run_sequences (
         run_id TEXT PRIMARY KEY,
         last_sequence INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS event_outbox_run_sequence ON event_outbox(run_id, source_sequence);
     `)
+    // Queued rows from an older host may already have reached the server. Treat them as immutable on upgrade too.
+    this.database.exec(`INSERT INTO attempted_uploads(run_id, through_sequence)
+      SELECT run_id, MAX(source_sequence) FROM event_outbox GROUP BY run_id
+      ON CONFLICT(run_id) DO UPDATE SET through_sequence = MAX(through_sequence, excluded.through_sequence)`)
     if (scope) this.assertScope(scope)
   }
 
@@ -210,6 +215,57 @@ export class SqliteHostStateStore {
       this.database.exec('ROLLBACK')
       throw error
     }
+  }
+
+  /**
+   * Appends a text checkpoint, or replaces the queued one when it is the newest event of its stream and is not
+   * being uploaded (`inFlightThrough` is the highest sequence currently in flight). Only the latest checkpoint
+   * matters to the transcript, so while uploads are slow the backlog stays one row instead of growing with every
+   * flush. Sequence numbers stay contiguous because the replaced row keeps its own.
+   */
+  appendOrReplaceTextCheckpoint(event: Omit<AgentHostEvent, 'sourceSequence'>, inFlightThrough: number): AgentHostEvent {
+    if (event.type !== 'text_checkpoint') return this.appendEvent(event)
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const streamId = eventStreamId(event.runId, event.execution?.attemptId)
+      const tail = this.database.prepare('SELECT source_sequence, body FROM event_outbox WHERE run_id = ? ORDER BY source_sequence DESC LIMIT 1')
+        .get(streamId) as { source_sequence: number; body: string } | undefined
+      const tailEvent = tail ? JSON.parse(tail.body) as AgentHostEvent : undefined
+      if (tail && tailEvent?.type === 'text_checkpoint' && Number(tail.source_sequence) > Math.max(inFlightThrough, this.attemptedThrough(streamId))
+        && JSON.stringify(tailEvent.execution ?? null) === JSON.stringify(event.execution ?? null)) {
+        const stored = agentHostEventSchema.parse({ ...event, sourceSequence: Number(tail.source_sequence) })
+        this.database.prepare('UPDATE event_outbox SET event_id = ?, body = ? WHERE run_id = ? AND source_sequence = ?')
+          .run(stored.eventId, JSON.stringify(stored), streamId, stored.sourceSequence)
+        this.database.exec('COMMIT')
+        return stored
+      }
+      this.database.exec('COMMIT')
+    } catch (error) {
+      this.database.exec('ROLLBACK')
+      throw error
+    }
+    return this.appendEvent(event)
+  }
+
+  /** Rewrites one queued event in place (same stream and sequence), e.g. to shrink a checkpoint that cannot be sent. */
+  replaceQueuedEvent(event: AgentHostEvent): void {
+    const stored = agentHostEventSchema.parse(event)
+    this.database.prepare('UPDATE event_outbox SET body = ? WHERE run_id = ? AND source_sequence = ?')
+      .run(JSON.stringify(stored), eventStreamId(stored.runId, stored.execution?.attemptId), stored.sourceSequence)
+  }
+
+  /** An upload may have reached the server even when its response was lost. Never rewrite those sequences. */
+  markUploadAttempt(events: AgentHostEvent[]): void {
+    const last = events.at(-1)
+    if (!last) return
+    this.database.prepare(`INSERT INTO attempted_uploads(run_id, through_sequence) VALUES (?, ?)
+      ON CONFLICT(run_id) DO UPDATE SET through_sequence = MAX(through_sequence, excluded.through_sequence)`)
+      .run(eventStreamId(last.runId, last.execution?.attemptId), last.sourceSequence)
+  }
+
+  private attemptedThrough(streamId: string): number {
+    const row = this.database.prepare('SELECT through_sequence FROM attempted_uploads WHERE run_id = ?').get(streamId)
+    return Number(row?.through_sequence ?? 0)
   }
 
   pendingEvents(limit: number): AgentHostEvent[] {

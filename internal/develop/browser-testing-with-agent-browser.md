@@ -150,6 +150,14 @@ access file cannot establish unattended wake acceptance. Keep the signed host
 authentication intact, record the wrapper as a QA fixture, and delete the owned
 machine after settlement; this is not the production image bootstrap.
 
+For candidate-host regression QA, `scripts/smoke/cloud-agent-long-horizon/byo-host-box.mts`
+can pack the current checkout and enroll it into the PR's backend. Require the
+existing scoped Preview Boat key with `BOAT_ENVIRONMENT=overlay-preview`; never
+substitute the production key. This is a disposable VPS-style fixture, so record
+cloud-provisioning acceptance separately. The host-only preload removes its
+`NODE_OPTIONS` before provider launch. It does not authenticate the provider's MCP
+traffic through Vercel protection; record that limitation when testing app tools.
+
 See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
 See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).
 

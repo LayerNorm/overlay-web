@@ -72,6 +72,8 @@ test('host conformance: start, stream, approval, cancel, duplicates, outage, cra
     controlPlane.commands.push(command('cancel-1', 'run-1', 4, 'cancel', { reason: 'user cancelled' }))
     await runtime.pollOnce(0).catch(() => undefined)
     assert.ok(state.outboxSize() > 0, 'failed uploads remain in SQLite')
+    // The poll no longer waits on the uploader. Settle that failed pass before requesting an explicit retry.
+    await runtime.flushOutbox().catch(() => undefined)
     controlPlane.failUploads = 0
     await runtime.flushOutbox()
     assert.equal(state.outboxSize(), 0)

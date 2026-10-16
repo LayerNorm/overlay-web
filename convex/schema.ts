@@ -2435,6 +2435,7 @@ export default defineSchema({
     checkpointReference: v.optional(v.string()), recoveryCause: v.optional(v.string()), recoveryResult: v.optional(v.string()),
     hardDeadlineAt: v.optional(v.number()), claimDeadlineAt: v.optional(v.number()), executionLeaseExpiresAt: v.optional(v.number()),
     commandCursor: v.number(), eventCursor: v.number(), capabilitySnapshot: v.any(),
+    stopConfirmedAt: v.optional(v.number()),
     startedAt: v.optional(v.number()), endedAt: v.optional(v.number()),
     createdAt: v.number(), updatedAt: v.number(),
   }).index('by_sessionId', ['sessionId'])
