@@ -2183,6 +2183,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_messageId', ['messageId'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_userId_createdAt', ['userId', 'createdAt']),
 

@@ -379,12 +379,13 @@ export const listMessages = query({
       })
       .order('desc')
       .take(500)
-    return rows
+    const selected = rows
       .filter((message) => args.messageId === undefined || message._id === args.messageId)
       .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
       .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
       .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
       .reverse()
+    return hydrateRemoteMessages(ctx, selected)
   },
 })
 
@@ -445,6 +446,8 @@ export const watchRoomMessages = query({
         content: message.content,
         parts: message.parts,
         createdAt: message.createdAt,
+        updatedAt: message.updatedAt ?? message.createdAt,
+        eventSequence: message.eventSequence,
         editedAt: message.editedAt,
         editHistory: message.editHistory,
         deletedAt: message.deletedAt,

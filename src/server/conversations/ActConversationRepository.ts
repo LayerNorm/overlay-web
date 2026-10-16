@@ -97,6 +97,7 @@ export type ConversationMessageRow = {
   variantIndex?: number
   createdAt: number
   updatedAt?: number
+  eventSequence?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string

@@ -1188,3 +1188,9 @@ forwarding later responses. SDK notifications are otherwise dispatched independe
 which lets prompt completion overtake final text in a shared input buffer. The drain
 waits on local event persistence, never network upload; malformed or stuck update
 processing fails within a bounded timeout instead of declaring incomplete output done.
+
+Room history and subscriptions carry the same remote message event revision. Chunk-only updates
+advance that revision without rewriting the assistant row; a per-message event index keeps reads
+bounded. The UI keeps the newest revision when history and live updates race. Browser Convex
+token issuance retries a 401 once through AuthContext’s shared session-refresh lock; failed
+network requests release the token broker without creating an unhandled rejection.

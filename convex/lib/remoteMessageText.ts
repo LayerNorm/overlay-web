@@ -2,6 +2,7 @@ import type { Doc } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 
 type Message = Doc<'conversationMessages'>
+export type HydratedRemoteMessage = Message & { eventSequence?: number }
 type Parts = NonNullable<Message['parts']>
 type Chunk = Doc<'remoteMessageTextChunks'>
 const CHUNK_CHARS = 32 * 1024
@@ -40,8 +41,9 @@ function segment(chunks: Chunk[], partIndex: number): string {
 }
 
 /** Call only after the parent conversation/message access check. No public chunk-reading endpoint. */
-export async function hydrateRemoteMessage(ctx: Pick<QueryCtx, 'db'>, message: Message): Promise<Message> {
-  if (!message.remoteTextStored) return message
+export async function hydrateRemoteMessage(ctx: Pick<QueryCtx, 'db'>, message: Message): Promise<HydratedRemoteMessage> {
+  const revision = await remoteMessageRevision(ctx, message)
+  if (!message.remoteTextStored) return { ...message, ...revision }
   const chunks = await readChunks(ctx, message)
   const parts = (message.parts ?? []).map(part => {
     if (part.type !== REF_TYPE || !('artifactId' in part) || typeof part.artifactId !== 'string') return part
@@ -51,7 +53,7 @@ export async function hydrateRemoteMessage(ctx: Pick<QueryCtx, 'db'>, message: M
   })
   const content = message.remoteTextStored.contentSource === 'separate' ? segment(chunks, -1)
     : parts.map(part => 'text' in part && typeof part.text === 'string' ? part.text : '').join('')
-  return { ...message, content, parts }
+  return { ...message, ...revision, content, parts }
 }
 
 /** Persist only changed chunks; refs and the preview remain stable while an existing text part grows. */
@@ -93,6 +95,14 @@ export async function deleteRemoteMessageText(ctx: Pick<MutationCtx, 'db'>, mess
   for (const chunk of await readChunks(ctx, message)) await ctx.db.delete(chunk._id)
 }
 
-export async function hydrateRemoteMessages(ctx: Pick<QueryCtx, 'db'>, messages: Message[]): Promise<Message[]> {
+export async function hydrateRemoteMessages(ctx: Pick<QueryCtx, 'db'>, messages: Message[]): Promise<HydratedRemoteMessage[]> {
   return Promise.all(messages.map(message => hydrateRemoteMessage(ctx, message)))
+}
+
+/** Chunk-only text changes have a message event but deliberately do not rewrite the parent row. */
+async function remoteMessageRevision(ctx: Pick<QueryCtx, 'db'>, message: Message) {
+  if (!message.remoteTextStored && !message.parts?.some(part => part.type === 'data-remote-agent-status')) return {}
+  const latest = await ctx.db.query('conversationEvents')
+    .withIndex('by_messageId', q => q.eq('messageId', message._id)).order('desc').first()
+  return latest ? { updatedAt: Math.max(message.updatedAt ?? message.createdAt, latest.createdAt), eventSequence: latest._creationTime } : {}
 }

@@ -434,6 +434,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     variantIndex: message.variantIndex,
     createdAt: message.createdAt,
     ...(message.updatedAt ? { updatedAt: message.updatedAt } : {}),
+    ...(message.eventSequence !== undefined ? { eventSequence: message.eventSequence } : {}),
     role: message.role,
     parts: visibleParts,
     model: message.modelId,

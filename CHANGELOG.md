@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Restore live room updates by returning message revision metadata consistently in history and subscriptions, including chunk-only text. Recover browser realtime tokens after one session refresh and avoid unhandled token-request rejections.
+
 - Keep active smoke agents running when observation expires, honor API read cooldowns and leave request headroom for browser QA. Confirm cleanup responses before reporting deletion.
 
 - Prepare consistent scoped drive manifests and authenticated download grants, with bounded metadata and exact-revision inline note reads. HTTP delivery and agent-turn integration remain pending.

@@ -1,3 +1,5 @@
+import { SignJWT } from 'jose'
+import { mergeRoomMessages, type RoomMessageRecord } from '../src/features/chat/components/collaboration/room-message-view'
 import { agentHostCommandSchema } from '../packages/overlay-agent-bridge-protocol/src/index'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
@@ -1024,6 +1026,10 @@ test('megabyte delta output stays lossless across storage, authorized reads, Sto
   const args = { serverSecret: secret, conversationId: seeded.conversationId, userId: actorUserId }
   const messages = await convex.query(read, args) as Array<{ _id: string; content: string }>
   expect(messages.find(message => message._id === started.messageId)?.content).toBe(content)
+  const roomHistory = await convex.query(makeFunctionReference<'query'>('collaboration/directMessages:listMessages'), {
+    serverSecret: secret, actorUserId, workspaceId, conversationId: seeded.conversationId, limit: 100,
+  })
+  expect(roomHistory.find((row: { _id: string }) => row._id === started.messageId)?.content).toBe(content)
   expect(await convex.query(read, { ...args, userId: 'foreign-user' })).toEqual([])
   await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId,
     runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 1000 })
@@ -1058,4 +1064,46 @@ test('fresh heartbeat proof keeps a long lifecycle-v2 tool running without rewri
   expect(after.run?.remoteLifecycle?.lastHealthAt).toBe(now + 180001)
   expect(after.message?.updatedAt).toBe(before.message?.updatedAt)
   expect(after.run?.liveness?.stalled).toBe(false)
+})
+
+test('real room subscriptions supersede HTTP snapshots even for same-millisecond chunk-only updates', async () => {
+  const convex = convexTest(schema, modules)
+  const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded))
+  const token = await new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(actorUserId)
+    .setIssuer('overlay-browser-convex').setAudience('overlay-convex').setIssuedAt().setExpirationTime('10m')
+    .sign(new TextEncoder().encode(secret))
+  const watch = async () => {
+    const result = await convex.query(makeFunctionReference<'query'>('collaboration/directMessages:watchRoomMessages'), {
+      accessToken: token, actorUserId, workspaceId, conversationId: seeded.conversationId, limit: 100, mainOnly: true,
+    })
+    expect(result.ok).toBe(true)
+    return result.messages.find((message: RoomMessageRecord) => message.id === started.messageId) as RoomMessageRecord
+  }
+  const firstText = 'a'.repeat(3000)
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(1, 'text_delta', { offset: 0, text: firstText })], now: now + 1 })
+  const snapshot = await watch()
+  const parentBefore = await convex.run(ctx => ctx.db.get(started.messageId))
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(2, 'text_delta', { offset: firstText.length, text: 'continued' })], now: now + 1 })
+  const live = await watch()
+  const parentAfter = await convex.run(ctx => ctx.db.get(started.messageId))
+  expect(parentAfter).toEqual(parentBefore)
+  expect(live.content).toBe(firstText + 'continued')
+  expect(live.updatedAt).toBe(snapshot.updatedAt)
+  expect(live.eventSequence).toBeGreaterThan(snapshot.eventSequence!)
+  expect(mergeRoomMessages([live], [snapshot])[0]?.content).toBe(live.content)
+  expect(mergeRoomMessages([snapshot], [live])[0]?.content).toBe(live.content)
+  const httpRows = await convex.query(makeFunctionReference<'query'>('collaboration/directMessages:listMessages'), {
+    serverSecret: secret, actorUserId, workspaceId, conversationId: seeded.conversationId, limit: 100,
+  })
+  const http = httpRows.find((row: { _id: string }) => row._id === started.messageId)
+  expect(http?.eventSequence).toBe(live.eventSequence)
+  expect(http?.content).toBe(live.content)
+  await expect(convex.query(makeFunctionReference<'query'>('collaboration/directMessages:listMessages'), {
+    serverSecret: secret, actorUserId: 'foreign-user', workspaceId, conversationId: seeded.conversationId, limit: 100,
+  })).rejects.toThrow(/WORKSPACE_ACCESS_DENIED/)
 })
