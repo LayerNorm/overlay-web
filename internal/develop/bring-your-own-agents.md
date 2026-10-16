@@ -1337,3 +1337,9 @@ before restoring the newer canonical file. Deferred files are never inferred del
 implementation refreshes the manifest after each committed effect; operations and cache sizes remain
 bounded. Runtime wiring, scheduled/final synchronization and hosted acceptance are still required;
 this is not yet an enabled write-through drive.
+
+The runtime drive wrapper consumes the signed execution's fixed scope, checks local parents
+physically before creating a dedicated child, and requires an explicit approved Cloud drive root.
+It holds the cache lease through initialization and the turn, drains synchronization before close,
+and releases ownership after failed hydration so that the same execution can retry safely. Host
+command/runtime wiring must refresh the approved filesystem policy before invoking this wrapper.

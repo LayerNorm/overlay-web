@@ -4,6 +4,8 @@ Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementat
 
 - Phase 4 now has a persistent synchronizer with baseline/effect recovery and saved-file links. Real client/BFF/Convex/object-store tests cover complete hydration, nested and empty folders, inode-preserving moves, atomic editor replacement, full-byte fresh-cache restore, deletion, conflict copies, and restart after lost write or manifest acknowledgements. Private hydration temporaries cannot become deliverables after a crash. Runtime scheduling/final-completion gating and hosted acceptance remain pending.
 
+- The Phase 4 runtime drive wrapper now validates the renewed scope and approved physical parent, hydrates before returning, and holds ownership until drained close. Failure releases the lease for an explicit same-execution retry. Escaping parent symlinks and an unapproved Cloud root are refused before cache creation. Command/runtime integration and approved Cloud grant refresh remain pending.
+
 - The current synthetic transport candidate completed its 30-minute Preview soak with continuous observation, no rejected batches and exact full-byte/hash reconstruction. Browser samples stayed below two seconds at p95, and a quiet three-minute tool remained running. This proves the synthetic transport path; native Claude/Codex, lifecycle-v2 recovery and newer-head acceptance remain pending. A native Cloud fixture could not enroll behind protected Preview access; retain protection and establish authenticated bootstrap before retrying.
 
 - Browser QA found the active reply's Stop button inside a hover-hidden action rail. The local correction keeps the rail visible while Stop is offered; exact-head Preview verification is pending.

@@ -123,6 +123,9 @@ export class AgentDriveSynchronizer {
     })
   }
 
+  /** Release resources only after the last scheduled pass has finished. */
+  settle(): Promise<void> { return this.serial(async () => undefined) }
+
   private serial<T>(work: () => Promise<T>): Promise<T> {
     const pending = this.tail.then(work)
     this.tail = pending.catch(() => undefined)
