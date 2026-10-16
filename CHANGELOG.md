@@ -37,6 +37,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Prevent connected-agent upload backlogs from blocking Stop or agent output. Coalesce text, pack uploads by bytes, retain immutable attempted events across retries/restarts, and recover oversized legacy checkpoints with a visible truncation marker. Stop preserves text and tool history, including buffered output before stop confirmation; unchanged observations skip transcript writes. Host/protocol candidate: 0.3.12; image candidate: v7.
 
 - Make connected-agent transport failures diagnosable (reliable connected agents, Phase 0). Agent Host routes return `x-overlay-request-id` and log failed or slow requests. Server failures and Convex call errors are logged with a safe classification: type, class, codes, Convex function and request id. Each connected-agent run records stream counters (batches, bytes, text snapshot size, message rewrites, refused batches, host lag, quiet gaps, longest tool), returned as `streamSummary` by `GET /api/v1/conversations/run`. The long-horizon smoke gains `--via overlay` to run a real cloud agent on a PR preview.
+- Patch Next.js to 16.4.1 in both web apps and Better Auth/SSO to 1.7.7. Replace the privileged PR preview trigger with a secret-free PR request that dispatches the protected main controller.
 
 - Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
 
