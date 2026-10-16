@@ -29,3 +29,11 @@ test('completed terminal details count once, while distinct calls each count', (
   assert.match(markup([...items, {kind: 'tool', key: 'exec-2', name: 'remote_action', state: 'output-available'}]), /2 tools called/)
   assert.match(markup(items.slice(1)), /1 tool called/, 'standalone terminal details remain visible work')
 })
+
+
+test('a cancelled single action and terminal detail use the singular completed label', () => {
+  assert.match(markup([
+    {kind: 'tool', key: 'exec-stop', name: 'remote_action', state: 'output-denied'},
+    {kind: 'tool', key: 'exec-stop', name: 'remote_terminal', state: 'output-available'},
+  ]), /1 tool called/)
+})

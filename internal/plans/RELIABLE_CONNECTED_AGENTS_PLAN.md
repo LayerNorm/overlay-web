@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Native Codex Stop now passes on protected Preview: the UI cancels an executing foreground tool, independent process readback confirms it ended, and the same assistant row retains the full pre-Stop text and all three tool calls after API readback and browser reload. Expanded history keeps completed and interrupted tools available. A singular failed-tool label found during this check is corrected. Claude parity and restart recovery remain separate gates.
+
 - Native Codex readiness on protected Preview now completes the foreground three-minute tool, prints all 26 hashes matching the pinned baseline, and reads the exact canonical probe through Overlay MCP with zero approval cards or rejected batches. Actual native metadata identifies the default model and separate automatic reviews. Browser work summaries preserve the correct action count after reload. Whole-run latency and forced recovery remain separate gates.
 - Read-only hosted QA briefly exposed saved-folder counts during catalog refresh. Both adapters created discovery scratch state inside the synced working drive. Probes now use a separate private OS temporary directory, or retain the default catalog if that cannot be isolated. Real blocked ACP/acpx probes leave the drive inventory empty throughout discovery and clean up afterwards. Updated-image hosted verification remains pending.
 

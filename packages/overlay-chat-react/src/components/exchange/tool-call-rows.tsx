@@ -128,7 +128,7 @@ export function ToolCallsCollapsedGroup({
   )
   const summary =
     anyErr
-      ? `${n} tools called`
+      ? n === 1 ? '1 tool called' : `${n} tools called`
       : anyRunning
         ? n === 1 ? '1 tool in progress' : `${n} tools in progress`
         : n === 1 ? '1 tool called' : `${n} tools called`
