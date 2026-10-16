@@ -11,6 +11,7 @@ import { parseAgentOptions } from './agent-options.js'
 import { applyAcpSettings } from './acp-settings.js'
 import { orderedAcpUpdates } from './ordered-acp-updates.js'
 import { actionTitle } from './action-title.js'
+import {processGroupHasLiveMembers, signalProcessGroup} from './process-group.js'
 
 /**
  * Overlay sends each turn an MCP server (its workspace tools: notes, files,
@@ -208,10 +209,6 @@ export class AcpAgentAdapter implements AgentAdapter {
       if (!child?.pid) throw new Error('cannot confirm ACP process termination')
       const target = child
       const pid = target.pid!
-      const signal = (name: NodeJS.Signals) => {
-        try { process.platform === 'win32' ? target.kill(name) : process.kill(-pid, name) }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error }
-      }
       const exited = new Promise<void>(resolve => target.exitCode !== null || target.signalCode !== null ? resolve() : target.once('exit', () => resolve()))
       if (process.platform === 'win32') {
         // Node's child.kill terminates only the wrapper on Windows. Require the
@@ -226,21 +223,17 @@ export class AcpAgentAdapter implements AgentAdapter {
         closed.resolve()
         return
       }
-      signal('SIGTERM')
+      await signalProcessGroup(pid, 'SIGTERM')
       let timer: ReturnType<typeof setTimeout> | undefined
       try { await Promise.race([exited, new Promise<void>(resolve => { timer = setTimeout(resolve, 1000) })]) }
       finally { if (timer) clearTimeout(timer) }
-      signal('SIGKILL')
+      await signalProcessGroup(pid, 'SIGKILL')
       await exited
-      // SIGKILL delivery and descendant reaping are asynchronous even after the
-      // wrapper emits exit. Give the whole group a bounded drain before attesting.
+      // SIGKILL delivery is asynchronous even after wrapper exit. Give all live
+      // descendants a bounded drain; exited zombies cannot execute further work.
       const deadline = Date.now() + 2_000
       for (;;) {
-        try { process.kill(-pid, 0) }
-        catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ESRCH') break
-          throw error
-        }
+        if (!await processGroupHasLiveMembers(pid)) break
         if (Date.now() >= deadline) throw new Error('ACP process group has not stopped; inspect remaining execution')
         await new Promise(resolve => setTimeout(resolve, 20))
       }

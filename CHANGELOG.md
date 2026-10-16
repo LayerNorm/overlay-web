@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Confirm ACP process-group termination on macOS when only exited zombies remain, while retaining live permission failures.
+
 - Honor explicit Boat file permissions and secure private host state before delivering Preview access.
 
 - Add host-only access for protected Preview machine enrollment, API calls and MCP without putting hosting credentials in provider environments or startup commands.

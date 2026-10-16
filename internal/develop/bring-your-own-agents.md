@@ -1235,9 +1235,13 @@ prompt errors and teardown output. New attempts reset terminal health suppressio
 old callbacks cannot suppress their observations or claim the replacement identity.
 Resolved legacy requests do not resurrect a wait when later output arrives.
 
-ACP cancellation waits for the complete process group to drain after termination;
-wrapper exit alone is not proof that descendants stopped. Stop confirmation fails
-closed if the bounded drain cannot establish that the group is gone.
+ACP cancellation waits for all live process-group members to stop; wrapper exit
+alone does not establish that descendants stopped. POSIX readback excludes exited
+zombies, which cannot execute. Darwin may refuse to
+signal a zombie-only group with EPERM; only an OS process-table readback with no
+live group members accepts that result. Live permission failures and unreadable
+process state still prevent stop confirmation. The bounded drain must establish
+that no live group members remain.
 
 Starting a fresh attempt atomically resolves the old process's outstanding request
 cards as `execution_replaced`, preserving decisions already recorded, and projects

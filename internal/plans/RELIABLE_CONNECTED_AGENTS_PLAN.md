@@ -33,6 +33,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Native Codex settings exposed an older combined model falsely labeled unavailable and its effort shown from the discovery default. The UI now resolves an offered base/effort pair and preserves effective effort on model changes; unsupported values stay visible. Exact-revision hosted readback shows the supported model and effort without changing the saved settings; native session metadata independently confirms both runtime values.
 - Protected Preview bootstrap now has a source path for one-shot host-only access, exact-origin API authentication and an active-run MCP relay. Built-CLI tests reproduce the hosting rejection without access and verify signed enrollment with it; fresh candidate image provisioning/resume remains required before calling unattended enrollment fixed.
 - A real Boat boundary check exposed ignored requested file modes. The adapter now applies them explicitly, while Preview startup secures the host-state directory before credential delivery. Failed permission changes prevent startup; real readback verifies the requested private mode.
+- Cross-platform CI exposed Darwin EPERM during ACP process-group termination. POSIX stop now reads actual process states, accepts exited zombies and still rejects live permission failures; real live/zombie regressions pass locally. Updated image and hosted/native acceptance remain required.
 
 ## Outcome
 
