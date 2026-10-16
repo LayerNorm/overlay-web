@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 0 clean Convex typechecking now mirrors the web bridge-package source aliases, including transitive shared imports. Resolver regressions exclude `dist` artifacts; clean snapshot typechecking is checked separately from web types. Hosted acceptance remains pending.
+
 - Phase 0 build safety now limits duplicate-typecheck skipping to the non-hosted GitHub compilation lane. Hosted checks cannot be bypassed by inherited flags. Convex drive metadata imports canonical protocol source so a clean deployment does not require package build artifacts. Local policy, bundle and Convex regressions pass; new-head hosted acceptance remains pending.
 
 - Phase 4 metadata HTTP commits now require purpose-separated grants for existing hydrated entries. The current canonical ancestor path is checked atomically with revision/edit authority and retry receipts; moved parents invalidate stale child paths. Content uploads, token issuance and host synchronization remain pending.

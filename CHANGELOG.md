@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Keep hosted TypeScript validation enabled even when a CI skip flag is inherited, and bundle Convex drive path validation directly from canonical protocol source.
+- Keep hosted TypeScript validation enabled even when a CI skip flag is inherited, and resolve direct and transitive Convex bridge imports from canonical source in clean checkouts.
 
 - Add opt-in build resource diagnostics for Node workers without logging environment values or heap contents.
 

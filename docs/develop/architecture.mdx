@@ -62,7 +62,9 @@ single-agent boundary. Bindings choose an agent and adapter; each command choose
 granted working directory. The host can grant multiple roots or explicit OS-user-wide access.
 Protocol versioning, validation, sequencing, enrollment proof canonicalization, and signed HTTP
 transport remain in the bridge/host
-packages so Convex does not become a public host API.
+packages so Convex does not become a public host API. Convex owns a separate TypeScript
+path map for its transitive shared imports. Align bridge-protocol source aliases with
+the web config so clean backend builds do not require generated package `dist` files.
 
 `ConnectedAgentControlPlaneService` is the server-only policy boundary for enrollment and host
 traffic. Browser management routes use the normal authenticated BFF and active-workspace
