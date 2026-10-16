@@ -12,12 +12,13 @@ const driveScopeValidator = v.union(
   v.object({ kind: v.literal('workspace'), workspaceId: v.string() }),
 )
 
-export const driveAuthorityArgs = {
-  serverSecret: v.string(), actorUserId: v.string(), agentId: v.string(), environmentId: v.string(),
+export const driveClaimsArgs = {
+  actorUserId: v.string(), agentId: v.string(), environmentId: v.string(),
   bindingId: v.string(), runId: v.string(), sessionId: v.string(), expiresAt: v.number(),
   scope: driveScopeValidator,
   execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
 }
+export const driveAuthorityArgs = { serverSecret: v.string(), ...driveClaimsArgs }
 
 /** Same transaction gate for reads and future file commits. No host-selected scope is trusted. */
 export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: AgentDriveAuthorityClaims & { serverSecret: string }) {
@@ -53,7 +54,7 @@ export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: A
     actorUserId: run.userId, agentId: run.agentId ?? '', runId: run.externalRunId ?? '',
     sessionId: session.sessionId, bindingId: session.bindingId, environmentId: session.environmentId,
     scope: currentScope, bindingEnabled: binding.enabled,
-    environmentRevoked: environment.status === 'revoked' || environment.status === 'pending',
+    environmentRevoked: environment.revokedAt !== undefined || environment.status === 'revoked' || environment.status === 'pending',
     actorIsMember: ['owner', 'admin', 'member'].includes(scopeContext.viewer.role ?? ''),
     status: session.status, hardDeadlineAt,
     ...(session.attemptId !== undefined && session.executionGeneration !== undefined
@@ -101,6 +102,37 @@ export const authorizeByServer = query({
   args: driveAuthorityArgs,
   returns: v.null(),
   handler: async (ctx, args) => { await requireDriveAuthority(ctx, args); return null },
+})
+
+/** Only authenticated host identity is supplied; actor, binding and scope come from persisted execution state. */
+export const credentialAuthorityByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
+    sessionId: v.string(), execution: driveClaimsArgs.execution },
+  returns: v.object({ claims: v.object(driveClaimsArgs), hardDeadlineAt: v.number() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const [run, session] = await Promise.all([
+      ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique(),
+      currentRemoteAttempt(ctx, args.runId),
+    ])
+    if (!run?.agentId || !session || session.workspaceId !== args.workspaceId || session.environmentId !== args.environmentId
+      || session.sessionId !== args.sessionId || session.attemptId !== args.execution?.attemptId
+      || session.executionGeneration !== args.execution?.generation) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
+    const agentId = run.agentId
+    const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', agentId)).unique()
+    if (!agent) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
+    const deadline = session.hardDeadlineAt ?? session.capabilitySnapshot?.hardExpiresAt
+    if (typeof deadline !== 'number' || !Number.isSafeInteger(deadline)) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
+    const scope: AgentDriveAuthorityClaims['scope'] = agent.visibility === 'creator'
+      ? { kind: 'personal', workspaceId: args.workspaceId, ownerUserId: run.userId }
+      : { kind: 'workspace', workspaceId: args.workspaceId }
+    const claims = { actorUserId: run.userId, agentId: agent.agentId, environmentId: session.environmentId,
+      bindingId: session.bindingId, runId: args.runId, sessionId: session.sessionId, scope,
+      expiresAt: Math.min(deadline, Date.now() + 60 * 60_000),
+      ...(args.execution ? { execution: args.execution } : {}) }
+    await requireDriveAuthority(ctx, { serverSecret: args.serverSecret, ...claims })
+    return { claims, hardDeadlineAt: deadline }
+  },
 })
 
 /** Inline notes are read by exact revision, not retained across all manifest pages. */

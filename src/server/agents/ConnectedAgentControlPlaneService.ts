@@ -1160,6 +1160,8 @@ function billingAgentId(snapshot: Record<string, unknown>) {
 
 function createCredential(environment: AgentEnvironment, now: number) {
   const token = randomSecret()
+  const drive = environment.capabilities.drive
+  const driveCapable = Boolean(drive && typeof drive === 'object' && 'version' in drive && drive.version === 1)
   const credential: AgentEnvironmentCredential = {
     id: randomUUID(),
     workspaceId: environment.workspaceId,
@@ -1169,7 +1171,8 @@ function createCredential(environment: AgentEnvironment, now: number) {
     // Run credentials are for Overlay Cloud machines only: older hosts validate the
     // list of methods strictly and must keep receiving the methods they know.
     methods: AGENT_ENVIRONMENT_CREDENTIAL_METHODS.filter((method) =>
-      method !== 'agent:run-credentials' || environment.kind === 'overlay_cloud'),
+      (method !== 'agent:run-credentials' || environment.kind === 'overlay_cloud')
+      && (method !== 'agent:drive-credentials' || driveCapable)),
     tokenNonce: randomSecret(16),
     expiresAt: now + CREDENTIAL_TTL_MS,
     createdAt: now,

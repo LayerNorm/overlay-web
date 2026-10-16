@@ -61,7 +61,7 @@ export async function handleAgentDriveRequest(request: Request, dependencies: Dr
   }
 }
 
-function driveErrorResponse(error: unknown): Response {
+export function driveErrorResponse(error: unknown): Response {
   if (error instanceof z.ZodError || error instanceof SyntaxError) return failure(400, 'DRIVE_INVALID_REQUEST')
   // Production Convex redacts developer messages. Expected failures travel as
   // application data; plain-message parsing supports older backend deployments.
@@ -72,7 +72,7 @@ function driveErrorResponse(error: unknown): Response {
     DRIVE_DISABLED: 404, DRIVE_UNAUTHORIZED: 401, DRIVE_RUN_UNAVAILABLE: 403, DRIVE_SCOPE_CHANGED: 403,
     DRIVE_INVALID_UPLOAD: 400, DRIVE_UPLOAD_CHANGED: 409, DRIVE_UPLOAD_EXPIRED: 410,
     DRIVE_UPLOAD_UNAVAILABLE: 404, DRIVE_STORAGE_QUOTA: 413, DRIVE_UPLOAD_QUOTA: 413,
-    DRIVE_BOUNDED_STORAGE_UNAVAILABLE: 503, DRIVE_WRITABLE_STORAGE_UNAVAILABLE: 503,
+    DRIVE_BOUNDED_STORAGE_UNAVAILABLE: 503, DRIVE_WRITABLE_STORAGE_UNAVAILABLE: 503, DRIVE_RUN_EXPIRED: 410,
     DRIVE_EDIT_DENIED: 403, DRIVE_INVALID_METADATA: 403, DRIVE_REQUEST_CONFLICT: 409, DRIVE_PATH_CONFLICT: 409, DRIVE_DIRECTORY_NOT_EMPTY: 409,
     DRIVE_UNSAFE_PATH: 400, DRIVE_INVALID_DOWNLOAD: 403, DRIVE_SOURCE_CHANGED: 409, DRIVE_FILE_UNAVAILABLE: 404,
     DRIVE_TOO_MANY_ENTRIES: 413, DRIVE_METADATA_LIMIT: 413, DRIVE_FILE_TOO_LARGE: 413,

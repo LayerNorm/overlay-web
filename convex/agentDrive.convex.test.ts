@@ -13,6 +13,7 @@ import schema from './schema'
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'agent-drive-convex-tests-only'
 const readRef = makeFunctionReference<'query'>('agents/agentDrive:manifestPageByServer')
+const credentialRef = makeFunctionReference<'query'>('agents/agentDrive:credentialAuthorityByServer')
 beforeEach(() => { process.env.INTERNAL_API_SECRET = secret; process.env.OVERLAY_CONNECTED_AGENT_DRIVE = '1' })
 
 async function fixture() {
@@ -46,6 +47,36 @@ test('expected drive failures carry application data through production message 
   await expect(f.read({ runId: 'foreign' })).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
   process.env.OVERLAY_CONNECTED_AGENT_DRIVE = '0'
   await expect(f.read()).rejects.toMatchObject({ data: 'DRIVE_DISABLED' })
+})
+
+test('drive credential authority is derived from the persisted execution and rechecks scope, membership and host opt-in', async () => {
+  const f = await fixture()
+  const request = { serverSecret: secret, workspaceId: 'w', environmentId: 'e', runId: 'r', sessionId: 's', execution: f.args.execution }
+  const authority = await f.convex.query(credentialRef, request)
+  expect(authority.claims).toMatchObject({ actorUserId: 'u', agentId: 'a', bindingId: 'b', runId: 'r', sessionId: 's',
+    scope: { kind: 'personal', workspaceId: 'w', ownerUserId: 'u' }, execution: f.args.execution })
+  expect(JSON.stringify(authority)).not.toContain(secret)
+  expect(authority.claims.expiresAt).toBe(authority.hardDeadlineAt)
+  for (const patch of [{ workspaceId: 'foreign' }, { environmentId: 'foreign' }, { runId: 'foreign' }, { sessionId: 'foreign' },
+    { execution: undefined }, { execution: { attemptId: 's', generation: 2 } }]) {
+    await expect(f.convex.query(credentialRef, { ...request, ...patch })).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  }
+  await f.convex.run(ctx => ctx.db.patch(f.ids.environment, { kind: 'local' }))
+  await expect(f.convex.query(credentialRef, request)).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  await f.convex.run(ctx => ctx.db.patch(f.ids.binding, { adapterConfig: { connectedAgentDrive: true } }))
+  expect((await f.convex.query(credentialRef, request)).claims.scope.kind).toBe('personal')
+  await f.convex.run(ctx => ctx.db.patch(f.ids.agent, { visibility: 'workspace' }))
+  expect((await f.convex.query(credentialRef, request)).claims.scope).toEqual({ kind: 'workspace', workspaceId: 'w' })
+  await f.convex.run(ctx => ctx.db.patch(f.ids.membership, { status: 'suspended' }))
+  await expect(f.convex.query(credentialRef, request)).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+})
+
+test('environment revocation timestamps revoke existing drive reads and credential renewal even before status catches up', async () => {
+  const f = await fixture()
+  await f.convex.run(ctx => ctx.db.patch(f.ids.environment, { revokedAt: Date.now() }))
+  await expect(f.read()).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  await expect(f.convex.query(credentialRef, { serverSecret: secret, workspaceId: 'w', environmentId: 'e',
+    runId: 'r', sessionId: 's', execution: f.args.execution })).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
 })
 
 test('manifest pages preserve canonical rows and return only the fixed personal or workspace drive', async () => {

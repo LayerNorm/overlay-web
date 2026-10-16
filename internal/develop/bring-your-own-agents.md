@@ -943,6 +943,15 @@ Only the configured store supplies reads/writes; there is no silent cross-provid
 Current-head hosted acceptance, start-command issuance and runtime synchronization
 remain required before the persistent drive can be enabled.
 
+Device-signed `POST /api/v1/agent-environments/[environmentId]/drive-credentials` issues or
+renews a separate run-scoped drive token. The new method is granted only after drive v1 capability
+advertisement, so strict older hosts keep their existing method list. The host supplies only the
+run, session and execution fence; the backend resolves actor, binding and scope and rechecks live
+authority, including local/VPS opt-in. Tokens last at most one hour and never outlive the execution.
+Download and metadata grants bind the execution and revision, allowing a renewed token to use an
+existing grant; expiry, revocation and stale-execution checks still apply on every operation.
+The signed host transport is implemented; runtime consumption/renewal and synchronization remain pending.
+
 `Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
 manually from main. It updates both adapter pins, the lockstep host/protocol patch version,
 image version/range and enrollment references, then requires `check:byo-agents:release` before
@@ -1292,5 +1301,5 @@ through the hard deadline plus two days, then prune in bounded batches. Metadata
 the same retention; older receipts migrate in bounded pages with at least seven days and the
 complete session deadline preserved. Notes retain complete inline Markdown; edits beyond the inline prefix
 limit save a separate object-backed file so the Notes source is never truncated. Server-side
-byte verification/sealing and upload/commit transport are implemented locally. Credential issuance and host synchronization are still required; these transactions are not an enabled
+byte verification/sealing and upload/commit transport are implemented locally. Host credential consumption/renewal and synchronization are still required; these transactions are not an enabled
 write-through drive.

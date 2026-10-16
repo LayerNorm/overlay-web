@@ -42,8 +42,18 @@ issues staging uploads, verifies full size/SHA-256 and seals the verified byte b
 server-only object key before asking Convex to publish the Files pointer. A mutable staging key
 never becomes a canonical file. Retries use the same intent and commit result; newer revisions
 produce conflict copies. The configured object-store contract supplies bounded reads and server
-writes for both R2 and S3-compatible storage. Token issuance, host synchronization and
-hosted acceptance remain required before enabling the drive. Superseded versions are retired atomically with replacement; the authenticated artifact-cleanup tick checks indexed Files references and confirms deletion before releasing their retained quota. Staging and abandoned final keys are registered before upload, then collected after the full run deadline plus one day; a referenced committed final is preserved. Upload and metadata receipts and budgets remain for two days past the hard deadline, with bounded migration for older metadata receipts.
+writes for both R2 and S3-compatible storage. Runtime credential renewal, synchronization and
+hosted acceptance remain required before enabling the drive. Superseded versions are retired
+atomically with replacement; the authenticated artifact-cleanup tick checks indexed Files
+references and confirms deletion before releasing retained quota. Staging and abandoned final
+keys are registered before upload, then collected after the full run deadline plus one day;
+a referenced committed final is preserved. Upload and metadata receipts and budgets remain for
+two days past the hard deadline, with bounded migration for older metadata receipts.
+
+Drive credential issuance/renewal uses a device-signed host endpoint and the current persisted
+run/session/attempt. The host cannot choose actor or scope. Credentials expire within one hour
+and the hard deadline; execution-bound file grants survive renewal while live authority remains
+required on every operation. The credential method is advertised only to drive v1 hosts.
 
 ## Memory profiles
 

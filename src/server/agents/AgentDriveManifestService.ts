@@ -1,13 +1,12 @@
 import 'server-only'
 
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { drivePathSegments } from '@layernorm/overlay-agent-bridge-protocol'
-import { agentDriveAuthorityArgs } from '@/shared/agents/agent-drive-authority'
 import { buildAgentDriveCandidates } from '@/shared/agents/agent-drive-manifest'
 import type { AgentDriveTokenClaims } from './agent-drive-token'
 import { driveMetadataBodySchema, driveMetadataEntrySchema, type DriveMetadataOperation, type DriveMetadataRequest, type DriveMetadataResult } from './agent-drive-metadata'
-import { driveMetadataMac, verifyDriveMetadataMac } from './agent-drive-entry-grants'
+import { driveMetadataMac, verifyDriveMetadataMac, driveGrantAuthorityHash } from './agent-drive-entry-grants'
 import type { AgentDriveManifestRepository } from './AgentDriveManifestRepository'
 import { AgentDriveMaterializer, type AgentDriveManifestEntry } from './AgentDriveMaterializer'
 
@@ -107,7 +106,6 @@ export class AgentDriveManifestService {
   }
 
   private mac(claims: AgentDriveTokenClaims, entry: ReadyFile): Buffer {
-    const authority = createHash('sha256').update(JSON.stringify(agentDriveAuthorityArgs(claims))).digest('hex')
-    return createHmac('sha256', this.dependencies.secret).update('overlay-agent-drive-download:v1.').update(authority).update(JSON.stringify(entry)).digest()
+    return createHmac('sha256', this.dependencies.secret).update('overlay-agent-drive-download:v2.').update(driveGrantAuthorityHash(claims)).update(JSON.stringify(entry)).digest()
   }
 }

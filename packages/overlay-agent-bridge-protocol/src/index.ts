@@ -65,6 +65,7 @@ export const hostCapabilitiesSchema = z.object({
   remoteLifecycleVersion: z.literal(2).optional(),
   streaming: streamingCapabilitiesSchema.optional(),
   mcp: z.object({ approvalBridge: z.literal(true) }).strict().optional(),
+  drive: z.object({ version: z.literal(1) }).strict().optional(),
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   adapters: z.array(adapterCapabilitySchema).max(100),
@@ -79,6 +80,22 @@ export const runCredentialsRequestSchema = z.object({
   runId: identifier,
 }).strict()
 export type RunCredentialsRequest = z.infer<typeof runCredentialsRequestSchema>
+
+export const driveCredentialsRequestSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), runId: identifier, sessionId: identifier,
+  execution: executionFenceSchema.omit({ hostBootId: true }).optional(),
+}).strict()
+export type DriveCredentialsRequest = z.infer<typeof driveCredentialsRequestSchema>
+export const driveCredentialsResponseSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  token: z.string().min(32).max(8192).regex(/^ovdrive_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
+  expiresAt: z.number().int().positive(),
+  scope: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('personal'), workspaceId: identifier, ownerUserId: identifier }).strict(),
+    z.object({ kind: z.literal('workspace'), workspaceId: identifier }).strict(),
+  ]),
+}).strict()
+export type DriveCredentialsResponse = z.infer<typeof driveCredentialsResponseSchema>
 
 export const runCredentialsResponseSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
@@ -129,6 +146,7 @@ export const environmentCredentialResponseSchema = z.object({
     'agent:artifacts:write',
     'agent:credentials:refresh',
     'agent:run-credentials',
+    'agent:drive-credentials',
   ])).min(1),
   token: z.string().trim().min(32).max(512),
   expiresAt: z.number().int().positive(),

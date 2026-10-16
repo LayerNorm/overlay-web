@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { agentHostCommandSchema, agentHostEventSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
+import { driveCredentialsRequestSchema, driveCredentialsResponseSchema } from './index'
+
+test('drive credential wire requests bind exact execution and reject host-selected authority', () => {
+  const request = { protocolVersion: 1, runId: 'run', sessionId: 'session', execution: { attemptId: 'attempt', generation: 1 } }
+  assert.deepEqual(driveCredentialsRequestSchema.parse(request), request)
+  for (const patch of [{ actorUserId: 'other' }, { workspaceId: 'other' }, { scope: { kind: 'workspace', workspaceId: 'other' } },
+    { execution: { attemptId: 'attempt', generation: 0 } }, { execution: { attemptId: 'attempt', generation: 1, hostBootId: 'not-part-of-grant' } }]) {
+    assert.equal(driveCredentialsRequestSchema.safeParse({ ...request, ...patch }).success, false)
+  }
+  const response = { protocolVersion: 1, token: 'ovdrive_' + 'a'.repeat(32) + '.' + 'b'.repeat(43), expiresAt: 1000,
+    scope: { kind: 'workspace', workspaceId: 'workspace' } }
+  assert.deepEqual(driveCredentialsResponseSchema.parse(response), response)
+  assert.equal(driveCredentialsResponseSchema.safeParse({ ...response, storageKey: 'secret' }).success, false)
+})
 
 test('filesystem grants require explicit roots or explicit all-user access', () => {
   assert.equal(filesystemGrantSchema.safeParse({ mode: 'selected_roots', roots: [] }).success, false)

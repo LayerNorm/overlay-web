@@ -6,6 +6,10 @@ import {
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
   runCredentialsResponseSchema,
+  driveCredentialsRequestSchema,
+  driveCredentialsResponseSchema,
+  type DriveCredentialsRequest,
+  type DriveCredentialsResponse,
   type CommandAcknowledgement,
   type EventAcknowledgement,
   type EventBatch,
@@ -37,6 +41,7 @@ export interface AgentControlPlaneClient {
   completeArtifactUpload?(artifactId: string): Promise<void>
   /** Overlay Cloud only: the provider credentials for one of this host's runs. */
   fetchRunCredentials?(runId: string): Promise<Record<string, string>>
+  fetchDriveCredentials?(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse>
 }
 
 export type HttpControlPlaneClientOptions = {
@@ -134,6 +139,14 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
       headers: { 'content-type': 'application/json' },
     })
     return runCredentialsResponseSchema.parse(await response.json()).env
+  }
+
+  async fetchDriveCredentials(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse> {
+    const body = driveCredentialsRequestSchema.parse({ ...input, protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION })
+    const response = await this.request(new URL('drive-credentials', withSlash(this.options.baseUrl)), {
+      method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
+    })
+    return driveCredentialsResponseSchema.parse(await response.json())
   }
 
   private async request(url: URL, init: RequestInit): Promise<Response> {

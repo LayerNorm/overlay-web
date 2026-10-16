@@ -16,7 +16,8 @@ const claimsSchema = z.object({
   issuedAt: z.number().int().nonnegative(), expiresAt: z.number().int().nonnegative(),
 }).strict()
 export type AgentDriveTokenClaims = z.infer<typeof claimsSchema>
-type DriveTokenInput = Omit<AgentDriveTokenClaims, 'version' | 'audience' | 'issuedAt' | 'expiresAt'>
+export const agentDriveTokenInputSchema = claimsSchema.omit({ version: true, audience: true, issuedAt: true, expiresAt: true })
+type DriveTokenInput = z.infer<typeof agentDriveTokenInputSchema>
 const MAX_LIFETIME_MS = 60 * 60_000
 const PREFIX = 'ovdrive_'
 const DOMAIN = 'overlay-agent-drive:v1.'

@@ -7,9 +7,9 @@ import { createAgentDriveTokens } from './agent-drive-token'
 import type { AgentDriveManifestRepository } from './AgentDriveManifestRepository'
 
 const secret = 'drive-manifest-test-secret-at-least-32-bytes'
-function fixture() {
-  const tokens = createAgentDriveTokens({ secret })
-  const token = tokens.mint({ actorUserId: 'u', agentId: 'a', environmentId: 'e', bindingId: 'b', runId: 'r', sessionId: 's', scope: { kind: 'personal', workspaceId: 'w', ownerUserId: 'u' } }, Date.now() + 300000)
+function fixture(now?: () => number) {
+  const tokens = createAgentDriveTokens({ secret, now })
+  const token = tokens.mint({ actorUserId: 'u', agentId: 'a', environmentId: 'e', bindingId: 'b', runId: 'r', sessionId: 's', scope: { kind: 'personal', workspaceId: 'w', ownerUserId: 'u' } }, (now ?? Date.now)() + 300000)
   const rows = [
     { _id: 'folder', name: 'Research', userId: 'u', workspaceId: 'w', type: 'folder', createdAt: 1, updatedAt: 2 },
     { _id: 'note', parentId: 'folder', name: 'note.md', userId: 'u', workspaceId: 'w', type: 'file', kind: 'note', content: 'Exact full note 🙂', createdAt: 1, updatedAt: 2 },
@@ -49,6 +49,27 @@ test('paged manifest preserves hierarchy without retaining inline text and its d
   assert.equal(new TextDecoder().decode(await f.service.download(f.token, { entry, downloadMac: downloadMac! })), f.rows[1]!.content)
   assert.equal(f.reads, 2)
   assert.ok(f.authorizeCount >= 6)
+})
+
+test('credential renewal preserves existing execution grants without accepting expired credentials or replaced attempts', async () => {
+  let clock = 1000
+  const f = fixture(() => clock)
+  const item = (await f.service.manifest(f.token)).entries.find(entry => entry.fileId === 'note')!
+  const { downloadMac, ...entry } = item
+  const claims = f.tokens.verify(f.token)!
+  clock += 300000
+  assert.equal(f.tokens.verify(f.token), null)
+  const renewed = f.tokens.mint(claims, clock + 120 * 60000)
+  await assert.rejects(f.service.download(f.token, { entry, downloadMac: downloadMac! }), /DRIVE_UNAUTHORIZED/)
+  assert.equal(new TextDecoder().decode(await f.service.download(renewed, { entry, downloadMac: downloadMac! })), f.rows[1]!.content)
+  assert.deepEqual(await f.service.metadata(renewed, { action: 'metadata', requestId: 'renewed-metadata-001',
+    operation: { kind: 'remove', entry: item, metadataMac: item.metadataMac! } }), { fileId: 'note', updatedAt: 3 })
+  const replacement = f.tokens.mint({ ...claims, execution: { attemptId: 'replacement', generation: 2 } }, clock + 300000)
+  await assert.rejects(f.service.download(replacement, { entry, downloadMac: downloadMac! }), /DRIVE_INVALID_DOWNLOAD/)
+  await assert.rejects(f.service.metadata(replacement, { action: 'metadata', requestId: 'renewed-metadata-002',
+    operation: { kind: 'remove', entry: item, metadataMac: item.metadataMac! } }), /DRIVE_INVALID_METADATA/)
+  f.revoke()
+  await assert.rejects(f.service.download(renewed, { entry, downloadMac: downloadMac! }), /DRIVE_RUN_UNAVAILABLE/)
 })
 
 test('download grants reject forged paths/hashes, another run, modified source bytes and revoked membership', async () => {

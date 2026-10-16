@@ -391,9 +391,10 @@ test('an account that needs reconnecting surfaces its own code to the host', asy
 
 test('only Overlay Cloud credentials carry the run-credentials method, so older hosts keep parsing theirs', async () => {
   assert.ok(AGENT_ENVIRONMENT_CREDENTIAL_METHODS.includes('agent:run-credentials'))
-  const issue = async (kind: AgentEnvironment['kind']) => {
+  const issue = async (kind: AgentEnvironment['kind'], drive = false) => {
     const issued: string[][] = []
     const environment = fixture({ kind }).environment
+    if (drive) environment.capabilities = { ...environment.capabilities, drive: { version: 1 } }
     const service = new ConnectedAgentControlPlaneService({
       repository: {
         async getEnvironmentProofChallenge() {
@@ -414,6 +415,10 @@ test('only Overlay Cloud credentials carry the run-credentials method, so older 
   assert.ok((await issue('overlay_cloud')).includes('agent:run-credentials'))
   assert.equal((await issue('local')).includes('agent:run-credentials'), false)
   assert.equal((await issue('vps')).includes('agent:run-credentials'), false)
+  for (const kind of ['overlay_cloud', 'local', 'vps'] as const) {
+    assert.equal((await issue(kind)).includes('agent:drive-credentials'), false)
+    assert.equal((await issue(kind, true)).includes('agent:drive-credentials'), true)
+  }
 })
 
 async function assertControlPlaneError(operation: () => Promise<unknown>, code: string) {
