@@ -68,6 +68,28 @@ test('ACP adapter discovery enforces its readiness verifier', async () => {
   await assert.rejects(unavailable.discover(), /adapter is not ready/)
 })
 
+test('loading an ACP session consumes replayed history without duplicating its answer or tools', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-history-'))
+  const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-load-history-agent.mjs')
+  const adapter = new AcpAgentAdapter({id: 'history', displayName: 'History fixture', command: process.execPath, args: [fixture]})
+  const events: NormalizedAgentEvent[] = []
+  let session: Awaited<ReturnType<typeof adapter.start>> | undefined
+  try {
+    session = await adapter.start({runId: 'history', workingDirectory: directory, additionalDirectories: [],
+      remoteSessionId: 'original-session', prompt: '', metadata: {},
+    }, async event => {events.push(event)})
+    assert.equal(session.remoteSessionId, 'original-session')
+    await session.prompt('Continue after interruption')
+    assert.ok(events.some(event => event.type === 'commands_update' && event.payload.commands.some(command => command.name === 'continue-loaded')), 'retain the current catalog while admitting the prompt immediately after loading')
+    assert.deepEqual(events.filter(event => event.type === 'text_checkpoint').map(event => event.payload.text), ['NEW_OUTPUT'])
+    assert.equal(events.some(event => event.type === 'action'), false)
+    assert.equal(events.at(-1)?.type, 'completed')
+  } finally {
+    await session?.stop()
+    await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100})
+  }
+})
+
 test('a buffered wire response cannot overtake the final text notification in either streaming mode', async () => {
   for (const streaming of [false, true]) {
     const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-tail-'))
@@ -116,7 +138,7 @@ test('direct ACP applies live model, effort and permission choices before every 
   }
 })
 
-test('discovery reads options without a prompt and cleans its granted-root scratch directory, including timeout fallback', async () => {
+test('discovery reads options without a prompt and cleans its private scratch directory, including timeout fallback', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-acp-discovery-'))
   const log = join(directory, 'must-not-prompt.jsonl')
   const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-options-agent.ts')

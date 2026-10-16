@@ -94,6 +94,7 @@ export class AcpAgentAdapter implements AgentAdapter {
   }
 
   async start(input: StartAdapterSessionInput, emit: EmitAgentEvent): Promise<AgentAdapterSession> {
+    let loadingHistory = Boolean(input.remoteSessionId)
     const ready = deferred<{ sessionId: string; context: acp.ClientContext }>()
     const closed = deferred<void>()
     const permissions = new Map<string, { response: Deferred<string | undefined>; options: Set<string> }>()
@@ -146,6 +147,7 @@ export class AcpAgentAdapter implements AgentAdapter {
       })
       .onNotification(acp.methods.client.session.update, async ({ params }) => {
         try {
+          if (loadingHistory && params.update.sessionUpdate !== 'available_commands_update') { updateOrder?.complete(); return }
           await normalizeAcpUpdate(params.update, emit, {
             appendText(chunk) {
               textCheckpoint += chunk
@@ -261,6 +263,7 @@ export class AcpAgentAdapter implements AgentAdapter {
         try {
           sessionOptions = await applyAcpSettings(requireContext(), initialized.sessionId, input.metadata, sessionOptions)
           this.capability.options = sessionOptions
+          loadingHistory = false
           const result = await requireContext().request(acp.methods.agent.session.prompt, {
             sessionId: initialized.sessionId, prompt: [{ type: 'text', text: prompt }],
           })

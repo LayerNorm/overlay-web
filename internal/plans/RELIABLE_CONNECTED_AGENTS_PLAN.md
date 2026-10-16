@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 5 direct-ACP loading now consumes historical answer/tool frames without republishing them as new output, including a buffered history tail after the load response. Current command metadata is retained. A real NDJSON subprocess regression verifies only the subsequent prompt contributes new answer text; execution-fenced recovery admission and its hosted smoke remain pending.
+
 - Phase 5 identity foundation: acpx persists its ACP session id before prompting and explicitly loads that identity, even when its local acpx record is gone. Real child-process tests cover matching restoration, missing/mismatched identity refusal, load failure without fresh-session fallback, and closing the child after checkpoint persistence fails. Automatic continuation remains disabled pending provider isolation, execution fencing, fresh tool/drive credentials and pending-write reconciliation.
 
 - Native Codex Stop now passes on protected Preview: the UI cancels an executing foreground tool, independent process readback confirms it ended, and the same assistant row retains the full pre-Stop text and all three tool calls after API readback and browser reload. Expanded history keeps completed and interrupted tools available. A singular failed-tool label found during this check is corrected. Claude parity and restart recovery remain separate gates.
