@@ -6,11 +6,13 @@ Status: implementation complete through the staged 8.12 guardrail. Last audited
 Implementation status:
 
 - 8.1-8.4: #234, #235, #236, #237; authenticated preview QA passed.
-- 8.5-8.8: #240, #241, #242, #243, #244, #245; authenticated preview QA passed
-  for every serving preview. #242 remains untested because its preview never
-  served; its code checks are green.
-- 8.9-8.11: #249, #250, #251, #252, #253; local checks passed and preview/CI
-  results are tracked on the PRs.
+- 8.5-8.8: #240, #241, #242, #243, #244, #245; authenticated preview QA
+  passed on every slice, including #242 once its preview served.
+- 8.9-8.11: #249, #250, #251, #252, #253; authenticated preview QA passed
+  on every slice.
+- Preview builds were unblocked by #255 (turbopackFileSystemCacheForBuild
+  opt-out plus next 16.4.2), which fixes the Basic build container OOM
+  introduced by the Next.js 16.4 upgrade in #248.
 - 8.12: #254; staged guardrail: ESLint warns on raw interactive controls while
   npm run check:raw-controls hard-fails any control outside the committed
   baseline. Once the sweep PRs merge, remove the baseline debt and promote the
