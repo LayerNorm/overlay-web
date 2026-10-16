@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Open text uploads in Files with their full stored content; reserve the Notes editor for note records so saved drive links do not stall on an inaccessible note.
+
 - Renew expired pending drive uploads under current run authority, retaining immutable write identities and avoiding duplicate quota charges after an outage.
 
 - Preserve the saved answer when an explicit fresh connected-agent attempt continues streaming on the same message.

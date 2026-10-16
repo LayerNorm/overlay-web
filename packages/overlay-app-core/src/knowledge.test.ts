@@ -54,7 +54,9 @@ test('knowledge file helpers remove deleted folders and descendants', () => {
 
 test('knowledge memory and document helpers match web behavior', () => {
   assert.equal(filePathLabel(files, files[2]!), 'Folder')
-  assert.equal(opensInDocumentEditor(files[2]!), true)
+  assert.equal(opensInDocumentEditor(files[2]!), false)
+  assert.equal(opensInDocumentEditor({ ...files[2]!, kind: 'note' }), true)
+  assert.equal(opensInDocumentEditor({ ...files[2]!, name: 'report.md', mimeType: 'text/markdown' }), false)
   assert.equal(opensInDocumentEditor(files[3]!), false)
   assert.equal(knowledgePendingPreview(` ${'x'.repeat(170)} `).endsWith('…'), true)
   assert.deepEqual(createManualMemoryRequest('Remember this'), {
