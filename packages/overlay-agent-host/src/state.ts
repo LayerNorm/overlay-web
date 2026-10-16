@@ -126,6 +126,12 @@ export class SqliteHostStateStore {
     } catch (error) {this.database.exec('ROLLBACK'); throw error}
   }
 
+  nativePreparationPending(commandId: string, fingerprint: string): boolean {
+    const row = this.database.prepare('SELECT fingerprint,phase FROM native_start_preparations WHERE command_id=?').get(commandId)
+    return row?.fingerprint === fingerprint && row.phase === 'preparing'
+      && Boolean(this.database.prepare('SELECT command_id FROM command_claims WHERE command_id=?').get(commandId))
+  }
+
   /** Commit the native-start boundary, ownership transfer and recoverable original identity together. */
   enterNativeProviderStart(input: {commandId: string; fingerprint: string; previous: StoredRemoteSession;
     nextExecution: NonNullable<StoredRemoteSession['execution']>}) {

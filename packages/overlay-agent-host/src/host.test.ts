@@ -17,6 +17,7 @@ import { AgentHostRuntime } from './runtime'
 import { SqliteHostStateStore } from './state'
 import type { AgentControlPlaneClient } from './transport'
 import { HttpAgentControlPlaneClient } from './transport'
+import {DriveRequestError} from './drive-client'
 import { connectAgentHost } from './enrollment'
 import { loadStoredConnection } from './connection'
 
@@ -154,7 +155,7 @@ test('restoration keeps the old claim through failed preparation and joins dupli
       filesystem: {mode: 'selected_roots', roots: [root]}, adapters: [adapter], state, controlPlane: plane,
       drive: {stateDirectory: root, apiUrl: 'https://preview.invalid/api/agent-drive', create: async () => {
         preparations++
-        if (preparations === 1) throw Error('preparation temporarily unavailable')
+        if (preparations === 1) throw new DriveRequestError(503, 'DRIVE_BACKEND_UNAVAILABLE')
         await gate
         return {workingDirectory: root, additionalDirectories: [], sync: async () => [], close: async () => undefined}
       }}})
@@ -164,7 +165,8 @@ test('restoration keeps the old claim through failed preparation and joins dupli
       restore: {previousExecution: {attemptId: 'previous', generation: 1},
         providerStop: {provider: 'box', leaseId: 'lease', providerReference: 'machine', observedAt: 1}}}),
       execution: {attemptId: 'next', generation: 2}}
-    await assert.rejects(runtime.processCommand(start), /temporarily unavailable/)
+    await assert.rejects(runtime.processCommand(start), /503/)
+    assert.equal(plane.acknowledgements[0]?.error?.code, 'native_preparation_retryable')
     assert.equal(starts, 0)
     assert.equal(state.getSession('run')?.execution?.attemptId, 'previous')
     // The server authorizes a new delivery for the same execution; an uncertain native start never reaches this path.

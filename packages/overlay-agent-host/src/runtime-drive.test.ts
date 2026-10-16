@@ -7,6 +7,7 @@ import test from 'node:test'
 import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive'
 import type { DriveCredentialsResponse } from '@layernorm/overlay-agent-bridge-protocol'
 import {SqliteDriveJournal} from './drive-journal'
+import {DriveRequestError} from './drive-client'
 
 const scope = { kind: 'personal' as const, workspaceId: 'workspace', ownerUserId: 'owner' }
 const credential = (): DriveCredentialsResponse => ({ protocolVersion: 1, scope, expiresAt: Date.now() + 3600000,
@@ -50,7 +51,7 @@ test('failed hydration releases ownership so the same execution can retry withou
 })
 
 test('runtime restoration settles the original write before hydration and saves only definitively uncommitted bytes with a new request', async () => {
-  for (const outcome of ['committed', 'uncommitted']) {
+  for (const outcome of ['committed', 'uncommitted', 'uncommitted-with-retry']) {
     const f = await fixture()
     let drive: RuntimeDrive | undefined
     const content = Buffer.from('Retain the complete interrupted file 🙂\n')
@@ -58,7 +59,7 @@ test('runtime restoration settles the original write before hydration and saves 
     const result = {fileId: 'saved-file', updatedAt: 2, name: 'report.md', conflict: false, objectStored: true, sha256, sizeBytes: content.length}
     const sourceUpload = '24b3d8ed-21b2-43f3-9617-000000000001', nextUpload = '24b3d8ed-21b2-43f3-9617-000000000002'
     const intents: string[] = [], commits: string[] = []
-    let restored = false, published = false, recovered = false
+    let restored = false, published = false, recovered = false, recoveryReads = 0, lostRetry = false
     const fetch: typeof globalThis.fetch = async (input, init) => {
       if (String(input) === 'https://storage.invalid/staging') return new Response(null)
       const body = JSON.parse(String(init?.body))
@@ -68,12 +69,16 @@ test('runtime restoration settles the original write before hydration and saves 
         .map(frame => JSON.stringify(frame) + '\n').join(''))
       if (body.action === 'recover') {
         assert.equal(restored, true); assert.equal(body.requestId, intents[0])
-        recovered = true
+        recovered = true; recoveryReads++
         return Response.json({requestId: body.requestId, previousExecution: {attemptId: 'source', generation: 1},
           resolution: outcome === 'committed' ? {state: 'content_committed', uploadId: sourceUpload, result} : {state: 'uncommitted'}})
       }
       if (body.action === 'upload') {
         if (restored) {assert.equal(recovered, true); assert.notEqual(body.requestId, intents[0])}
+        if (restored && published) {
+          assert.equal(body.requestId, intents[1])
+          return Response.json({state: 'committed', uploadId: nextUpload, result})
+        }
         intents.push(body.requestId)
         return Response.json({state: 'pending', uploadId: restored ? nextUpload : sourceUpload,
           url: 'https://storage.invalid/staging', headers: {'content-type': 'text/markdown',
@@ -83,6 +88,7 @@ test('runtime restoration settles the original write before hydration and saves 
       commits.push(body.uploadId)
       if (!restored) {published = outcome === 'committed'; throw Error('lost original commit acknowledgement')}
       assert.equal(body.uploadId, nextUpload); published = true
+      if (outcome === 'uncommitted-with-retry' && !lostRetry) {lostRetry = true; throw new DriveRequestError(503, 'DRIVE_BACKEND_UNAVAILABLE')}
       return Response.json(result)
     }
     try {
@@ -92,15 +98,18 @@ test('runtime restoration settles the original write before hydration and saves 
       await assert.rejects(drive.sync(), /lost original commit acknowledgement/)
       await drive.close(); drive = undefined
       restored = true
-      drive = await createRuntimeDrive({...f.options, fetch, sessionId: 'next', execution: {attemptId: 'next', generation: 2},
-        previousExecution: {attemptId: 'source', generation: 1}})
+      const restoredOptions = {...f.options, fetch, sessionId: 'next', execution: {attemptId: 'next', generation: 2},
+        previousExecution: {attemptId: 'source', generation: 1}}
+      if (outcome === 'uncommitted-with-retry') await assert.rejects(createRuntimeDrive(restoredOptions), /503/)
+      drive = await createRuntimeDrive(restoredOptions)
       assert.equal(drive.workingDirectory, root)
       assert.deepEqual(await readFile(join(root, 'report.md')), content)
       assert.deepEqual(await drive.sync(true), [{fileId: result.fileId, path: 'report.md', kind: 'file'}])
       assert.equal(intents.length, outcome === 'committed' ? 1 : 2)
+      assert.equal(recoveryReads, 1)
       assert.deepEqual(commits, outcome === 'committed' ? [sourceUpload] : [sourceUpload, nextUpload])
       await drive.close(); drive = undefined
-      if (outcome === 'uncommitted') {
+      if (outcome !== 'committed') {
         const journal = new SqliteDriveJournal(join(f.options.stateDirectory, 'drive', createHash('sha256').update(root).digest('hex').slice(0, 32), 'writes.sqlite'),
           {environmentId: 'environment', runId: 'run', sessionId: 'source', scope, execution: {attemptId: 'source', generation: 1}})
         const originalRequest = intents[0]

@@ -349,7 +349,7 @@ export class AgentHostRuntime {
     const admission = await admitHostSession({command, adapter, state: this.options.state, sessions: this.sessions})
     if (admission.kind === 'already-active') return
     const {settings, offset, restored} = admission
-    const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
+    const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true, Boolean(restored))
     if (credentials === 'unavailable') return
     const drive = await this.prepareDrive(command)
     const scope = drive ? { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
@@ -438,10 +438,10 @@ export class AgentHostRuntime {
     return session
   }
 
-  private runCredentials(runId: string, requested: boolean) {
+  private runCredentials(runId: string, requested: boolean, retryPreparation = false) {
     const execution = this.executions.get(runId)
     return fetchProviderRunCredentials({runId, requested: Boolean(this.options.fetchRunCredentials && requested),
-      client: this.options.controlPlane, emit: event => this.emit(runId, event, execution), logger: this.logger})
+      retryPreparation, client: this.options.controlPlane, emit: event => this.emit(runId, event, execution), logger: this.logger})
   }
 
   private requireAdapter(adapterId: string): AgentAdapter {

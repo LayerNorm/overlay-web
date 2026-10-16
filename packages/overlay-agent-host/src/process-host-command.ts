@@ -1,6 +1,7 @@
 import type {AgentHostCommand} from '@layernorm/overlay-agent-bridge-protocol'
 import type {SqliteHostStateStore} from './state.js'
 import {nativePreparationFingerprint} from './native-start-preparation.js'
+import {isRetryablePreparationFailure} from './preparation-failure.js'
 
 export async function processHostCommand(input: {command: AgentHostCommand; state: SqliteHostStateStore; environmentId: string; workspaceId: string;
   shuttingDown: boolean; resolvedThroughSequence: number; dispatch(command: AgentHostCommand): Promise<void>;
@@ -44,8 +45,11 @@ export async function processHostCommand(input: {command: AgentHostCommand; stat
     state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: true })
   } catch (error) {
     const message = input.errorMessage(error)
-    state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: false, errorCode: 'command_rejected', errorMessage: message })
-    await input.acknowledge(command, false, message, 'command_rejected')
+    const retryable = command.type === 'start' && command.payload.restore && command.execution
+      && isRetryablePreparationFailure(error) && state.nativePreparationPending(command.commandId, nativePreparationFingerprint(command))
+    const errorCode = retryable ? 'native_preparation_retryable' : 'command_rejected'
+    state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: false, errorCode, errorMessage: message })
+    await input.acknowledge(command, false, message, errorCode)
     throw error
   }
   await input.acknowledge(command, true)

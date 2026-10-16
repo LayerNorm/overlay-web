@@ -57,13 +57,16 @@ export async function createRuntimeDrive(options: {
     if (options.previousExecution) {
       if (!options.execution || options.execution.attemptId === options.previousExecution.attemptId
         || options.execution.generation !== options.previousExecution.generation + 1) throw Error('DRIVE_JOURNAL_EXECUTION_CHANGED')
-      journal = new SqliteDriveJournal(join(stateRoot, 'writes.sqlite'), {...context,
-        sessionId: options.previousExecution.attemptId, execution: options.previousExecution})
-      const synchronizer = new AgentDriveSynchronizer({runId: options.runId, cache, client, journal, state})
-      await settleInterruptedDrive({previousExecution: options.previousExecution, journal, state, client, synchronizer})
-      journal.close(); journal = undefined
+      journal = openCurrentPreparationJournal(join(stateRoot, 'writes.sqlite'), context, state)
+      if (!journal) {
+        journal = new SqliteDriveJournal(join(stateRoot, 'writes.sqlite'), {...context,
+          sessionId: options.previousExecution.attemptId, execution: options.previousExecution})
+        const synchronizer = new AgentDriveSynchronizer({runId: options.runId, cache, client, journal, state})
+        await settleInterruptedDrive({previousExecution: options.previousExecution, journal, state, client, synchronizer})
+        journal.close(); journal = undefined
+      }
     }
-    journal = new SqliteDriveJournal(join(stateRoot, 'writes.sqlite'), context)
+    journal ??= new SqliteDriveJournal(join(stateRoot, 'writes.sqlite'), context)
     const synchronizer = new AgentDriveSynchronizer({ runId: options.runId, cache, client, journal, state })
     await synchronizer.initialize()
     const ownedJournal = journal, ownedState = state
@@ -80,6 +83,21 @@ export async function createRuntimeDrive(options: {
     }
   } catch (error) {
     try { journal?.close() } finally { try { state?.close() } finally { lease.release() } }
+    throw error
+  }
+}
+
+/** A retried preparation may already own a pending write after settling its predecessor. Never adopt a foreign request. */
+function openCurrentPreparationJournal(path: string, context: DriveJournalContext, state: SqliteDriveSyncState): SqliteDriveJournal | undefined {
+  let journal: SqliteDriveJournal | undefined
+  try {
+    journal = new SqliteDriveJournal(path, context)
+    const snapshot = state.read()
+    if (snapshot.phase === 'writing') journal.find(snapshot.operation.request.requestId)
+    return journal
+  } catch (error) {
+    journal?.close()
+    if (error instanceof Error && ['DRIVE_UNSAVED_OTHER_EXECUTION', 'DRIVE_JOURNAL_EXECUTION_CHANGED'].includes(error.message)) return undefined
     throw error
   }
 }

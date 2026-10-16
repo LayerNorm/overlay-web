@@ -1,11 +1,13 @@
 import type {EmitAgentEvent} from './adapter.js'
 import type {StructuredLogger} from './logger.js'
 import {ControlPlaneRequestError, type AgentControlPlaneClient} from './transport.js'
+import {isRetryablePreparationFailure} from './preparation-failure.js'
 
 /** Undefined means no account; unavailable means the failure was reported and startup must stop. */
 export async function fetchProviderRunCredentials(options: {
   runId: string
   requested: boolean
+  retryPreparation?: boolean
   client: AgentControlPlaneClient
   emit: EmitAgentEvent
   logger: StructuredLogger
@@ -13,6 +15,7 @@ export async function fetchProviderRunCredentials(options: {
   if (!options.requested || !options.client.fetchRunCredentials) return undefined
   try {return await options.client.fetchRunCredentials(options.runId)}
   catch (error) {
+    if (options.retryPreparation && isRetryablePreparationFailure(error)) throw error
     const code = error instanceof ControlPlaneRequestError ? error.code : undefined
     if (code === 'provider_account_missing') return undefined
     const needsSignIn = code === 'account_needs_reauth' || code === 'account_unavailable'

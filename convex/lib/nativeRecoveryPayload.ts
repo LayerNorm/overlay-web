@@ -1,4 +1,4 @@
-import {driveStartDescriptorSchema, startAdapterPayloadSchema, type executionFenceSchema} from '@layernorm/overlay-agent-bridge-protocol'
+import {driveStartDescriptorSchema, startAdapterPayloadSchema, nativeRestorationSchema, type executionFenceSchema} from '@layernorm/overlay-agent-bridge-protocol'
 import {z} from 'zod'
 import type {RemoteRunState} from '../../src/shared/agents/remote-run'
 
@@ -9,6 +9,10 @@ export const nativeRecoverySnapshotSchema = z.object({
   sandboxBilling: z.object({leaseId: z.string(), reservationId: z.string().optional()}).passthrough(),
   billing: z.object({reservationId: z.string().nullable().optional()}).passthrough().optional(),
 }).passthrough()
+
+export const nativeRestorationSnapshotSchema = z.object({nativeRestoration: nativeRestorationSchema.extend({
+  nativeSessionId: z.string().min(1), commandId: z.string().min(1),
+})}).passthrough()
 
 /** Preserve the original grant/settings while replacing execution-scoped delivery and the text cursor. */
 export function nativeRecoveryPayload(input: {original: unknown; nativeSessionId: string; newAttemptId: string;

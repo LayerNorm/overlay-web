@@ -8,6 +8,8 @@ import {nativeRecoveryIsAuthorized} from '../lib/nativeRecoveryAuthority'
 import {nativeRecoveryPayload, nativeRecoverySnapshotSchema} from '../lib/nativeRecoveryPayload'
 import {MAX_COMMAND_BYTES, startAdapterPayloadSchema} from '@layernorm/overlay-agent-bridge-protocol'
 import {hydrateRemoteMessage} from '../lib/remoteMessageText'
+import {matchesNativeRestoration} from '../lib/nativePreparationRetry'
+import {projectNativePreparation} from '../lib/nativePreparationProjection'
 
 /** The machine remains stopped until the caller receives this durable authorization. */
 export const beginByServer = mutation({
@@ -32,10 +34,13 @@ export const beginByServer = mutation({
       || proof.executionGeneration !== args.generation || proof.leaseId !== args.leaseId
       || proof.providerReference !== args.providerReference || args.now < proof.observedAt) return false
     const existing = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', commandId)).unique()
-    if (existing) return state.phase === 'recovering' && state.cause === 'native_restoration'
-      && state.executionGeneration === args.generation + 1 && existing.executionGeneration === state.executionGeneration
-      && existing.environmentId === run.environmentId && existing.workspaceId === attempt.workspaceId
-      && existing.type === 'start' && existing.attemptId === state.currentAttemptId && existing.status === 'pending'
+    if (existing) {
+      const deliveryId = attempt.restorationCommandId
+      const pending = deliveryId && deliveryId !== existing.commandId
+        ? await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', deliveryId)).unique() : existing
+      return state.phase === 'recovering' && state.cause === 'native_restoration' && state.executionGeneration === args.generation + 1
+        && pending?.status === 'pending' && matchesNativeRestoration(state, attempt, pending)
+    }
     if (state.revision !== args.expectedRevision || state.currentAttemptId !== args.attemptId || state.executionGeneration !== args.generation
       || !proof || proof.attemptId !== args.attemptId || proof.executionGeneration !== args.generation
       || proof.leaseId !== args.leaseId || proof.providerReference !== args.providerReference
@@ -63,6 +68,7 @@ export const beginByServer = mutation({
     await ctx.db.insert('agentRemoteSessions', {sessionId: nextAttempt, attemptId: nextAttempt, executionGeneration: generation,
       workspaceId: attempt.workspaceId, environmentId: attempt.environmentId, bindingId: attempt.bindingId, runId: args.runId,
       remoteSessionId: attempt.remoteSessionId, status: 'recovering', commandCursor: 0, eventCursor: 0,
+      restorationCommandId: commandId, preparationRetryCount: 0,
       hardDeadlineAt: state.hardDeadlineAt, claimDeadlineAt, capabilitySnapshot: {...parsed.data,
         nativeRestoration: {...payload.restore, nativeSessionId: attempt.remoteSessionId, commandId}}, createdAt: args.now, updatedAt: args.now})
     await ctx.db.patch(attempt._id, {status: 'failed', recoveryCause: 'provider_isolated', endedAt: args.now, updatedAt: args.now})
@@ -76,6 +82,7 @@ export const beginByServer = mutation({
     await ctx.db.insert('agentRunCommands', {commandId, workspaceId: attempt.workspaceId, environmentId: attempt.environmentId,
       runId: args.runId, attemptId: nextAttempt, executionGeneration: generation, type: 'start', payload,
       sequence: (latest?.sequence ?? 0) + 1, status: 'pending', createdAt: args.now, updatedAt: args.now})
+    await projectNativePreparation(ctx, run, next, {workspaceId: attempt.workspaceId, environmentName: parsed.data.environmentName, now: args.now})
     await signalRemoteLifecycle(ctx, {...run, remoteLifecycle: next}, args.now)
     return true
   },

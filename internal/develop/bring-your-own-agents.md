@@ -1437,7 +1437,7 @@ conversation membership, binding, funding, the unique admitted machine lease, na
 explicit adapter capability and unresolved database approvals. It keeps the assistant message and
 full chunked answer, advances the execution generation once, rebinds the drive descriptor and
 preserves validated original settings. The hard deadline never moves. Duplicate delivery is safe
-only while the exact queued command remains pending; claimed or unknown outcomes are not retried.
+only while the latest authorized delivery remains pending; an unknown native-start outcome is never replayed.
 Old unfinished commands become ordered shutdowns, retaining the host's command sequence.
 The queued restoration has a bounded preparation window without asserting provider health;
 queueing alone does not claim successful restoration or enable the capability.
@@ -1448,14 +1448,15 @@ The request selects only its original id, kind and fingerprint. A committed cont
 acknowledgement was lost, and contains no storage keys; a missing or pending request is definitively uncommitted because the old generation cannot
 write after replacement. A conflicting identity, unavailable receipt retention or unknown response
 blocks recovery. This lookup neither replays a write nor authorizes adopting another execution's
-local journal. Under the cache lease, host restoration opens only the exact previous journal and
-looks up its pending request with the new execution's credential before hydration. A committed
+local journal. Under the cache lease, a preparation retry may reopen its current execution's own
+pending journal only after foreign unfinished writes are excluded. Otherwise restoration opens
+only the exact previous journal and looks up its pending request with the new execution's
+credential before hydration. A committed
 receipt settles the original identity and saved baseline without sending the old write. A definitive
 uncommitted outcome is archived with its immutable bytes before the pending baseline is cleared;
 the new execution rescans local files under new request ids. Reopening after either durable outcome
 repairs the baseline without another write or receipt lookup. Unknown outcomes and foreign unfinished
-journals remain blocked. Preparation retry handling and hosted native acceptance remain required
-before enabling fenced restoration.
+journals remain blocked. Hosted native acceptance remains required before enabling fenced restoration.
 The machine recovery gate observes a stopped Boat machine without resuming it, waits for the
 backend to authorize a queued restoration, and rechecks the same active lease before and after
 resume. The run coordinator retries this inspection only for an eligible recovery state and an
@@ -1480,8 +1481,18 @@ transaction advances the marker, transfers the execution claim and checkpoints t
 identity under the new execution. Checkpoint failure rolls back all three. A preparation interrupted
 before this boundary may resume its exact outstanding command; provider-starting and unknown legacy
 claims cannot replay. Concurrent deliveries in one host join the same preparation, and concurrent
-receivers still have only one successful native-start transition. Backend retry delivery and startup
-boot receipts must respect this distinction before the capability is enabled.
+receivers still have only one successful native-start transition.
+A recognized transient transport error is retryable only while the durable marker is still preparing.
+Credential lookup preserves that distinction instead of emitting a false provider failure; sign-in
+requirements and permanent refusals remain explicit. The backend permits at most three new deliveries
+on the same attempt/generation, rechecking active principal, workspace, agent, membership, binding,
+funding, approvals, machine lease, source receipt and the fixed deadline. Duplicate rejection cannot
+allocate another retry, and the latest pending delivery is the only resume authorization. Exhaustion
+keeps the run for inspection. Preparation receipts bind neither receiver boot nor provider start time;
+the first native event establishes the boot fence, and late preparation cannot override it. Old-boot
+text remains fenced. The capability remains gated on hosted native acceptance.
+Queueing and retrying project recovering status and the current preparation deadline onto the
+existing assistant, publishing a message delta while preserving its text chunks and work history.
 Acpx records a versioned, nonsecret ACP session identity before the first prompt: its local session key, provider agent, working directory and ACP backend session id. Restoration requires a matching record or checkpoint and explicitly requests that backend id; missing identities, conflicting records and provider load refusal cannot create a replacement conversation. Checkpoint failure closes the new runtime before initialization returns. This identity safeguard does not enable interrupted-turn continuation. Direct ACP session loading consumes replayed answer/work notifications through first-prompt admission, including buffered frames after the load response, without appending them to the canonical answer; current command catalogs remain available.
 Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
 control actions and event projection. The UI shows that absolute UTC deadline for nonterminal

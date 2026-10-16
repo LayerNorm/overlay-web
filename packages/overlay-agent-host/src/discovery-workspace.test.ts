@@ -9,8 +9,9 @@ import {AcpxAgentAdapter} from './acpx-adapter'
 import {AgentDriveCache} from './drive-cache'
 import {createDiscoveryWorkspace} from './discovery-workspace'
 
-const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-options-agent.ts')
-const launch = [process.execPath, '--import', import.meta.resolve('tsx'), fixture]
+// This timed isolation probe needs a protocol child, not a TypeScript compiler/SDK startup on the CI machine.
+const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-discovery-agent.mjs')
+const launch = [process.execPath, fixture]
 
 test('live ACP and acpx catalog probes cannot become drive upload candidates', async t => {
   for (const kind of ['acp', 'acpx']) await t.test(kind, async () => {
@@ -44,6 +45,8 @@ test('live ACP and acpx catalog probes cannot become drive upload candidates', a
       if (process.platform !== 'win32') assert.equal((await stat(probeDirectory)).mode & 0o777, 0o700)
       await writeFile(gate, '')
       assert.equal((await pending).options?.model?.values[1]?.id, 'future-model')
+      assert.ok((await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line)).every(record => record.kind === 'discovery'),
+        'catalog discovery must not send a provider prompt')
       await assert.rejects(stat(probeDirectory), {code: 'ENOENT'})
       assert.deepEqual(await cache.inventory(), [])
     } finally {

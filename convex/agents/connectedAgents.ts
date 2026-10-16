@@ -4,6 +4,7 @@ import { applyRemoteText } from '../../src/shared/agents/remote-agent-text'
 import { hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
 import { recoveryStartPayload } from '../lib/remoteRecovery'
 import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
+import {retryNativePreparation} from '../lib/nativePreparationRetry'
 import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
@@ -1048,6 +1049,8 @@ export const acknowledgeCommandByServer = mutation({
             .unique()
         : null
       if (run?.remoteLifecycle && session) {
+        if (args.errorCode === 'command_sequence_gap') return true
+        if (args.errorCode === 'native_preparation_retryable' && await retryNativePreparation(ctx, run, session, command, args.now)) return true
         await applyRemoteFact(ctx, run, { type: 'health', process: 'unknown' }, args.now)
         await ctx.db.patch(session._id, { recoveryCause: 'command_rejected', recoveryResult: 'unavailable', updatedAt: args.now })
         return true
@@ -2512,11 +2515,18 @@ export const applyRemoteEventsByServer = mutation({
       && (!run.remoteLifecycle?.approval || nativeAdapter.recovery.approvalRestoration)
       && args.events[0]?.type === 'process_observation' && args.events[0].payload.process === 'live'
       && args.events[0].payload.recoveryOutcome === 'attached_live')
-    const acceptedBoot = acceptsNativeReattachment ? args.events[0]?.execution?.hostBootId : session.hostBootId
-    if (run.remoteLifecycle && args.events.some(event => !event.execution || event.execution.attemptId !== session.sessionId
-      || event.execution.generation !== run.remoteLifecycle!.executionGeneration
-      || (acceptedBoot && acceptedBoot !== event.execution.hostBootId
-        && !(event.type === 'process_observation' && event.payload.process === 'unknown')))) return swallowStaleEvents('stale_execution')
+    let acceptedBoot = acceptsNativeReattachment ? args.events[0]?.execution?.hostBootId : session.hostBootId
+    if (run.remoteLifecycle) for (const event of args.events) {
+      if (!event.execution || event.execution.attemptId !== session.sessionId
+        || event.execution.generation !== run.remoteLifecycle.executionGeneration
+        || (acceptedBoot && acceptedBoot !== event.execution.hostBootId
+          && event.type !== 'session_preparing'
+          && !(event.type === 'process_observation' && event.payload.process === 'unknown'))) return swallowStaleEvents('stale_execution')
+      // Replayed preparation from an earlier bridge may precede this receiver's first native event.
+      // Preparation attests neither a provider process nor ownership of its boot identity.
+      if (!acceptedBoot && event.type !== 'session_preparing'
+        && !(event.type === 'process_observation' && event.payload.process === 'unknown')) acceptedBoot = event.execution.hostBootId
+    }
     try {
       let content = message.content === `Waiting for ${typeof snapshot.environmentName === 'string' ? snapshot.environmentName : environment.name}` ? '' : message.content
       for (const event of args.events as AgentRemoteEvent[]) content = applyRemoteText(content, event)
@@ -2597,7 +2607,9 @@ export const applyRemoteEventsByServer = mutation({
         : { type: 'progress' as const }
       const result = await applyRemoteFact(ctx, canonicalRun, fact, args.now, { deferMessageProjection: true })
       if (result?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: result.state }
-      if (event.execution?.hostBootId && (!session.hostBootId || acceptsNativeReattachment)) await ctx.db.patch(session._id, { hostBootId: event.execution.hostBootId })
+      if (event.execution?.hostBootId && event.type !== 'session_preparing'
+        && !(event.type === 'process_observation' && event.payload.process === 'unknown')
+        && (!session.hostBootId || acceptsNativeReattachment)) await ctx.db.patch(session._id, { hostBootId: event.execution.hostBootId })
     }
     const projection = projectRemoteAgentEvents({
       content: message.content,
@@ -2624,10 +2636,11 @@ export const applyRemoteEventsByServer = mutation({
         state: state.phase, cause: state.cause, revision: state.revision,
       } }]
     }
+    const providerStarted = !run.remoteLifecycle || normalizedEvents.some(event => event.type === 'session_started')
     await ctx.db.patch(session._id, {
       eventCursor: last, status: projection.sessionStatus,
       ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
-      ...(!session.startedAt ? { startedAt: args.now } : {}),
+      ...(!session.startedAt && providerStarted ? { startedAt: args.now } : {}),
       ...(projection.terminal ? { endedAt: args.now } : {}), updatedAt: args.now,
     })
     const messageStatus = projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating'
@@ -2645,7 +2658,7 @@ export const applyRemoteEventsByServer = mutation({
         events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage,
       }),
       ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
-      ...(!run.startedAt ? { startedAt: args.now } : {}),
+      ...(!run.startedAt && providerStarted ? { startedAt: args.now } : {}),
       ...(projection.runStatus === 'completed' ? { completedAt: args.now } : {}),
       ...(projection.runStatus === 'failed' ? { failedAt: args.now, terminalError: projection.terminalError } : {}),
       ...(projection.runStatus === 'cancelled' ? { cancelledAt: args.now } : {}),

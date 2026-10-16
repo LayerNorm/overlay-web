@@ -1,14 +1,10 @@
 import {ConvexError, v} from 'convex/values'
-import {z} from 'zod'
 import {query} from '../_generated/server'
 import {driveAuthorityArgs, requireDriveAuthority} from './agentDrive'
 import {driveContentResult} from '../lib/agentDriveUploadSchema'
 import {matchesCurrentRecoveryMachine, recoveryMachineBinding} from '../lib/remoteRecoveryMachine'
-import {driveRecoveryRequestSchema, nativeRestorationSchema} from '@layernorm/overlay-agent-bridge-protocol'
-
-const restorationSnapshot = z.object({nativeRestoration: nativeRestorationSchema.extend({
-  nativeSessionId: z.string().min(1), commandId: z.string().min(1),
-})})
+import {driveRecoveryRequestSchema} from '@layernorm/overlay-agent-bridge-protocol'
+import {nativeRestorationSnapshotSchema} from '../lib/nativeRecoveryPayload'
 
 /** The old generation cannot commit after replacement; immutable receipts distinguish a lost ACK from no write. */
 export const readByServer = query({
@@ -22,7 +18,7 @@ export const readByServer = query({
   handler: async (ctx, args) => {
     const {run, session} = await requireDriveAuthority(ctx, args)
     const parsed = driveRecoveryRequestSchema.safeParse(args.request)
-    const snapshot = restorationSnapshot.safeParse(session.capabilitySnapshot)
+    const snapshot = nativeRestorationSnapshotSchema.safeParse(session.capabilitySnapshot)
     if (!parsed.success || !snapshot.success) throw new ConvexError('DRIVE_RECOVERY_UNAVAILABLE')
     const request = parsed.data, previous = request.previousExecution
     const restoration = snapshot.data.nativeRestoration, proof = run.remoteLifecycle?.providerStop
