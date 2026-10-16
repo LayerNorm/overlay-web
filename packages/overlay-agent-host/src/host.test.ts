@@ -41,6 +41,25 @@ class FakeControlPlane implements AgentControlPlaneClient {
   }
 }
 
+test('a host without fenced restoration admission rejects the command before starting any session', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-restore-admission-'))
+  const state = new SqliteHostStateStore(join(directory, 'host.sqlite'))
+  try {
+    const controlPlane = new FakeControlPlane(), runtime = createRuntime(state, controlPlane, directory)
+    controlPlane.commands.push(command('restore', 'run', 1, 'start', {
+      bindingId: 'binding', adapterId: 'fake', workingDirectory: directory, prompt: 'Continue', sessionId: 'original-native-session',
+      restore: {previousExecution: {attemptId: 'previous', generation: 1},
+        providerStop: {provider: 'box', leaseId: 'lease', providerReference: 'machine', observedAt: 1}}, metadata: {},
+    }))
+    await assert.rejects(runtime.pollOnce(0), /cannot admit fenced native restoration/)
+    await runtime.flushOutbox()
+    assert.equal(controlPlane.acknowledgements[0]?.accepted, false)
+    assert.match(controlPlane.acknowledgements[0]?.error?.message ?? '', /cannot admit fenced native restoration/)
+    assert.equal(state.getSession('run'), undefined)
+    assert.equal(eventTypes(controlPlane).includes('session_started'), false)
+  } finally {state.close(); await rm(directory, {recursive: true, force: true})}
+})
+
 test('host conformance: start, stream, approval, cancel, duplicates, outage, crash, reconnect and resume', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-host-'))
   const root = join(directory, 'workspace')

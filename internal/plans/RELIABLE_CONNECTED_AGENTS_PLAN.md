@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- The native restoration wire contract now distinguishes loading the original session under a stopped-provider receipt from starting fresh. It rejects contradictory or incomplete payloads, preserves legacy capability shapes and negotiates fenced loading separately from live reattachment. Host admission still rejects restoration until the execution takeover and drive reconciliation path is implemented; no recovery capability is enabled by this contract alone.
+
 - Phase 5 has an authorization-before-resume machine gate: it observes an already-stopped Boat machine, waits for the durable restoration authorization and rechecks the exact lease around resume. Orchestration tests cover rejection, live work, concurrent resume, unsupported providers and replacement during authorization or boot. The native continuation caller remains pending.
 
 - Phase 5 adds a server-only provider-stop receipt bound to the exact execution revision, attempt, generation, environment and its admitted sandbox lease. Real Convex tests reject stale/cross-scope facts, replacement or ambiguous machines, revocation and cancellation; stable duplicate delivery is idempotent. The stopped-provider caller and native continuation are not yet wired.

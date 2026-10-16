@@ -1436,6 +1436,11 @@ The machine recovery gate observes a stopped Boat machine without resuming it, w
 backend to authorize a queued restoration, and rechecks the same active lease before and after
 resume. It restarts only that captured machine's host. Live machines, rejected authorization,
 unsupported providers and concurrent lease replacements do not trigger a host restart.
+The bridge reserves an explicit `restore` start payload with the original native session id,
+previous execution fence and stopped-provider receipt. Its independent optional
+`fencedSessionRestoration` capability does not enable live interrupted-turn reattachment.
+Hosts without the completed admission path reject that payload before starting a session;
+the capability remains unadvertised until the full restoration path is implemented.
 Acpx records a versioned, nonsecret ACP session identity before the first prompt: its local session key, provider agent, working directory and ACP backend session id. Restoration requires a matching record or checkpoint and explicitly requests that backend id; missing identities, conflicting records and provider load refusal cannot create a replacement conversation. Checkpoint failure closes the new runtime before initialization returns. This identity safeguard does not enable interrupted-turn continuation. Direct ACP session loading consumes replayed answer/work notifications through first-prompt admission, including buffered frames after the load response, without appending them to the canonical answer; current command catalogs remain available.
 Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
 control actions and event projection. The UI shows that absolute UTC deadline for nonterminal

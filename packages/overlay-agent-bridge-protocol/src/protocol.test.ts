@@ -1,7 +1,31 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { agentHostCommandSchema, agentHostEventSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
-import { driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema } from './index'
+import { driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema, startAdapterPayloadSchema, recoveryCapabilitiesSchema } from './index'
+
+test('fenced native restoration requires its original session and a complete stopped-provider receipt', () => {
+  const base = {bindingId: 'binding', adapterId: 'claude-code', workingDirectory: '/home/user/drive', prompt: 'Continue', metadata: {}}
+  const restore = {previousExecution: {attemptId: 'previous', generation: 1, hostBootId: 'old-boot'},
+    providerStop: {provider: 'box', leaseId: 'original-lease', providerReference: 'original-machine', observedAt: 1000}}
+  const valid = {...base, sessionId: 'original-native-session', restore}
+  assert.equal(startAdapterPayloadSchema.safeParse(base).success, true)
+  assert.equal(startAdapterPayloadSchema.safeParse(valid).success, true)
+  for (const input of [{...valid, fresh: true}, {...base, restore},
+    {...valid, restore: {...restore, previousExecution: {attemptId: 'previous', generation: 0}}},
+    {...valid, restore: {...restore, providerStop: {...restore.providerStop, provider: 'e2b'}}},
+    {...valid, restore: {...restore, providerStop: undefined}}]) {
+    assert.equal(startAdapterPayloadSchema.safeParse(input).success, false)
+  }
+})
+
+test('fenced loading is negotiated independently of live interrupted-turn reattachment', () => {
+  const legacy = {liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false,
+    approvalRestoration: false, providerCheckpoints: false}
+  assert.equal(recoveryCapabilitiesSchema.parse(legacy).fencedSessionRestoration, undefined)
+  const fenced = recoveryCapabilitiesSchema.parse({...legacy, fencedSessionRestoration: true})
+  assert.equal(fenced.fencedSessionRestoration, true)
+  assert.equal(fenced.interruptedTurnContinuation, false)
+})
 
 test('drive start descriptors carry no host-selected scope and save summaries are bounded and consistent', () => {
   assert.equal(driveStartDescriptorSchema.safeParse({ version: 1, sessionId: 'session', location: 'cloud' }).success, true)

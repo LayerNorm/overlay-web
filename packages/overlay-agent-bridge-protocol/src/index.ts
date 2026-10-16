@@ -30,6 +30,7 @@ export const executionFenceSchema = z.object({
 export const recoveryCapabilitiesSchema = z.object({
   liveReattachment: z.boolean(), sessionLoading: z.boolean(), interruptedTurnContinuation: z.boolean(),
   approvalRestoration: z.boolean(), providerCheckpoints: z.boolean(),
+  fencedSessionRestoration: z.boolean().optional(),
 }).strict()
 
 export const adapterSelectOptionSchema = z.object({
@@ -203,10 +204,22 @@ const sessionCommand = {
   workingDirectory: z.string().trim().min(1),
 }
 
+export const nativeRestorationSchema = z.object({
+  previousExecution: executionFenceSchema,
+  providerStop: z.object({provider: z.literal('box'), leaseId: identifier, providerReference: identifier,
+    observedAt: z.number().int().nonnegative()}).strict(),
+}).strict()
+
+export const startAdapterPayloadSchema = z.object({...sessionCommand, prompt: z.string(), sessionId: identifier.optional(),
+  fresh: z.boolean().optional(), restore: nativeRestorationSchema.optional(), metadata: jsonObject.default({}),
+}).strict().refine(payload => !payload.restore || (payload.fresh !== true && Boolean(payload.sessionId)), {
+  message: 'Native restoration requires the original session and cannot start fresh',
+})
+
 export const agentHostCommandSchema = z.discriminatedUnion('type', [
   commandBase.extend({
     type: z.literal('start'),
-    payload: z.object({ ...sessionCommand, prompt: z.string(), sessionId: identifier.optional(), fresh: z.boolean().optional(), metadata: jsonObject.default({}) }).strict(),
+    payload: startAdapterPayloadSchema,
   }).strict(),
   commandBase.extend({
     type: z.literal('prompt'),

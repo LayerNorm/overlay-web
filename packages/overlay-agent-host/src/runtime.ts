@@ -363,6 +363,7 @@ export class AgentHostRuntime {
   }
 
   private async initializeSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+    if (command.payload.restore) throw Error('This host cannot admit fenced native restoration yet')
     const settings = agentSettingsSchema.parse(command.payload.metadata)
     const offset = command.payload.metadata.recoveryTextOffset
     if (offset !== undefined && (command.payload.fresh !== true || typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0))
