@@ -167,6 +167,15 @@ cloud-provisioning acceptance separately. The host-only preload removes its
 `NODE_OPTIONS` before provider launch. It does not authenticate the provider's MCP
 traffic through Vercel protection; record that limitation when testing app tools.
 
+Native managed-Cloud QA may bootstrap an owned disposable machine during its pending
+provisioning attempt. Verify its provider identity and expected enrollment name, confirm that
+no original host/provider task is running, install checksum-verified candidate packages and
+exact adapter pins, then enroll with that same expected name. Let the existing provisioner
+approve the environment, create its lease and bind the provider account. Use the exact-origin
+private transport for both initial enrollment and later host wake; keep its preload out of
+provider children. Record this manual intervention separately from unattended image/startup
+acceptance. A successful shell-only provider probe does not prove protected Overlay MCP tools.
+
 See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
 See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).
 
