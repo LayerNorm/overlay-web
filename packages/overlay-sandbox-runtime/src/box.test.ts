@@ -102,6 +102,13 @@ test('create refuses network policies and credential bindings the provider lacks
   )
 })
 
+test('base URL cleanup removes a long trailing slash suffix before provider requests', async () => {
+  const {fetch, calls} = recorder(() => ok())
+  const instance = new BoxSandboxRuntime({apiKey: 'test-key', baseUrl: 'https://boat.invalid' + '/'.repeat(200000), fetch})
+  await instance.request('GET', '/v1/boxes')
+  assert.equal(calls[0]?.url, 'https://boat.invalid/v1/boxes')
+})
+
 test('error envelopes surface status, code, and requestId', async () => {
   const { fetch } = recorder(() => ({
     ok: false,

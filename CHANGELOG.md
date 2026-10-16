@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Bound message marker parsing, provider error matching and Boat URL cleanup to linear scans for malformed or oversized input.
+
 - Show Recovered after a fenced native startup confirms the original conversation, preserving the status through history reload and completion; reject replacement identities and unresolved approvals.
 
 - Retry confirmed transient native preparation failures on the same execution with bounded delivery attempts and current access checks; keep preparation separate from provider boot identity and reuse interrupted writes under their existing authority.

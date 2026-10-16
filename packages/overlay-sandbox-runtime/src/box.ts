@@ -127,7 +127,10 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     const apiKey = options.apiKey ?? boatApiKeyFromEnv()
     if (!apiKey) throw new Error('BOAT_API_KEY (or legacy BOX_API_KEY) is not configured')
     this.apiKey = apiKey
-    this.baseUrl = (options.baseUrl ?? process.env.BOAT_API_BASE_URL?.trim() ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const baseUrl = options.baseUrl ?? process.env.BOAT_API_BASE_URL?.trim() ?? DEFAULT_BASE_URL
+    let end = baseUrl.length
+    while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) end--
+    this.baseUrl = baseUrl.slice(0, end)
     this.environment = options.environment?.trim() || process.env.BOAT_ENVIRONMENT?.trim() || undefined
     this.fetch = options.fetch ?? (async (input, init) => {
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
