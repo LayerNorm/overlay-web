@@ -41,7 +41,7 @@ function option(args: string[], name: string, fallback?: string) {
 const log = (...parts: unknown[]) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...parts)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-class OverlayClient {
+export class OverlayClient {
   private readonly cookies = new Map<string, string>()
   constructor(readonly origin: string, private readonly bypass?: string) {}
 
@@ -67,7 +67,12 @@ class OverlayClient {
   }
 
   async ok<T = Json>(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<T> {
-    const result = await this.request<T>(method, path, body, extra)
+    let result = await this.request<T>(method, path, body, extra)
+    if (result.status === 401 && !path.startsWith('/api/auth/')) {
+      // Match the browser: refresh the signed session before retrying an unauthenticated request once.
+      const refreshed = await this.request('GET', '/api/auth/session')
+      if (refreshed.status === 200) result = await this.request<T>(method, path, body, extra)
+    }
     if (result.status < 200 || result.status >= 300) {
       const detail = typeof result.body === 'object' ? JSON.stringify(result.body).slice(0, 400) : String(result.body).slice(0, 200)
       throw new Error(`${method} ${path} → ${result.status} ${detail}`)

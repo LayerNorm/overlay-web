@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Refresh preview API sessions during long smoke runs before retrying an unauthenticated request once, preserving test continuity across access-token expiry.
+
 - Render live agent replies in formatted chunks with bottom loading dots. Correct smoke text readback for API responses that expose text only in message parts, and require exact prefix preservation for cancellation acceptance.
 
 - Prevent connected-agent upload backlogs from blocking Stop or agent output. Coalesce text, pack uploads by bytes, retain immutable attempted events across retries/restarts, and recover oversized legacy checkpoints with a visible truncation marker. Stop preserves text and tool history, including buffered output before stop confirmation; unchanged observations skip transcript writes. Host/protocol candidate: 0.3.12; image candidate: v7.

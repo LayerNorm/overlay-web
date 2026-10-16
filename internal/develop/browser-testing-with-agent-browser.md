@@ -60,7 +60,9 @@ deployment SHA matches the current PR head. The preview-only
 `POST /api/auth/preview-login` route accepts an `x-overlay-preview-secret` header
 from the agent secret store and creates a normal sandbox session. Do not send
 the secret in a URL, write it into the PR, or save cookies/auth state in tracked
-files. Validate the session and `/api/auth/convex-token`, then use a real browser
+files. Long-running API smoke clients refresh cookies through `GET /api/auth/session`
+and retry a rejected unauthenticated request once, matching normal browser session
+refresh. Validate the session and `/api/auth/convex-token`, then use a real browser
 to check the rendered workspace, sample conversation, note, and text file.
 
 The server chooses the seeded QA identity; callers cannot supply an arbitrary
