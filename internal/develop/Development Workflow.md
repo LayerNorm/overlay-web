@@ -276,7 +276,9 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 ### Required CI checks
 
 `Security Checks` runs lint/types, production compilation and two complete test
-shards in parallel. `next typegen` generates current route validators before the
+shards in parallel. Both ordinary-test shards use Node 24, matching the Agent Host
+CLI's minimum runtime so built-CLI contracts run without skipping or weakening the
+version guard. `next typegen` generates current route validators before the
 required standalone typecheck; only the CI compilation job skips the duplicate
 Next TypeScript pass. Ordinary Vercel builds retain their existing type checks. Customer-web production
 compilation uses `next build --webpack` with `webpackBuildWorker` and
