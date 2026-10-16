@@ -110,12 +110,16 @@ test('a network upload cannot block dispatching the next Stop command', async ()
     payload: { bindingId: 'binding', adapterId: 'fake', workingDirectory: f.root, prompt: 'hello', metadata: {} } }),
   agentHostCommandSchema.parse({ protocolVersion: 1, commandId: 'stop', workspaceId: 'ws', environmentId: 'env', runId: 'run', sequence: 2, type: 'cancel', issuedAt: 2, payload: {} })]
   const runtime = new AgentHostRuntime({ environmentId: 'env', workspaceId: 'ws', filesystem: { mode: 'selected_roots', roots: [f.root] }, state: f.state, adapters: [new FakeAgentAdapter()],
-    controlPlane: { async pollCommands() { return { commands: [commands[commandIndex++]!] } }, async acknowledgeCommand() {}, async uploadEvents(batch) {
+    controlPlane: { async pollCommands({signal}) {
+      if (commandIndex === 1 && !f.state.getProcessedCommand('start')) return new Promise(resolve => {signal?.addEventListener('abort', () => resolve({commands: []}), {once: true})})
+      return { commands: [commands[commandIndex++]!] }
+    }, async acknowledgeCommand() {}, async uploadEvents(batch) {
       await new Promise<void>(resolve => { finishUpload = resolve }); return { protocolVersion: 1, accepted: true, acknowledgedSequence: batch.events.at(-1)!.sourceSequence }
     } } })
   try {
     await runtime.pollOnce(0); await runtime.pollOnce(0)
     assert.equal(f.state.commandCursor(), 2)
+    assert.ok(f.state.pendingEvents(20).some(event => event.type === 'cancelled'))
     runtime.stopBackgroundUploads(); finishUpload?.()
     // Drain the already started pass without another blocked request.
     const flushing = runtime.flushOutbox(); for (let i = 0; i < 10; i++) { finishUpload?.(); await new Promise(resolve => setImmediate(resolve)) }

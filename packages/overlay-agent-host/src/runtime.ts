@@ -23,6 +23,7 @@ import {admitHostSession} from './runtime-session-admission.js'
 import {nativePreparationFingerprint} from './native-start-preparation.js'
 import {drainNativeSource, requestNativeStart} from './native-start-barrier.js'
 import {OutboxReceipts} from './outbox-receipts.js'
+import {processPolledCommands} from './preparation-command-polling.js'
 import {processHostCommand} from './process-host-command.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
@@ -106,13 +107,12 @@ export class AgentHostRuntime {
     this.streamingNegotiated = response.streaming?.textDeltas === true && response.streaming.heartbeats === true
     if (response.resolvedThroughSequence !== undefined)
       this.resolvedThroughSequence = Math.max(this.resolvedThroughSequence, response.resolvedThroughSequence)
-    // Sequential on purpose: commands arrive ordered and may build on each
-    // other (e.g. stop after start), so they must be processed in order.
-    for (const command of response.commands) {
-      if (signal?.aborted) break
-      // react-doctor-disable-next-line react-doctor/async-await-in-loop
-      await this.processCommand(command)
-    }
+    await processPolledCommands({commands: response.commands, ...(signal ? {signal} : {}),
+      process: (command, preparationSignal) => this.processCommand(command, preparationSignal),
+      poll: signal => this.options.controlPlane.pollCommands({waitMs: 25_000, signal}),
+      received: next => {if (next.resolvedThroughSequence !== undefined) this.resolvedThroughSequence = Math.max(this.resolvedThroughSequence, next.resolvedThroughSequence)},
+      onError: error => this.logger.warn('preparation command polling deferred', {error: safeError(error)}),
+    })
     this.scheduleFlush()
     return response.retryAfterMs ?? 0
   }
@@ -196,10 +196,10 @@ export class AgentHostRuntime {
     }
   }
 
-  async processCommand(command: AgentHostCommand): Promise<void> {
+  async processCommand(command: AgentHostCommand, preparationSignal?: AbortSignal): Promise<void> {
     const execute = () => processHostCommand({command, state: this.options.state, environmentId: this.options.environmentId,
       workspaceId: this.options.workspaceId, errorMessage: safeError, shuttingDown: this.shuttingDown, resolvedThroughSequence: this.resolvedThroughSequence,
-      dispatch: command => this.dispatch(command), acknowledge: (command, accepted, message, code) => this.acknowledge(command, accepted, message, code)})
+      dispatch: command => this.dispatch(command, preparationSignal), acknowledge: (command, accepted, message, code) => this.acknowledge(command, accepted, message, code)})
     if (command.type !== 'start' || !command.payload.restore || !command.execution) return execute()
     const fingerprint = nativePreparationFingerprint(command), active = this.nativePreparations.get(command.commandId)
     if (active) {
@@ -273,14 +273,14 @@ export class AgentHostRuntime {
     }
   }
 
-  private async dispatch(command: AgentHostCommand): Promise<void> {
+  private async dispatch(command: AgentHostCommand, preparationSignal?: AbortSignal): Promise<void> {
     this.acceptExecutionFence(command)
     if (command.type === 'observe') {
       const session = this.sessions.get(command.runId)
       await this.emit(command.runId, { type: 'process_observation', payload: { process: session ? await session.observe?.() ?? 'unknown' : 'unknown' } })
       return
     }
-    if (command.type === 'start') { await this.startSession(command); return }
+    if (command.type === 'start') { await this.startSession(command, preparationSignal); return }
     if (command.type === 'shutdown') {
       const session = this.sessions.get(command.runId)
       if (session) await session.stop(command.payload.reason)
@@ -338,17 +338,18 @@ export class AgentHostRuntime {
     if (replacesPrevious) this.terminalRuns.delete(command.runId)
   }
 
-  private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+  private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>, preparationSignal?: AbortSignal): Promise<void> {
     const execution = this.executions.get(command.runId)
     return withRunPreparation({
       enabled: Boolean(this.options.durableLifecycle && command.execution && command.payload.metadata.overlayPreparation === 1),
-      active: () => !this.shuttingDown,
+      active: () => !this.shuttingDown && !preparationSignal?.aborted,
       emit: () => this.emit(command.runId, {type: 'session_preparing', payload: {}}, execution),
       onError: error => this.logger.warn('run preparation heartbeat deferred', {runId: command.runId, error: safeError(error)}),
-    }, () => this.initializeSession(command))
+    }, () => this.initializeSession(command, preparationSignal))
   }
 
-  private async initializeSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+  private async initializeSession(command: Extract<AgentHostCommand, { type: 'start' }>, preparationSignal?: AbortSignal): Promise<void> {
+    preparationSignal?.throwIfAborted()
     const adapter = this.requireAdapter(command.payload.adapterId)
     const admission = await admitHostSession({command, adapter, state: this.options.state, sessions: this.sessions})
     if (admission.kind === 'already-active') return
@@ -356,6 +357,7 @@ export class AgentHostRuntime {
     let canonicalOffset = offset
     const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true, Boolean(restored))
     if (credentials === 'unavailable') return
+    preparationSignal?.throwIfAborted()
     const drive = await this.prepareDrive(command)
     const scope = drive ? { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
       : await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
@@ -363,20 +365,21 @@ export class AgentHostRuntime {
       await drive?.close()
       throw Error('Native restoration cannot change its original working directory')
     }
-    if (this.shuttingDown) { await drive?.close(); throw Error('Host stopped before provider start') }
+    if (this.shuttingDown || preparationSignal?.aborted) {await drive?.close(); preparationSignal?.throwIfAborted(); throw Error('Host stopped before provider start')}
     if (restored && command.execution) {
       try {
         if (command.payload.metadata.overlayNativeAdmission === 1) await drainNativeSource({command, state: this.options.state,
-          receipts: this.outboxReceipts, flush: () => this.flushOutbox()})
+          receipts: this.outboxReceipts, flush: () => this.flushOutbox(), signal: preparationSignal})
+        preparationSignal?.throwIfAborted()
         this.options.state.enterNativeProviderStart({commandId: command.commandId, fingerprint: nativePreparationFingerprint(command),
         previous: restored, nextExecution: {...command.execution, hostBootId: this.bootId}})
         if (command.payload.metadata.overlayNativeAdmission === 1) canonicalOffset = await requestNativeStart({command,
           state: this.options.state, hostBootId: this.bootId, receipts: this.outboxReceipts,
-          emit: event => this.emit(command.runId, event), flush: () => this.flushOutbox()})
+          emit: event => this.emit(command.runId, event), flush: () => this.flushOutbox(), signal: preparationSignal})
       }
       catch (error) {await drive?.close(); throw error}
     }
-    if (this.shuttingDown) {await drive?.close(); throw Error('Host stopped before provider start')}
+    if (this.shuttingDown || preparationSignal?.aborted) {await drive?.close(); preparationSignal?.throwIfAborted(); throw Error('Host stopped before provider start')}
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
     const emit = this.createStream(command.runId, execution, drive, canonicalOffset)
@@ -399,7 +402,7 @@ export class AgentHostRuntime {
     })
     await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId,
       ...(restored ? {restorationCommandId: command.commandId} : {}) } })
-    if (!this.shuttingDown && !session.initialPromptHandled) {
+    if (!this.shuttingDown && !preparationSignal?.aborted && !session.initialPromptHandled) {
       this.prompts.track(session.prompt(command.payload.prompt).catch((error) => emit({ type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } })))
     }
     return

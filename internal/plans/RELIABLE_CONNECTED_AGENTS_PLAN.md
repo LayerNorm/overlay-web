@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phases 0–3 implemented with provider acceptance in progress; Phase 4 runtime implemented with hosted Files acceptance pending; Phase 5 in progress.
+Status: Phases 0–3 implemented with native-provider acceptance incomplete; Phase 4 runtime and hosted file/hash/fresh-hydration checks pass with remaining acceptance in progress; Phase 5 guarded restoration implemented with forced native recovery acceptance pending.
 
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -8,6 +8,8 @@ mockup [`mockups/reliable-agents-mockup.html`](./mockups/reliable-agents-mockup.
 smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agent-long-horizon/).
 
 ## Progress
+
+- Startup command polling now remains responsive while preparation awaits source-output or startup-admission uploads. Regression tests reproduce queued and newly delivered Stop, retain buffered source text, prevent adapter startup and preserve ordered command results. Foreign/stale cancellation cannot interrupt another execution, and cancellation after the local startup boundary cannot make it replayable. Local host tests (209 passed, one optional skip), types, lint, docs and complexity checks pass; hosted native Stop-during-preparation and forced recovery acceptance remain pending.
 
 - Phase 5 restoration now drains the isolated source before a server-acknowledged native startup admission binds the delivery, receiver boot, source cursor and canonical text offset. Historical text/work and terminal evidence survive before admission without reporting current health or recreating executable approvals; admission closes that ingestion window. Preparation-only stops may retry the same execution under a fresh isolation readback, while an admitted uncertain startup requires a new isolated generation. Transaction and host tests cover these boundaries; hosted native acceptance remains pending and fenced restoration stays unadvertised.
 

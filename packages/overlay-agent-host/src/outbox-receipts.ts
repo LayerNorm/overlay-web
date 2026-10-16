@@ -17,18 +17,24 @@ export class OutboxReceipts {
     return admitted
   }
 
-  async drainThrough(input: {state: SqliteHostStateStore; runId: string; attemptId: string; throughSequence: number; flush(): Promise<void>}): Promise<void> {
+  async drainThrough(input: {state: SqliteHostStateStore; runId: string; attemptId: string; throughSequence: number; signal?: AbortSignal; flush(): Promise<void>}): Promise<void> {
     const ready = () => !input.state.hasPendingEventsThrough(input.runId, input.attemptId, input.throughSequence)
+    input.signal?.throwIfAborted()
     while (!ready()) {
+      let onAbort: () => void = () => undefined
       let notify: () => void = () => undefined
       const receipt = new Promise<void>(resolve => {notify = resolve})
+      const aborted = new Promise<never>((_, reject) => {
+        onAbort = () => reject(input.signal?.reason ?? Error('Preparation interrupted'))
+        input.signal?.addEventListener('abort', onAbort, {once: true})
+      })
       const listener = () => {if (ready()) notify()}
       this.listeners.add(listener)
       try {
-        const reached = await Promise.race([receipt.then(() => true), input.flush().then(() => false)])
+        const reached = await Promise.race([aborted, receipt.then(() => true), input.flush().then(() => false)])
         if (reached || ready()) return
         if (input.state.outboxSize() === 0) throw Error('The event watermark was not acknowledged')
-      } finally {this.listeners.delete(listener)}
+      } finally {this.listeners.delete(listener); input.signal?.removeEventListener('abort', onAbort)}
     }
   }
 }

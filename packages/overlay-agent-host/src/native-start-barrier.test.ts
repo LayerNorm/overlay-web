@@ -9,14 +9,19 @@ import {FakeAgentAdapter} from './fake-adapter'
 import {AgentHostRuntime} from './runtime'
 import {SqliteHostStateStore} from './state'
 import {StructuredLogger} from './logger'
+import {nativePreparationFingerprint} from './native-start-preparation'
 import {ControlPlaneRequestError} from './transport'
 
 test('native startup drains durable source output and requires the exact server admission before calling adapter code', async t => {
-  for (const response of ['admitted', 'missing', 'foreign_boot', 'foreign_attempt', 'foreign_generation', 'foreign_command', 'foreign_cursor', 'expired', 'source_outage']) await t.test(response, async () => {
+  for (const response of ['admitted', 'missing', 'foreign_boot', 'foreign_attempt', 'foreign_generation', 'foreign_command', 'foreign_cursor', 'expired', 'source_outage', 'cancel_queued', 'cancel_polled', 'cancel_admission']) await t.test(response, async () => {
     const directory = await mkdtemp(join(tmpdir(), 'native-start-barrier-')), root = await realpath(directory)
     const state = new SqliteHostStateStore(join(root, 'host.sqlite'))
     const prefix = 'Durable source output before the crash. 🙂\n'
     const applied: EventBatch[] = [], acknowledgements: CommandAcknowledgement[] = []
+    let uploading: () => void = () => undefined
+    const uploadEntered = new Promise<void>(resolve => {uploading = resolve})
+    let releaseUpload: () => void = () => undefined
+    const uploadPending = new Promise<void>(resolve => {releaseUpload = resolve})
     let sourceAcknowledged = false, starts = 0, runtime: AgentHostRuntime | undefined
     const fake = new FakeAgentAdapter()
     const adapter: AgentAdapter = {capability: {...fake.capability, recovery: {...fake.capability.recovery, fencedSessionRestoration: true}},
@@ -40,12 +45,19 @@ test('native startup drains durable source output and requires the exact server 
           metadata: {overlayNativeAdmission: 1, recoveryTextOffset: 0}, restore: {previousExecution: {
             attemptId: 'source', generation: 1, hostBootId: 'old-boot'},
             providerStop: {provider: 'box', leaseId: 'lease', providerReference: 'machine', observedAt: 2}}}}
+      const cancel: AgentHostCommand = {...command, commandId: 'stop', sequence: 2, type: 'cancel', payload: {reason: 'user requested'}}
+      let polls = 0
       runtime = new AgentHostRuntime({environmentId: 'environment', workspaceId: 'workspace', durableLifecycle: true,
         filesystem: {mode: 'selected_roots', roots: [root]}, adapters: [adapter], state, logger: new StructuredLogger(() => undefined), controlPlane: {
-          pollCommands: async () => ({commands: []}), acknowledgeCommand: async value => {acknowledgements.push(value)},
+          pollCommands: async () => {
+            if (++polls === 1) return {commands: [command, ...(response === 'cancel_queued' ? [cancel] : [])]}
+            if (polls === 2 && (response === 'cancel_polled' || response === 'cancel_admission')) {await uploadEntered; return {commands: [command, cancel]}}
+            return {commands: []}
+          }, acknowledgeCommand: async value => {acknowledgements.push(value)},
           uploadEvents: async (batch): Promise<EventAcknowledgement> => {
             if (batch.events[0].execution?.attemptId === 'source') {
               if (response === 'source_outage') throw new ControlPlaneRequestError(503)
+              if (response === 'cancel_polled') {uploading(); await uploadPending}
               sourceAcknowledged = true
             }
             applied.push(batch)
@@ -54,6 +66,7 @@ test('native startup drains durable source output and requires the exact server 
             if (!requested || requested.type !== 'native_start_requested' || response === 'missing') return ack
             assert.equal(sourceAcknowledged, true)
             assert.equal(requested.payload.sourceEventCursor, 1)
+            if (response === 'cancel_admission') {uploading(); await uploadPending}
             return {...ack, nativeStartAdmission: {commandId: response === 'foreign_command' ? 'another-command' : 'restore',
               attemptId: response === 'foreign_attempt' ? 'another-attempt' : 'next', generation: response === 'foreign_generation' ? 3 : 2,
               hostBootId: response === 'foreign_boot' ? 'another-receiver' : requested.execution?.hostBootId ?? '',
@@ -61,7 +74,18 @@ test('native startup drains durable source output and requires the exact server 
               hardDeadlineAt: response === 'expired' ? Date.now() - 1 : Date.now() + 60000}}
           },
         }})
-      if (response === 'admitted') {
+      if (response.startsWith('cancel_')) {
+        await runtime.pollOnce(0)
+        assert.equal(starts, 0, 'queued Stop must prevent provider startup while the source upload is waiting')
+        assert.equal(state.getSession('run')?.execution?.attemptId, response === 'cancel_admission' ? 'next' : 'source')
+        if (response === 'cancel_polled') assert.equal(state.pendingEvents(10)[0]?.eventId, 'source-tail', 'Stop retains the unacknowledged source output')
+        if (response === 'cancel_admission') assert.equal(state.nativePreparationPending('restore', nativePreparationFingerprint(command)), false, 'interrupted startup admission cannot replay the local provider-start boundary')
+        assert.equal(acknowledgements[0]?.accepted, false)
+        assert.match(acknowledgements[0]?.error?.message ?? '', /stopped during preparation/)
+        assert.equal(acknowledgements[1]?.commandId, 'stop')
+        assert.equal(acknowledgements[1]?.accepted, true)
+        assert.equal(state.commandCursor(), 2)
+      } else if (response === 'admitted') {
         await runtime.processCommand(command)
         await runtime.run(AbortSignal.abort())
         assert.equal(starts, 1)
@@ -80,6 +104,7 @@ test('native startup drains durable source output and requires the exact server 
       }
       assert.equal(state.lastEventSequence('run', 'source'), 1, 'the durable source watermark survives outbox deletion')
     } finally {
+      releaseUpload()
       await runtime?.run(AbortSignal.abort())
       state.close()
       await rm(directory, {recursive: true, force: true})

@@ -1505,7 +1505,11 @@ Its acknowledgement supplies a fixed canonical text offset and binds the deliver
 receiver boot, source event cursor and original hard deadline. Only then may adapter code start.
 Lost acknowledgement replay rechecks current access, funding, source proof and machine ownership;
 missing, expired or mismatched admission fails closed. Waiting targets those watermarks, not unrelated
-upload activity. The admission itself proves no live process and does not set Recovered.
+upload activity. The admission itself proves no live process and does not set Recovered. Command polling
+continues during startup preparation. A later Stop for the same run and execution interrupts waiting
+for the source watermark or startup acknowledgement, retaining buffered output and preventing adapter
+startup. Command results remain serial and durable; observing Stop does not acknowledge it early or
+prove an unknown process stopped. Cancellation after the local startup boundary cannot replay it.
 
 Before admission, the immediately isolated source may drain buffered output under its original boot
 and exact stored source receipt. Text, work and usage remain on the original assistant; source health
