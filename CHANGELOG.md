@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resolve the bridge protocol from workspace source in Convex tests, so clean checkouts do not depend on package build order.
+
 - Preserve the final ACP text notification when an agent's completion response arrives in the same input buffer. Drain ordered session updates before exposing completion in both checkpoint and delta streams.
 
 - Add negotiated incremental text and run heartbeats for connected agents. Persist large answers in bounded chunks, hydrate canonical text for authorized readers, preserve Unicode and cancellation output, and show tool age or connection status beside bottom loading dots. Older hosts retain checkpoint streaming. Host/protocol candidate: 0.4.0; image candidate: v8; timed preview/provider acceptance remains pending.

@@ -59,6 +59,22 @@ test('a short checkpoint flushes on the timer without waiting for the next event
   await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(emitted.length, 1)
 })
 
+test('a queued tool captures preceding text before concurrent later text arrives', async () => {
+  const emitted: NormalizedAgentEvent[] = []
+  let release!: () => void
+  const blocked = new Promise<void>(resolve => { release = resolve })
+  const emit = coalesceTextCheckpoints(async e => { await blocked; emitted.push(e) })
+  await emit({ type: 'text_checkpoint', payload: { text: 'before' } })
+  const tool = emit({ type: 'action', payload: { actionId: 'a', title: 'Read', status: 'started' } })
+  await emit({ type: 'text_checkpoint', payload: { text: 'before after' } })
+  const done = emit({ type: 'completed', payload: { usage: {} } })
+  release()
+  await Promise.all([tool, done])
+  assert.deepEqual(emitted.map(e => e.type), ['text_checkpoint', 'action', 'text_checkpoint', 'completed'])
+  assert.equal(emitted[0]?.type === 'text_checkpoint' && emitted[0].payload.text, 'before')
+  assert.equal(emitted[2]?.type === 'text_checkpoint' && emitted[2].payload.text, 'before after')
+})
+
 test('retry after a lost acknowledgement never rewrites an attempted sequence, including after restart', () => {
   const f = fixture(); let state = f.state
   try {

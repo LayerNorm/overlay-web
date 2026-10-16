@@ -15,6 +15,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Phase 2: negotiated deltas, bounded anchors, heartbeat status and chunked canonical text storage are implemented with focused regressions. Large text, tenant boundaries, cancellation buffering, Unicode boundaries and fewer assistant-row writes are covered locally; current-head hosted and timed acceptance remains pending.
 - Hosted compatibility QA exposed a final-notification ordering race. A buffered-wire regression now verifies that all text precedes completion in both streaming modes; the direct ACP transport drains updates in wire order. Full-text hosted readback remains an acceptance gate.
 - All later acceptance items remain unchecked until verified through the preview.
+- Clean-checkout Convex tests now resolve the protocol source directly, matching TypeScript. The full Convex suite passes without generated protocol output; a concurrent text/tool regression also verifies the coalescer captures pending text before later updates arrive. Required CI must be rerun on the fix.
 
 ## Outcome
 
