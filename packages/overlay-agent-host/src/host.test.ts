@@ -128,6 +128,61 @@ test('restoration refuses a changed physical working directory before starting i
   } finally {state.close(); await rm(directory, {recursive: true, force: true})}
 })
 
+test('restoration keeps the old claim through failed preparation and joins duplicate preparation before one native start', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-native-preparation-')), root = await realpath(directory)
+  const state = new SqliteHostStateStore(join(root, 'host.sqlite'))
+  let starts = 0, preparations = 0, loaded: AgentAdapterSession | undefined
+  let release: (() => void) | undefined
+  const gate = new Promise<void>(resolve => {release = resolve})
+  const fake = new FakeAgentAdapter()
+  const adapter: AgentAdapter = {capability: {...fake.capability, recovery: {...fake.capability.recovery,
+    fencedSessionRestoration: true, interruptedTurnContinuation: false}}, discover: async () => adapter.capability, async start(input, emit) {
+    starts++
+    assert.equal(state.getSession('run')?.execution?.attemptId, 'next', 'ownership is durable before native code starts')
+    loaded = await fake.start(input, emit); return loaded
+  }}
+  const plane = Object.assign(new FakeControlPlane(), {
+    refreshFilesystemGrant: async () => ({mode: 'selected_roots' as const, roots: [root]}),
+    fetchDriveCredentials: async () => ({protocolVersion: 1 as const, scope: {kind: 'personal' as const,
+      workspaceId: 'workspace-1', ownerUserId: 'owner'}, token: `ovdrive_${'x'.repeat(32)}.${'y'.repeat(43)}`, expiresAt: Date.now() + 60000}),
+  })
+  try {
+    state.claimExecution('run', 'previous')
+    state.saveSession({runId: 'run', adapterId: 'fake', remoteSessionId: 'original-native', workingDirectory: root,
+      execution: {attemptId: 'previous', generation: 1}})
+    const runtime = new AgentHostRuntime({environmentId: 'environment-1', workspaceId: 'workspace-1', durableLifecycle: true,
+      filesystem: {mode: 'selected_roots', roots: [root]}, adapters: [adapter], state, controlPlane: plane,
+      drive: {stateDirectory: root, apiUrl: 'https://preview.invalid/api/agent-drive', create: async () => {
+        preparations++
+        if (preparations === 1) throw Error('preparation temporarily unavailable')
+        await gate
+        return {workingDirectory: root, additionalDirectories: [], sync: async () => [], close: async () => undefined}
+      }}})
+    const start = {...command('first-restore', 'run', 1, 'start', {bindingId: 'binding', adapterId: 'fake', workingDirectory: root,
+      prompt: 'Continue', sessionId: 'original-native', metadata: {recoveryTextOffset: 0,
+        overlayDrive: {version: 1, sessionId: 'next', location: 'approved-root'}},
+      restore: {previousExecution: {attemptId: 'previous', generation: 1},
+        providerStop: {provider: 'box', leaseId: 'lease', providerReference: 'machine', observedAt: 1}}}),
+      execution: {attemptId: 'next', generation: 2}}
+    await assert.rejects(runtime.processCommand(start), /temporarily unavailable/)
+    assert.equal(starts, 0)
+    assert.equal(state.getSession('run')?.execution?.attemptId, 'previous')
+    // The server authorizes a new delivery for the same execution; an uncertain native start never reaches this path.
+    const retry = {...start, commandId: 'retry-restore', sequence: 2}
+    const first = runtime.processCommand(retry), duplicate = runtime.processCommand(retry)
+    await waitFor(() => preparations === 2)
+    assert.equal(starts, 0)
+    assert.equal(state.getSession('run')?.execution?.attemptId, 'previous')
+    if (!release) throw Error('Missing preparation gate')
+    release()
+    await Promise.all([first, duplicate])
+    await waitFor(() => eventTypes(plane).includes('completed'))
+    assert.equal(starts, 1)
+    assert.equal(preparations, 2)
+    assert.equal(state.getSession('run')?.remoteSessionId, 'original-native')
+  } finally {release?.(); await loaded?.stop(); state.close(); await rm(directory, {recursive: true, force: true})}
+})
+
 test('host conformance: start, stream, approval, cancel, duplicates, outage, crash, reconnect and resume', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-host-'))
   const root = join(directory, 'workspace')

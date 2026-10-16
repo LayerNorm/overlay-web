@@ -67,10 +67,13 @@ test('bridge restart with an unknown orphan refuses continuation and does not cr
   const f = await fixture()
   try {
     await f.create().processCommand(f.start)
+    const originalBoot = f.state.getSession('run')?.execution?.hostBootId
     const restarted = f.create()
     await assert.rejects(restarted.processCommand(f.command(2, 'reconnect', { remoteSessionId: 'native' })), /cannot restore interrupted/)
+    await restarted.flushOutbox()
     assert.equal(f.starts(), 1)
-    const observation = f.events.flatMap(b => b.events).find(e => e.type === 'process_observation')
+    const observation = f.events.flatMap(b => b.events).find(e => e.type === 'process_observation' && e.execution?.hostBootId !== originalBoot)
+    if (observation?.type !== 'process_observation') throw Error('Restarted host did not report process health')
     assert.equal(observation?.payload.process, 'unknown')
     assert.equal(observation?.payload.recoveryOutcome, 'unavailable')
   } finally { await f.cleanup() }

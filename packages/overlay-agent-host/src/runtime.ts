@@ -20,6 +20,8 @@ import {withRunPreparation} from './run-preparation.js'
 import {fetchProviderRunCredentials} from './provider-run-credentials.js'
 import {requireNativeRestorationSource} from './native-restoration.js'
 import {admitHostSession} from './runtime-session-admission.js'
+import {nativePreparationFingerprint} from './native-start-preparation.js'
+import {processHostCommand} from './process-host-command.js'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
@@ -46,6 +48,7 @@ export type AgentHostRuntimeOptions = {
 }
 
 export class AgentHostRuntime {
+  private readonly nativePreparations = new Map<string, {fingerprint: string; work: Promise<void>}>()
   private readonly adapters: Map<string, AgentAdapter>
   private readonly sessions = new Map<string, AgentAdapterSession>()
   private readonly logger: StructuredLogger
@@ -191,46 +194,18 @@ export class AgentHostRuntime {
   }
 
   async processCommand(command: AgentHostCommand): Promise<void> {
-    if (this.shuttingDown) throw Error('Agent host shutdown is in progress')
-    if (command.environmentId !== this.options.environmentId || command.workspaceId !== this.options.workspaceId) {
-      throw new Error('command scope does not match this host')
+    const execute = () => processHostCommand({command, state: this.options.state, environmentId: this.options.environmentId,
+      workspaceId: this.options.workspaceId, errorMessage: safeError, shuttingDown: this.shuttingDown, resolvedThroughSequence: this.resolvedThroughSequence,
+      dispatch: command => this.dispatch(command), acknowledge: (command, accepted, message, code) => this.acknowledge(command, accepted, message, code)})
+    if (command.type !== 'start' || !command.payload.restore || !command.execution) return execute()
+    const fingerprint = nativePreparationFingerprint(command), active = this.nativePreparations.get(command.commandId)
+    if (active) {
+      if (active.fingerprint !== fingerprint) throw Error('Native preparation command changed during startup')
+      return active.work
     }
-    const processed = this.options.state.getProcessedCommand(command.commandId)
-    if (processed) {
-      await this.acknowledge(command, processed.accepted, processed.errorMessage, processed.errorCode)
-      return
-    }
-    const cursor = this.options.state.commandCursor()
-    if (cursor === 0 && command.sequence > 1) {
-      this.options.state.adoptCommandCursor(command.sequence - 1)
-    }
-    const expectedSequence = this.options.state.commandCursor() + 1
-    if (command.sequence !== expectedSequence) {
-      // The server attests which skipped numbers are already resolved; a hole it reports as
-      // resolved is safe to jump over instead of wedging the whole command stream behind it.
-      if (command.sequence > expectedSequence && command.sequence - 1 <= this.resolvedThroughSequence) {
-        this.options.state.resumeCommandCursor(command.sequence - 1)
-      } else {
-        await this.acknowledge(command, false, `expected command sequence ${expectedSequence}`, 'command_sequence_gap')
-        throw new Error(`expected command sequence ${expectedSequence}, received ${command.sequence}`)
-      }
-    }
-    if (!this.options.state.claimCommand(command.commandId)) {
-      const message = 'The previous command outcome is unknown; inspect the current execution instead of replaying it.'
-      this.options.state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: false, errorCode: 'command_outcome_unknown', errorMessage: message })
-      await this.acknowledge(command, false, message, 'command_outcome_unknown')
-      return
-    }
-    try {
-      await this.dispatch(command)
-      this.options.state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: true })
-    } catch (error) {
-      const message = safeError(error)
-      this.options.state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: false, errorCode: 'command_rejected', errorMessage: message })
-      await this.acknowledge(command, false, message, 'command_rejected')
-      throw error
-    }
-    await this.acknowledge(command, true)
+    const work = Promise.resolve().then(execute)
+    this.nativePreparations.set(command.commandId, {fingerprint, work})
+    try {await work} finally {this.nativePreparations.delete(command.commandId)}
   }
 
   async uploadArtifact(runId: string, input: { name: string; mediaType: string; bytes: Uint8Array }): Promise<string> {
@@ -384,6 +359,11 @@ export class AgentHostRuntime {
       throw Error('Native restoration cannot change its original working directory')
     }
     if (this.shuttingDown) { await drive?.close(); throw Error('Host stopped before provider start') }
+    if (restored && command.execution) {
+      try {this.options.state.enterNativeProviderStart({commandId: command.commandId, fingerprint: nativePreparationFingerprint(command),
+        previous: restored, nextExecution: {...command.execution, hostBootId: this.bootId}})}
+      catch (error) {await drive?.close(); throw error}
+    }
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
     const emit = this.createStream(command.runId, execution, drive, offset)

@@ -16,10 +16,9 @@ function restorationSource(command: StartCommand, adapter: AgentAdapter, state: 
 
 function claimStart(command: StartCommand, state: SqliteHostStateStore, restored: StoredRemoteSession | undefined) {
   if (!command.execution) return
-  if (restored && command.payload.restore) {
-    if (!state.replaceExecutionClaim(command.runId, command.payload.restore.previousExecution.attemptId, command.execution.attemptId))
-      throw Error('Native restoration outcome is unknown; the execution claim cannot be replayed')
-  } else if (!state.claimExecution(command.runId, command.execution.attemptId))
+  // Restoration transfers ownership only after credentials/drive preparation, immediately before native startup.
+  if (restored) return
+  if (!state.claimExecution(command.runId, command.execution.attemptId))
     throw Error('execution start outcome is unknown; inspect the existing process before continuing')
 }
 

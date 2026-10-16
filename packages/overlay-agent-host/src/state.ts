@@ -18,6 +18,8 @@ export class SqliteHostStateStore {
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;')
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS command_claims (command_id TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS native_start_preparations (command_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+        phase TEXT NOT NULL CHECK(phase IN ('preparing','provider_starting')));
       CREATE TABLE IF NOT EXISTS processed_commands (
         command_id TEXT PRIMARY KEY,
         sequence INTEGER NOT NULL,
@@ -106,6 +108,43 @@ export class SqliteHostStateStore {
 
   claimCommand(commandId: string): boolean {
     return this.database.prepare('INSERT OR IGNORE INTO command_claims(command_id) VALUES (?)').run(commandId).changes === 1
+  }
+
+  claimNativePreparation(commandId: string, fingerprint: string): boolean {
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const existing = this.database.prepare('SELECT fingerprint,phase FROM native_start_preparations WHERE command_id=?').get(commandId)
+      let accepted = false
+      if (existing) accepted = existing.fingerprint === fingerprint && existing.phase === 'preparing'
+        && Boolean(this.database.prepare('SELECT command_id FROM command_claims WHERE command_id=?').get(commandId))
+      else if (this.claimCommand(commandId)) {
+        this.database.prepare("INSERT INTO native_start_preparations(command_id,fingerprint,phase) VALUES(?,?,'preparing')").run(commandId, fingerprint)
+        accepted = true
+      }
+      this.database.exec('COMMIT')
+      return accepted
+    } catch (error) {this.database.exec('ROLLBACK'); throw error}
+  }
+
+  /** Commit the native-start boundary, ownership transfer and recoverable original identity together. */
+  enterNativeProviderStart(input: {commandId: string; fingerprint: string; previous: StoredRemoteSession;
+    nextExecution: NonNullable<StoredRemoteSession['execution']>}) {
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const stage = this.database.prepare('SELECT fingerprint,phase FROM native_start_preparations WHERE command_id=?').get(input.commandId)
+      const current = this.getSession(input.previous.runId), previous = input.previous.execution
+      if (stage?.phase !== 'preparing' || stage.fingerprint !== input.fingerprint || !previous
+        || !this.database.prepare('SELECT command_id FROM command_claims WHERE command_id=?').get(input.commandId)
+        || current?.remoteSessionId !== input.previous.remoteSessionId || current.adapterId !== input.previous.adapterId
+        || current.workingDirectory !== input.previous.workingDirectory || current.execution?.attemptId !== previous.attemptId
+        || current.execution.generation !== previous.generation || current.execution.hostBootId !== previous.hostBootId
+        || input.nextExecution.attemptId === previous.attemptId || input.nextExecution.generation !== previous.generation + 1
+        || !this.replaceExecutionClaim(input.previous.runId, previous.attemptId, input.nextExecution.attemptId))
+        throw Error('Native restoration outcome is unknown; the execution claim cannot be replayed')
+      this.database.prepare("UPDATE native_start_preparations SET phase='provider_starting' WHERE command_id=?").run(input.commandId)
+      this.saveSession({...input.previous, execution: input.nextExecution})
+      this.database.exec('COMMIT')
+    } catch (error) {this.database.exec('ROLLBACK'); throw error}
   }
 
   commandCursor(): number {

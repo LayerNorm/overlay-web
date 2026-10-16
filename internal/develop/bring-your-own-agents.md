@@ -1472,6 +1472,16 @@ Host admission checks the original native id, adapter, previous execution/boot, 
 canonical text offset and new-attempt drive descriptor. It rejects an in-memory writer, atomically
 transfers the durable execution claim once, retains adapter identity and requires the same physical
 working directory after hydration. Duplicate or unknown takeover outcomes are not re-prompted.
+Native restoration records a private preparation fingerprint separately from the provider-start
+boundary. The fingerprint binds the complete command, settings, cursor and source proof while
+excluding the rotating MCP delivery token and current receiver boot. Preparation keeps the old
+execution claim and native identity intact. Immediately before adapter startup, one SQLite
+transaction advances the marker, transfers the execution claim and checkpoints the original native
+identity under the new execution. Checkpoint failure rolls back all three. A preparation interrupted
+before this boundary may resume its exact outstanding command; provider-starting and unknown legacy
+claims cannot replay. Concurrent deliveries in one host join the same preparation, and concurrent
+receivers still have only one successful native-start transition. Backend retry delivery and startup
+boot receipts must respect this distinction before the capability is enabled.
 Acpx records a versioned, nonsecret ACP session identity before the first prompt: its local session key, provider agent, working directory and ACP backend session id. Restoration requires a matching record or checkpoint and explicitly requests that backend id; missing identities, conflicting records and provider load refusal cannot create a replacement conversation. Checkpoint failure closes the new runtime before initialization returns. This identity safeguard does not enable interrupted-turn continuation. Direct ACP session loading consumes replayed answer/work notifications through first-prompt admission, including buffered frames after the load response, without appending them to the canonical answer; current command catalogs remain available.
 Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
 control actions and event projection. The UI shows that absolute UTC deadline for nonterminal
