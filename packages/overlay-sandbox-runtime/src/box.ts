@@ -410,10 +410,17 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>): Promise<void> {
-    await Promise.all(files.map((file) =>
-      this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
+    if (files.some(file => file.mode !== undefined && (!Number.isSafeInteger(file.mode) || file.mode < 0 || file.mode > 0o777)))
+      throw new BoxApiError(400, 'invalid_file_mode', 'File permissions must be between 0000 and 0777')
+    await Promise.all(files.map(async file => {
+      await this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
         body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })))
+      })
+      if (file.mode !== undefined) {
+        const result = await (await this.runCommand({command: 'chmod', args: ['--', file.mode.toString(8), file.path], timeoutMs: 15_000})).wait()
+        if (result.exitCode !== 0) throw new BoxApiError(500, 'file_permissions_failed', 'Could not set machine file permissions')
+      }
+    }))
   }
 
   async readFile(path: string): Promise<Uint8Array | null> {

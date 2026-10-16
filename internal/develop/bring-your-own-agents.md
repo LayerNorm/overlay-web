@@ -553,6 +553,10 @@ pass fresh-machine Preview provisioning and resume without a manual shim before 
 Only leases enrolled through this path record `previewHostingAccessVersion: 1` and receive
 a new access file on restart. Older leases retain their original restart path until explicitly
 upgraded, so an older host cannot leave a newly delivered hosting file unconsumed.
+The Boat adapter applies explicit file modes through its command channel because the file
+API does not apply them; a failed permission change fails delivery. Preview startup secures
+the dedicated host-state directory to 0700 before writing the access file, keeping its bytes
+private during upload as well as after the file becomes 0600.
 An Overlay Cloud agent uses the same connected-agent protocol and host:
 
 - **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,

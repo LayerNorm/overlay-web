@@ -6,7 +6,7 @@ import {CLOUD_AGENT_STATE_DIR} from './cloud-agent-machine'
 export const CLOUD_AGENT_PREVIEW_ACCESS_PATH = `${CLOUD_AGENT_STATE_DIR}/preview-hosting.json`
 
 /** Use the existing environment-scoped Preview credential, never a command argument or provider variable. */
-export async function prepareCloudAgentPreviewAccess(machine: Pick<SandboxInstance, 'writeFiles'>, serverUrl?: string,
+export async function prepareCloudAgentPreviewAccess(machine: Pick<SandboxInstance, 'writeFiles' | 'runCommand'>, serverUrl?: string,
   env: Record<string, string | undefined> = process.env): Promise<string | undefined> {
   if (env.VERCEL_ENV !== 'preview' || env.OVERLAY_DEPLOYMENT_ENV !== 'preview') return undefined
   const origin = previewOrigin(env), secret = env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
@@ -16,6 +16,9 @@ export async function prepareCloudAgentPreviewAccess(machine: Pick<SandboxInstan
     if (server.origin !== origin || server.username || server.password) throw Error('Preview machine server does not match this deployment')
   }
   try {
+    const prepared = await (await machine.runCommand({command: 'bash', args: ['-lc',
+      `mkdir -p -m 700 -- ${CLOUD_AGENT_STATE_DIR} && chmod 700 -- ${CLOUD_AGENT_STATE_DIR}`], timeoutMs: 15_000})).wait()
+    if (prepared.exitCode !== 0) throw Error('Private host directory unavailable')
     await machine.writeFiles([{path: CLOUD_AGENT_PREVIEW_ACCESS_PATH, mode: 0o600,
       contents: new TextEncoder().encode(JSON.stringify({origin, secret}))}])
   } catch (_error) {throw Error('Preview machine access could not be prepared')}

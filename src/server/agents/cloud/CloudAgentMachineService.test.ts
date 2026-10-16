@@ -133,7 +133,10 @@ test('Preview provision and resume prepare private access before launching the h
       const f = fakeMachine(resuming ? 'stopped' : 'running'), order: string[] = []
       const write = f.machine.writeFiles.bind(f.machine), run = f.machine.runCommand.bind(f.machine)
       f.machine.writeFiles = async files => {order.push('private-access'); assert.equal(files[0].mode, 0o600); await write(files)}
-      f.machine.runCommand = async request => {order.push('command'); return run(request)}
+      f.machine.runCommand = async request => {
+        order.push(request.args?.[1]?.startsWith('mkdir -p -m 700') ? 'private-directory' : 'command')
+        return run(request)
+      }
       const lease: AgentSandboxLease = {id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', status: 'running',
         provider: 'box', providerReference: 'bx_agent', reservedUntil: 10000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0,
         usage: mode === 'resume' ? {previewHostingAccessVersion: 1} : {}}
@@ -150,7 +153,7 @@ test('Preview provision and resume prepare private access before launching the h
         const created = log.find(([kind]) => kind === 'lease')?.[1]
         assert.partialDeepStrictEqual(created, {usage: {previewHostingAccessVersion: 1}})
       }
-      assert.equal(order[0], 'private-access')
+      assert.deepEqual(order.slice(0, 2), ['private-directory', 'private-access'])
       assert.deepEqual(f.written, [CLOUD_AGENT_PREVIEW_ACCESS_PATH])
       assert.ok(f.commands.some(command => command.includes(`--hosting-auth-file '${CLOUD_AGENT_PREVIEW_ACCESS_PATH}'`)))
       assert.ok(f.commands.every(command => !command.includes(preview.VERCEL_AUTOMATION_BYPASS_SECRET)))

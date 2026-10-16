@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {mkdtempSync, writeFileSync, statSync, rmSync} from 'node:fs'
+import {execFileSync} from 'node:child_process'
+import {tmpdir} from 'node:os'
+import {join} from 'node:path'
 import { BoxApiError, BoxSandboxRuntime, boatApiKeyFromEnv, type BoxFetch } from './box'
 import { isDesktopSandboxInstance, type SandboxCreateRequest } from './contracts'
 
@@ -224,6 +228,51 @@ test('files write base64, read base64, and missing files read as null', async ()
   assert.equal((calls.find((call) => call.method === 'PUT')?.body as { content: string }).content, 'b3ZlcmxheQ==')
   assert.equal(Buffer.from((await instance.readFile('/home/user/a.txt'))!).toString(), 'overlay')
   assert.equal(await instance.readFile('/home/user/missing'), null)
+})
+
+test('file modes are applied through the command channel and never put file contents in command arguments', {skip: process.platform === 'win32' ? 'Boat is a POSIX machine' : false}, async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'boat-file-mode-')), path = join(directory, 'file with spaces; literal')
+  const {calls, fetch} = recorder(call => {
+    if (call.method === 'PUT') {
+      const body = call.body
+      assert.ok(body && typeof body === 'object' && 'path' in body && typeof body.path === 'string' && 'content' in body && typeof body.content === 'string')
+      writeFileSync(body.path, Buffer.from(body.content, 'base64'))
+    }
+    if (call.method === 'POST' && call.url.endsWith('/commands')) {
+      const body = call.body
+      assert.ok(body && typeof body === 'object' && 'command' in body && typeof body.command === 'string')
+      execFileSync('bash', ['-c', body.command])
+      return ok({processId: 11, pid: 12})
+    }
+    if (call.url.includes('/commands/11')) return ok({running: false, status: 'exited', exitCode: 0, stdout: '', stderr: ''})
+    return ok({sandbox: {id: 'bx_1', state: 'ready'}})
+  })
+  const instance = await runtime(fetch).reconnect('bx_1')
+  const content = 'never-put-file-content-in-argv'
+  try {
+    for (const mode of [0o600, 0o755, 0]) {
+      await instance.writeFiles([{path, contents: Buffer.from(content), mode}])
+      assert.equal(statSync(path).mode & 0o777, mode)
+    }
+    const commands = calls.filter(call => call.method === 'POST' && call.url.endsWith('/commands'))
+    assert.equal(commands.length, 3)
+    assert.ok(commands.every(command => !JSON.stringify(command.body).includes(content)))
+    const before = calls.length
+    await assert.rejects(instance.writeFiles([{path: '/home/user/no-write', contents: Buffer.from(content), mode: 0o1000}]),
+      error => error instanceof BoxApiError && error.code === 'invalid_file_mode')
+    assert.equal(calls.length, before)
+  } finally {rmSync(directory, {recursive: true, force: true})}
+})
+
+test('failed permission changes make file delivery fail without disclosing its contents', async () => {
+  const {fetch} = recorder(call => {
+    if (call.method === 'POST' && call.url.endsWith('/commands')) return ok({processId: 11, pid: 12})
+    if (call.url.includes('/commands/11')) return ok({running: false, status: 'exited', exitCode: 1, stdout: 'private file bytes', stderr: 'permission denied'})
+    return ok({sandbox: {id: 'bx_1', state: 'ready'}})
+  })
+  const instance = await runtime(fetch).reconnect('bx_1')
+  await assert.rejects(instance.writeFiles([{path: '/home/user/private.json', contents: Buffer.from('private file bytes'), mode: 0o600}]),
+    error => error instanceof BoxApiError && error.code === 'file_permissions_failed' && !error.message.includes('private file bytes'))
 })
 
 test('listFiles emulates via find and parses kinds', async () => {
