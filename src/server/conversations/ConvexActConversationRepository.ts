@@ -223,7 +223,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     userId: string
     workspaceId?: string
   }): Promise<{ content: string } | null> {
-    return await convex.query<{ content: string } | null>('knowledge/memoryProfiles:getProfile', {
+    return await convex.query<{ content: string } | null>('knowledge/memoryProfileStore:getProfile', {
       ownerId: args.userId,
       workspaceId: args.workspaceId,
       serverSecret: this.serverSecret,

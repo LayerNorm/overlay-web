@@ -34,6 +34,13 @@ Workspace, archiving and restoring are not Work routes: use `POST /api/v1/scope`
 (`WorkItem`, `WorkEvent`, `WorkContext`, and the request bodies) live in `@overlay/app-core`; `@overlay/api-client`
 exposes them as `client.work`.
 
+## Memory profiles
+
+Compiled profiles are read through `knowledge/memoryProfileStore:getProfile` in
+the default Convex runtime. `knowledge/memoryProfiles` owns the Node compilation
+action; it does not expose profile queries. Conversation context repositories
+must target the store when loading a profile.
+
 ## Expected backend errors
 
 Carry expected Convex failures as `ConvexError` data and preserve `errorData` in

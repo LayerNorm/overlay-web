@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Load compiled conversation memory profiles from the default-runtime store query instead of the retired compilation-module path.
+
 - Keep hosted TypeScript validation enabled even when a CI skip flag is inherited, and resolve direct and transitive Convex bridge imports from canonical source in clean checkouts.
 
 - Add opt-in build resource diagnostics for Node workers without logging environment values or heap contents.
