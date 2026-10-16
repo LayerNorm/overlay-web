@@ -28,7 +28,8 @@ import { mcpToolGrantFor } from '../../../src/shared/mcp/access'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const VISIBLE_STALL_MS = 90_000
-const POLL_MS = 2_000
+// Leave room in the 300 history reads / 10 min user bucket for concurrent browser QA.
+const POLL_MS = 5_000
 
 type Json = Record<string, unknown>
 export type Message = { id: string; role: string; status?: string; content?: string; parts?: Json[]; authorPrincipalId?: string; createdAt: number; updatedAt: number }
@@ -41,13 +42,26 @@ function option(args: string[], name: string, fallback?: string) {
 const log = (...parts: unknown[]) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...parts)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+export class OverlaySmokeHttpError extends Error {
+  constructor(message: string, readonly status: number, readonly retryAfterMs?: number) { super(message) }
+}
+
+function retryAfterMs(response: Response, body: unknown): number | undefined {
+  const header = response.headers.get('retry-after')
+  const seconds = header === null ? Number.NaN : Number(header)
+  const fromHeader = Number.isFinite(seconds) ? seconds * 1000 : header ? Date.parse(header) - Date.now() : Number.NaN
+  const fromBody = body && typeof body === 'object' && 'retryAfterSeconds' in body ? Number(body.retryAfterSeconds) * 1000 : Number.NaN
+  const value = Number.isFinite(fromHeader) ? fromHeader : fromBody
+  return Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
 export class OverlayClient {
   private readonly cookies = new Map<string, string>()
   constructor(readonly origin: string, private readonly bypass?: string) {}
 
   setCookie(name: string, value: string) { this.cookies.set(name, value) }
 
-  async request<T = Json>(method: string, path: string, body?: unknown, extra: Record<string, string> = {}): Promise<{ status: number; body: T }> {
+  async request<T = Json>(method: string, path: string, body?: unknown, extra: Record<string, string> = {}): Promise<{ status: number; body: T; retryAfterMs?: number }> {
     const url = new URL(path, this.origin)
     if (url.origin !== this.origin) throw new Error('refusing to send credentials to another origin')
     const headers: Record<string, string> = { accept: 'application/json', ...extra }
@@ -63,7 +77,7 @@ export class OverlayClient {
     const text = await response.text()
     let parsed: unknown = text
     try { parsed = text ? JSON.parse(text) : {} } catch { /* keep text */ }
-    return { status: response.status, body: parsed as T }
+    return { status: response.status, body: parsed as T, retryAfterMs: retryAfterMs(response, parsed) }
   }
 
   async ok<T = Json>(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<T> {
@@ -75,7 +89,7 @@ export class OverlayClient {
     }
     if (result.status < 200 || result.status >= 300) {
       const detail = typeof result.body === 'object' ? JSON.stringify(result.body).slice(0, 400) : String(result.body).slice(0, 200)
-      throw new Error(`${method} ${path} → ${result.status} ${detail}`)
+      throw new OverlaySmokeHttpError(`${method} ${path} → ${result.status} ${detail}`, result.status, result.retryAfterMs)
     }
     return result.body
   }
@@ -156,6 +170,7 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
   const size = option(argv, 'size', 'small')!
   const cancelAfterS = option(argv, 'cancel-after-s') ? Number(option(argv, 'cancel-after-s')) : undefined
   const hardLimitMs = Number(option(argv, 'hard-limit-min', '45')) * 60_000
+  if (!Number.isFinite(hardLimitMs) || hardLimitMs <= 0) throw new Error('--hard-limit-min must be positive')
   const prompt = readFileSync(option(argv, 'prompt-file', join(here, 'PROMPT.overlay.md'))!, 'utf8').trim()
   const runLabel = new Date().toISOString().replace(/[:.]/g, '-')
   const out = join(here, '../../../artifacts/smoke/cloud-agent-long-horizon', `overlay-${runLabel}`)
@@ -191,10 +206,17 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
   let textBeforeCancel = ''
   let cancelled: { atS: number; textBefore: number; textAfter?: number } | undefined
   let pollFailures = 0
+  let nextPollAt = sentAt + POLL_MS
+  let rateLimitedPolls = 0
+  let observationTimedOut = false
 
   for (;;) {
-    if (Date.now() - sentAt > hardLimitMs) { log('hard limit reached'); break }
-    await sleep(POLL_MS)
+    const remaining = sentAt + hardLimitMs - Date.now()
+    if (remaining <= 0) { observationTimedOut = true; log('observation deadline reached; preserving active work'); break }
+    await sleep(Math.min(60_000, Math.max(0, nextPollAt - Date.now()), remaining))
+    if (Date.now() >= sentAt + hardLimitMs) { observationTimedOut = true; break }
+    if (Date.now() < nextPollAt) continue
+    nextPollAt = Date.now() + POLL_MS
     let run: { run?: Json | null; streamSummary?: Json }
     let messages: { messages: Message[] }
     try {
@@ -202,6 +224,14 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
       messages = await client.ok('GET', `/api/v1/conversations?conversationId=${conversationId}&messages=true&limit=50`)
       pollFailures = 0
     } catch (error) {
+      if (error instanceof OverlaySmokeHttpError && error.status === 429) {
+        rateLimitedPolls += 1
+        nextPollAt = Date.now() + Math.max(POLL_MS, error.retryAfterMs ?? 60_000)
+        // Unobserved time cannot prove a visible stall. Start a new observation on recovery.
+        lastSignature = ''
+        log('read rate limited; retaining the same run', { retryAfterMs: nextPollAt - Date.now() })
+        continue
+      }
       pollFailures += 1
       log('poll failed', String(error).slice(0, 200))
       if (pollFailures > 10) throw error
@@ -249,6 +279,8 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
     ? Math.round((streamSummary.textCheckpointChars / textChars) * 10) / 10 : null
   const report = {
     via: 'overlay',
+    identifiers: { agentId: agent.id, conversationId, runId: runSnapshot?.externalRunId ?? runSnapshot?.id ?? null },
+    observation: { timedOut: observationTimedOut, rateLimitedPolls, pollIntervalMs: POLL_MS },
     origin,
     run: {
       status: runSnapshot?.status ?? 'unknown',
@@ -271,13 +303,16 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
   log('report →', join(out, 'report.json'))
   console.log(JSON.stringify({ ...report, timeline: `${timeline.length} samples` }, null, 2))
 
-  if (created && !argv.includes('--keep-agent')) {
-    await client.request('DELETE', `/api/v1/agents/${agent.id}/machine`).catch(() => undefined)
-    await client.request('DELETE', `/api/v1/agents/${agent.id}`).catch(() => undefined)
+  const terminal = ['completed', 'failed', 'cancelled'].includes(String(runSnapshot?.status))
+  if (created && !argv.includes('--keep-agent') && terminal) {
+    await client.ok('DELETE', `/api/v1/agents/${agent.id}/machine`)
+    await client.ok('DELETE', `/api/v1/agents/${agent.id}`)
     log('deleted the smoke agent and its machine')
+  } else if (created && !terminal) {
+    log('kept agent and machine because terminal state is unproven', { agentId: agent.id, conversationId })
   }
-  const passed = cancelled
+  const passed = !observationTimedOut && (cancelled
     ? report.run.status === 'cancelled' && report.cancel?.textPreserved === true
-    : report.run.status === 'completed' && visibleStalls.length === 0
+    : report.run.status === 'completed' && visibleStalls.length === 0)
   return passed ? 0 : 1
 }

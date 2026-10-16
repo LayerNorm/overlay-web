@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep active smoke agents running when observation expires, honor API read cooldowns and leave request headroom for browser QA. Confirm cleanup responses before reporting deletion.
+
 - Prepare consistent scoped drive manifests and authenticated download grants, with bounded metadata and exact-revision inline note reads. HTTP delivery and agent-turn integration remain pending.
 
 - Prepare scoped drive reads with live Convex authorization, exact file revisions and verified storage bytes. Enforce R2/S3 download limits while streaming. Drive HTTP delivery, file commits and host sync remain pending.

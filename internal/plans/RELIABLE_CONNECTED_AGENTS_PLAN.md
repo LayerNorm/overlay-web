@@ -9,11 +9,13 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 0 smoke observation now leaves API rate-limit headroom, honors 429 cooldowns without resending work and preserves active machines when observation expires. Reports distinguish observation timeout from terminal failure; cleanup verifies successful responses.
+
 - Phase 4 manifest/download service now pins metadata pages to one database timestamp while checking live authority separately. Inline notes use exact-revision references; ready-file grants bind the full entry to its run/scope/attempt/expiry. Download readback verifies canonical bytes and checks revocation again before return. HTTP delivery, start-command token issuance, writes and host sync remain pending.
 
 - Phase 4 reads now have a default-off Convex authority gate on every bounded manifest page and exact-revision storage lookup. The real server reader bounds configured object-store/Convex reads and verifies Convex blob hashes; R2/S3 caps are enforced during streaming. HTTP delivery, atomic file commits, journaling, runtime sync and hosted acceptance remain pending.
 
-- Phase 0: required CI passes on the current preview. Real host/API counters and rendered preview QA are being checked. Smoke readback now reconstructs omitted content from API text parts and cancellation verifies the exact retained prefix; provider quota currently prevents a successful subscription smoke. Historical production error details were redacted, so their underlying causes remain unproven.
+- Phase 0: required CI passes on the current preview. Real host/API counters and rendered preview QA are being checked. Smoke readback now reconstructs omitted content from API text parts and cancellation verifies the exact retained prefix; subscription-provider smoke and current-head browser acceptance remain under verification. Historical production error details were redacted, so their underlying causes remain unproven.
 - Phase 1: byte-budget packing, ordered text coalescing, independent command polling/background uploads, immutable attempted sequences, cancellation preservation and unchanged-observation write suppression are implemented. Focused streaming and Convex regressions pass; deterministic current-head transport/UI checks pass, while successful provider acceptance and publication remain pending.
 - Phase 1 current-preview deterministic transport completion and browser Stop/reload checks pass. This does not substitute for successful subscription-provider acceptance.
 - Phase 2: negotiated deltas, bounded anchors, heartbeat status and chunked canonical text storage are implemented with focused regressions. Large text, tenant boundaries, cancellation buffering, Unicode boundaries and fewer assistant-row writes are covered locally; current-head hosted and timed acceptance remains pending.
@@ -23,7 +25,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Drive token and authorization helpers now fence the exact session/attempt and reread membership, binding, environment and agent visibility. Local/VPS requires opt-in. These helpers are not wired to HTTP or atomic file commits yet.
 - Clean-checkout Convex tests now resolve the protocol source directly, matching TypeScript. The full Convex suite passes without generated protocol output; a concurrent text/tool regression also verifies the coalescer captures pending text before later updates arrive. Required CI must be rerun on the fix.
 
-- The server manifest materializer verifies full source bytes and download size/hash, rejects changed or truncated reads and marks oversized entries explicitly deferred. Its bounded reader is tested with injected storage; real storage and HTTP integration remain pending.
+- The server manifest materializer verifies full source bytes and download size/hash, rejects changed or truncated reads and marks oversized entries explicitly deferred. Its reader now uses configured object storage and guarded Convex sources; HTTP delivery and runtime integration remain pending.
 
 ## Outcome
 

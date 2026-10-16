@@ -65,6 +65,12 @@ and retry a rejected unauthenticated request once, matching normal browser sessi
 refresh. Validate the session and `/api/auth/convex-token`, then use a real browser
 to check the rendered workspace, sample conversation, note, and text file.
 
+The long-horizon API smoke polls every five seconds to leave history-read capacity for
+concurrent browser QA. Honor 429 cooldowns without resending the task; rate-limited gaps
+do not prove a visible stall. An observation deadline is not a run deadline: keep the
+created agent and machine until terminal state is confirmed, and retain their identifiers
+in the private report. Cleanup must check successful responses before claiming deletion.
+
 The server chooses the seeded QA identity; callers cannot supply an arbitrary
 user ID. This route returns 404 outside Preview. Real human OAuth uses
 the same canonical preview origin with the WorkOS sandbox wildcard callback.
