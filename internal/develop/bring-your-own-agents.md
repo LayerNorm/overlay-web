@@ -291,7 +291,7 @@ secret, with a separate signature domain; storage credentials never reach the ho
 Manifest responses stream NDJSON with explicit header and completion frames. Downloads verify
 canonical full bytes before returning ranges of at most 1 MiB; a host must hash the assembled
 file before replacement. Requests are capped at 32 KiB and rate limited by IP and hashed bearer.
-Revoked authority and changed revisions fail closed. Responses are private and never cached.
+Revoked authority and changed revisions fail closed. Convex error envelopes retain only recognized machine codes for HTTP status mapping; stack/request details are never returned. Responses are private and never cached.
 This read transport still needs current-head hosted acceptance, start-command issuance, guarded
 file writes and runtime synchronization before the persistent drive can be enabled.
 

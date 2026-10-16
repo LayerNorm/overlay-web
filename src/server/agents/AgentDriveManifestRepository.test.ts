@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createAgentDriveManifestRepository } from './AgentDriveManifestRepository'
+import { handleAgentDriveRequest } from './agent-drive-http'
 import { createAgentDriveTokens } from './agent-drive-token'
 
 test('actual SDK pins all manifest pages to one timestamp while authority checks use current queries', async () => {
@@ -17,7 +18,7 @@ test('actual SDK pins all manifest pages to one timestamp while authority checks
     calls.push({ endpoint, body })
     if (endpoint === '/api/query_ts') return Response.json({ ts: `snapshot-${++timestamps}` })
     if (endpoint === '/api/query_at_ts') return Response.json({ status: 'success', value: { rows: [], scope: { kind: 'workspace', workspaceId: 'w' }, viewer: { userId: 'u', role: 'member' }, nextCursor: null }, logLines: [] })
-    if (endpoint === '/api/query' && revoked) return Response.json({ status: 'error', errorMessage: 'DRIVE_RUN_UNAVAILABLE' })
+    if (endpoint === '/api/query' && revoked) return Response.json({ status: 'error', errorMessage: '[Request ID: synthetic] Server Error\nUncaught Error: DRIVE_RUN_UNAVAILABLE\n    at requireDriveAuthority (agents/agentDrive.ts:37:0)' })
     return Response.json({ status: 'success', value: null })
   }
   try {
@@ -40,6 +41,13 @@ test('actual SDK pins all manifest pages to one timestamp while authority checks
     assert.ok(calls.filter(call => call.endpoint === '/api/query').every(call => call.body.ts === undefined))
     revoked = true
     await assert.rejects(repository.authorize(), /DRIVE_RUN_UNAVAILABLE/)
+    const denied = await handleAgentDriveRequest(new Request('https://preview.invalid/api/agent-drive', {
+      method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{"action":"manifest"}',
+    }), { enabled: () => true, limit: async () => null, service: () => ({
+      async manifest() { await repository.authorize(); return { entries: [] } }, async download() { return new Uint8Array() },
+    }) })
+    assert.equal(denied.status, 403)
+    assert.deepEqual(await denied.json(), { error: 'DRIVE_RUN_UNAVAILABLE' })
     const secondRepository = createAgentDriveManifestRepository(claims)
     await secondRepository.page(null)
     assert.equal(timestamps, 2)

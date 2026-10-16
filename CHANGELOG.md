@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve safe drive rejection statuses through Convex error envelopes; reject unsafe download paths before storage access.
+
 - Add default-off connected-agent drive reads with scoped bearer authorization, streamed manifests and verified bounded downloads. Token issuance, writes, host synchronization and hosted acceptance remain pending.
 
 - Restore live room updates by returning message revision metadata consistently in history and subscriptions, including chunk-only text. Recover browser realtime tokens after one session refresh and avoid unhandled token-request rejections.

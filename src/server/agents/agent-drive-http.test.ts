@@ -87,7 +87,7 @@ test('revocation and changed sources are explicit, unknown server errors are san
     assert.equal((await handleAgentDriveRequest(request({ action: 'manifest' }), f.dependencies)).status, status)
   }
   const f = fixture()
-  f.dependencies.service = () => ({ ...fixture().dependencies.service(), async manifest() { throw Error('private secret and object path') } })
+  f.dependencies.service = () => ({ ...fixture().dependencies.service(), async manifest() { throw Error('private secret mentions DRIVE_RUN_UNAVAILABLE and object path') } })
   const failure = await handleAgentDriveRequest(request({ action: 'manifest' }), f.dependencies)
   assert.equal(failure.status, 500)
   assert.deepEqual(await failure.json(), { error: 'DRIVE_REQUEST_FAILED' })
@@ -123,6 +123,7 @@ test('HTTP transport composes with real token and manifest verification, includi
   assert.equal(await (await invoke(download)).text(), 'original bytes')
   assert.equal((await invoke({ action: 'manifest' }, 'ovdrive_forged')).status, 401)
   assert.equal((await invoke({ ...download, entry: { ...entry, path: 'forged.md' } })).status, 403)
+  assert.equal((await invoke({ ...download, entry: { ...entry, path: '../outside.md' } })).status, 400)
   row.content = 'changed bytes!'
   assert.equal((await invoke(download)).status, 409)
   active = false
