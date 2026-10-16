@@ -108,6 +108,13 @@ export class SqliteDriveJournal {
     return row ? this.decode(row) : undefined
   }
 
+  /** Only after the sync baseline and its cleared pending effect are durable. */
+  forgetCompleted(requestId: string): void {
+    const record = this.find(requestId)
+    if (!record || record.phase.kind !== 'committed') throw Error('DRIVE_WRITE_UNSAVED')
+    this.database.prepare('DELETE FROM drive_writes WHERE request_id=? AND authority=?').run(requestId, this.authority)
+  }
+
   content(requestId: string): Uint8Array {
     const record = this.find(requestId)
     if (!record || record.kind !== 'content' || record.phase.kind === 'committed') throw Error('DRIVE_JOURNAL_CONTENT_UNAVAILABLE')

@@ -44,6 +44,16 @@ test('bad download hashes never replace existing files and temporary writes are 
   assert.deepEqual(await readdir(cache.root), ['file.txt'])
 }))
 
+test('an abandoned hydration temporary outside the drive is never treated as a deliverable', async () => fixture(async directory => {
+  const cache = await AgentDriveCache.create(directory, 'cache')
+  const privateDirectory = (await readdir(directory)).find(name => name.startsWith('.overlay-drive-tmp-'))
+  assert.ok(privateDirectory)
+  await writeFile(join(directory, privateDirectory, '.overlay-hydrate-abandoned'), 'incomplete download')
+  assert.deepEqual(await cache.inventory(), [])
+  await cache.hydrate('complete.txt', Buffer.from('complete'), hash(Buffer.from('complete')))
+  assert.deepEqual((await cache.snapshot()).map(file => file.path), ['complete.txt'])
+}))
+
 test('inventory preserves empty folders and distinguishes renamed files from equal-content copies', async () => fixture(async directory => {
   const cache = await AgentDriveCache.create(directory, 'cache')
   await cache.ensureFolder('Empty/nested')

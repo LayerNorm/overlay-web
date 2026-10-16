@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { lstat, mkdir, open, readdir, realpath, rename, unlink } from 'node:fs/promises'
+import { lstat, mkdir, open, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { drivePathSegments, portableDrivePathKey } from '@layernorm/overlay-agent-bridge-protocol'
 export { drivePathSegments } from '@layernorm/overlay-agent-bridge-protocol'
@@ -18,7 +18,7 @@ function within(root: string, path: string): boolean {
 
 /** Dedicated cache only. Its approved root is supplied by host filesystem authorization. */
 export class AgentDriveCache {
-  private constructor(readonly root: string, private readonly limits: DriveCacheLimits) {}
+  private constructor(readonly root: string, private readonly limits: DriveCacheLimits, private readonly temporaryRoot: string) {}
 
   static async create(approvedRoot: string, cacheName: string, limits: DriveCacheLimits = DRIVE_CACHE_LIMITS) {
     const [segment, ...rest] = drivePathSegments(cacheName)
@@ -31,7 +31,16 @@ export class AgentDriveCache {
     })
     const stat = await lstat(root)
     if (!stat.isDirectory() || stat.isSymbolicLink() || await realpath(root) !== root) throw Error('DRIVE_UNSAFE_CACHE')
-    return new AgentDriveCache(root, limits)
+    // A crash can leave an atomic-write temporary behind. Keep it outside the scanned
+    // drive so it can never be mistaken for an agent-created deliverable on restart.
+    const temporaryRoot = join(approved, `.overlay-drive-tmp-${createHash('sha256').update(segment).digest('hex').slice(0, 16)}`)
+    await mkdir(temporaryRoot, { mode: 0o700 }).catch(error => {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    })
+    const temporary = await lstat(temporaryRoot)
+    if (!temporary.isDirectory() || temporary.isSymbolicLink() || await realpath(temporaryRoot) !== temporaryRoot
+      || temporary.dev !== stat.dev) throw Error('DRIVE_UNSAFE_CACHE')
+    return new AgentDriveCache(root, limits, temporaryRoot)
   }
 
   private async checkedPath(path: string, createParents: boolean): Promise<string> {
@@ -60,7 +69,10 @@ export class AgentDriveCache {
       return null
     })
     if (existing && (!existing.isFile() || existing.isSymbolicLink())) throw Error('DRIVE_UNSAFE_PATH')
-    const temporary = join(dirname(destination), `.overlay-hydrate-${randomUUID()}`)
+    const temporaryDirectory = await lstat(this.temporaryRoot)
+    if (!temporaryDirectory.isDirectory() || temporaryDirectory.isSymbolicLink()
+      || await realpath(this.temporaryRoot) !== this.temporaryRoot) throw Error('DRIVE_UNSAFE_CACHE')
+    const temporary = join(this.temporaryRoot, `.overlay-hydrate-${randomUUID()}`)
     const handle = await open(temporary, 'wx', 0o600)
     try {
       await handle.writeFile(verifiedBytes)
@@ -81,6 +93,36 @@ export class AgentDriveCache {
     })
     const stat = await lstat(absolute)
     if (!stat.isDirectory() || stat.isSymbolicLink() || !within(this.root, await realpath(absolute))) throw Error('DRIVE_UNSAFE_PATH')
+  }
+
+  /** Bootstrap reconciliation only, before an adapter process can write the cache. */
+  async relocate(from: string, to: string, identity: DriveCacheIdentity): Promise<void> {
+    const source = await this.checkedPath(from, false), destination = await this.checkedPath(to, true)
+    await this.requireIdentity(source, identity)
+    const occupied = await lstat(destination).catch(error => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      return null
+    })
+    if (occupied) throw Error('DRIVE_LOCAL_PATH_CONFLICT')
+    await rename(source, destination)
+  }
+
+  /** Never recursive: an untracked child prevents removal of a cached folder. */
+  async removeUnchanged(entry: DriveCacheEntry): Promise<void> {
+    const absolute = await this.checkedPath(entry.path, false)
+    await this.requireIdentity(absolute, entry.identity)
+    if (entry.kind === 'folder') await rmdir(absolute)
+    else {
+      const current = (await this.snapshot()).find(file => file.path === entry.path)
+      if (!current || current.sha256 !== entry.sha256) throw Error('DRIVE_FILE_CHANGED')
+      await unlink(absolute)
+    }
+  }
+
+  private async requireIdentity(path: string, identity: DriveCacheIdentity) {
+    const stat = await lstat(path, { bigint: true })
+    if (stat.isSymbolicLink() || String(stat.dev) !== identity.device || String(stat.ino) !== identity.inode
+      || String(stat.birthtimeNs) !== identity.birthtimeNs) throw Error('DRIVE_FILE_CHANGED')
   }
 
   async snapshot(): Promise<DriveCacheFile[]> {

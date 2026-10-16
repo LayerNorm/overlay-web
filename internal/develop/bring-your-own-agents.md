@@ -1324,5 +1324,16 @@ than dropping unsaved writes. A separate private SQLite lease excludes concurren
 through a lifetime OS lock; process death releases it without timeout-based takeover. Its immutable
 identity pins the canonical cache path and drive scope, and its database must remain outside the
 working directory. Cache inventories include empty folders and exact integer filesystem identities so equal
-content alone cannot identify a rename. Runtime hydration, reconciliation and synchronization are still
-required; these foundations are not an enabled write-through drive.
+content alone cannot identify a rename. Atomic download temporaries live in a private sibling directory,
+so a crash cannot expose a partial download as a new deliverable in the next scan.
+
+The synchronizer persists its baseline, current turn's saved-file links and one pending effect outside
+the drive. It hydrates before use, propagates file/folder creates, moves and explicit hydrated-entry
+deletions, and updates local inode tracking after atomic editor replacements. Content writes retain
+their immutable journal identity until the acknowledged server revision is reconciled locally.
+Lost write or manifest responses remain unsaved and restart from the original receipt. Concurrent
+canonical edits preserve a separate complete conflict copy; bootstrap normalizes that local alias
+before restoring the newer canonical file. Deferred files are never inferred deleted. The current
+implementation refreshes the manifest after each committed effect; operations and cache sizes remain
+bounded. Runtime wiring, scheduled/final synchronization and hosted acceptance are still required;
+this is not yet an enabled write-through drive.

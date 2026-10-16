@@ -1,6 +1,6 @@
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AgentDriveContentService, driveUploadRecordSchema, driveContentResultSchema } from '../src/server/agents/AgentDriveContentService'
@@ -11,6 +11,9 @@ import { cleanupDriveVersions } from '../src/server/agents/cleanup-agent-drive-v
 import { AgentDriveClient } from '../packages/overlay-agent-host/src/drive-client'
 import { SqliteDriveJournal } from '../packages/overlay-agent-host/src/drive-journal'
 import { AgentDriveWriter } from '../packages/overlay-agent-host/src/drive-writer'
+import { AgentDriveCache } from '../packages/overlay-agent-host/src/drive-cache'
+import { SqliteDriveSyncState } from '../packages/overlay-agent-host/src/drive-sync-state'
+import { AgentDriveSynchronizer } from '../packages/overlay-agent-host/src/drive-sync'
 import { handleAgentDriveRequest } from '../src/server/agents/agent-drive-http'
 vi.mock('server-only', () => ({}))
 import { convexTest } from 'convex-test'
@@ -22,6 +25,7 @@ const secret = 'agent-drive-convex-tests-only'
 const readRef = makeFunctionReference<'query'>('agents/agentDrive:manifestPageByServer')
 const credentialRef = makeFunctionReference<'query'>('agents/agentDrive:credentialAuthorityByServer')
 beforeEach(() => { process.env.INTERNAL_API_SECRET = secret; process.env.OVERLAY_CONNECTED_AGENT_DRIVE = '1' })
+afterEach(() => vi.useRealTimers())
 
 async function fixture() {
   const convex = convexTest(schema, modules)
@@ -497,7 +501,17 @@ test('note writes preserve full inline Markdown; larger versions become object-b
 })
 
 test('real drive transactions round-trip full object bytes despite staging races and a lost commit acknowledgement', async () => {
+  // Reindexing is an external-provider job, outside this storage/synchronization acceptance.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   const f = await fixture()
+  await f.convex.run(async ctx => {
+    await ctx.db.insert('workspaceUserPreferences', { userId: 'u', activeWorkspaceId: 'w', updatedAt: Date.now() })
+    await ctx.db.insert('billingAccounts', { billingAccountId: 'drive-paid', workspaceId: 'w', scope: 'workspace', status: 'active',
+      pricingVersion: 'markup_25_v1', markupBasisPoints: 2500, createdAt: Date.now(), updatedAt: Date.now() })
+    await ctx.db.insert('billingAccountSubscriptions', { billingAccountId: 'drive-paid', provider: 'stripe', planKind: 'paid',
+      planVersion: 'variable_v2', planAmountCents: 2000, markupBasisPoints: 2500, status: 'active', autoTopUpEnabled: false,
+      autoTopUpAmountCents: 0, createdAt: Date.now(), updatedAt: Date.now() })
+  })
   const signingSecret = secret.padEnd(40, '0')
   const tokens = createAgentDriveTokens({ secret: signingSecret })
   const { serverSecret: _serverSecret, expiresAt, ...claims } = f.args
@@ -507,6 +521,7 @@ test('real drive transactions round-trip full object bytes despite staging races
   let sealedKey = ''
   let seals = 0
   let loseAck = true
+  let loseManifest = false
   const authorize = async () => { await f.convex.query(makeFunctionReference<'query'>('agents/agentDrive:authorizeByServer'), f.args) }
   const service = new AgentDriveContentService({ secret: signingSecret, verifyToken: tokens.verify,
     repository: () => ({ authorize,
@@ -543,7 +558,7 @@ test('real drive transactions round-trip full object bytes despite staging races
   const reader = new AgentDriveManifestService({ secret: signingSecret, verifyToken: tokens.verify,
     repository: () => ({ authorize, page: async cursor => f.read(cursor === null ? {} : { cursor }),
       file: async (fileId, updatedAt) => f.convex.query(makeFunctionReference<'query'>('agents/agentDrive:fileByServer'), { ...f.args, fileId, updatedAt }),
-      metadata: async () => { throw Error('unexpected metadata write') },
+      metadata: async (requestId, operation) => f.convex.mutation(metadataRef, { ...f.args, requestId, operation }),
     }), materializer: () => new AgentDriveMaterializer({
       size: async source => source.kind === 'object' ? store.get(source.key)?.length ?? 0 : 0,
       read: async source => { if (source.kind !== 'object') throw Error('expected canonical object'); return store.get(source.key)?.slice() ?? new Uint8Array() },
@@ -561,6 +576,10 @@ test('real drive transactions round-trip full object bytes despite staging races
       if (String(input) === 'https://storage.test/staging-only') {
         store.set(stagingKey, new Uint8Array(await new Response(init?.body).arrayBuffer()))
         return new Response(null)
+      }
+      if (loseManifest && JSON.parse(String(init?.body)).action === 'manifest') {
+        loseManifest = false
+        throw Error('simulated manifest response loss')
       }
       return handleAgentDriveRequest(new Request(input, init), {
         enabled: () => true, service: () => reader, writes: () => service, limit: async () => null,
@@ -598,4 +617,102 @@ test('real drive transactions round-trip full object bytes despite staging races
     if (!restored || restored.kind !== 'file' || restored.hydration !== 'ready') throw Error('Expected durable Files entry')
     expect(createHash('sha256').update(await host.download(restored)).digest('hex')).toBe(sha256)
   } finally { journal.close(); rmSync(directory, { recursive: true, force: true }) }
-})
+
+  const syncDirectory = mkdtempSync(join(tmpdir(), 'drive-sync-convex-'))
+  const cache = await AgentDriveCache.create(syncDirectory, 'drive')
+  let syncJournal = new SqliteDriveJournal(join(syncDirectory, 'writes.sqlite'), context)
+  let syncState = new SqliteDriveSyncState(join(syncDirectory, 'baseline.sqlite'), cache.root, claims.scope)
+  try {
+    let sync = new AgentDriveSynchronizer({ runId: claims.runId, cache, journal: syncJournal, state: syncState, client: host })
+    await sync.initialize()
+    expect(createHash('sha256').update(readFileSync(join(cache.root, 'durable.txt'))).digest('hex')).toBe(sha256)
+    mkdirSync(join(cache.root, 'Research', 'Empty'), { recursive: true })
+    writeFileSync(join(cache.root, 'Research', 'report.md'), full)
+    const saved = await sync.sync(true)
+    expect(saved.some(item => item.path === 'Research/report.md')).toBe(true)
+    expect(saved.some(item => item.path === 'Research/Empty')).toBe(true)
+    const original = (await host.manifest()).find(item => item.path === 'Research/report.md')
+    expect(original?.kind).toBe('file')
+    // Editors commonly replace an inode atomically even when the resulting bytes match.
+    writeFileSync(join(cache.root, 'Research', 'replacement.tmp'), full)
+    renameSync(join(cache.root, 'Research', 'replacement.tmp'), join(cache.root, 'Research', 'report.md'))
+    await sync.sync(true)
+    renameSync(join(cache.root, 'Research', 'report.md'), join(cache.root, 'Research', 'draft.md'))
+    await sync.sync(true)
+    expect((await host.manifest()).find(item => item.path === 'Research/draft.md')?.fileId).toBe(original?.fileId)
+    renameSync(join(cache.root, 'Research', 'draft.md'), join(cache.root, 'Research', 'report.md'))
+    await sync.sync(true)
+    renameSync(join(cache.root, 'Research'), join(cache.root, 'Renamed'))
+    const edited = Buffer.from('Full updated report\n'.repeat(45000))
+    writeFileSync(join(cache.root, 'Renamed', 'report.md'), edited)
+    await sync.sync(true)
+    const moved = (await host.manifest()).find(item => item.path === 'Renamed/report.md')
+    if (!moved || moved.kind !== 'file' || moved.hydration !== 'ready') throw Error('Expected synced renamed report')
+    expect(moved.fileId).toBe(original?.fileId)
+    expect(createHash('sha256').update(await host.download(moved)).digest('hex')).toBe(createHash('sha256').update(edited).digest('hex'))
+    const freshCache = await AgentDriveCache.create(syncDirectory, 'fresh-drive')
+    const freshJournal = new SqliteDriveJournal(join(syncDirectory, 'fresh-writes.sqlite'), context)
+    const freshState = new SqliteDriveSyncState(join(syncDirectory, 'fresh-baseline.sqlite'), freshCache.root, claims.scope)
+    try {
+      await new AgentDriveSynchronizer({ runId: claims.runId, cache: freshCache, journal: freshJournal, state: freshState, client: host }).initialize()
+      expect(readFileSync(join(freshCache.root, 'Renamed', 'report.md')).equals(edited)).toBe(true)
+      expect((await freshCache.inventory()).some(item => item.kind === 'folder' && item.path === 'Renamed/Empty')).toBe(true)
+    } finally { freshJournal.close(); freshState.close() }
+    writeFileSync(join(cache.root, 'recovered.txt'), full)
+    loseAck = true
+    await expect(sync.sync(true)).rejects.toThrow()
+    expect(syncState.read().phase).toBe('writing')
+    expect(syncJournal.pending()[0]?.phase.kind).toBe('committing')
+    syncJournal.close(); syncState.close()
+    syncJournal = new SqliteDriveJournal(join(syncDirectory, 'writes.sqlite'), context)
+    syncState = new SqliteDriveSyncState(join(syncDirectory, 'baseline.sqlite'), cache.root, claims.scope)
+    sync = new AgentDriveSynchronizer({ runId: claims.runId, cache, journal: syncJournal, state: syncState, client: host })
+    await sync.initialize()
+    const recoveredSaved = await sync.sync(true)
+    expect(recoveredSaved.some(item => item.path === 'recovered.txt')).toBe(true)
+    expect(recoveredSaved.some(item => item.path === 'Renamed/report.md')).toBe(true)
+    expect((await host.manifest()).filter(item => item.path === 'recovered.txt')).toHaveLength(1)
+    expect(syncJournal.pending()).toEqual([])
+    writeFileSync(join(cache.root, 'acknowledged.txt'), full)
+    loseManifest = true
+    await expect(sync.sync(true)).rejects.toThrow('manifest response loss')
+    const applying = syncState.read()
+    if (applying.phase !== 'writing') throw Error('Expected persisted unreconciled effect')
+    expect(syncJournal.find(applying.operation.request.requestId)?.phase.kind).toBe('committed')
+    // The server write was confirmed, but local reconciliation failed: completion still failed.
+    syncJournal.close(); syncState.close()
+    syncJournal = new SqliteDriveJournal(join(syncDirectory, 'writes.sqlite'), context)
+    syncState = new SqliteDriveSyncState(join(syncDirectory, 'baseline.sqlite'), cache.root, claims.scope)
+    sync = new AgentDriveSynchronizer({ runId: claims.runId, cache, journal: syncJournal, state: syncState, client: host })
+    await sync.initialize()
+    expect((await host.manifest()).filter(item => item.path === 'acknowledged.txt')).toHaveLength(1)
+    expect(syncState.read().phase).toBe('idle')
+    // Another writer advances the canonical revision after this cache read it.
+    const otherBytes = Buffer.from('Newer canonical version\n'.repeat(40000))
+    const otherHash = createHash('sha256').update(otherBytes).digest('hex')
+    const otherIntent = await host.intent({ action: 'upload', requestId: 'other-writer-version-001',
+      operation: { kind: 'replace', entry: { fileId: moved.fileId, path: moved.path, kind: moved.kind, updatedAt: moved.updatedAt }, metadataMac: moved.metadataMac },
+      sizeBytes: otherBytes.length, sha256: otherHash, mimeType: 'text/plain' })
+    if (otherIntent.state !== 'pending') throw Error('Expected another writer upload')
+    await host.upload(otherIntent, otherBytes, otherHash)
+    await host.commit(otherIntent.uploadId)
+    const ownBytes = Buffer.from('Concurrent agent deliverable\n'.repeat(40000))
+    writeFileSync(join(cache.root, 'Renamed', 'report.md'), ownBytes)
+    await sync.sync(true)
+    const conflicts = (await host.manifest()).filter(item => item.path.startsWith('Renamed/report'))
+    expect(conflicts.map(item => item.path).sort()).toEqual(['Renamed/report (agent).md', 'Renamed/report.md'])
+    const own = conflicts.find(item => item.path === 'Renamed/report (agent).md')
+    if (!own || own.kind !== 'file' || own.hydration !== 'ready') throw Error('Expected complete conflict copy')
+    expect(Buffer.from(await host.download(own)).equals(ownBytes)).toBe(true)
+    // Bootstrap normalizes the local alias before hydrating the newer canonical file.
+    await sync.initialize()
+    expect(readFileSync(join(cache.root, 'Renamed', 'report.md')).equals(otherBytes)).toBe(true)
+    expect(readFileSync(join(cache.root, 'Renamed', 'report (agent).md')).equals(ownBytes)).toBe(true)
+    unlinkSync(join(cache.root, 'Renamed', 'report.md'))
+    unlinkSync(join(cache.root, 'Renamed', 'report (agent).md'))
+    rmdirSync(join(cache.root, 'Renamed', 'Empty'))
+    rmdirSync(join(cache.root, 'Renamed'))
+    await sync.sync(true)
+    expect((await host.manifest()).some(item => item.path.startsWith('Renamed'))).toBe(false)
+  } finally { syncJournal.close(); syncState.close(); rmSync(syncDirectory, { recursive: true, force: true }) }
+}, 20000)
