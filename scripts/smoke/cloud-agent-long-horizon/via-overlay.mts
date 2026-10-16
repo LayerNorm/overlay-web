@@ -31,7 +31,7 @@ const VISIBLE_STALL_MS = 90_000
 const POLL_MS = 2_000
 
 type Json = Record<string, unknown>
-type Message = { id: string; role: string; status?: string; content?: string; parts?: Json[]; authorPrincipalId?: string; createdAt: number; updatedAt: number }
+export type Message = { id: string; role: string; status?: string; content?: string; parts?: Json[]; authorPrincipalId?: string; createdAt: number; updatedAt: number }
 
 function option(args: string[], name: string, fallback?: string) {
   const index = args.indexOf(`--${name}`)
@@ -127,9 +127,14 @@ async function cloudAgent(client: OverlayClient, args: { model: string; size: st
   return { agent, created: true }
 }
 
-function visibleShape(message: Message | undefined) {
+export function messageText(message: Message | undefined): string {
+  if (typeof message?.content === 'string') return message.content
+  return (message?.parts ?? []).flatMap(part => part.type === 'text' && typeof part.text === 'string' ? [part.text] : []).join('')
+}
+
+export function visibleShape(message: Message | undefined) {
   const parts = message?.parts ?? []
-  const text = (message?.content ?? '').length
+  const text = messageText(message).length
   const tools = parts.filter((part) => part.type === 'tool-invocation').length
   const status = parts.find((part) => part.type === 'data-remote-agent-status')?.data as Json | undefined
   return { text, tools, state: typeof status?.state === 'string' ? status.state : message?.status ?? 'none', signature: `${text}:${tools}:${message?.updatedAt ?? 0}` }
@@ -178,6 +183,7 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
   let runSnapshot: Json | undefined
   let streamSummary: Json | undefined
   let reply: Message | undefined
+  let textBeforeCancel = ''
   let cancelled: { atS: number; textBefore: number; textAfter?: number } | undefined
   let pollFailures = 0
 
@@ -219,6 +225,7 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
     if (cancelAfterS !== undefined && !cancelled && active && now - sentAt >= cancelAfterS * 1000) {
       const runId = (reply?.parts?.find((part) => part.type === 'data-remote-agent-status')?.data as Json | undefined)?.runId
       if (typeof runId === 'string') {
+        textBeforeCancel = messageText(reply)
         cancelled = { atS: Math.round((now - sentAt) / 1000), textBefore: shape.text }
         log(`cancelling at ${cancelled.atS}s with ${shape.text} visible chars`)
         await client.ok('POST', '/api/v1/conversations/run/remote', { action: 'cancel', conversationId, runId })
@@ -251,11 +258,11 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
     },
     visible: { finalTextChars: textChars, toolRows: finalShape.tools, stalls: visibleStalls },
     transport: { ...streamSummary, snapshotAmplification: amplification },
-    cancel: cancelled ? { ...cancelled, textPreserved: (cancelled.textAfter ?? 0) >= cancelled.textBefore && cancelled.textBefore > 0 } : null,
+    cancel: cancelled ? { ...cancelled, textPreserved: textBeforeCancel.length > 0 && messageText(reply).startsWith(textBeforeCancel) } : null,
     timeline,
   }
   writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2))
-  writeFileSync(join(out, 'reply.md'), reply?.content ?? '')
+  writeFileSync(join(out, 'reply.md'), messageText(reply))
   log('report →', join(out, 'report.json'))
   console.log(JSON.stringify({ ...report, timeline: `${timeline.length} samples` }, null, 2))
 
@@ -265,7 +272,7 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
     log('deleted the smoke agent and its machine')
   }
   const passed = cancelled
-    ? report.run.status === 'cancelled'
+    ? report.run.status === 'cancelled' && report.cancel?.textPreserved === true
     : report.run.status === 'completed' && visibleStalls.length === 0
   return passed ? 0 : 1
 }

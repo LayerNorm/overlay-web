@@ -9,7 +9,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
-- Phase 0: required CI passes on the current preview. Real host/API counters and rendered preview QA are being checked; provider quota currently prevents a successful subscription smoke. Historical production error details were redacted, so their underlying causes remain unproven.
+- Phase 0: required CI passes on the current preview. Real host/API counters and rendered preview QA are being checked. Smoke readback now reconstructs omitted content from API text parts and cancellation verifies the exact retained prefix; provider quota currently prevents a successful subscription smoke. Historical production error details were redacted, so their underlying causes remain unproven.
 - Phase 1: byte-budget packing, ordered text coalescing, independent command polling/background uploads, immutable attempted sequences, cancellation preservation and unchanged-observation write suppression are implemented. Focused streaming and Convex regressions pass; current-head preview smoke/UI acceptance and publication remain pending.
 - All later acceptance items remain unchecked until verified through the preview.
 
