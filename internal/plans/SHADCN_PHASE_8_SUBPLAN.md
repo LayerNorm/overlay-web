@@ -11,7 +11,7 @@ Implementation status:
   served; its code checks are green.
 - 8.9-8.11: #249, #250, #251, #252, #253; local checks passed and preview/CI
   results are tracked on the PRs.
-- 8.12: staged guardrail: ESLint warns on raw interactive controls while
+- 8.12: #254; staged guardrail: ESLint warns on raw interactive controls while
   npm run check:raw-controls hard-fails any control outside the committed
   baseline. Once the sweep PRs merge, remove the baseline debt and promote the
   ESLint warning to an error for the final zero-count policy.
