@@ -1323,6 +1323,6 @@ and hold exclusive cache ownership throughout the turn. Journal capacity fails c
 than dropping unsaved writes. A separate private SQLite lease excludes concurrent cache owners
 through a lifetime OS lock; process death releases it without timeout-based takeover. Its immutable
 identity pins the canonical cache path and drive scope, and its database must remain outside the
-working directory. Cache inventories include empty folders and local file identities so equal
+working directory. Cache inventories include empty folders and exact integer filesystem identities so equal
 content alone cannot identify a rename. Runtime hydration, reconciliation and synchronization are still
 required; these foundations are not an enabled write-through drive.
