@@ -286,6 +286,32 @@ function writeInput(sequence = 1) {
     operation: { kind: 'create', name: 'report.txt' }, sha256: writeHash, sizeBytes: 40000, mimeType: 'text/plain' }
 }
 
+test('renewed authority retries an expired pending upload without changing its identity or consuming quota twice', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  const f = await fixture(), input = writeInput()
+  const original = await f.convex.mutation(uploadIntent, { ...f.args, ...input })
+  vi.setSystemTime(original.expiresAt + 1000)
+  const expiresAt = Date.now() + 60000
+  const renewedArgs = { ...f.args, expiresAt }
+  await expect(f.convex.mutation(uploadIntent, { ...f.args, ...input }))
+    .rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  await expect(f.convex.mutation(uploadIntent, { ...renewedArgs, ...input, sha256: 'b'.repeat(64) }))
+    .rejects.toMatchObject({ data: 'DRIVE_REQUEST_CONFLICT' })
+  await expect(f.convex.mutation(uploadIntent, { ...renewedArgs, ...input, execution: { attemptId: 'stale', generation: 2 } }))
+    .rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  const renewed = await f.convex.mutation(uploadIntent, { ...renewedArgs, ...input, uploadId: writeInput(2).uploadId })
+  expect(renewed).toEqual({ ...original, expiresAt })
+  const budgets = await f.convex.run(ctx => ctx.db.query('agentDriveWriteBudgets').collect())
+  expect(budgets).toHaveLength(1)
+  expect(budgets[0]).toMatchObject({ uploads: 1, bytes: input.sizeBytes })
+  const result = await f.convex.mutation(uploadCommit, { ...renewedArgs, uploadId: original.uploadId,
+    verifiedSha256: input.sha256, verifiedSizeBytes: input.sizeBytes })
+  vi.setSystemTime(expiresAt + 1000)
+  const committed = await f.convex.mutation(uploadIntent, { ...f.args, expiresAt: Date.now() + 60000, ...input })
+  expect(committed.state).toEqual({ kind: 'committed', result })
+  expect(committed.expiresAt).toBe(expiresAt)
+})
+
 test('upload intents and verified commits keep immutable identities and publish one real Files row', async () => {
   const f = await fixture()
   const input = writeInput()

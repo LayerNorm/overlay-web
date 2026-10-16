@@ -79,7 +79,7 @@ for (const failure of ['intent', 'upload', 'commit'] as const) {
       const calls = { ...f.calls }
       await writer.content(request, bytes)
       assert.deepEqual(f.calls, calls)
-      if (failure === 'commit') assert.deepEqual(f.calls, { intents: 1, uploads: 1, commits: 2, metadata: 0, created: 1 })
+      if (failure === 'commit') assert.deepEqual(f.calls, { intents: 2, uploads: 1, commits: 1, metadata: 0, created: 1 })
     } finally { journal.close(); f.clean() }
   })
 }
@@ -96,6 +96,36 @@ test('metadata retry after restart uses the persisted identity and a completed r
     await writer.flush()
     await writer.metadata(operation)
     assert.equal(f.calls.metadata, 2)
+    assert.equal(journal.pending().length, 0)
+  } finally { journal.close(); f.clean() }
+})
+
+test('an uncertain commit renews its same immutable intent after expiry without uploading again', async () => {
+  const f = fixture('metadata')
+  let journal = new SqliteDriveJournal(f.path, context)
+  let intents = 0, uploads = 0, commits = 0, renewed = false
+  const client = {
+    async intent(input: typeof request) {
+      assert.deepEqual(input, request); intents++; renewed = true
+      return { state: 'pending' as const, uploadId, url: 'https://objects.invalid/staging',
+        headers: { 'content-type': 'text/plain', 'x-amz-checksum-sha256': Buffer.from(request.sha256, 'hex').toString('base64') },
+        sizeBytes: bytes.length, expiresIn: 120 }
+    },
+    async upload() { uploads++ },
+    async commit(id: string) {
+      assert.equal(id, uploadId); commits++
+      if (commits === 1) { renewed = false; throw Error('outage before commit') }
+      if (!renewed) throw Error('DRIVE_UPLOAD_EXPIRED')
+      return result
+    },
+    async metadata(): Promise<never> { throw Error('Unexpected metadata call') },
+  }
+  try {
+    await assert.rejects(new AgentDriveWriter(journal, client).content(request, bytes), /outage before commit/)
+    assert.equal(journal.pending()[0]?.phase.kind, 'committing')
+    journal.close(); journal = new SqliteDriveJournal(f.path, context)
+    await new AgentDriveWriter(journal, client).flush()
+    assert.deepEqual({ intents, uploads, commits }, { intents: 2, uploads: 1, commits: 2 })
     assert.equal(journal.pending().length, 0)
   } finally { journal.close(); f.clean() }
 })

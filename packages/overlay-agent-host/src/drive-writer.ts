@@ -47,10 +47,8 @@ export class AgentDriveWriter {
       const result = await this.client.metadata(record.request)
       return receipt(this.journal.advanceMetadata(requestId, result))
     }
-    if (record.phase.kind === 'committing') {
-      const result = await this.client.commit(record.phase.uploadId)
-      return receipt(this.journal.commitContent(requestId, record.phase.uploadId, result))
-    }
+    // Reauthorize even an uncertain commit: its short-lived intent may have
+    // expired during the outage. The server returns the same identity/receipt.
     const intent = await this.client.intent(record.request)
     if (intent.state === 'committed') return receipt(this.journal.commitContent(requestId, intent.uploadId, intent.result))
     record = this.journal.advanceContent(requestId, 'intent', intent.uploadId)

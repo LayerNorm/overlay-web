@@ -50,6 +50,13 @@ export const intentByServer = mutation({
     if (prior) {
       requireAttempt(prior, args)
       if (prior.fingerprint !== fingerprint) throw new ConvexError('DRIVE_REQUEST_CONFLICT')
+      if (prior.state.kind === 'pending' && prior.expiresAt <= Date.now()) {
+        // Renew the same immutable write only after live authority/fence checks.
+        // Short URL/intent expiry must not strand a durable journal after an outage.
+        const expiresAt = Math.min(args.expiresAt, authority.hardDeadlineAt, Date.now() + 15 * 60_000)
+        await ctx.db.patch(prior._id, { expiresAt })
+        return { ...prior, expiresAt }
+      }
       return prior
     }
     if (await findUpload(ctx, args.uploadId)) throw new ConvexError('DRIVE_REQUEST_CONFLICT')

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Renew expired pending drive uploads under current run authority, retaining immutable write identities and avoiding duplicate quota charges after an outage.
+
 - Preserve the saved answer when an explicit fresh connected-agent attempt continues streaming on the same message.
 
 - Persist connected-agent drive status in chat messages and sign staging checksum headers consistently for R2 and S3 uploads.

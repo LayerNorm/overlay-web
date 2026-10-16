@@ -1221,6 +1221,13 @@ text, and overrides any old request metadata. The host adds that base to new del
 and bounded correction anchors, preserving the committed prefix in both negotiated
 and checkpoint-only streams. This preserves text during an explicit replacement;
 it does not establish native-session continuation or permission to replay old writes.
+An expired pending drive intent can be renewed only under current authorized run,
+session and attempt claims with the identical operation, checksum, size and MIME type.
+Renewal retains the upload/object identities and quota reservation, and is bounded by
+the credential, task deadline and a new fifteen-minute intent window. Before retrying
+an uncertain commit, the host reissues that same intent to obtain a retained receipt
+or renew its pending authority; already uploaded bytes are not sent again. This does
+not adopt writes belonging to a different execution.
 During web-first rollout, new control request IDs are sent to Convex only when
 lifecycle v2 is enabled; ordinary controls retain the legacy validator shape.
 
