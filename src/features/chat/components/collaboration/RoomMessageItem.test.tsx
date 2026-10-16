@@ -276,6 +276,14 @@ test('a lifecycle run needing attention exposes a deliberate fresh-start control
   assert.doesNotMatch(html, />Resume</)
 })
 
+test('a cancelled empty remote reply remains visibly cancelled without control permission', () => {
+  const html = render(record({authorKind: 'agent', authorPrincipalId: 'agent-1', content: '', status: 'completed', parts: [
+    {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state: 'cancelled'}},
+  ]}))
+  assert.match(html, /role="status">Cancelled<\/p>/)
+  assert.doesNotMatch(html, /Stop response|Start fresh|Task deadline|is responding/)
+})
+
 test('active lifecycle messages expose their canonical task deadline and terminal messages do not', () => {
   const deadline = Date.parse('2026-10-17T13:05:00Z')
   for (const state of ['waiting', 'starting', 'running', 'waiting_for_approval', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled']) {
@@ -308,14 +316,18 @@ test('a live agent reply renders formatted chunks and one bottom dots row withou
 test('stopping an agent keeps its earlier narrative visible while tool details remain folded', () => {
   const intro = '**Retained introduction**\n\n'
   const tail = 'Retained buffered tail.'
-  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'completed', content: intro + tail,
+  const message = record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'completed', content: intro + tail,
     parts: [
       { type: 'text', text: intro },
       { type: 'tool-invocation', toolInvocation: { toolCallId: 't', toolName: 'remote_action', state: 'output-error', toolInput: { title: 'Research' }, toolOutput: { status: 'cancelled' } } },
       { type: 'text', text: tail },
       { type: 'data-remote-agent-status', data: { runId: 'r', state: 'cancelled', environmentName: 'QA', queueExpiresAt: 0 } },
     ],
-  }), 'Agent')
+  })
+  const html = render(message, 'Agent')
   assert.match(html, /<strong>Retained introduction<\/strong>/)
   assert.ok(html.includes('Retained buffered tail.'))
+  const view = toRoomMessageView({message, currentPrincipalId: ME, authorName: 'Agent'})
+  assert.ok(view.blocks.some(block => block.kind === 'tool' && block.toolInput?.title === 'Research'))
+  assert.match(html, />Cancelled<\/p>/)
 })

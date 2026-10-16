@@ -755,6 +755,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
       ) : null}
       {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
+      {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}
       {message.remoteRequest && onResolveRemoteRequest ? (
         <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
       ) : null}

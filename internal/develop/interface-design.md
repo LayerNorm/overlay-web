@@ -383,3 +383,5 @@ Stop control must not require hovering the message; completed messages retain
 the usual hover/focus behavior.
 
 Cancelled and failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.
+Cancelled remote replies show a small status label even when no text was produced
+and the viewer cannot control the run.

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep cancelled remote replies visibly labelled when startup produced no text, including for viewers without run controls.
+
 - Keep fresh-machine drive hydration authorized through a fenced preparation lease, without reporting provider execution before initialization finishes.
 
 - Run ordinary CI test shards on Node 24 so built Agent Host CLI contracts exercise its supported runtime.
