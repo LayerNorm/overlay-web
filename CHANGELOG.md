@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Prepare a dedicated connected-agent drive cache with bounded snapshots, hash-checked atomic hydration and traversal/symlink rejection. This foundation is not yet connected to Overlay Files or enabled for agent turns.
+
 - Resolve the bridge protocol from workspace source in Convex tests, so clean checkouts do not depend on package build order.
 
 - Preserve the final ACP text notification when an agent's completion response arrives in the same input buffer. Drain ordered session updates before exposing completion in both checkpoint and delta streams.

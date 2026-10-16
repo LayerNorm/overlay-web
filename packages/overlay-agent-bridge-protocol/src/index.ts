@@ -806,3 +806,4 @@ export const AGENT_PROFILE_TOP_LEVEL: Record<AgentProfileHarness, readonly strin
   'claude-code': ['CLAUDE.md', 'settings.json', 'agents', 'commands', 'skills', 'output-styles'],
   codex: ['AGENTS.md', 'config.toml', 'prompts', 'skills'],
 }
+export { drivePathSegments, portableDrivePathKey } from './drive-path.js'

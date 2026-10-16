@@ -249,6 +249,21 @@ be publicly reachable. Eve connection
 authorization (`authorization.required`) is not bridged by the current host contract, so the
 adapter fails that run closed instead of leaving an OAuth pause unobservable. Use static or
 app-scoped Eve connection auth until a dedicated authorization capability is added.
+Phase 4 source includes a dedicated `AgentDriveCache` foundation for a child of an approved root.
+It validates portable relative paths, rejects symlink/special-file snapshots, bounds reads and
+checks downloaded hashes before atomic replacement. It is not wired into agent turns or Overlay
+Files yet; the current workspace remains the working folder until scoped server commits and
+the run-scoped drive protocol are implemented and verified.
+The manifest candidate mapper preserves canonical folder relationships and excludes archived,
+foreign-workspace and out-of-scope rows. It refuses inaccessible parents, cycles, duplicate ids,
+portable-name collisions and mismatched object ownership. Object-backed text stays an object
+reference rather than becoming the row's searchable prefix; a server materializer still needs
+to verify full source bytes before issuing a host manifest.
+Run-scoped drive token and authorization helpers use a separate signing domain, bounded expiry,
+session/attempt fencing, live membership and binding readback, creator-derived personal scope
+and explicit local/VPS opt-in. They are not yet attached to HTTP endpoints; final Convex commits
+must repeat the authority checks atomically before publishing a file revision.
+
 Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
 is unavailable and the unchanged host conformance suite passes.
 

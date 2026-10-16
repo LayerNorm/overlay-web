@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phases 3–5 pending.
+Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phase 3 pending; Phase 4 foundation in progress; Phase 5 pending.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -15,6 +15,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Phase 2: negotiated deltas, bounded anchors, heartbeat status and chunked canonical text storage are implemented with focused regressions. Large text, tenant boundaries, cancellation buffering, Unicode boundaries and fewer assistant-row writes are covered locally; current-head hosted and timed acceptance remains pending.
 - Hosted compatibility QA exposed a final-notification ordering race. A buffered-wire regression now verifies that all text precedes completion in both streaming modes; the direct ACP transport drains updates in wire order. Full-text hosted readback remains an acceptance gate.
 - All later acceptance items remain unchecked until verified through the preview.
+- Phase 4 design is recorded below. The dedicated host-cache foundation has atomic hash-checked hydration, bounded snapshots and traversal/symlink checks with fresh-cache byte tests. Manifest candidate mapping preserves hierarchy and scope, rejects ambiguous paths and keeps full-object references. Server run authorization, byte materialization, real Files commits, journaling and runtime integration are still required; this is not a persistent-drive implementation or acceptance result.
+- Drive token and authorization helpers now fence the exact session/attempt and reread membership, binding, environment and agent visibility. Local/VPS requires opt-in. These helpers are not wired to HTTP or atomic file commits yet.
 - Clean-checkout Convex tests now resolve the protocol source directly, matching TypeScript. The full Convex suite passes without generated protocol output; a concurrent text/tool regression also verifies the coalescer captures pending text before later updates arrive. Required CI must be rerun on the fix.
 
 ## Outcome
@@ -252,6 +254,45 @@ in Auto mode completes with zero prompts on Overlay Cloud.
 
 Write a short design note first, as its own section in this file or a sub-plan, then implement behind
 `connectedAgentDrive` (default off).
+
+#### Implementation design (source work in progress)
+
+- **Authority:** resolve scope from the persisted agent and binding, never a host-supplied user/workspace/path.
+  Personal means the creator's personal files within that workspace; workspace means workspace-shared files.
+  Revalidate the invoking member and existing content edit policy on every commit. Readable does not imply
+  writable: another member's workspace file retains its current edit rules. Revocation, scope changes,
+  terminal runs and stale lifecycle attempts revoke access before issuing URLs or accepting commits.
+- **Transport:** a separate signed drive token carries run, attempt/generation, binding, scope and owner.
+  It authorizes only manifest, download, upload-intent and commit operations at `/api/agent-drive`.
+  Tokens and presigned URLs stay out of transcript/logs. Local/VPS is opt-in; cloud defaults on only after
+  `connectedAgentDrive` is enabled. Never reuse provider credentials or grant object-store keys.
+- **Canonical files:** Convex owns path-to-file mapping, scope, revision checks, quota and idempotency.
+  Reuse real `files` rows/folders and existing object-store adapters. Object keys remain file-owner/file-id
+  keys, not a workspace prefix invented by the host. Upload each version to a new immutable key; publish its
+  row pointer only in the guarded commit, so a racing upload cannot overwrite the currently visible object.
+  Verify uploaded size and SHA-256 server-side before commit; a host checksum or HEAD size alone is not proof.
+  Full text lives in the object with `textInObjectStore`; row text is only a searchable prefix.
+- **Manifest:** page a stable scope snapshot with parent relationships, file ids, revision, hash, size and
+  content kind. Inline-only text rows must be materialized from their full canonical content. Reject cycles,
+  ambiguous sibling names and unsafe paths explicitly. Preserve Unicode names; never silently merge names
+  through normalization/case folding. Record unsupported names rather than dropping them from acceptance.
+- **Machine cache:** cloud uses `/home/user/drive`; local uses a dedicated child of the approved root.
+  The host checks each segment with `lstat`, rejects symlinks/special files and traversals, writes downloads
+  atomically, verifies hashes and keeps a private journal outside the drive. Never scan the person's entire
+  home or the original workspace. Serialize sync per scope cache to avoid two turns mutating it concurrently.
+- **Sync:** hydrate before prompting, diff hashes after writing tools and every 15 seconds, then final-sync
+  before forwarding completion. A failed final sync leaves an actionable unsaved state and prevents successful
+  completion. Persist idempotency keys before upload; retry the same intent/commit after acknowledgement loss.
+  Deletions apply only to previously hydrated entries: missing/unhydrated files are never inferred deleted.
+  Moves carry file id and revision, preserving row identity; writes racing a newer revision save a distinct
+  `name (agent).ext` sibling and report the conflict. Folder operations cannot escape the fixed scope.
+- **Bounds:** start with 16 MiB per hydrated file, 256 MiB cached bytes and 10,000 manifest entries. The server
+  enforces the account's tighter quota too. Oversized entries remain explicit manifest-only entries and must
+  not become empty files or deletions. Lazy hydration beyond these limits remains a later FUSE/cache feature;
+  ordinary deliverables must still pass full-byte fresh-machine verification.
+- **Proof:** test path/symlink/scope boundaries, stale revisions/attempts, conflict copies, quota, exact text
+  beyond the searchable prefix, lost acknowledgements and final-sync failure. Hosted acceptance must read the
+  actual Files rows, compare object SHA-256 values, and recreate the machine with an empty cache.
 
 **Model**
 - Personal agent → the owner's personal files. Workspace agent → the workspace's files. The scope is fixed by
