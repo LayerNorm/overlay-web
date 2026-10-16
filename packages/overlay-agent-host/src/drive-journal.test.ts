@@ -45,8 +45,9 @@ test('restart recovers immutable pending bytes and a lost commit acknowledgement
     assert.equal(journal.pending().length, 0)
     assert.equal(journal.find(request.requestId)?.phase.kind, 'committed')
     assert.deepEqual(journal.commitContent(request.requestId, uploadId, result).phase, { kind: 'committed', uploadId, result })
-    assert.throws(() => journal.content(request.requestId), /CONTENT_UNAVAILABLE/)
-    assert.throws(() => journal.commitContent(request.requestId, uploadId, { ...result, fileId: 'duplicate' }), /RECEIPT_CHANGED/)
+    const completedJournal = journal
+    assert.throws(() => completedJournal.content(request.requestId), /CONTENT_UNAVAILABLE/)
+    assert.throws(() => completedJournal.commitContent(request.requestId, uploadId, { ...result, fileId: 'duplicate' }), /RECEIPT_CHANGED/)
     journal.close()
   } finally { try { journal?.close() } catch { /* A successful path already closed it. */ } f.clean() }
 })
