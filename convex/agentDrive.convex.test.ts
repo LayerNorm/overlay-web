@@ -127,3 +127,84 @@ test('metadata-only pages omit inline bodies and inline downloads enforce exact 
   await expect(f.convex.query(inlineRef, args)).rejects.toThrow(/DRIVE_SOURCE_CHANGED/)
   await expect(f.convex.query(fileRef, args)).rejects.toThrow(/DRIVE_SOURCE_CHANGED/)
 })
+
+const metadataRef = makeFunctionReference<'mutation'>('agents/agentDriveMetadata:commitByServer')
+
+test('metadata commits preserve identity, monotonic revisions and exact retry receipts', async () => {
+  const f = await fixture()
+  const mkdir = { ...f.args, requestId: 'create-folder-0001', operation: { kind: 'mkdir', name: '研究' } }
+  const folder = await f.convex.mutation(metadataRef, mkdir)
+  expect(await f.convex.mutation(metadataRef, mkdir)).toEqual(folder)
+  await expect(f.convex.mutation(metadataRef, { ...mkdir, operation: { kind: 'mkdir', name: 'other' } })).rejects.toMatchObject({ data: 'DRIVE_REQUEST_CONFLICT' })
+  const move = { ...f.args, requestId: 'move-folder-00001', operation: { kind: 'move', fileId: folder.fileId, updatedAt: folder.updatedAt, name: 'renamed' } }
+  const moved = await f.convex.mutation(metadataRef, move)
+  expect(moved.fileId).toBe(folder.fileId)
+  expect(moved.updatedAt).toBeGreaterThan(folder.updatedAt)
+  expect(await f.convex.mutation(metadataRef, move)).toEqual(moved)
+  await expect(f.convex.mutation(metadataRef, { ...move, requestId: 'stale-move-000001' })).rejects.toMatchObject({ data: 'DRIVE_SOURCE_CHANGED' })
+  const removed = await f.convex.mutation(metadataRef, { ...f.args, requestId: 'remove-folder-001', operation: { kind: 'remove', fileId: moved.fileId, updatedAt: moved.updatedAt } })
+  expect(removed.updatedAt).toBeGreaterThan(moved.updatedAt)
+  expect((await f.convex.run(ctx => ctx.db.get(moved.fileId)))?.deletedAt).toBe(removed.updatedAt)
+})
+
+test('metadata writes reject unsafe paths, collisions, cycles and cross-scope parents', async () => {
+  const f = await fixture()
+  const create = (name: string, requestId: string, parentId?: string) => f.convex.mutation(metadataRef, { ...f.args, requestId, operation: { kind: 'mkdir', name, ...(parentId ? { parentId } : {}) } })
+  for (const name of ['..', 'a/b', 'a\\b', 'x\u0000']) await expect(create(name, 'unsafe-path-00001')).rejects.toMatchObject({ data: 'DRIVE_UNSAFE_PATH' })
+  const folder = await create('folder', 'safe-folder-00001')
+  await expect(create('folder', 'collision-000001')).rejects.toMatchObject({ data: 'DRIVE_PATH_CONFLICT' })
+  await expect(f.convex.mutation(metadataRef, { ...f.args, requestId: 'parent-cycle-001', operation: { kind: 'move', fileId: folder.fileId, updatedAt: folder.updatedAt, name: 'folder', parentId: folder.fileId } })).rejects.toMatchObject({ data: 'DRIVE_UNSAFE_PATH' })
+  const foreign = await f.convex.run(ctx => ctx.db.insert('files', { workspaceId: 'foreign', userId: 'u', name: 'foreign', type: 'folder', kind: 'folder', createdAt: 1, updatedAt: 1 }))
+  await expect(create('child', 'foreign-parent-01', foreign)).rejects.toMatchObject({ data: 'DRIVE_EDIT_DENIED' })
+})
+
+test('a folder deletion cannot implicitly remove an unhydrated remote child', async () => {
+  const f = await fixture()
+  const folder = await f.convex.mutation(metadataRef, { ...f.args, requestId: 'folder-delete-001', operation: { kind: 'mkdir', name: 'folder' } })
+  await f.convex.run(ctx => ctx.db.insert('files', { userId: 'u', workspaceId: 'w', name: 'unhydrated.bin', parentId: folder.fileId, type: 'file', kind: 'upload', createdAt: 1, updatedAt: 1 }))
+  await expect(f.convex.mutation(metadataRef, { ...f.args, requestId: 'delete-parent-01', operation: { kind: 'remove', fileId: folder.fileId, updatedAt: folder.updatedAt } })).rejects.toMatchObject({ data: 'DRIVE_DIRECTORY_NOT_EMPTY' })
+  expect((await f.convex.run(ctx => ctx.db.get(folder.fileId)))?.deletedAt).toBeUndefined()
+})
+
+test('receipt replay never bypasses run revocation and read access never grants edit access', async () => {
+  const f = await fixture()
+  const args = { ...f.args, requestId: 'replay-revoked-01', operation: { kind: 'mkdir', name: 'folder' } }
+  await f.convex.mutation(metadataRef, args)
+  await f.convex.run(ctx => ctx.db.patch(f.ids.binding, { enabled: false }))
+  await expect(f.convex.mutation(metadataRef, args)).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  await f.convex.run(async ctx => { await ctx.db.patch(f.ids.binding, { enabled: true }); await ctx.db.patch(f.ids.agent, { visibility: 'workspace' }) })
+  const shared = await f.read({ scope: { kind: 'workspace', workspaceId: 'w' } })
+  const row = shared.rows[0]
+  await expect(f.convex.mutation(metadataRef, { ...f.args, scope: { kind: 'workspace', workspaceId: 'w' }, requestId: 'readonly-move-01', operation: { kind: 'move', fileId: row._id, updatedAt: row.updatedAt, name: 'stolen.md' } })).rejects.toMatchObject({ data: 'DRIVE_EDIT_DENIED' })
+})
+
+
+test('metadata tombstones retain object quota charges and promote canonical duplicates', async () => {
+  const f = await fixture()
+  const ids = await f.convex.run(async ctx => {
+    const subscription = await ctx.db.insert('subscriptions', { userId: 'u', overlayStorageBytesUsed: 300 })
+    const inline = await ctx.db.insert('files', { userId: 'u', workspaceId: 'w', name: 'inline.md', type: 'file', kind: 'note', content: 'inline', sizeBytes: 100, createdAt: 1, updatedAt: 1 })
+    const blob = await ctx.db.insert('files', { userId: 'u', workspaceId: 'w', name: 'blob.bin', type: 'file', kind: 'upload', r2Key: 'users/u/files/immutable/version', sizeBytes: 200, createdAt: 1, updatedAt: 1 })
+    const duplicate = await ctx.db.insert('files', { userId: 'u', workspaceId: 'w', name: 'copy.md', type: 'file', kind: 'note', content: 'inline', duplicateOfFileId: inline, createdAt: 1, updatedAt: 1 })
+    return { subscription, inline, blob, duplicate }
+  })
+  for (const [fileId, requestId] of [[ids.inline, 'delete-inline-01'], [ids.blob, 'delete-object-01']] as const) {
+    const args = { ...f.args, requestId, operation: { kind: 'remove', fileId, updatedAt: 1 } }
+    await f.convex.mutation(metadataRef, args)
+    await f.convex.mutation(metadataRef, args)
+  }
+  const state = await f.convex.run(async ctx => ({ subscription: await ctx.db.get(ids.subscription), duplicate: await ctx.db.get(ids.duplicate), blob: await ctx.db.get(ids.blob) }))
+  expect(state.subscription?.overlayStorageBytesUsed).toBe(200)
+  expect(state.duplicate?.duplicateOfFileId).toBeUndefined()
+  expect(state.duplicate?.indexStatus).toBe('pending')
+  expect(state.blob?.r2Key).toBe('users/u/files/immutable/version')
+})
+
+test('a new execution generation cannot reuse an earlier metadata receipt', async () => {
+  const f = await fixture()
+  const args = { ...f.args, requestId: 'attempt-replay-01', operation: { kind: 'mkdir', name: 'folder' } }
+  await f.convex.mutation(metadataRef, args)
+  await f.convex.run(ctx => ctx.db.patch(f.ids.session, { attemptId: 'replacement', executionGeneration: 2 }))
+  await expect(f.convex.mutation(metadataRef, args)).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  await expect(f.convex.mutation(metadataRef, { ...args, execution: { attemptId: 'replacement', generation: 2 } })).rejects.toMatchObject({ data: 'DRIVE_REQUEST_CONFLICT' })
+})

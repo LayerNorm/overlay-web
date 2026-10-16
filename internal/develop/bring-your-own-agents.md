@@ -271,7 +271,10 @@ reader now uses bounded configured object-store downloads and authorized Convex 
 Convex checks the exact file revision/source and run authority before resolving a storage URL; the
 server verifies the blob digest and never includes storage URLs in host manifests. Backend manifest
 pages repeat membership, scope, binding, run and attempt checks behind the default-off
-`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Atomic file commits and host synchronization remain pending.
+`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Metadata commits create folders, move existing rows and tombstone explicit entries under the same
+authority and edit policy. Revision checks and transaction receipts prevent stale or duplicate
+changes; folders must be empty before deletion. Object quota remains charged until cleanup.
+Content uploads, metadata HTTP wiring and host synchronization remain pending.
 
 Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
 do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;

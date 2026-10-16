@@ -1603,6 +1603,13 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
 
+  agentDriveMetadataReceipts: defineTable({
+    runId: v.string(), sessionId: v.string(), requestId: v.string(),
+    attemptId: v.optional(v.string()), generation: v.optional(v.number()),
+    fingerprint: v.string(), result: v.object({ fileId: v.id('files'), updatedAt: v.number() }),
+    createdAt: v.number(),
+  }).index('by_runId_requestId', ['runId', 'requestId']),
+
   files: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),

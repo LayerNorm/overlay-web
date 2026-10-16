@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 4 backend metadata commits now create folders, preserve file identity on moves and require explicit child deletion. Same-transaction receipts fence retries to the run/attempt; scope, edit policy, revisions and parent cycles are checked. Object bytes remain charged until cleanup. Uploads, HTTP wiring and host synchronization remain pending.
+
 - Phase 4 expected drive failures now use structured Convex application data; redacted production responses retain safe HTTP statuses in both current-authority and pinned-snapshot queries. Local transport and Convex tests pass; hosted acceptance remains pending.
 
 - Phase 5 MCP authorization now binds delivered credentials to the current session and execution generation without extending expiry. Approval polling and final tool execution recheck authority; replaced attempts cannot create new approval cards. Legacy first-attempt compatibility remains. Interrupted-turn continuation, durable pending-tool follow-up and the 60-minute recovery acceptance remain pending.
