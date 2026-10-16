@@ -2193,6 +2193,8 @@ export default defineSchema({
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_messageId', ['messageId'])
     .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_type', ['workspaceId', 'type'])
+    .index('by_userId_type', ['userId', 'type'])
     .index('by_userId_createdAt', ['userId', 'createdAt']),
 
   conversationParticipants: defineTable({

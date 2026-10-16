@@ -7,6 +7,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
+import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { ROOM_AGENT_RUN_LEASE_MS } from '../../src/shared/agents/agent-run'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
@@ -1857,11 +1858,7 @@ export const watchConversationListVersion = query({
       }
       throw error
     }
-    const latest = await ctx.db.query('conversationEvents')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
-      .order('desc')
-      .first()
-    return { ok: true as const, version: latest?._creationTime ?? 0 }
+    return { ok: true as const, version: await conversationListVersion(ctx, { workspaceId: args.workspaceId }) }
   },
 })
 

@@ -1212,6 +1212,10 @@ Only changed chunks are written. Text-only changes still emit conversation event
 without rewriting the assistant row, and hard message/account/workspace deletion removes
 owned chunks. Existing checkpoint-only rows require no migration.
 
+Sidebar list subscriptions observe only indexed conversation changes and message creation/completion/failure.
+Streaming deltas update the open transcript without causing an HTTP conversation-list read per chunk;
+versions remain monotonic across long streams.
+
 Per-run ten-second heartbeats carry process proof, quiet time and open-tool ages.
 They update run liveness without transcript parts. A live three-minute tool remains
 running; quiet output alone cannot prove a stall. The bottom loading row distinguishes

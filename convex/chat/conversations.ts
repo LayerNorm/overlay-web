@@ -7,6 +7,7 @@ import type { Doc } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
+import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 
 const generatedUiVariant = v.object({
@@ -1455,8 +1456,8 @@ export const watchAgentRun = query({
 
 /**
  * Lightweight browser-facing invalidation signal for the personal conversation
- * list.  Returns the _creationTime of the latest conversationEvent for the
- * user.  When the version changes, the client fetches the delta (updatedSince)
+ * list. Returns the latest list-relevant event version for the user. Streaming
+ * deltas update the open transcript without refetching sidebar history.  When the version changes, the client fetches the delta (updatedSince)
  * and upserts individual rows instead of reloading the full list.
  */
 export const watchPersonalConversationListVersion = query({
@@ -1474,12 +1475,7 @@ export const watchPersonalConversationListVersion = query({
     } catch {
       return { ok: false, version: 0 }
     }
-    const latest = await ctx.db
-      .query('conversationEvents')
-      .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
-      .order('desc')
-      .first()
-    return { ok: true, version: latest?._creationTime ?? 0 }
+    return { ok: true, version: await conversationListVersion(ctx, { userId }) }
   },
 })
 

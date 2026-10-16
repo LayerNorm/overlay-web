@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep connected-agent text streaming from repeatedly fetching sidebar conversation history.
+
 - Preserve event upload retry boundaries across host restarts so a lost acknowledgement cannot turn a retry into an overlapping batch.
 
 - Add execution-fenced call storage and bounded result retention for resumable connected-agent tools. HTTP approval resumption is still pending.
