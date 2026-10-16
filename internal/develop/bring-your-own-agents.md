@@ -275,7 +275,8 @@ pages repeat membership, scope, binding, run and attempt checks behind the defau
 authority and edit policy. Revision checks and transaction receipts prevent stale or duplicate
 changes; folders must be empty before deletion. New names reuse the portable wire-path
 validator and reject case/Unicode aliases rather than creating an ambiguous cache. Object quota remains charged until cleanup.
-Content uploads and host synchronization remain pending.
+Content uploads and host synchronization remain pending. Convex imports portable-path validation
+from the protocol source module, without depending on package `dist` artifacts in hosted builds.
 
 Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
 do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;

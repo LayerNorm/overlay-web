@@ -101,7 +101,8 @@ fails on failed, cancelled, absent or unexpectedly skipped lanes. Gateway contra
 results come from the test lane in `Security Checks`; Docs remains a separate
 required workflow. Current route types are generated before standalone typechecking,
 so the CI compilation job omits only its redundant TypeScript pass. Hosted builds
-keep their existing checks. Customer-web compilation uses Webpack with an isolated
+keep their existing checks; inherited skip flags are ignored outside the non-hosted GitHub
+compilation lane. Customer-web compilation uses Webpack with an isolated
 build worker and memory optimizations, plus `.js` aliases for NodeNext workspace
 TypeScript sources; local development retains its default engine.
 Reusable components live outside route entry-point exports. See Development Workflow for the complete CI contract.

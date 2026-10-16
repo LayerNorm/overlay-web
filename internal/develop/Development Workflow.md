@@ -25,6 +25,8 @@ resource samples (heap limit/usage, RSS, CPU and GC totals) on stderr in the hos
 Machine-readable subprocess stdout, including TypeScript `--showConfig`, stays clean.
 Keep it scoped to the affected Preview branch, then remove it after investigation.
 The sampler reports no environment values, arguments or heap contents and does not skip checks.
+`OVERLAY_SKIP_BUILD_TYPECHECK` is honored only in the non-hosted GitHub compilation lane;
+Preview and Production always retain Next TypeScript validation, regardless of inherited flags.
 
 The trusted `PR Preview` workflow uses the existing `VERCEL_PREVIEW_TOKEN` in
 GitHub's `release-control` environment for ordinary custom URL assignment and

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep hosted TypeScript validation enabled even when a CI skip flag is inherited, and bundle Convex drive path validation directly from canonical protocol source.
+
 - Add opt-in build resource diagnostics for Node workers without logging environment values or heap contents.
 
 - Fence connected-agent workspace tools to the current execution, recheck authority after approval waits and preserve signed expiry across restart delivery. Reject malformed token suffixes and stale approval requests.

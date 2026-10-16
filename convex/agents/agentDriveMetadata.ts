@@ -1,5 +1,5 @@
 import { ConvexError, v } from 'convex/values'
-import { drivePathSegments, portableDrivePathKey } from '@layernorm/overlay-agent-bridge-protocol'
+import { drivePathSegments, portableDrivePathKey } from '../../packages/overlay-agent-bridge-protocol/src/drive-path'
 import type { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { mutation, type MutationCtx } from '../_generated/server'

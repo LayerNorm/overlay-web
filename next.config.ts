@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 import createBundleAnalyzer from "@next/bundle-analyzer";
 import { withWorkflow } from "workflow/next";
+import { skipDuplicateBuildTypecheck } from "./scripts/release/build-typecheck-policy.mjs";
 
 const withBundleAnalyzer = createBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -50,7 +51,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@overlay/app-core"],
   // Only CI's compilation lane omits its duplicate TypeScript pass; the separate
   // required typecheck remains enforced. Hosted builds retain Next's typecheck.
-  typescript: process.env.OVERLAY_SKIP_BUILD_TYPECHECK === "1"
+  typescript: skipDuplicateBuildTypecheck(process.env)
     ? { ignoreBuildErrors: true }
     : undefined,
   // Explicit server action body size limit. Prevents DoS via large payloads.
