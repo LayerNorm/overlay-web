@@ -5,7 +5,7 @@ import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/shared/storage/storage-k
 
 const fileRowSchema = z.object({
   _id: z.string().min(1), userId: z.string().min(1), workspaceId: z.string().optional(),
-  scope: z.enum(['personal', 'workspace']).optional(), archivedAt: z.number().optional(),
+  scope: z.enum(['personal', 'workspace']).optional(), archivedAt: z.number().optional(), deletedAt: z.number().optional(),
   name: z.string(), parentId: z.string().nullable().optional(), type: z.enum(['file', 'folder']),
   kind: z.string().optional(), content: z.string().optional(), textContent: z.string().optional(),
   textInObjectStore: z.boolean().optional(), r2Key: z.string().optional(), storageId: z.string().optional(),
@@ -21,11 +21,11 @@ export type AgentDriveScope =
 export type AgentDriveCandidate = {
   fileId: string; path: string; kind: 'file' | 'folder'; updatedAt: number; ownerUserId: string
   mimeType?: string
-  source?: { kind: 'object'; key: string } | { kind: 'convex'; storageId: string } | { kind: 'inline'; text: string }
+  source?: { kind: 'object'; key: string } | { kind: 'convex'; storageId: string; fileId: string; updatedAt: number } | { kind: 'inline'; text: string }
 }
 
 function inScope(row: DriveRow, scope: AgentDriveScope, viewer: ResourceViewer): boolean {
-  if (row.workspaceId !== scope.workspaceId || row.archivedAt !== undefined || !canReadResource(row, viewer)) return false
+  if (row.workspaceId !== scope.workspaceId || row.archivedAt !== undefined || row.deletedAt !== undefined || !canReadResource(row, viewer)) return false
   return scope.kind === 'workspace' ? rowScope(row) === 'workspace'
     : rowScope(row) === 'personal' && row.userId === scope.ownerUserId && viewer.userId === scope.ownerUserId
 }
@@ -36,7 +36,7 @@ function sourceFor(row: DriveRow): AgentDriveCandidate['source'] {
     if (!isOwnedFileR2Key(row.userId, row.r2Key) && !isOwnedOutputR2Key(row.userId, row.r2Key)) throw Error('DRIVE_INVALID_STORAGE_OWNER')
     return { kind: 'object', key: row.r2Key }
   }
-  if (row.storageId) return { kind: 'convex', storageId: row.storageId }
+  if (row.storageId) return { kind: 'convex', storageId: row.storageId, fileId: row._id, updatedAt: row.updatedAt ?? row.createdAt }
   if ((row.kind === 'upload' || row.kind === 'output') && !row.mimeType?.startsWith('text/')) throw Error('DRIVE_MISSING_CANONICAL_OBJECT')
   return { kind: 'inline', text: row.textContent ?? row.content ?? '' }
 }

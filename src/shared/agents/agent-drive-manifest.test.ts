@@ -13,7 +13,7 @@ test('personal and workspace manifests have disjoint authority and exclude archi
   const rows = [row('mine', 'Mine'), row('legacy', 'Legacy', { scope: undefined }),
     row('other-person', 'Other person', { userId: 'other' }),
     row('shared', 'Shared', { userId: 'other', scope: 'workspace' }),
-    row('archived', 'Archived', { archivedAt: 3 }), row('foreign', 'Foreign', { workspaceId: 'foreign' })]
+    row('archived', 'Archived', { archivedAt: 3 }), row('deleted', 'Deleted', { deletedAt: 3 }), row('foreign', 'Foreign', { workspaceId: 'foreign' })]
   assert.deepEqual(build(rows).map(value => value.fileId), ['legacy', 'mine'])
   assert.deepEqual(build(rows, { kind: 'workspace', workspaceId: 'workspace' }).map(value => value.fileId), ['shared'])
   assert.deepEqual(buildAgentDriveCandidates({ rows, scope: personal, viewer: { userId: 'other', role: 'admin' } }), [])
@@ -24,12 +24,14 @@ test('nested Unicode hierarchy preserves file identity and canonical text-object
   const result = build([
     row('folder', '研究', { type: 'folder', kind: 'folder' }),
     row('child', 'café.md', { parentId: 'folder', textInObjectStore: true, r2Key: 'users/owner/files/child/version', content: 'search prefix only' }),
+    row('stored', 'stored.bin', { kind: 'upload', storageId: 'blob' }),
     row('inline', 'inline.md', { content: 'old', textContent: 'full canonical inline text' }),
   ])
   assert.equal(result.find(value => value.fileId === 'child')?.path, '研究/café.md')
   assert.deepEqual(result.find(value => value.fileId === 'child')?.source, { kind: 'object', key: 'users/owner/files/child/version' })
   assert.deepEqual(result.find(value => value.fileId === 'inline')?.source, { kind: 'inline', text: 'full canonical inline text' })
   assert.equal(result.find(value => value.fileId === 'folder')?.source, undefined)
+  assert.deepEqual(result.find(value => value.fileId === 'stored')?.source, { kind: 'convex', storageId: 'blob', fileId: 'stored', updatedAt: 2 })
   assert.throws(() => build([row('broken', 'broken', { textInObjectStore: true, storageId: 'some-original-blob' })]), /DRIVE_MISSING_CANONICAL_OBJECT/)
   assert.throws(() => build([row('foreign-key', 'foreign-key', { r2Key: 'users/another/files/private/content' })]), /DRIVE_INVALID_STORAGE_OWNER/)
 })

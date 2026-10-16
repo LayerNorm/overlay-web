@@ -4,7 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. Storage and HTTP integration remain pending.
+- Prepare scoped drive reads with live Convex authorization, exact file revisions and verified storage bytes. Enforce R2/S3 download limits while streaming. Drive HTTP delivery, file commits and host sync remain pending.
+
+- Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. HTTP delivery and runtime integration remain pending.
 
 - Prepare a dedicated connected-agent drive cache with bounded snapshots, hash-checked atomic hydration and traversal/symlink rejection. This foundation is not yet connected to Overlay Files or enabled for agent turns.
 

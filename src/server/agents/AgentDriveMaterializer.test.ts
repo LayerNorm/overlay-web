@@ -45,7 +45,7 @@ test('oversized and over-budget entries remain explicit and are never downloaded
 })
 
 test('truncated storage reads and sources that change after a manifest fail instead of returning corrupt bytes', async () => {
-  const object = candidate('object', { kind: 'convex', storageId: 'storage-id' })
+  const object = candidate('object', { kind: 'convex', storageId: 'storage-id', fileId: 'object', updatedAt: 10 })
   const materializer = new AgentDriveMaterializer({ async size() { return 8 }, async read() { return bytes('short') } })
   await assert.rejects(materializer.read(object), /DRIVE_SOURCE_CHANGED/)
   const changing = new AgentDriveMaterializer({ async size() { return 5 }, async read() { return bytes('other') } })

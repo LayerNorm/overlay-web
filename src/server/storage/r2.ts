@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { readBoundedStorageBody } from '@/server/storage/read-bounded-storage-body'
+
 import { logger } from '@/server/observability/logger'
 import {
   S3Client,
@@ -361,11 +363,9 @@ export class R2ObjectStore implements ObjectStore {
   }
 
   async downloadBuffer(key: string, maximumBytes = 25 * 1024 * 1024): Promise<Uint8Array> {
-    const response = await this.client().send(new GetObjectCommand({ Bucket: this.bucketName(), Key: key }))
+    const response = await this.client().send(new GetObjectCommand({ Bucket: this.bucketName(), Key: key }), { abortSignal: AbortSignal.timeout(30000) })
     if (!response.Body) throw new Error('Object body is unavailable')
-    const bytes = await response.Body.transformToByteArray()
-    if (bytes.byteLength > maximumBytes) throw new Error('Object exceeds the download validation limit')
-    return bytes
+    return readBoundedStorageBody(response.Body.transformToWebStream(), maximumBytes, response.ContentLength)
   }
 
   async listObjects(prefix: string): Promise<ObjectSummary[]> {

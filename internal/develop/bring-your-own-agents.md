@@ -257,8 +257,8 @@ the run-scoped drive protocol are implemented and verified.
 The manifest candidate mapper preserves canonical folder relationships and excludes archived,
 foreign-workspace and out-of-scope rows. It refuses inaccessible parents, cycles, duplicate ids,
 portable-name collisions and mismatched object ownership. Object-backed text stays an object
-reference rather than becoming the row's searchable prefix; a server materializer still needs
-to verify full source bytes before issuing a host manifest.
+reference rather than becoming the row's searchable prefix; the server materializer verifies
+full source bytes before issuing a host manifest.
 Run-scoped drive token and authorization helpers use a separate signing domain, bounded expiry,
 session/attempt fencing, live membership and binding readback, creator-derived personal scope
 and explicit local/VPS opt-in. They are not yet attached to HTTP endpoints; final Convex commits
@@ -267,7 +267,12 @@ must repeat the authority checks atomically before publishing a file revision.
 `AgentDriveMaterializer` hashes full source bytes through a bounded reader, verifies download
 size/hash against the manifest and rejects changed or truncated sources. Files over the file
 or total-cache cap remain explicit deferred entries, with no empty local placeholder. The
-reader still needs real object-store/Convex wiring and authorized manifest/download endpoints.
+reader now uses bounded configured object-store downloads and authorized Convex storage metadata.
+Convex checks the exact file revision/source and run authority before resolving a storage URL; the
+server verifies the blob digest and never includes storage URLs in host manifests. Backend manifest
+pages repeat membership, scope, binding, run and attempt checks behind the default-off
+`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Manifest HTTP/download endpoints, atomic file commits and
+host synchronization remain pending.
 
 Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
 is unavailable and the unchanged host conformance suite passes.

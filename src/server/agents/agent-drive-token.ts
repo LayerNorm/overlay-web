@@ -56,29 +56,4 @@ export function createAgentDriveTokens(options: { secret: string; now?: () => nu
   }
 }
 
-type CurrentDriveRun = {
-  actorUserId: string; runId: string; sessionId: string; bindingId: string; agentId: string; environmentId: string
-  scope: AgentDriveTokenClaims['scope']; bindingEnabled: boolean; environmentRevoked: boolean
-  actorIsMember: boolean; status: string; hardDeadlineAt: number; execution?: AgentDriveTokenClaims['execution']
-}
-
-function sameDriveScope(left: AgentDriveTokenClaims['scope'], right: AgentDriveTokenClaims['scope']): boolean {
-  return left.workspaceId === right.workspaceId && left.kind === right.kind
-    && (left.kind !== 'personal' || (right.kind === 'personal' && left.ownerUserId === right.ownerUserId))
-}
-
-function sameDriveExecution(claims: AgentDriveTokenClaims, current: CurrentDriveRun): boolean {
-  return claims.actorUserId === current.actorUserId && claims.runId === current.runId && claims.sessionId === current.sessionId
-    && claims.bindingId === current.bindingId && claims.agentId === current.agentId && claims.environmentId === current.environmentId
-    && claims.execution?.attemptId === current.execution?.attemptId && claims.execution?.generation === current.execution?.generation
-}
-
-/** Signing is only the first gate. Every operation must re-read binding/scope, membership and run fencing. */
-export function assertCurrentDriveRun(claims: AgentDriveTokenClaims, current: CurrentDriveRun, now = Date.now()): void {
-  if (claims.expiresAt <= now || current.hardDeadlineAt <= now || claims.expiresAt > current.hardDeadlineAt
-    || !current.bindingEnabled || current.environmentRevoked || !current.actorIsMember
-    || !['starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering', 'finalizing'].includes(current.status)
-    || !sameDriveScope(claims.scope, current.scope) || !sameDriveExecution(claims, current)) {
-    throw Error('DRIVE_RUN_UNAVAILABLE')
-  }
-}
+export { assertCurrentDriveRun } from '@/shared/agents/agent-drive-authority'
