@@ -92,7 +92,8 @@ test('observation expiry preserves a newly created agent and machine when termin
 
 test('a rate-limited observation resumes the same run after cooldown and cleans up only after completion', async t => {
   const { result, calls } = await mockSmoke(t, '10', true)
-  assert.equal(result, 0)
+  // A completed task with an observation gap does not prove uninterrupted streaming.
+  assert.equal(result, 1)
   const reads = calls.filter(call => call.path === '/api/v1/conversations')
   assert.equal(reads.length, 2)
   assert.ok(reads[1]!.at - reads[0]!.at >= 90000)

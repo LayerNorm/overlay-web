@@ -67,7 +67,8 @@ to check the rendered workspace, sample conversation, note, and text file.
 
 The long-horizon API smoke polls every five seconds to leave history-read capacity for
 concurrent browser QA. Honor 429 cooldowns without resending the task; rate-limited gaps
-do not prove a visible stall. An observation deadline is not a run deadline: keep the
+do not prove a visible stall or uninterrupted streaming. Record the gap and fail smoke acceptance
+even if the task later completes. An observation deadline is not a run deadline: keep the
 created agent and machine until terminal state is confirmed, and retain their identifiers
 in the private report. Cleanup must check successful responses before claiming deletion.
 

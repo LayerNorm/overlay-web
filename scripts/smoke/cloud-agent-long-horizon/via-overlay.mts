@@ -209,6 +209,8 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
   let nextPollAt = sentAt + POLL_MS
   let rateLimitedPolls = 0
   let observationTimedOut = false
+  const observationGaps: Array<{ fromS: number; toS?: number; reason: 'rate_limit' }> = []
+  let observationGap: (typeof observationGaps)[number] | undefined
 
   for (;;) {
     const remaining = sentAt + hardLimitMs - Date.now()
@@ -227,7 +229,10 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
       if (error instanceof OverlaySmokeHttpError && error.status === 429) {
         rateLimitedPolls += 1
         nextPollAt = Date.now() + Math.max(POLL_MS, error.retryAfterMs ?? 60_000)
-        // Unobserved time cannot prove a visible stall. Start a new observation on recovery.
+        // Unobserved time cannot prove a visible stall or an uninterrupted stream.
+        const atS = Math.round((Date.now() - sentAt) / 1000)
+        if (stallOpen) { stallOpen.toS = atS; stallOpen = undefined }
+        if (!observationGap) { observationGap = { fromS: atS, reason: 'rate_limit' }; observationGaps.push(observationGap) }
         lastSignature = ''
         log('read rate limited; retaining the same run', { retryAfterMs: nextPollAt - Date.now() })
         continue
@@ -237,6 +242,7 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
       if (pollFailures > 10) throw error
       continue
     }
+    if (observationGap) { observationGap.toS = Math.round((Date.now() - sentAt) / 1000); observationGap = undefined }
     runSnapshot = run.run ?? undefined
     streamSummary = run.streamSummary ?? streamSummary
     reply = messages.messages.filter((message) => message.role === 'assistant' && message.authorPrincipalId === agent.principalId)
@@ -280,7 +286,7 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
   const report = {
     via: 'overlay',
     identifiers: { agentId: agent.id, conversationId, runId: runSnapshot?.externalRunId ?? runSnapshot?.id ?? null },
-    observation: { timedOut: observationTimedOut, rateLimitedPolls, pollIntervalMs: POLL_MS },
+    observation: { timedOut: observationTimedOut, rateLimitedPolls, pollIntervalMs: POLL_MS, gaps: observationGaps },
     origin,
     run: {
       status: runSnapshot?.status ?? 'unknown',
@@ -311,7 +317,7 @@ export async function runViaOverlay(argv: string[]): Promise<number> {
   } else if (created && !terminal) {
     log('kept agent and machine because terminal state is unproven', { agentId: agent.id, conversationId })
   }
-  const passed = !observationTimedOut && (cancelled
+  const passed = !observationTimedOut && rateLimitedPolls === 0 && (cancelled
     ? report.run.status === 'cancelled' && report.cancel?.textPreserved === true
     : report.run.status === 'completed' && visibleStalls.length === 0)
   return passed ? 0 : 1

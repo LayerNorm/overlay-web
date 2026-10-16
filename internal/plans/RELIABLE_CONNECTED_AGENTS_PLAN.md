@@ -11,7 +11,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 - Phase 1 stream recovery fixes now preserve message event revisions through room history and subscriptions, including chunk-only changes, and recover browser token issuance after a 401 using the shared session refresh. Real query-to-UI merge regressions cover stale snapshots; current-head hosted acceptance remains pending.
 
-- Phase 0 smoke observation now leaves API rate-limit headroom, honors 429 cooldowns without resending work and preserves active machines when observation expires. Reports distinguish observation timeout from terminal failure; cleanup verifies successful responses.
+- Phase 0 smoke observation now leaves API rate-limit headroom, honors 429 cooldowns without resending work and preserves active machines when observation expires. Reports distinguish observation timeout from terminal failure and retain unobserved intervals; a rate-limited gap prevents smoke acceptance even if the task completes. Cleanup verifies successful responses.
 
 - Phase 4 manifest/download service now pins metadata pages to one database timestamp while checking live authority separately. Inline notes use exact-revision references; ready-file grants bind the full entry to its run/scope/attempt/expiry. Download readback verifies canonical bytes and checks revocation again before return. HTTP delivery, start-command token issuance, writes and host sync remain pending.
 
