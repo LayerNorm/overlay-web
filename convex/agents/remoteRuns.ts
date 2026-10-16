@@ -4,6 +4,7 @@ import { requireServerSecret } from '../lib/auth'
 import { applyRemoteFact, currentRemoteAttempt } from './remoteRunModel'
 import type { RemoteRunState } from '../../src/shared/agents/remote-run'
 import {matchesCurrentRecoveryMachine} from '../lib/remoteRecoveryMachine'
+import {nativeRecoverySnapshotSchema} from '../lib/nativeRecoveryPayload'
 
 export const readByServer = query({
   args: { serverSecret: v.string(), runId: v.string() }, returns: v.any(),
@@ -12,10 +13,14 @@ export const readByServer = query({
     const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique()
     if (!run?.remoteLifecycle) return null
     const attempt = await currentRemoteAttempt(ctx, args.runId)
+    const capabilities = nativeRecoverySnapshotSchema.safeParse(attempt?.capabilitySnapshot)
+    const nativeRestorationAdvertised = Boolean(attempt?.remoteSessionId && capabilities.success
+      && capabilities.data.adapters.some(adapter => adapter.protocol === 'acp'
+        && adapter.recovery?.sessionLoading && adapter.recovery.fencedSessionRestoration))
     const environment = run.environmentId ? await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', run.environmentId!)).unique() : null
     // No start payload, credentials or transcript crosses the Workflow boundary.
     return { runId: args.runId, workspaceId: attempt?.workspaceId, environmentId: run.environmentId,
-      environmentKind: environment?.kind, lifecycle: run.remoteLifecycle }
+      environmentKind: environment?.kind, lifecycle: run.remoteLifecycle, nativeRestorationAdvertised }
   },
 })
 

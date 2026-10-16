@@ -1443,7 +1443,10 @@ The queued restoration has a bounded preparation window without asserting provid
 queueing alone does not claim successful restoration or enable the capability.
 The machine recovery gate observes a stopped Boat machine without resuming it, waits for the
 backend to authorize a queued restoration, and rechecks the same active lease before and after
-resume. It restarts only that captured machine's host. Live machines, rejected authorization,
+resume. The run coordinator retries this inspection only for an eligible recovery state and an
+explicitly advertised fenced-loading capability. It records the stop receipt and queues the
+continuation before authorizing resume; replay after queueing reuses the original receipt and
+source generation. It restarts only that captured machine's host. Live machines, rejected authorization,
 unsupported providers and concurrent lease replacements do not trigger a host restart.
 The bridge reserves an explicit `restore` start payload with the original native session id,
 previous execution fence and stopped-provider receipt. Its independent optional
