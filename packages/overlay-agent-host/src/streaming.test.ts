@@ -139,3 +139,14 @@ test('30 KB in 20-character chunks survives upload failures without changing the
     assert.equal(f.state.outboxSize(), 0)
   } finally { runtime.stopBackgroundUploads(); f.close() }
 })
+
+test('shortening UTF-8 checkpoints never splits a surrogate pair at the transport boundary', () => {
+  for (let budget = 2048; budget < 2070; budget++) {
+    const shrunk = shrinkOversizedEvent(event(1, '🙂'.repeat(10000)), budget)
+    assert.ok(shrunk?.type === 'text_checkpoint')
+    for (const character of shrunk.payload.text) {
+      const unit = character.charCodeAt(0)
+      assert.ok(character.length > 1 || unit < 0xd800 || unit > 0xdfff, 'the output must contain no lone surrogate')
+    }
+  }
+})

@@ -405,6 +405,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getLatestAgentRun(args: {
+    remoteRunId?: string
     conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null> {

@@ -92,6 +92,7 @@ export type RoomMessageView = {
 }
 
 export type RoomMessageItemProps = {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -282,6 +283,7 @@ export function RoomMessageItem({
   highlighted = false,
   grouped = false,
   personalChatStyle = false,
+  remoteStatus,
 }: RoomMessageItemProps) {
   const { mine } = message
   const isAgent =
@@ -334,6 +336,7 @@ export function RoomMessageItem({
   )
 
   const content: RoomMessageContentProps = {
+    remoteStatus,
     message,
     reactions,
     replyCount,
@@ -399,6 +402,7 @@ type RoomMessageRootProps = {
 
 /** Props shared by the sent and received message rows. */
 type RoomMessageContentProps = {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -691,7 +695,8 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
   )
 }
 
-function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest }: {
+function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
   onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
@@ -738,6 +743,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
               style={{ animationDelay: `${dot * 120}ms` }}
             />
           ))}
+          {remoteStatus}
         </div>
       ) : null}
       {message.remoteQueue && onControlRemoteQueue ? (
@@ -824,6 +830,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
           />
         ) : isAgent ? (
           <AgentMessageBody
+            remoteStatus={content.remoteStatus}
             message={message}
             onOpenAttachmentPreview={content.onOpenAttachmentPreview}
             onControlRemoteQueue={onControlRemoteQueue}

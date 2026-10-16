@@ -13,6 +13,7 @@ export type RemoteRunStreamStats = {
   eventBytes: number
   /** Characters carried by `text_checkpoint` events; compare with the final text to see snapshot amplification. */
   textCheckpointChars: number
+  textDeltaChars?: number
   /** Assistant-message rewrites caused by event batches. */
   messageWrites: number
   /** Batches the server refused (sequence gap, schema or size). */
@@ -77,6 +78,8 @@ export function recordAcceptedBatch(
     events: stats.events + batch.events.length,
     eventBytes: stats.eventBytes + batch.bytes,
     textCheckpointChars,
+    textDeltaChars: (stats.textDeltaChars ?? 0) + batch.events.reduce((sum, event) =>
+      sum + (event.type === 'text_delta' && typeof event.payload.text === 'string' ? event.payload.text.length : 0), 0),
     messageWrites: stats.messageWrites + (batch.wroteMessage ? 1 : 0),
     firstEventAt: stats.firstEventAt ?? batch.now,
     lastEventAt: batch.now,
@@ -111,6 +114,7 @@ export function summarizeRemoteRunStreamStats(stats: RemoteRunStreamStats | unde
     events: value.events,
     eventBytes: value.eventBytes,
     textCheckpointChars: value.textCheckpointChars,
+    textDeltaChars: value.textDeltaChars ?? 0,
     messageWrites: value.messageWrites,
     rejectedBatches: value.rejectedBatches,
     maxQuietGapMs: Math.max(value.maxQuietGapMs, currentQuietMs),

@@ -250,7 +250,7 @@ export type AgentSandboxLease = {
 
 export const AGENT_REMOTE_EVENT_TYPES = [
   'process_observation',
-  'session_started', 'text_checkpoint', 'action', 'approval_requested', 'elicitation_requested',
+  'session_started', 'text_checkpoint', 'text_delta', 'heartbeat', 'action', 'approval_requested', 'elicitation_requested',
   'plan', 'commands_update', 'diff', 'terminal', 'artifact', 'completed', 'failed', 'cancelled',
 ] as const
 export type AgentRemoteEventType = (typeof AGENT_REMOTE_EVENT_TYPES)[number]
@@ -363,4 +363,13 @@ export type AgentEnvironmentEnrollmentView = {
   environment: AgentEnvironment
   verificationPhrase: string
   enrollmentExpiresAt: number
+}
+
+
+export type RemoteRunLiveness = {
+  lastActivityAt: number
+  lastHeartbeatAt: number
+  quietMs: number
+  openTools: Array<{ actionId: string; title: string; runningMs: number }>
+  stalled: boolean
 }

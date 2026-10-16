@@ -355,6 +355,7 @@ export interface ActConversationRepository {
     stoppedCount: number
   }>
   getLatestAgentRun(args: {
+    remoteRunId?: string
     conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null>

@@ -12,8 +12,11 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     if (!conversationId) {
       return NextResponse.json({ error: 'conversationId is required' }, { status: 400 })
     }
+    const remoteRunId = request.nextUrl.searchParams.get('remoteRunId')?.trim()
+    if (remoteRunId && remoteRunId.length > 200) return NextResponse.json({ error: 'Invalid remoteRunId' }, { status: 400 })
     const run = await getOverlayServerContext().appData.repositories.conversations.getLatestAgentRun({
       conversationId: asConversationId(conversationId),
+      ...(remoteRunId ? { remoteRunId } : {}),
       userId: getAuthorizedResourceUserId(context),
     })
     // Remote runs also report how they streamed, including the silence so far while still active.

@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, preview acceptance pending; Phases 2–5 pending.
+Status: Phase 0 implemented; preview acceptance in progress. Phase 1 implementation complete, provider acceptance pending; Phase 2 implementation and preview acceptance in progress; Phases 3–5 pending.
 Date: 2026-10-15.
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -10,7 +10,9 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 ## Progress
 
 - Phase 0: required CI passes on the current preview. Real host/API counters and rendered preview QA are being checked. Smoke readback now reconstructs omitted content from API text parts and cancellation verifies the exact retained prefix; provider quota currently prevents a successful subscription smoke. Historical production error details were redacted, so their underlying causes remain unproven.
-- Phase 1: byte-budget packing, ordered text coalescing, independent command polling/background uploads, immutable attempted sequences, cancellation preservation and unchanged-observation write suppression are implemented. Focused streaming and Convex regressions pass; current-head preview smoke/UI acceptance and publication remain pending.
+- Phase 1: byte-budget packing, ordered text coalescing, independent command polling/background uploads, immutable attempted sequences, cancellation preservation and unchanged-observation write suppression are implemented. Focused streaming and Convex regressions pass; deterministic current-head transport/UI checks pass, while successful provider acceptance and publication remain pending.
+- Phase 1 current-preview deterministic transport completion and browser Stop/reload checks pass. This does not substitute for successful subscription-provider acceptance.
+- Phase 2: negotiated deltas, bounded anchors, heartbeat status and chunked canonical text storage are implemented with focused regressions. Large text, tenant boundaries, cancellation buffering, Unicode boundaries and fewer assistant-row writes are covered locally; current-head hosted and timed acceptance remains pending.
 - All later acceptance items remain unchecked until verified through the preview.
 
 ## Outcome
@@ -158,6 +160,15 @@ turn is active, the same mechanism as `driver.mjs` in the smoke. After 90 s quie
 `stalled: true` on the heartbeat.
 
 **Server and UI**
+- Persist negotiated text in indexed, bounded Convex chunks. The assistant row keeps stable text-part
+  references and a short preview cache; authorized history, room, share and agent-context reads hydrate
+  each logical text part before returning it. Chunk boundaries must never split Unicode code points or
+  become Markdown boundaries. Only changed tail chunks are written. Legacy rows need no migration;
+  hard message deletion removes owned chunks. Text changes still emit conversation events even when
+  the assistant row itself is unchanged. This avoids both the single-document limit and full-message
+  rewrites; no stream content is silently truncated.
+- A quiet tool is not stalled while the adapter reports a live process. The 90-second warning needs
+  missing/unknown process evidence; a missing heartbeat is reported as a connection problem.
 - `remote-agent-transcript.ts`: `text_delta` appends. `heartbeat` updates a small `liveness` field on the run
   (`lastActivityAt`, `openTools`, `stalled`), not the message parts.
 - The chat status line uses liveness:

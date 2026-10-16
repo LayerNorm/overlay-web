@@ -45,9 +45,12 @@ export const adapterCapabilitySchema = z.object({
 }).strict()
 export type AdapterCapability = z.infer<typeof adapterCapabilitySchema>
 
+export const streamingCapabilitiesSchema = z.object({ textDeltas: z.literal(true), heartbeats: z.literal(true) }).strict()
+
 export const hostCapabilitiesSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   remoteLifecycleVersion: z.literal(2).optional(),
+  streaming: streamingCapabilitiesSchema.optional(),
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   adapters: z.array(adapterCapabilitySchema).max(100),
@@ -191,6 +194,7 @@ export const agentHostCommandSchema = z.discriminatedUnion('type', [
 export type AgentHostCommand = z.infer<typeof agentHostCommandSchema>
 
 export const commandPollResponseSchema = z.object({
+  streaming: streamingCapabilitiesSchema.optional(),
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   commands: z.array(agentHostCommandSchema).max(MAX_COMMANDS_PER_POLL),
   retryAfterMs: z.number().int().min(100).max(60_000).optional(),
@@ -225,10 +229,17 @@ const eventBase = z.object({
   occurredAt: z.number().int().nonnegative(),
 })
 
+export const agentHeartbeatPayloadSchema = z.object({ quietMs: z.number().int().nonnegative(),
+  openTools: z.array(z.object({ actionId: identifier, title: z.string().max(2000), runningMs: z.number().int().nonnegative() }).strict()).max(20),
+  stalled: z.boolean().optional(), process: z.enum(['live', 'lost', 'unknown']).optional(),
+}).strict()
+
 export const agentHostEventSchema = z.discriminatedUnion('type', [
   eventBase.extend({ type: z.literal('process_observation'), payload: z.object({ process: z.enum(['live', 'lost', 'unknown']), recoveryOutcome: z.enum(['attached_live', 'restored', 'requires_new_attempt', 'unavailable']).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('session_started'), payload: z.object({ remoteSessionId: identifier, adapterId: identifier }).strict() }).strict(),
-  eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional() }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional(), offset: z.number().int().nonnegative().optional() }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('text_delta'), payload: z.object({ offset: z.number().int().nonnegative(), text: z.string().min(1).max(64 * 1024) }).strict() }).strict(),
+  eventBase.extend({ type: z.literal('heartbeat'), payload: agentHeartbeatPayloadSchema }).strict(),
   eventBase.extend({ type: z.literal('action'), payload: z.object({ actionId: identifier, title: z.string().max(2_000), status: z.enum(['started', 'updated', 'completed', 'failed']), detail: z.string().max(20_000).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('approval_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), options: z.array(z.object({ id: identifier, label: z.string().max(500) }).strict()).min(1).max(20), context: jsonObject.default({}) }).strict() }).strict(),
   eventBase.extend({ type: z.literal('elicitation_requested'), payload: z.object({ requestKey: identifier, prompt: z.string().max(20_000), requestedSchema: jsonObject, context: jsonObject.default({}) }).strict() }).strict(),

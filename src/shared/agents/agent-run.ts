@@ -1,3 +1,4 @@
+import type { RemoteRunLiveness } from './remote-run-liveness'
 import type { RemoteRunState } from './remote-run'
 import type { RemoteRunStreamStats } from './remote-run-stream-stats'
 
@@ -104,6 +105,7 @@ export type AgentRun = {
   metrics?: AgentRunMetrics
   /** Connected-agent transport counters; remote runs only. */
   streamStats?: RemoteRunStreamStats
+  liveness?: RemoteRunLiveness
   createdAt: number
   updatedAt: number
 }

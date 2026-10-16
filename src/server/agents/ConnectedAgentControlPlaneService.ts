@@ -21,6 +21,7 @@ import {
 } from '@overlay/workspace-contracts'
 import type { ObjectStore } from '@overlay/app-core'
 import {
+  streamingCapabilitiesSchema,
   MAX_HOST_REQUEST_BYTES,
   MAX_COMMAND_BYTES,
   canonicalEnrollmentProof,
@@ -866,7 +867,9 @@ export class ConnectedAgentControlPlaneService {
       }
       return parsed.data
     })
+    const streaming = streamingCapabilitiesSchema.safeParse(auth.environment.capabilities.streaming)
     return { commands: parsedCommands,
+      ...(streaming.success ? { streaming: streaming.data } : {}),
       ...(auth.environment.capabilities.remoteLifecycleVersion === 2 ? { resolvedThroughSequence } : {}) }
   }
 

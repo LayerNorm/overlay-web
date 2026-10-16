@@ -32,7 +32,7 @@ export async function connectAgentHost(options: ConnectAgentHostOptions): Promis
   const capabilities: HostCapabilities = {
     protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
     ...(options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
-    hostVersion: '0.3.12',
+    hostVersion: '0.4.0',
     platform: `${platform()} ${release()}`,
     adapters: (options.adapters ?? []).map(capability => {
       if (options.durableLifecycle) return capability

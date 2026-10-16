@@ -1,3 +1,4 @@
+import { applyRemoteText } from './remote-agent-text'
 import type { AgentRemoteEvent, AgentRemoteSessionStatus } from '@overlay/workspace-contracts'
 import type { AgentRunStatus, AgentRunTerminalError } from './agent-run'
 import { AGENT_AUTH_FAILURE_CODE } from './provider-accounts'
@@ -91,9 +92,9 @@ export function projectRemoteAgentEvents(input: {
         ? 'waiting_for_input' : sessionStatus === 'waiting_for_approval' ? 'waiting_for_approval' : 'running')
       continue
     }
-    if (event.type === 'text_checkpoint') {
+    if (event.type === 'text_checkpoint' || event.type === 'text_delta') {
       removeWaiting()
-      content = stringValue(event.payload.text) ?? content
+      content = applyRemoteText(content, event)
       parts = replaceTextPart(parts, content)
       continue
     }

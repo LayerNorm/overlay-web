@@ -1226,12 +1226,15 @@ export default defineSchema({
       cancellationAcknowledgedAt: v.optional(v.number()),
       staleDetectedAt: v.optional(v.number()),
     })),
+    liveness: v.optional(v.object({ lastActivityAt: v.number(), lastHeartbeatAt: v.number(), quietMs: v.number(),
+      openTools: v.array(v.object({ actionId: v.string(), title: v.string(), runningMs: v.number() })), stalled: v.boolean() })),
     // Connected-agent transport counters (src/shared/agents/remote-run-stream-stats.ts).
     streamStats: v.optional(v.object({
       batches: v.number(),
       events: v.number(),
       eventBytes: v.number(),
       textCheckpointChars: v.number(),
+      textDeltaChars: v.optional(v.number()),
       messageWrites: v.number(),
       rejectedBatches: v.number(),
       firstEventAt: v.optional(v.number()),
@@ -1283,6 +1286,10 @@ export default defineSchema({
     mode: v.union(v.literal('ask'), v.literal('act')),
     content: v.string(),
     contentType: v.union(v.literal('text'), v.literal('image'), v.literal('video')),
+    remoteTextStored: v.optional(v.object({
+      contentSource: v.union(v.literal('parts'), v.literal('separate')),
+      chunks: v.number(),
+    })),
     parts: v.optional(
       v.array(
         v.union(
@@ -1398,6 +1405,13 @@ export default defineSchema({
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  remoteMessageTextChunks: defineTable({
+    messageId: v.id('conversationMessages'),
+    partIndex: v.number(),
+    chunkIndex: v.number(),
+    text: v.string(),
+  }).index('by_messageId_partIndex_chunkIndex', ['messageId', 'partIndex', 'chunkIndex']),
 
   conversationContextSummaries: defineTable({
     conversationId: v.id('conversations'),

@@ -6,11 +6,11 @@ import {
   eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
   runCredentialsResponseSchema,
-  type AgentHostCommand,
   type CommandAcknowledgement,
   type EventAcknowledgement,
   type EventBatch,
   type HostCapabilities,
+  type CommandPollResponse,
   type ArtifactUploadRequest,
   type ArtifactUploadResponse,
   artifactUploadResponseSchema,
@@ -27,7 +27,7 @@ export class ControlPlaneRequestError extends Error {
 }
 
 export interface AgentControlPlaneClient {
-  pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number; resolvedThroughSequence?: number }>
+  pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<CommandPollResponse, 'protocolVersion'>>
   acknowledgeCommand(acknowledgement: CommandAcknowledgement): Promise<void>
   uploadEvents(batch: EventBatch): Promise<EventAcknowledgement>
   heartbeat?(): Promise<void>
@@ -67,7 +67,7 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     this.credentialExpiresAt = options.credentialExpiresAt
   }
 
-  async pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number; resolvedThroughSequence?: number }> {
+  async pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<CommandPollResponse, 'protocolVersion'>> {
     const url = new URL('commands', withSlash(this.options.baseUrl))
     url.searchParams.set('environmentId', this.options.environmentId)
     url.searchParams.set('waitMs', String(Math.min(Math.max(args.waitMs, 0), 30_000)))
@@ -75,6 +75,7 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     const parsed = commandPollResponseSchema.parse(await response.json())
     return {
       commands: parsed.commands,
+      ...(parsed.streaming ? { streaming: parsed.streaming } : {}),
       ...(parsed.retryAfterMs === undefined ? {} : { retryAfterMs: parsed.retryAfterMs }),
       ...(parsed.resolvedThroughSequence === undefined ? {} : { resolvedThroughSequence: parsed.resolvedThroughSequence }),
     }

@@ -16,10 +16,11 @@ export async function GET(request: Request, context: { params: Promise<Record<st
         request, environmentId, requiredMethod: 'agent:commands:poll', rawBody: emptyBody(),
       })
       const requestedLimit = Number(new URL(request.url).searchParams.get('limit') ?? 20)
-      const { commands, resolvedThroughSequence } = await service.pollCommands(auth, Number.isFinite(requestedLimit) ? requestedLimit : 20)
+      const { commands, resolvedThroughSequence, streaming } = await service.pollCommands(auth, Number.isFinite(requestedLimit) ? requestedLimit : 20)
       return NextResponse.json({
         protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
         commands,
+        ...(streaming ? { streaming } : {}),
         retryAfterMs: commands.length === 0 ? 1_000 : undefined,
         resolvedThroughSequence,
       }, { headers: { 'Cache-Control': 'no-store' } })

@@ -10,7 +10,7 @@ import {
 import type { AgentAdapter, AgentAdapterSession, NormalizedAgentEvent } from './adapter.js'
 import { resolveFilesystemScope } from './filesystem-policy.js'
 import { packEventBatch, shrinkOversizedEvent } from './outbox-packing.js'
-import { coalesceTextCheckpoints } from './text-coalescer.js'
+import { createRunStream } from './run-stream.js'
 import { StructuredLogger } from './logger.js'
 import { SqliteHostStateStore } from './state.js'
 import type { AgentControlPlaneClient } from './transport.js'
@@ -42,6 +42,8 @@ export class AgentHostRuntime {
   private flushFailures = 0
   private outboxWarned = false
   private uploadsStopped = false
+  private streamingNegotiated = false
+  private readonly streams = new Map<string, ReturnType<typeof createRunStream>>()
   private readonly terminalRuns = new Set<string>()
   private lastHeartbeatAt = 0
   private readonly bootId = randomUUID()
@@ -67,6 +69,7 @@ export class AgentHostRuntime {
       }
     }
     const response = await this.options.controlPlane.pollCommands({ waitMs, ...(signal ? { signal } : {}) })
+    this.streamingNegotiated = response.streaming?.textDeltas === true && response.streaming.heartbeats === true
     if (response.resolvedThroughSequence !== undefined)
       this.resolvedThroughSequence = Math.max(this.resolvedThroughSequence, response.resolvedThroughSequence)
     // Sequential on purpose: commands arrive ordered and may build on each
@@ -100,10 +103,11 @@ export class AgentHostRuntime {
 
   private async refreshHostState(): Promise<void> {
     if (this.options.controlPlane.updateCapabilities) {
-      await this.options.controlPlane.updateCapabilities({
+      const capabilities = {
         protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
         ...(this.options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
-        hostVersion: '0.3.12',
+        streaming: { textDeltas: true as const, heartbeats: true as const },
+        hostVersion: '0.4.0',
         platform: `${platform()} ${release()}`,
         adapters: (await this.discoverCapabilities()).map((capability) => {
           if (this.options.durableLifecycle) return capability
@@ -113,7 +117,14 @@ export class AgentHostRuntime {
         }),
         filesystem: this.options.filesystem,
         maxConcurrentRuns: Math.max(1, this.adapters.size),
-      })
+      }
+      try { await this.options.controlPlane.updateCapabilities(capabilities) }
+      catch (error) {
+        if (!(error instanceof ControlPlaneRequestError) || error.status !== 400) throw error
+        const { streaming: _streaming, ...legacy } = capabilities
+        void _streaming
+        await this.options.controlPlane.updateCapabilities(legacy)
+      }
     }
     await this.heartbeat()
   }
@@ -310,7 +321,7 @@ export class AgentHostRuntime {
     if (credentials === 'unavailable') return
     // Bind callbacks before adapter code can emit, including during old-session teardown.
     const execution = this.executions.get(command.runId)
-    const emit = coalesceTextCheckpoints((event: NormalizedAgentEvent) => this.emit(command.runId, event, execution))
+    const emit = this.createStream(command.runId, execution)
     const session = await adapter.start({
       runId: command.runId,
       workingDirectory: scope.workingDirectory,
@@ -355,7 +366,7 @@ export class AgentHostRuntime {
       ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(runId, stored.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),
-    }, coalesceTextCheckpoints((event) => this.emit(runId, event)))
+    }, this.createStream(runId))
     this.sessions.set(runId, session)
     return session
   }
@@ -394,6 +405,19 @@ export class AgentHostRuntime {
     return adapter
   }
 
+  private createStream(runId: string, execution = this.executions.get(runId)) {
+    this.streams.get(runId)?.stop()
+    const negotiated = this.streamingNegotiated
+    const stream = createRunStream(event => this.emit(runId, event, execution), {
+      streaming: () => negotiated,
+      active: () => this.sessions.has(runId),
+      observe: async () => await this.sessions.get(runId)?.observe?.() ?? 'unknown',
+      onError: error => this.logger.warn('run heartbeat deferred', { runId, error: safeError(error) }),
+    })
+    this.streams.set(runId, stream)
+    return stream.emit
+  }
+
   /**
    * Records an event and returns once it is durable on disk. Uploading happens in the background: an adapter that
    * reports progress never waits on the network, so slow or failing uploads cannot hold back the agent's own output.
@@ -416,6 +440,7 @@ export class AgentHostRuntime {
   /** Stops background upload passes, e.g. when the host shuts down; queued events stay on disk for next start. */
   stopBackgroundUploads(): void {
     this.uploadsStopped = true
+    for (const stream of this.streams.values()) stream.stop()
     if (this.flushRetry) clearTimeout(this.flushRetry)
     this.flushRetry = undefined
   }

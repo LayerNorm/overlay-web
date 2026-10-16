@@ -1,3 +1,4 @@
+import { hydrateRemoteMessages, hydrateRemoteMessage } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
@@ -143,7 +144,7 @@ async function getMessageForThread(
   if (!message || message.conversationId !== conversationId || message.deletedAt) {
     throw new Error('Message not found')
   }
-  return message
+  return hydrateRemoteMessage(ctx, message)
 }
 
 async function participantView(
@@ -428,12 +429,12 @@ export const watchRoomMessages = query({
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .order('desc')
       .take(500)
-    const messages = rows
+    const selectedMessages = rows
       .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
       .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
       .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
       .reverse()
-      .map((message) => ({
+    const messages = (await hydrateRemoteMessages(ctx, selectedMessages)).map((message) => ({
         id: message._id,
         turnId: message.turnId,
         authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),

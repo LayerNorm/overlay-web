@@ -1,3 +1,4 @@
+import { deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import type { Id, TableNames } from '../_generated/dataModel'
@@ -395,12 +396,12 @@ export const deleteUserAccountByServer = mutation({
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
     )
-    await deleteIndexed(() =>
-      ctx.db
-        .query('conversationMessages')
-        .withIndex('by_userId', (q) => q.eq('userId', userId))
-        .collect(),
-    )
+    await deleteIndexed(async () => {
+      const messages = await ctx.db.query('conversationMessages')
+        .withIndex('by_userId', q => q.eq('userId', userId)).collect()
+      await Promise.all(messages.map(message => deleteRemoteMessageText(ctx, message)))
+      return messages
+    })
     await deleteIndexed(() =>
       ctx.db
         .query('memories')

@@ -1059,8 +1059,8 @@ and cumulative machine baselines.
 The bridge remains protocol v1 with an explicitly negotiated lifecycle-v2 extension:
 optional execution fences and new observe/observation messages are sent only for v2
 runs. Hosts opt in using the same environment setting. Default legacy capability
-payloads omit the extension. Candidate packages are lockstep 0.3.12 and candidate
-image v7; publication is a separate main-only release workflow, not evidence from a
+payloads omit the extension. Candidate packages are lockstep 0.4.0 and candidate
+image v8; publication is a separate main-only release workflow, not evidence from a
 source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
 compatible active runs drain on their persisted version.
 
@@ -1128,3 +1128,23 @@ writes. Lifecycle-v2 event ingestion defers reducer transcript projection until 
 batch boundary, so health facts cannot reintroduce per-event message writes.
 Candidate package/image updates still require current-preview acceptance
 and the separate main-only publication path; source changes do not upgrade hosts.
+
+Host/protocol 0.4.0 adds optional `streaming: { textDeltas: true, heartbeats: true }`.
+The server accepts the schema first and echoes support on command polls; a new host
+retries capability discovery without the extension against an old strict server.
+Each run fixes its negotiated mode. UTF-16 delta offsets are contiguous and replay-safe;
+bounded checkpoint tails anchor progress without resending the entire answer. Packet,
+anchor and correction boundaries preserve Unicode code points.
+
+Negotiated text is canonical in `remoteMessageTextChunks`, indexed by parent message,
+logical text part and chunk position. The assistant row keeps references and a bounded
+preview cache. Authorized history, room, share, context and knowledge reads hydrate the
+original text parts before returning; Markdown never sees storage chunk boundaries.
+Only changed chunks are written. Text-only changes still emit conversation events
+without rewriting the assistant row, and hard message/account/workspace deletion removes
+owned chunks. Existing checkpoint-only rows require no migration.
+
+Per-run ten-second heartbeats carry process proof, quiet time and open-tool ages.
+They update run liveness without transcript parts. A live three-minute tool remains
+running; quiet output alone cannot prove a stall. The bottom loading row distinguishes
+tool activity from missing heartbeats and scopes its read to the exact run and workspace.

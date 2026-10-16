@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add negotiated incremental text and run heartbeats for connected agents. Persist large answers in bounded chunks, hydrate canonical text for authorized readers, preserve Unicode and cancellation output, and show tool age or connection status beside bottom loading dots. Older hosts retain checkpoint streaming. Host/protocol candidate: 0.4.0; image candidate: v8; timed preview/provider acceptance remains pending.
+
 - Keep written narrative visible when a connected-agent run is cancelled or fails; only tool details fold into the work summary.
 
 - Refresh preview API sessions during long smoke runs before retrying an unauthenticated request once, preserving test continuity across access-token expiry.

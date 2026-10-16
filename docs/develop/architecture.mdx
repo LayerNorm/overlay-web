@@ -49,6 +49,14 @@ Remote output advances a per-session contiguous event cursor transactionally;
 it projects into the existing conversation and `AgentRun` lifecycle rather than
 creating a second transcript.
 
+Negotiated connected-agent text streams persist in bounded `remoteMessageTextChunks`
+owned by the existing assistant message. The message holds stable text references and
+a short preview cache; authorized transcript, room, context, share and knowledge reads
+hydrate canonical text before returning it. Storage boundaries do not become Markdown
+boundaries. Chunk updates emit conversation events while avoiding full message rewrites,
+and hard deletion cascades to the message's chunks. Legacy rows remain readable without
+migration. Liveness heartbeats live on the run, independently of transcript text.
+
 A connected-agent environment is a machine or runtime boundary, not a working-directory or
 single-agent boundary. Bindings choose an agent and adapter; each command chooses an explicitly
 granted working directory. The host can grant multiple roots or explicit OS-user-wide access.

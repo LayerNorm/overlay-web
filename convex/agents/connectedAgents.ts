@@ -1,3 +1,6 @@
+import { recordRemoteRunLiveness } from '../../src/shared/agents/remote-run-liveness'
+import { applyRemoteText } from '../../src/shared/agents/remote-agent-text'
+import { hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
 import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
 import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
@@ -820,13 +823,19 @@ export const controlRemoteAgentTurnByServer = mutation({
         ctx.db.patch(request._id, { resolution: {
           decision: 'cancelled', resolvedByPrincipalId: actor.principalId, resolvedAt: args.now,
         } })))
-      const message = await ctx.db.get(run.assistantMessageId)
-      if (!message) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
+      const stored = await ctx.db.get(run.assistantMessageId)
+      if (!stored) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
+      const message = await hydrateRemoteMessage(ctx, stored)
       const stopped = projectRemoteAgentEvents({ content: message.content, parts: message.parts ?? [],
         environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId,
         events: [{ protocolVersion: 1, eventId: `cancel:${args.runId}`, environmentId: environment.environmentId,
           runId: args.runId, sourceSequence: session.eventCursor, occurredAt: args.now, type: 'cancelled', payload: {} }] })
-      await ctx.db.patch(message._id, { content: stopped.content, parts: conversationParts(stopped.parts),
+      const stoppedFields = stored.remoteTextStored
+        ? await prepareRemoteMessageText(ctx, stored, { content: stopped.content, parts: conversationParts(stopped.parts) })
+        : { content: stopped.content, parts: conversationParts(stopped.parts) }
+      const { content, parts } = stoppedFields
+      await ctx.db.patch(message._id, { content, parts,
+        ...('remoteTextStored' in stoppedFields ? { remoteTextStored: stoppedFields.remoteTextStored } : {}),
         status: 'completed', updatedAt: args.now })
       await ctx.db.insert('conversationEvents', { conversationId: run.conversationId, workspaceId: args.workspaceId,
         messageId: run.assistantMessageId, type: 'message.completed', userId: run.userId, createdAt: args.now })
@@ -1849,8 +1858,9 @@ async function finishRunMessage(
   now: number,
   notice: string,
 ) {
-  const message = await ctx.db.get(run.assistantMessageId)
-  if (message && message.status === 'generating') {
+  const stored = await ctx.db.get(run.assistantMessageId)
+  const message = stored ? await hydrateRemoteMessage(ctx, stored) : null
+  if (message && stored && message.status === 'generating') {
     const environmentName = 'connected environment'
     const projection = projectRemoteAgentEvents({
       content: message.content,
@@ -1864,9 +1874,15 @@ async function finishRunMessage(
       runId: run.externalRunId ?? '',
     })
     const base = message.content.trim() ? projection.content : ''
-    await ctx.db.patch(message._id, {
+    const finalText = {
       content: `${base.trimEnd()}${base.trim() ? '\n\n' : ''}${notice}`,
-      parts: [...(projection.parts as never[]), { type: 'text', text: `${base.trim() ? '\n\n' : ''}${notice}` }] as never,
+      parts: conversationParts([...projection.parts, { type: 'text', text: `${base.trim() ? '\n\n' : ''}${notice}` }]),
+    }
+    const finalFields: Pick<Doc<'conversationMessages'>, 'content' | 'parts' | 'remoteTextStored'> =
+      stored.remoteTextStored ? await prepareRemoteMessageText(ctx, stored, finalText) : finalText
+    await ctx.db.patch(message._id, {
+      content: finalFields.content, parts: finalFields.parts,
+      ...(finalFields.remoteTextStored ? { remoteTextStored: finalFields.remoteTextStored } : {}),
       status: 'completed',
       updatedAt: now,
     })
@@ -2363,7 +2379,8 @@ export const applyRemoteEventsByServer = mutation({
         q.eq('externalRunId', session.runId),
       )
       .unique()
-    const message = run ? await ctx.db.get(run.assistantMessageId) : null
+    const storedMessage = run ? await ctx.db.get(run.assistantMessageId) : null
+    const message = storedMessage ? await hydrateRemoteMessage(ctx, storedMessage) : null
     const duplicateResult = () => ({
       accepted: true as const, acknowledgedSequence: session.eventCursor, duplicate: true,
       ...(run && message && ['completed', 'failed', 'cancelled'].includes(run.status)
@@ -2404,11 +2421,11 @@ export const applyRemoteEventsByServer = mutation({
     }
     if (run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId) return swallowStaleEvents('stale_attempt')
     if (run.runner !== 'remote' || run.environmentId !== args.environmentId) throw new Error('AGENT_REMOTE_RUN_NOT_FOUND')
-    if (!message) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
+    if (!message || !storedMessage) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
     if (run.status === 'cancelled' && !run.remoteLifecycle && !session.stopConfirmedAt) {
       const beforeStop = args.events.slice(0, args.events.findIndex(event => event.type === 'cancelled') < 0
         ? args.events.length : args.events.findIndex(event => event.type === 'cancelled'))
-      const checkpoints = beforeStop.filter(event => event.type === 'text_checkpoint')
+      const checkpoints = beforeStop.filter(event => event.type === 'text_checkpoint' || event.type === 'text_delta')
       const snapshot = session.capabilitySnapshot as Record<string, unknown>
       const projection = projectRemoteAgentEvents({ content: message.content, parts: message.parts ?? [],
         environmentName: typeof snapshot.environmentName === 'string' ? snapshot.environmentName : environment.name,
@@ -2416,9 +2433,16 @@ export const applyRemoteEventsByServer = mutation({
         events: [...checkpoints as AgentRemoteEvent[], { protocolVersion: 1, eventId: `cancel:${last}`,
           environmentId: args.environmentId, runId: session.runId, sourceSequence: last,
           occurredAt: args.now, type: 'cancelled', payload: {} }] })
-      const wroteMessage = !sameJson(message.parts, projection.parts) || message.content !== projection.content
+      const storedProjection = storedMessage?.remoteTextStored
+        ? await prepareRemoteMessageText(ctx, storedMessage, { content: projection.content, parts: conversationParts(projection.parts) })
+        : { content: projection.content, parts: conversationParts(projection.parts), textChanged: false }
+      const { textChanged, ...messageFields } = storedProjection
+      const wroteMessage = !sameJson(storedMessage?.parts, storedProjection.parts) || storedMessage?.content !== storedProjection.content
+        || !sameJson(storedMessage?.remoteTextStored, 'remoteTextStored' in storedProjection ? storedProjection.remoteTextStored : undefined)
       if (wroteMessage) {
-        await ctx.db.patch(message._id, { content: projection.content, parts: conversationParts(projection.parts), updatedAt: args.now })
+        await ctx.db.patch(message._id, { ...messageFields, updatedAt: args.now })
+      }
+      if (wroteMessage || textChanged) {
         await ctx.db.insert('conversationEvents', { conversationId: run.conversationId, workspaceId: args.workspaceId,
           messageId: message._id, type: 'message.completed', userId: run.userId, createdAt: args.now })
       }
@@ -2463,6 +2487,14 @@ export const applyRemoteEventsByServer = mutation({
       || event.execution.generation !== run.remoteLifecycle!.executionGeneration
       || (acceptedBoot && acceptedBoot !== event.execution.hostBootId
         && !(event.type === 'process_observation' && event.payload.process === 'unknown')))) return swallowStaleEvents('stale_execution')
+    try {
+      let content = message.content === `Waiting for ${typeof snapshot.environmentName === 'string' ? snapshot.environmentName : environment.name}` ? '' : message.content
+      for (const event of args.events as AgentRemoteEvent[]) content = applyRemoteText(content, event)
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== 'AGENT_TEXT_OFFSET_MISMATCH') throw error
+      await ctx.db.patch(run._id, { streamStats: recordRejectedBatch(run.streamStats) })
+      return { accepted: false, expectedSequence: session.eventCursor + 1 }
+    }
     let canonicalRun = run
     const normalizedEvents: AgentRemoteEvent[] = []
     for (const event of args.events as AgentRemoteEvent[]) {
@@ -2523,7 +2555,7 @@ export const applyRemoteEventsByServer = mutation({
       const fact = event.type === 'session_started' ? { type: 'started' as const }
         : event.type === 'process_observation' && event.payload.process === 'live' && event.payload.recoveryOutcome === 'attached_live'
           ? { type: 'recover' as const, recoveryOutcome: 'attached_live' as const }
-        : event.type === 'process_observation' ? { type: 'health' as const, process: event.payload.process as 'live' | 'lost' | 'unknown' }
+        : event.type === 'heartbeat' || event.type === 'process_observation' ? { type: 'health' as const, process: event.payload.process === 'live' ? 'live' as const : event.payload.process === 'lost' ? 'lost' as const : 'unknown' as const }
         : event.type === 'approval_requested' || event.type === 'elicitation_requested' ? {
           type: 'request' as const, requestKey: String(event.payload.requestKey),
           kind: event.type === 'approval_requested' ? 'permission' as const : 'elicitation' as const,
@@ -2567,10 +2599,16 @@ export const applyRemoteEventsByServer = mutation({
       ...(projection.terminal ? { endedAt: args.now } : {}), updatedAt: args.now,
     })
     const messageStatus = projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating'
-    const wroteMessage = message.content !== projection.content || !sameJson(message.parts ?? [], conversationParts(projection.parts))
+    const storedProjection = storedMessage?.remoteTextStored || normalizedEvents.some(event => event.type === 'text_delta')
+      ? await prepareRemoteMessageText(ctx, storedMessage, { content: projection.content, parts: conversationParts(projection.parts) })
+      : { content: projection.content, parts: conversationParts(projection.parts), textChanged: false }
+    const { textChanged, ...messageFields } = storedProjection
+    const wroteMessage = storedMessage?.content !== storedProjection.content || !sameJson(storedMessage?.parts ?? [], storedProjection.parts)
+      || !sameJson(storedMessage?.remoteTextStored, 'remoteTextStored' in storedProjection ? storedProjection.remoteTextStored : undefined)
       || message.status !== messageStatus || !sameJson(message.tokens ?? { input: 0, output: 0 }, projection.tokens)
     await ctx.db.patch(run._id, {
       status: projection.runStatus,
+      liveness: recordRemoteRunLiveness(run.liveness, normalizedEvents, args.now),
       streamStats: recordAcceptedBatch(run.streamStats, {
         events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage,
       }),
@@ -2588,11 +2626,13 @@ export const applyRemoteEventsByServer = mutation({
     })
     if (wroteMessage) {
       await ctx.db.patch(message._id, {
-        content: projection.content, parts: conversationParts(projection.parts),
+        ...messageFields,
         ...(projection.terminal || projection.tokens.input > 0 || projection.tokens.output > 0 ? { tokens: projection.tokens } : {}),
         status: projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating',
         updatedAt: args.now,
       })
+    }
+    if (wroteMessage || textChanged) {
       await ctx.db.patch(run.conversationId, { lastModified: args.now, updatedAt: args.now })
       await ctx.db.insert('conversationEvents', {
         conversationId: run.conversationId, workspaceId: args.workspaceId, messageId: message._id,

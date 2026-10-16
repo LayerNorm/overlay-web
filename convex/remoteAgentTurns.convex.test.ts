@@ -4,6 +4,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import { internal } from './_generated/api'
+import { hydrateRemoteMessage } from './lib/remoteMessageText'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'remote-agent-turn-test-secret'
@@ -959,4 +960,102 @@ test('Stop before any text uses Cancelled and observations do not rewrite an unc
   expect(after.run?.streamStats?.messageWrites).toBe(before.run?.streamStats?.messageWrites)
   await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 3 })
   expect((await projectedState(convex, started.messageId)).message?.content).toBe('Cancelled')
+})
+
+test('negotiated deltas are idempotent and a refused offset leaves the event cursor available for retry', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const apply = (events: ReturnType<typeof event>[], at: number) => call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at })
+  await apply([event(1, 'text_checkpoint', { text: 'Hello' }), event(2, 'text_delta', { offset: 5, text: ' world' })], now + 1)
+  expect((await projectedState(convex, started.messageId)).message?.content).toBe('Hello world')
+  expect(await apply([event(2, 'text_delta', { offset: 5, text: ' world' })], now + 2)).toEqual(expect.objectContaining({ accepted: true, duplicate: true }))
+  expect(await apply([event(3, 'text_delta', { offset: 100, text: 'gap' })], now + 3)).toEqual({ accepted: false, expectedSequence: 3 })
+  const before = await projectedState(convex, started.messageId)
+  await apply([event(3, 'heartbeat', { quietMs: 180000, openTools: [{ actionId: 'slow', title: 'Slow tool', runningMs: 180000 }], process: 'live', stalled: false })], now + 4)
+  const after = await projectedState(convex, started.messageId)
+  expect(after.message?.content).toBe('Hello world')
+  expect(after.message?.updatedAt).toBe(before.message?.updatedAt)
+  expect(after.run?.streamStats?.messageWrites).toBe(before.run?.streamStats?.messageWrites)
+  expect(after.run?.liveness?.openTools[0]?.title).toBe('Slow tool')
+  expect(after.run?.liveness?.stalled).toBe(false)
+})
+
+test('explicit remote-run readback is restricted to the authorized conversation', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput()); await call('startRemoteAgentTurnByServer', startInput(seeded))
+  const ref = makeFunctionReference<'query'>('chat/conversations:getLatestAgentRun')
+  const args = { serverSecret: secret, conversationId: seeded.conversationId, userId: actorUserId, remoteRunId: 'run-remote-turn' }
+  expect(await convex.query(ref, args)).toEqual(expect.objectContaining({ externalRunId: 'run-remote-turn' }))
+  expect(await convex.query(ref, { ...args, remoteRunId: 'foreign-run' })).toBeNull()
+  await expect(convex.query(ref, { ...args, userId: 'another-person' })).rejects.toThrow(/Unauthorized/)
+})
+
+test('megabyte delta output stays lossless across storage, authorized reads, Stop and hard deletion with fewer message writes', async () => {
+  const convex = convexTest(schema, modules)
+  const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const delta = '🙂 markdown **continues** across packets\n'.repeat(50)
+  let content = ''
+  for (let index = 0; index < 560; index++) {
+    const accepted = await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(index + 1, 'text_delta', { offset: content.length, text: delta })], now: now + index + 1 })
+    expect(accepted).toEqual(expect.objectContaining({ accepted: true }))
+    content += delta
+  }
+  expect(new TextEncoder().encode(content).byteLength).toBeGreaterThan(1_000_000)
+  const stored = await projectedState(convex, started.messageId)
+  expect(stored.message!.content.length).toBeLessThanOrEqual(2048)
+  expect(stored.run!.streamStats!.messageWrites).toBeLessThan(56)
+  const hydrated = await convex.run(async ctx => {
+    const message = await ctx.db.get(started.messageId as never)
+    if (!message) throw Error('missing message')
+    return hydrateRemoteMessage(ctx, message)
+  })
+  expect(hydrated.content).toBe(content)
+  expect(hydrated.parts?.filter(part => part.type === 'text')).toEqual([{ type: 'text', text: content }])
+  const chunks = await convex.run(ctx => ctx.db.query('remoteMessageTextChunks').collect())
+  expect(chunks.every(chunk => new TextEncoder().encode(JSON.stringify(chunk)).byteLength < 200_000)).toBe(true)
+  const read = makeFunctionReference<'query'>('chat/conversations:getMessages')
+  const args = { serverSecret: secret, conversationId: seeded.conversationId, userId: actorUserId }
+  const messages = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(messages.find(message => message._id === started.messageId)?.content).toBe(content)
+  expect(await convex.query(read, { ...args, userId: 'foreign-user' })).toEqual([])
+  await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId,
+    runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 1000 })
+  const stopped = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(stopped.find(message => message._id === started.messageId)?.content).toBe(content)
+  const buffered = 'buffered before Stop\n'.repeat(2000)
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(561, 'text_delta', { offset: content.length, text: buffered }), event(562, 'cancelled', {})], now: now + 1001 })
+  const drained = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(drained.find(message => message._id === started.messageId)?.content).toBe(content + buffered)
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(563, 'text_delta', { offset: content.length + buffered.length, text: 'must be fenced' })], now: now + 1002 })
+  const fenced = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(fenced.find(message => message._id === started.messageId)?.content).toBe(content + buffered)
+  const message = stored.message!
+  await convex.mutation(makeFunctionReference<'mutation'>('chat/conversations:deleteTurn'), { ...args, turnId: message.turnId })
+  expect(await convex.run(ctx => ctx.db.query('remoteMessageTextChunks').collect())).toHaveLength(0)
+}, 60000)
+
+test('fresh heartbeat proof keeps a long lifecycle-v2 tool running without rewriting its transcript', async () => {
+  const { convex, lifecycle, started, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }),
+    event(2, 'action', { actionId: 'slow', title: 'Long tool', status: 'started' })], now + 1)
+  const before = await projectedState(convex, started.messageId)
+  await events([event(3, 'heartbeat', { process: 'live', quietMs: 180000, stalled: false,
+    openTools: [{ actionId: 'slow', title: 'Long tool', runningMs: 180000 }] })], now + 180001)
+  await lifecycle('advance', { ...owner, now: now + 180002 })
+  const after = await projectedState(convex, started.messageId)
+  expect(after.run?.status).toBe('running')
+  expect(after.run?.remoteLifecycle?.lastHealthAt).toBe(now + 180001)
+  expect(after.message?.updatedAt).toBe(before.message?.updatedAt)
+  expect(after.run?.liveness?.stalled).toBe(false)
 })
