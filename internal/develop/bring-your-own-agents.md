@@ -264,6 +264,11 @@ session/attempt fencing, live membership and binding readback, creator-derived p
 and explicit local/VPS opt-in. They are not yet attached to HTTP endpoints; final Convex commits
 must repeat the authority checks atomically before publishing a file revision.
 
+`AgentDriveMaterializer` hashes full source bytes through a bounded reader, verifies download
+size/hash against the manifest and rejects changed or truncated sources. Files over the file
+or total-cache cap remain explicit deferred entries, with no empty local placeholder. The
+reader still needs real object-store/Convex wiring and authorized manifest/download endpoints.
+
 Hermes uses its official ACP server. OpenClaw and other native adapters remain ineligible unless ACP
 is unavailable and the unchanged host conformance suite passes.
 

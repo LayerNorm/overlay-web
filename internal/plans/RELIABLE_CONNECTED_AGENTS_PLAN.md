@@ -19,6 +19,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 - Drive token and authorization helpers now fence the exact session/attempt and reread membership, binding, environment and agent visibility. Local/VPS requires opt-in. These helpers are not wired to HTTP or atomic file commits yet.
 - Clean-checkout Convex tests now resolve the protocol source directly, matching TypeScript. The full Convex suite passes without generated protocol output; a concurrent text/tool regression also verifies the coalescer captures pending text before later updates arrive. Required CI must be rerun on the fix.
 
+- The server manifest materializer verifies full source bytes and download size/hash, rejects changed or truncated reads and marks oversized entries explicitly deferred. Its bounded reader is tested with injected storage; real storage and HTTP integration remain pending.
+
 ## Outcome
 
 Claude Code, Codex and the other connected agents, whether on Overlay Cloud, a VPS or a person's own computer,

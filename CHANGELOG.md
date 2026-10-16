@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. Storage and HTTP integration remain pending.
+
 - Prepare a dedicated connected-agent drive cache with bounded snapshots, hash-checked atomic hydration and traversal/symlink rejection. This foundation is not yet connected to Overlay Files or enabled for agent turns.
 
 - Resolve the bridge protocol from workspace source in Convex tests, so clean checkouts do not depend on package build order.
