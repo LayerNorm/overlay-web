@@ -166,3 +166,56 @@ test('shortening UTF-8 checkpoints never splits a surrogate pair at the transpor
     }
   }
 })
+
+for (const fenced of [false, true]) test(`a lost acknowledgement retries the same batch across restart (${fenced ? 'fenced' : 'legacy'})`, async () => {
+  const f = fixture()
+  let state = f.state
+  let cursor = 0
+  let requests = 0
+  let rejections = 0
+  const sent: number[][] = []
+  const execution = fenced ? { attemptId: 'attempt', generation: 1 } : undefined
+  const append = (text: string) => {
+    const { sourceSequence: _, ...input } = event(1, text)
+    state.appendEvent({ ...input, eventId: text, ...(execution ? { execution } : {}) })
+  }
+  const runtime = () => new AgentHostRuntime({ environmentId: 'env', workspaceId: 'ws', filesystem: { mode: 'selected_roots', roots: [f.root] }, adapters: [], state,
+    controlPlane: { async pollCommands() { return { commands: [] } }, async acknowledgeCommand() {}, async uploadEvents(batch) {
+      sent.push(batch.events.map(event => event.sourceSequence))
+      const first = batch.events[0]!.sourceSequence
+      const last = batch.events.at(-1)!.sourceSequence
+      if (++requests === 1) { cursor = last; append('later text'); throw Error('acknowledgement lost') }
+      if (first <= cursor && last > cursor) { rejections++; return { protocolVersion: 1, accepted: false, expectedSequence: cursor + 1 } }
+      cursor = Math.max(cursor, last)
+      return { protocolVersion: 1, accepted: true, acknowledgedSequence: cursor }
+    } } })
+  try {
+    append('first text')
+    await assert.rejects(runtime().flushOutbox(), /acknowledgement lost/)
+    state.close(); state = new SqliteHostStateStore(f.path)
+    assert.deepEqual(state.pendingEvents(100).map(event => event.sourceSequence), [1, 2])
+    assert.deepEqual(state.pendingUploadEvents(100).map(event => event.sourceSequence), [1])
+    await runtime().flushOutbox()
+    assert.deepEqual(sent, [[1], [1], [2]])
+    assert.equal(rejections, 0)
+    assert.equal(state.outboxSize(), 0)
+  } finally { state.close(); rmSync(f.dir, { recursive: true, force: true }) }
+})
+
+test('an upgraded byte budget accepts an already committed acknowledgement within its attempted watermark', async () => {
+  const f = fixture()
+  try {
+    for (let index = 1; index <= 3; index++) {
+      const { sourceSequence: _, ...input } = event(index, 'x'.repeat(172000))
+      f.state.appendEvent(input)
+    }
+    f.state.markUploadAttempt(f.state.pendingEvents(100))
+    const runtime = new AgentHostRuntime({ environmentId: 'env', workspaceId: 'ws', filesystem: { mode: 'selected_roots', roots: [f.root] }, adapters: [], state: f.state,
+      controlPlane: { async pollCommands() { return { commands: [] } }, async acknowledgeCommand() {}, async uploadEvents(batch) {
+        assert.ok(batch.events.length < 3, 'the new packing headroom splits the formerly accepted batch')
+        return { protocolVersion: 1, accepted: true, acknowledgedSequence: 3 }
+      } } })
+    await runtime.flushOutbox()
+    assert.equal(f.state.outboxSize(), 0)
+  } finally { f.close() }
+})

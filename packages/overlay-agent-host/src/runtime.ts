@@ -204,7 +204,7 @@ export class AgentHostRuntime {
 
   private async flushOutboxInternal(): Promise<void> {
     for (;;) {
-      const events = this.options.state.pendingEvents(100)
+      const events = this.options.state.pendingUploadEvents(100)
       if (events.length === 0) return
       const packed = packEventBatch(this.options.environmentId, events)
       if (!packed.batch) {
@@ -225,7 +225,8 @@ export class AgentHostRuntime {
       const acknowledgement = await this.options.controlPlane.uploadEvents(batch).finally(() => this.inFlight.delete(stream))
       if (acknowledgement.accepted) {
         const lastSentSequence = batch.events.at(-1)!.sourceSequence
-        if (acknowledgement.acknowledgedSequence !== lastSentSequence) {
+        const attempted = this.options.state.uploadAttemptWatermark(batch.runId, batch.events[0].execution?.attemptId)
+        if (acknowledgement.acknowledgedSequence < lastSentSequence || acknowledgement.acknowledgedSequence > attempted) {
           throw new Error(`server acknowledged ${acknowledgement.acknowledgedSequence}, expected ${lastSentSequence}`)
         }
         this.options.state.acknowledgeEvents(batch.runId, acknowledgement.acknowledgedSequence, batch.events[0].execution?.attemptId)

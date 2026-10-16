@@ -67,7 +67,7 @@ export class SqliteHostStateStore {
     // Queued rows from an older host may already have reached the server. Treat them as immutable on upgrade too.
     this.database.exec(`INSERT INTO attempted_uploads(run_id, through_sequence)
       SELECT run_id, MAX(source_sequence) FROM event_outbox GROUP BY run_id
-      ON CONFLICT(run_id) DO UPDATE SET through_sequence = MAX(through_sequence, excluded.through_sequence)`)
+      ON CONFLICT(run_id) DO NOTHING`)
     if (scope) this.assertScope(scope)
   }
 
@@ -273,6 +273,19 @@ export class SqliteHostStateStore {
     if (!first) return []
     const rows = this.database.prepare('SELECT body FROM event_outbox WHERE run_id = ? ORDER BY source_sequence LIMIT ?').all(first.run_id, limit) as Array<{ body: string }>
     return rows.map((row) => agentHostEventSchema.parse(JSON.parse(row.body)))
+  }
+
+  /** A retry cannot absorb events recorded after its acknowledgement was lost. */
+  pendingUploadEvents(limit: number): AgentHostEvent[] {
+    const events = this.pendingEvents(limit)
+    const first = events[0]
+    if (!first) return events
+    const attempted = this.uploadAttemptWatermark(first.runId, first.execution?.attemptId)
+    return attempted >= first.sourceSequence ? events.filter(event => event.sourceSequence <= attempted) : events
+  }
+
+  uploadAttemptWatermark(runId: string, attemptId?: string): number {
+    return this.attemptedThrough(eventStreamId(runId, attemptId))
   }
 
   acknowledgeEvents(runId: string, throughSequence: number, attemptId?: string): void {

@@ -1240,3 +1240,8 @@ Completed results use immutable bounded chunks with size/hash verification on
 readback, so a reconnect returns the original result. The per-run journal budget
 is 1,000 calls and 64 MiB including inputs/results; expired entries retire after
 one day through bounded hourly cleanup. HTTP resumability is not wired yet.
+
+Outbox retries retain the persisted attempted sequence boundary. New events stay
+behind an unacknowledged batch, including after restart; migration does not raise
+an existing watermark to cover unattempted rows. Acknowledgements may exceed a
+newly packed batch after an upgrade only within that stream's attempted watermark.

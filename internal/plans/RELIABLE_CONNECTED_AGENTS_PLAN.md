@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 1 lost-acknowledgement recovery now preserves the attempted batch boundary across SQLite restart. Newly queued events cannot enlarge a retry, and acknowledgements may advance only within the persisted attempted watermark. Legacy and fenced-stream regressions pass; hosted package acceptance remains pending.
+
 - Phase 3 MCP call storage now fences the current execution, claims side effects once, persists bounded immutable result chunks and returns exact cached results after reconnect. Membership/revocation, retention and quotas have real Convex coverage. HTTP resumability and canonical approval-card integration remain pending.
 
 - Phase 2 Stop QA preserved the streamed prefix and closed tool rows. A stale terminal liveness tool list exposed by process-based confirmation is corrected locally; hosted verification remains pending.
