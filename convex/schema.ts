@@ -1338,6 +1338,7 @@ export default defineSchema({
           v.object({
             type: v.literal('data-remote-agent-status'),
             data: v.object({
+              recoveryOutcome: remoteLifecycleValidator.fields.recoveryOutcome,
               environmentName: v.string(),
               queueExpiresAt: v.number(),
               hardDeadlineAt: v.optional(v.number()),

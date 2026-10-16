@@ -79,13 +79,15 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
     const phase = result.state.phase
     const visibleState = ['queued', 'waking'].includes(phase) ? 'waiting' : phase
     const parts = reconcileRemoteRequestParts((message.parts ?? []) as Array<Record<string, unknown>>, result.state, now).map(part => {
-      if (part.type === 'data-remote-agent-status' && 'data' in part) return { ...part, data: { ...(part.data as Record<string, unknown>), state: visibleState, hardDeadlineAt: result.state.hardDeadlineAt } }
+      if (part.type === 'data-remote-agent-status' && 'data' in part) return { ...part, data: { ...(part.data as Record<string, unknown>), state: visibleState, hardDeadlineAt: result.state.hardDeadlineAt,
+        recoveryOutcome: result.state.recoveryOutcome } }
       return part
     })
     if (!parts.some(part => part.type === 'data-remote-agent-status')) {
       const snapshot = attempt?.capabilitySnapshot as { environmentName?: string } | undefined
       parts.push({ type: 'data-remote-agent-status', data: { environmentName: snapshot?.environmentName ?? 'connected environment',
-        runId: run.externalRunId!, queueExpiresAt: result.state.claimDeadlineAt, hardDeadlineAt: result.state.hardDeadlineAt, state: visibleState } } as typeof parts[number])
+        runId: run.externalRunId!, queueExpiresAt: result.state.claimDeadlineAt, hardDeadlineAt: result.state.hardDeadlineAt, state: visibleState,
+        recoveryOutcome: result.state.recoveryOutcome } } as typeof parts[number])
     }
     await ctx.db.patch(message._id, { parts: parts as typeof message.parts, updatedAt: now })
   }

@@ -89,7 +89,7 @@ export type RoomMessageView = {
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
-  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string; hardDeadlineAt?: number }
+  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string; hardDeadlineAt?: number; recovered?: boolean }
   remoteDrive?: DriveSyncStatus
   /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
   workedDurationMs?: number
@@ -755,6 +755,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
       ) : null}
       {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
+      {message.remoteRun?.recovered ? <p className="mt-1 text-xs text-(--muted)" role="status">Recovered</p> : null}
       {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}
       {message.remoteRequest && onResolveRemoteRequest ? (
         <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />

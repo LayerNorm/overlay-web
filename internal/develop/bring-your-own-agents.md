@@ -1493,6 +1493,11 @@ the first native event establishes the boot fence, and late preparation cannot o
 text remains fenced. The capability remains gated on hosted native acceptance.
 Queueing and retrying project recovering status and the current preparation deadline onto the
 existing assistant, publishing a message delta while preserving its text chunks and work history.
+The native start receipt must name the original conversation and adapter, match the latest claimed
+restoration delivery and canonical isolation receipt, retain the exact machine lease, and have no
+unresolved approval. Only that receipt projects a restored outcome. The transcript retains a small
+Recovered status through history reload and completion; queueing, preparation and live reattachment
+do not claim native restoration. A refused continuation cannot retain a restored outcome.
 Acpx records a versioned, nonsecret ACP session identity before the first prompt: its local session key, provider agent, working directory and ACP backend session id. Restoration requires a matching record or checkpoint and explicitly requests that backend id; missing identities, conflicting records and provider load refusal cannot create a replacement conversation. Checkpoint failure closes the new runtime before initialization returns. This identity safeguard does not enable interrupted-turn continuation. Direct ACP session loading consumes replayed answer/work notifications through first-prompt admission, including buffered frames after the load response, without appending them to the canonical answer; current command catalogs remain available.
 Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
 control actions and event projection. The UI shows that absolute UTC deadline for nonterminal

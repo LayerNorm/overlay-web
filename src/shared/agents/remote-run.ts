@@ -169,7 +169,11 @@ const factHandlers: FactHandlers = {
       next.lastHealthAt = now
     } else if (fact.recoveryOutcome === 'restored' && fact.oldWriterStopped && pendingRemoteApprovals(current).length === 0) {
       next.phase = 'running'; delete next.cause; next.lastHealthAt = now
-    } else needsAttention(next, fact.oldWriterStopped ? 'continuation_unsupported' : 'old_writer_not_isolated')
+      delete next.lastPreparationAt
+    } else {
+      if (fact.recoveryOutcome === 'restored') next.recoveryOutcome = fact.oldWriterStopped ? 'requires_new_attempt' : 'unavailable'
+      needsAttention(next, fact.oldWriterStopped ? 'continuation_unsupported' : 'old_writer_not_isolated')
+    }
   },
   complete({ current, next }) {
     if (current.phase !== 'running' || pendingRemoteApprovals(current).length > 0) return 'conflict'

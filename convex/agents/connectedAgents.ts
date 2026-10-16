@@ -5,6 +5,7 @@ import { hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMes
 import { recoveryStartPayload } from '../lib/remoteRecovery'
 import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
 import {retryNativePreparation} from '../lib/nativePreparationRetry'
+import {nativeRestorationStarted} from '../lib/nativeRestorationStarted'
 import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
@@ -56,6 +57,8 @@ function conversationParts(parts: Array<Record<string, unknown>>) {
       environmentName: typeof data.environmentName === 'string' ? data.environmentName : 'connected environment',
       queueExpiresAt: typeof data.queueExpiresAt === 'number' ? data.queueExpiresAt : 0,
       ...(typeof data.hardDeadlineAt === 'number' ? { hardDeadlineAt: data.hardDeadlineAt } : {}),
+      ...(['attached_live', 'restored', 'requires_new_attempt', 'unavailable'].includes(String(data.recoveryOutcome))
+        ? {recoveryOutcome: data.recoveryOutcome} : {}),
       runId: typeof data.runId === 'string' ? data.runId : 'remote-agent',
       state: ['waiting', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recoverable', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled'].includes(String(data.state))
         ? data.state : 'running',
@@ -750,7 +753,8 @@ export const controlRemoteAgentTurnByServer = mutation({
         if (message) {
           const parts = reconcileRemoteRequestParts(message.parts ?? [], { ...state, phase: 'cancelling', cause: 'execution_replaced' }, now)
             .map(part => part.type === 'data-remote-agent-status'
-              ? { ...part, data: { ...(part.data as Record<string, unknown>), state: 'recovering', hardDeadlineAt: state.hardDeadlineAt } } : part)
+              ? { ...part, data: { ...(part.data as Record<string, unknown>), state: 'recovering', hardDeadlineAt: state.hardDeadlineAt,
+                recoveryOutcome: nextState.recoveryOutcome } } : part)
           if (!parts.some(part => part.type === 'data-remote-agent-status')) parts.push({ type: 'data-remote-agent-status',
             data: { environmentName: environment.name, runId: args.runId, queueExpiresAt: state.claimDeadlineAt, hardDeadlineAt: state.hardDeadlineAt, state: 'recovering' } })
           await ctx.db.patch(message._id, { parts: conversationParts(parts), status: 'generating', updatedAt: now })
@@ -2509,6 +2513,12 @@ export const applyRemoteEventsByServer = mutation({
       typeof session.capabilitySnapshot === 'object'
         ? (session.capabilitySnapshot as Record<string, unknown>)
         : {}
+    const restoresNativeSession = Boolean(snapshot.nativeRestoration) || run.remoteLifecycle?.cause === 'native_restoration'
+    if (restoresNativeSession) for (const event of args.events) {
+      if (event.type === 'session_started' && !await nativeRestorationStarted(ctx, run, session, {
+        remoteSessionId: event.payload.remoteSessionId, adapterId: event.payload.adapterId,
+      })) return swallowStaleEvents('stale_execution')
+    }
     const adapters = Array.isArray(snapshot.adapters) ? snapshot.adapters as Array<{ id?: string; protocol?: string; recovery?: { interruptedTurnContinuation?: boolean; approvalRestoration?: boolean } }> : []
     const nativeAdapter = adapters.find(adapter => adapter.id === (snapshot.startPayload as { adapterId?: string } | undefined)?.adapterId && adapter.protocol === 'eve')
     const acceptsNativeReattachment = Boolean(nativeAdapter?.recovery?.interruptedTurnContinuation
@@ -2592,7 +2602,9 @@ export const applyRemoteEventsByServer = mutation({
         const delivered = await applyRemoteFact(ctx, canonicalRun, { type: 'decision_delivered', requestKey: request.requestKey }, args.now, { deferMessageProjection: true })
         if (delivered?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: delivered.state }
       }
-      const fact = event.type === 'session_started' ? { type: 'started' as const }
+      const fact = event.type === 'session_started' ? restoresNativeSession
+        ? {type: 'recover' as const, recoveryOutcome: 'restored' as const, oldWriterStopped: true}
+        : { type: 'started' as const }
         : event.type === 'session_preparing' ? {type: 'preparing' as const}
         : event.type === 'process_observation' && event.payload.process === 'live' && event.payload.recoveryOutcome === 'attached_live'
           ? { type: 'recover' as const, recoveryOutcome: 'attached_live' as const }
@@ -2634,6 +2646,7 @@ export const applyRemoteEventsByServer = mutation({
         environmentName: snapshot.environmentName, queueExpiresAt: state.claimDeadlineAt, runId: session.runId,
         hardDeadlineAt: state.hardDeadlineAt,
         state: state.phase, cause: state.cause, revision: state.revision,
+        recoveryOutcome: state.recoveryOutcome,
       } }]
     }
     const providerStarted = !run.remoteLifecycle || normalizedEvents.some(event => event.type === 'session_started')

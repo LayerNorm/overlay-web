@@ -83,6 +83,9 @@ test('unknown process / uncertain old writer requires attention without replacem
   for (const recoveryOutcome of ['requires_new_attempt', 'unavailable', 'restored'] as const) {
     assert.equal(apply(state(), { type: 'recover', recoveryOutcome }).state.phase, 'needs_attention')
   }
+  assert.notEqual(apply(state(), {type: 'recover', recoveryOutcome: 'restored'}).state.recoveryOutcome, 'restored')
+  const waiting = apply(state(), {type: 'request', requestKey: 'pending', kind: 'permission', expiresAt: 99_000}).state
+  assert.notEqual(apply(waiting, {type: 'recover', recoveryOutcome: 'restored', oldWriterStopped: true}).state.recoveryOutcome, 'restored')
 })
 test('process loss invalidates executable approval and restore cannot reuse it', () => {
   const waiting = apply(state(), { type: 'request', requestKey: 'x', kind: 'permission', expiresAt: 99_000 }).state

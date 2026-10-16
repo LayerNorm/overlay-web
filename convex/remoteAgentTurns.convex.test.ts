@@ -1017,6 +1017,8 @@ test('a queued native continuation appends on the original assistant and fences 
   expect(await begin()).toBe(true)
   const state = (await projectedState(convex, started.messageId)).run?.remoteLifecycle
   if (!state) throw Error('Missing recovery state')
+  expect(state.recoveryOutcome).toBeUndefined()
+  await call('claimCommandsByServer', {workspaceId, environmentId, now: now + 6, leaseMs: 5000, limit: 10})
   expect(await events([event(4, 'text_delta', {offset: prefix.length, text: 'STALE_WRITER'})], now + 6))
     .toMatchObject({accepted: true, stale: 'stale_attempt'})
   const tail = '\nContinued in the original native conversation.'
@@ -1031,10 +1033,45 @@ test('a queued native continuation appends on the original assistant and fences 
     if (!run) throw Error('Missing run')
     expect(run.assistantMessageId).toBe(started.messageId)
     expect(run.status).toBe('completed')
+    expect(run.remoteLifecycle?.recoveryOutcome).toBe('restored')
+    expect(run.remoteLifecycle?.lastPreparationAt).toBeUndefined()
     const message = await ctx.db.get(run.assistantMessageId)
     if (!message) throw Error('Missing message')
     expect((await hydrateRemoteMessage(ctx, message)).content).toBe(prefix + tail)
   })
+})
+
+test('native restoration start rejects a replacement conversation, adapter, delivery, source receipt or machine', async () => {
+  for (const scenario of ['conversation', 'missing_identity', 'adapter', 'pending_delivery', 'superseded_delivery', 'missing_receipt', 'machine', 'approval']) {
+    const f = await nativeRetryFixture()
+    await f.convex.run(async ctx => {
+      if (scenario === 'pending_delivery') await ctx.db.patch(f.command._id, {status: 'pending'})
+      if (scenario === 'machine') await ctx.db.patch(f.leaseDocId, {providerReference: 'another-machine'})
+      if (scenario === 'approval') await ctx.db.insert('agentApprovalRequests', {approvalId: 'unrestored-approval', workspaceId,
+        runId: f.input.runId, remoteSessionId: f.command.attemptId ?? '', requestKey: 'pending', prompt: 'Allow?', options: ['allow'], payload: {}, requestedAt: now})
+      if (scenario === 'superseded_delivery') {
+        const session = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.command.attemptId ?? '')).unique()
+        if (!session) throw Error('Missing current attempt')
+        await ctx.db.patch(session._id, {restorationCommandId: 'another-delivery'})
+      }
+      if (scenario === 'missing_receipt') {
+        const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+        if (!run?.remoteLifecycle) throw Error('Missing current lifecycle')
+        const lifecycle = {...run.remoteLifecycle}
+        delete lifecycle.providerStop
+        await ctx.db.patch(run._id, {remoteLifecycle: lifecycle})
+      }
+    })
+    const result = await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+      events: [{...event(1, 'session_started', {remoteSessionId: scenario === 'conversation' ? 'replacement-native' : scenario === 'missing_identity' ? '' : 'native-session',
+        adapterId: scenario === 'adapter' ? 'another-adapter' : 'acp'}), eventId: `invalid-start-${scenario}`,
+        execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}]})
+    expect(result).toMatchObject({accepted: true, stale: 'stale_execution'})
+    const projected = await projectedState(f.convex, f.started.messageId)
+    expect(projected.run?.remoteLifecycle?.phase).toBe('recovering')
+    expect(projected.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+    expect(projected.message?.parts?.some(part => part.type === 'data-remote-agent-status' && 'data' in part && part.data.recoveryOutcome === 'restored')).toBe(false)
+  }
 })
 
 test('native continuation never replaces a cancelled run or a lost approval context', async () => {

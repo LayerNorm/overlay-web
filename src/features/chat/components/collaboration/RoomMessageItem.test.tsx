@@ -300,6 +300,18 @@ test('active lifecycle messages expose their canonical task deadline and termina
   }
 })
 
+test('only confirmed native restoration remains visibly recovered after history reload, without control permission', () => {
+  for (const recoveryOutcome of [undefined, 'attached_live', 'restored', 'requires_new_attempt', 'unavailable']) {
+    const message = record({authorKind: 'agent', authorPrincipalId: 'agent-1', status: 'completed', content: 'Retained answer', parts: [
+      {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state: 'completed', recoveryOutcome}},
+    ]})
+    const html = render(message)
+    if (recoveryOutcome === 'restored') assert.match(html, /role="status">Recovered<\/p>/)
+    else assert.doesNotMatch(html, />Recovered</)
+    assert.match(html, /Retained answer/)
+  }
+})
+
 
 test('a live agent reply renders formatted chunks and one bottom dots row without character spans', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'generating',
