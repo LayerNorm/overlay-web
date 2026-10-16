@@ -1386,6 +1386,9 @@ Session checkpoints retain the validated model, permission mode, effort and Clou
 alongside nonsecret configuration references. Restoration reuses that same settings schema;
 MCP tokens and provider credentials are excluded and must be reissued by the control plane.
 Preserving settings does not authorize native continuation without old-writer isolation proof.
+Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
+control actions and event projection. The UI shows that absolute UTC deadline for nonterminal
+turns; approval cards show their own expiry. These are policy times, not process-stop proof.
 The host transport exposes that refresh through the existing signed credential-rotation endpoint.
 Concurrent refresh callers share one rotation; callbacks retain its complete method grant and
 filesystem policy, and a response for another environment is rejected before replacing credentials.

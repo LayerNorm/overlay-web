@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
+import { RemoteRunDeadline } from './RemoteRunDeadline'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
@@ -88,7 +89,7 @@ export type RoomMessageView = {
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
-  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string }
+  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string; hardDeadlineAt?: number }
   remoteDrive?: DriveSyncStatus
   /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
   workedDurationMs?: number
@@ -753,6 +754,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
       {message.remoteQueue && onControlRemoteQueue ? (
         <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
       ) : null}
+      {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
       {message.remoteRequest && onResolveRemoteRequest ? (
         <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
       ) : null}

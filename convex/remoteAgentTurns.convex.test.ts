@@ -738,12 +738,18 @@ test('durable API-exit intent survives and duplicate Workflow claims allow exact
 
 test('durable approval crosses 20 minutes with health and unrelated output then finishes on the same row', async () => {
   const { convex, lifecycle, call, started, events } = await durableFixture()
+  expect((await projectedState(convex, started.messageId)).message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({
+    type: 'data-remote-agent-status', data: expect.objectContaining({hardDeadlineAt: now + 3_600_000}),
+  })]))
   const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
   await lifecycle('claim', owner); await lifecycle('advance', owner)
   await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), event(2, 'approval_requested', {
     requestKey: 'clone', prompt: 'Allow clone?', options: [{ id: 'allow', label: 'Allow' }], context: {},
   })], now + 1)
   const beforeHealth = await projectedState(convex, started.messageId)
+  expect(beforeHealth.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({
+    type: 'data-remote-agent-status', data: expect.objectContaining({hardDeadlineAt: now + 3_600_000}),
+  })]))
   for (let minute = 1; minute <= 20; minute++) {
     const at = now + minute * 60_000
     await events([event(minute + 2, 'process_observation', { process: 'live' })], at)
@@ -754,6 +760,9 @@ test('durable approval crosses 20 minutes with health and unrelated output then 
   let result = await projectedState(convex, started.messageId)
   expect(result.run?.status).toBe('waiting_for_approval')
   expect(result.session?.status).toBe('waiting_for_approval')
+  expect(result.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({
+    type: 'data-remote-agent-status', data: expect.objectContaining({hardDeadlineAt: now + 3_600_000}),
+  })]))
   expect(result.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ state: 'pending' }) })]))
   const decision = await call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: result.run!.conversationId,
     runId: 'run-remote-turn', requestKey: 'clone', decision: 'allow', now: now + 1_200_002 })

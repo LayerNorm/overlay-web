@@ -62,6 +62,7 @@ function remoteRunStatus(parts: RoomMessagePart[] | undefined) {
   const data = parts?.find((part) => part.type === 'data-remote-agent-status')?.data
   if (!data || typeof data.runId !== 'string' || typeof data.state !== 'string') return undefined
   return { runId: data.runId, state: data.state,
+    ...(typeof data.hardDeadlineAt === 'number' && Number.isFinite(data.hardDeadlineAt) ? { hardDeadlineAt: data.hardDeadlineAt } : {}),
     retryable: data.retryable === true, retryClass: typeof data.retryClass === 'string' ? data.retryClass : undefined }
 }
 

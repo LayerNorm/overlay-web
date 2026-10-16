@@ -54,8 +54,9 @@ function conversationParts(parts: Array<Record<string, unknown>>) {
     return { type: 'data-remote-agent-status', data: {
       environmentName: typeof data.environmentName === 'string' ? data.environmentName : 'connected environment',
       queueExpiresAt: typeof data.queueExpiresAt === 'number' ? data.queueExpiresAt : 0,
+      ...(typeof data.hardDeadlineAt === 'number' ? { hardDeadlineAt: data.hardDeadlineAt } : {}),
       runId: typeof data.runId === 'string' ? data.runId : 'remote-agent',
-      state: ['waiting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recoverable', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled'].includes(String(data.state))
+      state: ['waiting', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recoverable', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled'].includes(String(data.state))
         ? data.state : 'running',
       ...(typeof data.retryable === 'boolean' ? { retryable: data.retryable } : {}),
       ...(['transient', 'timeout', 'host_offline', 'permission', 'fatal'].includes(String(data.retryClass))
@@ -518,12 +519,18 @@ export const startRemoteAgentTurnByServer = mutation({
       configurationReference: args.bindingId, toolsReference: args.runId,
       model: args.startPayload.metadata?.model ?? null,
     } : args.startPayload
-    const waitingParts = waitingRemoteAgentParts({ environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId })
+    const waitingParts = waitingRemoteAgentParts({ environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId,
+      ...(lifecycle ? { hardDeadlineAt: lifecycle.hardDeadlineAt } : {}) })
+    let initialParts = online ? [] : waitingParts
+    if (online && lifecycle) initialParts = [{type: 'data-remote-agent-status', data: {
+      environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId,
+      state: 'starting', hardDeadlineAt: lifecycle.hardDeadlineAt,
+    }}]
     const messageId = await ctx.db.insert('conversationMessages', {
       conversationId: args.conversationId, userId: args.actorUserId, authorKind: 'agent',
       authorPrincipalId: args.authorPrincipalId, turnId: args.turnId, role: 'assistant', mode: 'act',
       content: online ? '' : `Waiting for ${environment.name}`, contentType: 'text', modelId: args.modelId,
-      parts: online ? [] : conversationParts(waitingParts), status: 'generating', clientNonce: args.clientNonce,
+      parts: conversationParts(initialParts), status: 'generating', clientNonce: args.clientNonce,
       threadRootMessageId: args.threadRootMessageId, createdAt: args.now, updatedAt: args.now,
     })
     await ctx.db.insert('conversationAgentRuns', {
@@ -740,9 +747,9 @@ export const controlRemoteAgentTurnByServer = mutation({
         if (message) {
           const parts = reconcileRemoteRequestParts(message.parts ?? [], { ...state, phase: 'cancelling', cause: 'execution_replaced' }, now)
             .map(part => part.type === 'data-remote-agent-status'
-              ? { ...part, data: { ...(part.data as Record<string, unknown>), state: 'recovering' } } : part)
+              ? { ...part, data: { ...(part.data as Record<string, unknown>), state: 'recovering', hardDeadlineAt: state.hardDeadlineAt } } : part)
           if (!parts.some(part => part.type === 'data-remote-agent-status')) parts.push({ type: 'data-remote-agent-status',
-            data: { environmentName: environment.name, runId: args.runId, queueExpiresAt: state.claimDeadlineAt, state: 'recovering' } })
+            data: { environmentName: environment.name, runId: args.runId, queueExpiresAt: state.claimDeadlineAt, hardDeadlineAt: state.hardDeadlineAt, state: 'recovering' } })
           await ctx.db.patch(message._id, { parts: conversationParts(parts), status: 'generating', updatedAt: now })
         }
         await ctx.db.insert('agentRemoteRunIntents', { intentId: `control:${operationId}`, runId: args.runId, kind: 'control', action: args.action,
@@ -773,7 +780,7 @@ export const controlRemoteAgentTurnByServer = mutation({
       await ctx.db.patch(run.assistantMessageId, { parts: conversationParts([
         ...(message?.parts ?? []).filter(part => part.type !== 'data-remote-agent-status'),
         { type: 'data-remote-agent-status', data: { environmentName: environment.name, runId: args.runId,
-          queueExpiresAt: state.claimDeadlineAt, state: next.phase } },
+          queueExpiresAt: state.claimDeadlineAt, hardDeadlineAt: state.hardDeadlineAt, state: next.phase } },
       ]), status: 'generating', updatedAt: args.now })
       return { applied: true, operationId, phase: next.phase, commandId, messageId: run.assistantMessageId }
     }
@@ -2609,6 +2616,7 @@ export const applyRemoteEventsByServer = mutation({
       const parts = reconcileRemoteRequestParts(projection.parts, state, args.now).filter(part => part.type !== 'data-remote-agent-status')
       projection.parts = [...parts, { type: 'data-remote-agent-status', data: {
         environmentName: snapshot.environmentName, queueExpiresAt: state.claimDeadlineAt, runId: session.runId,
+        hardDeadlineAt: state.hardDeadlineAt,
         state: state.phase, cause: state.cause, revision: state.revision,
       } }]
     }

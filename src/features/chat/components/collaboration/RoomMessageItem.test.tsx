@@ -276,6 +276,22 @@ test('a lifecycle run needing attention exposes a deliberate fresh-start control
   assert.doesNotMatch(html, />Resume</)
 })
 
+test('active lifecycle messages expose their canonical task deadline and terminal messages do not', () => {
+  const deadline = Date.parse('2026-10-17T13:05:00Z')
+  for (const state of ['waiting', 'starting', 'running', 'waiting_for_approval', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled']) {
+    const message = record({authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Answer', parts: [
+      {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state, hardDeadlineAt: deadline}},
+    ]})
+    const html = render(message)
+    if (['completed', 'failed', 'cancelled'].includes(state)) assert.doesNotMatch(html, /Task deadline/)
+    else {
+      assert.match(html, /Task deadline/)
+      assert.match(html, /dateTime="2026-10-17T13:05:00.000Z"/i)
+      assert.match(html, /1:05 PM UTC/)
+    }
+  }
+})
+
 
 test('a live agent reply renders formatted chunks and one bottom dots row without character spans', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'generating',

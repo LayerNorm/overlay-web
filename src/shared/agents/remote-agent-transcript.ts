@@ -19,8 +19,9 @@ export type RemoteAgentStatusPart = {
   data: {
     environmentName: string
     queueExpiresAt: number
+    hardDeadlineAt?: number
     runId: string
-    state: 'waiting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'recovering' | 'needs_attention' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
+    state: 'waiting' | 'starting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'recovering' | 'needs_attention' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
     retryable?: boolean
     retryClass?: 'transient' | 'timeout' | 'host_offline' | 'permission' | 'fatal'
   }
@@ -40,6 +41,7 @@ export type RemoteAgentProjection = {
 export function waitingRemoteAgentParts(input: {
   environmentName: string
   queueExpiresAt: number
+  hardDeadlineAt?: number
   runId: string
 }): Array<Record<string, unknown>> {
   return [
