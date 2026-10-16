@@ -354,6 +354,7 @@
     "src/server/agents/AgentDriveStorageReader.ts",
     "src/server/agents/ConvexConnectedAgentRepository.ts",
     "src/server/agents/ConvexWorkspaceAgentRepository.ts",
+    "src/server/agents/agent-drive-http.ts",
     "src/server/agents/cloud/ConvexCloudAgentProvisionRepository.ts",
     "src/server/agents/index.ts",
     "src/server/agents/profiles/ConvexAgentProfileRepository.ts",

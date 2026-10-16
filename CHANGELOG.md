@@ -22,6 +22,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. Runtime integration remains pending.
 
+- Preserve safe drive rejection statuses when production Convex redacts developer error messages.
+
 - Prepare a dedicated connected-agent drive cache with bounded snapshots, hash-checked atomic hydration and traversal/symlink rejection. This foundation is not yet connected to Overlay Files or enabled for agent turns.
 
 - Resolve the bridge protocol from workspace source in Convex tests, so clean checkouts do not depend on package build order.

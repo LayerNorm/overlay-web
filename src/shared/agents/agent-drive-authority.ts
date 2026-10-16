@@ -24,13 +24,15 @@ function sameDriveExecution(claims: AgentDriveAuthorityClaims, current: CurrentD
 }
 
 /** Signing is only the first gate. Every operation must re-read binding/scope, membership and run fencing. */
-export function assertCurrentDriveRun(claims: AgentDriveAuthorityClaims, current: CurrentDriveRun, now = Date.now()): void {
-  if (claims.expiresAt <= now || current.hardDeadlineAt <= now || claims.expiresAt > current.hardDeadlineAt
+export function isCurrentDriveRun(claims: AgentDriveAuthorityClaims, current: CurrentDriveRun, now = Date.now()): boolean {
+  return !(claims.expiresAt <= now || current.hardDeadlineAt <= now || claims.expiresAt > current.hardDeadlineAt
     || !current.bindingEnabled || current.environmentRevoked || !current.actorIsMember
     || !['starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering', 'finalizing'].includes(current.status)
-    || !sameDriveScope(claims.scope, current.scope) || !sameDriveExecution(claims, current)) {
-    throw Error('DRIVE_RUN_UNAVAILABLE')
-  }
+    || !sameDriveScope(claims.scope, current.scope) || !sameDriveExecution(claims, current))
+}
+
+export function assertCurrentDriveRun(claims: AgentDriveAuthorityClaims, current: CurrentDriveRun, now = Date.now()): void {
+  if (!isCurrentDriveRun(claims, current, now)) throw Error('DRIVE_RUN_UNAVAILABLE')
 }
 
 /** Strip token envelope fields before calling strict backend function validators. */

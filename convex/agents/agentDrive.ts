@@ -1,10 +1,10 @@
-import { v } from 'convex/values'
+import { ConvexError, v } from 'convex/values'
 import type { Doc, Id } from '../_generated/dataModel'
 import { query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { loadScopeContext } from '../lib/resourceScope'
 import { currentRemoteAttempt } from './remoteRunModel'
-import { assertCurrentDriveRun, type AgentDriveAuthorityClaims } from '../../src/shared/agents/agent-drive-authority'
+import { isCurrentDriveRun, type AgentDriveAuthorityClaims } from '../../src/shared/agents/agent-drive-authority'
 import { canReadResource, rowScope } from '../../src/shared/workspaces/resource-scope'
 
 const driveScopeValidator = v.union(
@@ -22,7 +22,7 @@ export const driveAuthorityArgs = {
 /** Same transaction gate for reads and future file commits. No host-selected scope is trusted. */
 export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: AgentDriveAuthorityClaims & { serverSecret: string }) {
   requireServerSecret(args.serverSecret)
-  if (process.env.OVERLAY_CONNECTED_AGENT_DRIVE !== '1') throw Error('DRIVE_DISABLED')
+  if (process.env.OVERLAY_CONNECTED_AGENT_DRIVE !== '1') throw new ConvexError('DRIVE_DISABLED')
   const workspaceId = args.scope.workspaceId
   const [run, session, binding, environment, agent, workspace, principal, scopeContext] = await Promise.all([
     ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique(),
@@ -34,22 +34,22 @@ export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: A
     ctx.db.query('workspacePrincipals').withIndex('by_workspaceId_userId', q => q.eq('workspaceId', workspaceId).eq('userId', args.actorUserId)).unique(),
     loadScopeContext(ctx, workspaceId, args.actorUserId),
   ])
-  if (!run || !session || !binding || !environment || !agent || !workspace || !principal) throw Error('DRIVE_RUN_UNAVAILABLE')
+  if (!run || !session || !binding || !environment || !agent || !workspace || !principal) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
   const rows = [session, binding, environment, agent]
   if (rows.some(row => row.workspaceId !== workspaceId) || workspace.status !== 'active' || workspace.archivedAt !== undefined
     || agent.archivedAt !== undefined || agent.deletedAt !== undefined || principal.archivedAt !== undefined
     || principal.type !== 'human' || binding.agentId !== agent.agentId || binding.environmentId !== environment.environmentId
-    || (environment.kind !== 'overlay_cloud' && binding.adapterConfig?.connectedAgentDrive !== true)) throw Error('DRIVE_RUN_UNAVAILABLE')
+    || (environment.kind !== 'overlay_cloud' && binding.adapterConfig?.connectedAgentDrive !== true)) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
   const creatorOnly = agent.visibility === 'creator'
-  if (creatorOnly && agent.createdByPrincipalId !== principal.principalId) throw Error('DRIVE_RUN_UNAVAILABLE')
+  if (creatorOnly && agent.createdByPrincipalId !== principal.principalId) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
   const currentScope: AgentDriveAuthorityClaims['scope'] = creatorOnly
     ? { kind: 'personal', workspaceId, ownerUserId: args.actorUserId } : { kind: 'workspace', workspaceId }
   const hardDeadlineAt = session.hardDeadlineAt ?? session.capabilitySnapshot?.hardExpiresAt
-  if (typeof hardDeadlineAt !== 'number' || !Number.isSafeInteger(hardDeadlineAt)) throw Error('DRIVE_RUN_UNAVAILABLE')
-  if (run.bindingId !== session.bindingId || run.environmentId !== session.environmentId) throw Error('DRIVE_RUN_UNAVAILABLE')
+  if (typeof hardDeadlineAt !== 'number' || !Number.isSafeInteger(hardDeadlineAt)) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
+  if (run.bindingId !== session.bindingId || run.environmentId !== session.environmentId) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
   const phase = run.remoteLifecycle?.phase ?? run.status
-  if (['cancelled', 'cancelling', 'completed', 'failed', 'needs_attention'].includes(phase)) throw Error('DRIVE_RUN_UNAVAILABLE')
-  assertCurrentDriveRun(args, {
+  if (['cancelled', 'cancelling', 'completed', 'failed', 'needs_attention'].includes(phase)) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
+  if (!isCurrentDriveRun(args, {
     actorUserId: run.userId, agentId: run.agentId ?? '', runId: run.externalRunId ?? '',
     sessionId: session.sessionId, bindingId: session.bindingId, environmentId: session.environmentId,
     scope: currentScope, bindingEnabled: binding.enabled,
@@ -58,7 +58,7 @@ export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: A
     status: session.status, hardDeadlineAt,
     ...(session.attemptId !== undefined && session.executionGeneration !== undefined
       ? { execution: { attemptId: session.attemptId, generation: session.executionGeneration } } : {}),
-  })
+  })) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
   return { scope: currentScope, scopeContext, agent, run, session }
 }
 
@@ -90,9 +90,9 @@ export const storageSourceByServer = query({
   returns: v.object({ url: v.string(), sizeBytes: v.number(), sha256: v.string() }),
   handler: async (ctx, args) => {
     const file = await requireDriveFile(ctx, args)
-    if (file.r2Key || file.textInObjectStore || file.storageId !== args.storageId) throw Error('DRIVE_SOURCE_CHANGED')
+    if (file.r2Key || file.textInObjectStore || file.storageId !== args.storageId) throw new ConvexError('DRIVE_SOURCE_CHANGED')
     const [metadata, url] = await Promise.all([ctx.db.system.get(args.storageId), ctx.storage.getUrl(args.storageId)])
-    if (!metadata || !url) throw Error('DRIVE_FILE_UNAVAILABLE')
+    if (!metadata || !url) throw new ConvexError('DRIVE_FILE_UNAVAILABLE')
     return { url, sizeBytes: metadata.size, sha256: metadata.sha256 }
   },
 })
@@ -109,7 +109,7 @@ export const inlineSourceByServer = query({
   returns: v.object({ text: v.string() }),
   handler: async (ctx, args) => {
     const file = await requireDriveFile(ctx, args)
-    if (file.r2Key || file.storageId || file.textInObjectStore) throw Error('DRIVE_SOURCE_CHANGED')
+    if (file.r2Key || file.storageId || file.textInObjectStore) throw new ConvexError('DRIVE_SOURCE_CHANGED')
     return { text: file.textContent ?? file.content ?? '' }
   },
 })
@@ -135,6 +135,6 @@ async function requireDriveFile(ctx: QueryCtx, args: AgentDriveAuthorityClaims &
   if (!file || file.workspaceId !== scope.workspaceId || file.type !== 'file' || file.deletedAt !== undefined
     || file.archivedAt !== undefined || rowScope(file) !== scope.kind || !canReadResource(file, scopeContext.viewer)
     || (scope.kind === 'personal' && file.userId !== scope.ownerUserId)
-    || (file.updatedAt ?? file.createdAt) !== args.updatedAt) throw Error('DRIVE_SOURCE_CHANGED')
+    || (file.updatedAt ?? file.createdAt) !== args.updatedAt) throw new ConvexError('DRIVE_SOURCE_CHANGED')
   return file
 }

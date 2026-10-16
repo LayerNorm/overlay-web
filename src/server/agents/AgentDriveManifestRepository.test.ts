@@ -11,12 +11,15 @@ test('actual SDK pins all manifest pages to one timestamp while authority checks
   process.env.NEXT_PUBLIC_CONVEX_URL = 'https://drive-fixture.convex.cloud'
   process.env.INTERNAL_API_SECRET = 'drive-repository-test-secret'
   const calls: { endpoint: string; body: Record<string, unknown> }[] = []
-  let timestamps = 0; let revoked = false
+  let timestamps = 0; let revoked = false; let redacted = false; let snapshotFailure = false
   globalThis.fetch = async (input, options) => {
     const endpoint = new URL(String(input)).pathname
     const body = options?.body ? JSON.parse(String(options.body)) : {}
     calls.push({ endpoint, body })
     if (endpoint === '/api/query_ts') return Response.json({ ts: `snapshot-${++timestamps}` })
+    if (redacted && ((endpoint === '/api/query' && revoked) || (endpoint === '/api/query_at_ts' && snapshotFailure))) {
+      return Response.json({ status: 'error', errorMessage: 'Server Error', errorData: 'DRIVE_RUN_UNAVAILABLE' })
+    }
     if (endpoint === '/api/query_at_ts') return Response.json({ status: 'success', value: { rows: [], scope: { kind: 'workspace', workspaceId: 'w' }, viewer: { userId: 'u', role: 'member' }, nextCursor: null }, logLines: [] })
     if (endpoint === '/api/query' && revoked) return Response.json({ status: 'error', errorMessage: '[Request ID: synthetic] Server Error\nUncaught Error: DRIVE_RUN_UNAVAILABLE\n    at requireDriveAuthority (agents/agentDrive.ts:37:0)' })
     return Response.json({ status: 'success', value: null })
@@ -51,6 +54,18 @@ test('actual SDK pins all manifest pages to one timestamp while authority checks
     const secondRepository = createAgentDriveManifestRepository(claims)
     await secondRepository.page(null)
     assert.equal(timestamps, 2)
+    redacted = true
+    for (const transport of ['live', 'snapshot']) {
+      snapshotFailure = transport === 'snapshot'
+      const response = await handleAgentDriveRequest(new Request('https://preview.invalid/api/agent-drive', {
+        method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: '{"action":"manifest"}',
+      }), { enabled: () => true, limit: async () => null, service: () => ({
+        async manifest() { if (transport === 'live') await repository.authorize(); else await repository.page(null); return { entries: [] } },
+        async download() { return new Uint8Array() },
+      }) })
+      assert.equal(response.status, 403, `redacted ${transport} Convex transport`)
+      assert.deepEqual(await response.json(), { error: 'DRIVE_RUN_UNAVAILABLE' })
+    }
   } finally {
     globalThis.fetch = originalFetch
     if (previousUrl === undefined) delete process.env.NEXT_PUBLIC_CONVEX_URL; else process.env.NEXT_PUBLIC_CONVEX_URL = previousUrl

@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Phase 4 expected drive failures now use structured Convex application data; redacted production responses retain safe HTTP statuses in both current-authority and pinned-snapshot queries. Local transport and Convex tests pass; hosted acceptance remains pending.
+
 - Phase 5 MCP authorization now binds delivered credentials to the current session and execution generation without extending expiry. Approval polling and final tool execution recheck authority; replaced attempts cannot create new approval cards. Legacy first-attempt compatibility remains. Interrupted-turn continuation, durable pending-tool follow-up and the 60-minute recovery acceptance remain pending.
 
 - Phase 0 CI corrections record the new drive route/readers in the reviewed on-prem inventory and remove a syntax-only zero-argument broker assertion. Native-auth boundary and token refresh tests remain enforced; current-head hosted acceptance is pending.

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { z } from 'zod'
+import { ConvexError } from 'convex/values'
 import { readBoundedStorageBody } from '@/server/storage/read-bounded-storage-body'
 import type { AgentDriveManifestService, AgentDriveHostManifestEntry } from './AgentDriveManifestService'
 
@@ -42,10 +43,11 @@ export async function handleAgentDriveRequest(request: Request, dependencies: Dr
     })
   } catch (error) {
     if (error instanceof z.ZodError || error instanceof SyntaxError) return failure(400, 'DRIVE_INVALID_REQUEST')
-    // Convex decorates server-thrown errors with request/stack lines. Only an exact
-    // standalone machine-code line may select a public status; never return its stack.
+    // Production Convex redacts developer messages. Expected failures travel as
+    // application data; plain-message parsing supports older backend deployments.
     const message = error instanceof Error ? error.message : ''
-    const code = /(?:^|\n)(?:Uncaught Error: )?((?:DRIVE|STORAGE_READ)_[A-Z_]+)[ \t]*(?=\n|$)/.exec(message)?.[1] ?? ''
+    const code = error instanceof ConvexError && typeof error.data === 'string' ? error.data
+      : /(?:^|\n)(?:Uncaught Error: )?((?:DRIVE|STORAGE_READ)_[A-Z_]+)[ \t]*(?=\n|$)/.exec(message)?.[1] ?? ''
     const statuses: Record<string, number> = {
       DRIVE_DISABLED: 404, DRIVE_UNAUTHORIZED: 401, DRIVE_RUN_UNAVAILABLE: 403, DRIVE_SCOPE_CHANGED: 403,
       DRIVE_UNSAFE_PATH: 400, DRIVE_INVALID_DOWNLOAD: 403, DRIVE_SOURCE_CHANGED: 409, DRIVE_FILE_UNAVAILABLE: 404,

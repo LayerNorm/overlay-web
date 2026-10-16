@@ -34,6 +34,13 @@ async function fixture() {
   return { convex, ids, args, read: (patch: Record<string, unknown> = {}) => convex.query(readRef, { ...args, ...patch }) }
 }
 
+test('expected drive failures carry application data through production message redaction', async () => {
+  const f = await fixture()
+  await expect(f.read({ runId: 'foreign' })).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })
+  process.env.OVERLAY_CONNECTED_AGENT_DRIVE = '0'
+  await expect(f.read()).rejects.toMatchObject({ data: 'DRIVE_DISABLED' })
+})
+
 test('manifest pages preserve canonical rows and return only the fixed personal or workspace drive', async () => {
   const f = await fixture()
   const first = await f.read()
