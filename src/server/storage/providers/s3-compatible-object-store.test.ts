@@ -57,6 +57,8 @@ test('S3 upload constraints sign an empty body, its hexadecimal digest and the r
   const url = new URL((await store.getUploadUrl('users/user/files/staging/empty', 'application/octet-stream',
     { contentLength: 0, checksumSha256: sha256, expiresIn: 120 })).url)
   assert.equal(url.searchParams.get('X-Amz-Expires'), '120')
-  assert.equal(url.searchParams.get('x-amz-checksum-sha256'), Buffer.from(sha256, 'hex').toString('base64'))
-  assert.ok((url.searchParams.get('X-Amz-SignedHeaders') ?? '').split(';').includes('content-length'))
+  assert.equal(url.searchParams.has('x-amz-checksum-sha256'), false)
+  const signed = (url.searchParams.get('X-Amz-SignedHeaders') ?? '').split(';')
+  assert.ok(signed.includes('content-length'))
+  assert.ok(signed.includes('x-amz-checksum-sha256'))
 })

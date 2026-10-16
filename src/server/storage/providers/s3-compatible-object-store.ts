@@ -82,7 +82,9 @@ export class S3CompatibleObjectStore implements ObjectStore {
           ...(constraints?.contentLength !== undefined ? { ContentLength: constraints.contentLength } : {}),
           ...(constraints?.checksumSha256 ? { ChecksumSHA256: Buffer.from(constraints.checksumSha256, 'hex').toString('base64') } : {}),
         }),
-        { expiresIn: Math.min(this.presignTtlSeconds, constraints?.expiresIn ?? this.presignTtlSeconds) },
+        { expiresIn: Math.min(this.presignTtlSeconds, constraints?.expiresIn ?? this.presignTtlSeconds),
+          ...(constraints?.checksumSha256 ? { unhoistableHeaders: new Set(['x-amz-checksum-sha256']) } : {}),
+        },
       ),
     }
   }

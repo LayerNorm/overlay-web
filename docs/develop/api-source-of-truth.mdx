@@ -67,6 +67,9 @@ The runtime hydrates the dedicated approved cache before prompting, synchronizes
 after actions and periodically, and awaits a final save before forwarding successful completion.
 Failed final writes preserve local recovery data and report an unsaved failure. Bounded saved-file
 summaries project separately from provider text and link to authorized Files rows.
+R2/S3 constrained uploads bind the digest in the signed checksum header sent by the host,
+rather than duplicating a query-hoisted checksum in headers. Message persistence accepts the
+drive status data part so an upload failure can be projected without wedging the event outbox.
 
 ## Memory profiles
 

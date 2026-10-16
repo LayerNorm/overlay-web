@@ -314,7 +314,11 @@ export class R2ObjectStore implements ObjectStore {
           ...(constraints?.contentLength !== undefined ? { ContentLength: constraints.contentLength } : {}),
           ...(constraints?.checksumSha256 ? { ChecksumSHA256: Buffer.from(constraints.checksumSha256, 'hex').toString('base64') } : {}),
         }),
-        { expiresIn: Math.min(this.presignTtlSeconds(), constraints?.expiresIn ?? this.presignTtlSeconds()) },
+        { expiresIn: Math.min(this.presignTtlSeconds(), constraints?.expiresIn ?? this.presignTtlSeconds()),
+          // The drive sends this header. R2 rejects a query-hoisted checksum
+          // duplicated in request headers, so bind it as a signed header.
+          ...(constraints?.checksumSha256 ? { unhoistableHeaders: new Set(['x-amz-checksum-sha256']) } : {}),
+        },
       ),
     }
   }

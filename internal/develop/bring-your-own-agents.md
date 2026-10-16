@@ -1341,6 +1341,10 @@ forwarding completion. A final write failure emits an unsaved summary and a fail
 forwards cancellation before draining an existing write and preserves the pending journal. Saved
 summaries carry bounded Files links separately from provider text. Hosted acceptance remains required
 before enabling the feature.
+The conversation-message schema permits the projected drive data part; ingestion keeps the same
+assistant row and retries an unacknowledged batch unchanged. Constrained staging PUTs sign the
+checksum as a header, matching the host request. Do not hoist it into the query and also send the
+header: R2 rejects that combination with a signature mismatch.
 
 The runtime drive wrapper consumes the signed execution's fixed scope, checks local parents
 physically before creating a dedicated child, and requires an explicit approved Cloud drive root.

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Persist connected-agent drive status in chat messages and sign staging checksum headers consistently for R2 and S3 uploads.
+
 - Keep host heartbeats running during initialization and create newly approved drive directories before resolving filesystem roots.
 
 - Let already enrolled drive-capable hosts renew their scoped drive credential method without changing other credential permissions.

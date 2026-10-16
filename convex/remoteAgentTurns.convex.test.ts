@@ -21,6 +21,34 @@ const agentPrincipalId = 'principal-agent-remote-turn'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex remote agent room turns', () => {
+  test('drive progress persists on the original assistant row and a retried batch settles exactly once', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    const entries = [{ fileId: 'report-file', path: 'report.md', kind: 'file' }]
+    const events = [event(1, 'text_checkpoint', { text: 'Report complete' }),
+      event(2, 'drive_sync', { state: 'saving' }),
+      event(3, 'drive_sync', { state: 'unsaved', code: 'DRIVE_SYNC_FAILED', message: 'Local copies kept' }),
+      event(4, 'drive_sync', { state: 'saved', fileCount: 1, folderCount: 0, entries }),
+      event(5, 'completed', { usage: {} })]
+    const progress = { workspaceId, environmentId, sessionId: 'session-remote-turn', events: events.slice(0, 3), now: now + 99 }
+    expect(await call('applyRemoteEventsByServer', progress)).toMatchObject({ accepted: true, duplicate: false })
+    const pending = await projectedState(convex, started.messageId)
+    expect(pending.message?.parts?.find(part => part.type === 'data-remote-agent-drive')?.data).toMatchObject({ state: 'unsaved' })
+    const input = { workspaceId, environmentId, sessionId: 'session-remote-turn', events: events.slice(3), now: now + 100 }
+    expect(await call('applyRemoteEventsByServer', input)).toMatchObject({ accepted: true, duplicate: false })
+    const state = await projectedState(convex, started.messageId)
+    expect(state.message?.content).toBe('Report complete')
+    expect(state.message?.parts?.filter(part => part.type === 'data-remote-agent-drive')).toEqual([
+      { type: 'data-remote-agent-drive', data: { key: 'drive', state: 'saved', fileCount: 1, folderCount: 0, entries } },
+    ])
+    expect(await call('applyRemoteEventsByServer', { ...input, now: now + 101 })).toMatchObject({ accepted: true, duplicate: true })
+    expect((await projectedState(convex, started.messageId)).eventCount).toBe(state.eventCount)
+  })
+
   test('binding discovery is tenant-scoped and requires a real agent principal', async () => {
     const convex = convexTest(schema, modules)
     await seedRoom(convex)
