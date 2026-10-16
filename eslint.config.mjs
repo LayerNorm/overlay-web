@@ -9,7 +9,15 @@ for (const key of Object.keys(patchedReactHooks)) {
   reactHooksPlugin[key] = patchedReactHooks[key];
 }
 
-const nextVitals = (await import("eslint-config-next/core-web-vitals")).default;
+const nextVitals = (await import("eslint-config-next/core-web-vitals")).default.map((config) => {
+  if (!config.plugins?.["react-hooks"]) return config;
+
+  return {
+    ...config,
+    plugins: { ...config.plugins, "react-hooks": reactHooksPlugin },
+    rules: { ...config.rules, ...reactHooksPlugin.configs.recommended.rules },
+  };
+});
 const nextTs = (await import("eslint-config-next/typescript")).default;
 const { createArchitectureBoundaryConfigs } = await import("./scripts/ci/eslint-boundary-rules.mjs");
 
