@@ -1,3 +1,5 @@
+import { unstyledButton } from '../control-reset'
+import { Button } from '@overlay/ui/primitives'
 import type { ToolVisualBlock } from '@overlay/chat-core'
 import { ASSISTANT_COLLAPSIBLE_BODY_CLASS,isOverlayGatedToolOutput } from '@overlay/chat-core'
 import { ChevronDown } from 'lucide-react'
@@ -79,10 +81,10 @@ function BrowserToolHeader({
             {details.label}
           </span>
           {details.hasDetails && details.isDone ? (
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={() => onExpandedChange(!userExpanded)}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`inline-flex h-5 w-5 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
               aria-label={userExpanded ? 'Collapse browser tool details' : 'Expand browser tool details'}
             >
               <ChevronDown
@@ -90,7 +92,7 @@ function BrowserToolHeader({
                 strokeWidth={1.75}
                 className={`transition-transform duration-200 ${userExpanded ? 'rotate-180' : ''}`}
               />
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

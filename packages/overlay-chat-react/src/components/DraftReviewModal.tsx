@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, X } from 'lucide-react'
 import { Dialog, DialogContent } from '@overlay/ui'
@@ -37,17 +40,17 @@ export function FlashCopyIconButton({
   }
 
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={() => void handleClick()}
       disabled={disabled || !copyText}
-      className={`rounded-md p-1.5 text-(--muted) transition-all duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
+      className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
         showCheck ? 'text-emerald-600 hover:text-emerald-600 hover:bg-[#ecfdf5]' : ''
-      }`}
+      }`)}
       aria-label={ariaLabel}
     >
       {showCheck ? <Check size={14} strokeWidth={1.75} /> : <Copy size={14} strokeWidth={1.75} />}
-    </button>
+    </Button>
   )
 }
 
@@ -87,14 +90,14 @@ export function DraftReviewModal({
             </h3>
             <p className="mt-0.5 text-[11px] text-(--muted)">{state.draft.reason}</p>
           </div>
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onClose}
-            className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+            className={unstyledButton(`rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)`)}
             aria-label="Close draft review"
           >
             <X size={16} />
-          </button>
+          </Button>
         </div>
         <div className="space-y-4 px-4 py-4">
           <div className="rounded-xl border border-(--border) bg-(--surface-muted) p-4">
@@ -122,14 +125,14 @@ export function DraftReviewModal({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-(--border) px-4 py-3">
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onClose}
-            className="inline-flex items-center rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-[12px] font-medium text-(--foreground) transition-colors hover:bg-(--border)"
+            className={unstyledButton(`inline-flex items-center rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-[12px] font-medium text-(--foreground) transition-colors hover:bg-(--border)`)}
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             type="button"
             disabled={saving}
             onClick={() => {
@@ -139,10 +142,10 @@ export function DraftReviewModal({
                 void onSaveSkill(state.draft)
               }
             }}
-            className="inline-flex items-center rounded-md border border-(--border) bg-(--foreground) px-3 py-1.5 text-[12px] font-medium text-(--background) transition-colors hover:opacity-85 disabled:opacity-60"
+            className={unstyledButton(`inline-flex items-center rounded-md border border-(--border) bg-(--foreground) px-3 py-1.5 text-[12px] font-medium text-(--background) transition-colors hover:opacity-85 disabled:opacity-60`)}
           >
             {saving ? 'Saving...' : isAutomation ? 'Create automation' : 'Save skill'}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,7 +1,9 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+
 import { useState, type ReactNode } from 'react'
-import { Popover, PopoverContent, PopoverTrigger } from '@overlay/ui/primitives'
+import { Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'
 import { BrainCircuit, Check, ChevronDown, Image as ImageIcon, KeyRound } from 'lucide-react'
 import {
   type ChatModelPreferences,
@@ -140,22 +142,22 @@ export function ComprehensiveModelPicker<
     <Popover open={open} onOpenChange={setOpen}>
       <div className={`relative min-w-0 flex-1 ${className}`}>
         <PopoverTrigger asChild>
-          <button
+          <Button variant="ghost"
             type="button"
             disabled={disabled}
             aria-expanded={open}
-            className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-1.5 text-left text-xs md:max-w-52 ${
+            className={unstyledButton(`flex w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-1.5 text-left text-xs md:max-w-52 ${
               disabled
                 ? 'cursor-not-allowed text-(--muted-light)'
                 : 'text-(--muted) hover:bg-(--border)'
-            }`}
+            }`)}
           >
             <span className="min-w-0 truncate">{buttonLabel}</span>
             <ChevronDown
               size={11}
               className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
             />
-          </button>
+          </Button>
         </PopoverTrigger>
         <PopoverContent
           align="end"
@@ -168,13 +170,13 @@ export function ComprehensiveModelPicker<
               ? imageModels.map((m) => {
                   const isSel = m.id === ids.imageId
                   return (
-                    <button
+                    <Button variant="ghost"
                       key={m.id}
                       type="button"
                       aria-pressed={isSel}
-                      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
+                      className={unstyledButton(`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
                         isSel ? 'font-medium text-(--foreground)' : 'text-(--muted)'
-                      }`}
+                      }`)}
                       onClick={() => {
                         onPreferencesChange({ ...preferences, imageModelId: m.id })
                         setOpen(false)
@@ -184,20 +186,20 @@ export function ComprehensiveModelPicker<
                         {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
                         <span>{m.name}</span>
                       </span>
-                    </button>
+                    </Button>
                   )
                 })
               : generationMode === 'video'
                 ? videoModels.map((m) => {
                     const isSel = m.id === ids.videoId
                     return (
-                      <button
+                      <Button variant="ghost"
                         key={m.id}
                         type="button"
                         aria-pressed={isSel}
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
+                        className={unstyledButton(`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
                           isSel ? 'font-medium text-(--foreground)' : 'text-(--muted)'
-                        }`}
+                        }`)}
                         onClick={() => {
                           onPreferencesChange({ ...preferences, videoModelId: m.id })
                           setOpen(false)
@@ -207,20 +209,20 @@ export function ComprehensiveModelPicker<
                           {isSel ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
                           <span>{m.name}</span>
                         </span>
-                      </button>
+                      </Button>
                     )
                   })
                 : chatModels.map((m) => {
                     const isSel = m.id === ids.chatId
                     const byok = isByokModel(m)
                     return (
-                      <button
+                      <Button variant="ghost"
                         key={m.id}
                         type="button"
                         aria-pressed={isSel}
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
+                        className={unstyledButton(`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${
                           isSel ? 'font-medium text-(--foreground)' : 'text-(--muted)'
-                        }`}
+                        }`)}
                         onMouseEnter={() => setHoveredId(m.id)}
                         onClick={() => {
                           onPreferencesChange({ ...preferences, modelId: m.id })
@@ -241,7 +243,7 @@ export function ComprehensiveModelPicker<
                           ) : null}
                         </span>
                         <ModelBadges m={m} isHovered={hoveredId === m.id} />
-                      </button>
+                      </Button>
                     )
                   })}
           </div>

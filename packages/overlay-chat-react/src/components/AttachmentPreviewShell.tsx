@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useState, type ReactNode } from 'react'
 import { Maximize2, PanelRightOpen, X } from 'lucide-react'
 import { cn, Dialog, DialogContent } from '@overlay/ui'
@@ -35,24 +38,24 @@ function AttachmentPreviewHeaderActions({
   const label = mode === 'panel' ? 'Open as floating dialog' : 'Open in side panel'
   return (
     <>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => onModeChange(nextMode)}
-        className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         aria-label={label}
         title={label}
       >
         {mode === 'panel' ? <Maximize2 size={15} strokeWidth={1.75} /> : <PanelRightOpen size={15} strokeWidth={1.75} />}
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
         onClick={onClose}
-        className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         aria-label="Close attachment preview"
         title="Close"
       >
         <X size={16} strokeWidth={1.75} />
-      </button>
+      </Button>
     </>
   )
 }

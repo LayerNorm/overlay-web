@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from './control-reset'
+
 import { Suspense, useMemo, type MouseEventHandler, type ReactNode, type RefObject } from 'react'
 import {
   Check,
@@ -24,7 +26,7 @@ import {
   PersonalChatModeToggle,
   type PersonalChatMode,
 } from '@overlay/ui/chat'
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@overlay/ui/primitives'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger, Button, Input } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '@overlay/ui/overlays'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
 import { ModelBadges } from './ModelIndicators'
@@ -57,17 +59,17 @@ function TemporaryChatButton({
       label={active ? 'Temporary chat is on. Messages are erased when you leave this page.' : 'Start a temporary chat'}
       side="bottom"
     >
-      <button
+      <Button variant="ghost"
         type="button"
         aria-pressed={active}
         aria-label={active ? 'Disable temporary chat' : 'Enable temporary chat'}
         disabled={disabled}
         onClick={onClick}
-        className={`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-[background-color,border-color,box-shadow,color] duration-300 ${
+        className={unstyledButton(`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-[background-color,border-color,box-shadow,color] duration-300 ${
           active
             ? 'temporary-chat-inverse-surface border-dashed border-(--temporary-chat-border) shadow-xs'
             : 'border-transparent bg-(--surface-subtle) text-(--muted) hover:bg-(--border) hover:text-(--foreground)'
-        } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+        } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`)}
       >
         <span
           aria-hidden
@@ -77,7 +79,7 @@ function TemporaryChatButton({
             mask: `url(${TEMPORARY_CHAT_ICON_SRC}) center / contain no-repeat`,
           }}
         />
-      </button>
+      </Button>
     </DelayedTooltip>
   )
 }
@@ -212,10 +214,10 @@ function HeaderTitleSection({
       }`}
     >
       {activeChatId && editingChatId === activeChatId ? (
-        <input
+        <Input
           ref={headerTitleInputRef}
           aria-label="Conversation title"
-          className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-2 py-1 text-sm font-medium text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground) md:max-w-[min(100%,20rem)] lg:max-w-[24rem]"
+          className={unstyledInput(`min-w-0 flex-1 rounded-md border border-(--border) bg-(--background) px-2 py-1 text-sm font-medium text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground) md:max-w-[min(100%,20rem)] lg:max-w-[24rem]`)}
           value={editingChatTitle}
           onChange={(e) => onEditingChatTitleChange(e.target.value)}
           onKeyDown={(e) => {
@@ -239,14 +241,14 @@ function HeaderTitleSection({
             <CrossfadeText text={titleLabel} className="line-clamp-2 md:line-clamp-1 md:truncate" />
           </h2>
           {showRenameButton ? (
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onBeginHeaderChatRename}
-              className="shrink-0 rounded-sm p-1 text-(--muted) opacity-0 transition-opacity hover:bg-(--border) hover:text-(--foreground) group-hover/header-title:opacity-100 focus-visible:opacity-100"
+              className={unstyledButton(`shrink-0 rounded-sm p-1 text-(--muted) opacity-0 transition-opacity hover:bg-(--border) hover:text-(--foreground) group-hover/header-title:opacity-100 focus-visible:opacity-100`)}
               aria-label="Rename chat"
             >
               <Pencil size={14} />
-            </button>
+            </Button>
           ) : null}
         </div>
       )}
@@ -390,23 +392,23 @@ function ModelPickerRow({
   badges?: ReactNode
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       data-model-row={onHoverStart ? modelId : undefined}
       disabled={disabled}
       onClick={onSelect}
       aria-pressed={selected}
       onMouseEnter={onHoverStart}
-      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
+      className={unstyledButton(`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
         disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-(--surface-muted)'
-      } ${selected ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`}
+      } ${selected ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`)}
     >
       <span className="flex items-center gap-2">
         {selected ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
         {name}
       </span>
       {badges}
-    </button>
+    </Button>
   )
 }
 
@@ -510,19 +512,19 @@ function ModelSelectionModeButtons({
         const isActive = selectionMode === selMode
         const disabled = isModeDisabled(selMode)
         return (
-          <button
+          <Button variant="ghost"
             key={selMode}
             type="button"
             onClick={() => onSelectionModeChange(selMode)}
             disabled={disabled}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
+            className={unstyledButton(`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
               isActive
                 ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs'
                 : 'text-(--muted) hover:text-(--foreground)'
-            } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
+            } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`)}
           >
             {selMode}
-          </button>
+          </Button>
         )
       })}
     </div>
@@ -573,16 +575,16 @@ function AutomationModelPicker({
       <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
         <DelayedTooltip label="Choose automation model" side="bottom">
           <PopoverTrigger asChild>
-            <button
+            <Button variant="ghost"
               type="button"
-              className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-52"
+              className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-52`)}
               aria-label="Automation model"
             >
               <span className="min-w-0 truncate">
                 {getChatModelDisplayName(automationHeaderModelId) || 'Select model'}
               </span>
               <ChevronDown size={11} className="shrink-0" />
-            </button>
+            </Button>
           </PopoverTrigger>
         </DelayedTooltip>
         <PopoverContent
@@ -639,19 +641,19 @@ function AutomationDetailTabButtons({
         const active = automationDetailTab === tab.id
         const TabIcon = tab.icon
         return (
-          <button
+          <Button variant="ghost"
             key={tab.id}
             type="button"
             onClick={() => onSelectAutomationDetailTab(tab.id)}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
+            className={unstyledButton(`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
               active
                 ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
                 : 'text-(--muted) hover:text-(--foreground)'
-            }`}
+            }`)}
           >
             <TabIcon size={12} strokeWidth={1.75} />
             {tab.label}
-          </button>
+          </Button>
         )
       })}
     </div>
@@ -710,32 +712,32 @@ function VideoSubModePicker({
 >) {
   return (
     <div ref={videoSubModePickerRef} className="relative min-w-0 md:w-auto">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onToggleVideoSubModePicker}
         disabled={isActiveLoading}
-        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-52 ${
+        className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none md:w-auto md:max-w-52 ${
           isActiveLoading ? 'cursor-not-allowed text-(--muted-light)' : 'text-(--muted) hover:bg-(--border)'
-        }`}
+        }`)}
       >
         <span className="min-w-0 truncate">{VIDEO_SUB_MODE_LABELS[videoSubMode]}</span>
         <ChevronDown size={11} className="shrink-0" />
-      </button>
+      </Button>
       {showVideoSubModePicker ? (
         <div className="overlay-pop-in absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg md:left-auto md:right-0 md:w-52">
           {VIDEO_SUB_MODES.map(({ value, label }) => (
-            <button
+            <Button variant="ghost"
               key={value}
               type="button"
               onClick={() => {
                 onVideoSubModeChange(value)
                 onSetShowVideoSubModePicker(false)
               }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${videoSubMode === value ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`}
+              className={unstyledButton(`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-(--surface-muted) ${videoSubMode === value ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`)}
             >
               {videoSubMode === value ? <Check size={10} /> : <span className="inline-block w-[10px]" />}
               {label}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}
@@ -965,13 +967,13 @@ function ChatModelPicker({
       <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
         <DelayedTooltip label="Choose model (⇧⌘/)" side="bottom">
           <PopoverTrigger asChild>
-            <button
+            <Button variant="ghost"
               type="button"
-              className="flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) md:w-auto md:max-w-52"
+              className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) md:w-auto md:max-w-52`)}
             >
               <span className="min-w-0 truncate">{modelPickerLabel}</span>
               <ChevronDown size={11} className="shrink-0" />
-            </button>
+            </Button>
           </PopoverTrigger>
         </DelayedTooltip>
         <PopoverContent
