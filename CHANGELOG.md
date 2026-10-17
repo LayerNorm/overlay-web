@@ -4,12 +4,13 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make first-run onboarding deterministic: it starts only on the post-signup redirect or an explicit replay, waits for the workspace to load before the name step, mounts the tour only on the chat surface where its targets render, holds the model picker open through the tour's early steps, and no longer refires on refresh or pops up mid-session.
+
 - Keep Turbopack route bootstraps external so the optimized app hydrates under nonce-based Content Security Policy after the Next.js upgrade.
 
 - Preserve protected-route query parameters through sign-in and stale-session reauthentication so desktop login handoffs retain their PKCE challenge.
 
 - Patch Next.js to 16.4.1 in both web apps and Better Auth/SSO to 1.7.7. Replace the privileged PR preview trigger with a secret-free PR request that dispatches the protected main controller.
-
 - Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
 
 - Scope Boat Preview machine creation to its isolated named environment while keeping account credentials excluded; document the approved one-year Preview key renewal requirement.
@@ -36,6 +37,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - The app boots on one loading screen: the orb and wordmark animate in once, breathe like the chat stream marker, and the "Opening workspace…" line sits beneath them, instead of logo screen to workspace text back to logo. The landing hero gains Get Started and GitHub buttons under the subtitle, and landing logo marks rest on the wordmark's baseline. Reduced motion disables the pulse and workspace spinner; shared pulse timing prevents flashes across loading-boundary handoffs.
 
 - **Sidebar sub-rows share the agent tree's guide-line indent.** Scope sub-rows in the secondary panel (Personal/Workspace's pages such as List/Board/Timeline, All/Notes/Files/Outputs, Connectors/Skills/MCPs, and chat subviews) and folders in the Files tree now nest inside the same `SidebarMenuSub` vertical-line list as an agent's threads, instead of sitting flush or using per-row padding. Behavior and routes are unchanged.
+
 - Upgrade the Redis client to 6.3 and add real TCP regression cases for concurrent rate-limit enforcement and window expiry.
 
 - Require current-head PR QA comments for Builder handoffs, with Vercel MCP browser access, end-to-end results and explicit Integration review/release evidence.

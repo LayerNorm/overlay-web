@@ -16,6 +16,7 @@ import { Dialog, DialogContent } from '@overlay/ui'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { setTourModelPickerOpen } from '@/shared/onboarding/tour-model-picker'
 
 /** Paste in ChatGPT, Claude, etc., then paste the reply into Overlay to save as memories. */
 export const ONBOARDING_IMPORT_MEMORY_PROMPT =
@@ -897,6 +898,25 @@ export function OnboardingTour({
     document.querySelectorAll(`[data-tour="${target}"]`).forEach(el => observerRef.current!.observe(el))
     observerRef.current.observe(document.body)
 
+    // The target can mount after this component does (surface navigation, lazy
+    // headers). Watch for its insertion; without this the tour stays armed but
+    // invisible forever.
+    let lateObserver: MutationObserver | null = null
+    if (!getTargetRect(target)) {
+      lateObserver = new MutationObserver(() => {
+        if (getTargetRect(target)) {
+          doMeasure()
+          lateObserver?.disconnect()
+          lateObserver = null
+        }
+      })
+      lateObserver.observe(document.body, { childList: true, subtree: true })
+    }
+    const lateObserverTimeout = window.setTimeout(() => {
+      lateObserver?.disconnect()
+      lateObserver = null
+    }, 10000)
+
     const onResize = () => measure(idx, target)
     window.addEventListener('resize', onResize)
     return () => {
@@ -905,26 +925,21 @@ export function OnboardingTour({
         rafRef.current = null
       }
       observerRef.current?.disconnect()
+      lateObserver?.disconnect()
+      window.clearTimeout(lateObserverTimeout)
       window.removeEventListener('resize', onResize)
     }
   }, [currentStep, step, measure, postTourPhase])
 
-  // Open/close the model picker when step 0 is active
+  // Steps 0-1 describe the model picker, including the generation-mode toggle
+  // that only exists inside its open panel; the dropdown must stay open while
+  // those steps are active or their content is invisible.
+  const pickerOpenForStep = currentStep <= 1
   useEffect(() => {
-    if (currentStep !== 0 || isClosing) return
-    const target = steps[currentStep]?.target ?? 'model-picker'
-    // 1. Open the dropdown
-    const t1 = window.setTimeout(() => {
-      window.dispatchEvent(new Event('overlay:tour:open-model-picker'))
-    }, 150)
-    // 2. Re-measure after dropdown renders so querySelectorAll unions button + open dropdown
-    const t2 = window.setTimeout(() => measure(currentStep, target), 300)
-    return () => {
-      window.clearTimeout(t1)
-      window.clearTimeout(t2)
-      window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
-    }
-  }, [currentStep, isClosing, measure, steps])
+    if (!pickerOpenForStep || isClosing || postTourPhase) return
+    setTourModelPickerOpen(true)
+    return () => setTourModelPickerOpen(false)
+  }, [pickerOpenForStep, isClosing, postTourPhase])
 
   if (!step) return null
 
