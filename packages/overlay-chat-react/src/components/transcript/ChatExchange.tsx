@@ -1,4 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
+import { unstyledButton } from '../control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
 import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
@@ -469,22 +471,22 @@ function ExchangeUserMessage({
     <div className="flex min-w-0 justify-end">
       <div className="flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-2 sm:max-w-[75%]">
         {replyThreadMeta && (
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => onJumpToReply(replyThreadMeta.replyToTurnId)}
-            className="mb-1 max-w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
+            className={unstyledButton(`mb-1 max-w-full rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)`)}
           >
             <span className="flex items-center gap-1.5 font-medium text-(--foreground)">
               <Reply size={12} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
               Replying to
             </span>
             <span className="mt-0.5 line-clamp-2 block text-(--muted)">{replyThreadMeta.replySnippet}</span>
-          </button>
+          </Button>
         )}
         {userImages.length > 0 && (
           <div className="flex w-full flex-wrap justify-end gap-1.5">
             {userImages.map((attachment) => (
-              <button
+              <Button variant="ghost"
                 key={attachment.url}
                 type="button"
                 onClick={() => onOpenAttachmentPreview?.({
@@ -492,7 +494,7 @@ function ExchangeUserMessage({
                   content: attachment.url,
                   url: attachment.url,
                 })}
-                className="group rounded-xl outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
+                className={unstyledButton(`group rounded-xl outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)`)}
                 title="Open attachment"
               >
                 <img
@@ -500,7 +502,7 @@ function ExchangeUserMessage({
                   alt={attachment.name}
                   className="max-h-[200px] max-w-[200px] rounded-xl border border-transparent object-cover transition-colors group-hover:border-(--border)"
                 />
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -565,20 +567,20 @@ function ExchangeModelTabs({
         const mName = getModelDisplayName(mId)
         const isActive = tabIdx === selectedTab
         return (
-          <button
+          <Button variant="ghost"
             key={mId}
             type="button"
             onClick={() => !isLoadingTabs && onTabSelect(tabIdx)}
             disabled={isLoadingTabs}
             aria-pressed={isActive}
-            className={`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
+            className={unstyledButton(`px-2.5 py-0.5 rounded-full text-xs transition-colors ${
               isLoadingTabs ? 'cursor-not-allowed opacity-60' : ''
             } ${
               isActive ? 'bg-(--foreground) text-(--background)' : 'bg-(--surface-subtle) text-(--muted) hover:bg-(--border)'
-            }`}
+            }`)}
           >
             {mName}
-          </button>
+          </Button>
         )
       })}
     </div>
@@ -628,14 +630,14 @@ function ExchangeSettledNotices({
 
       {onContinue && responseSettled && !errorMessage && (
         <div className="flex justify-start px-1 py-1">
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onContinue}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)"
+            className={unstyledButton(`inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)`)}
           >
             <Play size={13} strokeWidth={1.75} />
             Continue
-          </button>
+          </Button>
         </div>
       )}
     </>

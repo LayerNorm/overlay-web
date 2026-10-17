@@ -1,3 +1,5 @@
+import { unstyledButton, unstyledTextarea } from './control-reset'
+import { Button, Textarea } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -83,14 +85,14 @@ function ComposerAttachmentChip({
       ) : attachment.sizeBytes ? (
         <span className="text-(--muted)">{formatSize(attachment.sizeBytes)}</span>
       ) : null}
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => onRemoveAttachment?.(attachment.id)}
-        className="text-(--muted) transition-colors hover:text-(--foreground)"
+        className={unstyledButton(`text-(--muted) transition-colors hover:text-(--foreground)`)}
         aria-label={`Remove ${attachment.name}`}
       >
         <X size={11} strokeWidth={2} />
-      </button>
+      </Button>
     </div>
   )
 }
@@ -127,38 +129,38 @@ function ComposerAttachMenu({
 }) {
   return (
     <div className="absolute bottom-full left-0 z-50 mb-2 min-w-50 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
-      <button
+      <Button variant="ghost"
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)`)}
         onClick={onAttachImage}
       >
         <ImageIcon size={14} strokeWidth={1.75} className="text-(--muted)" />
         Attach image
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)`)}
         onClick={onAttachDocument}
       >
         <FileText size={14} strokeWidth={1.75} className="text-(--muted)" />
         Attach document
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)`)}
         onClick={() => onGenerationMode('image')}
       >
         <Sparkles size={14} strokeWidth={1.75} className="text-(--muted)" />
         Generate image
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-(--foreground) hover:bg-(--surface-muted)`)}
         onClick={() => onGenerationMode('video')}
       >
         <Video size={14} strokeWidth={1.75} className="text-(--muted)" />
         Generate video
-      </button>
+      </Button>
     </div>
   )
 }
@@ -222,17 +224,17 @@ function ComposerAttachControls({
         className="hidden"
         onChange={handleFiles}
       />
-      <button
+      <Button variant="ghost"
         type="button"
         disabled={disabled || loading}
         title="Attach or generate"
         onClick={() => !disabled && !loading && setAttachMenuOpen((v) => !v)}
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) ${
+        className={unstyledButton(`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) ${
           disabled || loading ? 'cursor-not-allowed opacity-50' : ''
-        }`}
+        }`)}
       >
         <Plus size={18} strokeWidth={1.75} />
-      </button>
+      </Button>
       {attachMenuOpen ? (
         <ComposerAttachMenu
           onAttachImage={() => imageInputRef.current?.click()}
@@ -264,27 +266,27 @@ function ComposerVoiceButton({
 }) {
   if (isRecording) {
     return (
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onVoiceStop}
         title="Stop recording"
-        className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-(--border) bg-(--chat-alert-error-bg) px-2 text-[11px] text-(--chat-alert-error-text)"
+        className={unstyledButton(`inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-(--border) bg-(--chat-alert-error-bg) px-2 text-[11px] text-(--chat-alert-error-text)`)}
       >
         <Square size={12} strokeWidth={1.75} />
         Stop
-      </button>
+      </Button>
     )
   }
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onVoiceStart}
       disabled={disabled || loading || transcribing}
       title="Record voice"
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50"
+      className={unstyledButton(`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50`)}
     >
       {transcribing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} strokeWidth={1.75} />}
-    </button>
+    </Button>
   )
 }
 
@@ -305,26 +307,26 @@ function ComposerSendButton({
 }) {
   if (canStop && onStop) {
     return (
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onStop}
         title="Stop"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80"
+        className={unstyledButton(`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80`)}
       >
         <span className="h-3.5 w-3.5 rounded-xs bg-(--background)" />
-      </button>
+      </Button>
     )
   }
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       aria-label="Send message"
       onClick={onSubmit}
       disabled={disabled || loading || !canSend}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40"
+      className={unstyledButton(`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40`)}
     >
       {loading ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} strokeWidth={1.75} />}
-    </button>
+    </Button>
   )
 }
 
@@ -393,14 +395,14 @@ export function ChatComposer({
             onRemoveAttachment={onRemoveAttachment}
           />
 
-          <textarea
+          <Textarea
             value={value}
             onChange={(event) => onChange?.(event.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder || 'Ask anything...'}
             disabled={disabled}
             rows={2}
-            className="w-full min-h-19 max-h-40 resize-none border-0 bg-transparent px-0.5 py-2 text-sm leading-6 text-(--foreground) shadow-none outline-hidden ring-0 placeholder:text-(--muted-light) focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
+            className={unstyledTextarea(`w-full min-h-19 max-h-40 resize-none border-0 bg-transparent px-0.5 py-2 text-sm leading-6 text-(--foreground) shadow-none outline-hidden ring-0 placeholder:text-(--muted-light) focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60`)}
           />
 
           <div className="mt-2 flex min-h-9 flex-wrap items-center gap-2">

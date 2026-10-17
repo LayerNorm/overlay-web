@@ -1,4 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
+import { unstyledButton } from '../control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { GenerationResult } from '@overlay/chat-core'
 import type {
@@ -138,17 +140,17 @@ export function MediaExchange({
 function MediaReplyAnchor({ snippet, onClick }: { snippet: string; onClick: () => void }) {
   return (
     <div className="flex justify-end">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onClick}
-        className="max-w-[75%] rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
+        className={unstyledButton(`max-w-[75%] rounded-lg border border-(--border) bg-(--surface-subtle) px-2.5 py-1.5 text-left text-[11px] text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)`)}
       >
         <span className="flex items-center gap-1.5 font-medium text-(--foreground)">
           <Reply size={12} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
           Replying to
         </span>
         <span className="mt-0.5 line-clamp-2 block text-(--muted)">{snippet}</span>
-      </button>
+      </Button>
     </div>
   )
 }
@@ -168,7 +170,7 @@ function MediaUserPrompt({
         {images.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {images.map((image, imageIndex) => (
-              <button
+              <Button variant="ghost"
                 key={`${image.url}-${imageIndex}`}
                 type="button"
                 onClick={() => onOpenAttachmentPreview({
@@ -176,7 +178,7 @@ function MediaUserPrompt({
                   content: image.url,
                   url: image.url,
                 })}
-                className="rounded-lg outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-subtle)"
+                className={unstyledButton(`rounded-lg outline-hidden transition-transform hover:scale-[1.01] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-subtle)`)}
                 title="Open attachment"
               >
                 <img
@@ -189,7 +191,7 @@ function MediaUserPrompt({
                   style={TRANSPARENT_IMAGE_STYLE}
                   className="h-auto max-h-36 w-auto rounded-lg object-cover"
                 />
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -211,14 +213,14 @@ function TranscriptIconAction({
   children: React.ReactNode
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30"
+      className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
       aria-label={label}
     >
       {children}
-    </button>
+    </Button>
   )
 }
