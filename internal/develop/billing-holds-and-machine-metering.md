@@ -75,3 +75,23 @@ downgrades and older provider events. Acceptance checks the actual subscription
 and balance, in addition to webhook receipt; an event row alone is insufficient.
 
 Canceled-plan funding also shrinks when holds are released or settled below their estimate. The ledger retains only consumed spend and remaining reservations; a finished hold cannot restore unused paid credit. Active paid accounts retain their normal allowance.
+
+## Durable remote tasks
+
+V2 remote tasks bind reservations to the logical run through `remoteRunId`.
+Expired/stale-hold policy preserves a task's hold while execution or terminal
+settlement is unresolved. The original hard deadline still triggers stop; it cannot
+release unknown consumed credit without usage/termination evidence. Recovery cannot reset that deadline, revive a settled
+reservation, reset spend, or reset cumulative machine metering baselines. A new
+billable task requires a new idempotent reservation boundary. Cancellation stays
+requested until host stop is confirmed; finalization intents retry usage/ordinary
+idle cleanup with the existing ledger idempotency keys after terminal ingestion.
+Machine time continues during human approval waits and pending stop delivery.
+The lifecycle coordinator retries cloud stop-proof checks on its durable timer
+while cancelling. A delivered notification does not finish this responsibility:
+its first check may precede the healthy-host grace period. Only provider/host
+stop proof closes the run and releases its reservation.
+
+A lifecycle-v2 cancellation timeout is not evidence that a disconnected BYO process
+stopped. Keep the run and reservation unresolved until host stop/provider isolation
+is confirmed; elapsed time must not trigger terminal settlement or release its hold.

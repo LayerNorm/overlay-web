@@ -41,6 +41,7 @@ export class AcpAgentAdapter implements AgentAdapter {
     this.capability = {
       id: options.id, displayName: options.displayName, protocol: 'acp' as const,
       supports: { prompt: true, approval: true, cancel: true, resume: true },
+      recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false },
     }
   }
 
@@ -58,6 +59,7 @@ export class AcpAgentAdapter implements AgentAdapter {
     let activeContext: acp.ClientContext | undefined
     let sessionId = input.remoteSessionId
     let textCheckpoint = ''
+    let promptActive = false
 
     const app = acp.client({ name: 'overlay-agent-host' })
       .onRequest(acp.methods.client.session.requestPermission, async ({ params }) => {
@@ -100,8 +102,9 @@ export class AcpAgentAdapter implements AgentAdapter {
     const background = async () => {
       child = spawn(this.options.command, this.options.args ?? [], {
         cwd: input.workingDirectory,
-        env: { ...process.env, ...this.options.env },
+        env: { ...process.env, ...this.options.env, ...input.credentials },
         stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
       })
       child.stderr.on('data', (chunk) => {
         if (process.env.OVERLAY_AGENT_HOST_DEBUG_ACP === '1') process.stderr.write(chunk)
@@ -140,15 +143,64 @@ export class AcpAgentAdapter implements AgentAdapter {
       await emit({ type: 'failed', payload: { code: 'acp_connection_failed', message: safeError(error), retryable: true } })
     }).finally(() => child?.kill())
 
+    let terminationConfirmed = false
+    const terminateProcess = async () => {
+      if (terminationConfirmed) return
+      if (!child?.pid) throw new Error('cannot confirm ACP process termination')
+      const target = child
+      const pid = target.pid!
+      const signal = (name: NodeJS.Signals) => {
+        try { process.platform === 'win32' ? target.kill(name) : process.kill(-pid, name) }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error }
+      }
+      const exited = new Promise<void>(resolve => target.exitCode !== null || target.signalCode !== null ? resolve() : target.once('exit', () => resolve()))
+      if (process.platform === 'win32') {
+        // Node's child.kill terminates only the wrapper on Windows. Require the
+        // OS tree terminator to succeed before reporting a confirmed stop.
+        await new Promise<void>((resolve, reject) => {
+          const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
+          killer.once('error', reject)
+          killer.once('exit', code => code === 0 ? resolve() : reject(new Error('ACP process tree termination was not confirmed')))
+        })
+        await exited
+        terminationConfirmed = true
+        closed.resolve()
+        return
+      }
+      signal('SIGTERM')
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try { await Promise.race([exited, new Promise<void>(resolve => { timer = setTimeout(resolve, 1000) })]) }
+      finally { if (timer) clearTimeout(timer) }
+      signal('SIGKILL')
+      await exited
+      // SIGKILL delivery and descendant reaping are asynchronous even after the
+      // wrapper emits exit. Give the whole group a bounded drain before attesting.
+      const deadline = Date.now() + 2_000
+      for (;;) {
+        try { process.kill(-pid, 0) }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') break
+          throw error
+        }
+        if (Date.now() >= deadline) throw new Error('ACP process group has not stopped; inspect remaining execution')
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+      terminationConfirmed = true
+      closed.resolve()
+    }
+
     const initialized = await ready.promise
     const requireContext = () => activeContext ?? initialized.context
     return {
       remoteSessionId: initialized.sessionId,
       prompt: async (prompt) => {
-        const result = await requireContext().request(acp.methods.agent.session.prompt, {
-          sessionId: initialized.sessionId, prompt: [{ type: 'text', text: prompt }],
-        })
-        await emit({ type: 'completed', payload: { summary: `ACP turn stopped: ${result.stopReason}`, usage: {} } })
+        promptActive = true
+        try {
+          const result = await requireContext().request(acp.methods.agent.session.prompt, {
+            sessionId: initialized.sessionId, prompt: [{ type: 'text', text: prompt }],
+          })
+          await emit({ type: 'completed', payload: { summary: `ACP turn stopped: ${result.stopReason}`, usage: {} } })
+        } finally { promptActive = false }
       },
       approve: async (requestKey, optionId) => {
         const pending = permissions.get(requestKey)
@@ -162,15 +214,19 @@ export class AcpAgentAdapter implements AgentAdapter {
         pending.response.resolve(action === 'accept' ? { action, content: content as Record<string, string | number | boolean | string[]> } : { action })
       },
       cancel: async () => {
-        await requireContext().notify(acp.methods.agent.session.cancel, { sessionId: initialized.sessionId })
+        await requireContext().notify(acp.methods.agent.session.cancel, { sessionId: initialized.sessionId }).catch(() => undefined)
+        await terminateProcess()
         await emit({ type: 'cancelled', payload: {} })
       },
-      resume: async () => undefined,
+      observe: async () => !child || child.exitCode !== null || child.signalCode !== null ? 'lost' : promptActive ? 'live' : 'unknown',
+      resume: async () => {
+        if (!child || child.exitCode !== null || child.signalCode !== null || !promptActive)
+          throw new Error('ACP session loading does not restore an interrupted turn; inspect the previous process before continuing')
+      },
       stop: async () => {
         for (const pending of permissions.values()) pending.response.resolve(undefined)
         for (const pending of elicitations.values()) pending.response.resolve({ action: 'cancel' })
-        closed.resolve()
-        child?.kill()
+        await terminateProcess()
       },
     }
   }
