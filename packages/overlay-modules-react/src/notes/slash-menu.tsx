@@ -1,3 +1,5 @@
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -134,7 +136,7 @@ export function SlashMenu({
                 {sectionItems.map((item) => {
                   const globalIndex = filteredSlashItems.indexOf(item)
                   return (
-                    <button
+                    <Button variant="ghost" type="submit"
                       key={item.title}
                       onClick={() => executeSlashCommand(item)}
                       onMouseEnter={() => setSelectedSlashIndex(globalIndex)}
@@ -152,7 +154,7 @@ export function SlashMenu({
                         transition: 'background 0.08s ease',
                         fontFamily: 'system-ui, -apple-system, sans-serif',
                       }}
-                    >
+                     className={unstyledButton()}>
                       <div
                         style={{
                           width: 28,
@@ -175,7 +177,7 @@ export function SlashMenu({
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--muted)' }}>{item.description}</div>
                       </div>
-                    </button>
+                    </Button>
                   )
                 })}
               </div>

@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import type { ReactNode } from 'react'
 import type { OverlaySettingsPanel, OverlaySettingsSection } from '@overlay/app-core'
 import { EmptyState, cn } from '@overlay/ui'
@@ -40,20 +41,20 @@ export function SettingsSectionRenderer({
       sidebar={
         <>
           {sections.map((section) => (
-            <button
+            <Button variant="ghost"
               key={section.id}
               type="button"
               disabled={section.disabled}
               onClick={() => onSelectSection?.(section)}
-              className={cn(
+              className={unstyledButton(cn(
                 'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors',
                 activeSection?.id === section.id
                   ? 'bg-(--surface-subtle) font-medium text-(--foreground)'
                   : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)',
-              )}
+              ))}
             >
               {section.label}
-            </button>
+            </Button>
           ))}
         </>
       }

@@ -2,7 +2,8 @@
 
 // Canonical notebook editor. Platform routing, persistence, and rich host UI
 // are supplied through the adapter props declared below.
-
+import { Button, Textarea } from '@overlay/ui/primitives'
+import { unstyledButton, unstyledTextarea } from '../control-reset'
 import {
   useState,
   useCallback,
@@ -174,27 +175,27 @@ function NotebookModelPicker({
 }) {
   return (
     <div ref={modelPickerRef} className="relative">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => !agentRunning && setShowModelPicker((v) => !v)}
         disabled={agentRunning}
-        className={`flex h-8 min-h-8 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none md:py-1 ${
+        className={unstyledButton(`flex h-8 min-h-8 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none md:py-1 ${
           agentRunning ? 'cursor-not-allowed text-(--muted-light)' : 'text-(--muted) hover:bg-(--border)'
-        }`}
+        }`)}
       >
         <span className='min-w-0 truncate'>
           {models.find((model) => model.id === selectedModelId)?.name ??
             selectedModelId}
         </span>
         <ChevronDown size={11} className="shrink-0" />
-      </button>
+      </Button>
       {showModelPicker && (
         <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
           <div className="max-h-72 overflow-y-auto">
             {models.map((m) => {
               const isSel = m.id === selectedModelId
               return (
-                <button
+                <Button variant="ghost"
                   key={m.id}
                   type="button"
                   onClick={() => {
@@ -202,9 +203,9 @@ function NotebookModelPicker({
                     onModelChange?.(m.id)
                     setShowModelPicker(false)
                   }}
-                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-(--surface-muted) ${
+                  className={unstyledButton(`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-(--surface-muted) ${
                     isSel ? 'text-(--foreground) font-medium' : 'text-(--muted)'
-                  }`}
+                  }`)}
                 >
                   <span className="flex items-center gap-2">
                     {isSel ? (
@@ -214,7 +215,7 @@ function NotebookModelPicker({
                     )}
                     {m.name}
                   </span>
-                </button>
+                </Button>
               )
             })}
           </div>
@@ -326,13 +327,13 @@ function NotebookAgentComposerArea({
           placeholder: 'Ask about this note or describe edits, use @ to reference files, skills...',
           disabled: agent.agentRunning,
         }) ?? (
-          <textarea
+          <Textarea
             aria-label="Ask about this note"
             value={agent.agentInput}
             onChange={(event) => agent.setAgentInput(event.target.value)}
             disabled={agent.agentRunning}
             placeholder="Ask about this note or describe edits..."
-            className="min-h-20 w-full resize-none bg-transparent text-sm outline-hidden"
+            className={unstyledTextarea("min-h-20 w-full resize-none bg-transparent text-sm outline-hidden")}
           />
         )
       }
