@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phases 0–3 implemented with native-provider acceptance incomplete; Phase 4 runtime and hosted file/hash/fresh-hydration checks pass with remaining acceptance in progress; Phase 5 guarded restoration implemented with a completed native Claude forced-recovery smoke; current-candidate Codex, full-run visible latency and remaining hosted acceptance are pending.
+Status: Implementation for Phases 1–5 is in place; Phase 0 smoke/observability is implemented, but the historical poll-500 cause remains unconfirmed. Current-candidate short native Claude/Codex checks pass; long-run recovery, full-run visible latency and remaining approval/settings acceptance are pending.
 
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -9,27 +9,30 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
-- The current Preview's local timing export survives tool-turn interruptions and reload with
-  its prior samples intact. A short native Claude pilot completes, saves both outputs with exact
-  original-machine/full Files bytes and drains its native process. All 65 baseline files,
-  including the latest research deliverables, match on its fresh machine. The controlled
-  concurrent source revision is rejected stale, refreshed and admitted without rejected batches.
-  The pilot's 2.94-second p95 fails the latency target. A real rendered regression reproduces
-  a synthetic underscore on identifiers while streaming; the local correction requires a
-  hosted repeat. Codex saves its outputs but enters needs-attention: an unknown health event
-  precedes completion during native adapter cleanup. Its corrected observer retains that
-  boundary for a real-subprocess regression. The local host correction records terminal intent
-  before native connection cleanup, fenced to the same execution, while completion still waits
-  for process closure and final saving. A rebuilt image and hosted repeat remain required.
-  Normal Stop preserves the failed pilot's exact text, tool IDs and saved files; it is not
-  successful Codex completion or whole-plan acceptance.
+- The native cleanup and streaming-identifier follow-ups now pass current-candidate short
+  Claude and Codex acceptance on normally provisioned machines. Both preserve all baseline
+  file bytes and folders, complete a quiet tool beyond three minutes, save their exact output
+  bytes and drain their native processes without rejected batches, approval cards or lost health.
+  Browser reload preserves Claude's execution, text, tool IDs and all earlier timing samples.
+  Both short pilots meet the visible-latency target; the literal underscore regression stays fixed.
+  The controlled source-revision conflict also refreshes and admits without rejected batches.
+  This does not establish hour-long recovery or whole-run latency on the candidate.
 
-- A Preview-only local browser recorder now captures bounded DOM/layout timing independently
-  of automation tool turns, with text hashes, viewport geometry, run/message identity and
-  a real toolbar download. Production builds force it off. Focused validation and hosted
-  recording/reload/export acceptance are in progress; this does not establish the latency gate.
+- The Preview-only local browser recorder passes hosted recording, reload, real download and
+  independent DOM-hash checks. Its comparison must include rendered code-language labels:
+  an independent expanded DOM read confirms the authored language characters and their fence
+  offsets before timing is recomputed. Keep all source checkpoints, clock uncertainty and reload
+  gaps; missing observations remain failures. Exact run receipts and timings stay in private QA
+  evidence and the PR handoff. Production builds force recording off.
 
-- The published candidate Claude repeat completes after approximately 122 minutes and 77 tool calls, with zero rejected batches or approval cards. All 60 post-recovery calls independently belong to the original native conversation. All thirteen files match full Files API and original-machine hashes; every CSV row has seven cells, the memo/summary and six briefings meet their word limits, and all thirteen index links resolve. OS readback finds no native task process. Reload preserves Recovered, the saved summary and all 29,175 normalized visible Markdown units. A 34-minute browser-observation interruption leaves whole-run latency unproven; the new deliverables still require fresh-machine hydration. This run predates the final-save boundary follow-up below.
+- Current-candidate native Codex Auto-mode MCP approval passes: the single owner-required
+  card survives reload beyond the legacy wait window, UI and backend expiry agree, cloud
+  billing remains disclosed, and no external execution occurs before Allow. One policy-gated
+  public read then completes with the original pending call, without another card. Native
+  self-report does not expose the exact model or effort; keep that limitation separate from
+  independent settings verification.
+
+- The published candidate Claude repeat completes after approximately 122 minutes and 77 tool calls, with zero rejected batches or approval cards. All 60 post-recovery calls independently belong to the original native conversation. All thirteen files match full Files API and original-machine hashes; every CSV row has seven cells, the memo/summary and six briefings meet their word limits, and all thirteen index links resolve. OS readback finds no native task process. Reload preserves Recovered, the saved summary and all 29,175 normalized visible Markdown units. A 34-minute browser-observation interruption leaves whole-run latency unproven; its deliverables now match in the current fresh-machine baseline. This run predates the final-save boundary follow-up below.
 
 - Native Codex acceptance exposes a final-save boundary race in a real host integration regression: a naturally finished provider can report lost health while drive saving is pending and revoke its writes. The local follow-up stops native probes at terminal intent, preserves pending text, and introduces a fenced, nonrenewable final-save period capped by the task deadline; actual failures and Stop remain authoritative. Host, lifecycle and backend authorization regressions cover the boundary. Hosted acceptance on a rebuilt candidate remains required; the retained HTTP 403 establishes the failed request, but does not by itself identify its historical exception.
 
