@@ -9,18 +9,16 @@ function rendered(text: string, isStreaming: boolean): string {
     text, isStreaming, suppressTypingIndicator: true, streamingMode: 'chunk',
   }))
 }
-const textContent = (html: string) => html.replace(/<[^>]+>/g, '')
-
 test('streaming identifiers and inline filenames retain the exact text seen after completion', () => {
   for (const text of ['UI_TRACE_FINAL_SAVE_CLAUDE_COMPLETE', 'report_draft.md', '`_private`', 'trailing_', '文件_版本', '\\_literal']) {
-    assert.equal(textContent(rendered(text, true)), textContent(rendered(text, false)), text)
+    assert.equal(rendered(text, true), rendered(text, false), text)
   }
 })
 
 test('streaming still styles actual incomplete emphasis without a visible synthetic delimiter', () => {
   const partial = rendered('_A useful finding', true)
   assert.match(partial, /<em>A useful finding<\/em>/)
-  assert.equal(textContent(partial), 'A useful finding')
+  assert.equal(partial, rendered('_A useful finding_', false))
   assert.match(rendered('__A useful finding', true), /<strong>A useful finding<\/strong>/)
-  assert.equal(textContent(rendered('_a_file name', true)), 'a_file name')
+  assert.equal(rendered('_a_file name', true), rendered('_a_file name_', false))
 })
