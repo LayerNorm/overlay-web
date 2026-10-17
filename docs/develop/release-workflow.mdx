@@ -51,6 +51,14 @@ through REST API, and assign custom aliases after READY/backend verification.
 Preview allows REST API only, blocking automatic Git builds even for older PR
 branches that lack the new repository rule. Production stays Git-only.
 
+Ordinary `pull_request` events run a secret-free request workflow, which dispatches
+the preview controller on `main` with only the internal PR number. The controller
+runs only on `main` and retains the main-only `release-control` environment;
+neither `pull_request_target` nor `workflow_run` is used. Forks and read-only
+Dependabot events do not dispatch previews. A maintainer can label or manually
+dispatch those internal PRs on `main`. Merge conflicts can prevent PR event runs;
+manual dispatch and scheduled reconciliation remain available for cleanup.
+
 Builders request previews for browser interactions, sensitive auth/billing/data
 flows, isolated backend QA, environment/build changes or uncertainty CI cannot
 resolve. Well-tested patch/minor dependency upgrades, docs, tests, CI metadata,

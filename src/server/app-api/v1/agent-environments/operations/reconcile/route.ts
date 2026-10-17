@@ -1,3 +1,4 @@
+import { dispatchRemoteRunIntents } from '@/server/agents/remote-agent-run-dispatcher'
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -17,13 +18,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ idleCheck: result }, { headers: { 'Cache-Control': 'no-store' } })
     }
     const controlPlane = server.connectedAgentControlPlane
-    const [supervised, reconciliation, meter] = await Promise.all([
+    const [supervised, reconciliation, meter, lifecycle] = await Promise.all([
       controlPlane.sweepRemoteRuns(),
       controlPlane.reconcileSandboxSettlements(100),
       server.managedAgentSandboxBilling.meterLeases(),
+      dispatchRemoteRunIntents(),
     ])
     return NextResponse.json({
       reconciliation,
+      lifecycle,
       supervised: supervised.expiredRunIds.length,
       metered: {
         disabled: meter.disabled === true,

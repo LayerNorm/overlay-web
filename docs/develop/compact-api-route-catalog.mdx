@@ -159,7 +159,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/conversations/run/metrics`
 - `GET /api/v1/conversations/run/remote/artifacts/[artifactId]`
 - `POST /api/v1/conversations/run/remote/request`
-- `POST /api/v1/conversations/run/remote`
+- `POST /api/v1/conversations/run/remote` — idempotent control requests, typed state/recovery errors, cloud wake, and pending cancellation.
 - `GET /api/v1/conversations/run`
 - `GET, PATCH /api/v1/conversations/saved-messages`
 - `GET /api/v1/conversations/search`

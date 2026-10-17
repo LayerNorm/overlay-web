@@ -1,3 +1,4 @@
+import { remoteLifecycleValidator } from './agents/remoteRunModel'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
@@ -427,6 +428,7 @@ export default defineSchema({
     .index('by_billingAccountId_period', ['billingAccountId', 'billingPeriodStart']),
 
   budgetReservations: defineTable({
+    remoteRunId: v.optional(v.string()),
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
     spendSubjectKind: v.optional(v.union(v.literal('member'), v.literal('programmatic'))),
@@ -1157,6 +1159,7 @@ export default defineSchema({
 
   conversationAgentRuns: defineTable({
     externalRunId: v.optional(v.string()),
+    remoteLifecycle: v.optional(remoteLifecycleValidator),
     conversationId: v.id('conversations'),
     turnId: v.string(),
     userId: v.string(),
@@ -1315,7 +1318,7 @@ export default defineSchema({
               runId: v.string(),
               state: v.union(
                 v.literal('waiting'), v.literal('running'), v.literal('waiting_for_approval'),
-                v.literal('waiting_for_input'), v.literal('recoverable'), v.literal('completed'),
+                v.literal('waiting_for_input'), v.literal('recoverable'), v.literal('recovering'), v.literal('needs_attention'), v.literal('cancelling'), v.literal('completed'),
                 v.literal('failed'), v.literal('cancelled'),
               ),
               retryable: v.optional(v.boolean()),
@@ -2397,9 +2400,11 @@ export default defineSchema({
   agentRunCommands: defineTable({
     commandId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
     type: v.string(), sequence: v.number(), payload: v.any(), status: v.string(),
+    attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
     claimedAt: v.optional(v.number()), claimExpiresAt: v.optional(v.number()),
     acknowledgedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_commandId', ['commandId'])
+    .index('by_runId', ['runId'])
     .index('by_environmentId_sequence', ['environmentId', 'sequence'])
     .index('by_environmentId_status_sequence', ['environmentId', 'status', 'sequence'])
     .index('by_environmentId_status_claimExpiresAt', ['environmentId', 'status', 'claimExpiresAt'])
@@ -2409,14 +2414,28 @@ export default defineSchema({
   agentRemoteSessions: defineTable({
     sessionId: v.string(), workspaceId: v.string(), environmentId: v.string(), bindingId: v.string(),
     runId: v.string(), remoteSessionId: v.optional(v.string()), status: v.string(),
+    attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
+    hostBootId: v.optional(v.string()), lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()),
+    checkpointReference: v.optional(v.string()), recoveryCause: v.optional(v.string()), recoveryResult: v.optional(v.string()),
+    hardDeadlineAt: v.optional(v.number()), claimDeadlineAt: v.optional(v.number()), executionLeaseExpiresAt: v.optional(v.number()),
     commandCursor: v.number(), eventCursor: v.number(), capabilitySnapshot: v.any(),
     startedAt: v.optional(v.number()), endedAt: v.optional(v.number()),
     createdAt: v.number(), updatedAt: v.number(),
   }).index('by_sessionId', ['sessionId'])
     .index('by_runId', ['runId'])
+    .index('by_runId_attemptId', ['runId', 'attemptId'])
     .index('by_environmentId_status', ['environmentId', 'status'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_status', ['workspaceId', 'status']),
+
+  agentRemoteRunIntents: defineTable({
+    intentId: v.string(), runId: v.string(), kind: v.union(v.literal('start'), v.literal('signal'), v.literal('control'), v.literal('finalize')),
+    revision: v.number(), status: v.string(), operationId: v.optional(v.string()), action: v.optional(v.string()),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_intentId', ['intentId'])
+    .index('by_kind_status_updatedAt', ['kind', 'status', 'updatedAt'])
+    .index('by_status_updatedAt', ['status', 'updatedAt'])
+    .index('by_runId', ['runId']),
 
   agentEventRateWindows: defineTable({
     environmentId: v.string(), workspaceId: v.string(), windowStartedAt: v.number(),

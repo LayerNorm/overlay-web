@@ -57,6 +57,7 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = 
       onRetrySend={() => undefined}
       onOpenAttachmentPreview={() => undefined}
       onCopyPermalink={() => undefined}
+      onControlRemoteQueue={() => undefined}
       grouped={grouped}
     />,
   )
@@ -137,6 +138,7 @@ test('thread teaser surfaces the latest reply preview under received messages', 
       onRetrySend={() => undefined}
       onOpenAttachmentPreview={() => undefined}
       onCopyPermalink={() => undefined}
+      onControlRemoteQueue={() => undefined}
     />,
   )
   assert.match(html, /3 replies/)
@@ -260,4 +262,15 @@ test('optimistic and persisted copies of one send share one row key', () => {
   assert.equal(roomMessageRowKey(pending), roomMessageRowKey(persisted))
   // Messages without a nonce (server-generated, imported) stay keyed by id.
   assert.equal(roomMessageRowKey(record({ id: 'message_x' })), 'room-message-row-message_x')
+})
+
+
+test('a lifecycle run needing attention exposes a deliberate fresh-start control', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Execution interrupted',
+    parts: [{ type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'Host',
+      queueExpiresAt: 0, state: 'needs_attention' } }],
+  }))
+  assert.match(html, /Start fresh/)
+  assert.match(html, /Stop or isolate the original process/)
+  assert.doesNotMatch(html, />Resume</)
 })
