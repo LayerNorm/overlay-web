@@ -222,7 +222,9 @@ Land only after the sweeps are complete.
 - *.test.tsx, *.stories.tsx, fixture directories, packages/overlay-ui
   internals, semantic file/range/color/hidden inputs, and explicitly annotated
   browser-semantics cases are exempt.
-- Merge #255 first, then the sweep PRs in any order, and #254 last.
+- Land #254 as a single merge commit (not squash). It contains #255 and every
+  sweep branch, and centralizes the reset helpers in `@overlay/ui/control-reset`;
+  merging the sweeps separately would trip the exact-duplicate check.
 ## Required checks per PR
 
 Run the smallest check covering the changed surface, plus the standard gates:
