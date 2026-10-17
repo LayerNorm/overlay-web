@@ -62,3 +62,39 @@ test('missing sources, invalid sizes and excessive manifests fail closed', async
   const limited = new AgentDriveMaterializer({ async size() { return 0 }, async read() { return new Uint8Array() } }, { fileBytes: 1, totalBytes: 1, entries: 1 })
   await assert.rejects(limited.manifest([candidate('one', undefined), candidate('two', undefined)]), /DRIVE_TOO_MANY_ENTRIES/)
 })
+
+test('manifest reads make bounded concurrent progress while preserving input order and the cache budget', async () => {
+  let active = 0, maximum = 0, autoRelease = false
+  const waiting: Array<() => void> = []
+  const reader: AgentDriveSourceReader = {
+    async size() { return 1 },
+    async read() {
+      active++; maximum = Math.max(maximum, active)
+      if (!autoRelease) await new Promise<void>(resolve => waiting.push(resolve))
+      active--; return bytes('x')
+    },
+  }
+  const candidates = Array.from({length: 9}, (_, n) => candidate(String(n), {kind: 'object', key: String(n)}))
+  const pending = new AgentDriveMaterializer(reader, {fileBytes: 1, totalBytes: 8, entries: 9}).manifest(candidates)
+  try {
+    // Observe the first blocked I/O wave without a wall-clock performance assertion.
+    await new Promise<void>(resolve => setImmediate(resolve))
+    assert.ok(active > 1, 'independent object reads must not serialize behind one slow source')
+    assert.ok(active <= 4, 'file reads must remain bounded')
+    while (waiting.length || active) {
+      for (const release of waiting.splice(0).reverse()) release()
+      await new Promise<void>(resolve => setImmediate(resolve))
+    }
+    const entries = await pending
+    assert.deepEqual(entries.map(entry => entry.fileId), candidates.map(entry => entry.fileId))
+    assert.ok(maximum <= 4)
+    const last = entries.at(-1)
+    assert.ok(last?.kind === 'file')
+    assert.equal(last.hydration, 'deferred')
+    assert.equal(entries.filter(entry => entry.kind === 'file' && entry.hydration === 'ready').length, 8)
+  } finally {
+    autoRelease = true
+    for (const release of waiting.splice(0)) release()
+    await pending
+  }
+})

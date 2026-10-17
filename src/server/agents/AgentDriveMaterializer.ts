@@ -46,25 +46,35 @@ export class AgentDriveMaterializer {
     if (candidates.length > this.limits.entries) throw Error('DRIVE_TOO_MANY_ENTRIES')
     const entries: AgentDriveManifestEntry[] = []
     let hydratedBytes = 0
-    for (const candidate of candidates) {
-      const identity = { fileId: candidate.fileId, path: candidate.path, updatedAt: candidate.updatedAt }
-      if (candidate.kind === 'folder') { entries.push({ ...identity, kind: 'folder' }); continue }
-      const source = candidate.source
-      if (!source) throw Error('DRIVE_FILE_UNAVAILABLE')
-      const size = source.kind === 'inline' ? new TextEncoder().encode(source.text).byteLength : await this.reader.size(source)
-      this.assertSize(size)
-      const reason = size > this.limits.fileBytes ? 'file_limit' : hydratedBytes + size > this.limits.totalBytes ? 'cache_limit' : undefined
-      if (reason) {
-        entries.push({ ...identity, kind: 'file', hydration: 'deferred', sizeBytes: size, reason })
-        continue
-      }
-      const bytes = await this.read(candidate)
-      // Recheck the budget using the actual read, including a source that changed since size inspection.
-      if (bytes.byteLength !== size || hydratedBytes + bytes.byteLength > this.limits.totalBytes) throw Error('DRIVE_SOURCE_CHANGED')
-      hydratedBytes += bytes.byteLength
-      entries.push({ ...identity, kind: 'file', hydration: 'ready', sizeBytes: bytes.byteLength, sha256: this.hash(bytes) })
+    for (let offset = 0; offset < candidates.length; offset += 4) {
+      const sized = await Promise.all(candidates.slice(offset, offset + 4).map(async candidate => {
+        if (candidate.kind === 'folder') return {candidate, size: 0}
+        const source = candidate.source
+        if (!source) throw Error('DRIVE_FILE_UNAVAILABLE')
+        const size = source.kind === 'inline' ? new TextEncoder().encode(source.text).byteLength : await this.reader.size(source)
+        this.assertSize(size)
+        return {candidate, size}
+      }))
+      // Reserve bytes in manifest order before concurrent reads can finish in another order.
+      const planned = sized.map(({candidate, size}) => {
+        const reason = size > this.limits.fileBytes ? 'file_limit' as const
+          : hydratedBytes + size > this.limits.totalBytes ? 'cache_limit' as const : undefined
+        if (candidate.kind === 'file' && !reason) hydratedBytes += size
+        return {candidate, size, reason}
+      })
+      entries.push(...await Promise.all(planned.map(({candidate, size, reason}) => this.manifestEntry(candidate, size, reason))))
     }
     return entries
+  }
+
+  private async manifestEntry(candidate: AgentDriveCandidate, size: number,
+    reason: 'file_limit' | 'cache_limit' | undefined): Promise<AgentDriveManifestEntry> {
+    const identity = {fileId: candidate.fileId, path: candidate.path, updatedAt: candidate.updatedAt}
+    if (candidate.kind === 'folder') return {...identity, kind: 'folder'}
+    if (reason) return {...identity, kind: 'file', hydration: 'deferred', sizeBytes: size, reason}
+    const bytes = await this.read(candidate)
+    if (bytes.byteLength !== size) throw Error('DRIVE_SOURCE_CHANGED')
+    return {...identity, kind: 'file', hydration: 'ready', sizeBytes: bytes.byteLength, sha256: this.hash(bytes)}
   }
 
   private assertSize(size: number) {

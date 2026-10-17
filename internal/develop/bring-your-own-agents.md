@@ -954,8 +954,9 @@ current authority is checked separately before each page and after materializati
 `consistentQuery` API is isolated behind the repository, covered by a transport test and aborted
 after 20 seconds; never fall back to mixed-timestamp pages. Manifest metadata is capped at 32 MiB.
 Ready entries carry a purpose-separated download MAC bound to the run, scope, attempt, expiry,
-revision, path and content hash. Downloads reread Files and recheck authority after verifying bytes.
-Token issuance in start commands and host integration remain pending.
+revision, path and content hash. Source reads run in groups of at most four. Reserve cache bytes
+in manifest order before concurrent reads, verify actual sizes and full hashes, and retain entry order.
+Downloads reread Files and recheck authority after verifying bytes.
 
 `POST /api/agent-drive` accepts only a run-scoped `ovdrive_` bearer token, independent of app
 cookies or query parameters. It requires both web `connectedAgentControlPlane` and
