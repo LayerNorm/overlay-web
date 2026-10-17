@@ -13,7 +13,7 @@ import {
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
 import { RuntimeDriveController } from './runtime-drive-controller.js'
-import {observeActiveNativeRuns, withNativeTerminalBoundary} from './runtime-terminal-boundary.js'
+import {createNativeTerminalIntent, observeActiveNativeRuns, withNativeTerminalBoundary} from './runtime-terminal-boundary.js'
 import { HostHeartbeat } from './host-heartbeat.js'
 import { updateHostCapabilities } from './host-capabilities.js'
 import { PendingHostPrompts, quiesceHostRuns } from './runtime-shutdown.js'
@@ -382,6 +382,8 @@ export class AgentHostRuntime {
     const execution = this.executions.get(command.runId)
     const emit = this.createStream(command.runId, execution, drive, canonicalOffset)
     const session = await adapter.start({
+      onNativeTurnEnded: createNativeTerminalIntent({execution, currentExecution: () => this.executions.get(command.runId),
+        shuttingDown: () => this.shuttingDown, markEnded: () => {this.terminalRuns.add(command.runId)}}),
       runId: command.runId,
       workingDirectory: scope.workingDirectory,
       additionalDirectories: scope.additionalDirectories,
@@ -443,6 +445,8 @@ export class AgentHostRuntime {
     const credentials = await this.runCredentials(runId, this.options.fetchRunCredentials === true)
     if (credentials === 'unavailable') throw new Error('provider credentials are unavailable for this run')
     const session = await this.requireAdapter(stored.adapterId).start({
+      onNativeTurnEnded: createNativeTerminalIntent({execution: this.executions.get(runId), currentExecution: () => this.executions.get(runId),
+        shuttingDown: () => this.shuttingDown, markEnded: () => {this.terminalRuns.add(runId)}}),
       runId, workingDirectory: scope.workingDirectory, additionalDirectories: scope.additionalDirectories,
       prompt: '', remoteSessionId: stored.remoteSessionId, metadata: agentSettingsSchema.parse(stored.config ?? {}),
       ...(credentials ? { credentials } : {}),

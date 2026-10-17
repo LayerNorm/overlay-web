@@ -18,7 +18,11 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
   a synthetic underscore on identifiers while streaming; the local correction requires a
   hosted repeat. Codex saves its outputs but enters needs-attention: an unknown health event
   precedes completion during native adapter cleanup. Its corrected observer retains that
-  boundary for an adapter regression; current native completion and whole-plan gates remain pending.
+  boundary for a real-subprocess regression. The local host correction records terminal intent
+  before native connection cleanup, fenced to the same execution, while completion still waits
+  for process closure and final saving. A rebuilt image and hosted repeat remain required.
+  Normal Stop preserves the failed pilot's exact text, tool IDs and saved files; it is not
+  successful Codex completion or whole-plan acceptance.
 
 - A Preview-only local browser recorder now captures bounded DOM/layout timing independently
   of automation tool turns, with text hashes, viewport geometry, run/message identity and

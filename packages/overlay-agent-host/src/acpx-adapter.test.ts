@@ -25,18 +25,28 @@ test('acpx adapter streams updates and bridges approval and elicitation like the
   const adapter = fixtureAdapter(join(directory, 'state'))
   const events: NormalizedAgentEvent[] = []
   let session: Awaited<ReturnType<typeof adapter.start>> | undefined
+  let nativePid: number | undefined
+  let turnEndedBeforeDisconnect = false
   try {
     assert.equal((await adapter.discover()).id, 'fixture-acpx')
     session = await adapter.start({
       runId: 'run-acpx', workingDirectory: workspace, additionalDirectories: [], prompt: 'test', metadata: {},
       credentials: {FIXTURE_SESSION_LOG: log},
+      onNativeTurnEnded() {
+        const pid = nativePid
+        assert.ok(pid)
+        assert.doesNotThrow(() => process.kill(pid, 0), 'turn result must be announced before native cleanup')
+        turnEndedBeforeDisconnect = true
+      },
     }, async (event) => {
       if (event.type === 'completed') {
+        assert.equal(turnEndedBeforeDisconnect, true, 'health probes must know the native turn ended before cleanup')
         const record = JSON.parse((await readFile(log, 'utf8')).trim())
         assert.throws(() => process.kill(record.pid, 0), {code: 'ESRCH'}, 'completion must follow native process closure')
       }
       events.push(event)
     })
+    nativePid = JSON.parse((await readFile(log, 'utf8')).trim()).pid
     const prompt = session.prompt('test ACP via acpx')
     assert.equal(await session.observe?.(), 'live', 'dispatching the prepared prompt must not report unknown health')
     await waitFor(() => events.some((event) => event.type === 'approval_requested'))

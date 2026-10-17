@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AgentAdapterSession } from './adapter.js'
-import {observeActiveNativeRuns, withNativeTerminalBoundary} from './runtime-terminal-boundary.js'
+import {createNativeTerminalIntent, observeActiveNativeRuns, withNativeTerminalBoundary} from './runtime-terminal-boundary.js'
 
 test('a late native process probe cannot report loss after completion or replacement', async () => {
   for (const outcome of ['ended', 'replaced']) {
@@ -13,12 +13,31 @@ test('a late native process probe cannot report loss after completion or replace
     const reports: string[] = []
     const pending = observeActiveNativeRuns(new Map([['run', session]]), executions, ended,
       async (_runId, process) => {reports.push(process)})
-    if (outcome === 'ended') ended.add('run')
+    if (outcome === 'ended') createNativeTerminalIntent({execution: executions.get('run'),
+      currentExecution: () => executions.get('run'), shuttingDown: () => false,
+      markEnded: () => {ended.add('run')}})()
     else executions.set('run', {attemptId: 'new', generation: 2})
     release('lost')
     await pending
     assert.deepEqual(reports, [])
   }
+})
+
+test('a native result notification cannot end a replacement execution or a shutting-down host', () => {
+  const original = {attemptId: 'original', generation: 1}
+  let current = original, shuttingDown = false, ended = 0
+  const notify = createNativeTerminalIntent({execution: original, currentExecution: () => current,
+    shuttingDown: () => shuttingDown, markEnded: () => {ended++}})
+  current = {attemptId: 'replacement', generation: 2}
+  notify()
+  assert.equal(ended, 0)
+  current = original
+  shuttingDown = true
+  notify()
+  assert.equal(ended, 0)
+  shuttingDown = false
+  notify()
+  assert.equal(ended, 1)
 })
 
 test('a stale provider terminal callback retains its event without ending the replacement writer', async () => {

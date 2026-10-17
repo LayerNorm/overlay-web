@@ -291,6 +291,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
             })
           }
           result = await turn.result
+          input.onNativeTurnEnded?.()
         } finally {
           activeTurn = undefined
           await disconnect('overlay turn finished')

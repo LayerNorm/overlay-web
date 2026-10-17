@@ -269,6 +269,7 @@ export class AcpAgentAdapter implements AgentAdapter {
           const result = await requireContext().request(acp.methods.agent.session.prompt, {
             sessionId: initialized.sessionId, prompt: [{ type: 'text', text: prompt }],
           })
+          input.onNativeTurnEnded?.()
           await emit({ type: 'completed', payload: { summary: `ACP turn stopped: ${result.stopReason}`, usage: {} } })
         } finally { promptActive = false }
       },

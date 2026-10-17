@@ -2,6 +2,21 @@ import type { AgentHostEvent } from '@layernorm/overlay-agent-bridge-protocol'
 import type { AgentAdapterSession, EmitAgentEvent } from './adapter.js'
 
 type Execution = AgentHostEvent['execution']
+type NativeTerminalIntentOptions = {
+  execution: Execution
+  currentExecution(): Execution
+  shuttingDown(): boolean
+  markEnded(): void
+}
+
+export function createNativeTerminalIntent(options: NativeTerminalIntentOptions): () => void {
+  return () => {
+    if (options.shuttingDown()) return
+    const current = options.currentExecution()
+    if (options.execution?.attemptId === current?.attemptId
+      && options.execution?.generation === current?.generation) options.markEnded()
+  }
+}
 
 /** An observation started earlier cannot revoke a finished or replaced execution. */
 export async function observeActiveNativeRuns(
@@ -18,20 +33,15 @@ export async function observeActiveNativeRuns(
 }
 
 /** Native work can finish before the host has drained its final text and file writes. */
-export function withNativeTerminalBoundary(options: {
+export function withNativeTerminalBoundary(options: NativeTerminalIntentOptions & {
   forward: EmitAgentEvent
-  execution: AgentHostEvent['execution']
-  currentExecution(): AgentHostEvent['execution']
-  shuttingDown(): boolean
-  markEnded(): void
 }): EmitAgentEvent {
+  const markEnded = createNativeTerminalIntent(options)
   return event => {
     const terminal = ['completed', 'failed', 'cancelled'].includes(event.type)
     if (options.shuttingDown() && terminal) return Promise.resolve()
-    const current = options.currentExecution()
     // A stale provider callback must never stop the replacement writer's probes.
-    if (terminal && options.execution?.attemptId === current?.attemptId
-      && options.execution?.generation === current?.generation) options.markEnded()
+    if (terminal) markEnded()
     return options.forward(event)
   }
 }

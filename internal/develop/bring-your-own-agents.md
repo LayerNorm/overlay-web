@@ -1435,6 +1435,10 @@ and cannot extend itself through repeated save/progress events. Stop, revocation
 still win; expiry or a real save failure preserves the unsaved journal and requires attention.
 Provider failure keeps the same pending-approval invalidation boundary as observed process loss;
 the save phase cannot retain executable approvals from a failed native session.
+Adapters notify the host when a native turn result is known, before closing the native
+connection. That local notification is fenced to its attempt/generation and stops health
+probes without inventing a live process. Completion still follows verified native cleanup
+and final file saving; a closing connection cannot publish unknown health in between.
 The conversation-message schema permits the projected drive data part; ingestion keeps the same
 assistant row and retries an unacknowledged batch unchanged. Constrained staging PUTs sign the
 checksum as a header, matching the host request. Do not hoist it into the query and also send the
