@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+
 import type { ReactNode } from 'react'
 import { AppWindow, MessageSquare, PanelRight } from 'lucide-react'
 import { Button, DialogFrame } from '@overlay/ui/primitives'
@@ -33,15 +35,15 @@ export function AgentEditorSidePanel({ title, mode, savedFlash, onTogglePanelMod
             ? <span role="status" className="text-[11px] text-(--muted)">Saved</span>
             : null}
           {onTogglePanelMode ? (
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onTogglePanelMode}
               title="Show as dialog"
               aria-label="Show as dialog"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             >
               <AppWindow size={15} />
-            </button>
+            </Button>
           ) : null}
         </>
       )}
@@ -66,15 +68,15 @@ export function AgentEditorDialog({ title, onTogglePanelMode, onClose, children 
       onOpenChange={(next) => { if (!next) onClose() }}
       title={title}
       actions={onTogglePanelMode ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onTogglePanelMode}
           title="Dock panel to the side"
           aria-label="Dock panel to the side"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         >
           <PanelRight size={14} />
-        </button>
+        </Button>
       ) : undefined}
       className="max-h-[88vh] w-[min(560px,94vw)] overflow-y-auto border-transparent shadow-2xl"
     >
