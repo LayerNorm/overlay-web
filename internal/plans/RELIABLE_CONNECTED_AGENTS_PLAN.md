@@ -9,6 +9,12 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Native Claude recovery stopped during file preparation with `DRIVE_FILE_CHANGED`; its
+  preserved cache later passed a clean inventory read. A real filesystem metadata-race regression
+  now distinguishes unstable snapshots from permanent file-operation conflicts and admits the
+  existing bounded retry only before the durable native-start boundary. The precise historical
+  throw site and updated-image hosted acceptance remain open.
+
 - Forced native Codex recovery exposed a startup cache-identity conflict: unchanged cached
   bytes acquired a new filesystem identity, preventing a newer remote revision from hydrating.
   Bootstrap now refreshes only same-path, baseline-matching file references, including pending
@@ -82,7 +88,7 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 - Phase 5 native startup now validates the original conversation, adapter, current delivery, isolation receipt, machine lease and approval state before recording restoration. The persisted transcript exposes Recovered after that receipt, including after reload and completion. Transaction and rendered-history tests pass; actual forced native recovery and current-head browser acceptance remain pending, and the adapter capability stays unadvertised.
 
-- Phase 5 startup admission now distinguishes durable preparation from native startup. Preparation preserves the prior claim and identity; one transaction crosses the provider-start boundary, transfers ownership and checkpoints the original conversation under the new generation. Real SQLite tests cover reopening, exclusive startup, unknown legacy claims and checkpoint rollback; runtime tests cover a failed preparation followed by one server-authorized retry and duplicate delivery. The backend now authorizes at most three new deliveries for recognized pre-provider transport failures on the same attempt, with current authority and the fixed deadline rechecked. Preparation receipts no longer bind boot identity or provider start time; native events fence old-boot output. A retry after a new-execution write interruption reopens only its own journal and reuses that request. Hosted acceptance remains pending; fenced restoration stays unadvertised.
+- Phase 5 startup admission now distinguishes durable preparation from native startup. Preparation preserves the prior claim and identity; one transaction crosses the provider-start boundary, transfers ownership and checkpoints the original conversation under the new generation. Real SQLite tests cover reopening, exclusive startup, unknown legacy claims and checkpoint rollback; runtime tests cover a failed preparation followed by one server-authorized retry and duplicate delivery. The backend now authorizes at most three new deliveries for recognized transient transport or drive-snapshot read failures before provider start on the same attempt, with current authority and the fixed deadline rechecked. Preparation receipts no longer bind boot identity or provider start time; native events fence old-boot output. A retry after a new-execution write interruption reopens only its own journal and reuses that request. Hosted acceptance remains pending; fenced restoration stays unadvertised.
 
 - Phase 5 now has a scoped read-only drive-recovery receipt lookup. Real backend/HTTP tests distinguish committed content/metadata from uncommitted requests only after the original execution is fenced, and reject mismatched identity, changed machine ownership, revoked access and stale tokens. No write is replayed. Host settlement now consumes these receipts before hydration: committed writes retain their original identity and saved baseline, while definitive noncommits archive immutable payloads before a new execution rescans local bytes. Real SQLite/cache tests cover content and metadata acknowledgement loss and reopening after settlement interruption. Preparation retries and journal ownership handling are implemented; capability activation and hosted forced continuation remain pending.
 

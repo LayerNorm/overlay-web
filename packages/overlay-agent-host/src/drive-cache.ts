@@ -11,6 +11,14 @@ export type DriveCacheFile = { path: string; size: number; sha256: string; bytes
 export type DriveCacheIdentity = { device: string; inode: string; birthtimeNs: string }
 export type DriveCacheEntry = ({ kind: 'folder'; path: string } | { kind: 'file' } & DriveCacheFile) & { identity: DriveCacheIdentity }
 
+/** A read did not produce a stable snapshot; no filesystem effect was attempted. */
+export class DriveSnapshotChangedError extends Error {
+  constructor(readonly stage: 'opened-file' | 'read-truncated' | 'read-metadata') {
+    super('DRIVE_FILE_CHANGED')
+    this.name = 'DriveSnapshotChangedError'
+  }
+}
+
 function within(root: string, path: string): boolean {
   const tail = relative(root, path)
   return tail === '' || (!isAbsolute(tail) && tail !== '..' && !tail.startsWith(`..${sep}`))
@@ -157,18 +165,20 @@ export class AgentDriveCache {
         const handle = await open(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
         try {
           const before = await handle.stat({ bigint: true })
-          if (!before.isFile() || before.nlink !== BigInt(1) || before.size > BigInt(this.limits.fileBytes) || before.ino !== stat.ino || before.dev !== stat.dev) throw Error('DRIVE_FILE_CHANGED')
+          if (!before.isFile() || before.nlink !== BigInt(1) || before.size > BigInt(this.limits.fileBytes)) throw Error('DRIVE_FILE_CHANGED')
+          if (before.ino !== stat.ino || before.dev !== stat.dev) throw new DriveSnapshotChangedError('opened-file')
           if ((totalBytes += Number(before.size)) > this.limits.totalBytes) throw Error('DRIVE_CACHE_TOO_LARGE')
           const bytes = new Uint8Array(Number(before.size))
           let read = 0
           while (read < bytes.length) {
             const result = await handle.read(bytes, read, bytes.length - read, read)
-            if (!result.bytesRead) throw Error('DRIVE_FILE_CHANGED')
+            if (!result.bytesRead) throw new DriveSnapshotChangedError('read-truncated')
             read += result.bytesRead
           }
           const after = await handle.stat({ bigint: true })
-          if (after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs
-            || !within(this.root, await realpath(absolute))) throw Error('DRIVE_FILE_CHANGED')
+          if (!within(this.root, await realpath(absolute))) throw Error('DRIVE_FILE_CHANGED')
+          if (after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs)
+            throw new DriveSnapshotChangedError('read-metadata')
           files.push({ kind: 'file', path, identity, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), bytes })
         } finally { await handle.close() }
       }

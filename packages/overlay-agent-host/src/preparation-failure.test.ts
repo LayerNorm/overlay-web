@@ -14,7 +14,7 @@ import {fetchProviderRunCredentials} from './provider-run-credentials'
 import {StructuredLogger} from './logger'
 import type {NormalizedAgentEvent} from './adapter'
 
-test('only recognized transient transport failures qualify for preparation retry', () => {
+test('recognized transport failures retry while credential and programming failures remain permanent', () => {
   for (const error of [new DriveRequestError(503, 'DRIVE_BACKEND_UNAVAILABLE'), new ControlPlaneRequestError(429),
     new DOMException('Timed out', 'TimeoutError'), new TypeError('fetch failed', {cause: {code: 'ECONNRESET'}})])
     assert.equal(isRetryablePreparationFailure(error), true)

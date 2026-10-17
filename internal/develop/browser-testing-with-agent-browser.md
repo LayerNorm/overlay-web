@@ -84,6 +84,9 @@ interruptions; reload starts a new segment. It stores text hashes and DOM/layout
 not chat text or credentials, and never uploads the trace. Start before native output,
 retain every source checkpoint, validate hashes against canonical rendered text, include
 clock intervals/gaps and require final coverage before accepting a latency result.
+For an in-app browser whose tabs can become hidden, measure one foreground conversation
+at a time. Inspecting a tab may activate it: sequential visibility spot checks cannot
+establish continuous visibility. Preserve hidden samples in the final analysis.
 An error icon, hidden tab or missing segment is incomplete measurement, not a passing
 result. Export before clearing site storage; Production builds disable the recorder.
 

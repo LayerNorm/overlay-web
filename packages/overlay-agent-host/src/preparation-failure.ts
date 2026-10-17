@@ -1,12 +1,14 @@
 import {z} from 'zod'
 import {DriveRequestError} from './drive-client.js'
 import {ControlPlaneRequestError} from './transport.js'
+import {DriveSnapshotChangedError} from './drive-cache.js'
 
 const networkFailure = z.object({cause: z.object({code: z.enum([
   'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET',
 ])})})
 
 export function isRetryablePreparationFailure(error: unknown): boolean {
+  if (error instanceof DriveSnapshotChangedError) return true
   if (error instanceof ControlPlaneRequestError && ['provider_account_missing', 'account_needs_reauth', 'account_unavailable'].includes(error.code ?? '')) return false
   if (error instanceof DriveRequestError || error instanceof ControlPlaneRequestError)
     return error.status === 429 || (error.status >= 500 && error.status <= 599)

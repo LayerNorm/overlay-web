@@ -1337,6 +1337,8 @@ one-million-unit sample; blocked/full storage stops recording and shows an error
 Missing terminal markers, hidden tabs, reloads, clock uncertainty and observation gaps
 must remain in the analysis. DOM/layout timestamps do not establish pixel-paint timing,
 and recording/export alone does not prove the latency acceptance threshold.
+Use one foreground conversation at a time when in-app tabs can become hidden; inspecting
+a tab may activate it, so visibility spot checks cannot prove continuous coverage.
 
 Streaming Markdown recognizes underscore emphasis by delimiter position and skips inline
 code. A completion marker or filename must not gain a literal closing underscore while
@@ -1534,7 +1536,9 @@ identity under the new execution. Checkpoint failure rolls back all three. A pre
 before this boundary may resume its exact outstanding command; provider-starting and unknown legacy
 claims cannot replay. Concurrent deliveries in one host join the same preparation, and concurrent
 receivers still have only one successful native-start transition.
-A recognized transient transport error is retryable only while the durable marker is still preparing.
+A recognized transient transport error or typed unstable drive snapshot is retryable only while
+the durable marker is still preparing. Snapshot retries repeat verified reads; identity conflicts,
+unsafe paths and ordinary file-change errors remain permanent refusals.
 Credential lookup preserves that distinction instead of emitting a false provider failure; sign-in
 requirements and permanent refusals remain explicit. The backend permits at most three new deliveries
 on the same attempt/generation, rechecking active principal, workspace, agent, membership, binding,
