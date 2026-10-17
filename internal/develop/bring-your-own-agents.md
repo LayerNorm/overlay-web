@@ -1188,6 +1188,13 @@ Use these files when tracing or changing the architecture:
 
 ## Versioned remote lifecycle (opt-in)
 
+Signed event uploads obtain the current payer's plan inputs alongside the scoped session.
+This indexed projection checks active workspace access and canonical wallet/balance availability;
+it does not cache a plan or change event limits, reservations or budget enforcement. Only the
+canonical billing-backed policy consumes it. Explicit unavailable projections refuse ingestion;
+absent projections retain the legacy resolver, including personal-wallet initialization and older
+backends. Control reads still return their session when a policy is unavailable, preserving Stop.
+
 The server enrolls a new run in lifecycle v2 only when
 `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2` and the host advertises
 `remoteLifecycleVersion: 2`. Selection is persisted in `conversationAgentRuns.remoteLifecycle`;
@@ -1533,9 +1540,9 @@ unset and is not an acceptance claim: enable it only after native hosted recover
 the deployed image. Connect persists the selection; managed restart also applies the current
 switch before constructing adapters from the saved configuration. Explicit `0` removes the advertised capability on the next
 host boot, including saved opt-ins. Unset preserves private adapter configuration. Experimental
-adapters and custom ACP commands are never automatically enabled. Upgrade idle or drained hosts;
-changing the switch does not interrupt an active execution. Existing global remote-execution
-feature flags remain the immediate rollback boundary. This does not enable live interrupted-turn
+adapters and custom ACP commands are never automatically enabled. Upgrade idle or drained hosts.
+Rollbacks use explicit `0` for subsequent boots and existing global feature flags for execution
+availability. Active runs use normal Stop and provider-confirmed termination. This does not enable live interrupted-turn
 continuation or approval restoration.
 Host admission checks the original native id, adapter, previous execution/boot, next generation,
 canonical text offset and new-attempt drive descriptor. It rejects an in-memory writer, atomically

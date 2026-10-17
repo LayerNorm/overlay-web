@@ -95,7 +95,7 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
     return mutation<AgentRemoteSession>('createRemoteSessionByServer', input)
   }
   getRemoteSessionForRun(input: Parameters<ConnectedAgentRepository['getRemoteSessionForRun']>[0]) {
-    return connectedQuery<AgentRemoteSession | null>('getRemoteSessionForRunByServer', input)
+    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['getRemoteSessionForRun']>>>('getRemoteSessionForRunByServer', input)
   }
   enqueueCommand(input: Parameters<ConnectedAgentRepository['enqueueCommand']>[0]) {
     return mutation<AgentRunCommand>('enqueueCommandByServer', input)

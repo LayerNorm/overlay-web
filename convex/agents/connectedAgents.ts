@@ -20,6 +20,7 @@ import { interruptRemoteAgentToolParts, projectRemoteAgentEvents, resolveRemoteR
 import { recordAcceptedBatch, recordRejectedBatch, settleInterruptedRemoteRunTools } from '../../src/shared/agents/remote-run-stream-stats'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
 import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../platform/usage'
+import { connectedAgentPolicyProjection } from '../lib/connectedAgentPolicyProjection'
 
 const anyObject = v.any()
 const MAX_COMMAND_BYTES = 128 * 1024
@@ -1118,6 +1119,7 @@ export const acknowledgeCommandByServer = mutation({
 
 export const getRemoteSessionForRunByServer = query({
   args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string() },
+  returns: v.any(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const session = await currentRemoteAttempt(ctx, args.runId)
@@ -1127,7 +1129,11 @@ export const getRemoteSessionForRunByServer = query({
       session.environmentId !== args.environmentId
     )
       return null
-    return { ...clean(session), id: session.sessionId }
+    const billingUserId = session.capabilitySnapshot?.billing?.userId
+    const policyEntitlements = typeof billingUserId === 'string' && billingUserId
+      ? await connectedAgentPolicyProjection(ctx, {workspaceId: args.workspaceId, userId: billingUserId}) : undefined
+    return { ...clean(session), id: session.sessionId,
+      ...(policyEntitlements === undefined ? {} : {policyEntitlements}) }
   },
 })
 

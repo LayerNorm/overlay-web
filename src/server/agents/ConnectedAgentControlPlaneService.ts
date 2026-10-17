@@ -41,8 +41,9 @@ import {
 import type { AuditService } from '@/server/admin'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
-import type { ConnectedAgentRepository, RemoteAgentUsageSettlement } from './ConnectedAgentRepository'
-import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
+import type { AgentRemoteSessionLookup, ConnectedAgentRepository, RemoteAgentUsageSettlement } from './ConnectedAgentRepository'
+import type { ConnectedAgentPolicyEntitlements, ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
+import { connectedAgentPolicyEntitlementsSchema } from './ConnectedAgentPolicy'
 import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import { describeFailure } from '@/server/observability/failure-classification'
@@ -112,7 +113,9 @@ export class ConnectedAgentControlPlaneService {
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
     driveEnabled?: () => boolean | Promise<boolean>
-    policyLimits?: (input: { userId: string; workspaceId: string }) => Promise<ConnectedAgentPolicyLimits>
+    /** Only the canonical billing-backed policy may consume the backend projection. */
+    policyProjectionEnabled?: boolean
+    policyLimits?: (input: { userId: string; workspaceId: string; entitlements?: ConnectedAgentPolicyEntitlements }) => Promise<ConnectedAgentPolicyLimits>
     settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
     onTerminalMessage?: (input: RemoteAgentUsageSettlement) => Promise<void>
     /**
@@ -976,12 +979,7 @@ export class ConnectedAgentControlPlaneService {
       runId: batch.runId,
     })
     if (!session) throw controlPlaneError('Remote session was not found', 404, 'remote_session_not_found')
-    const billing = session.capabilitySnapshot?.billing
-    const billingUserId = billing && typeof billing === 'object' && typeof (billing as Record<string, unknown>).userId === 'string'
-      ? String((billing as Record<string, unknown>).userId) : ''
-    const limits = this.dependencies.policyLimits && billingUserId
-      ? await this.dependencies.policyLimits({ userId: billingUserId, workspaceId: auth.credential.workspaceId })
-      : undefined
+    const limits = await this.eventPolicyLimits(auth, session)
     // A batch carries one event stream: after a start_fresh the host still owes events
     // from the previous attempt, which live on that attempt's session row with its own
     // event cursor. Route by the declared attemptId so stale-stream batches reach their
@@ -1063,6 +1061,22 @@ export class ConnectedAgentControlPlaneService {
       })
     }
     return result
+  }
+
+  private async eventPolicyLimits(auth: HostAuthentication, session: AgentRemoteSessionLookup) {
+    let currentPolicy: ConnectedAgentPolicyEntitlements | undefined
+    if (this.dependencies.policyProjectionEnabled && session.policyEntitlements !== undefined) {
+      const parsed = connectedAgentPolicyEntitlementsSchema.safeParse(session.policyEntitlements)
+      if (!parsed.success) throw controlPlaneError('Connected-agent policy is unavailable', 503, 'policy_entitlements_unavailable')
+      currentPolicy = parsed.data
+    }
+    const billing = session.capabilitySnapshot?.billing
+    const billingUserId = billing && typeof billing === 'object' && typeof (billing as Record<string, unknown>).userId === 'string'
+      ? String((billing as Record<string, unknown>).userId) : ''
+    return this.dependencies.policyLimits && billingUserId
+      ? await this.dependencies.policyLimits({userId: billingUserId, workspaceId: auth.credential.workspaceId,
+        ...(currentPolicy ? {entitlements: currentPolicy} : {})})
+      : undefined
   }
 
   /** An agent that reports it could not sign in marks the account it ran on as needing a reconnect. */

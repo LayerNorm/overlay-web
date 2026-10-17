@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Read current event-rate policy inputs with the agent session, retaining live access and wallet checks and legacy billing initialization without loading full usage history for every upload.
+
 - Add an explicit managed startup rollout switch for fenced Claude Code and Codex recovery, with lifecycle-v2 gating and an off setting for subsequent host boots.
 
 - Wrap long hashes and identifiers inside chat tables while preserving horizontal scrolling for tables with many columns.

@@ -38,7 +38,7 @@ import {
   createByokCredentialStore,
   type ByokCredentialStore,
 } from '@/server/ai/gateway/byok-credential-store'
-import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import { BillingBackedActUsagePolicy, createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import {
   createGenerationUsagePolicy,
   type GenerationUsagePolicy,
@@ -331,8 +331,9 @@ export function createOverlayServerContext(
     },
     artifactsEnabled: () => runtimeConfig?.features.connectedAgentArtifacts === true,
     driveEnabled: () => runtimeConfig?.features.connectedAgentDrive === true,
-    policyLimits: async ({ userId, workspaceId }) => {
-      const entitlements = await chatUsagePolicy.getEntitlements({ userId, workspaceId })
+    policyProjectionEnabled: chatUsagePolicy instanceof BillingBackedActUsagePolicy,
+    policyLimits: async ({ userId, workspaceId, entitlements: currentPolicy }) => {
+      const entitlements = currentPolicy ?? await chatUsagePolicy.getEntitlements({ userId, workspaceId })
       if (!entitlements) throw new Error('connected_agent_entitlements_unavailable')
       return connectedAgentPolicyFor(entitlements)
     },

@@ -17,13 +17,18 @@ import {
   effectiveAgentEnvironmentStatus,
   type HostAuthentication,
 } from './ConnectedAgentControlPlaneService'
+import {connectedAgentPolicyEntitlementsSchema, connectedAgentPolicyFor, type ConnectedAgentPolicyEntitlements} from './ConnectedAgentPolicy'
 
 const NOW = 1_800_000_000_000
 const TOKEN = 'test-environment-credential-with-enough-entropy'
 const { privateKey, publicKey } = generateKeyPairSync('ed25519')
 const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
 
-function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides: Partial<AgentEnvironmentCredential> = {}, options = { driveEnabled: false }) {
+function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides: Partial<AgentEnvironmentCredential> = {}, options: {
+  driveEnabled: boolean
+  policyLimits?: ConstructorParameters<typeof ConnectedAgentControlPlaneService>[0]['policyLimits']
+  policyProjectionEnabled?: boolean
+} = { driveEnabled: false }) {
   const environment: AgentEnvironment = {
     id: 'environment-1', workspaceId: 'workspace-1', kind: 'local', name: 'Test host',
     status: 'online', publicKey: publicKeyPem, capabilities: {},
@@ -72,6 +77,8 @@ function fixture(overrides: Partial<AgentEnvironment> = {}, credentialOverrides:
     now: () => NOW,
     isEnabled: () => true,
     driveEnabled: () => options.driveEnabled,
+    policyLimits: options.policyLimits,
+    policyProjectionEnabled: options.policyProjectionEnabled,
   })
   return { service, environment, repository, credential, scopeUpdates, audits }
 }
@@ -707,6 +714,43 @@ test('a batch Convex refuses as unusable is counted against its run, and the ref
   // A failing counter never replaces the original refusal.
   Object.assign(repository, { async recordRejectedEventBatch() { throw new Error('convex down') } })
   await assert.rejects(() => service.applyEvents(auth as never, batch as never), /AGENT_EVENT_BATCH_TOO_LARGE/)
+})
+
+test('ingestion uses current policy projections only for the canonical resolver and keeps legacy fallback fail closed', async () => {
+  const projections: Array<ConnectedAgentPolicyEntitlements | null | undefined> = [
+    undefined, {planKind: 'paid', tier: 'pro'}, {planKind: 'free', tier: 'free'}, null,
+    JSON.parse('{"planKind":"free","tier":"pro"}'), JSON.parse('{"tier":"pro"}'),
+  ]
+  for (const enabled of [false, true]) for (const projection of projections) {
+    let policyCalls = 0, legacyLookups = 0
+    const applied: Array<Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]> = []
+    const f = fixture({}, {}, {driveEnabled: false, policyProjectionEnabled: enabled,
+      policyLimits: async input => {
+        policyCalls++
+        if (!input.entitlements) legacyLookups++
+        return connectedAgentPolicyFor(input.entitlements ?? {planKind: 'free', tier: 'free'})
+      }})
+    Object.assign(f.repository, {
+      async getRemoteSessionForRun() {return {id: 'session', eventCursor: 0,
+        capabilitySnapshot: {billing: {userId: 'user-1'}},
+        ...(projection === undefined ? {} : {policyEntitlements: projection})}},
+      async applyRemoteEvents(input: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]) {
+        applied.push(input); return {accepted: true as const, acknowledgedSequence: 0}
+      },
+    })
+    const apply = () => f.service.applyEvents({environment: f.environment, credential: f.credential},
+      {protocolVersion: 1, environmentId: f.environment.id, runId: 'run', events: []})
+    if (enabled && projection !== undefined && !connectedAgentPolicyEntitlementsSchema.safeParse(projection).success) {
+      await assert.rejects(apply, error => error instanceof ConnectedAgentControlPlaneError && error.code === 'policy_entitlements_unavailable')
+      assert.equal(policyCalls, 0)
+      assert.equal(applied.length, 0)
+    } else {
+      await apply()
+      assert.equal(policyCalls, 1)
+      assert.equal(legacyLookups, enabled && projection ? 0 : 1)
+      assert.equal(applied[0]?.maxEventsPerMinute, enabled && projection?.planKind === 'paid' ? 10_000 : 1_000)
+    }
+  }
 })
 
 
