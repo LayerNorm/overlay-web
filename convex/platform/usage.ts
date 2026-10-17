@@ -827,6 +827,7 @@ async function settleStaleReconciliations(ctx: MutationCtx, args: { limit?: numb
   let released = 0
   let failed = 0
   for (const reservation of stale) {
+    if (await remoteRunOwnsReservation(ctx, reservation, now)) continue
     const overran = reservation.errorMessage === 'actual_cost_exceeds_reservation'
     try {
       // Sequential on purpose: each settlement reads and rewrites the same usage buckets.
@@ -1201,6 +1202,7 @@ async function reconcileExpiredBudgetReservations(
   let released = 0
   for (const reservation of rows) {
     if ((reservation.expiresAt ?? reservation.createdAt + 30 * 60_000) > now) continue
+    if (await remoteRunOwnsReservation(ctx, reservation, now)) continue
     if (reservation.providerWorkStarted) {
       const workspaceLedger = await workspaceReservationLedger(ctx, reservation)
       const billingAccount = workspaceLedger ? null : await ensurePersonalBillingAccount(ctx, reservation.userId)
@@ -1737,3 +1739,14 @@ export const listToolInvocations = query({
       .take(limit)
   },
 })
+
+/** Unknown consumed usage cannot be released by expiry while execution/settlement is unresolved. */
+async function remoteRunOwnsReservation(ctx: MutationCtx, reservation: { remoteRunId?: string }, now: number) {
+  if (!reservation.remoteRunId) return false
+  const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', reservation.remoteRunId!)).unique()
+  if (!run?.remoteLifecycle) return false
+  if (!['completed', 'cancelled', 'failed'].includes(run.remoteLifecycle.phase)) return true
+  const finalization = await ctx.db.query('agentRemoteRunIntents').withIndex('by_intentId', q => q.eq('intentId', `finalize:${reservation.remoteRunId}:${run.remoteLifecycle!.currentAttemptId}`)).unique()
+  void now
+  return finalization?.status === 'pending'
+}

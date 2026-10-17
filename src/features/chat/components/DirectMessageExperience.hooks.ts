@@ -466,6 +466,8 @@ export function useRoomTranscript({
   const generatingTextLength = generatingMessages
     .reduce((length, message) => length + message.content.length, 0)
 
+  const activeConversationRef = useRef(conversationId)
+  activeConversationRef.current = conversationId
   const loadMessages = useCallback(async () => {
     const permalinkMessageId = typeof window === 'undefined'
       ? undefined
@@ -521,6 +523,7 @@ export function useRoomTranscript({
           }>
         }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
       : null
+    if (activeConversationRef.current !== conversationId) return
     setConversationTitle(result.title?.trim() || null)
     setSurfacePlatform(result.externalPlatform ?? null)
     setHasMoreMessages(result.hasMore === true)
@@ -1591,25 +1594,38 @@ export function useRemoteAgentControls({
   activeWorkspaceId,
   conversationId,
   loadMessages,
+  setMessages,
   setAttachmentError,
 }: {
   activeWorkspaceId: string | null | undefined
   conversationId: string
+  setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
   loadMessages: () => Promise<void>
   setAttachmentError: Dispatch<SetStateAction<string | null>>
 }) {
+  const pendingControls = useRef(new Set<string>())
   async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') {
-    if (!activeWorkspaceId) return
+    const controlKey = `${conversationId}:${runId}:${action}`
+    if (!activeWorkspaceId || pendingControls.current.has(controlKey)) return
+    pendingControls.current.add(controlKey)
+    setMessages(current => current.map(message => ({ ...message,
+      parts: message.parts?.map(part => part.type === 'data-remote-agent-status' && part.data?.runId === runId
+        ? { ...part, data: { ...part.data, state: action === 'cancel' ? 'cancelling' : 'recovering' } } : part),
+    })))
     try {
       await overlayAppClient.conversations.controlRemoteQueue({
         workspaceId: activeWorkspaceId,
         conversationId,
         runId,
         action,
+        controlRequestId: crypto.randomUUID(),
       })
       await loadMessages()
     } catch (value) {
       setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
+      await loadMessages().catch(() => undefined)
+    } finally {
+      pendingControls.current.delete(controlKey)
     }
   }
 
@@ -2291,6 +2307,7 @@ export function useDirectMessageRoom({
     activeWorkspaceId,
     conversationId,
     loadMessages: transcript.loadMessages,
+    setMessages: transcript.setMessages,
     setAttachmentError: composer.setAttachmentError,
   })
   const actions = useMessageActions({
