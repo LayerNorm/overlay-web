@@ -1,7 +1,8 @@
 # Phase 8 subplan: ad-hoc markup sweep
 
-Status: implementation complete through the staged 8.12 guardrail. Last audited
-2026-10-15; implementation status updated during the Phase 8 PR rollout.
+Status: implementation complete through the final 8.12 guardrail. Raw-control
+inventory has 0 controls outside annotated browser-semantics exceptions. Last
+audited 2026-10-17.
 
 Implementation status:
 
@@ -13,10 +14,10 @@ Implementation status:
 - Preview builds were unblocked by #255 (turbopackFileSystemCacheForBuild
   opt-out plus next 16.4.2), which fixes the Basic build container OOM
   introduced by the Next.js 16.4 upgrade in #248.
-- 8.12: #254; staged guardrail: ESLint warns on raw interactive controls while
-  npm run check:raw-controls hard-fails any control outside the committed
-  baseline. Once the sweep PRs merge, remove the baseline debt and promote the
-  ESLint warning to an error for the final zero-count policy.
+- 8.12: #254; final guardrail: ESLint errors on raw interactive controls and
+  npm run check:raw-controls fails on unannotated controls. The baseline is
+  empty. Native browser-semantics exceptions need an `overlay:raw-control`
+  comment with the reason and an adjacent ESLint suppression.
 
 ## Goal
 
@@ -212,19 +213,16 @@ Verify editors, dialogs, toolbar menus, file viewing, list actions, and forms.
 
 Land only after the sweeps are complete.
 
-- AGENTS.md now requires @overlay/ui primitives for new interactive controls,
-  with documented browser-semantics exceptions.
-- ESLint no-restricted-syntax warns on raw button, input, textarea, and select
-  JSX elements in production app/package paths while the in-flight Phase 8 PRs
-  are still open.
-- npm run check:raw-controls hard-fails any raw control outside
-  scripts/ci/raw-control-baseline.json, so new controls are blocked during
-  the rollout without breaking on the already-open sweep PRs.
+- AGENTS.md requires @overlay/ui primitives for interactive controls and
+  comments for native browser-semantics exceptions.
+- ESLint no-restricted-syntax errors on raw button, input, textarea, and select
+  JSX elements in production app/package paths.
+- npm run check:raw-controls fails on any unannotated raw control. The
+  scripts/ci/raw-control-baseline.json file remains empty.
 - *.test.tsx, *.stories.tsx, fixture directories, packages/overlay-ui
   internals, semantic file/range/color/hidden inputs, and explicitly annotated
   browser-semantics cases are exempt.
-- After the sweep PRs merge, clear the baseline and promote the ESLint warning
-  to an error for the final zero-count policy.
+- Merge #255 first, then the sweep PRs in any order, and #254 last.
 ## Required checks per PR
 
 Run the smallest check covering the changed surface, plus the standard gates:

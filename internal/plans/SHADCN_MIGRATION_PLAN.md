@@ -1,5 +1,7 @@
 # shadcn/ui migration plan
 
+Verified against current main: `6a698c01`.
+
 _Started 2026-10-13. Progress updated during the Phase 8 rollout; phase statuses below track the current PR set and hosted QA results. Companion visual
 mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/overlay-web/blob/main/internal/plans/mockups/shadcn-migration-preview.html)._
 
@@ -16,7 +18,7 @@ mockup: [`mockups/shadcn-migration-preview.html`](https://github.com/LayerNorm/o
 | 5 command (cmdk) | Merged at `6a5218fe9`; exact-head (`3da6a92d1`) hosted preview acceptance (keyboard, real destinations, loading/empty, mobile, 39 presets) and all nine merge-queue checks passed. Included in verified native Git production at `905404c46`. | [#210](https://github.com/LayerNorm/overlay-web/pull/210), [integration acceptance](https://github.com/LayerNorm/overlay-web/pull/210#issuecomment-6167519059) |
 | 6 core form primitives | Merged on `main` at `35d6fc49`: Phase 6a in #227 (`button`, `input`, `textarea`, `label`); Phase 6b in #228 (`checkbox`, `switch`, `badge`, `separator`, `skeleton`); Phase 6c in #229 (`tabs`, `scroll-area`, Toggle-on-Switch) | [#227](https://github.com/LayerNorm/overlay-web/pull/227), [#228](https://github.com/LayerNorm/overlay-web/pull/228), [#229](https://github.com/LayerNorm/overlay-web/pull/229) |
 | 7 niche fills | Merged in #232 (sheet, card, avatar, sonner, alert, progress); hosted preview QA passed on app revision f7b5fda9 | [#232](https://github.com/LayerNorm/overlay-web/pull/232) |
-| 8 ad-hoc markup sweep + guardrails | Implementation complete across the Phase 8 subplan: 8.1-8.8 in #234-#245, 8.9-8.11 in #249-#253, and the staged 8.12 guardrail in #254. Authenticated preview QA passed for #234-#245 and #249-#253 on every serving preview. Builds were unblocked by #255, which bounds Turbopack build memory on Basic Vercel machines. | [Phase 8 subplan](./SHADCN_PHASE_8_SUBPLAN.md) |
+| 8 ad-hoc markup sweep + guardrails | Implemented in #234-#237, #240-#245, and #249-#253. Authenticated preview QA passed on every serving slice. Build fix #255 bounds Turbopack build memory. Final guardrails are in #254. Merge order: #255, then the sweep PRs in any order, then #254 last. | [Phase 8 subplan](./SHADCN_PHASE_8_SUBPLAN.md) |
 
 Phases 0-7 are merged or verified through the PR record above. Phase 8 uses
 current-head PR previews, then native Git production deployment after main
@@ -334,13 +336,9 @@ biggest bespoke island). Keep `packages/overlay-chat-react` and
 `packages/overlay-modules-react` as separate package-island PRs rather than
 folding them into app feature dirs.
 
-Current audit (2026-10-15): `src/features/*` + `src/components/` contain 302
-raw `<button>`, 43 `<input>`, 11 `<textarea>`, 2 `<select>`, and 2
-`fixed inset-0` blocks; `src/app` adds 20 buttons and 13 inputs; the two
-package islands add 181 buttons, 30 inputs, and 10 textareas. Replace raw
-markup with the migrated primitives, then land the guardrails last: `AGENTS.md`
-rule + ESLint `no-restricted-syntax` on raw elements, with explicit exemptions
-for tests/fixtures and `@overlay/ui` internals.
+Current audit (2026-10-17): The Phase 8 sweep is complete. The residual count
+is 0 outside annotated native browser-semantics exceptions. The raw-control
+baseline is empty.
 
 ## Risks / watch list
 

@@ -130,14 +130,14 @@ const rawInteractiveControlRules = {
   ],
   rules: {
     "no-restricted-syntax": [
-      "warn",
+      "error",
       {
         selector: "JSXOpeningElement[name.name='button']",
         message: "Use @overlay/ui Button instead of a raw <button>.",
       },
       {
         selector: "JSXOpeningElement[name.name='input']",
-        message: "Use @overlay/ui Input instead of a raw <input>. Browser-semantics exceptions must stay on the raw-control baseline or be annotated.",
+        message: "Use @overlay/ui Input instead of a raw <input>. Browser-semantics exceptions need an overlay:raw-control comment with the reason and an adjacent ESLint suppression.",
       },
       {
         selector: "JSXOpeningElement[name.name='textarea']",
