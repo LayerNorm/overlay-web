@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useCallback, useEffect, useState } from 'react'
 import { Monitor, Plus, RefreshCw, Square, Play, Trash2 } from 'lucide-react'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
@@ -171,16 +174,16 @@ export function ComputerSettings() {
           <h2 className="text-sm font-semibold text-(--foreground)">Workspace computers</h2>
           <div className="flex items-center gap-1">
             {!hasPersonal ? (
-              <button
+              <Button variant="ghost"
                 type="button"
                 disabled={creating || busy !== null}
                 onClick={() => void provision()}
-                className="flex items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
+                className={unstyledButton(`flex items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
               >
                 <Plus size={13} /> New computer
-              </button>
+              </Button>
             ) : null}
-            <button type="button" aria-label="Refresh computers" onClick={() => void refresh()} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"><RefreshCw size={15} /></button>
+            <Button variant="ghost" type="button" aria-label="Refresh computers" onClick={() => void refresh()} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}><RefreshCw size={15} /></Button>
           </div>
         </div>
         {computers.length === 0 && environmentMachines.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No computers yet. Create one to give yourself a persistent cloud desktop.</p> : null}
@@ -199,14 +202,14 @@ export function ComputerSettings() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <button
+                <Button variant="ghost"
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void openEnvironmentDesktop(environment.id)}
-                  className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
+                  className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
                 >
                   Open
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -230,22 +233,22 @@ export function ComputerSettings() {
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {computer.status === 'ready' || computer.status === 'stopped' ? (
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     disabled={busy !== null}
                     onClick={() => void openDesktop(computer.id)}
-                    className="rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
+                    className={unstyledButton(`rounded-full border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
                   >
                     Open
-                  </button>
+                  </Button>
                 ) : null}
                 {computer.status === 'ready' ? (
-                  <button type="button" aria-label="Stop computer" disabled={busy !== null} onClick={() => void setRunning(computer, false)} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50"><Square size={15} /></button>
+                  <Button variant="ghost" type="button" aria-label="Stop computer" disabled={busy !== null} onClick={() => void setRunning(computer, false)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Square size={15} /></Button>
                 ) : null}
                 {computer.status === 'stopped' ? (
-                  <button type="button" aria-label="Start computer" disabled={busy !== null} onClick={() => void setRunning(computer, true)} className="rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50"><Play size={15} /></button>
+                  <Button variant="ghost" type="button" aria-label="Start computer" disabled={busy !== null} onClick={() => void setRunning(computer, true)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50`)}><Play size={15} /></Button>
                 ) : null}
-                <button type="button" aria-label="Delete computer" disabled={busy !== null} onClick={() => void destroy(computer)} className="rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"><Trash2 size={15} /></button>
+                <Button variant="ghost" type="button" aria-label="Delete computer" disabled={busy !== null} onClick={() => void destroy(computer)} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50`)}><Trash2 size={15} /></Button>
               </div>
             </div>
           </div>
