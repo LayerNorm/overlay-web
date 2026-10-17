@@ -1,5 +1,6 @@
 "use client";
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import { MoonStar, SunMedium } from "lucide-react";
 import { OverlayMark } from "@/components/orb/Orb";
 import Link from "next/link";
@@ -118,10 +119,10 @@ export function MarketingFooter() {
           <div className="flex items-center gap-4">
             <span>Built for the agent era.</span>
             {landing ? (
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={landing.toggleLandingTheme}
-                className={`inline-flex items-center gap-2 ${linkClass} py-0!`}
+                className={unstyledButton(`inline-flex items-center gap-2 ${linkClass} py-0!`)}
               >
                 {landing.landingTheme === "light" ? (
                   <MoonStar className="h-4 w-4" />
@@ -131,7 +132,7 @@ export function MarketingFooter() {
                 <span>
                   {landing.landingTheme === "light" ? "Dark" : "Light"}
                 </span>
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

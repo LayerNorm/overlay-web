@@ -1,3 +1,5 @@
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../../control-reset'
 import type { ReactNode } from 'react'
 import { Creature } from '@/components/orb/Creature'
 import { LandingLockup } from '../LandingOrb'
@@ -23,9 +25,9 @@ export function DemoRail({ state, dispatch }: { state: DemoState; dispatch: Disp
       <div className="head"><LandingLockup /><DIcon name="left" /></div>
       <div className="list">
         {NAV.map(([view, label, icon]) => (
-          <button key={view} type="button" tabIndex={-1} className={state.view === view ? 'nav-i on' : 'nav-i'} onClick={() => dispatch({ type: 'nav', view })}>
+          <Button variant="ghost" key={view} type="button" tabIndex={-1} className={unstyledButton(state.view === view ? 'nav-i on' : 'nav-i')} onClick={() => dispatch({ type: 'nav', view })}>
             <DIcon name={icon} />{label}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="ws"><b>W</b><span>Your workspace<i>You</i></span></div>
@@ -39,9 +41,9 @@ function Avatar({ who }: { who: Persona }) {
 
 function Row({ on, icon, label, onClick, trailing }: { on: boolean; icon?: ReactNode; label: string; onClick: () => void; trailing?: ReactNode }) {
   return (
-    <button type="button" tabIndex={-1} className={on ? 'row on' : 'row'} onClick={onClick}>
+    <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton(on ? 'row on' : 'row')} onClick={onClick}>
       {icon}<span className="lab">{label}</span>{trailing}
-    </button>
+    </Button>
   )
 }
 
@@ -60,24 +62,24 @@ function AgentsList({ state, dispatch }: { state: DemoState; dispatch: Dispatch 
     <>
       <div className="head"><span className="ttl">agents</span></div>
       <ScopeTabs scope={state.scope} onPick={(scope) => dispatch({ type: 'scope', scope })} />
-      <button type="button" tabIndex={-1} className="newagent" onClick={() => dispatch({ type: 'newagent' })}>New agent</button>
+      <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton("newagent")} onClick={() => dispatch({ type: 'newagent' })}>New agent</Button>
       {keys.map((key) => {
         const agent = state.agents[key]
         const selected = state.agent === key
         return (
           <div key={key}>
-            <button type="button" tabIndex={-1} className={selected ? 'agent sel' : 'agent'} onClick={() => dispatch({ type: 'agent', key })}>
+            <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton(selected ? 'agent sel' : 'agent')} onClick={() => dispatch({ type: 'agent', key })}>
               <Avatar who={agent} /><span className="lab">{agent.name}</span>
               <span className="end"><DIcon name={selected ? 'down' : 'right'} /></span>
-            </button>
+            </Button>
             {selected ? (
               <>
-                <button type="button" tabIndex={-1} className={state.thread === 'main' ? 'agent child on' : 'agent child'} onClick={() => dispatch({ type: 'thread', thread: 'main' })}>
+                <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton(state.thread === 'main' ? 'agent child on' : 'agent child')} onClick={() => dispatch({ type: 'thread', thread: 'main' })}>
                   <DIcon name="chat" /><span className="lab">{agent.name}</span><small>Main</small>
-                </button>
-                <button type="button" tabIndex={-1} className={state.thread === 'new' ? 'agent child on' : 'agent child dim'} onClick={() => dispatch({ type: 'thread', thread: 'new' })}>
+                </Button>
+                <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton(state.thread === 'new' ? 'agent child on' : 'agent child dim')} onClick={() => dispatch({ type: 'thread', thread: 'new' })}>
                   <DIcon name="plus" />New thread
-                </button>
+                </Button>
               </>
             ) : null}
           </div>
@@ -115,7 +117,7 @@ export function DemoList({ state, dispatch }: { state: DemoState; dispatch: Disp
     body = (
       <>
         <div className="head"><span className="ttl">chats</span></div>
-        <button type="button" tabIndex={-1} className="newagent" onClick={() => dispatch({ type: 'newchat' })}>New chat</button>
+        <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton("newagent")} onClick={() => dispatch({ type: 'newchat' })}>New chat</Button>
         <div className="scope" style={plain}>
           {state.chats.map((c, i) => <Row key={c.id} on={state.chat === i} icon={<DIcon name="chat" />} label={c.title} onClick={() => dispatch({ type: 'chat', i })} />)}
         </div>
@@ -136,7 +138,7 @@ export function DemoList({ state, dispatch }: { state: DemoState; dispatch: Disp
       <>
         <div className="head"><span className="ttl">automations</span></div>
         <ScopeTabs scope={state.ascope} onPick={(scope) => dispatch({ type: 'ascope', scope })} />
-        <button type="button" tabIndex={-1} className="newagent" onClick={() => dispatch({ type: 'newauto' })}>New automation</button>
+        <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton("newagent")} onClick={() => dispatch({ type: 'newauto' })}>New automation</Button>
         {visible.map(({ a, i }) => (
           <Row key={a.id} on={state.auto === i} icon={<span className="gi"><DIcon name="flow" /></span>} label={a.n} onClick={() => dispatch({ type: 'auto', i })} />
         ))}

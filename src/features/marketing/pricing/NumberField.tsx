@@ -1,5 +1,6 @@
 'use client'
-
+import { Input } from '@overlay/ui/primitives'
+import { unstyledInput } from '../control-reset'
 import { useState } from 'react'
 import s from './pricing.module.css'
 
@@ -26,7 +27,7 @@ export function NumberField({
   return (
     <label className={small ? `${s.money} ${s.sm}` : s.money}>
       $
-      <input
+      <Input
         inputMode="numeric"
         aria-label={label}
         value={text ?? String(value)}
@@ -42,7 +43,7 @@ export function NumberField({
           else if (Number.isFinite(n) && n > max) onChange(max)
           setText(null)
         }}
-      />
+       className={unstyledInput()}/>
     </label>
   )
 }

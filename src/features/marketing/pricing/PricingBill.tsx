@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import { useState } from 'react'
 import { MAX_DEPOSIT, MIN_DEPOSIT, formatUsd, maxCharge, priceLines, simulateBill, type BillOutcome, type RunOutMode } from './pricing-sim'
 import { NumberField } from './NumberField'
@@ -31,9 +32,9 @@ function Deposit({ deposit, onChange }: { deposit: number; onChange: (n: number)
       <div>
         <div className={s.chips}>
           {DEPOSITS.map((n) => (
-            <button key={n} type="button" className={deposit === n ? `${s.chip} ${s.on}` : s.chip} onClick={() => onChange(n)}>
+            <Button variant="ghost" key={n} type="button" className={unstyledButton(deposit === n ? `${s.chip} ${s.on}` : s.chip)} onClick={() => onChange(n)}>
               {formatUsd(n)}
-            </button>
+            </Button>
           ))}
           <span className={custom ? s.customOn : undefined}>
             <NumberField value={deposit} min={MIN_DEPOSIT} max={MAX_DEPOSIT} onChange={onChange} label="Custom monthly amount" />
@@ -143,6 +144,7 @@ function UsagePanel({ deposit, out, usage, sliderMax, status, onUsage }: {
       </div>
       <div className={s.sim}>
         <div className={s.t}><span>Simulate a month of use</span><b>{formatUsd(usage, true)}</b></div>
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native range input preserves slider semantics, keyboard behavior, and accessibility. */}
         <input type="range" min={0} max={sliderMax} step={0.5} value={usage} onChange={(e) => onUsage(Number(e.target.value))} aria-label="Simulated usage" />
       </div>
     </div>
