@@ -4,6 +4,7 @@ import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSes
 export class FakeAgentAdapter implements AgentAdapter {
   readonly capability = {
     id: 'fake', displayName: 'Deterministic fake agent', protocol: 'fake' as const, version: '1',
+    recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: true, approvalRestoration: true, providerCheckpoints: true },
     supports: { prompt: true, approval: true, cancel: true, resume: true },
   }
 
@@ -35,6 +36,7 @@ export class FakeAgentAdapter implements AgentAdapter {
         await emit({ type: 'completed', payload: { summary: 'Fake elicitation resolved', usage: {} } })
       },
       cancel: async (reason) => { stopped = true; await emit({ type: 'cancelled', payload: { ...(reason ? { reason } : {}) } }) },
+      observe: async () => stopped ? 'lost' : 'live',
       resume: async () => { stopped = false; await emit({ type: 'action', payload: { actionId: 'resume', title: 'Session resumed', status: 'completed' } }) },
       stop: async (reason) => { stopped = true; if (reason) approvals.set('stop-reason', reason) },
     }

@@ -143,13 +143,15 @@ export type AgentHarnessSession = {
 }
 
 export const AGENT_RUN_COMMAND_TYPES = [
-  'start', 'prompt', 'cancel', 'approval_response', 'elicitation_response', 'reconnect', 'shutdown',
+  'start', 'prompt', 'cancel', 'approval_response', 'elicitation_response', 'reconnect', 'observe', 'shutdown',
 ] as const
 export type AgentRunCommandType = (typeof AGENT_RUN_COMMAND_TYPES)[number]
-export const AGENT_RUN_COMMAND_STATUSES = ['pending', 'claimed', 'acknowledged', 'cancelled'] as const
+export const AGENT_RUN_COMMAND_STATUSES = ['coordinator_pending', 'pending', 'claimed', 'acknowledged', 'cancelled'] as const
 export type AgentRunCommandStatus = (typeof AGENT_RUN_COMMAND_STATUSES)[number]
 
 export type AgentRunCommand = {
+  attemptId?: string
+  executionGeneration?: number
   id: string
   workspaceId: string
   environmentId: string
@@ -172,6 +174,16 @@ export const AGENT_REMOTE_SESSION_STATUSES = [
 export type AgentRemoteSessionStatus = (typeof AGENT_REMOTE_SESSION_STATUSES)[number]
 
 export type AgentRemoteSession = {
+  attemptId?: string
+  executionGeneration?: number
+  hostBootId?: string
+  lastHealthAt?: number
+  lastProgressAt?: number
+  hardDeadlineAt?: number
+  claimDeadlineAt?: number
+  checkpointReference?: string
+  recoveryCause?: string
+  recoveryResult?: string
   id: string
   workspaceId: string
   environmentId: string
@@ -237,12 +249,14 @@ export type AgentSandboxLease = {
 }
 
 export const AGENT_REMOTE_EVENT_TYPES = [
+  'process_observation',
   'session_started', 'text_checkpoint', 'action', 'approval_requested', 'elicitation_requested',
   'plan', 'commands_update', 'diff', 'terminal', 'artifact', 'completed', 'failed', 'cancelled',
 ] as const
 export type AgentRemoteEventType = (typeof AGENT_REMOTE_EVENT_TYPES)[number]
 
 export type AgentRemoteEvent = {
+  execution?: { attemptId: string; generation: number; hostBootId?: string }
   protocolVersion: number
   eventId: string
   environmentId: string
