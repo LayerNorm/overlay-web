@@ -1,5 +1,6 @@
 'use client'
-
+import { Button, Input } from '@overlay/ui/primitives'
+import { unstyledButton, unstyledInput } from '../control-reset'
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
 import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2, X } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
@@ -70,13 +71,13 @@ export function NotebookHeader({
         className={headerClassName}
         style={headerStyle}
         actions={!hideActions ? (
-          <button
+          <Button variant="ghost" type="submit"
             onClick={onCreateNote}
-            className="flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-muted) px-3 py-1.5 text-sm text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+            className={unstyledButton("flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-muted) px-3 py-1.5 text-sm text-(--foreground) transition-colors hover:bg-(--surface-subtle)")}
           >
             <Plus size={14} />
             New note
-          </button>
+          </Button>
         ) : undefined}
       />
     )
@@ -91,7 +92,7 @@ export function NotebookHeader({
             <ArrowLeft size={compact ? 13 : 17} />
           </NotebookHeaderIconButton>
         ) : null}
-        <input
+        <Input
           type="text"
           aria-label="Note title"
           value={title}
@@ -99,7 +100,7 @@ export function NotebookHeader({
           onBlur={onTitleBlur}
           onKeyDown={onTitleKeyDown}
           placeholder="Note title..."
-          className={`flex-1 bg-transparent font-medium text-(--foreground) outline-hidden placeholder:text-(--muted) ${compact ? 'text-[19px]' : 'text-xl'}`}
+          className={unstyledInput(`flex-1 bg-transparent font-medium text-(--foreground) outline-hidden placeholder:text-(--muted) ${compact ? 'text-[19px]' : 'text-xl'}`)}
           style={{ fontFamily: 'var(--font-serif)' }}
         />
         {!hideActions ? (
@@ -130,17 +131,17 @@ interface NotebookHeaderIconButtonProps {
 
 function NotebookHeaderIconButton({ compact, active, label, title, onClick, children }: NotebookHeaderIconButtonProps) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
       title={title}
       aria-label={label}
-      className={`inline-flex shrink-0 items-center justify-center text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'} ${
+      className={unstyledButton(`inline-flex shrink-0 items-center justify-center text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'} ${
         active ? 'bg-(--surface-subtle) text-(--foreground)' : ''
-      }`}
+      }`)}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -221,45 +222,45 @@ export function NotebookAgentHeader({
       <div className="flex items-center gap-2">
         {pendingDiffCount > 0 && (
           <>
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onAcceptAllDiffs}
-              className="rounded-md border border-(--border) bg-(--surface-muted) px-2 py-1 text-[11px] text-(--foreground) hover:bg-(--surface-subtle)"
+              className={unstyledButton("rounded-md border border-(--border) bg-(--surface-muted) px-2 py-1 text-[11px] text-(--foreground) hover:bg-(--surface-subtle)")}
             >
               Accept all
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               onClick={onRejectAllDiffs}
-              className="rounded-md border border-(--border) px-2 py-1 text-[11px] text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton("rounded-md border border-(--border) px-2 py-1 text-[11px] text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)")}
             >
               Reject all
-            </button>
+            </Button>
           </>
         )}
         {modelPicker}
         {presentation && onPresentationChange ? (
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => onPresentationChange(nextPresentation)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className={unstyledButton("inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
             aria-label={presentationLabel}
             title={presentationLabel}
           >
             {presentation === 'floating'
               ? <PanelRightOpen size={14} strokeWidth={1.8} />
               : <Maximize2 size={14} strokeWidth={1.8} />}
-          </button>
+          </Button>
         ) : null}
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onClose}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton("inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
           aria-label="Close note assistant"
           title="Close note assistant"
         >
           <X size={14} strokeWidth={1.8} />
-        </button>
+        </Button>
       </div>
     </AppScreenSidePanelHeader>
   )

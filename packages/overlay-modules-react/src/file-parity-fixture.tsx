@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from './control-reset'
 import {
   FILE_PARITY_EDITOR_SCENARIOS,
   FILE_PARITY_FILES,
@@ -239,9 +240,9 @@ function FileRows({
             key={file._id}
             style={{ '--file-depth': fileDepth(file, scenario.files) } as CSSProperties}
           >
-            <button
+            <Button variant="ghost"
               type="button"
-              className="file-parity-row"
+              className={unstyledButton("file-parity-row")}
               data-selected={selected || undefined}
               data-bulk-selected={bulkSelected || undefined}
               aria-pressed={selected || bulkSelected}
@@ -258,13 +259,13 @@ function FileRows({
               <span className="file-parity-row__actions" aria-hidden={!menuOpen}>
                 <MoreHorizontal size={15} />
               </span>
-            </button>
+            </Button>
             {menuOpen ? (
               <div className="file-parity-context-menu" role="menu">
-                <button type="button" role="menuitem">Open</button>
-                <button type="button" role="menuitem">Move to folder</button>
-                <button type="button" role="menuitem">Rename</button>
-                <button type="button" role="menuitem" data-danger>Delete</button>
+                <Button variant="ghost" type="button" role="menuitem" className={unstyledButton()}>Open</Button>
+                <Button variant="ghost" type="button" role="menuitem" className={unstyledButton()}>Move to folder</Button>
+                <Button variant="ghost" type="button" role="menuitem" className={unstyledButton()}>Rename</Button>
+                <Button variant="ghost" type="button" role="menuitem" data-danger className={unstyledButton()}>Delete</Button>
               </div>
             ) : null}
           </div>
