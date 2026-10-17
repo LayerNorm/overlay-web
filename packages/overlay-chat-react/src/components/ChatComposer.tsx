@@ -208,6 +208,7 @@ function ComposerAttachControls({
 
   return (
     <div ref={attachMenuRef} className="relative shrink-0">
+      {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
       <input
         ref={imageInputRef}
         type="file"
@@ -216,6 +217,7 @@ function ComposerAttachControls({
         className="hidden"
         onChange={handleFiles}
       />
+      {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
       <input
         ref={docInputRef}
         type="file"
