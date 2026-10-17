@@ -230,13 +230,7 @@ export class CloudAgentMachineService {
     }
     // Restart: make sure the machine is up, then replace the host process.
     if (await machine.status() !== 'running') await machine.resume()
-    await this.runDetached(machine, cloudAgentStopHostCommand())
-    await this.runDetached(machine, cloudAgentRunCommand())
-    await this.dependencies.repository.patchSandboxLeaseUsage({
-      workspaceId: args.workspaceId, leaseId: lease.id, patch: { lastActiveAt: this.now() }, now: this.now(),
-      // A machine woken for something other than a run still stops after the idle window.
-      idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
-    })
+    await this.restartManagedHost(machine, lease, {workspaceId: args.workspaceId, environmentId: found.environment.id})
   }
 
   /**

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Renew private Preview hosting access when explicitly restarting a managed agent host.
+
 - Allow explicit per-adapter native restoration acceptance on durable hosts while keeping existing agents opted out.
 
 - Receive Stop during native startup preparation without discarding buffered output or admitting a new provider, while preserving ordered command acknowledgements.

@@ -1470,6 +1470,8 @@ previous execution fence and stopped-provider receipt. Its independent optional
 Hosts without the completed admission path reject that payload before starting a session;
 the capability defaults off. An individual ACP/acpx adapter or manifest entry may explicitly set
 `fencedSessionRestoration: true` in its private host configuration, only with `durableLifecycle: true`.
+Protected Preview explicit machine restart, resume and recovery all renew the one-shot host access file
+before launching the managed host; legacy leases keep their original access path.
 This opt-in is for owned native acceptance before rollout; existing agents and shared machine images
 remain unchanged. It does not enable live interrupted-turn continuation or approval restoration.
 Host admission checks the original native id, adapter, previous execution/boot, next generation,

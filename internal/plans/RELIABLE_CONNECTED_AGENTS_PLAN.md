@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Native QA preparation exposed explicit Preview restart bypassing the one-shot hosting-access renewal used by resume/recovery. Restart now uses that shared managed-host path. The regression reproduced missing access; all 22 machine-service tests now pass, covering upgraded and legacy restart paths without putting the secret in commands. Root types, targeted lint, docs health and complexity checks pass; exact-head hosted acceptance is pending.
+
 - Native restoration now has an explicit per-adapter host configuration opt-in requiring durable lifecycle negotiation. The default remains off; it does not enable live interrupted-turn continuation or approval restoration. Config reload and capability tests cover direct ACP, acpx and manifest entries. The opt-in is intended for owned native QA machines; shared image and production activation remain gated on forced-recovery acceptance.
 
 - Startup command polling now remains responsive while preparation awaits source-output or startup-admission uploads. Regression tests reproduce queued and newly delivered Stop, retain buffered source text, prevent adapter startup and preserve ordered command results. Foreign/stale cancellation cannot interrupt another execution, and cancellation after the local startup boundary cannot make it replayable. Local host tests (209 passed, one optional skip), types, lint, docs and complexity checks pass; hosted native Stop-during-preparation and forced recovery acceptance remain pending.

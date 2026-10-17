@@ -125,13 +125,13 @@ test('a machine that never enrolls is deleted', async () => {
   assert.deepEqual(calls, ['delete'])
 })
 
-test('Preview provision and resume prepare private access before launching the host, without putting its secret in commands', async () => {
+test('Preview provision, resume and explicit restart prepare private access before launching the host, without putting its secret in commands', async () => {
   const preview = {VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview', NEXT_PUBLIC_APP_URL: 'https://pr-247.preview.getoverlay.io',
     VERCEL_GIT_PULL_REQUEST_ID: '247', VERCEL_AUTOMATION_BYPASS_SECRET: 'preview-private-fixture-secret'}
   const previous = new Map(Object.keys(preview).map(key => [key, process.env[key]]))
   Object.assign(process.env, preview)
   try {
-    for (const mode of ['provision', 'resume', 'legacy-resume', 'already-online']) {
+    for (const mode of ['provision', 'resume', 'legacy-resume', 'restart', 'legacy-restart', 'already-online']) {
       const resuming = mode === 'resume' || mode === 'legacy-resume'
       const f = fakeMachine(resuming ? 'stopped' : 'running'), order: string[] = []
       const write = f.machine.writeFiles.bind(f.machine), run = f.machine.runCommand.bind(f.machine)
@@ -142,12 +142,13 @@ test('Preview provision and resume prepare private access before launching the h
       }
       const lease: AgentSandboxLease = {id: 'lease-1', workspaceId: 'ws', environmentId: 'env-1', status: 'running',
         provider: 'box', providerReference: 'bx_agent', reservedUntil: 10000, cleanupAttempts: 0, createdAt: 0, updatedAt: 0,
-        usage: mode === 'resume' ? {previewHostingAccessVersion: 1} : {}}
-      const {service, log} = deps(f.machine, resuming ? {env: environment({status: 'offline'}), lease} : {})
+        usage: mode === 'resume' || mode === 'restart' ? {previewHostingAccessVersion: 1} : {}}
+      const {service, log} = deps(f.machine, mode === 'provision' || mode === 'already-online' ? {} : {env: environment({status: resuming ? 'offline' : 'online'}), lease})
       if (mode === 'provision') await service.provision({...provisionArgs, serverUrl: preview.NEXT_PUBLIC_APP_URL})
+      else if (mode === 'restart' || mode === 'legacy-restart') await service.control({workspaceId: 'ws', agentId: 'agent-1', action: 'restart'})
       else await service.wake({workspaceId: 'ws', environmentId: 'env-1'})
       if (mode === 'already-online') {assert.deepEqual(order, []); continue}
-      if (mode === 'legacy-resume') {
+      if (mode === 'legacy-resume' || mode === 'legacy-restart') {
         assert.deepEqual(f.written, [])
         assert.ok(f.commands.every(command => !command.includes('--hosting-auth-file')))
         continue

@@ -160,7 +160,7 @@ Streaming uses a durable background outbox with byte-budget uploads and coalesce
 
 An ACP/acpx adapter (including a manifest entry) may opt into guarded native recovery with
 `fencedSessionRestoration: true` in its private configuration. This requires
-`durableLifecycle: true` on the host and defaults off. Enable it only for adapters that have passed
-native recovery acceptance. The server still requires isolation of the old provider, the original
+`durableLifecycle: true` on the host and defaults off. Use it on owned native acceptance machines first; enable it on other hosts only after the adapter
+has passed native recovery acceptance. The server still requires isolation of the old provider, the original
 conversation identity, current authority and a startup acknowledgement; the option does not allow
 live interrupted-turn continuation or restore pending approvals.
