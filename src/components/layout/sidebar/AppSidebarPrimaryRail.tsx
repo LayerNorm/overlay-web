@@ -103,7 +103,7 @@ function RailButton({
       disabled={disabled}
       aria-label={disabled ? `${label} (coming soon)` : label}
       {...sharedProps}
-     className={unstyledButton()}>
+     className={unstyledButton(sharedProps.className)}>
       {content}
     </Button>
   )
