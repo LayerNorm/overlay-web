@@ -37,3 +37,14 @@ test('a cancelled single action and terminal detail use the singular completed l
     {kind: 'tool', key: 'exec-stop', name: 'remote_terminal', state: 'output-available'},
   ]), /1 tool called/)
 })
+
+test('mixed work reports the actual running count, including after an earlier interruption', () => {
+  const items: ToolGroupItem[] = [
+    {kind: 'tool', key: 'finished', name: 'remote_action', state: 'output-available'},
+    {kind: 'tool', key: 'interrupted', name: 'remote_action', state: 'output-error'},
+    {kind: 'tool', key: 'live', name: 'remote_action', state: 'input-available'},
+    {kind: 'tool', key: 'live', name: 'remote_terminal', state: 'input-available'},
+  ]
+  assert.match(markup(items), /3 tools · 1 running/)
+  assert.doesNotMatch(markup(items), /3 tools in progress/)
+})

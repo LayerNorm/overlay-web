@@ -16,8 +16,8 @@ import { internal } from '../_generated/api'
 import { internalMutation, mutation, query, type MutationCtx } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
-import { projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
-import { recordAcceptedBatch, recordRejectedBatch } from '../../src/shared/agents/remote-run-stream-stats'
+import { interruptRemoteAgentToolParts, projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
+import { recordAcceptedBatch, recordRejectedBatch, settleInterruptedRemoteRunTools } from '../../src/shared/agents/remote-run-stream-stats'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
 import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../platform/usage'
 
@@ -2656,11 +2656,13 @@ export const applyRemoteEventsByServer = mutation({
         && !(event.type === 'process_observation' && event.payload.process === 'unknown')
         && (!session.hostBootId || acceptsNativeReattachment)) await ctx.db.patch(session._id, { hostBootId: event.execution.hostBootId })
     }
+    const interruptedAt = nativeStartAdmission && !session.nativeStartAdmission
+      ? run.remoteLifecycle?.providerStop?.observedAt : undefined
+    const previousParts = Array.isArray(message.parts)
+      ? (message.parts as unknown as Array<Record<string, unknown>>) : []
     const projection = projectRemoteAgentEvents({
       content: message.content,
-      parts: Array.isArray(message.parts)
-        ? (message.parts as unknown as Array<Record<string, unknown>>)
-        : [],
+      parts: interruptedAt === undefined ? previousParts : interruptRemoteAgentToolParts(previousParts, interruptedAt),
       events: normalizedEvents,
       environmentName: typeof snapshot.environmentName === 'string' ? snapshot.environmentName : 'connected environment',
       queueExpiresAt: typeof snapshot.queueExpiresAt === 'number' ? snapshot.queueExpiresAt : args.now,
@@ -2700,8 +2702,9 @@ export const applyRemoteEventsByServer = mutation({
       || message.status !== messageStatus || !sameJson(message.tokens ?? { input: 0, output: 0 }, projection.tokens)
     await ctx.db.patch(run._id, {
       status: projection.runStatus,
-      ...(!historical ? {liveness: recordRemoteRunLiveness(run.liveness, normalizedEvents, args.now, projection.terminal)} : {}),
-      streamStats: recordAcceptedBatch(run.streamStats, {
+      ...(!historical ? {liveness: recordRemoteRunLiveness(interruptedAt !== undefined && run.liveness
+        ? {...run.liveness, openTools: [], stalled: false} : run.liveness, normalizedEvents, args.now, projection.terminal)} : {}),
+      streamStats: recordAcceptedBatch(interruptedAt === undefined ? run.streamStats : settleInterruptedRemoteRunTools(run.streamStats, interruptedAt), {
         events: normalizedEvents, bytes: jsonByteLength(args.events), now: args.now, wroteMessage,
       }),
       ...(!historical && projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),

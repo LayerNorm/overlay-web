@@ -1534,7 +1534,7 @@ Before admission, the immediately isolated source may drain buffered output unde
 and exact stored source receipt. Text, work and usage remain on the original assistant; source health
 does not refresh the current execution. Buffered completion can complete the task without a new writer.
 Buffered approvals are closed as lost context and cannot be executed. Cancellation still wins while
-already-produced text drains. Admission seals this historical window before fixing the new cursor.
+already-produced text drains. Admission seals this historical window before fixing the new cursor. Once that admitted boundary seals the drained source, unresolved action and terminal rows become interrupted, without asserting a confirmed result or replaying a side effect. Their timers stop at the provider-stop observation; completed rows and historical text remain intact. New execution work is unaffected, and duplicate admission does not settle it.
 This path is available only to restorations explicitly requiring startup admission; legacy replacement
 attempts retain their stale-event fence.
 

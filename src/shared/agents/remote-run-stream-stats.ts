@@ -33,6 +33,20 @@ export type RemoteRunStreamStats = {
 
 export const MAX_TRACKED_OPEN_TOOLS = 20
 
+/** Finish the stopped writer's timers without inventing received host events or confirmed tool results. */
+export function settleInterruptedRemoteRunTools(previous: RemoteRunStreamStats | undefined, stoppedAt: number) {
+  if (!previous || previous.openTools.length === 0) return previous
+  const stats = {...previous, openTools: []}
+  for (const tool of previous.openTools) {
+    const duration = Math.max(0, stoppedAt - tool.startedAt)
+    if (duration > stats.longestToolMs) {
+      stats.longestToolMs = duration
+      stats.longestToolTitle = tool.title
+    }
+  }
+  return stats
+}
+
 export function emptyRemoteRunStreamStats(): RemoteRunStreamStats {
   return {
     batches: 0, events: 0, eventBytes: 0, textCheckpointChars: 0, messageWrites: 0, rejectedBatches: 0,

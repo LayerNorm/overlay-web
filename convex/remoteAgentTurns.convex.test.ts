@@ -921,6 +921,70 @@ test('native start admission binds a drained source and full canonical cursor wi
   expect(await f.call('applyRemoteEventsByServer', {...request, now: now + 12})).not.toHaveProperty('nativeStartAdmission')
 })
 
+test('drained native admission settles interrupted work without losing completed work or closing the next writer', async () => {
+  const f = await nativeRetryFixture()
+  const buffered = [event(4, 'action', {actionId: 'interrupted', title: 'Old terminal', status: 'started'}),
+    event(5, 'terminal', {terminalId: 'interrupted', title: 'Old terminal', status: 'running', text: 'Retained terminal output'}),
+    event(6, 'action', {actionId: 'finished', title: 'Finished work', status: 'started'}),
+    event(7, 'action', {actionId: 'finished', title: 'Finished work', status: 'completed'})]
+    .map(item => ({...item, occurredAt: now + 3, execution: {attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1'}}))
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: 'session-remote-turn', events: buffered, now: now + 6})).toMatchObject({accepted: true})
+  const before = await projectedState(f.convex, f.started.messageId)
+  expect(before.run?.streamStats?.openTools.map(tool => tool.actionId)).toEqual(['interrupted'])
+  await expect(f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+    events: [{...event(1, 'native_start_requested', {commandId: f.command.commandId, remoteSessionId: 'native-session', adapterId: 'acp', sourceEventCursor: 6}),
+      execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}],
+  })).rejects.toThrow('AGENT_NATIVE_SOURCE_NOT_DRAINED')
+  const rejected = await projectedState(f.convex, f.started.messageId)
+  expect(rejected.message).toEqual(before.message)
+  expect(rejected.run?.streamStats).toEqual(before.run?.streamStats)
+  const {request, admitted} = await admitNativeFixture(f)
+  const after = await projectedState(f.convex, f.started.messageId)
+  expect(after.run?.streamStats?.openTools).toEqual([])
+  expect(after.run?.streamStats?.events).toBe((before.run?.streamStats?.events ?? 0) + 1)
+  expect(after.run?.streamStats?.longestToolMs).toBe(1)
+  expect(after.message?.parts).toContainEqual(expect.objectContaining({type: 'tool-invocation', toolInvocation: expect.objectContaining({
+    toolCallId: 'interrupted', state: 'output-error', toolOutput: expect.objectContaining({status: 'cancelled', reason: 'execution_interrupted'}),
+  })}))
+  expect(after.message?.parts).toContainEqual(expect.objectContaining({type: 'data-remote-agent-terminal', data: expect.objectContaining({
+    terminalId: 'interrupted', status: 'failed', resolution: 'interrupted', text: 'Retained terminal output',
+  })}))
+  const finished = (parts: NonNullable<typeof before.message>['parts']) => parts?.find(part => part.type === 'tool-invocation'
+    && part.toolInvocation?.toolCallId === 'finished')
+  expect(finished(after.message?.parts)).toEqual(finished(before.message?.parts))
+  expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true})
+  expect((await projectedState(f.convex, f.started.messageId)).message).toEqual(after.message)
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: admitted.attemptId, now: now + 9,
+    events: [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: admitted.commandId}),
+      event(3, 'action', {actionId: 'new-work', title: 'New terminal', status: 'started'})]
+      .map(item => ({...item, eventId: `continued-${item.eventId}`, execution: {attemptId: admitted.attemptId, generation: 2, hostBootId: admitted.hostBootId}})),
+  })).toMatchObject({accepted: true})
+  const running = await projectedState(f.convex, f.started.messageId)
+  expect(running.run?.streamStats?.openTools.map(tool => tool.actionId)).toEqual(['new-work'])
+  expect(running.run?.remoteLifecycle?.recoveryOutcome).toBe('restored')
+  expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true})
+  const duplicate = await projectedState(f.convex, f.started.messageId)
+  expect(duplicate.message).toEqual(running.message)
+  expect(duplicate.run?.streamStats).toEqual(running.run?.streamStats)
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: admitted.attemptId, now: now + 10,
+    events: [event(4, 'action', {actionId: 'new-work', title: 'New terminal', status: 'completed'}), event(5, 'completed', {usage: {}})]
+      .map(item => ({...item, eventId: `continued-${item.eventId}`, execution: {attemptId: admitted.attemptId, generation: 2, hostBootId: admitted.hostBootId}})),
+  })).toMatchObject({accepted: true})
+  const completed = await projectedState(f.convex, f.started.messageId)
+  expect(completed.run?.status).toBe('completed')
+  expect(completed.message?.parts).toContainEqual(expect.objectContaining({type: 'tool-invocation', toolInvocation: expect.objectContaining({
+    toolCallId: 'interrupted', state: 'output-error', toolOutput: expect.objectContaining({status: 'cancelled', outcomeKnown: false}),
+  })}))
+  const content = await f.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique()
+    if (!run) throw Error('Missing run')
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing message')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(content).toBe(f.prefix)
+})
+
 test('native admission refuses an undrained source without consuming the request or recording startup', async () => {
   const f = await nativeRetryFixture()
   const request = {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,

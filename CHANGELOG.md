@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Settle interrupted tool rows and timers after fenced native recovery, and show the actual running count in collapsed work groups.
+
 - Retain a cloud agent's account and adapter setup after machine deletion so Start a new machine can provision again, while keeping revoked execution access disabled.
 
 - Configure acpx sessions before exposing them to liveness, preventing a startup settings gap from marking a restored run as needing attention.

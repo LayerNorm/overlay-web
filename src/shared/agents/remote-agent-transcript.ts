@@ -252,9 +252,14 @@ function closePendingRequestParts(parts: Array<Record<string, unknown>>, decisio
   })
 }
 
+/** Call only after the stopped source is drained and fenced from further work updates. */
+export function interruptRemoteAgentToolParts(parts: Array<Record<string, unknown>>, stoppedAt: number) {
+  return closeRunningRemoteToolParts(parts, 'interrupted', stoppedAt)
+}
+
 function closeRunningRemoteToolParts(
   parts: Array<Record<string, unknown>>,
-  outcome: 'completed' | 'failed' | 'cancelled',
+  outcome: 'completed' | 'failed' | 'cancelled' | 'interrupted',
   resolvedAt: number,
 ) {
   return parts.map((part) => {
@@ -287,9 +292,10 @@ function closeRunningRemoteToolParts(
         state: outcome === 'completed' ? 'output-available' : 'output-error',
         toolOutput: {
           success: outcome === 'completed',
-          status: outcome,
+          status: outcome === 'interrupted' ? 'cancelled' : outcome,
           title,
           resolvedAt,
+          ...(outcome === 'interrupted' ? {reason: 'execution_interrupted', outcomeKnown: false} : {}),
         },
       },
     }
