@@ -1,6 +1,6 @@
 'use client'
 import { Button, Input, Textarea } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledInput, unstyledTextarea } from '../control-reset'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import type { MemoryRow } from '@overlay/app-core'
 import { IMPORT_MEMORY_PROMPT } from '@overlay/app-core'
 import { Dialog, DialogContent } from '@overlay/ui'

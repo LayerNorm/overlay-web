@@ -1,6 +1,6 @@
 'use client'
 import { Button, Textarea } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledTextarea } from '../control-reset'
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'

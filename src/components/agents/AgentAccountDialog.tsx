@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import type { ProviderAccountResource } from '@overlay/api-client'

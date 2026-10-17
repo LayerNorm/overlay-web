@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { type ReactNode, type RefObject } from 'react'

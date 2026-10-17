@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
 import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'

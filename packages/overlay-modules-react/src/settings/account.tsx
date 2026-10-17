@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 import { AlertCircle, ArrowRight, Check, RefreshCw } from 'lucide-react'
 import type { AccountEntitlements, TopUpHistoryItem } from '@overlay/app-core'

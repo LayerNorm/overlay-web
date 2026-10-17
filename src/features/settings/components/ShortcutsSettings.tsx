@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledInput } from './control-reset'
+import { unstyledInput } from '@overlay/ui/control-reset'
 import { Input } from '@overlay/ui/primitives'
 
 import { useMemo, useState, useSyncExternalStore } from 'react'

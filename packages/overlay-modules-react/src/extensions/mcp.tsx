@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton, unstyledInput } from '../control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import type {
 McpAuthType,
 McpMutationResult,

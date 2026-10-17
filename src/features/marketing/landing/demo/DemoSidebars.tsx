@@ -1,5 +1,5 @@
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 import { Creature } from '@/components/orb/Creature'
 import { LandingLockup } from '../LandingOrb'

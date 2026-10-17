@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'

@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { File, Workflow } from 'lucide-react'

@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton, unstyledTextarea } from '../../control-reset'
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Button, Textarea } from '@overlay/ui/primitives'
 
 import {

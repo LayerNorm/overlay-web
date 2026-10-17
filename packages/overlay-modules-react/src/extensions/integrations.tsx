@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type {
 ConnectorCatalogItem
 } from '@overlay/app-core'

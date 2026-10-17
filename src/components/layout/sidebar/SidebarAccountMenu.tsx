@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import Link from 'next/link'
 import { LogOut, Settings, Sparkles } from 'lucide-react'
 import { CollapsibleSection, Button } from '@overlay/ui/primitives'

@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton, unstyledInput, unstyledTextarea } from './control-reset'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Button, Input, Textarea } from '@overlay/ui/primitives'
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'

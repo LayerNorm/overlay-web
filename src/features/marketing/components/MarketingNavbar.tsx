@@ -1,6 +1,6 @@
 "use client";
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
 import { Github, Menu, MoonStar, SunMedium, X } from "lucide-react";
 import { OverlayMark } from "@/components/orb/Orb";

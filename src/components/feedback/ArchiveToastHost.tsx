@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Toaster, toast, Button } from '@overlay/ui/primitives'

@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { KnowledgeFileNode } from '@overlay/app-core'
 import { filePathLabel } from '@overlay/app-core'
 import { BookOpen, Folder, Trash2 } from 'lucide-react'

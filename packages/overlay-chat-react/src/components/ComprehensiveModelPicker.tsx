@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useState, type ReactNode } from 'react'
 import { Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'

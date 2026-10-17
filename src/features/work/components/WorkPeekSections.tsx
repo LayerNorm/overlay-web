@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton, unstyledInput, unstyledTextarea } from '../../control-reset'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, FileText, Link as LinkIcon, MessageSquare, NotebookText, Plus, X } from 'lucide-react'

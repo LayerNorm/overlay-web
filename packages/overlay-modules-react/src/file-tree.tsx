@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { FileTreeEntry } from '@overlay/app-core'
 import { childFilesForTree, rootFilesForTree } from '@overlay/app-core'
 import { SidebarMenuSub, SidebarMenuSubItem, Button } from '@overlay/ui/primitives'

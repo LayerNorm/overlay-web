@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton, unstyledTextarea } from './control-reset'
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 
 import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'

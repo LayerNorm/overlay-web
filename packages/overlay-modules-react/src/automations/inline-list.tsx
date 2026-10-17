@@ -1,6 +1,6 @@
 'use client'
 import { Button, Input } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledInput } from '../control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import type { MouseEvent, ReactNode } from 'react'
 import { Loader2, Pencil, Trash2, Workflow } from 'lucide-react'
 import type { AutomationSummary } from '@overlay/app-core'

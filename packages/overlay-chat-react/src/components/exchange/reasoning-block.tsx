@@ -1,4 +1,4 @@
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 import {
 ASSISTANT_COLLAPSIBLE_BODY_CLASS

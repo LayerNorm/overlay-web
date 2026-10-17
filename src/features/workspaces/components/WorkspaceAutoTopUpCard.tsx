@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'

@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 import type { NoteDoc } from '@overlay/app-core'
 import { Button, EmptyState, Input, Textarea, cn } from '@overlay/ui'

@@ -1,6 +1,6 @@
 'use client'
 import { Button, Input, Textarea } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledInput, unstyledTextarea } from '../control-reset'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,

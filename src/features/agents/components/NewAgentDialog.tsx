@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useCallback, useMemo, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'

@@ -3,7 +3,7 @@
 // Canonical notebook editor. Platform routing, persistence, and rich host UI
 // are supplied through the adapter props declared below.
 import { Button, Textarea } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledTextarea } from '../control-reset'
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import {
   useState,
   useCallback,

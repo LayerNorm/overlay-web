@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'

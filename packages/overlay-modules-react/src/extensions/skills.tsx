@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton, unstyledInput, unstyledTextarea } from '../control-reset'
+import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import type {
 SkillFormValues,
 SkillSummary

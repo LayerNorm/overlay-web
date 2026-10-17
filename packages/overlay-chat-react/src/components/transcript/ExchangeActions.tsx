@@ -1,4 +1,4 @@
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 import { BookOpen, GitBranch, Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { WebSourceItem } from '../../lib/web-sources'

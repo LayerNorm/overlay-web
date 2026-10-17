@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton, unstyledInput } from './control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Copy, Plus, RefreshCw, RotateCw, Trash2 } from 'lucide-react'

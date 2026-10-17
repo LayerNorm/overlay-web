@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type {
 ExtensionCatalogItem
 } from '@overlay/app-core'

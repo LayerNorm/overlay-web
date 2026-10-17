@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
 import { lazy, Suspense } from 'react'
 import type { AutomationGraph, AutomationRunSummary } from '@overlay/app-core'

@@ -34,7 +34,7 @@ import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
-import { unstyledButton } from './control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
 
 export type RoomMessageReaction = {

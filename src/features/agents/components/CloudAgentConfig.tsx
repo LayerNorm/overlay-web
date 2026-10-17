@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton, unstyledInput } from './control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Copy, FolderUp, Terminal } from 'lucide-react'

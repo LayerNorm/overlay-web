@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { KnowledgeFile,MemoryRow,OutputSummary } from '@overlay/app-core'
 import type { TreeNode } from '@overlay/app-core/modules'
 import { Badge,Button,EmptyState,TabButton,TabsList,cn } from '@overlay/ui'

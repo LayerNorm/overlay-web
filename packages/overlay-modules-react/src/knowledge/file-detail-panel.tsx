@@ -1,6 +1,6 @@
 'use client'
 import { Textarea } from '@overlay/ui/primitives'
-import { unstyledTextarea } from '../control-reset'
+import { unstyledTextarea } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 
 export function KnowledgeFileDetailPanel({

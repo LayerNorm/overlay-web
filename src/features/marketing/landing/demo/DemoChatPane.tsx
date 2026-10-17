@@ -1,6 +1,6 @@
 'use client'
 import { Button, Input } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledInput } from '../../control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DIcon } from './demo-icons'
 import { Message, TypingRow } from './DemoMessages'

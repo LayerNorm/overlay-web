@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 import { Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { GenerationResult } from '@overlay/chat-core'

@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useCallback, useLayoutEffect, useRef, type CSSProperties } from 'react'
 import { SIDE, type SectionKey, type SideItem } from './landing-scenes'
 import { useRemeasure } from './use-remeasure'

@@ -1,4 +1,4 @@
-import { cn } from '@overlay/ui'
+import { cn } from './utils/cn'
 
 const BUTTON_RESET =
   'inline-block h-auto w-auto rounded-none p-0 font-normal text-inherit transition-none hover:bg-transparent hover:text-inherit disabled:cursor-auto disabled:opacity-100'

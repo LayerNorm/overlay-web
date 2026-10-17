@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'

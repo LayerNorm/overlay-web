@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton, unstyledInput } from '../control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Bot,

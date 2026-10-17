@@ -1,6 +1,6 @@
 'use client'
 
-import { unstyledButton, unstyledInput } from './control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 
 import { Suspense, useMemo, type MouseEventHandler, type ReactNode, type RefObject } from 'react'
 import {

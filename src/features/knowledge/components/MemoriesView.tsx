@@ -1,5 +1,5 @@
 "use client";
-import { unstyledButton, unstyledTextarea } from '../../control-reset'
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.

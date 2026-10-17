@@ -1,5 +1,5 @@
 import { Button } from '@overlay/ui/primitives'
-import { unstyledButton } from '../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { memo, type CSSProperties } from 'react'
 import { RAIL_LABEL, RAIL_ORDER } from './landing-scenes'
 

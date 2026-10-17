@@ -1,6 +1,6 @@
 'use client'
 import { Button, Input } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledInput } from '../control-reset'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
 import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2, X } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'

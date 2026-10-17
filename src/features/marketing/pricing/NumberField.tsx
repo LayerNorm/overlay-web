@@ -1,6 +1,6 @@
 'use client'
 import { Input } from '@overlay/ui/primitives'
-import { unstyledInput } from '../control-reset'
+import { unstyledInput } from '@overlay/ui/control-reset'
 import { useState } from 'react'
 import s from './pricing.module.css'
 

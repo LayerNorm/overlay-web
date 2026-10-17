@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton } from '../../control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 // Compatibility wrapper: canonical settings registry metadata lives in @overlay/app-core,
 // with reusable panel rendering primitives in @overlay/modules-react.
