@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useCallback, useState } from 'react'
 import { AlertCircle, KeyRound, Loader2, Plus } from 'lucide-react'
 import { ConfirmDialog } from '@overlay/ui/overlays'
@@ -67,15 +70,15 @@ export function ProviderConnectionsSetting() {
             Connect your own AI provider keys. Expand a provider to choose which models appear in your model dropdown.
           </p>
         </div>
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => setDialog({ mode: 'add' })}
           disabled={isLoading}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50"
+          className={unstyledButton(`inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-elevated) disabled:opacity-50`)}
         >
           <Plus size={14} strokeWidth={2} />
           Add provider
-        </button>
+        </Button>
       </div>
 
       {/* Loading state */}

@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+
 import { useCallback, useEffect, useState } from 'react'
 import { Plug, Plus, Trash2 } from 'lucide-react'
 import type { McpConnectionResource } from '@overlay/api-client'
@@ -101,14 +103,14 @@ export function ConnectedAppsSettings() {
                 {workspaceName(connection.workspaceId)} · {MCP_ACCESS_LABEL[connection.access]} · {connection.kind === 'token' ? 'Token' : 'Signed in'} · Last used {formatWhen(connection.lastUsedAt, 'never')}
               </p>
             </div>
-            <button
+            <Button variant="ghost"
               type="button"
               aria-label={`Disconnect ${connection.name}`}
               onClick={() => setRemoving(connection)}
-              className="rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400"
+              className={unstyledButton(`rounded-lg p-2 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-red-400`)}
             >
               <Trash2 size={14} />
-            </button>
+            </Button>
           </div>
         ))}
       </div>
