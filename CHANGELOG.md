@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show local timing-storage headroom for Preview QA and allow repeated long recordings within a bounded store.
+
 - Show final file saving without a stale agent connection warning after native execution ends.
 
 - Keep source-link punctuation cleanup linear for untrusted tool output.

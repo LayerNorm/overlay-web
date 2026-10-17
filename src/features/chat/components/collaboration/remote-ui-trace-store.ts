@@ -16,7 +16,7 @@ export const remoteUiTraceRecord = z.discriminatedUnion('kind', [
   z.object({...identity, kind: z.literal('end'), reason: z.enum(['unmounted', 'terminal'])}),
 ])
 export type RemoteUiTraceRecord = z.infer<typeof remoteUiTraceRecord>
-const MAX_ROWS = 120_000
+const MAX_ROWS = 240_000
 const counter = z.object({total: z.number().int().nonnegative()})
 
 export async function openRemoteUiTrace(): Promise<IDBDatabase> {
@@ -32,6 +32,20 @@ export async function openRemoteUiTrace(): Promise<IDBDatabase> {
     request.onsuccess = () => { if (blocked) request.result.close(); else resolve(request.result) }
     request.onerror = () => reject(new Error('Timing storage unavailable'))
     request.onblocked = () => { blocked = true; reject(new Error('Timing storage blocked')) }
+  })
+}
+
+export async function readRemoteUiTraceUsage(database: IDBDatabase): Promise<{storedRows: number; maxRows: number}> {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction('limits', 'readonly')
+    const request = transaction.objectStore('limits').get('count')
+    request.onsuccess = () => {
+      const parsed = counter.safeParse(request.result ?? {total: 0})
+      if (!parsed.success) { reject(new Error('Timing storage count is invalid')); return }
+      resolve({storedRows: parsed.data.total, maxRows: MAX_ROWS})
+    }
+    request.onerror = () => reject(new Error('Timing storage count unavailable'))
+    transaction.onabort = () => reject(new Error('Timing storage count interrupted'))
   })
 }
 

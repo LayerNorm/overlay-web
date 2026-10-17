@@ -497,15 +497,15 @@ The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLAN
 `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS`, and
 `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
 They are positive, server-side switches: missing, false, or malformed values resolve to disabled.
-This makes each switch an environment-controlled, fail-closed incident control. Overlay Cloud's
-switch remains false for the production workspace rollout, and the agent editor does not expose a
-managed-environment choice while that release is deferred.
+This makes each switch an environment-controlled, fail-closed incident control. A BYOA-only rollout
+keeps the cloud switch disabled. Internal managed-cloud activation additionally requires the
+validated image and exact eligible workspace allowlist; it does not widen artifact access.
 
 Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
 workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
 does not make any workspace eligible.
 
-The first production activation is intentionally narrow:
+A BYOA-only production activation is intentionally narrow:
 
 - publish and independently install-smoke the exact Agent Host and bridge-protocol versions;
 - set `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE=1` and
@@ -1163,9 +1163,10 @@ private chain of thought.
 ### Current rollout boundary
 
 The local and VPS host architecture and the Codex, Claude Code, and Hermes ACP manifests are
-implemented. The managed-sandbox implementation uses the same host image and protocol, but Overlay
-Cloud remains unavailable in the ordinary product UI until its image, conformance, credential,
-egress, billing, cleanup, security-review, and stability gates are complete.
+implemented. Managed sandboxes use the same host image and protocol and appear only when their
+cloud, run and control-plane flags and workspace rollout eligibility all pass. Broad availability
+still requires image, conformance, credential, egress, billing, cleanup, security-review and stability
+acceptance; internal eligibility does not imply a general release.
 
 The server controls connected agents through independent, default-off feature flags and a separate
 workspace rollout stage. Enabling one flag does not implicitly enable its prerequisites. See
@@ -1341,7 +1342,10 @@ versions remain monotonic across long streams.
 
 Preview timing QA can opt in with the branch-scoped `OVERLAY_AGENT_UI_TRACE=1` build
 setting and `?agentUiTrace=1` in the conversation URL. The build forces this off outside
-Vercel Preview. Connected-message toolbars then export a local IndexedDB JSONL trace:
+Vercel Preview. Check the export button's storage-at-page-load tooltip before a long run;
+the local store is bounded to 240,000 rows across recordings. Exhaustion preserves existing
+records and fails the capture closed; a partial export cannot prove whole-run timing.
+Connected-message toolbars export a local IndexedDB JSONL trace:
 run/message/recording identity, candidate SHA, wall/monotonic timestamps, normalized DOM
 text length/SHA-256 and clipped last-glyph geometry. No text, cookies or credentials are
 stored or transmitted. Sampling continues independently of the coding agent's tool turns;
