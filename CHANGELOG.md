@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve protected-route query parameters through sign-in and stale-session reauthentication so desktop login handoffs retain their PKCE challenge.
+
 - Patch Next.js to 16.4.1 in both web apps and Better Auth/SSO to 1.7.7. Replace the privileged PR preview trigger with a secret-free PR request that dispatches the protected main controller.
 
 - Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
