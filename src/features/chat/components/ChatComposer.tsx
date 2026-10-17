@@ -167,7 +167,9 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           />
         ) : null}
         <AttachmentPreviewTray {...props} />
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input
           ref={mixedFileInputRef}
           type="file"
@@ -183,6 +185,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
             event.target.value = ''
           }}
         />
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input
           ref={props.docInputRef}
           type="file"
