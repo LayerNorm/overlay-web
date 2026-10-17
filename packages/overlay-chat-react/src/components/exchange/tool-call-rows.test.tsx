@@ -20,6 +20,19 @@ test('native terminal output belongs to its one running action', () => {
   assert.doesNotMatch(markup(blocks), /2 tools in progress/)
 })
 
+test('a completed action with an attached running terminal does not remain in progress', () => {
+  const blocks = buildAssistantVisualSequence([
+    {type: 'tool-invocation', toolInvocation: {toolCallId: 'finished', toolName: 'remote_action', state: 'output-available'}},
+    {type: 'data-remote-agent-terminal', data: {key: 'finished', status: 'running', text: 'Retained output'}},
+    {type: 'tool-invocation', toolInvocation: {toolCallId: 'live', toolName: 'remote_action', state: 'input-available'}},
+    {type: 'data-remote-agent-terminal', data: {key: 'live', status: 'running'}},
+    {type: 'data-remote-agent-status', data: {state: 'running'}},
+  ]).filter((block): block is ToolGroupItem => block.kind === 'tool' || block.kind === 'reasoning')
+  assert.match(markup(blocks), /2 tools · 1 running/)
+  assert.match(markup(blocks.filter(block => block.key === 'finished')), /1 tool called/)
+  assert.doesNotMatch(markup(blocks.filter(block => block.key === 'finished')), /in progress/)
+})
+
 test('completed terminal details count once, while distinct calls each count', () => {
   const items: ToolGroupItem[] = [
     {kind: 'tool', key: 'exec-1', name: 'remote_action', state: 'output-available'},

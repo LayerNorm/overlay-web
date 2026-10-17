@@ -9,7 +9,7 @@ import {
   isGeneratedUiPart,
 } from './generated-ui'
 import { TOOL_UI_DONE_STATES } from './constants'
-import type { AssistantVisualBlock } from './types'
+import type { AssistantVisualBlock, ToolVisualBlock } from './types'
 import { getToolName, isReasoningUIPart, isToolUIPart } from './ui-parts'
 
 /** Preserve message `parts` order so tools and text interleave (matches stream / persisted transcript). */
@@ -183,6 +183,16 @@ export function buildAssistantVisualSequence(
         }
       }
     }
+  }
+
+  const remoteActionStates = new Map<string, ToolVisualBlock['state']>()
+  for (const block of out) {
+    if (block.kind === 'tool' && block.name === 'remote_action') remoteActionStates.set(block.key, block.state)
+  }
+  for (const block of out) {
+    if (block.kind !== 'tool' || block.name !== 'remote_terminal') continue
+    const actionState = remoteActionStates.get(block.key)
+    if (actionState) block.state = actionState
   }
 
   for (let i = 0; i < out.length - 1; i++) {

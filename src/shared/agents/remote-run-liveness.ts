@@ -37,6 +37,10 @@ export function remoteRunLivenessLabel(liveness: RemoteRunLiveness, now: number)
   if (elapsed > 30_000) return `Waiting for agent connection · last update ${Math.floor(elapsed / 1000)}s ago`
   const tool = liveness.openTools[0]
   const seconds = Math.floor(Math.max(0, tool ? tool.runningMs + now - liveness.lastHeartbeatAt : now - liveness.lastActivityAt) / 1000)
-  if (tool) return `${liveness.stalled ? 'Waiting on' : 'Running'} ${tool.title} · ${seconds}s`
+  if (tool) {
+    const title = Array.from(tool.title.split(/\r?\n/, 1)[0]?.trim() || 'tool')
+    const label = title.slice(0, 96).join('') + (title.length > 96 ? '…' : '')
+    return `${liveness.stalled ? 'Waiting on' : 'Running'} ${label} · ${seconds}s`
+  }
   return `Working · last update ${seconds}s ago`
 }

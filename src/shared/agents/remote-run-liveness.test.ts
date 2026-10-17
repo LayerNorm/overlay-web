@@ -9,6 +9,14 @@ test('a three-minute quiet tool with a fresh heartbeat remains explicitly runnin
   assert.ok(liveness); assert.equal(liveness.stalled, false)
   assert.equal(remoteRunLivenessLabel(liveness, 202000), 'Running Web search · 182s')
 })
+test('the status line keeps shell bodies collapsed and bounds long Unicode titles', () => {
+  const liveness = recordRemoteRunLiveness(undefined, [heartbeat], 200000)
+  assert.ok(liveness)
+  const label = (title: string) => remoteRunLivenessLabel({...liveness, openTools: [{actionId: 'shell', title, runningMs: 1000}]}, 200000)
+  assert.equal(label('python3 - <<\'PY\'\nprint("long shell body")\nPY'), "Running python3 - <<'PY' · 1s")
+  assert.equal(label('🪐'.repeat(100)), `Running ${'🪐'.repeat(96)}… · 1s`)
+  assert.equal(label(''), 'Running tool · 1s')
+})
 test('terminal output clears tools and observation alone does not invent progress', () => {
   const previous = recordRemoteRunLiveness(undefined, [heartbeat], 200000)
   assert.equal(recordRemoteRunLiveness(previous, [{ ...heartbeat, type: 'process_observation', payload: { process: 'live' } }], 205000), previous)

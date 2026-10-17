@@ -34,6 +34,30 @@ test('active remote run status keeps running remote visuals in progress', () => 
   assert.deepEqual(tools.map((tool) => tool.state), ['input-available', 'input-available'])
 })
 
+test('attached terminal detail follows its completed action while the turn continues', () => {
+  for (const state of ['output-available', 'output-error', 'output-denied']) {
+    const action = {type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'finished', toolName: 'remote_action', state,
+    }}
+    const terminal = {type: 'data-remote-agent-terminal', data: {
+      key: 'finished', terminalId: 'finished', status: 'running', text: 'Retained output',
+    }}
+    for (const pair of [[action, terminal], [terminal, action]]) {
+      const tools = buildAssistantVisualSequence([
+        ...pair,
+        {type: 'tool-invocation', toolInvocation: {
+          toolCallId: 'live', toolName: 'remote_action', state: 'input-available',
+        }},
+        {type: 'data-remote-agent-terminal', data: {key: 'standalone', status: 'running'}},
+        {type: 'data-remote-agent-status', data: {state: 'running'}},
+      ]).filter(block => block.kind === 'tool')
+      assert.deepEqual(tools.filter(tool => tool.key === 'finished').map(tool => tool.state), [state, state])
+      assert.equal(tools.find(tool => tool.key === 'live')?.state, 'input-available')
+      assert.equal(tools.find(tool => tool.key === 'standalone')?.state, 'input-available')
+    }
+  }
+})
+
 test('repairs a word split across reasoning and text without a trailing-word regex', () => {
   const blocks = buildAssistantVisualSequence([
     { type: 'reasoning', text: 'This can', state: 'done' },

@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phases 1–5 are implemented. Phase 0 metrics are in place, but the historical poll-500 diagnosis and whole-plan native acceptance remain open. The cache-identity and snapshot-retry image is ready; fresh-machine QA exposed a startup catalog-credential gap. Its follow-up needs an updated image and hosted acceptance.
+Status: Phases 1–5 are implemented. Phase 0 metrics are in place, but the historical poll-500 diagnosis and whole-plan native acceptance remain open. Fresh-machine hosted QA now verifies account-backed Codex options before the first task and settings persistence. Current-candidate long recovery acceptance remains in progress. Keep the complete change in PR #247 until its final acceptance and release review pass.
 
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -9,7 +9,11 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
-- Fresh-machine QA exposed startup options discovery running without its bound account credentials, leaving only Default before the first task. The follow-up delivers credentials only for the unique enabled Cloud binding and advertised adapter, checks current owner membership and refuses active work. Host/wire/server regressions cover first-run discovery, fallback, local sign-in and account isolation. Updated-image hosted acceptance remains pending.
+- Native long-run browser QA exposed completed commands retaining an attached terminal's running visual while the turn continues. Failing projection and rendered-group regressions reproduce the false count. The local fix resolves attached terminal visuals from their action by call key regardless of part order, preserving unrelated live actions and standalone terminals. The compact liveness label also bounds long command bodies while retaining full tool details. Hosted verification remains pending.
+
+- Current-candidate Codex forced recovery now admits the original native conversation on a new OS boot, preserves the same assistant and every pre-stop file hash, retains prior text and tool IDs, and closes the interrupted action and timer before new work continues. Internal bootstrap observation captures exact file hashes before native admission without probing the preparing filesystem externally. Final completion and fresh-machine deliverables remain pending. Browser-hidden observations during the implementation pause prevent using this run for whole-run visible-latency acceptance; retain them and perform uninterrupted timing acceptance separately.
+
+- Fresh-machine QA exposed startup options discovery running without its bound account credentials, leaving only Default before the first task. The follow-up delivers credentials only for the unique enabled Cloud binding and advertised adapter, checks current owner membership and refuses active work. Host/wire/server regressions cover first-run discovery, fallback, local sign-in and account isolation. Updated-image hosted QA now shows the full Codex model/mode/effort catalog before any task, and explicit saved settings survive browser reload. Native long-run application and completion remain separate acceptance gates.
 
 - Native Claude recovery stopped during file preparation with `DRIVE_FILE_CHANGED`; its
   preserved cache later passed a clean inventory read. A real filesystem metadata-race regression

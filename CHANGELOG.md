@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resolve attached terminal details with their completed command while an agent keeps working, and keep long shell scripts out of the compact status line.
+
 - Discover Cloud agent model, effort and permission choices using the bound account before the first task, with bounded fallback refresh and no credential replacement during active work.
 
 - Retry unstable file snapshots during fenced recovery preparation, without retrying permanent conflicts or an uncertain provider start.

@@ -394,3 +394,6 @@ Cancelled remote replies show a small status label even when no text was produce
 and the viewer cannot control the run. History serialization retains status and other metadata alongside legacy text fallback, so reload preserves this label and any partial answer.
 
 A native terminal detail shares its command's call key. Both live tool groups and the completed Worked summary count that action once, even across separate timeline groups, while retaining both the command and terminal output, with distinct React row keys. Single-action labels stay singular for failed and cancelled actions too. Mixed groups show the total unique calls and the number actually running, even when an earlier action failed or was interrupted. Completed calls never inflate the running count.
+
+While a turn continues, an attached terminal detail follows its command's resolved state even if the retained attachment still says running. Match by call key regardless of part order; unrelated running commands and standalone terminal details remain live.
+The liveness status uses only the first command line, capped at 96 Unicode code points. Full command bodies remain in collapsed tool details so a long script cannot crowd out the answer, deadline or recovery state.
