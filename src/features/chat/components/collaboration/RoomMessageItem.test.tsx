@@ -28,13 +28,14 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false) {
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode) {
   return renderToStaticMarkup(
     <RoomMessageItem
       message={toRoomMessageView({
         message,
         currentPrincipalId: ME,
         authorName,
+        streaming,
         mentions: [{ type: 'person', id: 'principal_maya', name: 'Maya Chen' }],
       })}
       reactions={[{ emoji: '👍', count: 2, reactedByCurrentPrincipal: true }]}
@@ -58,10 +59,26 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = 
       onOpenAttachmentPreview={() => undefined}
       onCopyPermalink={() => undefined}
       onControlRemoteQueue={() => undefined}
+      onResolveRemoteRequest={canResolve ? () => undefined : undefined}
       grouped={grouped}
+      remoteStatus={remoteStatus}
     />,
   )
 }
+
+test('provider Markdown paths use saved Files ids while source text and external links stay intact', () => {
+  const text = '[the briefing](briefing/INDEX.md) and [NASA](https://science.nasa.gov/earth/)'
+  const message = record({ authorKind: 'agent', authorPrincipalId: 'agent', content: text, parts: [
+    { type: 'text', text },
+    { type: 'data-remote-agent-drive', data: { state: 'saved', fileCount: 1, folderCount: 0,
+      entries: [{ fileId: 'report', path: 'briefing/INDEX.md', kind: 'file' }] } },
+  ] })
+  const html = render(message)
+  assert.match(html, /href="\/app\/files\?file=report">the briefing<\/a>/)
+  assert.doesNotMatch(html, /href="briefing\/INDEX.md"/)
+  assert.match(html, /href="https:\/\/science.nasa.gov\/earth\/"/)
+  assert.equal(toRoomMessageView({ message, currentPrincipalId: ME, authorName: 'Agent' }).text, text)
+})
 
 test('a member’s own message is just the personal gray bubble', () => {
   const html = render(record())
@@ -273,4 +290,104 @@ test('a lifecycle run needing attention exposes a deliberate fresh-start control
   assert.match(html, /Start fresh/)
   assert.match(html, /Stop or isolate the original process/)
   assert.doesNotMatch(html, />Resume</)
+})
+
+test('a cancelled empty remote reply remains visibly cancelled without control permission', () => {
+  const html = render(record({authorKind: 'agent', authorPrincipalId: 'agent-1', content: '', status: 'completed', parts: [
+    {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state: 'cancelled'}},
+  ]}))
+  assert.match(html, /role="status">Cancelled<\/p>/)
+  assert.doesNotMatch(html, /Stop response|Start fresh|Task deadline|is responding/)
+})
+
+test('active lifecycle messages expose their canonical task deadline and terminal messages do not', () => {
+  const deadline = Date.parse('2026-10-17T13:05:00Z')
+  for (const state of ['waiting', 'starting', 'running', 'waiting_for_approval', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled']) {
+    const message = record({authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Answer', parts: [
+      {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state, hardDeadlineAt: deadline}},
+    ]})
+    const html = render(message)
+    if (['completed', 'failed', 'cancelled'].includes(state)) assert.doesNotMatch(html, /Task deadline/)
+    else {
+      assert.match(html, /Task deadline/)
+      assert.match(html, /dateTime="2026-10-17T13:05:00.000Z"/i)
+      assert.match(html, /1:05 PM UTC/)
+    }
+  }
+})
+
+test('a reloaded MCP approval shows its recorded expiry and discloses billing only for a cloud machine', () => {
+  const expiresAt = Date.parse('2026-10-17T13:05:00Z')
+  for (const machineCostContinues of [true, false]) {
+    const message = record({ authorKind: 'agent', authorPrincipalId: 'agent-1', content: '', status: 'generating', parts: [
+      { type: 'data-remote-agent-request', data: { runId: 'run-1', requestKey: 'mcp_call:one', kind: 'permission',
+        prompt: 'Allow public read?', state: 'pending', expiresAt, machineCostContinues,
+        options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }] } },
+    ] })
+    const html = render(message, 'Agent', false, false, true)
+    assert.match(html, /Expires /)
+    assert.ok(html.includes(new Date(expiresAt).toLocaleString()))
+    assert.equal(html.includes('Machine time continues to be billed while waiting.'), machineCostContinues)
+    assert.equal((html.match(/>Allow<\/button>/g) ?? []).length, 1)
+    assert.equal((html.match(/>Deny<\/button>/g) ?? []).length, 1)
+  }
+})
+
+test('only confirmed native restoration remains visibly recovered after history reload, without control permission', () => {
+  for (const recoveryOutcome of [undefined, 'attached_live', 'restored', 'requires_new_attempt', 'unavailable']) {
+    const message = record({authorKind: 'agent', authorPrincipalId: 'agent-1', status: 'completed', content: 'Retained answer', parts: [
+      {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state: 'completed', recoveryOutcome}},
+    ]})
+    const html = render(message)
+    if (recoveryOutcome === 'restored') assert.match(html, /role="status">Recovered<\/p>/)
+    else assert.doesNotMatch(html, />Recovered</)
+    assert.match(html, /Retained answer/)
+  }
+})
+
+
+test('a live agent reply renders formatted chunks and one bottom dots row without character spans', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'generating',
+    content: '# Result\n\n**Live formatted tail**',
+    parts: [{ type: 'text', text: '# Result\n\n**Live formatted tail**' }],
+  }), 'Agent', false, true)
+  assert.match(html, /<strong>Live formatted tail<\/strong>/)
+  assert.ok(!html.includes('md-char'))
+  assert.ok(!html.includes('overlay-stream-marker'))
+  assert.match(html, /aria-label="Agent is responding"/)
+})
+
+
+test('stopping an agent keeps its earlier narrative visible while tool details remain folded', () => {
+  const intro = '**Retained introduction**\n\n'
+  const tail = 'Retained buffered tail.'
+  const message = record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'completed', content: intro + tail,
+    parts: [
+      { type: 'text', text: intro },
+      { type: 'tool-invocation', toolInvocation: { toolCallId: 't', toolName: 'remote_action', state: 'output-error', toolInput: { title: 'Research' }, toolOutput: { status: 'cancelled' } } },
+      { type: 'text', text: tail },
+      { type: 'data-remote-agent-status', data: { runId: 'r', state: 'cancelled', environmentName: 'QA', queueExpiresAt: 0 } },
+    ],
+  })
+  const html = render(message, 'Agent')
+  assert.match(html, /<strong>Retained introduction<\/strong>/)
+  assert.ok(html.includes('Retained buffered tail.'))
+  const view = toRoomMessageView({message, currentPrincipalId: ME, authorName: 'Agent'})
+  assert.ok(view.blocks.some(block => block.kind === 'tool' && block.toolInput?.title === 'Research'))
+  assert.match(html, />Cancelled<\/p>/)
+})
+
+
+test('final saving retains progress and deadline without stale native connection status', () => {
+  for (const state of ['running', 'finalizing']) {
+    const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent-1', status: 'generating', content: 'Retained answer', parts: [
+      { type: 'text', text: 'Retained answer' },
+      { type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state, hardDeadlineAt: Date.parse('2026-10-17T13:05:00Z') } },
+      { type: 'data-remote-agent-drive', data: { state: 'saving' } },
+    ] }), 'Agent', false, true, false, <span>Waiting for agent connection</span>)
+    assert.match(html, /Saving files/)
+    assert.match(html, /Task deadline/)
+    assert.match(html, /aria-label="Agent is responding"/)
+    assert.equal(html.includes('Waiting for agent connection'), state === 'running')
+  }
 })

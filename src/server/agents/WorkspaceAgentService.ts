@@ -176,6 +176,8 @@ export class WorkspaceAgentService {
         instructions,
         harness,
         modelId,
+        ...(args.input.permissionMode === undefined ? {} : { permissionMode: required(args.input.permissionMode, 'Permission mode', 200) }),
+        ...(args.input.effort === undefined ? {} : { effort: required(args.input.effort, 'Effort', 200) }),
         avatarColor: color(args.input.avatarColor),
         avatarShape: shape(args.input.avatarShape),
         allowedToolIds: unique(args.input.allowedToolIds ?? []),
@@ -231,6 +233,8 @@ export class WorkspaceAgentService {
         ? {}
         : { instructions: required(args.input.instructions, 'Agent instructions', 20_000) }),
       ...(args.input.modelId === undefined ? {} : { modelId: required(args.input.modelId, 'Model', 200) }),
+      ...(args.input.permissionMode === undefined ? {} : { permissionMode: required(args.input.permissionMode, 'Permission mode', 200) }),
+      ...(args.input.effort === undefined ? {} : { effort: required(args.input.effort, 'Effort', 200) }),
       ...(args.input.harness === undefined ? {} : { harness: args.input.harness }),
       ...(args.input.avatarColor === undefined ? {} : { avatarColor: color(args.input.avatarColor) }),
       ...(args.input.avatarShape === undefined ? {} : { avatarShape: shape(args.input.avatarShape) }),

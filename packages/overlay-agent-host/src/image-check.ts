@@ -1,15 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createAgentRegistry, resolveInstalledBuiltInAgentLaunch } from 'acpx/agent-registry'
 import { ACPX_AGENT_NAMES } from './acpx-adapter.js'
+import { pinnedAcpxLaunch } from './adapter-manifests.js'
 
 /** Written by `infra/agent-image/provision.sh`; the image's identity and pinned versions. */
 export const OVERLAY_IMAGE_MANIFEST_PATHS = ['/etc/overlay/image.json', '/opt/overlay/image.json'] as const
 
 /** Image versions this host build accepts on an Overlay Cloud machine. */
 /** v2 adds the run-credentials method to the bridge protocol; v1 hosts cannot parse Overlay Cloud credentials. */
-export const SUPPORTED_OVERLAY_IMAGE_VERSIONS = { min: 2, max: 6 } as const
+export const SUPPORTED_OVERLAY_IMAGE_VERSIONS = { min: 2, max: 9 } as const
 
 export type OverlayImageManifest = {
   imageVersion: number
@@ -31,8 +31,8 @@ export function credentialFilePaths(home = homedir()): string[] {
 
 /** The installed (no-download) launch acpx would use for an agent, if any. */
 function installedLaunchFor(agent: string): unknown {
-  const command = createAgentRegistry().resolve(agent)
-  return resolveInstalledBuiltInAgentLaunch(Array.isArray(command) ? command.join(' ') : command)
+  const launch = pinnedAcpxLaunch(agent)
+  return launch && launch[0] !== 'npx' ? launch : undefined
 }
 
 export function readImageManifest(paths: readonly string[] = OVERLAY_IMAGE_MANIFEST_PATHS): OverlayImageManifest | null {

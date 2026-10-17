@@ -1,6 +1,7 @@
 import 'server-only'
 import { ConvexError, jsonToConvex } from 'convex/values'
 
+import { describeFailure, recordConvexCallFailure } from '@/server/observability/failure-classification'
 import { logger } from '@/server/observability/logger'
 import { deploymentEnv } from '@/server/env/deployment-env'
 import { resolveConvexUrl } from './convex-url'
@@ -66,6 +67,22 @@ function shouldSuppressConvexError(
 
   return isBenignBackgroundConvexError(message)
 }
+
+async function callConvexLabelled<T>(
+  type: 'query' | 'mutation' | 'action',
+  path: string,
+  args: Record<string, unknown>,
+  options: CallConvexOptions = {}
+): Promise<T | null> {
+  try {
+    return await callConvex<T>(type, path, args, options)
+  } catch (error) {
+    // Callers see the same error; logs can now say which function failed and how.
+    throw recordConvexCallFailure(error, { path, type, httpStatus: lastHttpStatus.get(error as object) })
+  }
+}
+
+const lastHttpStatus = new WeakMap<object, number>()
 
 async function callConvex<T>(
   type: 'query' | 'mutation' | 'action',
@@ -134,12 +151,14 @@ async function callConvex<T>(
           ? data.errorMessage
           : `Convex ${type} request failed with HTTP ${response.status}`)
       if (options.throwOnError) {
-        throw data.errorData !== undefined
+        const failure = data.errorData !== undefined
           ? new ConvexError(jsonToConvex(data.errorData))
           : new Error(message)
+        lastHttpStatus.set(failure, response.status)
+        throw failure
       }
       if (!shouldSuppressConvexError(options, message)) {
-        logger.error(`Convex ${type} HTTP error:`, message)
+        logger.error(`Convex ${type} HTTP error`, describeFailure(message, { path, type, httpStatus: response.status }))
       }
       return null
     }
@@ -151,7 +170,7 @@ async function callConvex<T>(
           : new Error(data.errorMessage || `Convex ${type} error`)
       }
       if (!shouldSuppressConvexError(options, data.errorMessage ?? '')) {
-        logger.error(`Convex ${type} error:`, data.errorMessage)
+        logger.error(`Convex ${type} error`, describeFailure(data.errorMessage ?? '', { path, type }))
       }
       return null
     }
@@ -165,7 +184,7 @@ async function callConvex<T>(
       throw error
     }
     if (!shouldSuppressConvexError(options, error)) {
-      logger.error(`Convex ${type} failed:`, error)
+      logger.error(`Convex ${type} failed`, describeFailure(error, { path, type }))
     }
     return null
   }
@@ -186,9 +205,9 @@ function controllerSignalReasonMessage(error: Error): Error | null {
 
 export const convex = {
   query: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
-    callConvex<T>('query', path, args, options),
+    callConvexLabelled<T>('query', path, args, options),
   mutation: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
-    callConvex<T>('mutation', path, args, options),
+    callConvexLabelled<T>('mutation', path, args, options),
   action: <T>(path: string, args: Record<string, unknown>, options?: CallConvexOptions) =>
-    callConvex<T>('action', path, args, options)
+    callConvexLabelled<T>('action', path, args, options)
 }

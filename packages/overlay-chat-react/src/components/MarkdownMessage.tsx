@@ -45,16 +45,17 @@ interface Props {
   /** Optional avatar renderer for mention chips (e.g. agent creatures). Falls back to the type icon. */
   renderMentionAvatar?: (mention: ChatMessageMention) => ReactNode
   /**
-   * 'token' (default): render the full normalized text through one ReactMarkdown pass
+   * 'token': render the full normalized text through one ReactMarkdown pass
    *   every update, with a shim that closes open structures so partial markdown still
    *   renders styled. Shows a pulsing Overlay logo at the tail of the most recent token
    *   (or standalone before any tokens arrive); each new block element fades in as it
    *   enters the DOM.
-   * 'chunk': split into completed paragraph blocks + a separate tail block, with the
-   *   pulsing Overlay logo as the trailing indicator. Steadier but content appears
-   *   in jumps.
+   * 'chunk' (default): split into completed paragraph blocks + a separate tail block, with the
+   *   pulsing Overlay logo as the trailing indicator. The in-flight tail updates as one formatted block; no character pacing.
   */
   streamingMode?: ChatStreamingMode
+  /** Host-authorized saved paths can open their canonical Files records. */
+  resolveFileHref?: (href: string) => string | undefined
   onOpenAttachmentPreview?: (
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
@@ -67,7 +68,8 @@ function MarkdownMessageImpl({
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
-  streamingMode = 'token',
+  streamingMode = 'chunk',
+  resolveFileHref,
   appBaseUrl = null,
   mentions,
   renderMentionAvatar,
@@ -127,6 +129,8 @@ function MarkdownMessageImpl({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         a(props: any) {
           const href = props.href
+          const savedHref = typeof href === 'string' ? resolveFileHref?.(href) : undefined
+          if (savedHref) return <a href={savedHref}>{props.children}</a>
           const linkText = extractLinkText(props.children as ReactNode).trim()
 
           if (isMentionHref(href)) {
@@ -231,7 +235,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview],
+    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
   )
   const activeRemarkPlugins = useMemo(
     () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
@@ -273,7 +277,7 @@ function MarkdownMessageImpl({
     () => splitStreamingMarkdown(normalizedDisplay),
     [normalizedDisplay],
   )
-  const trailingBlock = !isStreaming && streamTail.trim() ? streamTail.trim() : ''
+  const trailingBlock = streamTail.trim() ? streamTail.trim() : ''
   const inChunkMode = streamingMode === 'chunk'
   const showInlineTypingDots = isStreaming && !suppressTypingIndicator && inChunkMode
 
@@ -328,7 +332,7 @@ function MarkdownMessageImpl({
             rehypePlugins={markdownRehypePlugins}
             components={mdRenderComponents}
           >
-            {trailingBlock}
+            {isStreaming ? shimIncompleteMarkdown(trailingBlock) : trailingBlock}
           </ReactMarkdown>
         </div>
       ) : null}
@@ -376,6 +380,7 @@ export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
     prev.text === next.text &&
     prev.isStreaming === next.isStreaming &&
     prev.streamingMode === next.streamingMode &&
+    prev.resolveFileHref === next.resolveFileHref &&
     prev.suppressTypingIndicator === next.suppressTypingIndicator &&
     prev.appBaseUrl === next.appBaseUrl &&
     prev.mentions === next.mentions &&

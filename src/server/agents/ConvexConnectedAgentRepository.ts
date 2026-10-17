@@ -53,7 +53,7 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
     return controlMutationNullable<AgentEnvironmentCredential | null>('issueEnvironmentCredentialByServer', input)
   }
   findEnvironmentCredential(input: Parameters<ConnectedAgentRepository['findEnvironmentCredential']>[0]) {
-    return controlQuery<AgentEnvironmentCredential | null>('findEnvironmentCredentialByServer', input)
+    return controlQuery<Awaited<ReturnType<ConnectedAgentRepository['findEnvironmentCredential']>>>('findEnvironmentCredentialByServer', input)
   }
   consumeEnvironmentProofNonce(input: Parameters<ConnectedAgentRepository['consumeEnvironmentProofNonce']>[0]) {
     return controlMutation<boolean>('consumeEnvironmentProofNonceByServer', input)
@@ -95,7 +95,7 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
     return mutation<AgentRemoteSession>('createRemoteSessionByServer', input)
   }
   getRemoteSessionForRun(input: Parameters<ConnectedAgentRepository['getRemoteSessionForRun']>[0]) {
-    return connectedQuery<AgentRemoteSession | null>('getRemoteSessionForRunByServer', input)
+    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['getRemoteSessionForRun']>>>('getRemoteSessionForRunByServer', input)
   }
   enqueueCommand(input: Parameters<ConnectedAgentRepository['enqueueCommand']>[0]) {
     return mutation<AgentRunCommand>('enqueueCommandByServer', input)
@@ -196,6 +196,9 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   }
   applyRemoteEvents(input: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]) {
     return mutation<ApplyRemoteEventsResult>('applyRemoteEventsByServer', input)
+  }
+  recordRejectedEventBatch(input: { workspaceId: string; environmentId: string; runId: string }) {
+    return mutation<boolean>('recordRemoteEventBatchRejectionByServer', input)
   }
   revokeEnvironment(input: Parameters<ConnectedAgentRepository['revokeEnvironment']>[0]) {
     return mutation<boolean>('revokeEnvironmentByServer', input)

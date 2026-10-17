@@ -35,8 +35,16 @@ assert.match(
   new RegExp(`HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@${hostPackage.version.replaceAll('.', '\\.')}'`),
   'the environment settings recovery command must pin the released host version',
 )
-assert.match(adapterManifests, /CODEX_ACP_PACKAGE_VERSION = '1\.7\.0'/)
-assert.match(adapterManifests, /CLAUDE_AGENT_ACP_PACKAGE_VERSION = '0\.70\.0'/)
+for (const path of ['runtime.ts', 'enrollment.ts']) {
+  const source = await readFile(new URL(`../../packages/overlay-agent-host/src/${path}`, import.meta.url), 'utf8')
+  assert.ok(source.includes(`hostVersion: '${hostPackage.version}'`), `${path} must advertise the released host version`)
+}
+const image = JSON.parse(await readFile(new URL('../../infra/agent-image/versions.json', import.meta.url), 'utf8'))
+for (const [constant, name] of [['CODEX_ACP_PACKAGE_VERSION', 'codex-acp'], ['CLAUDE_AGENT_ACP_PACKAGE_VERSION', 'claude-agent-acp']]) {
+  const version = image.packages[`@agentclientprotocol/${name}`]
+  assert.match(version, /^\d+\.\d+\.\d+$/)
+  assert.match(adapterManifests, new RegExp(`${constant} = '${version.replaceAll('.', '\\.')}'`), 'host and image adapter pins must match')
+}
 assert.match(adapterManifests, /HERMES_AGENT_MINIMUM_VERSION = '0\.20\.6'/)
 assert.match(adapterManifests, /command: 'hermes'/)
 assert.match(adapterManifests, /args: \['acp'\]/)

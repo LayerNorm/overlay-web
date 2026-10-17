@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
@@ -41,6 +42,13 @@ import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/age
 import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
 import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
+
+export function shouldPrepareConnectedAgentDrive(input: {
+  enabled: boolean; environmentKind: string; optedIn: boolean; capabilities: unknown
+}): boolean {
+  return input.enabled && (input.environmentKind === 'overlay_cloud' || input.optedIn)
+    && z.object({ drive: z.object({ version: z.literal(1) }) }).safeParse(input.capabilities).success
+}
 
 /**
  * Step budgets.
@@ -212,6 +220,8 @@ export type WorkspaceAgentInvocation = {
   /** Idempotency key for this (message, agent) pair. */
   invocationNonce: string
   modelId: string
+  permissionMode?: string
+  effort?: string
   /** The agent's tool grant — connected agents get their Overlay tools from it. */
   toolGrant?: AgentMcpToolGrant
   remoteTarget?: {
@@ -221,6 +231,8 @@ export type WorkspaceAgentInvocation = {
     environmentName: string
     environmentKind: 'local' | 'vps' | 'overlay_cloud' | 'external'
     /** The binding runs on a provider account; the host fetches its credentials for each run. */
+    supportsMcpApprovalBridge?: boolean
+    drive?: boolean
     usesProviderAccount: boolean
     modelUsageBilling: 'byok' | 'overlay'
     online: boolean
@@ -429,6 +441,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
       instructions: agent.instructions,
       invocationNonce: `agent:${args.messageId}:${agent.id}`,
       modelId: agent.modelId,
+      permissionMode: agent.permissionMode,
+      effort: agent.effort,
       toolGrant: {
         allowedToolIds: [...agent.allowedToolIds],
         isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay'),
@@ -440,6 +454,11 @@ export async function resolveWorkspaceAgentInvocations(args: {
           environmentId: target.environment.id,
           environmentKind: target.environment.kind,
           environmentName: target.environment.name,
+          supportsMcpApprovalBridge: ['claude-code', 'codex'].includes(adapterId) && z.object({ mcp: z.object({ approvalBridge: z.literal(true) }) })
+            .safeParse(target.environment.capabilities).success,
+          drive: shouldPrepareConnectedAgentDrive({ enabled: runtime.features.connectedAgentDrive === true,
+            environmentKind: target.environment.kind, optedIn: target.binding.adapterConfig.connectedAgentDrive === true,
+            capabilities: target.environment.capabilities }),
           modelUsageBilling: target.environment.kind === 'overlay_cloud'
             && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
           online: target.environment.status === 'online',
@@ -457,6 +476,12 @@ export async function resolveWorkspaceAgentInvocations(args: {
 
 const REMOTE_CONTEXT_MESSAGE_CHARS = 2_000
 const REMOTE_CONTEXT_TOTAL_CHARS = 80_000
+
+function remoteContextPrefix(text: string, limit: number): string {
+  const prefix = text.slice(0, limit)
+  const last = prefix.charCodeAt(prefix.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? prefix.slice(0, -1) : prefix
+}
 
 /**
  * ACP currently accepts one prompt string, so connected agents receive the
@@ -479,7 +504,7 @@ export function buildRemoteAgentPrompt(args: {
   const history = args.messages.flatMap((message) => {
     if (typeof message.content !== 'string' || !message.content.trim()) return []
     const role = message.role === 'assistant' ? 'Agent' : 'Room participant'
-    return [`${role}: ${message.content.trim().slice(0, REMOTE_CONTEXT_MESSAGE_CHARS)}`]
+    return [`${role}: ${remoteContextPrefix(message.content.trim(), REMOTE_CONTEXT_MESSAGE_CHARS)}`]
   }).join('\n\n')
   const envelope = [
     'OVERLAY_CONTEXT_BEGIN',
@@ -489,7 +514,7 @@ export function buildRemoteAgentPrompt(args: {
     'OVERLAY_CONTEXT_END',
   ].filter(Boolean).join('\n\n')
   const boundedContext = envelope.length > REMOTE_CONTEXT_TOTAL_CHARS
-    ? `${envelope.slice(0, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
+    ? `${remoteContextPrefix(envelope, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
     : envelope
   return `${boundedContext}\n\nRESPONSE_STYLE: ${AGENT_CLOSING_SUMMARY_INSTRUCTION}\n\nCURRENT_USER_MESSAGE_BEGIN\n${args.prompt}\nCURRENT_USER_MESSAGE_END`
 }
@@ -511,6 +536,7 @@ function overlayMcpMetadata(args: {
   latestUserText?: string
   memoryEnabled: boolean
   runId: string
+  sessionId: string
   ttlMs: number
   workspaceId: string
 }): { overlayMcp?: { url: string; token: string } } {
@@ -523,6 +549,8 @@ function overlayMcpMetadata(args: {
     conversationId: args.conversationId,
     environmentId: args.invocation.remoteTarget.environmentId,
     runId: args.runId,
+    sessionId: args.sessionId,
+    ...(args.invocation.remoteTarget.supportsMcpApprovalBridge ? { approvalBridge: true as const } : {}),
     turnId: args.invocation.turnId,
     invocationNonce: args.invocation.invocationNonce,
     modelId: args.invocation.modelId,
@@ -618,6 +646,9 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   })
   let sandboxBilling: Awaited<ReturnType<ManagedAgentSandboxBilling['reserve']>> | undefined
   try {
+    if (args.invocation.remoteTarget.drive) await server.connectedAgentControlPlane.prepareDriveEnvironment({
+      workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId,
+    })
     if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
       sandboxBilling = await sandboxBillingService.reserve({
         agentId: args.invocation.agentId,
@@ -666,8 +697,13 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           initiatorPrincipalId: args.initiatorPrincipalId,
           // A flag only: the host asks the control plane for the credentials, so no secret is stored in the command.
           ...(args.invocation.remoteTarget.usesProviderAccount ? { runCredentials: true } : {}),
+          ...(args.invocation.remoteTarget.drive ? { overlayDrive: { version: 1, sessionId: remoteSessionId,
+            location: args.invocation.remoteTarget.environmentKind === 'overlay_cloud' ? 'cloud' : 'approved-root' } } : {}),
           // The agent's own model id, when its owner chose one; otherwise the agent uses its default.
           ...connectedAgentModelMetadata(args.invocation.modelId),
+          permissionContext: args.invocation.remoteTarget.environmentKind === 'overlay_cloud' ? 'cloud' : 'local',
+          ...(args.invocation.permissionMode ? { permissionMode: args.invocation.permissionMode } : {}),
+          ...(args.invocation.effort ? { effort: args.invocation.effort } : {}),
           ...overlayMcpMetadata({
             actorUserId: args.actorUserId,
             conversationId: args.conversationId,
@@ -675,6 +711,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
             latestUserText: room.latestUserText,
             memoryEnabled: args.memoryEnabled,
             runId,
+            sessionId: remoteSessionId,
             ttlMs: policy.maxRunTimeMs + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS + AGENT_MCP_TOKEN_SLACK_MS,
             workspaceId: args.workspaceId,
           }),

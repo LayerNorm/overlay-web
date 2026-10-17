@@ -8,6 +8,13 @@ description: "Product UI decisions every surface follows: toggles-only controls,
 Product UI decisions that every surface follows. When a new control is needed,
 check here first — the answer is usually "use the existing pattern".
 
+Connected-agent output uses formatted chunks and one bottom loading indicator. Streaming
+Markdown may close an actual unfinished emphasis span, but identifiers and inline-code
+filenames keep their literal underscores; completion must not remove synthetic visible text.
+Preview-only timing diagnostics use a Lucide download control in the existing message toolbar,
+with recording/stopped/error in its accessible label. They require both the branch build opt-in
+and conversation query, and remain absent from Production.
+
 ## Tailwind CSS v4 configuration
 
 `postcss.config.mjs` loads `@tailwindcss/postcss`. The app imports `tailwindcss`
@@ -42,6 +49,32 @@ closure is prevented. While `busy`, confirmation, cancellation and Escape are
 blocked. Run `node scripts/qa/dialog-interactions.mjs` to verify the real wrappers
 in isolated Chromium. Use the Playwright browser or set
 `OVERLAY_QA_BROWSER_EXECUTABLE` to an installed compatible Chrome executable.
+Non-deletion confirmations pass a task-specific `busyLabel` (for example, “Saving…”).
+
+Connected-agent settings use the bound environment's advertised model, effort and permission
+choices. Each control saves for the next turn. Known permission modes use compact labels
+Manual, Edits, Plan, Auto and Bypass; local Bypass requires the shared confirmation dialog.
+An identity edit must not overwrite choices saved through these independent controls.
+Older combined model/effort ids resolve to separate live controls only when both choices
+are advertised. Show the effective effort, preserve it when changing models, and leave
+unsupported choices visibly marked; never replace them with discovery defaults.
+
+Connected-agent drive status sits below the answer without modifying provider Markdown. Saving
+and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
+Files links, with a link to Files for larger results. Folders navigate by folder id; files open by
+file id using the current workspace route. Successful turn completion waits for the final save.
+Provider Markdown links resolve relative or Cloud Drive paths only when they exactly match
+one saved entry. Render the canonical Files URL without rewriting provider text; preserve
+ordinary external links, and leave unknown, ambiguous or traversing paths unresolved.
+Only canonical `kind: note` records open in the Notes editor. Text/Markdown uploads
+retain their file identity and open in the file viewer; MIME type and extension do
+not turn them into notes. The file detail adapter requests `fullText: true` so the
+viewer and any edit start from the complete object-store content, not its searchable prefix.
+
+Lifecycle-v2 agent messages show the canonical task deadline below live progress, including
+while queued, recovering or needing attention. Use an absolute UTC time, independent of the
+viewer's control permissions; terminal messages hide the active deadline. Request cards retain
+their separate approval expiry, including owner-required MCP tool cards. Cloud approval cards show that machine time continues to be billed while waiting. Displaying a deadline does not attest that a process has stopped.
 
 ## Command palette
 
@@ -346,3 +379,28 @@ The landing FAQ uses native details/summary disclosures after the scroll story.
 Its visible answers and FAQ structured data share one source; describe available
 capabilities only. Public marketing pages define their own canonical paths so
 they do not inherit the root homepage canonical.
+
+
+## Streamed agent replies
+
+Markdown table cells wrap long identifiers and hashes without changing their text.
+Keep horizontal scrolling for genuinely wide tables with many columns; a single
+unbroken value must not force an otherwise narrow table beyond the chat pane.
+
+Render streamed text as complete formatted chunks. Markdown defaults to paragraph
+blocks plus a shimmed in-flight tail, with no per-character pacing or character
+spans. Room/agent transcripts suppress inline markers and keep one loading-dots
+row at the bottom throughout the run, including while tools are working.
+
+Keep the message action rail visible whenever it offers Stop. An active reply's
+Stop control must not require hovering the message; completed messages retain
+the usual hover/focus behavior.
+
+Cancelled and failed/recoverable remote replies keep their earlier narrative visible. Only tool details fold; stopping must not make the written answer appear to disappear behind the work summary.
+Cancelled remote replies show a small status label even when no text was produced
+and the viewer cannot control the run. History serialization retains status and other metadata alongside legacy text fallback, so reload preserves this label and any partial answer.
+
+A native terminal detail shares its command's call key. Both live tool groups and the completed Worked summary count that action once, even across separate timeline groups, while retaining both the command and terminal output, with distinct React row keys. Single-action labels stay singular for failed and cancelled actions too. Mixed groups show the total unique calls and the number actually running, even when an earlier action failed or was interrupted. Completed calls never inflate the running count.
+
+While a turn continues, an attached terminal detail follows its command's resolved state even if the retained attachment still says running. Match by call key regardless of part order; unrelated running commands and standalone terminal details remain live.
+The liveness status uses only the first command line, capped at 96 Unicode code points. Full command bodies remain in collapsed tool details so a long script cannot crowd out the answer, deadline or recovery state.

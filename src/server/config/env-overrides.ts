@@ -398,6 +398,7 @@ function featuresFromEnv(env: EnvSource): OverlayRuntimeConfigLayer {
     connectedAgentControlPlane: readFeatureBool(env, 'CONNECTED_AGENT_CONTROL_PLANE'),
     remoteAgentRuns: readFeatureBool(env, 'REMOTE_AGENT_RUNS'),
     connectedAgentArtifacts: readFeatureBool(env, 'CONNECTED_AGENT_ARTIFACTS'),
+    connectedAgentDrive: readFeatureBool(env, 'CONNECTED_AGENT_DRIVE'),
     overlayCloudEnvironments: readFeatureBool(env, 'OVERLAY_CLOUD_ENVIRONMENTS'),
     managedHarnessAgents: readFeatureBool(env, 'MANAGED_HARNESS_AGENTS'),
     computers: readFeatureBool(env, 'COMPUTERS'),

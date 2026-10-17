@@ -1,3 +1,4 @@
+import { hydrateRemoteMessage } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import {
   action,
@@ -1004,7 +1005,7 @@ export const getMessageForReindex = internalQuery({
   handler: async (ctx, { messageId }) => {
     const m = await ctx.db.get(messageId)
     if (!m || m.deletedAt) return null
-    const text = messageTextForIndex(m)
+    const text = messageTextForIndex(await hydrateRemoteMessage(ctx, m))
     if (text.length < MIN_MESSAGE_INDEX_CHARS) return null
     const convo = await ctx.db.get(m.conversationId)
     return {

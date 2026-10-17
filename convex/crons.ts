@@ -7,6 +7,8 @@ const crons = cronJobs()
 // Preview fixtures must never start scheduled work or call shared third parties.
 if (!isPreviewDeployment()) {
 
+crons.interval('expired connected-agent MCP results', { hours: 1 }, internal.agents.mcpCalls.cleanupExpired)
+
 // Claims due automation runs every minute and dispatches each to the BFF,
 // which executes it as a durable one-shot automation workflow. Sleep()-based
 // per-automation scheduling workflows could not survive in the current

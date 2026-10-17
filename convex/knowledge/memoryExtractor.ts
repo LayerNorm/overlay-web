@@ -1,3 +1,4 @@
+import { hydrateRemoteMessages } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import {
   hasSameMemoryExtractionAuthor,
@@ -27,13 +28,13 @@ export const getRecentMessages = internalQuery({
         )
       : recent
 
-    return messages
+    const selectedMessages = messages
       .filter((message) => validTarget
         ? hasSameMemoryExtractionAuthor(message, validTarget)
         : message.userId === userId && message.authorKind !== 'agent')
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(-8)
-      .map((m) => {
+    return (await hydrateRemoteMessages(ctx, selectedMessages)).map((m) => {
         const textParts =
           m.parts
             ?.filter(

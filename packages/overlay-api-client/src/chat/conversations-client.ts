@@ -198,6 +198,11 @@ export class ConversationsClient {
     return this.http.json<{ run: AgentRunResource | null }>(path, init)
   }
 
+  currentRemoteRun(input: { conversationId: string; runId: string }, init?: RequestInit) {
+    const path = this.http.appendQuery('/api/v1/conversations/run', { conversationId: input.conversationId, remoteRunId: input.runId })
+    return this.http.json<{ run: AgentRunResource | null }>(path, init)
+  }
+
   runMetrics(query?: { from?: number; to?: number; limit?: number }, init?: RequestInit) {
     const path = this.http.appendQuery('/api/v1/conversations/run/metrics', query)
     return this.http.json<AgentRunMetricsReport>(path, init)

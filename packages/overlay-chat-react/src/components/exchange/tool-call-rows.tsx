@@ -118,19 +118,20 @@ export function ToolCallsCollapsedGroup({
 }) {
   const [open, setOpen] = useState(false)
   const tools = items.filter((it): it is ToolVisualBlock => it.kind === 'tool')
-  const n = tools.length
+  // Terminal details and their action share a call key; count the action once.
+  const n = new Set(tools.map(tool => tool.key)).size
+  const running = new Set(tools.filter(tool => !TOOL_UI_DONE_STATES.has(tool.state)).map(tool => tool.key)).size
   const anyRunning =
-    tools.some((t) => !TOOL_UI_DONE_STATES.has(t.state)) ||
+    running > 0 ||
     items.some((it) => it.kind === 'reasoning' && it.state !== 'done')
   const anyErr = tools.some(
     (t) => t.state === 'input-error' || t.state === 'output-error' || t.state === 'output-denied',
   )
   const summary =
-    anyErr
-      ? `${n} tools called`
-      : anyRunning
-        ? n === 1 ? '1 tool in progress' : `${n} tools in progress`
-        : n === 1 ? '1 tool called' : `${n} tools called`
+    running > 0
+      ? running < n ? `${n} tools · ${running} running`
+        : n === 1 ? '1 tool in progress' : `${n} tools in progress`
+      : n === 0 && anyRunning ? 'Working' : n === 1 ? '1 tool called' : `${n} tools called`
 
   return (
     <div className="w-full px-1 py-0.5">
@@ -172,14 +173,14 @@ export function ToolCallsCollapsedGroup({
             }
             return isOverlayGatedToolOutput(it.toolOutput) ? (
               <GatedPaidFeatureCallout
-                key={it.key}
+                key={`${it.name}:${it.key}`}
                 block={it}
                 connectTop={top}
                 connectBottom={bot}
               />
             ) : (
               <ToolCallRowWithReasoning
-                key={it.key}
+                key={`${it.name}:${it.key}`}
                 block={it}
                 variant="nested"
                 connectTop={top}

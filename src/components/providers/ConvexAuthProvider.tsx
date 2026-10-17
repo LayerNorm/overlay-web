@@ -22,7 +22,7 @@ export function ConvexAuthProvider({
   children: React.ReactNode
   requiresConvexClient?: boolean
 }) {
-  const { user, isLoading } = useAuth()
+  const { user, isLoading, refreshSession } = useAuth()
   const userId = user?.id ?? null
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const convexEnabled = requiresConvexClient && Boolean(convexReactClient)
@@ -39,7 +39,7 @@ export function ConvexAuthProvider({
       return
     }
     const refresh = async () => {
-      const token = await fetchConvexToken().catch(() => null)
+      const token = await fetchConvexToken(refreshSession).catch(() => null)
       if (alive) setAccessToken(token)
       return token
     }
@@ -51,7 +51,7 @@ export function ConvexAuthProvider({
       alive = false
       window.clearInterval(interval)
     }
-  }, [convexEnabled, isLoading, userId])
+  }, [convexEnabled, isLoading, userId, refreshSession])
 
   // These HS256 tokens are explicit query arguments checked by our handlers.
   // They are not native Convex identity tokens: setAuth would send them to the

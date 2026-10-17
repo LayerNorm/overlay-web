@@ -4,6 +4,196 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show local timing-storage headroom for Preview QA and allow repeated long recordings within a bounded store.
+
+- Show final file saving without a stale agent connection warning after native execution ends.
+
+- Keep source-link punctuation cleanup linear for untrusted tool output.
+
+- Open connected agents' saved deliverable links in Files by their verified ids, including relative paths in the answer.
+
+- Verify partially rendered Markdown frames in streaming QA without discarding already-visible prose or relaxing timing and visibility checks.
+
+- Read current event-rate policy inputs with the agent session, retaining live access and wallet checks and legacy billing initialization without loading full usage history for every upload.
+
+- Add an explicit managed startup rollout switch for fenced Claude Code and Codex recovery, with lifecycle-v2 gating and an off setting for subsequent host boots.
+
+- Wrap long hashes and identifiers inside chat tables while preserving horizontal scrolling for tables with many columns.
+
+- Avoid a duplicate environment lookup on signed agent requests while preserving legacy-backend fallback, device proofs and current revocation checks.
+
+- Read Drive manifest sources with bounded parallelism while retaining deterministic cache limits, file order and full-content verification.
+
+- Resolve attached terminal details with their completed command while an agent keeps working, and keep long shell scripts out of the compact status line.
+
+- Discover Cloud agent model, effort and permission choices using the bound account before the first task, with bounded fallback refresh and no credential replacement during active work.
+
+- Retry unstable file snapshots during fenced recovery preparation, without retrying permanent conflicts or an uncertain provider start.
+
+- Resume startup file hydration after unchanged cached files acquire new filesystem identities, while preserving local-edit and in-flight replacement conflicts.
+
+- Stop native health probes as soon as an adapter receives its turn result, preserving completion while its connection closes and files finish saving.
+
+- Preserve literal underscores in streaming agent identifiers and filenames instead of appending a character that disappears at completion.
+
+- Add opt-in Preview browser timing exports that continue recording across automation interruptions without storing conversation text.
+
+- Keep final agent file saving authorized after the native provider finishes, with a bounded saving phase that respects Stop and task deadlines.
+
+- Hydrate concurrently updated agent files with bounded revision refreshes and reuse authenticated manifests for unchanged files.
+
+- Show expiry and ongoing cloud machine costs on MCP approval cards, and refuse unanswered approvals after their recorded expiry.
+
+- Settle interrupted tool rows and timers after fenced native recovery, and show the actual running count in collapsed work groups.
+
+- Retain a cloud agent's account and adapter setup after machine deletion so Start a new machine can provision again, while keeping revoked execution access disabled.
+
+- Configure acpx sessions before exposing them to liveness, preventing a startup settings gap from marking a restored run as needing attention.
+
+- Name workspace connection limits correctly when cloud-agent enrollment is refused before machine allocation.
+
+- Record cloud-agent setup failures before allocation instead of leaving startup pending indefinitely.
+
+- Renew private Preview hosting access when explicitly restarting a managed agent host.
+
+- Allow explicit per-adapter native restoration acceptance on durable hosts while keeping existing agents opted out.
+
+- Receive Stop during native startup preparation without discarding buffered output or admitting a new provider, while preserving ordered command acknowledgements.
+
+- Drain isolated native output before a server-acknowledged startup boundary, preserving buffered work and cancellation while fencing new provider health and approvals.
+
+- Bound message marker parsing, provider error matching and Boat URL cleanup to linear scans for malformed or oversized input.
+
+- Show Recovered after a fenced native startup confirms the original conversation, preserving the status through history reload and completion; reject replacement identities and unresolved approvals.
+
+- Retry confirmed transient native preparation failures on the same execution with bounded delivery attempts and current access checks; keep preparation separate from provider boot identity and reuse interrupted writes under their existing authority.
+
+- Keep native restoration claims intact through preparation and atomically fence provider startup with the original conversation identity; reject replay after an uncertain start.
+
+- Settle interrupted drive writes from immutable receipts before hydration, retain definitively uncommitted payloads and converge after interrupted local settlement without replaying old writes.
+
+- Add scoped receipt lookup for interrupted file writes so native recovery can distinguish committed work from writes fenced out by the replacement execution.
+
+- Connect run coordination to stopped-machine recovery, requiring durable continuation authorization before resume and preserving the original source fence on replay.
+
+- Queue native session continuation under a new execution generation while preserving the full answer, original settings and fixed deadline; reject stale authority and unresolved approvals.
+
+- Add guarded native-session takeover that preserves identity and committed text while rejecting duplicate or mismatched execution claims.
+
+- Bind recovery stop receipts to the original execution and machine lease, and require authorization before resuming that exact machine.
+
+- Preserve an unconfirmed native connection after a close error, block replacement prompts and allow Stop to retry.
+
+- Keep loaded ACP history from duplicating an existing answer or tool timeline while retaining the command catalog.
+
+- Pin ACP conversation identity before prompting and reject accidental fresh conversations during acpx restoration.
+
+- Keep agent option-discovery scratch state outside the synced drive so it cannot appear as saved folders.
+
+- Select enrollment verification words with cryptographic bounded sampling independent of vocabulary size.
+
+- Count a native action and its attached terminal output once in live tool groups and completed work summaries while retaining both details and correct singular labels for cancelled actions.
+
+- Keep cancelled remote replies visibly labelled when startup produced no text, including after reload and for viewers without run controls; preserve partial answers and saved-file/approval metadata in history.
+
+- Keep fresh-machine drive hydration authorized through a fenced preparation lease, without reporting provider execution before initialization finishes.
+
+- Run ordinary CI test shards on Node 24 so built Agent Host CLI contracts exercise its supported runtime.
+
+- Confirm ACP process-group termination on macOS when only exited zombies remain, while retaining live permission failures.
+
+- Honor explicit Boat file permissions and secure private host state before delivering Preview access.
+
+- Add host-only access for protected Preview machine enrollment, API calls and MCP without putting hosting credentials in provider environments or startup commands.
+
+- Display supported legacy Codex model/effort choices correctly against live catalogs and preserve effort when changing models.
+
+- Show lifecycle-v2 agent task deadlines through queueing, execution and recovery, alongside the separate approval expiry.
+
+- Preserve selected permission mode and effort with the model in agent recovery checkpoints, while excluding credentials.
+
+- Drain provider callbacks, buffered text, drive work and active upload acknowledgements before closing an agent host; retain ownership when provider termination cannot be confirmed.
+
+- Connected agents keep running when a provider uses a long shell script as its tool title; display labels stay within the bridge limit without splitting Unicode.
+
+- Authenticate server-side workspace-tool calls to their own protected Preview so native MCP tools receive API responses instead of a hosting login page.
+
+- Open text uploads in Files with their full stored content; reserve the Notes editor for note records so saved drive links do not stall on an inaccessible note.
+
+- Renew expired pending drive uploads under current run authority, retaining immutable write identities and avoiding duplicate quota charges after an outage.
+
+- Preserve the saved answer when an explicit fresh connected-agent attempt continues streaming on the same message.
+
+- Persist connected-agent drive status in chat messages and sign staging checksum headers consistently for R2 and S3 uploads.
+
+- Keep host heartbeats running during initialization and create newly approved drive directories before resolving filesystem roots.
+
+- Let already enrolled drive-capable hosts renew their scoped drive credential method without changing other credential permissions.
+
+- Keep Stop visible while a chat reply is running.
+
+- Avoid advertising hard-coded models after a connected agent reports no model catalog.
+
+- Add default-off guarded drive transactions with immutable uploads, quota checks, conflict copies and full-byte verification. The host hydrates an approved dedicated cache, saves after actions and periodically, and waits for the final save before reporting success. Failed saves preserve local recovery data; saved files and folders link from the answer to Files. Hosted acceptance remains pending.
+
+- Keep connected-agent text streaming from repeatedly fetching sidebar conversation history.
+
+- Preserve event upload retry boundaries across host restarts so a lost acknowledgement cannot turn a retry into an overlapping batch.
+
+- Add execution-fenced call storage and bounded result retention for resumable connected-agent tools. Upgraded hosts resume the original approval-gated tool call across reconnects with one canonical decision card.
+
+- Clear open-tool liveness when lifecycle supervision confirms that a stopped agent process has exited.
+
+- Preserve complete Unicode characters when bounding connected-agent history so an emoji at the limit cannot prevent the next turn from starting.
+
+- Load compiled conversation memory profiles from the default-runtime store query instead of the retired compilation-module path.
+
+- Keep hosted TypeScript validation enabled even when a CI skip flag is inherited, and resolve direct and transitive Convex bridge imports from canonical source in clean checkouts.
+
+- Add opt-in build resource diagnostics for Node workers without logging environment values or heap contents.
+
+- Fence connected-agent workspace tools to the current execution, recheck authority after approval waits and preserve signed expiry across restart delivery. Reject malformed token suffixes and stale approval requests.
+
+- Use Webpack worker compilation with memory optimizations for customer-web builds, retaining hosted TypeScript checks. Move reusable account content out of the route module so route validation passes.
+
+- Preserve safe drive rejection statuses through Convex error envelopes; reject unsafe download paths before storage access.
+
+- Add default-off connected-agent drive reads with scoped bearer authorization, streamed manifests and verified bounded downloads. Token issuance, writes, host synchronization and hosted acceptance remain pending.
+
+- Restore live room updates by returning message revision metadata consistently in history and subscriptions, including chunk-only text. Recover browser realtime tokens after one session refresh and avoid unhandled token-request rejections.
+
+- Keep active smoke agents running when observation expires, honor API read cooldowns and leave request headroom for browser QA. Confirm cleanup responses before reporting deletion; observation gaps prevent a streaming acceptance pass.
+
+- Prepare consistent scoped drive manifests and authenticated download grants, with bounded metadata and exact-revision inline note reads. Agent-turn integration remains pending.
+
+- Prepare scoped drive reads with live Convex authorization, exact file revisions and verified storage bytes. Enforce R2/S3 download limits while streaming. File commits and host sync remain pending.
+
+- Prepare full-byte drive-manifest hashing and changed-source checks, with explicit deferred entries for cache limits. Runtime integration remains pending.
+
+- Expose scoped drive folder, move and delete commits through HTTP with hydrated-entry grants, current path/revision checks and retry receipts. Content uploads and host synchronization remain in progress.
+
+- Preserve safe drive rejection statuses when production Convex redacts developer error messages.
+
+- Prepare a dedicated connected-agent drive cache with bounded snapshots, hash-checked atomic hydration and traversal/symlink rejection. This foundation is not yet connected to Overlay Files or enabled for agent turns.
+
+- Prepare connected-agent model, effort and permission discovery with bound-environment settings, per-prompt application and explicit local Bypass confirmation. Candidate adapter pins: Claude ACP 0.91.0 and Codex ACP 2.2.2; image v9. Hosted acceptance and the remaining Phase 3 approval/release work are pending.
+
+- Resolve the bridge protocol from workspace source in Convex tests, so clean checkouts do not depend on package build order.
+
+- Preserve the final ACP text notification when an agent's completion response arrives in the same input buffer. Drain ordered session updates before exposing completion in both checkpoint and delta streams.
+
+- Add negotiated incremental text and run heartbeats for connected agents. Persist large answers in bounded chunks, hydrate canonical text for authorized readers, preserve Unicode and cancellation output, and show tool age or connection status beside bottom loading dots. Older hosts retain checkpoint streaming. Host/protocol candidate: 0.4.0; image candidate: v8; timed preview/provider acceptance remains pending.
+
+- Keep written narrative visible when a connected-agent run is cancelled or fails; only tool details fold into the work summary.
+
+- Refresh preview API sessions during long smoke runs before retrying an unauthenticated request once, preserving test continuity across access-token expiry.
+
+- Render live agent replies in formatted chunks with bottom loading dots. Correct smoke text readback for API responses that expose text only in message parts, and require exact prefix preservation for cancellation acceptance.
+
+- Prevent connected-agent upload backlogs from blocking Stop or agent output. Coalesce text, pack uploads by bytes, retain immutable attempted events across retries/restarts, and recover oversized legacy checkpoints with a visible truncation marker. Stop preserves text and tool history, including buffered output before stop confirmation; unchanged observations skip transcript writes. Host/protocol candidate: 0.3.12; image candidate: v7.
+
+- Make connected-agent transport failures diagnosable (reliable connected agents, Phase 0). Agent Host routes return `x-overlay-request-id` and log failed or slow requests. Server failures and Convex call errors are logged with a safe classification: type, class, codes, Convex function and request id. Each connected-agent run records stream counters (batches, bytes, text snapshot size, message rewrites, refused batches, host lag, quiet gaps, longest tool), returned as `streamSummary` by `GET /api/v1/conversations/run`. The long-horizon smoke gains `--via overlay` to run a real cloud agent on a PR preview.
+
 - Keep Turbopack route bootstraps external so the optimized app hydrates under nonce-based Content Security Policy after the Next.js upgrade.
 
 - Preserve protected-route query parameters through sign-in and stale-session reauthentication so desktop login handoffs retain their PKCE challenge.

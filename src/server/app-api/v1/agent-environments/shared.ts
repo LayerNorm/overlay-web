@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 import { ConnectedAgentControlPlaneError } from '@/server/agents'
+import { describeFailure } from '@/server/observability/failure-classification'
 import { logger } from '@/server/observability/logger'
 
 export function agentEnvironmentErrorResponse(error: unknown) {
@@ -16,7 +17,8 @@ export function agentEnvironmentErrorResponse(error: unknown) {
       headers: { 'Cache-Control': 'no-store' },
     })
   }
-  logger.error('[agent-environments] request failed', error)
+  // The message is not logged (it can carry user data); its classification names the cause.
+  logger.error('[agent-environments] request failed', describeFailure(error))
   return NextResponse.json({ error: 'Agent environment request failed', code: 'internal_error' }, {
     status: 500,
     headers: { 'Cache-Control': 'no-store' },

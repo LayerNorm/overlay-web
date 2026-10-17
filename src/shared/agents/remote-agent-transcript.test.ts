@@ -16,6 +16,40 @@ function event(sequence: number, type: AgentRemoteEvent['type'], payload: Record
   }
 }
 
+test('preparation removes reconnect controls without inventing provider execution or text', () => {
+  const prepared = projectRemoteAgentEvents({content: 'Waiting for computer',
+    parts: waitingRemoteAgentParts({environmentName: 'computer', queueExpiresAt: 100, runId: 'run-1'}),
+    events: [event(1, 'session_preparing', {})], environmentName: 'computer', queueExpiresAt: 100, runId: 'run-1'})
+  assert.equal(prepared.runStatus, 'queued')
+  assert.equal(prepared.sessionStatus, 'starting')
+  assert.equal(prepared.remoteSessionId, undefined)
+  assert.equal(prepared.content, '')
+  assert.ok(prepared.parts.some(part => part.type === 'data-remote-agent-status' && part.data
+    && typeof part.data === 'object' && 'state' in part.data && part.data.state === 'starting'))
+  const started = projectRemoteAgentEvents({...prepared, events: [event(2, 'session_started', {remoteSessionId: 'native', adapterId: 'codex'})],
+    environmentName: 'computer', queueExpiresAt: 100, runId: 'run-1'})
+  assert.equal(started.runStatus, 'running')
+  assert.equal(started.remoteSessionId, 'native')
+})
+
+test('drive progress replaces one bounded summary without changing provider text or settling the run', () => {
+  const projection = projectRemoteAgentEvents({ content: '# Report', parts: [{ type: 'text', text: '# Report' }],
+    events: [event(1, 'drive_sync', { state: 'saving' }), event(2, 'drive_sync', {
+      state: 'saved', fileCount: 1, folderCount: 1, entries: [
+        { fileId: 'folder', path: 'reports', kind: 'folder' },
+        { fileId: 'report', path: 'reports/result.md', kind: 'file' },
+      ],
+    })], environmentName: 'Cloud', queueExpiresAt: 5000, runId: 'run-1',
+  })
+  assert.equal(projection.content, '# Report')
+  assert.equal(projection.terminal, false)
+  const summaries = projection.parts.filter(part => part.type === 'data-remote-agent-drive')
+  assert.equal(summaries.length, 1)
+  assert.deepEqual(summaries[0].data, { key: 'drive', state: 'saved', fileCount: 1, folderCount: 1, entries: [
+    { fileId: 'folder', path: 'reports', kind: 'folder' }, { fileId: 'report', path: 'reports/result.md', kind: 'file' },
+  ] })
+})
+
 test('remote checkpoints replace one stable markdown block and actions update in place', () => {
   const projection = projectRemoteAgentEvents({
     content: 'Waiting for MacBook',

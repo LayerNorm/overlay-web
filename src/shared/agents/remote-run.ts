@@ -3,7 +3,7 @@ import type { AgentRunStatus } from './agent-run'
 export const REMOTE_RUN_LIFECYCLE_VERSION = 2 as const
 export const REMOTE_RUN_PHASES = [
   'queued', 'waking', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input',
-  'recovering', 'needs_attention', 'cancelling', 'completed', 'cancelled', 'failed',
+  'recovering', 'finalizing', 'needs_attention', 'cancelling', 'completed', 'cancelled', 'failed',
 ] as const
 export type RemoteRunPhase = typeof REMOTE_RUN_PHASES[number]
 export type RemoteRecoveryOutcome = 'attached_live' | 'restored' | 'requires_new_attempt' | 'unavailable'
@@ -21,10 +21,16 @@ export type RemoteRunState = {
   cancelRequestedAt?: number
   lastHealthAt?: number
   lastProgressAt?: number
+  lastPreparationAt?: number
+  finalizationDeadlineAt?: number
   approval?: RemoteRunApproval
   approvals?: RemoteRunApproval[]
   cause?: string
   recoveryOutcome?: RemoteRecoveryOutcome
+  providerStop?: {
+    provider: 'box'; environmentId: string; leaseId: string; providerReference: string
+    attemptId: string; executionGeneration: number; observedAt: number; recordedAtRevision: number
+  }
 }
 export type RemoteRunFact =
   | { type: 'claim_coordinator'; coordinatorId: string }
@@ -32,8 +38,12 @@ export type RemoteRunFact =
   | { type: 'wake' }
   | { type: 'dispatch' }
   | { type: 'started' }
+  | { type: 'preparing' }
   | { type: 'health'; process: 'live' | 'lost' | 'unknown' }
   | { type: 'progress' }
+  | { type: 'finalize' }
+  | { type: 'failure' }
+  | { type: 'isolated_source'; outcome: 'completed' | 'failed' | 'cancelled' | 'approval_context_lost' }
   | { type: 'request'; requestKey: string; kind: 'permission' | 'elicitation'; expiresAt: number }
   | { type: 'decision'; requestKey: string; decision: string }
   | { type: 'decision_delivered'; requestKey: string }
@@ -64,6 +74,11 @@ type FactHandlers = { [K in RemoteRunFact['type']]: (context: FactContext, fact:
 function needsAttention(next: RemoteRunState, cause: string) {
   next.phase = 'needs_attention'
   next.cause = cause
+}
+function loseNativeProcess(current: RemoteRunState, next: RemoteRunState) {
+  needsAttention(next, pendingRemoteApprovals(current).length > 0 ? 'approval_context_lost' : 'process_lost')
+  delete next.approval
+  delete next.approvals
 }
 export function pendingRemoteApprovals(state: RemoteRunState): RemoteRunApproval[] {
   return (state.approvals ?? (state.approval ? [state.approval] : [])).filter(request => !request.delivered)
@@ -104,26 +119,42 @@ const factHandlers: FactHandlers = {
     if (!current.coordinatorId || !['queued', 'waking', 'starting'].includes(current.phase)) return 'conflict'
     next.phase = 'starting'
   },
+  preparing({current, next, now}) {
+    if (!['starting', 'recovering'].includes(current.phase)) return 'conflict'
+    next.lastPreparationAt = now
+  },
   started({ current, next, now }) {
     if (!['starting', 'recovering'].includes(current.phase)) return 'conflict'
     next.phase = phaseAfterAttach(current)
     delete next.cause
     next.lastHealthAt = now
+    delete next.lastPreparationAt
   },
   health({ current, next, now }, fact) {
+    if (current.phase === 'finalizing') return 'unchanged'
     if (fact.process === 'live') {
       next.lastHealthAt = now
       if (current.phase === 'needs_attention' && current.cause === 'process_health_required') {
         next.phase = phaseAfterAttach(current)
         delete next.cause
       }
-    } else if (fact.process === 'lost') {
-      needsAttention(next, pendingRemoteApprovals(current).length > 0 ? 'approval_context_lost' : 'process_lost')
-      delete next.approval
-      delete next.approvals
-    } else needsAttention(next, 'process_health_unknown')
+    } else if (fact.process === 'lost') loseNativeProcess(current, next)
+    else needsAttention(next, 'process_health_unknown')
   },
   progress({ next, now }) { next.lastProgressAt = now },
+  finalize({ current, next, now }) {
+    if (current.phase !== 'running' || pendingRemoteApprovals(current).length > 0) return 'conflict'
+    next.phase = 'finalizing'
+    next.finalizationDeadlineAt = Math.min(current.hardDeadlineAt, now + 5 * 60_000)
+  },
+  failure({ current, next }) { loseNativeProcess(current, next) },
+  isolated_source({current, next}, fact) {
+    if (!['recovering', 'needs_attention'].includes(current.phase)) return 'conflict'
+    delete next.lastPreparationAt
+    if (fact.outcome === 'completed' && pendingRemoteApprovals(current).length === 0) {
+      next.phase = 'completed'; delete next.cause
+    } else needsAttention(next, fact.outcome === 'approval_context_lost' ? 'approval_context_lost' : `isolated_source_${fact.outcome}`)
+  },
   request({ current, next }, fact) {
     if (current.cause === 'approval_context_lost' || !['starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering'].includes(current.phase)) return 'conflict'
     const requests = allRemoteApprovals(current)
@@ -149,7 +180,7 @@ const factHandlers: FactHandlers = {
     replaceApprovals(next, requests.map(request => request.requestKey === fact.requestKey ? { ...request, delivered: true } : request))
     next.phase = phaseAfterAttach(next)
   },
-  recovery_requested({ next }) { next.phase = 'recovering' },
+  recovery_requested({ next }) { next.phase = 'recovering'; delete next.lastPreparationAt },
   recover({ current, next, now }, fact) {
     next.recoveryOutcome = fact.recoveryOutcome
     if (fact.recoveryOutcome === 'attached_live') {
@@ -158,20 +189,36 @@ const factHandlers: FactHandlers = {
       next.lastHealthAt = now
     } else if (fact.recoveryOutcome === 'restored' && fact.oldWriterStopped && pendingRemoteApprovals(current).length === 0) {
       next.phase = 'running'; delete next.cause; next.lastHealthAt = now
-    } else needsAttention(next, fact.oldWriterStopped ? 'continuation_unsupported' : 'old_writer_not_isolated')
+      delete next.lastPreparationAt
+    } else {
+      if (fact.recoveryOutcome === 'restored') next.recoveryOutcome = fact.oldWriterStopped ? 'requires_new_attempt' : 'unavailable'
+      needsAttention(next, fact.oldWriterStopped ? 'continuation_unsupported' : 'old_writer_not_isolated')
+    }
   },
-  complete({ current, next }) {
-    if (current.phase !== 'running' || pendingRemoteApprovals(current).length > 0) return 'conflict'
+  complete({ current, next, now }) {
+    if (!['running', 'finalizing'].includes(current.phase) || pendingRemoteApprovals(current).length > 0) return 'conflict'
+    if (current.phase === 'finalizing' && now >= (current.finalizationDeadlineAt ?? 0)) {
+      needsAttention(next, 'finalization_timeout')
+      return
+    }
     next.phase = 'completed'
   },
   stopped({ next }) { needsAttention(next, 'execution_stopped') },
   observe({ current, next, now }) {
     if (current.phase === 'needs_attention' && current.cause !== 'process_health_required') return 'unchanged'
+    const awaitingStart = ['queued', 'waking', 'starting'].includes(current.phase)
+      || (current.phase === 'recovering' && current.cause === 'native_restoration')
     if (pendingRemoteApprovals(current).some(request => now >= request.expiresAt)) {
       next.phase = 'cancelling'; next.cause = 'approval_expired'; next.cancelRequestedAt = now
-    } else if (['queued', 'waking', 'starting'].includes(current.phase) && now >= current.claimDeadlineAt) {
+    } else if (current.phase === 'finalizing') {
+      if (now < (current.finalizationDeadlineAt ?? 0)) return 'unchanged'
+      needsAttention(next, 'finalization_timeout')
+    } else if (current.lastPreparationAt !== undefined && ['starting', 'recovering'].includes(current.phase)) {
+      if (now - current.lastPreparationAt < 90_000) return 'unchanged'
+      needsAttention(next, 'preparation_health_required')
+    } else if (awaitingStart && now >= current.claimDeadlineAt) {
       needsAttention(next, 'command_unclaimed')
-    } else if (!['queued', 'waking', 'starting'].includes(current.phase) && now - (current.lastHealthAt ?? 0) >= 90_000) needsAttention(next, 'process_health_required')
+    } else if (!awaitingStart && now - (current.lastHealthAt ?? 0) >= 90_000) needsAttention(next, 'process_health_required')
     else return 'unchanged'
   },
 }

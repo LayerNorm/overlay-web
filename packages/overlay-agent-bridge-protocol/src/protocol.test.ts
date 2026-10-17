@@ -1,6 +1,55 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { agentHostCommandSchema, agentHostEventSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
+import { providerCredentialsRequestSchema, driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema, startAdapterPayloadSchema, recoveryCapabilitiesSchema } from './index'
+
+test('fenced native restoration requires its original session and a complete stopped-provider receipt', () => {
+  const base = {bindingId: 'binding', adapterId: 'claude-code', workingDirectory: '/home/user/drive', prompt: 'Continue', metadata: {}}
+  const restore = {previousExecution: {attemptId: 'previous', generation: 1, hostBootId: 'old-boot'},
+    providerStop: {provider: 'box', leaseId: 'original-lease', providerReference: 'original-machine', observedAt: 1000}}
+  const valid = {...base, sessionId: 'original-native-session', restore}
+  assert.equal(startAdapterPayloadSchema.safeParse(base).success, true)
+  assert.equal(startAdapterPayloadSchema.safeParse(valid).success, true)
+  for (const input of [{...valid, fresh: true}, {...base, restore},
+    {...valid, restore: {...restore, previousExecution: {attemptId: 'previous', generation: 0}}},
+    {...valid, restore: {...restore, providerStop: {...restore.providerStop, provider: 'e2b'}}},
+    {...valid, restore: {...restore, providerStop: undefined}}]) {
+    assert.equal(startAdapterPayloadSchema.safeParse(input).success, false)
+  }
+})
+
+test('fenced loading is negotiated independently of live interrupted-turn reattachment', () => {
+  const legacy = {liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false,
+    approvalRestoration: false, providerCheckpoints: false}
+  assert.equal(recoveryCapabilitiesSchema.parse(legacy).fencedSessionRestoration, undefined)
+  const fenced = recoveryCapabilitiesSchema.parse({...legacy, fencedSessionRestoration: true})
+  assert.equal(fenced.fencedSessionRestoration, true)
+  assert.equal(fenced.interruptedTurnContinuation, false)
+})
+
+test('drive start descriptors carry no host-selected scope and save summaries are bounded and consistent', () => {
+  assert.equal(driveStartDescriptorSchema.safeParse({ version: 1, sessionId: 'session', location: 'cloud' }).success, true)
+  assert.equal(driveStartDescriptorSchema.safeParse({ version: 1, sessionId: 'session', location: 'cloud', scope: { kind: 'workspace', workspaceId: 'foreign' } }).success, false)
+  const entry = { fileId: 'file', path: 'Research/report.md', kind: 'file' }
+  const status = { state: 'saved', fileCount: 1, folderCount: 0, entries: [entry] }
+  assert.equal(driveSyncStatusSchema.safeParse(status).success, true)
+  for (const patch of [{ fileCount: 0 }, { entries: [entry, entry] }, { entries: [{ ...entry, path: '../secret' }] },
+    { entries: Array.from({ length: 33 }, (_, i) => ({ ...entry, fileId: `f${i}`, path: `f${i}.md` })) }])
+    assert.equal(driveSyncStatusSchema.safeParse({ ...status, ...patch }).success, false)
+})
+
+test('drive credential wire requests bind exact execution and reject host-selected authority', () => {
+  const request = { protocolVersion: 1, runId: 'run', sessionId: 'session', execution: { attemptId: 'attempt', generation: 1 } }
+  assert.deepEqual(driveCredentialsRequestSchema.parse(request), request)
+  for (const patch of [{ actorUserId: 'other' }, { workspaceId: 'other' }, { scope: { kind: 'workspace', workspaceId: 'other' } },
+    { execution: { attemptId: 'attempt', generation: 0 } }, { execution: { attemptId: 'attempt', generation: 1, hostBootId: 'not-part-of-grant' } }]) {
+    assert.equal(driveCredentialsRequestSchema.safeParse({ ...request, ...patch }).success, false)
+  }
+  const response = { protocolVersion: 1, token: 'ovdrive_' + 'a'.repeat(32) + '.' + 'b'.repeat(43), expiresAt: 1000,
+    scope: { kind: 'workspace', workspaceId: 'workspace' } }
+  assert.deepEqual(driveCredentialsResponseSchema.parse(response), response)
+  assert.equal(driveCredentialsResponseSchema.safeParse({ ...response, storageKey: 'secret' }).success, false)
+})
 
 test('filesystem grants require explicit roots or explicit all-user access', () => {
   assert.equal(filesystemGrantSchema.safeParse({ mode: 'selected_roots', roots: [] }).success, false)
@@ -73,4 +122,15 @@ test('proof canonicalization binds every security-relevant request field', () =>
     method: 'POST', pathname: '/api/v1/agent-environments/e1/events', timestamp: '1800000000000',
     nonce: 'request-nonce', bodySha256: 'forged-body', tokenSha256: 'token-hash',
   }))
+})
+
+
+test('provider credential requests distinguish active runs from bound-adapter discovery without accepting caller-selected accounts', () => {
+  for (const input of [{protocolVersion: 1, runId: 'run'}, {protocolVersion: 1, adapterId: 'codex'}])
+    assert.deepEqual(providerCredentialsRequestSchema.parse(input), input)
+  for (const input of [
+    {protocolVersion: 1}, {protocolVersion: 1, runId: 'run', adapterId: 'codex'},
+    {protocolVersion: 1, adapterId: 'codex', accountId: 'other-account'},
+    {protocolVersion: 1, adapterId: 'codex', ownerUserId: 'other-owner'},
+  ]) assert.equal(providerCredentialsRequestSchema.safeParse(input).success, false)
 })

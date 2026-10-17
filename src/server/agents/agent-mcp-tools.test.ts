@@ -2,6 +2,8 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { tool } from 'ai'
+import { z } from 'zod'
 import { adaptToolsForMcp, overlayMcpInstructions, MCP_APPROVAL_REFUSAL } from './agent-mcp-tools'
 
 type Execute = (input: unknown, options: { toolCallId?: string; context?: unknown }) => Promise<unknown>
@@ -65,4 +67,35 @@ test('with a way to ask, an approval-required call runs only once allowed', asyn
   assert.equal(await execute({ toolName: 'delete_repo' }, {}), 'ran')
   assert.deepEqual(ran, [{ toolName: 'delete_repo' }])
   assert.deepEqual(asked, ['call_mcp_tool', 'call_mcp_tool'])
+})
+
+test('a human answer cannot authorize an execution that was replaced while waiting', async () => {
+  let live = true
+  let executions = 0
+  const tools = adaptToolsForMcp({
+    tools: { call_mcp_tool: tool({ inputSchema: z.object({}), execute: async () => { executions++; return 'done' } }) },
+    toolApproval: () => 'user-approval',
+    requestApproval: async () => { live = false; return { allowed: true } },
+    authorize: async () => live,
+  })
+  const execute = tools.call_mcp_tool?.execute
+  if (typeof execute !== 'function') throw Error('Expected executable tool')
+  assert.deepEqual(await execute({}, { toolCallId: 'c', messages: [] }), { success: false, error: 'This agent execution is no longer authorized.' })
+  assert.equal(executions, 0)
+})
+
+test('ungated tools also require current execution authority immediately before execution', async () => {
+  let live = false
+  let executions = 0
+  const tools = adaptToolsForMcp({
+    tools: { get_note: tool({ inputSchema: z.object({}), execute: async () => { executions++; return 'done' } }) },
+    authorize: async () => live,
+  })
+  const execute = tools.get_note?.execute
+  if (typeof execute !== 'function') throw Error('Expected executable tool')
+  assert.deepEqual(await execute({}, { toolCallId: 'c', messages: [] }), { success: false, error: 'This agent execution is no longer authorized.' })
+  assert.equal(executions, 0)
+  live = true
+  assert.equal(await execute({}, { toolCallId: 'c2', messages: [] }), 'done')
+  assert.equal(executions, 1)
 })

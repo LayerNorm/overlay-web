@@ -7,6 +7,10 @@ import { rpcError, serveMcpJsonRpc, type McpPromptSource } from '@/server/mcp/mc
 import { overlaySkillPrompts } from '@/server/mcp/skill-prompts'
 import { verifyAgentMcpToken, type AgentMcpTokenClaims } from './agent-mcp-token'
 import { buildAgentMcpTools } from './agent-mcp-tools'
+import { agentMcpSessionIsLive } from '@/shared/agents/agent-mcp-authority'
+import { createMcpCallJournal, type McpCallRecord } from './McpCallJournal'
+import { serveDurableAgentMcp, type DurableMcpToolHooks } from './agent-mcp-resumption'
+import { createDurableMcpApprovalGate } from './mcp-approval-gate'
 
 /**
  * Overlay's MCP server for connected agents (Claude Code, Codex, Hermes… on a
@@ -14,16 +18,23 @@ import { buildAgentMcpTools } from './agent-mcp-tools'
  * workspace tools a native Overlay agent gets — notes, files, memory,
  * knowledge, automations, connected apps — over MCP Streamable HTTP.
  *
- * Stateless: every POST carries the per-turn bearer token, the tool set is
- * rebuilt from its grant, and responses are plain JSON (no SSE stream).
+ * Every request carries the per-turn bearer token. New hosts use a durable
+ * tool-call journal and resumable SSE; older hosts retain plain JSON responses.
  */
 
-const LIVE_SESSION_STATUSES = new Set(['starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering'])
+async function isCurrentMcpRunLive(claims: AgentMcpTokenClaims): Promise<boolean> {
+  const session = await getOverlayServerContext().appData.repositories.connectedAgents.getRemoteSessionForRun({
+    workspaceId: claims.workspaceId, environmentId: claims.environmentId, runId: claims.runId,
+  }).catch((_error) => null)
+  return agentMcpSessionIsLive(claims, session)
+}
 
 export type AgentMcpDependencies = {
   verifyToken: (token: string | null) => AgentMcpTokenClaims | null
   isRunLive: (claims: AgentMcpTokenClaims) => Promise<boolean>
-  buildTools: (claims: AgentMcpTokenClaims) => Promise<{ tools: ToolSet; instructions: string }>
+  buildTools: (claims: AgentMcpTokenClaims, hooks?: DurableMcpToolHooks) => Promise<{ tools: ToolSet; instructions: string }>
+  createJournal?: typeof createMcpCallJournal
+  requestApproval?: (claims: AgentMcpTokenClaims, call: McpCallRecord, tool: string, input: unknown) => Promise<{ allowed: true } | { allowed: false; message: string }>
   /** Overlay skills as prompts, for agents granted the skills group. */
   buildPrompts?: (claims: AgentMcpTokenClaims) => McpPromptSource | null
 }
@@ -33,15 +44,15 @@ const defaultDependencies: AgentMcpDependencies = {
   buildPrompts: (claims) => (claims.grant.isDefaultMaster || claims.grant.allowedToolIds.includes('list_skills')
     ? overlaySkillPrompts({ userId: claims.userId, workspaceId: claims.workspaceId })
     : null),
-  async isRunLive(claims) {
-    const session = await getOverlayServerContext().appData.repositories.connectedAgents.getRemoteSessionForRun({
-      workspaceId: claims.workspaceId,
-      environmentId: claims.environmentId,
-      runId: claims.runId,
-    }).catch((_error) => null)
-    return Boolean(session && LIVE_SESSION_STATUSES.has(session.status))
-  },
-  buildTools: (claims) => buildAgentMcpTools({
+  isRunLive: isCurrentMcpRunLive,
+  createJournal: createMcpCallJournal,
+  requestApproval: (claims, call, tool, input) => createDurableMcpApprovalGate({
+    repository: getOverlayServerContext().appData.repositories.connectedAgents,
+    authority: { workspaceId: claims.workspaceId, environmentId: claims.environmentId, runId: claims.runId,
+      sessionId: claims.sessionId, execution: claims.execution, expiresAt: claims.expiresAt, requestKey: call.requestKey },
+    authorize: () => isCurrentMcpRunLive(claims),
+  })(tool, input),
+  buildTools: (claims, hooks) => buildAgentMcpTools({
     actorUserId: claims.userId,
     agentId: claims.agentId,
     agentPrincipalId: claims.agentPrincipalId,
@@ -51,9 +62,14 @@ const defaultDependencies: AgentMcpDependencies = {
     memoryEnabled: claims.memoryEnabled,
     modelId: claims.modelId,
     toolGrant: claims.grant,
-    run: { environmentId: claims.environmentId, runId: claims.runId },
+    run: { environmentId: claims.environmentId, runId: claims.runId,
+      ...(claims.sessionId ? { sessionId: claims.sessionId } : {}),
+      ...(claims.execution ? { execution: claims.execution } : {}), expiresAt: claims.expiresAt },
     turnId: claims.turnId,
     workspaceId: claims.workspaceId,
+    authorize: () => isCurrentMcpRunLive(claims),
+    resumable: claims.approvalBridge,
+    ...(hooks ? { durableCall: hooks } : {}),
   }),
 }
 
@@ -66,7 +82,8 @@ export async function handleAgentMcpRequest(
   request: NextRequest | Request,
   dependencies: AgentMcpDependencies = defaultDependencies,
 ): Promise<Response> {
-  const claims = dependencies.verifyToken(bearer(request))
+  const token = bearer(request)
+  const claims = dependencies.verifyToken(token)
   if (!claims) {
     return NextResponse.json(rpcError(null, -32001, 'Invalid or expired Overlay MCP token'), {
       status: 401,
@@ -77,10 +94,19 @@ export async function handleAgentMcpRequest(
     return NextResponse.json(rpcError(null, -32001, 'This agent run has ended'), { status: 401 })
   }
 
-  return serveMcpJsonRpc(request, {
+  const ordinary = (request: Request) => serveMcpJsonRpc(request, {
     serverName: 'overlay',
     tools: () => dependencies.buildTools(claims),
     ...(() => { const prompts = dependencies.buildPrompts?.(claims); return prompts ? { prompts } : {} })(),
     logContext: { agentId: claims.agentId, runId: claims.runId },
   })
+  if (claims.approvalBridge && claims.sessionId && token) {
+    const requestApproval = dependencies.requestApproval
+    if (!dependencies.createJournal || !requestApproval) return Response.json(rpcError(null, -32000, 'MCP resumption unavailable'), { status: 503 })
+    return serveDurableAgentMcp(request, { token, journal: dependencies.createJournal(claims),
+      authorize: () => dependencies.isRunLive(claims), tools: hooks => dependencies.buildTools(claims, hooks),
+      requestApproval: (call, tool, input) => requestApproval(claims, call, tool, input), ordinary })
+  }
+  if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } })
+  return ordinary(request)
 }
