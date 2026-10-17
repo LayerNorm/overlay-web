@@ -21,11 +21,21 @@ export const filesystemGrantSchema = z.discriminatedUnion('mode', [
 ])
 export type FilesystemGrant = z.infer<typeof filesystemGrantSchema>
 
+/** Negotiated extension: emitted only after remoteLifecycleVersion=2 enrollment. */
+export const executionFenceSchema = z.object({
+  attemptId: identifier, generation: z.number().int().positive(), hostBootId: identifier.optional(),
+}).strict()
+export const recoveryCapabilitiesSchema = z.object({
+  liveReattachment: z.boolean(), sessionLoading: z.boolean(), interruptedTurnContinuation: z.boolean(),
+  approvalRestoration: z.boolean(), providerCheckpoints: z.boolean(),
+}).strict()
+
 export const adapterCapabilitySchema = z.object({
   id: identifier,
   displayName: z.string().trim().min(1).max(200),
   protocol: z.enum(['fake', 'acp', 'eve', 'native']),
   version: z.string().trim().min(1).max(100).optional(),
+  recovery: recoveryCapabilitiesSchema.optional(),
   supports: z.object({
     prompt: z.boolean(),
     approval: z.boolean(),
@@ -37,6 +47,7 @@ export type AdapterCapability = z.infer<typeof adapterCapabilitySchema>
 
 export const hostCapabilitiesSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  remoteLifecycleVersion: z.literal(2).optional(),
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   adapters: z.array(adapterCapabilitySchema).max(100),
@@ -139,6 +150,7 @@ export function canonicalHostRequestProof(input: {
 }
 
 const commandBase = z.object({
+  execution: executionFenceSchema.optional(),
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   commandId: identifier,
   environmentId: identifier,
@@ -173,6 +185,7 @@ export const agentHostCommandSchema = z.discriminatedUnion('type', [
   }).strict(),
   commandBase.extend({ type: z.literal('cancel'), payload: z.object({ reason: z.string().max(2_000).optional() }).strict() }).strict(),
   commandBase.extend({ type: z.literal('reconnect'), payload: z.object({ remoteSessionId: identifier }).strict() }).strict(),
+  commandBase.extend({ type: z.literal('observe'), payload: z.object({}).strict() }).strict(),
   commandBase.extend({ type: z.literal('shutdown'), payload: z.object({ reason: z.string().max(2_000).optional() }).strict() }).strict(),
 ])
 export type AgentHostCommand = z.infer<typeof agentHostCommandSchema>
@@ -181,6 +194,9 @@ export const commandPollResponseSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   commands: z.array(agentHostCommandSchema).max(MAX_COMMANDS_PER_POLL),
   retryAfterMs: z.number().int().min(100).max(60_000).optional(),
+  // Highest command sequence the host may skip: every row below it is resolved
+  // server-side. Only negotiated lifecycle-v2 hosts receive it; legacy schemas are strict.
+  resolvedThroughSequence: z.number().int().min(0).optional(),
 }).strict().superRefine((response, context) => {
   for (let index = 0; index < response.commands.length; index += 1) {
     if (new TextEncoder().encode(JSON.stringify(response.commands[index])).byteLength > MAX_COMMAND_BYTES) {
@@ -200,6 +216,7 @@ export const commandAcknowledgementSchema = z.object({
 export type CommandAcknowledgement = z.infer<typeof commandAcknowledgementSchema>
 
 const eventBase = z.object({
+  execution: executionFenceSchema.optional(),
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
   eventId: identifier,
   environmentId: identifier,
@@ -209,6 +226,7 @@ const eventBase = z.object({
 })
 
 export const agentHostEventSchema = z.discriminatedUnion('type', [
+  eventBase.extend({ type: z.literal('process_observation'), payload: z.object({ process: z.enum(['live', 'lost', 'unknown']), recoveryOutcome: z.enum(['attached_live', 'restored', 'requires_new_attempt', 'unavailable']).optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('session_started'), payload: z.object({ remoteSessionId: identifier, adapterId: identifier }).strict() }).strict(),
   eventBase.extend({ type: z.literal('text_checkpoint'), payload: z.object({ text: z.string(), final: z.boolean().optional() }).strict() }).strict(),
   eventBase.extend({ type: z.literal('action'), payload: z.object({ actionId: identifier, title: z.string().max(2_000), status: z.enum(['started', 'updated', 'completed', 'failed']), detail: z.string().max(20_000).optional() }).strict() }).strict(),

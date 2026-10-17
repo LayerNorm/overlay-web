@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
 import { CloudAgentMachineService } from './CloudAgentMachineService'
-import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
+import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentRunCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
 
 function fakeMachine(status: 'running' | 'stopped' = 'running', files: Record<string, string> = {}) {
   const written: string[] = []
@@ -43,7 +43,7 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean } = {}) {
+function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; activeExecution?: boolean } = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
   let removed = false
@@ -68,6 +68,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
       sweepRemoteRuns: async (args?: unknown) => { log.push(['sweep', args]); return {} as never },
     },
     repository: {
+      environmentHasActiveExecution: async () => options.activeExecution === true,
       listEnvironments: async () => (options.enrolled === false ? [] : [environment()]),
       getEnvironment: async () => options.env ?? environment({ status: 'online', lastSeenAt: 999 }),
       createSandboxLease: async (input: unknown) => { log.push(['lease', input]); return { id: 'lease-1', status: 'running' } as never },
@@ -246,4 +247,36 @@ test('reviving never touches an agent whose machine exists', async () => {
   assert.equal(await service.reviveIfMachineGone({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' }), false)
   assert.equal(log.some(([name]) => name === 'revoke'), false)
   assert.equal(wasRemoved(), false)
+})
+
+test('wake never replaces a stale bridge while an observed execution may still own external writes', async () => {
+  const { machine, commands } = fakeMachine('running')
+  const { service } = deps(machine, { activeExecution: true, env: environment({ status: 'offline', lastSeenAt: 0 }) })
+  assert.equal(await service.wake({ workspaceId: 'ws', environmentId: 'env-1' }), 'unavailable')
+  assert.equal(commands.length, 0)
+})
+
+test('unreachable execution is confirmed stopped only after provider readback, with no resume', async () => {
+  const { machine, calls } = fakeMachine('running')
+  let stopped = false
+  machine.stop = async () => { stopped = true; calls.push('stop') }
+  machine.status = async () => stopped ? 'stopped' : 'running'
+  const { service } = deps(machine)
+  assert.equal(await service.stopExecution({ workspaceId: 'ws', environmentId: 'env-1' }), true)
+  assert.equal(await machine.status(), 'stopped')
+  assert.ok(!calls.includes('resume'))
+})
+
+test('a successful provider stop request without stopped-state proof is not confirmation', async () => {
+  const { machine } = fakeMachine('running')
+  assert.equal(await deps(machine).service.stopExecution({ workspaceId: 'ws', environmentId: 'env-1' }), false)
+})
+
+test('managed startup propagates lifecycle v2 only after explicit enablement', () => {
+  const input = { enrollmentCode: 'fixture-code', serverUrl: 'https://preview.example.test', name: 'fixture', adapterId: 'codex' as const }
+  for (const value of [undefined, '1', '2']) {
+    const env = { OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION: value }
+    assert.equal(cloudAgentConnectCommand(input, env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
+    assert.equal(cloudAgentRunCommand(env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
+  }
 })

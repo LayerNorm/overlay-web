@@ -73,6 +73,7 @@ export class ConversationsClient {
   }
 
   controlRemoteQueue(input: {
+    controlRequestId?: string
     workspaceId: string
     conversationId: string
     runId: string
@@ -86,6 +87,7 @@ export class ConversationsClient {
         conversationId: input.conversationId,
         runId: input.runId,
         action: input.action,
+        ...(input.controlRequestId ? { controlRequestId: input.controlRequestId } : {}),
       }, { ...init, headers, method: 'POST' }),
     )
   }

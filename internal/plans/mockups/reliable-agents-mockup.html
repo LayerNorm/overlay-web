@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Reliable cloud agents</title>
+<script>
+  (function () {
+    var t = null
+    try { t = localStorage.getItem('overlay-mockup-theme') } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    document.documentElement.dataset.theme = t
+  })()
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+  /* Tokens copied from src/app/globals.css (same as the other mockups in this folder). */
+  :root {
+    --background: #fafafa; --foreground: #0a0a0a; --muted: #71717a; --muted-light: #a1a1aa;
+    --border: #e4e4e7; --surface-elevated: #ffffff; --surface-muted: #f5f5f5; --surface-subtle: #f0f0f0;
+    --button-primary-bg: #0a0a0a; --button-primary-text: #ffffff; --scrollbar-thumb: #d4d4d8;
+    --ok: #16a34a; --warn: #d97706; --danger: #dc2626;
+    --serif: 'Libre Baskerville', Georgia, serif;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  :root[data-theme="dark"] {
+    --background: #09090b; --foreground: #f5f5f5; --muted: #a1a1aa; --muted-light: #71717a;
+    --border: #27272a; --surface-elevated: #111113; --surface-muted: #151518; --surface-subtle: #1c1c20;
+    --button-primary-bg: #27272a; --button-primary-text: #f5f5f5; --scrollbar-thumb: #3f3f46;
+    --ok: #4ade80; --warn: #fbbf24; --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--background); color: var(--foreground); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+  button, select { font: inherit; color: inherit; }
+  button { background: none; border: 0; padding: 0; cursor: pointer; }
+  svg.i { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 8px; }
+  code, .mono { font-family: var(--mono); font-size: 12px; }
+
+  .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 20px;
+    background: color-mix(in srgb, var(--background) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .word { font-family: var(--serif); font-size: 17px; letter-spacing: -0.01em; }
+  .tabs { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--surface-subtle); }
+  .tabs button { padding: 4px 12px; border-radius: 7px; color: var(--muted); font-size: 13px; }
+  .tabs button[aria-selected="true"] { background: var(--surface-elevated); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .spacer { flex: 1; }
+  .icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
+  .icon-btn:hover { background: var(--surface-subtle); color: var(--foreground); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
+  [hidden] { display: none !important; }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: 24px; letter-spacing: -0.015em; margin: 0 0 6px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 22px; max-width: 760px; }
+
+  /* ---------- run view ---------- */
+  .run { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+  .card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 12px; }
+  .thread { padding: 20px 22px; min-height: 560px; }
+  .msg-user { margin-left: auto; max-width: 80%; width: fit-content; background: var(--surface-subtle); border-radius: 12px; padding: 10px 14px; white-space: pre-wrap; color: var(--foreground); font-size: 13.5px; }
+  .agent-head { display: flex; align-items: center; gap: 8px; margin: 22px 0 10px; font-size: 13px; }
+  .avatar { width: 22px; height: 22px; border-radius: 6px; background: var(--surface-subtle); display: grid; place-items: center; color: var(--muted); }
+  .agent-head .meta { color: var(--muted-light); font-size: 12px; }
+  .stream { font-size: 14px; }
+  .stream p { margin: 0 0 10px; }
+  .stream h3, .stream h4 { font-size: 14px; margin: 14px 0 6px; }
+  .stream ul { margin: 0 0 10px; padding-left: 20px; }
+  .stream code { background: var(--surface-subtle); padding: 1px 4px; border-radius: 4px; }
+  .tool { display: flex; align-items: center; gap: 8px; padding: 5px 0; color: var(--muted); font-size: 13px; }
+  .tool .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool .ms { color: var(--muted-light); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .group { border-radius: 8px; margin: 6px 0 10px; }
+  .group > summary { list-style: none; display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); font-size: 13px; padding: 4px 0; }
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary .chev { transition: transform .2s var(--ease); }
+  .group[open] > summary .chev { transform: rotate(90deg); }
+  .group .inner { padding-left: 23px; border-left: 1px solid var(--border); margin-left: 7px; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .live { display: flex; align-items: center; gap: 10px; margin-top: 14px; color: var(--muted); font-size: 12.5px; }
+  .dots { display: inline-flex; gap: 4px; }
+  .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted-light); animation: blink 1.2s infinite; }
+  .dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25 } 40% { opacity: 1 } }
+  .done-line { display: flex; align-items: center; gap: 6px; margin-top: 14px; color: var(--muted); font-size: 12.5px; }
+  .done-line svg { color: var(--ok); }
+
+  .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 72px; }
+  .panel { padding: 14px 16px; }
+  .panel-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+  .panel-title span.hint { font-weight: 400; color: var(--muted-light); font-size: 12px; }
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .label { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+  .seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 3px; border-radius: 9px; background: var(--surface-subtle); }
+  .seg button { padding: 5px 0; border-radius: 7px; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  .seg button[aria-pressed="true"] { background: var(--surface-elevated); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .help { color: var(--muted-light); font-size: 12px; margin-top: 6px; min-height: 18px; }
+  .select { width: 100%; appearance: none; padding: 7px 30px 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-elevated)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; font-size: 13px; }
+  .files { display: flex; flex-direction: column; }
+  .file { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0 -6px; border-radius: 6px; font-size: 12.5px; cursor: pointer; }
+  .file:hover { background: var(--surface-subtle); }
+  .file .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .s { color: var(--muted-light); font-variant-numeric: tabular-nums; font-size: 11.5px; }
+  .file .st { color: var(--ok); }
+  .file.pending .st { color: var(--muted-light); }
+  .file.fresh { animation: flash 1.2s var(--ease); }
+  @keyframes flash { from { background: color-mix(in srgb, var(--ok) 14%, transparent); } }
+  .empty { color: var(--muted-light); font-size: 12.5px; }
+  .facts { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 12.5px; }
+  .facts dt { color: var(--muted); } .facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .player { display: flex; align-items: center; gap: 8px; }
+  .player .bar { flex: 1; height: 3px; border-radius: 3px; background: var(--surface-subtle); overflow: hidden; }
+  .player .bar i { display: block; height: 100%; width: 0; background: var(--muted); }
+  .speed { display: flex; gap: 2px; }
+  .speed button { font-size: 11.5px; padding: 2px 6px; border-radius: 6px; color: var(--muted); }
+  .speed button[aria-pressed="true"] { background: var(--surface-subtle); color: var(--foreground); }
+
+  dialog { border: 1px solid var(--border); border-radius: 12px; padding: 0; width: min(760px, calc(100vw - 32px)); background: var(--surface-elevated); color: var(--foreground); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  dialog header .grow { flex: 1; } dialog header .mono { color: var(--muted-light); }
+  dialog pre { margin: 0; padding: 16px; max-height: 65vh; overflow: auto; white-space: pre-wrap; font: 12.5px/1.55 var(--mono); }
+
+  /* ---------- diagnosis / design ---------- */
+  .findings { display: flex; flex-direction: column; gap: 10px; }
+  .finding { padding: 16px 18px; }
+  .finding .head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .finding .n { color: var(--muted-light); font-variant-numeric: tabular-nums; font-size: 12px; width: 18px; flex: none; }
+  .finding .sym { font-weight: 600; }
+  .finding .tag { margin-left: auto; font-size: 11.5px; color: var(--muted); padding: 1px 8px; border-radius: 999px; background: var(--surface-subtle); white-space: nowrap; }
+  .finding .grid { display: grid; grid-template-columns: 70px 1fr; gap: 6px 12px; padding-left: 28px; font-size: 13px; }
+  .finding .grid .k { color: var(--muted-light); font-size: 12px; padding-top: 1px; }
+  .finding code { background: var(--surface-subtle); padding: 1px 5px; border-radius: 4px; }
+  .principles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+  .principle { padding: 14px 16px; }
+  .principle h3 { font-size: 13.5px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+  .principle p { margin: 0; color: var(--muted); font-size: 13px; }
+  .diagram { padding: 18px; overflow-x: auto; }
+  .diagram svg { display: block; min-width: 860px; width: 100%; height: auto; }
+  .diagram .bx { fill: var(--surface-muted); stroke: var(--border); }
+  .diagram .bx-strong { fill: var(--surface-elevated); stroke: var(--muted-light); }
+  .diagram text { fill: var(--foreground); font: 12.5px var(--sans); }
+  .diagram text.m { fill: var(--muted); font-size: 11.5px; }
+  .diagram text.t { font-weight: 600; font-size: 13px; }
+  .diagram .ln { stroke: var(--muted-light); stroke-width: 1.25; fill: none; }
+  .diagram .grp { fill: none; stroke: var(--border); stroke-dasharray: 4 4; }
+
+  @media (max-width: 900px) {
+    .run { grid-template-columns: 1fr; }
+    .side { position: static; }
+    .principles { grid-template-columns: 1fr; }
+    .finding .grid { padding-left: 0; grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="i-cloud-check" viewBox="0 0 24 24"><path d="m17 15-5.5 5.5L9 18"/><path d="M5 17.7A7 7 0 1 1 15.7 10h1.8a4.5 4.5 0 0 1 1.5 8.7"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3l14 9-14 9Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.8 9.8 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1Z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></symbol>
+  <symbol id="i-hd" viewBox="0 0 24 24"><path d="M22 12H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.4-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.8 1.1Z"/><path d="M6 16h.01M10 16h.01"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+</svg>
+
+<div class="top">
+  <span class="word">overlay</span>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="run">Run</button>
+    <button role="tab" aria-selected="false" data-tab="diagnosis">Diagnosis</button>
+    <button role="tab" aria-selected="false" data-tab="design">Design</button>
+  </div>
+  <span class="spacer"></span>
+  <button class="icon-btn" id="theme" aria-label="Toggle theme"><svg class="i"><use href="#i-moon"/></svg></button>
+</div>
+
+<main>
+  <!-- ======================= RUN ======================= -->
+  <section data-panel="run">
+    <h1>A long run, replayed</h1>
+    <p class="sub" id="run-sub">The smoke run, replayed from its event log. Claude Code ran on a Boat machine on a Claude subscription, with its working folder backed by object storage.</p>
+    <div class="run">
+      <div class="card thread">
+        <div class="msg-user" id="prompt"></div>
+        <div class="agent-head">
+          <span class="avatar"><svg class="i"><use href="#i-bot"/></svg></span>
+          <span>Research agent</span>
+          <span class="meta" id="agent-meta"></span>
+        </div>
+        <div id="flow"></div>
+        <div class="live" id="live" hidden><span class="dots"><i></i><i></i><i></i></span><span id="live-text"></span></div>
+        <div class="done-line" id="done" hidden><svg class="i"><use href="#i-check"/></svg><span id="done-text"></span></div>
+      </div>
+
+      <aside class="side">
+        <div class="card panel">
+          <div class="panel-title">Replay <span class="hint" id="clock">0:00</span></div>
+          <div class="player">
+            <button class="icon-btn" id="play" aria-label="Play"><svg class="i"><use href="#i-pause"/></svg></button>
+            <div class="bar"><i id="progress"></i></div>
+            <div class="speed" id="speed">
+              <button data-x="10" aria-pressed="true">10×</button><button data-x="30">30×</button><button data-x="120">120×</button>
+            </div>
+            <button class="icon-btn" id="restart" aria-label="Restart"><svg class="i"><use href="#i-rotate"/></svg></button>
+          </div>
+        </div>
+
+        <div class="card panel">
+          <div class="panel-title">Agent settings <span class="hint">from Claude Code itself</span></div>
+          <div class="field">
+            <div class="label">Permissions</div>
+            <div class="seg" id="modes"></div>
+            <div class="help" id="mode-help"></div>
+          </div>
+          <div class="field">
+            <div class="label">Model</div>
+            <select class="select" id="models"></select>
+          </div>
+          <div class="field">
+            <div class="label">Effort</div>
+            <select class="select" id="effort"></select>
+          </div>
+        </div>
+
+        <div class="card panel">
+          <div class="panel-title">Personal drive <span class="hint" id="drive-count">0 files</span></div>
+          <div class="files" id="files"><div class="empty">Nothing saved yet.</div></div>
+        </div>
+
+        <div class="card panel">
+          <div class="panel-title">Run health</div>
+          <dl class="facts" id="facts"></dl>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ======================= DIAGNOSIS ======================= -->
+  <section data-panel="diagnosis" hidden>
+    <h1>Why agents stall, vanish and ask too much</h1>
+    <p class="sub">Each symptom you reported, traced to the code. Items marked “reproduced” were confirmed in this session, either against the real protocol schema or on a live Boat machine.</p>
+    <div class="findings" id="findings"></div>
+  </section>
+
+  <!-- ======================= DESIGN ======================= -->
+  <section data-panel="design" hidden>
+    <h1>The setup we want</h1>
+    <p class="sub">The agent never waits on the network, the person never waits without knowing why, and nothing the agent makes lives only on the machine.</p>
+    <div class="card diagram">
+      <svg viewBox="0 0 980 384" role="img" aria-label="Architecture: Overlay control plane, agent machine with driver and event log, Claude Code over ACP, drive synced to object storage">
+        <rect class="grp" x="250" y="20" width="460" height="316" rx="14"/>
+        <text class="m" x="266" y="42">Agent machine (Boat, VPS or the person's computer)</text>
+
+        <rect class="bx-strong" x="20" y="60" width="200" height="120" rx="10"/>
+        <text class="t" x="36" y="86">Overlay</text>
+        <text class="m" x="36" y="108">Conversation, approvals</text>
+        <text class="m" x="36" y="126">Appends text deltas</text>
+        <text class="m" x="36" y="144">Shows heartbeat, stalls</text>
+        <text class="m" x="36" y="162">Mints file upload URLs</text>
+
+        <rect class="bx" x="280" y="60" width="190" height="120" rx="10"/>
+        <text class="t" x="296" y="86">Agent Host</text>
+        <text class="m" x="296" y="108">Sets mode, model, effort</text>
+        <text class="m" x="296" y="126">Heartbeat every 10 s</text>
+        <text class="m" x="296" y="144">Stall signal at 90 s</text>
+        <text class="m" x="296" y="162">Answers by policy</text>
+
+        <rect class="bx" x="510" y="60" width="180" height="120" rx="10"/>
+        <text class="t" x="526" y="86">Claude Code / Codex</text>
+        <text class="m" x="526" y="108">ACP over stdio</text>
+        <text class="m" x="526" y="126">Latest adapter</text>
+        <text class="m" x="526" y="144">Works in ~/drive</text>
+
+        <rect class="bx" x="280" y="220" width="190" height="96" rx="10"/>
+        <text class="t" x="296" y="246">Event log (disk)</text>
+        <text class="m" x="296" y="268">Append-only, sequenced</text>
+        <text class="m" x="296" y="286">Uploaded in background,</text>
+        <text class="m" x="296" y="302">acknowledged by cursor</text>
+
+        <rect class="bx" x="510" y="220" width="180" height="96" rx="10"/>
+        <text class="t" x="526" y="246">~/drive</text>
+        <text class="m" x="526" y="268">Personal or workspace</text>
+        <text class="m" x="526" y="286">files, hydrated at start</text>
+        <text class="m" x="526" y="302">and written through</text>
+
+        <rect class="bx-strong" x="760" y="200" width="200" height="120" rx="10"/>
+        <text class="t" x="776" y="226">Overlay Files</text>
+        <text class="m" x="776" y="248">Object storage (R2)</text>
+        <text class="m" x="776" y="266">+ file rows, search, quota</text>
+        <text class="m" x="776" y="284">Scoped to the agent:</text>
+        <text class="m" x="776" y="302">personal or workspace</text>
+
+        <path class="ln" d="M470 120 H510"/><text class="m" x="474" y="112">ACP</text>
+        <path class="ln" d="M375 180 V220"/><text class="m" x="382" y="204">deltas</text>
+        <path class="ln" d="M280 268 H180 V180"/><text class="m" x="188" y="260">outbound</text>
+        <path class="ln" d="M600 180 V220"/>
+        <path class="ln" d="M690 268 H760"/><text class="m" x="694" y="260">sha-checked</text>
+        <path class="ln" d="M220 100 H280"/><text class="m" x="226" y="94">commands</text>
+        <path class="ln" d="M100 180 V360 H860 V320"/><text class="m" x="410" y="376">signed upload URLs, file rows (no storage keys on the machine)</text>
+      </svg>
+    </div>
+    <div class="principles" id="principles"></div>
+  </section>
+</main>
+
+<dialog id="viewer">
+  <header><svg class="i"><use href="#i-file"/></svg><span class="grow" id="viewer-path"></span><span class="mono" id="viewer-sha"></span>
+    <button class="icon-btn" id="viewer-close" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+  <pre id="viewer-body"></pre>
+</dialog>
+
+<script>
+/* RUN_DATA is generated by scripts/smoke/cloud-agent-long-horizon/build-mockup.mjs from a real smoke run. */
+window.RUN_DATA = /*RUN_DATA*/{"report":{"runId":"run-2026-10-15T22-14-08-004Z","adapter":"@agentclientprotocol/claude-agent-acp@0.91.0","requested":{"model":"claude-haiku-5-5","mode":"bypassPermissions"},"agentModels":[{"id":"default","name":"Default (recommended)","description":"Sonnet"},{"id":"sonnet","name":"Sonnet 5.5","description":"Sonnet 5.5 · Efficient for routine tasks"},{"id":"fable","name":"Fable 5.1","description":"Fable 5.1 · Most capable for your hardest and longest-running tasks · Requires usage credits"},{"id":"opus","name":"Opus 5.5","description":"Opus 5.5 · Best for everyday, complex tasks"},{"id":"haiku","name":"Haiku 5.5","description":"Haiku 5.5 · Fastest for quick answers"}],"agentModes":[{"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},{"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"},{"id":"bypassPermissions","name":"Bypass permissions"}],"outcome":"completed (end_turn)","durationSeconds":203,"counters":{"text":18,"textChars":2264,"tools":44,"toolsFailed":0,"permissions":0,"stalls":0,"heartbeats":19,"maxToolMs":28153,"maxQuietMs":11983},"pollFailures":0,"drive":{"prefix":"r2://\u003cbucket>/smoke/agent-drive/personal/smoke-user/","files":[{"path":"BRIEF.md","sha":"09ca322ca38dec813e0e575408b33c670dc7ae8293faf55510e8cb58ab910f9b","bytes":1617},{"path":"research/sources.md","sha":"b77743f3ef2c7f4f8d9cb5b8d795ff423f765687bf2310966b4bf1b7b3c9426a","bytes":5053},{"path":"research/temporal.md","sha":"d0b9b193a32b772258a5b182a6fd730b70b4a956982c2a19944fb067c31bc4a0","bytes":2960},{"path":"research/inngest.md","sha":"b1cd456c4a25cbb4291cd0282df22182543e05ad3fa9f63ce43e33c2837c0f5a","bytes":3294},{"path":"research/restate.md","sha":"ccf9300d8d730263727f1aa354a547d526e0d062b305751abafe1119eb68928b","bytes":2982},{"path":"research/vercel-workflow.md","sha":"2a50a19a91de57c04045bc62074150e3d6604980ac00bf7d8739f58d40c7e6af","bytes":3016},{"path":"research/cloudflare-workflows.md","sha":"852ba50d7b23a2d0036968587aea2bb3d7ebde3d1f9816c7208c409ed8f41a92","bytes":2819},{"path":"research/dbos.md","sha":"813fb78338a8a4a4e47b05dc9d088796b69a80d47cf70a2ba252d83793476552","bytes":3527},{"path":"data/comparison.csv","sha":"f69fc0a2d0eecd350b831ab2cf013fd665a3a93e16fde4db50cc4974e0d877cb","bytes":3396},{"path":"report/memo.md","sha":"480d128639d3bfd7209ca52a3d36b4f35d371266b1f30953c5ec3f9be3ca51ce","bytes":7579},{"path":"report/exec-summary.md","sha":"8c82a48fd0bf99e7f32cf5c8904e7781ce986cbed4295ef45d9a59331d526a41","bytes":1140},{"path":"INDEX.md","sha":"dff43d4b3ca4815115c472d825202a1a992c4c2c615f229f50f21ff03f59be4f","bytes":1552},{"path":"CHECKLIST.md","sha":"2f280caa5b9d60742bdbc32627ff488e6fda161baf72763edb5d40d2ea7c0a61","bytes":1651}],"uploads":14,"mismatches":[]},"rehydrate":{"files":13,"mismatches":[]}},"prompt":"You are working in the user's Overlay drive: the current directory. It is persisted to object storage, so everything you save here is kept after this machine is gone; anything saved elsewhere is lost.\n\nRead BRIEF.md and complete every deliverable it lists, end to end, without asking questions. Keep a short running plan, save each file as soon as it is finished, and finish by verifying CHECKLIST.md against the files actually on disk. When you are done, reply with a three-line summary of what you produced.","modelSet":"haiku","modeSet":"bypassPermissions","effort":["default","low","medium","high","xhigh","max"],"events":[{"seq":7,"t":1792102454777,"type":"tool","id":"toolu_01LqD7EMH4aXKhyEX9fBPK8r","title":"Terminal","kind":"execute","status":"pending"},{"seq":9,"t":1792102455040,"type":"tool","id":"toolu_01LqD7EMH4aXKhyEX9fBPK8r","title":"Terminal","kind":"execute","status":"completed","ms":263},{"seq":11,"t":1792102456443,"type":"tool","id":"toolu_01FjpL4sd1ep7dxnb69EBqWp","title":"ToolSearch","kind":"other","status":"pending"},{"seq":12,"t":1792102456636,"type":"tool","id":"toolu_01FjpL4sd1ep7dxnb69EBqWp","title":"ToolSearch","kind":"other","status":"completed","ms":194},{"seq":15,"t":1792102458306,"type":"text","delta":"Running plan:\n\n1. Search each of the six options for execution model, human wait, duration limits, languages, hosting, and pricing.\n2. Write `research/\u003coption>.md` for each option as soon as its facts are verified.\n3. Collect sources into `research/sources.md`"},{"seq":16,"t":1792102458616,"type":"text","delta":", then write `data/comparison.csv`.\n4. Write `report/memo.md` and `report/exec-summary.md`.\n5. Write `INDEX.md` and `CHECKLIST.md`, then verify the checklist against the files on disk.\n\nStarting with par"},{"seq":17,"t":1792102458687,"type":"text","delta":"allel searches for the six options."},{"seq":18,"t":1792102458687,"type":"tool","id":"toolu_014c74ssGwZQ2SLYFAZCSzs2","title":"Web search","kind":"fetch","status":"pending"},{"seq":19,"t":1792102458999,"type":"tool","id":"toolu_01BWMuFyVztHUXbDw4X5me5P","title":"Web search","kind":"fetch","status":"pending"},{"seq":20,"t":1792102459329,"type":"tool","id":"toolu_01DmJUdzWjMBUgPhrH9kAvtt","title":"Web search","kind":"fetch","status":"pending"},{"seq":21,"t":1792102459590,"type":"tool","id":"toolu_01YWsDJphPZ4zL1Mou7rKDc9","title":"Web search","kind":"fetch","status":"pending"},{"seq":22,"t":1792102459940,"type":"tool","id":"toolu_01HWzeTdifPGK6Bc8WyR5nFE","title":"Web search","kind":"fetch","status":"pending"},{"seq":23,"t":1792102460184,"type":"tool","id":"toolu_013Gc4kVoMLMNmRpWx7JdYSz","title":"Web search","kind":"fetch","status":"pending"},{"seq":25,"t":1792102462519,"type":"heartbeat","quietMs":2068,"openTools":[{"title":"Web search","kind":"fetch","ms":3832},{"title":"Web search","kind":"fetch","ms":3520},{"title":"Web search","kind":"fetch","ms":3190},{"title":"Web search","kind":"fetch","ms":2929},{"title":"Web search","kind":"fetch","ms":2579},{"title":"Web search","kind":"fetch","ms":2335}]},{"seq":26,"t":1792102471714,"type":"tool","id":"toolu_014c74ssGwZQ2SLYFAZCSzs2","title":"Web search","kind":"fetch","status":"completed","ms":13027},{"seq":27,"t":1792102472520,"type":"heartbeat","quietMs":806,"openTools":[{"title":"Web search","kind":"fetch","ms":13521},{"title":"Web search","kind":"fetch","ms":13191},{"title":"Web search","kind":"fetch","ms":12930},{"title":"Web search","kind":"fetch","ms":12580},{"title":"Web search","kind":"fetch","ms":12336}]},{"seq":28,"t":1792102476766,"type":"tool","id":"toolu_01DmJUdzWjMBUgPhrH9kAvtt","title":"Web search","kind":"fetch","status":"completed","ms":17437},{"seq":30,"t":1792102478727,"type":"tool","id":"toolu_01HWzeTdifPGK6Bc8WyR5nFE","title":"Web search","kind":"fetch","status":"completed","ms":18787},{"seq":31,"t":1792102482520,"type":"heartbeat","quietMs":3793,"openTools":[{"title":"Web search","kind":"fetch","ms":23521},{"title":"Web search","kind":"fetch","ms":22930},{"title":"Web search","kind":"fetch","ms":22336}]},{"seq":33,"t":1792102485800,"type":"tool","id":"toolu_01YWsDJphPZ4zL1Mou7rKDc9","title":"Web search","kind":"fetch","status":"completed","ms":26210},{"seq":34,"t":1792102487152,"type":"tool","id":"toolu_01BWMuFyVztHUXbDw4X5me5P","title":"Web search","kind":"fetch","status":"completed","ms":28153},{"seq":36,"t":1792102487697,"type":"tool","id":"toolu_013Gc4kVoMLMNmRpWx7JdYSz","title":"Web search","kind":"fetch","status":"completed","ms":27513},{"seq":38,"t":1792102489675,"type":"text","delta":"The search snippets are thin or secondhand in several places. I'll fetch the official pages for the key facts."},{"seq":39,"t":1792102489675,"type":"tool","id":"toolu_01HbyLX6ADPhH8256WHcmr8k","title":"Fetch","kind":"fetch","status":"pending"},{"seq":40,"t":1792102490459,"type":"tool","id":"toolu_01XcZqmFaX27m7zAoLJBmxQF","title":"Fetch","kind":"fetch","status":"pending"},{"seq":41,"t":1792102490984,"type":"tool","id":"toolu_015eJJRuBtkn8tuRCU553873","title":"Fetch","kind":"fetch","status":"pending"},{"seq":42,"t":1792102491557,"type":"tool","id":"toolu_01Vcd9yE1CsvehR2Gh9YZLqt","title":"Fetch","kind":"fetch","status":"pending"},{"seq":43,"t":1792102492068,"type":"tool","id":"toolu_015aAPTf3rME5spJo9G9iiLi","title":"Fetch","kind":"fetch","status":"pending"},{"seq":44,"t":1792102492521,"type":"heartbeat","quietMs":313,"openTools":[{"title":"Fetch","kind":"fetch","ms":2846},{"title":"Fetch","kind":"fetch","ms":2062},{"title":"Fetch","kind":"fetch","ms":1537},{"title":"Fetch","kind":"fetch","ms":964},{"title":"Fetch","kind":"fetch","ms":453}]},{"seq":45,"t":1792102492703,"type":"tool","id":"toolu_01CoXUU3g2yvgUtVPhD8d3Eb","title":"Fetch","kind":"fetch","status":"pending"},{"seq":46,"t":1792102493193,"type":"tool","id":"toolu_01JFaGK8fY5yWU5sVZNK1Wcw","title":"Fetch","kind":"fetch","status":"pending"},{"seq":47,"t":1792102493659,"type":"tool","id":"toolu_01CoXUU3g2yvgUtVPhD8d3Eb","title":"Fetch","kind":"fetch","status":"completed","ms":956},{"seq":48,"t":1792102493679,"type":"tool","id":"toolu_01JG1FzCB9BCo9VyiesiWcsv","title":"Fetch","kind":"fetch","status":"pending"},{"seq":52,"t":1792102496952,"type":"tool","id":"toolu_015eJJRuBtkn8tuRCU553873","title":"Fetch","kind":"fetch","status":"completed","ms":5968},{"seq":53,"t":1792102497244,"type":"tool","id":"toolu_01XcZqmFaX27m7zAoLJBmxQF","title":"Fetch","kind":"fetch","status":"completed","ms":6785},{"seq":54,"t":1792102497286,"type":"tool","id":"toolu_01HbyLX6ADPhH8256WHcmr8k","title":"Fetch","kind":"fetch","status":"completed","ms":7611},{"seq":56,"t":1792102497530,"type":"tool","id":"toolu_015aAPTf3rME5spJo9G9iiLi","title":"Fetch","kind":"fetch","status":"completed","ms":5462},{"seq":57,"t":1792102499445,"type":"tool","id":"toolu_01JFaGK8fY5yWU5sVZNK1Wcw","title":"Fetch","kind":"fetch","status":"completed","ms":6252},{"seq":58,"t":1792102500175,"type":"tool","id":"toolu_01Vcd9yE1CsvehR2Gh9YZLqt","title":"Fetch","kind":"fetch","status":"completed","ms":8618},{"seq":59,"t":1792102502499,"type":"tool","id":"toolu_01JG1FzCB9BCo9VyiesiWcsv","title":"Fetch","kind":"fetch","status":"completed","ms":8820},{"seq":60,"t":1792102502521,"type":"heartbeat","quietMs":22,"openTools":[]},{"seq":62,"t":1792102505210,"type":"text","delta":"Most of the pricing and limits are now confirmed from primary pages. A few execution-model details are still missing: Temporal's history limits, Restate's journal, DBOS's wait primitives"},{"seq":63,"t":1792102505318,"type":"text","delta":", and Inngest's self-hosting. I'll fetch those next."},{"seq":64,"t":1792102505318,"type":"tool","id":"toolu_0119oP4yBJv21ifbUNRf43kV","title":"Fetch","kind":"fetch","status":"pending"},{"seq":65,"t":1792102506199,"type":"tool","id":"toolu_018TofUiwgQwjXzyNSujvfuh","title":"Fetch","kind":"fetch","status":"pending"},{"seq":66,"t":1792102506772,"type":"tool","id":"toolu_01EnY5FaA6AJc7fKop5L8U8J","title":"Fetch","kind":"fetch","status":"pending"},{"seq":67,"t":1792102507567,"type":"tool","id":"toolu_01HM32k6KHimpQdF9a5GteFB","title":"Fetch","kind":"fetch","status":"pending"},{"seq":70,"t":1792102511093,"type":"tool","id":"toolu_0119oP4yBJv21ifbUNRf43kV","title":"Fetch","kind":"fetch","status":"completed","ms":5775},{"seq":71,"t":1792102512522,"type":"heartbeat","quietMs":1429,"openTools":[{"title":"Fetch","kind":"fetch","ms":6323},{"title":"Fetch","kind":"fetch","ms":5750},{"title":"Fetch","kind":"fetch","ms":4955}]},{"seq":72,"t":1792102513306,"type":"tool","id":"toolu_018TofUiwgQwjXzyNSujvfuh","title":"Fetch","kind":"fetch","status":"completed","ms":7107},{"seq":74,"t":1792102513825,"type":"tool","id":"toolu_01EnY5FaA6AJc7fKop5L8U8J","title":"Fetch","kind":"fetch","status":"completed","ms":7053},{"seq":75,"t":1792102515771,"type":"tool","id":"toolu_01HM32k6KHimpQdF9a5GteFB","title":"Fetch","kind":"fetch","status":"completed","ms":8204},{"seq":77,"t":1792102519207,"type":"text","delta":"Still missing: SDK language lists for Temporal, Inngest, Vercel, and Cloudflare, plus Restate pricing and its human-wait mechanism. One more batch."},{"seq":78,"t":1792102519207,"type":"tool","id":"toolu_015DtpMvcskXh5cQzfgRN6zn","title":"Fetch","kind":"fetch","status":"pending"},{"seq":79,"t":1792102519783,"type":"tool","id":"toolu_01PK6cwMMMX2YBA1rZZNacnC","title":"Fetch","kind":"fetch","status":"pending"},{"seq":80,"t":1792102520314,"type":"tool","id":"toolu_01GXKL7CGAGRbbn6V9x9MJh1","title":"Fetch","kind":"fetch","status":"pending"},{"seq":81,"t":1792102520967,"type":"tool","id":"toolu_01A8RyBBnD4MhyWSTxW7PMtT","title":"Fetch","kind":"fetch","status":"pending"},{"seq":82,"t":1792102521159,"type":"tool","id":"toolu_01GXKL7CGAGRbbn6V9x9MJh1","title":"Fetch","kind":"fetch","status":"completed","ms":845},{"seq":85,"t":1792102522523,"type":"heartbeat","quietMs":1052,"openTools":[{"title":"Fetch","kind":"fetch","ms":3316},{"title":"Fetch","kind":"fetch","ms":2740},{"title":"Fetch","kind":"fetch","ms":1556}]},{"seq":87,"t":1792102522540,"type":"tool","id":"toolu_015DtpMvcskXh5cQzfgRN6zn","title":"Fetch","kind":"fetch","status":"completed","ms":3333},{"seq":88,"t":1792102523602,"type":"tool","id":"toolu_01PK6cwMMMX2YBA1rZZNacnC","title":"Fetch","kind":"fetch","status":"completed","ms":3819},{"seq":89,"t":1792102525205,"type":"tool","id":"toolu_01A8RyBBnD4MhyWSTxW7PMtT","title":"Fetch","kind":"fetch","status":"completed","ms":4238},{"seq":91,"t":1792102527644,"type":"text","delta":"Restate pricing is still unverified, so I'll run one targeted search for it and for its human-wait mechanism."},{"seq":92,"t":1792102527644,"type":"tool","id":"toolu_01R84Hgsq6M4i8cxEqbtKK9P","title":"Web search","kind":"fetch","status":"pending"},{"seq":94,"t":1792102532502,"type":"tool","id":"toolu_01R84Hgsq6M4i8cxEqbtKK9P","title":"Web search","kind":"fetch","status":"completed","ms":4858},{"seq":95,"t":1792102532523,"type":"heartbeat","quietMs":21,"openTools":[]},{"seq":97,"t":1792102542523,"type":"heartbeat","quietMs":9029,"openTools":[]},{"seq":98,"t":1792102543386,"type":"text","delta":"I have enough for most options. Two gaps remain, DBOS's wait-for-event primitive and Restate's awakeable semantics, so I'll fetch those directly."},{"seq":99,"t":1792102543386,"type":"tool","id":"toolu_01SxF6UGf21ppgqifZ2o8Asv","title":"Fetch","kind":"fetch","status":"pending"},{"seq":100,"t":1792102544033,"type":"tool","id":"toolu_016Yvk1G7WhNYdVEz6eEfjPw","title":"Fetch","kind":"fetch","status":"pending"},{"seq":102,"t":1792102550815,"type":"tool","id":"toolu_01SxF6UGf21ppgqifZ2o8Asv","title":"Fetch","kind":"fetch","status":"completed","ms":7429},{"seq":103,"t":1792102552525,"type":"heartbeat","quietMs":1710,"openTools":[{"title":"Fetch","kind":"fetch","ms":8492}]},{"seq":104,"t":1792102552812,"type":"tool","id":"toolu_016Yvk1G7WhNYdVEz6eEfjPw","title":"Fetch","kind":"fetch","status":"completed","ms":8779},{"seq":106,"t":1792102554717,"type":"text","delta":"Research is complete. Next I'll write the sources file, then one file per option."},{"seq":107,"t":1792102554717,"type":"tool","id":"toolu_01FPDo8Txpi4cAK4yazSta8m","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":109,"t":1792102562377,"type":"tool","id":"toolu_01FPDo8Txpi4cAK4yazSta8m","title":"Preparing file…","kind":"edit","status":"completed","ms":7660},{"seq":110,"t":1792102562525,"type":"heartbeat","quietMs":148,"openTools":[]},{"seq":112,"t":1792102563691,"type":"tool","id":"toolu_019TD8DXqzDgJdjWyecseYVA","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":113,"t":1792102568329,"type":"tool","id":"toolu_01WPPEhkEaYgf4HKkqiX7Qhu","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":114,"t":1792102568334,"type":"tool","id":"toolu_019TD8DXqzDgJdjWyecseYVA","title":"Preparing file…","kind":"edit","status":"completed","ms":4643},{"seq":115,"t":1792102572528,"type":"heartbeat","quietMs":4079,"openTools":[{"title":"Preparing file…","kind":"edit","ms":4199}]},{"seq":116,"t":1792102573417,"type":"tool","id":"toolu_01WPPEhkEaYgf4HKkqiX7Qhu","title":"Preparing file…","kind":"edit","status":"completed","ms":5088},{"seq":119,"t":1792102574670,"type":"tool","id":"toolu_018DwiHiVVNfSjX65sqtpVDX","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":120,"t":1792102578637,"type":"tool","id":"toolu_01SPwfXxyxGCMxpSbemQUcMM","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":121,"t":1792102578644,"type":"tool","id":"toolu_018DwiHiVVNfSjX65sqtpVDX","title":"Preparing file…","kind":"edit","status":"completed","ms":3974},{"seq":122,"t":1792102582533,"type":"heartbeat","quietMs":3737,"openTools":[{"title":"Preparing file…","kind":"edit","ms":3896}]},{"seq":123,"t":1792102583532,"type":"tool","id":"toolu_012BRffShByQdUBvpM4gbNTY","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":124,"t":1792102583539,"type":"tool","id":"toolu_01SPwfXxyxGCMxpSbemQUcMM","title":"Preparing file…","kind":"edit","status":"completed","ms":4902},{"seq":125,"t":1792102587529,"type":"tool","id":"toolu_01TJKaJ4muFeCMaojmhbAE8G","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":126,"t":1792102587537,"type":"tool","id":"toolu_012BRffShByQdUBvpM4gbNTY","title":"Preparing file…","kind":"edit","status":"completed","ms":4005},{"seq":127,"t":1792102592367,"type":"tool","id":"toolu_01TJKaJ4muFeCMaojmhbAE8G","title":"Preparing file…","kind":"edit","status":"completed","ms":4838},{"seq":129,"t":1792102592534,"type":"heartbeat","quietMs":158,"openTools":[]},{"seq":131,"t":1792102595007,"type":"tool","id":"toolu_01LS2x5WW45uNf3BUrJfWv6R","title":"Edit","kind":"edit","status":"pending","locations":[]},{"seq":132,"t":1792102595504,"type":"tool","id":"toolu_01LS2x5WW45uNf3BUrJfWv6R","title":"Edit","kind":"edit","status":"completed","ms":497},{"seq":135,"t":1792102597118,"type":"text","delta":"Research files are saved. Next, the comparison CSV."},{"seq":136,"t":1792102597119,"type":"tool","id":"toolu_017FcbAmcZb715ARwn4swEFG","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":137,"t":1792102602527,"type":"tool","id":"toolu_017FcbAmcZb715ARwn4swEFG","title":"Preparing file…","kind":"edit","status":"completed","ms":5408},{"seq":139,"t":1792102602535,"type":"heartbeat","quietMs":8,"openTools":[]},{"seq":141,"t":1792102610440,"type":"text","delta":"Now the decision memo. The brief asks for 1,200–1,800 words, so I'll count the draft before saving."},{"seq":142,"t":1792102610440,"type":"tool","id":"toolu_01SexL7RjYmJGqwWSXPiCkhb","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":143,"t":1792102612537,"type":"heartbeat","quietMs":1975,"openTools":[{"title":"Preparing file…","kind":"edit","ms":2097}]},{"seq":144,"t":1792102622545,"type":"heartbeat","quietMs":11983,"openTools":[{"title":"Preparing file…","kind":"edit","ms":12105}]},{"seq":146,"t":1792102623480,"type":"tool","id":"toolu_01SexL7RjYmJGqwWSXPiCkhb","title":"Preparing file…","kind":"edit","status":"completed","ms":13040},{"seq":148,"t":1792102626308,"type":"tool","id":"toolu_01MMkLKkd7KBK37RuKbHD7Eo","title":"Edit","kind":"edit","status":"pending","locations":[]},{"seq":149,"t":1792102627137,"type":"tool","id":"toolu_01MMkLKkd7KBK37RuKbHD7Eo","title":"Edit","kind":"edit","status":"completed","ms":829},{"seq":152,"t":1792102628206,"type":"tool","id":"toolu_01Go7oobPYFM6rioKc7cFa1J","title":"Terminal","kind":"execute","status":"pending"},{"seq":154,"t":1792102628744,"type":"tool","id":"toolu_01Go7oobPYFM6rioKc7cFa1J","title":"Terminal","kind":"execute","status":"completed","ms":538},{"seq":156,"t":1792102630232,"type":"text","delta":"The memo is 1,237 words, inside the 1,200–1,800 range. The CSV has a header plus six rows, each with seven columns. Next, the executive summary."},{"seq":157,"t":1792102630232,"type":"tool","id":"toolu_013W5SRaWFpK1tVVXcQUTHwb","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":158,"t":1792102631896,"type":"tool","id":"toolu_013W5SRaWFpK1tVVXcQUTHwb","title":"Preparing file…","kind":"edit","status":"completed","ms":1664},{"seq":160,"t":1792102632547,"type":"heartbeat","quietMs":651,"openTools":[]},{"seq":162,"t":1792102633704,"type":"tool","id":"toolu_01CwvtUE677TNzW8SXmZzCWG","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":164,"t":1792102636040,"type":"tool","id":"toolu_01CwvtUE677TNzW8SXmZzCWG","title":"Preparing file…","kind":"edit","status":"completed","ms":2336},{"seq":166,"t":1792102637538,"type":"text","delta":"Before writing the checklist, I'll measure the actual counts on disk so the checklist reports real numbers."},{"seq":167,"t":1792102637538,"type":"tool","id":"toolu_016RJcreCDFP964aiCiHnEwj","title":"Terminal","kind":"execute","status":"pending"},{"seq":169,"t":1792102638719,"type":"tool","id":"toolu_016RJcreCDFP964aiCiHnEwj","title":"Terminal","kind":"execute","status":"completed","ms":1181},{"seq":171,"t":1792102639886,"type":"tool","id":"toolu_01SBctj9iFyuw1Neo5WY6cP1","title":"Preparing file…","kind":"edit","status":"pending","locations":[]},{"seq":173,"t":1792102642448,"type":"tool","id":"toolu_01SBctj9iFyuw1Neo5WY6cP1","title":"Preparing file…","kind":"edit","status":"completed","ms":2562},{"seq":174,"t":1792102642548,"type":"heartbeat","quietMs":100,"openTools":[]},{"seq":176,"t":1792102644857,"type":"text","delta":"The checklist cites source counts per file, so I'll check those against the files and confirm that every link in INDEX resolves."},{"seq":177,"t":1792102644857,"type":"tool","id":"toolu_01QeQCqoPA5J2RpVgZXcBGFi","title":"Terminal","kind":"execute","status":"pending"},{"seq":179,"t":1792102646037,"type":"tool","id":"toolu_01QeQCqoPA5J2RpVgZXcBGFi","title":"Terminal","kind":"execute","status":"completed","ms":1180},{"seq":181,"t":1792102648078,"type":"text","delta":"All seven deliverables are on disk and verified against the files. The memo recommends Temporal (DBOS as runner-up), and the CHECKLIST and INDEX link-check passed.\nResearch cov"},{"seq":182,"t":1792102648383,"type":"text","delta":"ers all six options with 19 cited sources, and the comparison CSV has six rows. Gaps the research could not verify (Restate pricing and duration, several Cloudflare, DBOS, and In"},{"seq":185,"t":1792102648448,"type":"text","delta":"ngest details) are marked as unverified in the files."},{"seq":186,"t":1792102648448,"type":"done","stopReason":"end_turn","usage":{"inputTokens":44,"outputTokens":27776,"cachedReadTokens":1094404,"cachedWriteTokens":61413,"totalTokens":1183637}}],"files":[{"path":"BRIEF.md","sha":"09ca322ca38dec813e0e575408b33c670dc7ae8293faf55510e8cb58ab910f9b","bytes":1617,"at":1792102452699,"preview":"# Brief: durable execution for AI agents\n\nWe run long-lived AI agents (Claude Code, Codex) inside cloud sandboxes. Runs last minutes to hours, survive\nmachine restarts, stream progress to a chat UI, and wait on human approvals. We need a decision memo on which\ndurable-execution approach to build that on.\n\nCompare these six options:\n\n1. Temporal\n2. Inngest\n3. Restate\n4. Vercel Workflow (the Workflow DevKit / `workflow` package)\n5. Cloudflare Workflows\n6. DBOS\n\nFor each, find: execution model (how state survives crashes), how it waits for external events or humans,\nlong-running limits, language support, hosting options (managed vs self-hosted), and pricing approach.\nUse web search and cite sources. Where something can't be verified, say so rather than guessing.\n\n## Deliverables (all inside this drive)\n\n| Path | What |\n| --- | --- |\n| `research/sources.md` | At least 8 sources: title, URL, one-line takeaway |\n| `research/\u003coption>.md` | One file per option (6 files), with the facts above and citations |\n| `data/comparison.csv` | One row per option; columns: option, execution_model, human_wait, max_duration, languages, hosting, pricing_model |\n| `report/memo.md` | 1,200–1,800 word decision memo with a clear recommendation and risks |\n| `report/exec-summary.md` | At most 200 words |\n| `INDEX.md` | Links to every file above with a one-line description |\n| `CHECKLIST.md` | Each deliverable, ticked when done, with its word or row count |\n\nWork through it end to end without asking questions. Save as you go: write each research file as soon as it is\ndone instead of holding everything until the end.\n"},{"path":"research/sources.md","sha":"b77743f3ef2c7f4f8d9cb5b8d795ff423f765687bf2310966b4bf1b7b3c9426a","bytes":5053,"at":1792102564315,"preview":"# Sources\n\nAccessed 2026-10-15. Official vendor pages are listed first in each group. Where a claim could not be verified on an official page, the option file says so.\n\n## Temporal\n\n1. **Temporal Cloud overview** — https://docs.temporal.io/cloud/overview.md — Temporal Cloud stores Event History and runs a managed service; Workers run in the customer's environment; Cloud runs the same server as open source.\n2. **Temporal Cloud pricing** — https://temporal.io/pricing.md — Billing is per Action (signals, timers, starts, activities) plus Active and Retained storage GBh; Actions are $50/M for the first 5M, with volume tiers down to $25/M; $150 new-account credit.\n3. **Temporal Event History** — https://docs.temporal.io/workflow-execution/event — Event History is durably persisted; warnings at 10,240 events; termination above 51,200 events, 2,000 updates, or 10,000 signals; Continue-As-New recommended for long runs; no time limit on execution.\n4. **Temporal SDKs (develop)** — https://docs.temporal.io/develop — Eight official SDKs: Go, Java, .NET, PHP, Python, Ruby, Rust, TypeScript.\n\n## Inngest\n\n5. **Inngest: Wait for event** — https://www.inngest.com/docs/reference/typescript/v4/functions/step-wait-for-event.md — `step.waitForEvent` pauses until a matching event or timeout; returns `null | EventPayload`; `timeout` accepts durations; step IDs memoize state.\n6. **Inngest pricing** — https://inngest.com/pricing — Free 50k executions/mo, Pro from $99/mo (1M included), Business from $499/mo (10M included); billed per run and per step execution; max run length 30 / 90 / 366 days by tier.\n7. **Inngest self-hosting** — https://www.inngest.com/docs/self-hosting — Server is on GitHub; default uses in-memory Redis and SQLite; optional external Redis and Postgres; SQLite default does not scale beyond one node; no guaranteed direct support for self-hosted.\n\n## Restate\n\n8. **Restate: durable execution concepts** — https://docs.restate.dev/concepts/durable_execution — Restate records every side-effecting operation in a journal and replays the handler on recovery, skipping completed steps; durable timers; SDKs for TypeScript, Java, Kotlin, Python, Go, Rust, Ruby; self-hosted, Restate Cloud, and BYOC options.\n9. **Restate: human-in-the-loop pattern** — https://docs.restate.dev/ai/patterns/human-in-the-loop — Agent pauses on an external signal and resumes after restarts (pattern page; detail was not fully extracted).\n10. **Restate: awakeables (Go)** — https://docs.restate.dev/develop/go/awakeables — One-shot signals with a generated ID, resolvable or rejectable by external HTTP calls; survive restarts; no built-in timeout, so combine with a durable timer.\n11. **Restate pricing page** — https://restate.dev/pricing — Fetched without content; no pricing was extracted. Pricing is unverified.\n\n## Vercel Workflow\n\n12. **Vercel Workflow pricing and limits** — https://vercel.com/docs/workflows/pricing — Billed on Workflow Events ($0.02 per 1K on-demand), Data Written ($0.50/GB), and Data Retained ($0.50/GB-month); run limits include 25,000 events and 10,000 steps per run; maximum run duration and sleep duration listed as no limit; retention 1 / 7 / 30 days by plan.\n13. **Vercel Workflow concepts** — https://vercel.com/docs/workflows/concepts — `\"use workflow\"` and `\"use step\"` directives; `sleep()` consumes no compute; `defineHook` waits for external events and resumes via API call.\n14. **Vercel Workflow SDK: Python getting started** — https://workflow-sdk.dev/docs/getting-started/python — Linked from the concepts page as a Python SDK; not fetched directly.\n\n## Cloudflare Workflows\n\n15. **Cloudflare Workflows limits** — https://developers.cloudflare.com/workflows/reference/limits/ — Paid: 10,000 default steps (up to 25,000), 365-day max sleep, 1 GiB persisted state, 1 MiB step result and event payload, 30-day retention; Free: 1,024 steps, 3-day retention, 100 concurrent instances. The paid concurrency row is internally inconsistent (50,000 in the table vs 10,000 in the text).\n16. **Cloudflare Workflows overview** — https://developers.cloudflare.com/workflows/ — Official confirmation that `waitForEvent` supports approvals and webhooks; example in TypeScript; language list and GA status not stated on the page.\n\n## DBOS\n\n17. **DBOS pricing** — https://www.dbos.dev/dbos-pricing — DBOS Transact is free and open source; Pro $99/mo with 1M checkpoints; Teams $499/mo with 10M checkpoints; overage $50 and $40 per million; DBOS Cloud priced on request.\n18. **DBOS architecture** — https://docs.dbos.dev/architecture — Inputs and step outputs are checkpointed in Postgres; no orchestration server; recovery re-invokes interrupted workflows and skips checkpointed steps; determinism requirement.\n19. **DBOS workflow communication** — https://docs.dbos.dev/python/tutorials/workflow-communication — `send`/`recv` and `set_event`/`get_event` for messages and events; persisted to the database; default 60-second timeout returning `None`.\n"},{"path":"research/temporal.md","sha":"d0b9b193a32b772258a5b182a6fd730b70b4a956982c2a19944fb067c31bc4a0","bytes":2960,"at":1792102570084,"preview":"# Temporal\n\n## Execution model\nTemporal stores each Workflow Execution's Event History in the Temporal Service. After a crash, a Worker re-runs the Workflow code and replays the recorded history so the code resumes at the same point. Workflow code must therefore be deterministic. Side Effects \"do not re-execute upon replay, but instead return the recorded result.\" The Cloud service replicates state synchronously across three availability zones before acknowledging a write [1][3].\n\n## Human wait and external events\nSignals and Updates deliver messages into a running Workflow, and timers let it sleep. Signals are billed as Actions, so every approval message adds to cost [2][3]. The Event History limits in [3] cap how many Signals and Updates a single execution can accumulate. The fetched docs did not show the Signal-wait API in detail, so the exact wait pattern is not verified here.\n\n## Long-running limits\n- No time limit on how long a Workflow Execution can run [3].\n- Event History is terminated above 51,200 events, 2,000 Updates, or 10,000 Signals. Warnings start at 10,240 events [3].\n- Continue-As-New is the documented way to keep history bounded for long-lived agents [3].\n\n## Language support\nEight official SDKs: Go (v1.49.0), Java (v1.40.0), .NET (v1.20.0), PHP (v2.19), Python (v1.34.0), Ruby (v1.9.0), Rust (v1.1.0), TypeScript (v1.24.0). The page does not state GA versus pre-release status for each SDK [4].\n\n## Hosting\n- **Temporal Cloud:** managed Temporal Service. Workers run in the customer's infrastructure. Cloud runs the same server as the open-source distribution, so a self-hosted app moves by changing its connection configuration [1].\n- **Self-hosted:** the open-source server, operated by the customer [1].\n\n## Pricing model\n- Billed on Actions (workflow starts, activity executions, timers, updates, queries, signals) and on Active and Retained Storage in GB-hours [2].\n- Actions cost $50 per million for the first 5M in a month, then tiered down to $25 per million for the 100M+ band. Over 200M is by quote [2].\n- Active storage $0.042/GBh; Retained storage $0.00105/GBh [2].\n- Plans: pay-as-you-go with a $0 minimum plus 10% of usage as support; Business at $500/mo minimum with 2.5M Actions included; Enterprise and Mission Critical by annual commitment [2].\n- New accounts get $150 in credit that expires after 90 days [2]. A search snippet quoted $1,000, which does not match the fetched pricing page. The fetched figure is used here.\n\n## Risks and gaps\n- Determinism rules and history limits require discipline in long agent loops.\n- Signal-heavy approval flows are billed per Signal.\n- Pricing page date was not shown on the fetched page.\n\n## Sources\n[1] Temporal Cloud overview, https://docs.temporal.io/cloud/overview.md\n[2] Temporal Cloud pricing, https://temporal.io/pricing.md\n[3] Temporal Event History, https://docs.temporal.io/workflow-execution/event\n[4] Temporal SDKs, https://docs.temporal.io/develop\n"},{"path":"research/inngest.md","sha":"b1cd456c4a25cbb4291cd0282df22182543e05ad3fa9f63ce43e33c2837c0f5a","bytes":3294,"at":1792102576045,"preview":"# Inngest\n\n## Execution model\nInngest runs functions as a series of steps. Each `step.run()` or `step.waitForEvent()` has an ID, and the result of each completed step is memoized under that ID. When a function resumes, completed steps return their stored result instead of running again. The step ID is also used to memoize state across function versions [5].\n\n## Human wait and external events\n`step.waitForEvent` pauses execution \"until a matching event is received or a timeout is reached.\" It returns `null | EventPayload`. The timeout accepts a duration string such as \"30m\" or \"7d\", a number of milliseconds, a Date, or a Temporal value. Matching uses either `match` (dot-notation property match) or `if` (a CEL expression), not both [5].\n\nNotes from the docs:\n- The docs do not say whether events received before the step starts can match. This is unverified.\n- In a `group.parallel()` race, a losing `waitForEvent` is not cancelled and keeps the run in a Running state until its timeout [5].\n- Whether `null` is returned on timeout is implied by the example but not stated outright in the fetched text [5].\n\n## Long-running limits\nMaximum run length depends on the plan: 30 days (Free), 90 days (Pro), 366 days (Business), and custom for Enterprise [6]. The docs' examples go up to 30 days. No single fixed cap beyond the plan limit was stated.\n\n## Language support\nThe fetched pages cover the TypeScript SDK (`step.waitForEvent`, v4 reference). Other SDK languages were not verified in this research.\n\n## Hosting\n- **Inngest Cloud:** the hosted platform, presented as the easiest route [7].\n- **Self-hosted:** the server source is on GitHub. The default setup uses in-memory Redis for the queue and state store, plus SQLite for persistence. Optional external Redis (`redis-uri`) and Postgres (`postgres-uri`) are supported. The SQLite default \"does not support scaling beyond a single node.\" Official support for self-hosted instances is not guaranteed. Old Postgres rows are not deleted automatically, which can slow the dashboard. The `/metrics` endpoint has no authentication by default [7].\n- The license was not named on the fetched page, so it is unverified [7].\n\n## Pricing model\nBilled in \"executions,\" defined as one durable function run or one step execution. The page's calculator gives executions = runs × (steps + 1) [6].\n- Free: $0, 50k executions/mo, 5 concurrent steps. Execution pauses at quota; no overage.\n- Pro: from $99/mo, 1M executions/mo included, overage $0.000050 down to $0.000015 per execution.\n- Business: from $499/mo, 10M executions/mo included.\n- Enterprise: custom.\n[6]\n\nConflict: search snippets quoted other Pro prices ($20, $50, $99, $350). Those are older or secondary and were not used. The official pricing page was used.\n\n## Risks and gaps\n- A `waitForEvent` that loses a race keeps the run open until timeout, which affects billing and concurrency.\n- Execution-based billing scales with step count, so many small steps cost more.\n- Self-hosting needs extra operations work to scale beyond one node.\n\n## Sources\n[5] Inngest: Wait for event, https://www.inngest.com/docs/reference/typescript/v4/functions/step-wait-for-event.md\n[6] Inngest pricing, https://inngest.com/pricing\n[7] Inngest self-hosting, https://www.inngest.com/docs/self-hosting\n"},{"path":"research/restate.md","sha":"ccf9300d8d730263727f1aa354a547d526e0d062b305751abafe1119eb68928b","bytes":2982,"at":1792102581860,"preview":"# Restate\n\n## Execution model\nRestate \"tracks every step of your code execution in a journal.\" Each side-effecting operation (calling a service, writing a database, setting a timer) is recorded with its result. After a crash, Restate replays the journal: it reruns the handler, uses recorded results for completed steps, and continues from where it failed. Recorded steps are not re-executed. Failed `run` actions retry with exponential backoff [8].\n\nOperational constraints from the docs:\n- A cluster needs a majority of nodes to stay available (consensus).\n- A single-node server recovers from crashes using its persistent disk but has no high-availability failover.\n- If the service cannot send journal entries to the Restate Server, the handler stops executing [8].\n\n## Human wait and external events\n- **Durable timers:** Restate supports sleeping, scheduling, and waiting for external events [8].\n- **Awakeables:** a one-shot signal with a generated ID. The handler creates it, sends the ID to the external system, and waits on the result. The external system resolves or rejects it through the SDK or an HTTP call to `/restate/awakeables/\u003cid>/resolve` or `/reject`. Awakeables survive retries and process restarts [10].\n- Awakeables have no built-in timeout. The docs recommend pairing one with a durable timer for long waits [10].\n- The human-in-the-loop pattern page describes an agent pausing on an external signal and resuming after a restart. The full text was not extracted [9].\n- Restate can suspend a waiting handler on FaaS platforms so waiting time is not billed as compute [8].\n\n## Long-running limits\nThe docs fetched for this research did not state a maximum workflow duration or a maximum journal size. This is unverified.\n\n## Language support\nTypeScript, Java, Kotlin, Python, Go, Rust, and Ruby [8].\n\n## Hosting\n- **Self-hosted:** managed by the customer on chosen infrastructure [8].\n- **Restate Cloud:** managed by Restate in Restate cloud regions [8].\n- **Restate BYOC:** managed by Restate in the customer's own cloud account and VPC [8].\n\n## Pricing model\nUnverified. The docs page points to a hosting comparison page that was not fetched. The pricing page at restate.dev/pricing returned no content on fetch. The open-source license and any Restate Cloud billing units were not found in this research [11]. Pricing should be checked directly with Restate before any cost comparison.\n\n## Risks and gaps\n- Pricing, license, and max duration are unknown from the sources reviewed.\n- Awakeable timeouts need a separate durable-timer pattern.\n- Consensus needs a multi-node cluster for high availability.\n\n## Sources\n[8] Restate durable execution concepts, https://docs.restate.dev/concepts/durable_execution\n[9] Restate human-in-the-loop pattern, https://docs.restate.dev/ai/patterns/human-in-the-loop\n[10] Restate awakeables (Go), https://docs.restate.dev/develop/go/awakeables\n[11] Restate pricing page (no content retrieved), https://restate.dev/pricing\n"},{"path":"research/vercel-workflow.md","sha":"2a50a19a91de57c04045bc62074150e3d6604980ac00bf7d8739f58d40c7e6af","bytes":3016,"at":1792102584948,"preview":"# Vercel Workflow (Workflow DevKit)\n\n## Execution model\nWorkflow uses two directives: `\"use workflow\"` marks a durable orchestrating function, and `\"use step\"` marks a unit of work with built-in retries. Each state transition is persisted as an event. The docs say that after a deploy or crash, the system \"replays execution deterministically from where it stopped.\" Each step compiles to an isolated route. The workflow suspends while a step runs [13].\n\nThe pricing page lists event types such as `step_created`, `step_started`, `step_completed`, and `step_retrying` [12].\n\n## Human wait and external events\n- **Sleep:** `sleep('7 days')` pauses the workflow and consumes no compute [13].\n- **Hooks:** `defineHook` lets a workflow wait for external events such as user actions, webhooks, or API responses. An API route resumes the hook with `approvalHook.resume(token, payload)`. The docs' example is a human approval [13].\n- A generic wait-for-event API with a timeout was not found in the fetched pages; hooks are the documented mechanism.\n\n## Long-running limits [12]\n- Maximum run duration: no limit.\n- Maximum sleep duration: no limit.\n- Events per run: 25,000 (raise by contacting support).\n- Steps per run: 10,000.\n- Max replay duration: 240 s per orchestration attempt. Runs that exceed 2,000 events or 1 GB of entity storage replay slowly; the docs recommend child workflows or batching.\n- Max payload: 50 MB per run, step, or hook input or output.\n- Total entity storage per run: 2 GB.\n- Individual step runtime follows Vercel Functions limits.\n\n## Language support\nTypeScript is the documented language in the concepts page. A Python SDK exists according to the docs' related-pages links [14], but its details were not fetched.\n\n## Hosting\nDocumented as a Vercel product. The concepts page did not describe a non-Vercel or self-hosted deployment, so this is unverified. Vercel Queues handle orchestration under the hood [12].\n\n## Pricing model [12]\nUsage-based on three resources. Hobby includes 50,000 events and 1 GB written per month. On-demand rates listed:\n- Workflow Events: $0.02 per 1K events.\n- Data Written: $0.50 per GB.\n- Data Retained: $0.50 per GB-month.\nPro is billed on demand. Retention is 1 day (Hobby), 7 days (Pro), 30 days (Enterprise). Functions invoked by workflows are billed at normal function compute rates, and Queues are billed separately.\n\n## Risks and gaps\n- The product may still be changing: an earlier search said pricing could change at GA. The fetched page (last updated 2026-09-16) did not state a GA date.\n- Replay limits (240 s, event counts) constrain very long, chatty agent runs.\n- Vercel-hosted only, as far as the sources show. Strong lock-in risk for a multi-cloud design.\n\n## Sources\n[12] Vercel Workflow pricing and limits, https://vercel.com/docs/workflows/pricing\n[13] Vercel Workflow concepts, https://vercel.com/docs/workflows/concepts\n[14] Workflow SDK: Python getting started, https://workflow-sdk.dev/docs/getting-started/python (linked, not fetched)\n"},{"path":"research/cloudflare-workflows.md","sha":"852ba50d7b23a2d0036968587aea2bb3d7ebde3d1f9816c7208c409ed8f41a92","bytes":2819,"at":1792102590619,"preview":"# Cloudflare Workflows\n\n## Execution model\nCloudflare Workflows run on Workers. A workflow is a sequence of steps (`step.do`), each with a persisted result. The fetched pages confirm that instances persist state up to a per-instance limit and that step results are capped at 1 MiB. The exact replay mechanism was not described on the pages fetched, so the recovery semantics are unverified here [15][16].\n\n## Human wait and external events\nOfficial material says workflows can wait for events such as approvals, payment webhooks, or queue messages \"with just a single line of code\" through `waitForEvent` [16]. The default timeout was not found. Waiting instances do not count toward concurrency limits [15]. Cloudflare's own pricing copy says you pay nothing while waiting on approvals or third-party APIs [16 via search summary, not fetched; treat as unverified].\n\n## Long-running limits [15]\n- Max duration per instance: no fixed cap, provided each step stays within the CPU limit and the step cap. The page says an instance \"can run forever\" on that basis.\n- Compute time per step: Free 10 ms; Paid 30 s by default, configurable to 5 min.\n- Max steps per workflow: Free 1,024; Paid 10,000 by default, configurable to 25,000. `step.sleep` does not count toward this.\n- Max `step.sleep` duration: 365 days on both plans.\n- Max persisted state per instance: Free 100 MB; Paid 1 GB.\n- Max non-stream step result: 1 MiB. Max event payload: 1 MiB.\n- Concurrent instances: Free 100; Paid listed as 50,000 in the table and 10,000 in the text. The page is inconsistent, so the paid figure is unverified.\n- Completed-instance retention: Free 3 days; Paid 30 days.\n\n## Language support\nThe official pages fetched show TypeScript/JavaScript examples. Other SDK languages were not confirmed, so this is unverified. Cloudflare Workers platform language support is broader than the Workflows SDK, and that should not be assumed here.\n\n## Hosting\nCloudflare-managed only. Runs on Cloudflare Workers. No self-hosted option was found in the pages reviewed [15][16].\n\n## Pricing model\nOfficial pricing is based on CPU time, requests, storage, and steps, included in Workers Free and Paid plans. The page states you are \"only billed while code executes.\" Pricing numbers were not retrieved from the pricing page, so specific rates are unverified [16].\n\n## Risks and gaps\n- Strong platform lock-in to Cloudflare Workers.\n- Per-step CPU limits constrain heavy compute inside steps. Long model inference must be offloaded.\n- Limits page is internally inconsistent on paid concurrency.\n- Beta versus GA status was not stated on the fetched overview.\n\n## Sources\n[15] Cloudflare Workflows limits, https://developers.cloudflare.com/workflows/reference/limits/\n[16] Cloudflare Workflows overview, https://developers.cloudflare.com/workflows/\n"},{"path":"research/dbos.md","sha":"813fb78338a8a4a4e47b05dc9d088796b69a80d47cf70a2ba252d83793476552","bytes":3527,"at":1792102593688,"preview":"# DBOS (Transact, Conductor, Cloud)\n\n## Execution model\nDBOS Transact is an open-source library. Each workflow input and step output is \"durably stored in the system database,\" which is Postgres. There is no orchestration server: \"no infrastructure required besides Postgres.\" Each step adds one database write, and each workflow adds two (input at start, outcome at end) [18].\n\nRecovery has three stages. On startup (single node), DBOS finds interrupted workflows and re-invokes them with checkpointed inputs. Before each step it checks for a saved output and returns that output if present. Execution resumes at the first step with no checkpoint [18].\n\nRequirements: the workflow function must be deterministic (same steps, same inputs, same order), and non-deterministic work such as database reads, API calls, random numbers, or local time belongs in steps. Steps that fail mid-execution are retried during recovery, so they should be idempotent [18].\n\n## Human wait and external events\n- `DBOS.send` delivers a message to a workflow ID, optionally on a topic. `DBOS.recv` waits for the next message on a topic [19].\n- `DBOS.set_event` publishes a key-value pair. `DBOS.get_event` waits until the event exists [19].\n- Messages and events are persisted in the database. Sending from a workflow gives exactly-once delivery [19].\n- `recv` and `get_event` default to a 60-second timeout and return `None` on timeout [19].\n- The page explicitly says event values read by `get_event` are persisted for recovery. It does not say the same for `recv`. That should be tested before relying on it [19].\n- The architecture page did not cover durable sleep. Its behavior is unverified here.\n\n## Long-running limits\nThe fetched pages did not state a maximum workflow duration. Because state lives in Postgres, duration is bounded by the database and the workflow's own logic rather than a platform cap. This is inferred, not verified.\n\n## Language support\nTypeScript, Python, Go, and Java for Transact [17]. The communication tutorial examples use Python [19].\n\n## Hosting\n- **Transact (open source):** runs on any Linux, macOS, or Windows platform, with Postgres [17][18].\n- **Conductor:** the managed console. It can also be self-hosted on Enterprise [17].\n- **DBOS Cloud:** serverless hosting. Price is on request; no figures were published [17].\n- The Postgres requirement is the main operational dependency. One secondary source mentioned CockroachDB as an option, which was not verified on the official pages.\n\n## Pricing model [17]\n- Transact: free, open source.\n- Pro: $99/mo, 1M checkpoints/mo, 2 seats, 3 apps. Overage $50 per additional million checkpoints.\n- Teams: $499/mo, 10M checkpoints/mo, 10 seats, 10 apps. Overage $40 per million, with discounts. Extra apps $50 each.\n- Enterprise: custom. Includes SSO and the option to self-host Conductor.\n- Billing is flat plus per-checkpoint overage. The page says service is not interrupted when limits are exceeded.\n\n## Risks and gaps\n- Smaller ecosystem and fewer published production references than Temporal.\n- Durability is tied to the Postgres deployment. Database operations become the critical path.\n- Recovery across multiple nodes needs Conductor or manual coordination [18].\n- The `recv` checkpointing behavior and durable sleep are not verified.\n\n## Sources\n[17] DBOS pricing, https://www.dbos.dev/dbos-pricing\n[18] DBOS architecture, https://docs.dbos.dev/architecture\n[19] DBOS workflow communication, https://docs.dbos.dev/python/tutorials/workflow-communication\n"},{"path":"data/comparison.csv","sha":"f69fc0a2d0eecd350b831ab2cf013fd665a3a93e16fde4db50cc4974e0d877cb","bytes":3396,"at":1792102604683,"preview":"option,execution_model,human_wait,max_duration,languages,hosting,pricing_model\nTemporal,\"Event History replay; deterministic workflow code; state replicated across 3 AZs\",\"Signals, Updates, timers (signals billed as Actions)\",\"No time limit; history terminated above 51,200 events / 2,000 updates / 10,000 signals; use Continue-As-New\",\"Go; Java; .NET; PHP; Python; Ruby; Rust; TypeScript (SDK maturity per release not stated)\",\"Temporal Cloud (managed) or self-hosted open-source server; Workers run in customer infrastructure\",\"Usage: $50/M Actions (first 5M, tiered to $25/M); storage GBh; Developer $0 minimum; Business $500/mo minimum\"\nInngest,\"Step memoization by step ID; completed steps not re-run on resume\",\"step.waitForEvent with timeout; returns null|payload; losing race keeps run open until timeout\",\"Plan-based: 30 days (Free), 90 days (Pro), 366 days (Business); custom Enterprise\",\"TypeScript verified; other SDK languages not verified\",\"Inngest Cloud or self-hosted server (SQLite default, optional Redis/Postgres; single-node by default)\",\"Per execution (run or step): Free 50k/mo; Pro from $99/mo with 1M; Business from $499/mo with 10M; overage per execution\"\nRestate,\"Journal of side-effecting operations; replay skips recorded steps; majority consensus for HA\",\"Durable timers; awakeables (one-shot signal resolved or rejected via SDK/HTTP); no built-in awakeable timeout\",\"Not verified in sources reviewed\",\"TypeScript; Java; Kotlin; Python; Go; Rust; Ruby\",\"Self-hosted; Restate Cloud (managed); BYOC in customer VPC\",\"Not verified: restate.dev/pricing returned no content\"\nVercel Workflow,\"Event-sourced run; deterministic replay of 'use workflow' function; 'use step' units run as isolated routes\",\"sleep() (no compute); defineHook waits for external events and resumes via API\",\"No run or sleep limit listed; 240 s per replay attempt; 25,000 events and 10,000 steps per run; 50 MB payloads\",\"TypeScript (documented); Python SDK linked, not verified in detail\",\"Vercel-hosted; no self-hosted or non-Vercel option found in sources\",\"Usage: $0.02 per 1K events; $0.50/GB written; $0.50/GB-month retained; Hobby 50k events/mo included; Pro on demand; Queues billed separately\"\nCloudflare Workflows,\"Persisted step results (step.do); replay mechanism not verified; instances persist up to 100 MB Free / 1 GB Paid\",\"waitForEvent for approvals/webhooks (default timeout not verified); waiting instances excluded from concurrency\",\"No fixed instance duration; step.sleep up to 365 days; 10,000 steps default (25,000 max) on Paid; 30-day retention Paid\",\"TypeScript/JavaScript documented; other languages not verified\",\"Cloudflare-managed only (Workers)\",\"Usage: CPU time, requests, storage, steps; billed only while code executes; specific rates not retrieved\"\nDBOS,\"Postgres checkpoints of inputs and step outputs; no orchestration server; re-invoke interrupted workflows and skip checkpointed steps\",\"send/recv on topics (60 s default timeout, returns None); set_event/get_event (persisted); exactly-once from workflows\",\"Not stated; bounded by Postgres and workflow logic (inferred)\",\"TypeScript; Python; Go; Java\",\"Transact open source self-hosted on Postgres; Conductor managed (self-host on Enterprise); DBOS Cloud (price on request)\",\"Transact free; Pro $99/mo with 1M checkpoints; Teams $499/mo with 10M; overage $50 or $40 per million checkpoints; Enterprise custom\"\n"},{"path":"report/memo.md","sha":"480d128639d3bfd7209ca52a3d36b4f35d371266b1f30953c5ec3f9be3ca51ce","bytes":7579,"at":1792102625044,"preview":"# Decision memo: durable execution for long-running AI agents\n\nDate: 2026-10-15. Evidence: [sources](../research/sources.md), per-option files in [research/](../research/), and [data/comparison.csv](../data/comparison.csv).\n\n## Recommendation\n\nBuild on **Temporal**, using Temporal Cloud at first and keeping a self-hosted path open. Temporal is the only option reviewed that meets every requirement in the brief without a hard platform cap or a single-cloud lock-in: no time limit on a run [3], a first-class way to wait on human approvals through Signals [2][3], SDKs in eight languages [4], and a server that can run on Temporal Cloud or on our own infrastructure with the same code [1]. **DBOS** is the credible alternative if we want the smallest possible operational footprint and already run Postgres. The other four options each fail on at least one requirement or have too many unverified facts to commit to.\n\n## What we need\n\nOur agents (Claude Code, Codex) run in cloud sandboxes for minutes to hours. The orchestration layer must:\n\n1. Survive machine restarts without losing progress.\n2. Pause for human approvals for an unbounded time.\n3. Stream progress to a chat UI while work is running.\n4. Run in a language our team uses, without locking us to one hosting vendor.\n\nRequirement 3 is outside the durable engine's job. Progress should go over a side channel, not into workflow history. Writing every token or progress tick as a workflow event would bloat history and cost money.\n\n## How the options compare\n\n| Option | Crash recovery | Human wait | Duration cap | Hosting | Pricing signal |\n| --- | --- | --- | --- | --- | --- |\n| Temporal | Event History replay [3] | Signals, timers [2] | None; history limit 51,200 events [3] | Cloud or self-hosted [1] | $50/M Actions, tiered [2] |\n| Inngest | Step memoization [5] | `waitForEvent` with timeout [5] | 30 / 90 / 366 days by plan [6] | Cloud or self-hosted, single-node default [7] | Per execution; Pro $99/mo [6] |\n| Restate | Journal replay [8] | Awakeables, durable timers [10] | Not verified | Self-hosted, Cloud, BYOC [8] | Not verified [11] |\n| Vercel Workflow | Event-log replay [13] | `sleep`, hooks [13] | No run or sleep limit; 240 s replay [12] | Vercel only [12] | $0.02 per 1K events [12] |\n| Cloudflare Workflows | Persisted step results [15] | `waitForEvent` [16] | Instances \"can run forever\" within step limits [15] | Cloudflare only [15] | Billed while code runs [16] |\n| DBOS | Postgres checkpoints [18] | `send`/`recv`, events [19] | Not stated | Open source on Postgres; Cloud [17] | $99/mo Pro; free Transact [17] |\n\n## Why Temporal\n\n**Durability model.** Temporal is the most mature engine in the set for this shape of work. Event History is replicated synchronously across three availability zones in Temporal Cloud [1]. Recovery is deterministic replay of the Workflow code against stored history [3]. That is well understood, and the operational patterns are documented.\n\n**Long runs and approvals.** The docs state there is no time limit on a Workflow Execution [3]. A human approval becomes a Signal, which resumes the workflow. The cost is a history budget: 51,200 events, 2,000 Updates, and 10,000 Signals before termination. Continue-As-New handles that, and the docs recommend it for long runs [3].\n\n**Language and hosting freedom.** Eight official SDKs are listed [4]. Cloud runs the same server as the open-source distribution, so self-hosting is a configuration change, not a rewrite [1]. This is the main reason to prefer Temporal over Vercel or Cloudflare, which are tied to one platform [12][15].\n\n**Cost is not the deciding factor at expected volume.** Temporal bills Actions, which include starts, activities, timers, and signals [2]. Pay-as-you-go has a $0 minimum plus 10% support [2]. As an illustrative assumption only, 10,000 agent runs a month at 300 Actions each is 3M Actions, or about $150 at the first-tier rate. With the same assumed shape of 60 steps per run, Inngest bills about 61 executions per run and DBOS about 62 checkpoints per run. At 10,000 runs, both fit inside their $99 Pro allowances (1M units). Pricing does not separate these options at our expected volume. Real Action counts must be measured with a prototype.\n\n## Why not the others\n\n- **DBOS** is the strongest alternative. It is open source, needs only Postgres, and has no orchestration server [18]. Its Pro tier is $99 a month [17]. We would choose it over Temporal if we want to avoid running any new infrastructure and our team already operates Postgres well. We would give up the mature multi-language SDK set and a large body of production references, and we would need to verify durable sleep and whether `recv` results are checkpointed for recovery [19].\n- **Inngest** has the simplest developer model and clear pricing [6]. Its default self-hosted mode is single-node and its self-hosting support is not guaranteed [7]. Its only language coverage we verified is TypeScript. The `waitForEvent` race behavior keeps runs open until timeout, which affects cost and concurrency [5].\n- **Restate** has a strong journal model and awakeables that fit human approvals [8][10]. We could not verify pricing, the open-source license, or maximum duration, so it cannot be compared on cost or limits [11]. We should revisit it when those facts are published.\n- **Vercel Workflow** is well designed for Vercel-hosted apps, with no run or sleep limits [12]. It is Vercel-only in the sources we found, which conflicts with our multi-sandbox hosting plans.\n- **Cloudflare Workflows** has generous duration limits and a useful waiting model [15][16]. It is tied to Cloudflare Workers, with a 10 ms CPU cap on Free and a 30 s default on Paid per step [15]. Long model calls must run outside the workflow.\n\n## Risks and mitigations\n\n1. **Determinism mistakes.** Temporal replays workflow code. A code change can break in-flight runs. Mitigation: keep workflow code thin, put all non-deterministic work in Activities, and use versioning before deploys.\n2. **History growth in long agent loops.** Mitigation: Continue-As-New on a fixed cadence and a size budget per run. Keep progress streaming out of the workflow.\n3. **Operational load if self-hosted.** Temporal self-hosting needs a database and a team that can run it. Mitigation: start on Temporal Cloud, and move only if cost or data residency requires it.\n4. **Sandbox state outside the engine.** A sandbox can die while its workflow is waiting. Mitigation: make each sandbox operation idempotent, store sandbox IDs in workflow state, and treat a lost sandbox as a retryable Activity failure.\n5. **Approval timeouts and abandoned waits.** A human may never respond. Mitigation: use timers with an explicit expiry and a default action.\n6. **Vendor claims not yet verified.** Restate pricing, Cloudflare non-TypeScript languages, DBOS `recv` checkpointing, and Inngest's timeout-on-null behavior are unverified. Mitigation: a two-week spike on Temporal Cloud and DBOS before committing, measuring real Action counts and recovery behavior.\n7. **Pricing pages change.** The fetched figures are dated 2026-10-15. Mitigation: re-check each vendor's pricing page before the budget review.\n\n## Next steps\n\n1. Build a spike on Temporal Cloud with one agent run: start, sandbox activity, a human-approval Signal, a restart test, and a 24-hour timer.\n2. Run the same test on DBOS Transact against our Postgres.\n3. Measure Action and checkpoint counts per run, and decide on that basis.\n4. Confirm the unverified items listed above before the final decision.\n"},{"path":"report/exec-summary.md","sha":"8c82a48fd0bf99e7f32cf5c8904e7781ce986cbed4295ef45d9a59331d526a41","bytes":1140,"at":1792102633735,"preview":"# Executive summary: durable execution for AI agents\n\n**Recommendation:** Build on Temporal, starting with Temporal Cloud and keeping a self-hosted path open. It is the only option reviewed with no run-duration cap, a first-class Signal mechanism for human approvals, eight official SDKs, and a server that can run on our own infrastructure with the same code.\n\n**Runner-up:** DBOS, if we want the smallest footprint and already run Postgres. It is open source and needs no orchestration server.\n\n**Why not the others:** Inngest's self-hosted mode is single-node by default, and its verified SDK coverage is TypeScript only. Restate's pricing and maximum duration could not be verified. Vercel Workflow and Cloudflare Workflows are tied to their own platforms.\n\n**Main risks:** Temporal's determinism rules and history limits require discipline in long agent loops. Sandboxes can die while a workflow waits, so every sandbox operation must be idempotent. Several vendor claims are unverified and need a spike before we commit.\n\n**Next step:** A two-week spike on Temporal Cloud and DBOS, measuring real action counts and recovery behavior.\n"},{"path":"INDEX.md","sha":"dff43d4b3ca4815115c472d825202a1a992c4c2c615f229f50f21ff03f59be4f","bytes":1552,"at":1792102639691,"preview":"# Index\n\n## Decision memo\n- [report/memo.md](report/memo.md) — Full decision memo: recommendation (Temporal, DBOS as runner-up), comparison, cost sketch, risks, and next steps.\n- [report/exec-summary.md](report/exec-summary.md) — Executive summary under 200 words.\n\n## Research\n- [research/sources.md](research/sources.md) — 19 cited sources with titles, URLs, and one-line takeaways.\n- [research/temporal.md](research/temporal.md) — Temporal: event-history replay, Signals, no duration cap, Cloud and self-hosted, Action-based pricing.\n- [research/inngest.md](research/inngest.md) — Inngest: step memoization, `waitForEvent`, plan-based run limits, execution-based pricing.\n- [research/restate.md](research/restate.md) — Restate: journal replay, awakeables and durable timers; pricing and duration not verified.\n- [research/vercel-workflow.md](research/vercel-workflow.md) — Vercel Workflow (Workflow DevKit): event-log replay, `sleep`, hooks, Vercel-hosted only.\n- [research/cloudflare-workflows.md](research/cloudflare-workflows.md) — Cloudflare Workflows: persisted steps, `waitForEvent`, Workers limits, Cloudflare-hosted only.\n- [research/dbos.md](research/dbos.md) — DBOS: Postgres checkpoints, `send`/`recv`, open-source Transact, Pro and Teams tiers.\n\n## Data\n- [data/comparison.csv](data/comparison.csv) — One row per option with execution model, human wait, max duration, languages, hosting, and pricing model.\n\n## Tracking\n- [CHECKLIST.md](CHECKLIST.md) — Every deliverable from the brief, with its word or row count.\n"},{"path":"CHECKLIST.md","sha":"2f280caa5b9d60742bdbc32627ff488e6fda161baf72763edb5d40d2ea7c0a61","bytes":1651,"at":1792102645439,"preview":"# Checklist\n\nCounts were measured on disk on 2026-10-15 with `wc -w` and a CSV parser.\n\n- [x] `research/sources.md` — 19 sources (title, URL, one-line takeaway). Requirement: at least 8.\n- [x] `research/temporal.md` — 449 words, 4 sources cited.\n- [x] `research/inngest.md` — 507 words, 3 sources cited.\n- [x] `research/restate.md` — 438 words, 4 sources cited. Pricing and max duration marked unverified.\n- [x] `research/vercel-workflow.md` — 462 words, 3 sources cited.\n- [x] `research/cloudflare-workflows.md` — 438 words, 2 sources cited.\n- [x] `research/dbos.md` — 527 words, 3 sources cited.\n- [x] `data/comparison.csv` — 6 data rows (one per option), 7 columns: option, execution_model, human_wait, max_duration, languages, hosting, pricing_model.\n- [x] `report/memo.md` — 1,237 words (requirement 1,200–1,800). Recommendation: Temporal, with DBOS as runner-up. Risks section included.\n- [x] `report/exec-summary.md` — 173 words (requirement at most 200).\n- [x] `INDEX.md` — links to every deliverable above, each with a one-line description.\n- [x] `CHECKLIST.md` — this file.\n\n## Known gaps (not verified, stated in the files)\n- Restate pricing, open-source license, and maximum duration: not found.\n- Cloudflare SDK languages beyond TypeScript and the paid concurrency limit (page is inconsistent): not verified.\n- DBOS durable sleep and whether `recv` results are checkpointed for recovery: not verified.\n- Inngest: whether `waitForEvent` matches events received before the step starts; whether timeout returns `null` is implied, not stated.\n- Temporal: Signal-wait API details and per-SDK GA status: not verified.\n"}]}/*END_RUN_DATA*/
+</script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id)
+  const icon = (name, cls = '') => `<svg class="i ${cls}"><use href="#i-${name}"/></svg>`
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+  // ---------- theme + tabs ----------
+  const setThemeIcon = () => $('theme').innerHTML = icon(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')
+  setThemeIcon()
+  $('theme').onclick = () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('overlay-mockup-theme', next) } catch (e) {}
+    setThemeIcon()
+  }
+  document.querySelectorAll('[role=tab]').forEach((tab) => tab.onclick = () => {
+    document.querySelectorAll('[role=tab]').forEach((other) => other.setAttribute('aria-selected', String(other === tab)))
+    document.querySelectorAll('[data-panel]').forEach((panel) => panel.hidden = panel.dataset.panel !== tab.dataset.tab)
+  })
+
+  // ---------- diagnosis ----------
+  const FINDINGS = [
+    { sym: 'The answer stops partway and never finishes', tag: 'Reproduced',
+      cause: 'Every streamed token is sent as the <em>entire</em> answer so far. The host uploads up to 100 events at once under a 512 KB limit. After about 5 KB of text, a backlog of 100 snapshots exceeds the limit. The host then retries the same oversized batch indefinitely, so nothing after it arrives: no text, tools or completion. An answer longer than 512 KB can never be sent at all.',
+      where: '<code>acp-adapter.ts:89</code>, <code>acpx-adapter.ts:205</code> build snapshots; <code>runtime.ts:178</code> always re-reads the same 100; limit at <code>overlay-agent-bridge-protocol/src/index.ts:290</code>.',
+      fix: 'Send text as deltas with an offset, merged every 250 ms. Fill batches by bytes rather than count. The server appends instead of replacing.' },
+    { sym: 'Stopping erases the text and shows only “Cancelled”', tag: 'Code',
+      cause: 'The cancel path replaces the assistant message’s content and every part, including the text, tool rows and diffs, with the single word “Cancelled”.',
+      where: '<code>convex/agents/connectedAgents.ts:822</code>; the transcript projector does the same when no text arrived (<code>src/shared/agents/remote-agent-transcript.ts:207</code>).',
+      fix: 'Keep every part, mark open tools as stopped, and add a “Stopped” status line. Any text that arrives during shutdown is still appended.' },
+    { sym: 'It looks stuck on a tool call', tag: 'Code + prod log',
+      cause: 'The host waits for an upload to finish before it takes the next agent update, so the visible stream trails the real work by one network round trip per event. Once the outbox is wedged (finding 1), the last thing on screen is a tool row. There is no heartbeat, so the room can’t tell a running tool from a dead one. A production Overlay Cloud host log showed control-plane 500s on poll and event upload, plus request timeouts.',
+      where: '<code>runtime.ts:373–388</code> awaits the flush on every emit; production Overlay Cloud host log.',
+      fix: 'The agent writes to a local log and never waits on the network. A background uploader acknowledges by cursor. A heartbeat every 10 s reports open tools and quiet time; after 90 s the room shows which tool is still running.' },
+    { sym: 'Overlay tools (MCP) hang, then fail', tag: 'Code',
+      cause: 'A tool that needs approval holds the HTTP call open for 25 s, then tells the agent to “call again once approved.” The agent sees a failure and often moves on or retries blindly. The tool endpoint is also capped at 300 s.',
+      where: '<code>src/server/agents/mcp-approval-gate.ts:18,76</code>; <code>src/app/api/agent-mcp/route.ts:3</code>.',
+      fix: 'Route Overlay tool approvals through the same ACP permission request the agent already understands, or pre-authorize them with the agent’s permission mode, so a call never waits silently.' },
+    { sym: 'It asks permission for every command', tag: 'Reproduced',
+      cause: 'Cloud agents run acpx with <code>deny-all</code>, so every request goes to a person. Local agents start in Claude Code’s default “Manual” mode. Neither lets you choose. Claude Code itself offers Manual, Accept edits, Plan, Auto and Bypass permissions (read live from the adapter on a Boat machine).',
+      where: '<code>packages/overlay-agent-host/src/acpx-adapter.ts:120</code>; no <code>session/set_mode</code> call anywhere in the host.',
+      fix: 'Add a per-agent permission setting, applied with <code>session/set_mode</code> before the prompt. Default Overlay Cloud agents to Auto, since the machine is isolated, and local agents to Accept edits.' },
+    { sym: 'The model list is out of date', tag: 'Reproduced',
+      cause: 'The list is hard-coded. The adapters are also behind: local machines use <code>claude-agent-acp@0.70.0</code>, image v6 uses 0.81.1, and the latest is 0.91.0. Asked live, 0.91.0 offers Default (Sonnet), Sonnet 5.5, Fable 5.1, Opus 5.5 and Haiku 5.5. Local agents also ignore the chosen model: only the acpx engine applies it.',
+      where: '<code>src/shared/agents/agent-model.ts:31</code>; <code>adapter-manifests.ts:2</code>; <code>infra/agent-image/versions.json</code>; local enrollment has no <code>--engine acpx</code>.',
+      fix: 'The host reads the agent’s own <code>configOptions</code> (model, mode, effort) and reports them with its capabilities. The UI shows that list. Adapter bumps ship with each image release.' },
+    { sym: 'Machine restarts drop the work in progress', tag: 'Prod log',
+      cause: 'A production cloud machine’s host restarted several times in a day. ACP can reload a session but cannot continue a turn that was interrupted, so any turn running at that moment is lost.',
+      where: 'Production host log; <code>acp-adapter.ts:44</code> declares <code>interruptedTurnContinuation: false</code>.',
+      fix: 'Never idle-stop a machine with an open turn. After a restart, reload the session and continue from the last acknowledged event with a short “continue” turn.' },
+    { sym: 'Files the agent makes stay on the machine', tag: 'Code',
+      cause: 'Agents work in <code>/home/user/workspace</code> on the machine’s own disk. Nothing they create reaches Overlay Files unless they choose to call an Overlay tool.',
+      where: '<code>src/server/agents/cloud/cloud-agent-machine.ts:13</code>.',
+      fix: 'Make the working folder the agent’s drive: hydrate it from the agent’s scope at start, write each change through to storage after file-writing tools and every 15 s, and verify hashes. The smoke run shows this working, including on a brand-new machine.' },
+  ]
+  $('findings').innerHTML = FINDINGS.map((f, i) => `
+    <div class="card finding">
+      <div class="head"><span class="n">${i + 1}</span><span class="sym">${f.sym}</span><span class="tag">${f.tag}</span></div>
+      <div class="grid">
+        <span class="k">Cause</span><span>${f.cause}</span>
+        <span class="k">Where</span><span>${f.where}</span>
+        <span class="k">Fix</span><span>${f.fix}</span>
+      </div>
+    </div>`).join('')
+
+  const PRINCIPLES = [
+    ['activity', 'Never block the agent on the network', 'Updates go to an append-only log on the machine first. Uploading runs separately and resumes from its cursor after any failure.'],
+    ['list', 'Deltas, not snapshots', 'Text is sent once, as merged deltas. Batches are filled by bytes, and the server appends.'],
+    ['loader', 'Liveness is visible', 'A heartbeat names the running tool and how long it has been quiet. A stall is a stated condition, not a guess.'],
+    ['shield', 'Permissions are a setting', 'Use the agent’s own modes (Manual, Accept edits, Plan, Auto, Bypass), chosen per agent and applied before every turn.'],
+    ['sliders', 'The agent defines its options', 'Model, effort and mode lists come from the running adapter, so new models appear without a code change.'],
+    ['hd', 'The drive is the source of truth', 'Personal agents get the personal drive, workspace agents the workspace drive. The machine is a disposable cache, and its credentials never leave Overlay.'],
+  ]
+  $('principles').innerHTML = PRINCIPLES.map(([ic, h, p]) => `<div class="card principle"><h3>${icon(ic)}${h}</h3><p>${p}</p></div>`).join('')
+
+  // ---------- run replay ----------
+  const data = window.RUN_DATA
+  if (!data) { $('flow').innerHTML = '<div class="empty">No run data embedded. Run build-mockup.mjs.</div>'; return }
+  const report = data.report
+  $('prompt').textContent = data.prompt
+  const modelName = (report.agentModels.find((m) => m.id === data.modelSet) || {}).name || report.requested.model
+  $('agent-meta').textContent = `Claude Code · ${modelName}`
+  $('run-sub').textContent = `A real smoke run, replayed from its event log. Claude Code ${report.adapter.split('@').pop()} on a Boat machine, ${modelName}, on a Claude subscription. Its working folder is backed by object storage. ${Math.round(report.durationSeconds / 60)} min end to end.`
+
+  // settings, populated from what the adapter reported
+  const MODE_HELP = {
+    default: 'Asks before edits and commands.',
+    acceptEdits: 'Edits files freely; asks before commands.',
+    plan: 'Reads and plans; changes nothing.',
+    auto: 'Decides safely by itself; asks only when risky.',
+    bypassPermissions: 'Never asks. Use on isolated machines.',
+  }
+  const SHORT = { default: 'Manual', acceptEdits: 'Edits', plan: 'Plan', auto: 'Auto', bypassPermissions: 'Bypass' }
+  let mode = data.modeSet || 'default'
+  const renderModes = () => {
+    $('modes').innerHTML = report.agentModes.map((m) => `<button data-mode="${m.id}" aria-pressed="${m.id === mode}" title="${esc(m.name)}">${SHORT[m.id] || esc(m.name)}</button>`).join('')
+    $('mode-help').textContent = MODE_HELP[mode] || ''
+  }
+  $('modes').onclick = (e) => { const b = e.target.closest('button'); if (b) { mode = b.dataset.mode; renderModes() } }
+  renderModes()
+  $('models').innerHTML = report.agentModels.map((m) => `<option value="${m.id}" ${m.id === data.modelSet ? 'selected' : ''}>${esc(m.name)}${m.description && !m.description.startsWith(m.name) ? '' : ''}</option>`).join('')
+  $('effort').innerHTML = (data.effort || ['default']).map((v) => `<option>${v === 'default' ? 'Default' : v[0].toUpperCase() + v.slice(1)}</option>`).join('')
+
+  // events → render steps
+  const events = data.events
+  const t0 = events[0].t
+  const tEnd = events[events.length - 1].t
+  const flow = $('flow')
+  let speed = 10, playing = true, idx = 0, clock = 0, last = performance.now()
+  let textBuf = '', textEl = null, group = null, groupCounts = null
+  const openTools = new Map()
+  const fileState = new Map()
+  const filesByTime = (data.files || []).slice().sort((a, b) => a.at - b.at)
+  let fileIdx = 0
+  const stats = { tools: 0, heartbeats: 0, maxQuiet: 0, stalls: 0 }
+
+  function md(src) {
+    const lines = esc(src).split('\n'); let html = '', list = false
+    for (const raw of lines) {
+      const line = raw.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>')
+      if (/^\s*[-*] /.test(raw)) { if (!list) { html += '<ul>'; list = true } html += `<li>${line.replace(/^\s*[-*] /, '')}</li>`; continue }
+      if (list) { html += '</ul>'; list = false }
+      if (/^#{1,4} /.test(raw)) html += `<h4>${line.replace(/^#{1,4} /, '')}</h4>`
+      else if (line.trim()) html += `<p>${line}</p>`
+    }
+    return html + (list ? '</ul>' : '')
+  }
+  function toolIcon(kind, title) {
+    if (/search/i.test(title)) return 'search'
+    if (/fetch/i.test(title) || kind === 'fetch') return 'globe'
+    if (kind === 'edit' || /write|edit/i.test(title)) return 'pen'
+    if (kind === 'execute') return 'term'
+    return 'file'
+  }
+  function closeText() { textEl = null; textBuf = '' }
+  function ensureGroup() {
+    if (group) return group
+    closeText()
+    const el = document.createElement('details')
+    el.className = 'group'
+    el.innerHTML = `<summary>${icon('chev', 'chev')}<span class="sum"></span></summary><div class="inner"></div>`
+    flow.appendChild(el)
+    group = el; groupCounts = { search: 0, globe: 0, pen: 0, term: 0, file: 0, running: 0 }
+    return el
+  }
+  function summarize() {
+    if (!group) return
+    const c = groupCounts, parts = []
+    if (c.search) parts.push(`${c.search} search${c.search > 1 ? 'es' : ''}`)
+    if (c.globe) parts.push(`${c.globe} page${c.globe > 1 ? 's' : ''} read`)
+    if (c.pen) parts.push(`${c.pen} file${c.pen > 1 ? 's' : ''} written`)
+    if (c.term) parts.push(`${c.term} command${c.term > 1 ? 's' : ''}`)
+    if (c.file) parts.push(`${c.file} file${c.file > 1 ? 's' : ''} read`)
+    group.querySelector('.sum').textContent = (c.running ? 'Working · ' : '') + parts.join(', ')
+  }
+  function apply(ev) {
+    if (ev.type === 'text') {
+      group = null
+      if (!textEl) { textEl = document.createElement('div'); textEl.className = 'stream'; flow.appendChild(textEl) }
+      textBuf += ev.delta; textEl.innerHTML = md(textBuf)
+    } else if (ev.type === 'tool') {
+      const g = ensureGroup()
+      let row = openTools.get(ev.id)
+      const ic = toolIcon(ev.kind, ev.title || '')
+      if (!row) {
+        row = document.createElement('div'); row.className = 'tool'
+        g.querySelector('.inner').appendChild(row); openTools.set(ev.id, row)
+        groupCounts[ic] += 1; groupCounts.running += 1
+      }
+      const done = ev.status === 'completed' || ev.status === 'failed'
+      const loc = ev.locations && ev.locations[0] ? ev.locations[0].replace(/^\/home\/user\/drive\//, '') : ''
+      const title = loc && /write|edit|read/i.test(ev.title || '') ? `${ev.title.split(' ')[0]} ${loc}` : (ev.title || 'Tool')
+      row.innerHTML = `${done ? icon(ic) : icon('loader', 'spin')}<span class="t">${esc(title)}</span>${ev.ms ? `<span class="ms">${(ev.ms / 1000).toFixed(1)}s</span>` : ''}`
+      if (done && !row.dataset.done) { row.dataset.done = '1'; groupCounts.running -= 1; stats.tools += 1 }
+      summarize()
+    } else if (ev.type === 'heartbeat') {
+      stats.heartbeats += 1; stats.maxQuiet = Math.max(stats.maxQuiet, ev.quietMs)
+      const tools = ev.openTools || []
+      $('live-text').textContent = tools.length ? `Running ${tools[0].title} · ${Math.round(tools[0].ms / 1000)}s` : `Working · last update ${Math.round(ev.quietMs / 1000)}s ago`
+    } else if (ev.type === 'stall') {
+      stats.stalls += 1
+    } else if (ev.type === 'done') {
+      $('live').hidden = true; $('done').hidden = false
+      $('done-text').textContent = `Finished in ${Math.round(report.durationSeconds / 60)} min · ${report.drive.files.length} files saved to the drive and verified on a fresh machine`
+    }
+  }
+  function renderFiles(now) {
+    while (fileIdx < filesByTime.length && filesByTime[fileIdx].at <= now) {
+      const f = filesByTime[fileIdx++]; fileState.set(f.path, { ...f, fresh: true })
+    }
+    const list = [...fileState.values()].sort((a, b) => a.path.localeCompare(b.path))
+    $('drive-count').textContent = `${list.length} file${list.length === 1 ? '' : 's'}`
+    if (!list.length) return
+    $('files').innerHTML = list.map((f) => `<div class="file ${f.fresh ? 'fresh' : ''}" data-path="${esc(f.path)}">${icon('file')}<span class="p">${esc(f.path)}</span><span class="s">${f.bytes >= 1024 ? (f.bytes / 1024).toFixed(1) + ' KB' : f.bytes + ' B'}</span><span class="st" title="In object storage, sha256 ${f.sha.slice(0, 12)}">${icon('cloud-check')}</span></div>`).join('')
+    for (const f of list) f.fresh = false
+  }
+  $('files').onclick = (e) => {
+    const row = e.target.closest('.file'); if (!row) return
+    const f = fileState.get(row.dataset.path)
+    $('viewer-path').textContent = f.path; $('viewer-sha').textContent = `sha256 ${f.sha.slice(0, 12)}…`
+    $('viewer-body').textContent = f.preview || '(binary)'
+    $('viewer').showModal()
+  }
+  $('viewer-close').onclick = () => $('viewer').close()
+  function renderFacts(now) {
+    const done = idx >= events.length
+    const rows = [
+      ['Elapsed', fmt((now - t0) / 1000)],
+      ['Tool calls finished', stats.tools],
+      ['Longest quiet gap', `${Math.round(stats.maxQuiet / 1000)}s`],
+      ['Stalls', stats.stalls],
+      ['Permission prompts', 0],
+      ['Uploads to storage', done ? report.drive.uploads : filesByTime.filter((f) => f.at <= now).length],
+      ['Verified on new machine', done && report.rehydrate ? `${report.rehydrate.files - report.rehydrate.mismatches.length}/${report.rehydrate.files}` : '-'],
+    ]
+    $('facts').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')
+  }
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+  function reset() {
+    flow.innerHTML = ''; idx = 0; clock = 0; textBuf = ''; textEl = null; group = null
+    openTools.clear(); fileState.clear(); fileIdx = 0; Object.assign(stats, { tools: 0, heartbeats: 0, maxQuiet: 0, stalls: 0 })
+    $('files').innerHTML = '<div class="empty">Nothing saved yet.</div>'; $('drive-count').textContent = '0 files'
+    $('live').hidden = false; $('done').hidden = true; $('live-text').textContent = 'Starting'
+  }
+  function tick(nowMs) {
+    const dt = nowMs - last; last = nowMs
+    if (playing && idx < events.length) {
+      clock += dt * speed
+      const now = t0 + clock
+      while (idx < events.length && events[idx].t <= now) apply(events[idx++])
+      renderFiles(now); renderFacts(now)
+      $('clock').textContent = `${fmt(clock / 1000)} / ${fmt((tEnd - t0) / 1000)}`
+      $('progress').style.width = `${Math.min(100, (clock / (tEnd - t0)) * 100)}%`
+      if (idx >= events.length) { renderFiles(Infinity); renderFacts(Infinity) }
+    }
+    requestAnimationFrame(tick)
+  }
+  $('play').onclick = () => { playing = !playing; $('play').innerHTML = icon(playing ? 'pause' : 'play') }
+  $('restart').onclick = () => { reset(); playing = true; $('play').innerHTML = icon('pause') }
+  $('speed').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return
+    speed = Number(b.dataset.x); $('speed').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+  }
+  reset(); requestAnimationFrame(tick)
+})()
+</script>
+</body>
+</html>

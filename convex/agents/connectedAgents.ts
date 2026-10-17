@@ -1,3 +1,5 @@
+import { currentRemoteAttempt, applyRemoteFact, reconcileRemoteRequestParts } from './remoteRunModel'
+import { pendingRemoteApprovals, remoteRunCoarseStatus, type RemoteRunState } from '../../src/shared/agents/remote-run'
 import { v } from 'convex/values'
 import type { AgentRemoteEvent } from '@overlay/workspace-contracts'
 import { internal } from '../_generated/api'
@@ -47,7 +49,7 @@ function conversationParts(parts: Array<Record<string, unknown>>) {
       environmentName: typeof data.environmentName === 'string' ? data.environmentName : 'connected environment',
       queueExpiresAt: typeof data.queueExpiresAt === 'number' ? data.queueExpiresAt : 0,
       runId: typeof data.runId === 'string' ? data.runId : 'remote-agent',
-      state: ['waiting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recoverable', 'completed', 'failed', 'cancelled'].includes(String(data.state))
+      state: ['waiting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recoverable', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled'].includes(String(data.state))
         ? data.state : 'running',
       ...(typeof data.retryable === 'boolean' ? { retryable: data.retryable } : {}),
       ...(['transient', 'timeout', 'host_offline', 'permission', 'fatal'].includes(String(data.retryClass))
@@ -201,7 +203,7 @@ export const getWorkspacePolicyUsageByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const environmentStatuses = ['pending', 'offline', 'online'] as const
-    const runStatuses = ['starting', 'running', 'waiting_for_approval', 'recovering'] as const
+    const runStatuses = ['queued', 'waking', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering', 'needs_attention', 'cancelling'] as const
     const [environmentGroups, runGroups, artifactUsage] = await Promise.all([
       Promise.all(
         environmentStatuses.map((status) =>
@@ -303,6 +305,7 @@ export const startRemoteAgentTurnByServer = mutation({
     initiatorPrincipalId: v.string(), modelId: v.string(), modelUsageBilling: v.union(v.literal('byok'), v.literal('overlay')),
     maxConcurrentRuns: v.number(), maxRunTimeMs: v.number(), prompt: v.string(), queueExpiresAt: v.number(),
     memoryEnabled: v.optional(v.boolean()),
+    lifecycleVersion: v.optional(v.literal(2)),
     reservationId: v.union(v.string(), v.null()), runId: v.string(), sessionId: v.string(),
     sandboxBilling: v.optional(anyObject),
     startPayload: anyObject, threadRootMessageId: v.optional(v.id('conversationMessages')),
@@ -427,7 +430,7 @@ export const startRemoteAgentTurnByServer = mutation({
         .first()
       if (!existingCommand) throw new Error('AGENT_REMOTE_TURN_INCOMPLETE')
       const currentOnline = environment.status === 'online' && (environment.lastSeenAt ?? 0) >= args.now - 45_000
-      return { commandId: existingCommand.commandId, environmentName: environment.name,
+      return { lifecycleVersion: existingRun.remoteLifecycle ? 2 : 1, commandId: existingCommand.commandId, environmentName: environment.name,
         messageId: existingMessage._id, resumed: true, runId: existingRun.externalRunId, waiting: !currentOnline }
     }
     if (args.threadRootMessageId) {
@@ -456,10 +459,15 @@ export const startRemoteAgentTurnByServer = mutation({
     if (runCollision || sessionCollision || commandCollision)
       throw new Error('AGENT_REMOTE_TURN_EXISTS')
     const activeStatuses = [
+      'queued',
+      'waking',
       'starting',
       'running',
       'waiting_for_approval',
+      'waiting_for_input',
       'recovering',
+      'needs_attention',
+      'cancelling',
     ] as const
     const activeRuns = (
       await Promise.all(
@@ -494,6 +502,16 @@ export const startRemoteAgentTurnByServer = mutation({
         )
     }
     const online = environment.status === 'online' && (environment.lastSeenAt ?? 0) >= args.now - 45_000
+    const lifecycle = args.lifecycleVersion === 2 && (environment.capabilities as { remoteLifecycleVersion?: number }).remoteLifecycleVersion === 2
+      ? { version: 2 as const, revision: 0, phase: 'queued' as const, currentAttemptId: args.sessionId,
+          executionGeneration: 1, coordinatorGeneration: 1, hardDeadlineAt: args.now + args.maxRunTimeMs,
+          claimDeadlineAt: args.queueExpiresAt } : undefined
+    const checkpointPayload = lifecycle ? {
+      bindingId: args.bindingId, adapterId: args.startPayload.adapterId,
+      workingDirectory: args.startPayload.workingDirectory,
+      configurationReference: args.bindingId, toolsReference: args.runId,
+      model: args.startPayload.metadata?.model ?? null,
+    } : args.startPayload
     const waitingParts = waitingRemoteAgentParts({ environmentName: environment.name, queueExpiresAt: args.queueExpiresAt, runId: args.runId })
     const messageId = await ctx.db.insert('conversationMessages', {
       conversationId: args.conversationId, userId: args.actorUserId, authorKind: 'agent',
@@ -503,6 +521,7 @@ export const startRemoteAgentTurnByServer = mutation({
       threadRootMessageId: args.threadRootMessageId, createdAt: args.now, updatedAt: args.now,
     })
     await ctx.db.insert('conversationAgentRuns', {
+      ...(lifecycle ? { remoteLifecycle: lifecycle } : {}),
       externalRunId: args.runId, conversationId: args.conversationId, turnId: args.turnId,
       userId: args.actorUserId, userMessageId: args.userMessageId, assistantMessageId: messageId,
       agentId: args.agentId, agentPrincipalId: args.authorPrincipalId,
@@ -512,6 +531,7 @@ export const startRemoteAgentTurnByServer = mutation({
       createdAt: args.now, updatedAt: args.now,
     })
     await ctx.db.insert('agentRemoteSessions', {
+      ...(lifecycle ? { attemptId: args.sessionId, executionGeneration: 1, hardDeadlineAt: lifecycle.hardDeadlineAt, claimDeadlineAt: args.queueExpiresAt } : {}),
       sessionId: args.sessionId, workspaceId: args.workspaceId, environmentId: args.environmentId,
       bindingId: args.bindingId, runId: args.runId, status: 'starting', commandCursor: 0, eventCursor: 0,
       capabilitySnapshot: { ...environment.capabilities, billing: { reservationId: args.reservationId,
@@ -522,7 +542,7 @@ export const startRemoteAgentTurnByServer = mutation({
         hardExpiresAt: args.now + args.maxRunTimeMs,
         ...(args.sandboxBilling ? { sandboxBilling: args.sandboxBilling } : {}),
         queueExpiresAt: args.queueExpiresAt, environmentName: environment.name,
-        startPayload: args.startPayload },
+        startPayload: checkpointPayload },
       createdAt: args.now, updatedAt: args.now,
     })
     if (args.sandboxBilling && typeof args.sandboxBilling.reservationId === 'string') {
@@ -550,18 +570,29 @@ export const startRemoteAgentTurnByServer = mutation({
     await ctx.db.insert('agentRunCommands', {
       commandId: args.commandId, workspaceId: args.workspaceId, environmentId: args.environmentId,
       runId: args.runId, type: 'start', sequence: (latest?.sequence ?? 0) + 1,
-      payload: args.startPayload, status: 'pending', createdAt: args.now, updatedAt: args.now,
+      payload: args.startPayload, status: lifecycle ? 'coordinator_pending' : 'pending',
+      ...(lifecycle ? { attemptId: args.sessionId, executionGeneration: 1 } : {}), createdAt: args.now, updatedAt: args.now,
+    })
+    if (lifecycle) for (const reservationId of [args.reservationId, args.sandboxBilling?.reservationId]) {
+      if (typeof reservationId !== 'string') continue
+      const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', reservationId)).unique()
+      if (!reservation || reservation.userId !== args.actorUserId || reservation.status !== 'reserved') throw new Error('AGENT_REMOTE_FUNDING_UNAVAILABLE')
+      await ctx.db.patch(reservation._id, { remoteRunId: args.runId })
+    }
+    if (lifecycle) await ctx.db.insert('agentRemoteRunIntents', {
+      intentId: `start:${args.runId}:1`, runId: args.runId, kind: 'start', revision: 0,
+      status: 'pending', createdAt: args.now, updatedAt: args.now,
     })
     await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: args.now, updatedAt: args.now })
     await ctx.db.insert('conversationEvents', { conversationId: args.conversationId, workspaceId: args.workspaceId,
       messageId, type: 'message.created', userId: args.actorUserId, createdAt: args.now })
-    return { commandId: args.commandId, environmentName: environment.name, messageId,
+    return { lifecycleVersion: lifecycle ? 2 : 1, commandId: args.commandId, environmentName: environment.name, messageId,
       resumed: false, runId: args.runId, waiting: !online }
   },
 })
 
 export const controlRemoteAgentTurnByServer = mutation({
-  args: { serverSecret: v.string(), actorUserId: v.string(), conversationId: v.string(), workspaceId: v.string(), runId: v.string(), action: v.union(v.literal('cancel'), v.literal('retry'), v.literal('resume'), v.literal('start_fresh')), queueExpiresAt: v.number(), now: v.number() },
+  args: { serverSecret: v.string(), actorUserId: v.string(), conversationId: v.string(), workspaceId: v.string(), runId: v.string(), action: v.union(v.literal('cancel'), v.literal('retry'), v.literal('resume'), v.literal('start_fresh')), controlRequestId: v.optional(v.string()), queueExpiresAt: v.number(), now: v.number() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const run = await ctx.db
@@ -573,7 +604,7 @@ export const controlRemoteAgentTurnByServer = mutation({
       run.conversationId !== args.conversationId ||
       run.runner !== 'remote'
     )
-      return { applied: false }
+      return { applied: false, reason: 'missing' }
     const actor = await ctx.db
       .query('workspacePrincipals')
       .withIndex('by_workspaceId_userId', (q) =>
@@ -607,20 +638,17 @@ export const controlRemoteAgentTurnByServer = mutation({
       membership?.status !== 'active' ||
       participant?.status !== 'active'
     )
-      return { applied: false }
-    const session = await ctx.db
-      .query('agentRemoteSessions')
-      .withIndex('by_runId', (q) => q.eq('runId', args.runId))
-      .unique()
+      return { applied: false, reason: 'forbidden' }
+    const session = await currentRemoteAttempt(ctx, args.runId)
     if (!session || session.workspaceId !== args.workspaceId)
-      return { applied: false }
+      return { applied: false, reason: 'missing' }
     const environment = await ctx.db
       .query('agentEnvironments')
       .withIndex('by_environmentId', (q) =>
         q.eq('environmentId', session.environmentId),
       )
       .unique()
-    if (!environment) return { applied: false }
+    if (!environment) return { applied: false, reason: 'missing' }
     const commands = await ctx.db
       .query('agentRunCommands')
       .withIndex('by_environmentId_sequence', (q) =>
@@ -628,9 +656,130 @@ export const controlRemoteAgentTurnByServer = mutation({
       )
       .filter((q) => q.eq(q.field('runId'), args.runId))
       .take(100)
+    if (run.remoteLifecycle) {
+      const state = run.remoteLifecycle as RemoteRunState
+      const operationId = args.controlRequestId ?? `${args.runId}:${state.currentAttemptId}:${args.action}`
+      const intentId = `control:${operationId}`
+      const existing = await ctx.db.query('agentRemoteRunIntents').withIndex('by_intentId', q => q.eq('intentId', intentId)).unique()
+      if (existing) {
+        if (existing.runId !== args.runId || existing.action !== args.action) return { applied: false, reason: 'conflicting_state' }
+        return { applied: true, operationId, phase: state.phase, messageId: run.assistantMessageId }
+      }
+      if (args.action !== 'cancel' && state.phase === 'recovering') {
+        const prior = await ctx.db.query('agentRemoteRunIntents').withIndex('by_runId', q => q.eq('runId', args.runId)).take(100)
+        const operation = prior.find(intent => intent.kind === 'control' && intent.action === args.action)
+        if (operation) return { applied: true, operationId: operation.operationId, phase: state.phase, messageId: run.assistantMessageId }
+      }
+      if (['completed', 'cancelled', 'failed'].includes(state.phase)) return { applied: false, reason: 'conflicting_state' }
+      if (args.action !== 'cancel' && args.now >= state.hardDeadlineAt) return { applied: false, reason: 'expired_deadline' }
+      if (args.action !== 'cancel' && state.phase === 'cancelling') return { applied: false, reason: 'conflicting_state' }
+      if (args.action === 'start_fresh') {
+        // BYO adapters cannot reattach to a dead process: the only continuation is a
+        // brand-new attempt on a fresh execution generation. The old attempt's
+        // approval context is discarded; the new process asks again if it needs to.
+        if (state.phase !== 'needs_attention') return { applied: false, reason: 'unsupported_recovery' }
+        const newAttemptId = `agent_session_${crypto.randomUUID()}`
+        const nextGeneration = state.executionGeneration + 1
+        const snapshot = session.capabilitySnapshot as Record<string, unknown>
+        // The checkpoint contains nonsecret references, not an executable start.
+        // Reuse the original validated command; its prompt/config remain canonical.
+        const originalStart = commands.find(command => command.type === 'start'
+          && command.payload && typeof command.payload.prompt === 'string')
+        if (!originalStart) return { applied: false, reason: 'unsupported_recovery' }
+        const startPayload = originalStart.payload
+        const { attemptId: _oldAttemptId, executionGeneration: _oldGen, ...snapshotRest } = snapshot as Record<string, unknown> & { attemptId?: string, executionGeneration?: number }
+        const { _id: oldSessionDocId, _creationTime: _oldCreationTime, ...sessionRest } = session
+        void _oldCreationTime
+        const now = args.now
+        const latestFresh = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', q => q.eq('environmentId', session.environmentId)).order('desc').first()
+        await ctx.db.insert('agentRemoteSessions', {
+          ...sessionRest,
+          attemptId: newAttemptId,
+          executionGeneration: nextGeneration,
+          sessionId: newAttemptId,
+          status: 'queued',
+          commandCursor: 0,
+          eventCursor: 0,
+          remoteSessionId: undefined,
+          hostBootId: undefined,
+          lastHealthAt: undefined,
+          executionLeaseExpiresAt: undefined,
+          capabilitySnapshot: snapshotRest,
+          createdAt: now,
+          updatedAt: now,
+        } as never)
+        await ctx.db.patch(session._id, { status: 'failed', endedAt: now, updatedAt: now })
+        const nextState: RemoteRunState = {
+          ...state,
+          revision: state.revision + 1,
+          phase: 'recovering',
+          cause: 'fresh_attempt',
+          currentAttemptId: newAttemptId,
+          executionGeneration: nextGeneration,
+          recoveryOutcome: 'requires_new_attempt',
+        }
+        delete nextState.approval
+        delete nextState.approvals
+        delete nextState.cancelRequestedAt
+        delete nextState.lastHealthAt
+        await ctx.db.patch(run._id, { remoteLifecycle: nextState, status: remoteRunCoarseStatus(nextState.phase), updatedAt: now })
+        // A replacement cannot leave an executable card from the old process ahead
+        // of its new requests. Preserve answered decisions and close only old waits.
+        const oldRequests = await ctx.db.query('agentApprovalRequests')
+          .withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', session.sessionId)).take(100)
+        for (const request of oldRequests) if (!request.resolution) await ctx.db.patch(request._id, {
+          resolution: { decision: 'execution_replaced', resolvedByPrincipalId: actor.principalId, resolvedAt: now },
+        })
+        const message = await ctx.db.get(run.assistantMessageId)
+        if (message) {
+          const parts = reconcileRemoteRequestParts(message.parts ?? [], { ...state, phase: 'cancelling', cause: 'execution_replaced' }, now)
+            .map(part => part.type === 'data-remote-agent-status'
+              ? { ...part, data: { ...(part.data as Record<string, unknown>), state: 'recovering' } } : part)
+          if (!parts.some(part => part.type === 'data-remote-agent-status')) parts.push({ type: 'data-remote-agent-status',
+            data: { environmentName: environment.name, runId: args.runId, queueExpiresAt: state.claimDeadlineAt, state: 'recovering' } })
+          await ctx.db.patch(message._id, { parts: conversationParts(parts), status: 'generating', updatedAt: now })
+        }
+        await ctx.db.insert('agentRemoteRunIntents', { intentId: `control:${operationId}`, runId: args.runId, kind: 'control', action: args.action,
+          operationId, revision: nextState.revision, status: 'pending', createdAt: now, updatedAt: now })
+        await ctx.db.insert('agentRunCommands', {
+          commandId: `command:${operationId}`, workspaceId: args.workspaceId, environmentId: session.environmentId,
+          runId: args.runId, attemptId: newAttemptId, executionGeneration: nextGeneration,
+          type: 'start', sequence: (latestFresh?.sequence ?? 0) + 1,
+          payload: { ...startPayload, fresh: true }, status: 'pending', createdAt: now, updatedAt: now })
+        return { applied: true, operationId, phase: nextState.phase, commandId: `command:${operationId}`, messageId: run.assistantMessageId }
+      }
+      const result = await applyRemoteFact(ctx, run, args.action === 'cancel'
+        ? { type: 'cancel', cause: 'user_cancelled' } : { type: 'recovery_requested' }, args.now)
+      const next = result?.state ?? state
+      await ctx.db.insert('agentRemoteRunIntents', { intentId, runId: args.runId, kind: 'control', action: args.action,
+        operationId, revision: next.revision, status: 'pending', createdAt: args.now, updatedAt: args.now })
+      const latest = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', q => q.eq('environmentId', session.environmentId)).order('desc').first()
+      const commandId = args.action === 'cancel' ? `stop:${args.runId}:${state.currentAttemptId}` : `command:${operationId}`
+      const existingCommand = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', commandId)).unique()
+      if (!existingCommand) await ctx.db.insert('agentRunCommands', { commandId, workspaceId: args.workspaceId, environmentId: session.environmentId,
+        runId: args.runId, attemptId: state.currentAttemptId, executionGeneration: state.executionGeneration,
+        type: args.action === 'cancel' ? 'cancel' : session.remoteSessionId ? 'reconnect' : 'observe',
+        sequence: (latest?.sequence ?? 0) + 1, payload: args.action === 'cancel' ? { reason: 'Cancelled from Overlay' }
+          : session.remoteSessionId ? { remoteSessionId: session.remoteSessionId } : {}, status: 'pending', createdAt: args.now, updatedAt: args.now })
+      await ctx.db.patch(session._id, { status: next.phase, updatedAt: args.now })
+      const message = await ctx.db.get(run.assistantMessageId)
+      await ctx.db.patch(run.assistantMessageId, { parts: conversationParts([
+        ...(message?.parts ?? []).filter(part => part.type !== 'data-remote-agent-status'),
+        { type: 'data-remote-agent-status', data: { environmentName: environment.name, runId: args.runId,
+          queueExpiresAt: state.claimDeadlineAt, state: next.phase } },
+      ]), status: 'generating', updatedAt: args.now })
+      return { applied: true, operationId, phase: next.phase, commandId, messageId: run.assistantMessageId }
+    }
+    const snapshotBeforeControl = session.capabilitySnapshot as Record<string, unknown>
+    if (args.action !== 'cancel' && typeof snapshotBeforeControl.hardExpiresAt === 'number' && snapshotBeforeControl.hardExpiresAt <= args.now)
+      return { applied: false, reason: 'expired_deadline' }
+    if (args.action !== 'cancel' && session.status === 'recovering') {
+      const recovery = commands.find((command) => command.type === 'reconnect' || command.type === 'start')
+      return { applied: true, commandId: recovery?.commandId, messageId: run.assistantMessageId }
+    }
     if (args.action === 'cancel') {
       if (run.status === 'cancelled') return { applied: true, messageId: run.assistantMessageId }
-      if (run.status === 'completed') return { applied: false }
+      if (run.status === 'completed') return { applied: false, reason: 'conflicting_state' }
       let cancelCommand = commands.find(
         (command) =>
           command.type === 'cancel' &&
@@ -691,8 +840,8 @@ export const controlRemoteAgentTurnByServer = mutation({
         messageId: run.assistantMessageId, type: 'message.delta', userId: run.userId, createdAt: args.now })
       return { applied: true, messageId: run.assistantMessageId }
     }
-    if (!['failed', 'cancelled'].includes(run.status))
-      return { applied: false }
+    if (!['failed'].includes(run.status))
+      return { applied: false, reason: 'conflicting_state' }
     const snapshot =
       session.capabilitySnapshot &&
       typeof session.capabilitySnapshot === 'object'
@@ -714,7 +863,7 @@ export const controlRemoteAgentTurnByServer = mutation({
       (mode === 'resume' && !session.remoteSessionId) ||
       (mode === 'start_fresh' && !startPayload)
     )
-      return { applied: false }
+      return { applied: false, reason: 'unsupported_recovery' }
     const latest = await ctx.db
       .query('agentRunCommands')
       .withIndex('by_environmentId_sequence', (q) =>
@@ -733,7 +882,12 @@ export const controlRemoteAgentTurnByServer = mutation({
       metrics: { ...(run.metrics ?? {}), workflowRetryCount: (run.metrics?.workflowRetryCount ?? 0) + 1 }, updatedAt: args.now })
     await ctx.db.patch(session._id, { status: 'recovering', endedAt: undefined,
       capabilitySnapshot: { ...snapshot, queueExpiresAt: args.queueExpiresAt }, updatedAt: args.now })
-    await ctx.db.patch(run.assistantMessageId, { status: 'generating', updatedAt: args.now })
+    const existingMessage = await ctx.db.get(run.assistantMessageId)
+    const parts = (existingMessage?.parts ?? []).filter((part) => part.type !== 'data-remote-agent-status')
+    await ctx.db.patch(run.assistantMessageId, { parts: conversationParts([...parts, {
+      type: 'data-remote-agent-status', data: { environmentName: environment.name,
+        queueExpiresAt: args.queueExpiresAt, runId: args.runId, state: 'recovering' },
+    }]), status: 'generating', updatedAt: args.now })
     await ctx.db.insert('conversationEvents', { conversationId: run.conversationId, workspaceId: args.workspaceId,
       messageId: run.assistantMessageId, type: 'message.delta', userId: run.userId, createdAt: args.now })
     return { applied: true, commandId, messageId: run.assistantMessageId }
@@ -842,19 +996,20 @@ export const acknowledgeCommandByServer = mutation({
       return false
     if (args.accepted === false) {
       if (command.status === 'acknowledged') return false
-      await ctx.db.patch(command._id, {
-        status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now,
-      })
+      // A sequence-gap rejection says the host never saw an earlier command; it is not a verdict
+      // on this command. Cancelling here would chain the missing row into a second hole, so the
+      // command stays claimable and re-delivers once its lease expires (or the host resyncs).
+      if (args.errorCode !== 'command_sequence_gap')
+        await ctx.db.patch(command._id, {
+          status: 'cancelled', claimExpiresAt: undefined, updatedAt: args.now,
+        })
       const run = await ctx.db
         .query('conversationAgentRuns')
         .withIndex('by_externalRunId', (q) =>
           q.eq('externalRunId', command.runId),
         )
         .unique()
-      const session = await ctx.db
-        .query('agentRemoteSessions')
-        .withIndex('by_runId', (q) => q.eq('runId', command.runId))
-        .unique()
+      const session = await currentRemoteAttempt(ctx, command.runId)
       const message = run ? await ctx.db.get(run.assistantMessageId) : null
       const environment = session
         ? await ctx.db
@@ -864,6 +1019,11 @@ export const acknowledgeCommandByServer = mutation({
             )
             .unique()
         : null
+      if (run?.remoteLifecycle && session) {
+        await applyRemoteFact(ctx, run, { type: 'health', process: 'unknown' }, args.now)
+        await ctx.db.patch(session._id, { recoveryCause: 'command_rejected', recoveryResult: 'unavailable', updatedAt: args.now })
+        return true
+      }
       if (run && session && message && !['completed', 'failed', 'cancelled'].includes(run.status)) {
         const code = 'remote_command_rejected'
         const failureMessage = `The connected environment rejected this command${rejectionDetail(args.errorCode, args.errorMessage)}. Reconnect it, then retry this message.`
@@ -885,10 +1045,7 @@ export const acknowledgeCommandByServer = mutation({
         status: 'acknowledged', acknowledgedAt: args.now, claimExpiresAt: undefined, updatedAt: args.now,
       })
     }
-    const session = await ctx.db
-      .query('agentRemoteSessions')
-      .withIndex('by_runId', (q) => q.eq('runId', command.runId))
-      .unique()
+    const session = await currentRemoteAttempt(ctx, command.runId)
     if (
       session &&
       session.workspaceId === args.workspaceId &&
@@ -899,6 +1056,24 @@ export const acknowledgeCommandByServer = mutation({
         updatedAt: args.now,
       })
     }
+    if (command.type === 'approval_response' || command.type === 'elicitation_response') {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', command.runId)).unique()
+      if (run?.remoteLifecycle && command.attemptId === run.remoteLifecycle.currentAttemptId) {
+        const result = await applyRemoteFact(ctx, run, { type: 'decision_delivered', requestKey: String(command.payload.requestKey) }, args.now)
+        if (result?.applied) {
+          const message = await ctx.db.get(run.assistantMessageId)
+          const parts = (message?.parts ?? []).map(part => {
+            const data = 'data' in part ? part.data as Record<string, unknown> : undefined
+            if (part.type === 'data-remote-agent-request' && data?.requestKey === command.payload.requestKey)
+              return { ...part, data: { ...data, state: 'resolved' } }
+            if (part.type === 'data-remote-agent-status') return { ...part, data: { ...data, state: result.state.phase } }
+            return part
+          })
+          await ctx.db.patch(run.assistantMessageId, { parts: conversationParts(parts), updatedAt: args.now })
+          if (session) await ctx.db.patch(session._id, { status: result.state.phase, updatedAt: args.now })
+        }
+      }
+    }
     return true
   },
 })
@@ -907,10 +1082,7 @@ export const getRemoteSessionForRunByServer = query({
   args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const session = await ctx.db
-      .query('agentRemoteSessions')
-      .withIndex('by_runId', (q) => q.eq('runId', args.runId))
-      .unique()
+    const session = await currentRemoteAttempt(ctx, args.runId)
     if (
       !session ||
       session.workspaceId !== args.workspaceId ||
@@ -980,20 +1152,22 @@ export const requestMcpApprovalByServer = mutation({
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const session = await ctx.db.query('agentRemoteSessions').withIndex('by_runId', (q) => q.eq('runId', args.runId)).unique()
+    const session = await currentRemoteAttempt(ctx, args.runId)
     if (!session || session.workspaceId !== args.workspaceId || session.environmentId !== args.environmentId) return { state: 'unavailable' as const }
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
     const existing = await ctx.db.query('agentApprovalRequests')
       .withIndex('by_remoteSessionId_requestKey', (q) => q.eq('remoteSessionId', session.sessionId).eq('requestKey', args.requestKey)).unique()
     // A request keeps reporting its answer after the run ends (the run's end closes it), so a call still waiting is told.
     if (existing) {
+      if (existing.resolution && run?.remoteLifecycle) await applyRemoteFact(ctx, run, { type: 'decision_delivered', requestKey: args.requestKey }, args.now)
       return existing.resolution
         ? { state: 'resolved' as const, decision: existing.resolution.decision }
         : { state: 'pending' as const }
     }
     if (['completed', 'failed', 'cancelled'].includes(session.status)) return { state: 'unavailable' as const }
-    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
     const message = run?.assistantMessageId ? await ctx.db.get(run.assistantMessageId) : null
     if (!run || !message) return { state: 'unavailable' as const }
+    if (run.remoteLifecycle && !['running', 'waiting_for_approval', 'waiting_for_input'].includes(run.remoteLifecycle.phase)) return { state: 'unavailable' as const }
     const options = [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }]
     await ctx.db.insert('agentApprovalRequests', {
       approvalId: `approval_${crypto.randomUUID()}`, workspaceId: args.workspaceId, runId: args.runId,
@@ -1017,7 +1191,9 @@ export const requestMcpApprovalByServer = mutation({
       runId: args.runId,
     })
     await ctx.db.patch(message._id, { parts: conversationParts(projection.parts), status: 'generating', updatedAt: args.now })
-    await ctx.db.patch(run._id, { status: 'waiting_for_approval', updatedAt: args.now })
+    if (run.remoteLifecycle) await applyRemoteFact(ctx, run, { type: 'request', requestKey: args.requestKey,
+      kind: 'permission', expiresAt: Math.min(args.now + 60 * 60_000, run.remoteLifecycle.hardDeadlineAt) }, args.now)
+    else await ctx.db.patch(run._id, { status: 'waiting_for_approval', updatedAt: args.now })
     await ctx.db.patch(session._id, { status: 'waiting_for_approval', updatedAt: args.now })
     await ctx.db.insert('conversationEvents', {
       conversationId: run.conversationId, workspaceId: args.workspaceId, messageId: message._id,
@@ -1116,6 +1292,7 @@ export const resolveRemoteRequestByServer = mutation({
         ? ctx.db.get(run.assistantMessageId)
         : Promise.resolve(null),
     ])
+    if (run.remoteLifecycle && session?.sessionId !== run.remoteLifecycle.currentAttemptId) return { applied: false }
     if (!session || !message || session.runId !== args.runId)
       return { applied: false }
     if (request.resolution) {
@@ -1147,15 +1324,21 @@ export const resolveRemoteRequestByServer = mutation({
     if (kind === 'elicitation' && args.decision === 'accept') assertValidElicitationResponse(request.payload, args.response)
     const resolution = { decision: args.decision, ...(args.response ? { response: args.response } : {}),
       resolvedByPrincipalId: actor.principalId, resolvedAt: args.now }
+    if (run.remoteLifecycle) {
+      const applied = await applyRemoteFact(ctx, run, { type: 'decision', requestKey: args.requestKey, decision: args.decision }, args.now)
+      if (!applied?.applied) return { applied: false }
+    }
     await ctx.db.patch(request._id, { resolution })
     if ((request.payload as { source?: unknown } | undefined)?.source === MCP_APPROVAL_SOURCE) {
       // The waiting MCP call reads the resolution itself; the host has nothing to answer.
-      await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
-      await ctx.db.patch(session._id, { status: 'running', updatedAt: args.now })
+      if (!run.remoteLifecycle) {
+        await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
+        await ctx.db.patch(session._id, { status: 'running', updatedAt: args.now })
+      }
       await ctx.db.patch(message._id, {
         parts: conversationParts(resolveRemoteRequestPart(
           Array.isArray(message.parts) ? (message.parts as unknown as Array<Record<string, unknown>>) : [],
-          args.requestKey, resolution,
+          args.requestKey, resolution, Boolean(run.remoteLifecycle),
         )),
         status: 'generating', updatedAt: args.now,
       })
@@ -1175,13 +1358,16 @@ export const resolveRemoteRequestByServer = mutation({
     const commandId = `command_${crypto.randomUUID()}`
     await ctx.db.insert('agentRunCommands', { commandId, workspaceId: args.workspaceId,
       environmentId: session.environmentId, runId: args.runId,
+      ...(run.remoteLifecycle ? { attemptId: run.remoteLifecycle.currentAttemptId, executionGeneration: run.remoteLifecycle.executionGeneration } : {}),
       type: kind === 'permission' ? 'approval_response' : 'elicitation_response',
       sequence: (latest?.sequence ?? 0) + 1,
       payload: kind === 'permission' ? { requestKey: args.requestKey, optionId: args.decision }
         : { requestKey: args.requestKey, action: args.decision, ...(args.response ? { content: args.response } : {}) },
       status: 'pending', createdAt: args.now, updatedAt: args.now })
-    await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
-    await ctx.db.patch(session._id, { status: 'running', updatedAt: args.now })
+    if (!run.remoteLifecycle) {
+      await ctx.db.patch(run._id, { status: 'running', approval: undefined, updatedAt: args.now })
+      await ctx.db.patch(session._id, { status: 'running', updatedAt: args.now })
+    }
     await ctx.db.patch(message._id, {
       parts: conversationParts(
         resolveRemoteRequestPart(
@@ -1190,6 +1376,7 @@ export const resolveRemoteRequestByServer = mutation({
             : [],
           args.requestKey,
           resolution,
+          Boolean(run.remoteLifecycle),
         ),
       ),
       status: 'generating',
@@ -1447,8 +1634,7 @@ export const listPendingSandboxSettlementsByServer = query({
       .withIndex('by_status_updatedAt', (q) => q.eq('status', 'pending'))
       .take(limit)
     const settlements = (await Promise.all(markers.map(async (marker) => {
-      const session = await ctx.db.query('agentRemoteSessions')
-        .withIndex('by_runId', q => q.eq('runId', marker.runId)).unique()
+      const session = await currentRemoteAttempt(ctx, marker.runId)
       if (!session || !['completed', 'failed', 'cancelled'].includes(session.status)) return null
       const run = await ctx.db.query('conversationAgentRuns')
         .withIndex('by_externalRunId', q => q.eq('externalRunId', marker.runId)).unique()
@@ -1633,7 +1819,7 @@ export const environmentHasActiveRunsByServer = query({
   args: { serverSecret: v.string(), environmentId: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    for (const status of ['starting', 'running', 'waiting_for_approval', 'recovering'] as const) {
+    for (const status of ['queued', 'waking', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering', 'needs_attention', 'cancelling'] as const) {
       const row = await ctx.db
         .query('agentRemoteSessions')
         .withIndex('by_environmentId_status', (q) => q.eq('environmentId', args.environmentId).eq('status', status))
@@ -1685,7 +1871,7 @@ async function finishRunMessage(
     })
   }
   if (run.externalRunId) {
-    const session = await ctx.db.query('agentRemoteSessions').withIndex('by_runId', (q) => q.eq('runId', run.externalRunId!)).unique()
+    const session = await currentRemoteAttempt(ctx, run.externalRunId!)
     if (session && !['completed', 'failed', 'cancelled'].includes(session.status)) {
       await ctx.db.patch(session._id, { status: 'cancelled', endedAt: now, updatedAt: now })
     }
@@ -1750,6 +1936,10 @@ export const stopSandboxLeaseByServer = mutation({
       .withIndex('by_environmentId_createdAt', q => q.eq('environmentId', lease.environmentId)).take(1_000)
     const stoppedRuns = leaseRuns.filter((run) => ['queued', 'running', 'waiting_for_approval'].includes(run.status))
     await Promise.all(stoppedRuns.map(async (run) => {
+      if (run.remoteLifecycle) {
+        await applyRemoteFact(ctx, run, { type: 'refuse', cause: args.reason }, args.now)
+        return
+      }
       await ctx.db.patch(run._id, {
         status: 'cancelled',
         cancelledAt: args.now,
@@ -2015,11 +2205,13 @@ export const claimCommandsByServer = mutation({
           .lte('claimExpiresAt', args.now))
         .take(args.limit),
     ])
+    const blocked = await ctx.db.query('agentRunCommands').withIndex('by_environmentId_status_sequence', q => q.eq('environmentId', args.environmentId).eq('status', 'coordinator_pending')).first()
     const rows = [...pendingRows, ...expiredClaimRows].sort((left, right) => left.sequence - right.sequence)
     const claimable: typeof rows = []
     // A command whose run is over must still be delivered, or the host sees a hole in its command numbers and rejects
     // every later command. It goes out as a shutdown, which a host accepts for a run it does not know.
     const neutralized = new Set<string>()
+    const legacyLimitations = new Set<string>()
     const candidates = rows.filter((row) => (
       row.workspaceId === args.workspaceId
       && (row.status === 'pending' || (row.status === 'claimed' && (row.claimExpiresAt ?? 0) <= args.now))
@@ -2030,7 +2222,22 @@ export const claimCommandsByServer = mutation({
       if (claimable.length >= args.limit) break
       const row = candidates[i]!
       const run = candidateRuns[i]
-      if (run && row.type !== 'cancel' && (!['queued', 'running', 'waiting_for_approval'].includes(run.status) ||
+      if (blocked && row.sequence > blocked.sequence) break
+      if (run?.remoteLifecycle && (environment.capabilities as { remoteLifecycleVersion?: number }).remoteLifecycleVersion !== 2) {
+        await applyRemoteFact(ctx, run, { type: 'health', process: 'unknown' }, args.now)
+        neutralized.add(row.commandId)
+        legacyLimitations.add(row.commandId)
+      }
+      // Fresh-attempt starts are user-authorized recovery, not queue leftovers: the
+      // initial start's claim deadline must not neutralize them into a shutdown.
+      const isFreshStart = row.type === 'start' && (row.payload as { fresh?: unknown } | null)?.fresh === true
+      if (run?.remoteLifecycle && row.type === 'start' && !isFreshStart && args.now >= run.remoteLifecycle.claimDeadlineAt) {
+        await applyRemoteFact(ctx, run, { type: 'observe' }, args.now)
+        neutralized.add(row.commandId)
+      }
+      if (run?.remoteLifecycle && !run.remoteLifecycle.coordinatorId && !['cancel', 'shutdown'].includes(row.type) && !neutralized.has(row.commandId)) break
+      if (run?.remoteLifecycle && ['cancelling', 'completed', 'cancelled', 'failed'].includes(run.remoteLifecycle.phase) && !['cancel', 'shutdown', 'observe'].includes(row.type)) neutralized.add(row.commandId)
+      if (run && !run.remoteLifecycle && row.type !== 'cancel' && (!['queued', 'running', 'waiting_for_approval'].includes(run.status) ||
         (run.leaseExpiresAt !== undefined && run.leaseExpiresAt <= args.now))) neutralized.add(row.commandId)
       claimable.push(row)
     }
@@ -2042,8 +2249,13 @@ export const claimCommandsByServer = mutation({
           claimExpiresAt: args.now + args.leaseMs,
           updatedAt: args.now,
         })
+        const wireRow = clean(row)
+        if (legacyLimitations.has(row.commandId)) {
+          delete wireRow.attemptId
+          delete wireRow.executionGeneration
+        }
         return {
-          ...clean(row),
+          ...wireRow,
           ...(neutralized.has(row.commandId)
             ? { type: 'shutdown', payload: { reason: 'This run is no longer active.' } }
             : {}),
@@ -2058,8 +2270,37 @@ export const claimCommandsByServer = mutation({
   },
 })
 
+// A host numbers the commands it receives per environment and rejects anything after a missing
+// number, so a row that resolves without ever being delivered leaves a permanent hole in the
+// stream. This floor tells the host the highest sequence it may skip: every row below the first
+// still-open command is resolved ('acknowledged' or 'cancelled' — the only two terminal states a
+// row reaches without further delivery). Any other status still owes the host a delivery.
+export const commandResolutionFloorByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const openStatuses = ['pending', 'claimed', 'coordinator_pending'] as const
+    const firstOpenRows = await Promise.all(openStatuses.map((status) =>
+      ctx.db
+        .query('agentRunCommands')
+        .withIndex('by_environmentId_status_sequence', (q) =>
+          q.eq('environmentId', args.environmentId).eq('status', status))
+        .first()))
+    const firstOpen = firstOpenRows.reduce((lowest, row) =>
+      row && row.workspaceId === args.workspaceId && row.sequence < lowest ? row.sequence : lowest,
+    Number.MAX_SAFE_INTEGER)
+    if (firstOpen !== Number.MAX_SAFE_INTEGER) return firstOpen - 1
+    const latest = await ctx.db
+      .query('agentRunCommands')
+      .withIndex('by_environmentId_sequence', (q) => q.eq('environmentId', args.environmentId))
+      .order('desc')
+      .first()
+    return latest ? latest.sequence : 0
+  },
+})
+
 export const applyRemoteEventsByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), sessionId: v.string(), events: v.array(v.object({ protocolVersion: v.number(), eventId: v.string(), environmentId: v.string(), runId: v.string(), sourceSequence: v.number(), type: v.string(), occurredAt: v.number(), payload: anyObject })), maxEventsPerMinute: v.optional(v.number()), now: v.number() },
+  args: { serverSecret: v.string(), workspaceId: v.string(), environmentId: v.string(), sessionId: v.string(), events: v.array(v.object({ protocolVersion: v.number(), eventId: v.string(), environmentId: v.string(), runId: v.string(), sourceSequence: v.number(), type: v.string(), occurredAt: v.number(), execution: v.optional(v.object({ attemptId: v.string(), generation: v.number(), hostBootId: v.optional(v.string()) })), payload: anyObject })), maxEventsPerMinute: v.optional(v.number()), now: v.number() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const session = await ctx.db
@@ -2149,11 +2390,16 @@ export const applyRemoteEventsByServer = mutation({
       await ctx.db.patch(session._id, { eventCursor: last, updatedAt: args.now })
       return { accepted: true, acknowledgedSequence: last, duplicate: false }
     }
+    const swallowStaleEvents = async (stale: 'stale_attempt' | 'stale_execution' | 'stale_terminal') => {
+      await ctx.db.patch(session._id, { eventCursor: last, updatedAt: args.now })
+      return { accepted: true as const, acknowledgedSequence: last, duplicate: false, stale }
+    }
+    if (run.remoteLifecycle && run.remoteLifecycle.currentAttemptId !== session.sessionId) return swallowStaleEvents('stale_attempt')
     if (run.runner !== 'remote' || run.environmentId !== args.environmentId) throw new Error('AGENT_REMOTE_RUN_NOT_FOUND')
     if (!message) throw new Error('AGENT_REMOTE_MESSAGE_NOT_FOUND')
     if (['completed', 'failed', 'cancelled'].includes(run.status)) {
       if (!isCompatibleTerminalAcknowledgement(run.status, args.events))
-        throw new Error('AGENT_RUN_TERMINAL')
+        return swallowStaleEvents('stale_terminal')
       await ctx.db.patch(session._id, {
         eventCursor: last,
         updatedAt: args.now,
@@ -2174,6 +2420,18 @@ export const applyRemoteEventsByServer = mutation({
       typeof session.capabilitySnapshot === 'object'
         ? (session.capabilitySnapshot as Record<string, unknown>)
         : {}
+    const adapters = Array.isArray(snapshot.adapters) ? snapshot.adapters as Array<{ id?: string; protocol?: string; recovery?: { interruptedTurnContinuation?: boolean; approvalRestoration?: boolean } }> : []
+    const nativeAdapter = adapters.find(adapter => adapter.id === (snapshot.startPayload as { adapterId?: string } | undefined)?.adapterId && adapter.protocol === 'eve')
+    const acceptsNativeReattachment = Boolean(nativeAdapter?.recovery?.interruptedTurnContinuation
+      && (!run.remoteLifecycle?.approval || nativeAdapter.recovery.approvalRestoration)
+      && args.events[0]?.type === 'process_observation' && args.events[0].payload.process === 'live'
+      && args.events[0].payload.recoveryOutcome === 'attached_live')
+    const acceptedBoot = acceptsNativeReattachment ? args.events[0]?.execution?.hostBootId : session.hostBootId
+    if (run.remoteLifecycle && args.events.some(event => !event.execution || event.execution.attemptId !== session.sessionId
+      || event.execution.generation !== run.remoteLifecycle!.executionGeneration
+      || (acceptedBoot && acceptedBoot !== event.execution.hostBootId
+        && !(event.type === 'process_observation' && event.payload.process === 'unknown')))) return swallowStaleEvents('stale_execution')
+    let canonicalRun = run
     const normalizedEvents: AgentRemoteEvent[] = []
     for (const event of args.events as AgentRemoteEvent[]) {
       if (event.type === 'approval_requested' || event.type === 'elicitation_requested') {
@@ -2219,7 +2477,32 @@ export const applyRemoteEventsByServer = mutation({
           url: `/api/v1/conversations/run/remote/artifacts/${artifact.artifactId}` } })
         continue
       }
-      normalizedEvents.push(event)
+      normalizedEvents.push(run.remoteLifecycle && (event.type === 'approval_requested' || event.type === 'elicitation_requested')
+        ? { ...event, payload: { ...event.payload, context: { ...(event.payload.context as Record<string, unknown> ?? {}),
+          expiresAt: Math.min(args.now + 60 * 60_000, run.remoteLifecycle.hardDeadlineAt), machineCostContinues: environment.kind === 'overlay_cloud' } } } : event)
+    }
+    if (run.remoteLifecycle) for (const event of normalizedEvents) {
+      const state = canonicalRun.remoteLifecycle as RemoteRunState
+      if (event.type === 'completed') for (const request of pendingRemoteApprovals(state)) {
+        if (!request.decision) continue
+        const delivered = await applyRemoteFact(ctx, canonicalRun, { type: 'decision_delivered', requestKey: request.requestKey }, args.now)
+        if (delivered?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: delivered.state }
+      }
+      const fact = event.type === 'session_started' ? { type: 'started' as const }
+        : event.type === 'process_observation' && event.payload.process === 'live' && event.payload.recoveryOutcome === 'attached_live'
+          ? { type: 'recover' as const, recoveryOutcome: 'attached_live' as const }
+        : event.type === 'process_observation' ? { type: 'health' as const, process: event.payload.process as 'live' | 'lost' | 'unknown' }
+        : event.type === 'approval_requested' || event.type === 'elicitation_requested' ? {
+          type: 'request' as const, requestKey: String(event.payload.requestKey),
+          kind: event.type === 'approval_requested' ? 'permission' as const : 'elicitation' as const,
+          expiresAt: Math.min(args.now + 60 * 60_000, state.hardDeadlineAt),
+        } : event.type === 'completed' ? { type: 'complete' as const }
+        : event.type === 'cancelled' ? { type: 'stopped' as const }
+        : event.type === 'failed' ? { type: 'health' as const, process: 'lost' as const }
+        : { type: 'progress' as const }
+      const result = await applyRemoteFact(ctx, canonicalRun, fact, args.now)
+      if (result?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: result.state }
+      if (event.execution?.hostBootId && (!session.hostBootId || acceptsNativeReattachment)) await ctx.db.patch(session._id, { hostBootId: event.execution.hostBootId })
     }
     const projection = projectRemoteAgentEvents({
       content: message.content,
@@ -2231,6 +2514,20 @@ export const applyRemoteEventsByServer = mutation({
       queueExpiresAt: typeof snapshot.queueExpiresAt === 'number' ? snapshot.queueExpiresAt : args.now,
       runId: session.runId,
     })
+    // Cancellation fences outcome, not evidence of already-consumed usage.
+    projection.tokens = { input: Math.max(message.tokens?.input ?? 0, projection.tokens.input),
+      output: Math.max(message.tokens?.output ?? 0, projection.tokens.output) }
+    if (canonicalRun.remoteLifecycle) {
+      const state = canonicalRun.remoteLifecycle as RemoteRunState
+      projection.runStatus = remoteRunCoarseStatus(state.phase)
+      projection.sessionStatus = state.phase as typeof projection.sessionStatus
+      projection.terminal = ['completed', 'cancelled', 'failed'].includes(state.phase)
+      const parts = reconcileRemoteRequestParts(projection.parts, state, args.now).filter(part => part.type !== 'data-remote-agent-status')
+      projection.parts = [...parts, { type: 'data-remote-agent-status', data: {
+        environmentName: snapshot.environmentName, queueExpiresAt: state.claimDeadlineAt, runId: session.runId,
+        state: state.phase, cause: state.cause, revision: state.revision,
+      } }]
+    }
     await ctx.db.patch(session._id, {
       eventCursor: last, status: projection.sessionStatus,
       ...(projection.remoteSessionId ? { remoteSessionId: projection.remoteSessionId } : {}),
@@ -2253,7 +2550,7 @@ export const applyRemoteEventsByServer = mutation({
     })
     await ctx.db.patch(message._id, {
       content: projection.content, parts: conversationParts(projection.parts),
-      ...(projection.terminal ? { tokens: projection.tokens } : {}),
+      ...(projection.terminal || projection.tokens.input > 0 || projection.tokens.output > 0 ? { tokens: projection.tokens } : {}),
       status: projection.runStatus === 'failed' ? 'error' : projection.terminal ? 'completed' : 'generating',
       updatedAt: args.now,
     })
@@ -2264,6 +2561,12 @@ export const applyRemoteEventsByServer = mutation({
       userId: run.userId, createdAt: args.now,
     })
     if (projection.terminal) {
+      if (run.remoteLifecycle) {
+        const intentId = `finalize:${session.runId}:${run.remoteLifecycle.currentAttemptId}`
+        const existing = await ctx.db.query('agentRemoteRunIntents').withIndex('by_intentId', q => q.eq('intentId', intentId)).unique()
+        if (!existing) await ctx.db.insert('agentRemoteRunIntents', { intentId, runId: session.runId, kind: 'finalize',
+          revision: canonicalRun.remoteLifecycle!.revision, status: 'pending', createdAt: args.now, updatedAt: args.now })
+      }
       const requests = await ctx.db.query('agentApprovalRequests')
         .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', args.workspaceId).eq('runId', session.runId)).take(100)
       await Promise.all(requests.filter((request) => !request.resolution).map((request) =>
@@ -2274,7 +2577,7 @@ export const applyRemoteEventsByServer = mutation({
       const commands = await ctx.db.query('agentRunCommands')
         .withIndex('by_environmentId_sequence', q => q.eq('environmentId', args.environmentId))
         .filter(q => q.eq(q.field('runId'), session.runId)).take(100)
-      await Promise.all(commands.filter((command) => command.status !== 'cancelled').map((command) =>
+      await Promise.all(commands.filter((command) => command.status === 'claimed' || command.status === 'acknowledged').map((command) =>
         ctx.db.patch(command._id, { status: 'acknowledged',
           acknowledgedAt: command.acknowledgedAt ?? args.now, claimExpiresAt: undefined, updatedAt: args.now })))
     }
@@ -2303,6 +2606,9 @@ export const revokeEnvironmentByServer = mutation({
       ctx.db.query('agentEnvironmentCredentials').withIndex('by_environmentId_expiresAt', q => q.eq('environmentId', args.environmentId)).take(1_000),
       ctx.db.query('agentSandboxLeases').withIndex('by_workspaceId_environmentId', q => q.eq('workspaceId', args.workspaceId).eq('environmentId', args.environmentId)).take(1_000),
     ])
+    const activeRuns = await ctx.db.query('conversationAgentRuns').withIndex('by_environmentId_createdAt', q => q.eq('environmentId', args.environmentId)).take(1000)
+    for (const run of activeRuns) if (run.remoteLifecycle && !['completed', 'cancelled', 'failed'].includes(run.remoteLifecycle.phase))
+      await applyRemoteFact(ctx, run, { type: 'refuse', cause: 'authorization_revoked' }, args.now)
     await Promise.all([
       ...bindings.map((binding) => ctx.db.patch(binding._id, { enabled: false, updatedAt: args.now })),
       ...envCommands
@@ -2549,11 +2855,12 @@ async function sweepRemoteRuns(
   const settlements = []
   const alerts: Array<Record<string, unknown>> = []
   const sweepResults = await Promise.all(active.map(async (run) => {
+    if (run.remoteLifecycle) {
+      await applyRemoteFact(ctx, run, { type: 'observe' }, args.now)
+      return null
+    }
     const session = run.externalRunId
-      ? await ctx.db
-          .query('agentRemoteSessions')
-          .withIndex('by_runId', (q) => q.eq('runId', run.externalRunId!))
-          .unique()
+      ? await currentRemoteAttempt(ctx, run.externalRunId!)
       : null
     const environment = session
       ? await ctx.db
@@ -2570,6 +2877,14 @@ async function sweepRemoteRuns(
     // A cloud machine that was paused or restarted mid-run comes back with a host that knows nothing of the run, so
     // the host looks healthy while the run never finishes. Its events stop, which is how that is told apart from a
     // long run.
+    const snapshot = session?.capabilitySnapshot as Record<string, unknown> | undefined
+    const hardExpiresAt = typeof snapshot?.hardExpiresAt === 'number' ? snapshot.hardExpiresAt : run.leaseExpiresAt
+    const healthyWait = !offline && session !== null && ['waiting_for_approval', 'waiting_for_input'].includes(session.status)
+      && (hardExpiresAt ?? 0) > args.now && session.environmentId !== args.abandonEnvironmentId
+    if (healthyWait) {
+      await ctx.db.patch(run._id, { leaseExpiresAt: Math.min(args.now + REMOTE_RUN_LEASE_MS, hardExpiresAt!), updatedAt: args.now })
+      return null
+    }
     const abandoned = environment?.kind === 'overlay_cloud' && session !== null
       && (session.environmentId === args.abandonEnvironmentId
         || Math.max(session.updatedAt ?? 0, session.startedAt ?? 0) < args.now - ABANDONED_CLOUD_RUN_MS)
@@ -2824,3 +3139,34 @@ function meterUsageFields(charge: { costCents: number; modelId?: string; duratio
     ...(charge.durationSeconds ? { usageSeconds: charge.durationSeconds } : {}),
   }
 }
+
+export const pendingRemoteFinalizationsByServer = query({
+  args: { serverSecret: v.string() }, returns: v.any(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const intents = await ctx.db.query('agentRemoteRunIntents').withIndex('by_kind_status_updatedAt', q => q.eq('kind', 'finalize').eq('status', 'pending')).take(100)
+    const results = []
+    for (const intent of intents) {
+      if (intent.kind !== 'finalize') continue
+      const session = await currentRemoteAttempt(ctx, intent.runId)
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', intent.runId)).unique()
+      if (!session || !run || !['completed', 'failed', 'cancelled'].includes(run.status)) continue
+      const message = await ctx.db.get(run.assistantMessageId)
+      results.push({ intentId: intent.intentId, revision: intent.revision,
+        terminal: terminalBilling(session.capabilitySnapshot, message?.tokens, terminalOutcome(run.status)) })
+    }
+    return results
+  },
+})
+
+export const environmentHasActiveExecutionByServer = query({
+  args: { serverSecret: v.string(), environmentId: v.string() }, returns: v.boolean(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    for (const status of ['running', 'waiting_for_approval', 'waiting_for_input', 'recovering', 'needs_attention', 'cancelling']) {
+      const sessions = await ctx.db.query('agentRemoteSessions').withIndex('by_environmentId_status', q => q.eq('environmentId', args.environmentId).eq('status', status)).take(100)
+      if (sessions.some(session => Boolean(session.startedAt))) return true
+    }
+    return false
+  },
+})
