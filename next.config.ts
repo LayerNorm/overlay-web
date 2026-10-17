@@ -58,6 +58,9 @@ const nextConfig: NextConfig = {
     // Keep route bootstraps in external assets: the shared runtime emits an
     // unnonced inline bootstrap in the cached shell, which nonce CSP blocks.
     turbopackSharedRuntime: false,
+    // The persistent build cache raises Turbopack peak memory past the
+    // Basic Vercel build container limit; keep builds cold but bounded.
+    turbopackFileSystemCacheForBuild: false,
     serverActions: {
       bodySizeLimit: "10mb",
     },
