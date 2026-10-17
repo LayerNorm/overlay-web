@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { useAgentRunLifecycle } from './useAgentRunLifecycle'
 
@@ -43,22 +44,24 @@ export function useWorkApproval({
             {agentRunLifecycle.run.approval.requests.map((request) => request.toolName).join(', ')}
           </p>
           <div className="mt-3 flex items-center gap-2">
-            <button
+            <Button
+              variant="primary"
               type="button"
               disabled={approvalSubmitting}
               onClick={() => void submitWorkApproval(true)}
-              className="rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) disabled:opacity-50"
+              className="h-auto rounded-lg bg-(--foreground) px-3 py-1.5 text-xs font-medium text-(--background) disabled:opacity-50"
             >
               Approve
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               type="button"
               disabled={approvalSubmitting}
               onClick={() => void submitWorkApproval(false)}
-              className="rounded-lg border border-(--border) px-3 py-1.5 text-xs font-medium text-(--foreground) disabled:opacity-50"
+              className="h-auto rounded-lg border border-(--border) px-3 py-1.5 text-xs font-medium text-(--foreground) hover:bg-transparent disabled:opacity-50"
             >
               Deny
-            </button>
+            </Button>
           </div>
         </div>
       )

@@ -17,6 +17,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
+import { Button, IconButton } from '@overlay/ui/primitives'
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { MentionInput } from './chat-interface/MentionInput'
@@ -166,7 +167,9 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           />
         ) : null}
         <AttachmentPreviewTray {...props} />
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input
           ref={mixedFileInputRef}
           type="file"
@@ -182,6 +185,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
             event.target.value = ''
           }}
         />
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input
           ref={props.docInputRef}
           type="file"
@@ -236,23 +240,23 @@ function ComposerControls(props: ComposerControlsProps) {
     }`}>
       <AttachMenu {...props} />
       <DelayedTooltip label={mentionTooltip} side="top">
-        <button type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Insert mention">
+        <IconButton type="button" onClick={() => props.textareaRef.current?.openMentionPopup()} className="h-9 w-9 shrink-0 rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
-        </button>
+        </IconButton>
       </DelayedTooltip>
       {hasAgentCommands ? (
         <DelayedTooltip label="Agent slash commands" side="top">
-          <button
+          <IconButton
             type="button"
             onClick={() => {
               if (!props.hasComposerText) props.onInputChange('/')
               props.textareaRef.current?.focus()
             }}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+            className="h-9 w-9 shrink-0 rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
             aria-label="Agent slash commands"
           >
             <Slash size={16} strokeWidth={1.75} />
-          </button>
+          </IconButton>
         </DelayedTooltip>
       ) : null}
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-none [&::-webkit-scrollbar]:hidden">
@@ -283,25 +287,29 @@ function ComposerControls(props: ComposerControlsProps) {
       </div>
       {props.isActiveLoading ? (
         <DelayedTooltip label="Stop generating" side="top">
-          <button
+          <Button
+            variant="primary"
+            size="icon"
             type="button"
             onClick={() => void props.onStop()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80"
+            className="h-9 w-9 shrink-0 rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80"
           >
             <div className="h-3.5 w-3.5 rounded-xs bg-current" />
-          </button>
+          </Button>
         </DelayedTooltip>
       ) : (
         <DelayedTooltip label="Send (↵) · new line (⇧↵)" side="top">
-          <button
+          <Button
+            variant="primary"
+            size="icon"
             type="button"
             aria-label="Send message"
             onClick={() => void props.onSend()}
             disabled={props.disabledSend}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40"
+            className="h-9 w-9 shrink-0 rounded-lg bg-(--foreground) text-(--background) transition-colors hover:opacity-80 disabled:opacity-40"
           >
             <Send size={17} strokeWidth={1.75} />
-          </button>
+          </Button>
         </DelayedTooltip>
       )}
     </div>
@@ -348,9 +356,9 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
       <DelayedTooltip label="Attach files or choose tools" side="top">
-        <button type="button" onClick={handleToggle} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Open attachment and tools menu">
+        <IconButton type="button" onClick={handleToggle} className="h-9 w-9 shrink-0 rounded-lg text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)" aria-label="Open attachment and tools menu">
           <Plus size={18} strokeWidth={1.75} />
-        </button>
+        </IconButton>
       </DelayedTooltip>
       {props.showAttachMenu && (
         <div className={`absolute left-0 z-20 w-64 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
@@ -445,7 +453,7 @@ function AttachMenuButton({
     : 'text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)'
 
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={`flex w-full items-center gap-2.5 px-3 py-2 text-xs transition-colors ${disabled ? 'cursor-not-allowed text-[#bbb]' : activeClass}`}>
+    <Button variant="ghost" type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={`h-auto w-full justify-start gap-2.5 px-3 py-2 text-xs font-normal transition-colors ${disabled ? 'cursor-not-allowed text-[#bbb]' : activeClass}`}>
       {icon}
       <span>{label}</span>
       {showSwitch ? (
@@ -457,7 +465,7 @@ function AttachMenuButton({
       ) : suffix ? (
         <span className="ml-auto max-w-27 truncate text-[10px] text-(--muted-light)">{suffix}</span>
       ) : null}
-    </button>
+    </Button>
   )
 }
 
@@ -472,15 +480,17 @@ function ToolRequestChip({
 }) {
   return (
     <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-(--border) bg-(--surface-subtle) px-2 text-xs font-medium text-(--foreground)">
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={onClear}
-        className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
+        className="relative h-4 w-4 shrink-0 rounded-full p-0 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground)"
         aria-label={`Remove ${label}`}
       >
         <Icon size={11} strokeWidth={1.75} className="absolute opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0" />
         <X size={10} strokeWidth={1.8} className="absolute opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
-      </button>
+      </Button>
       <span>{label}</span>
     </div>
   )
@@ -489,10 +499,12 @@ function ToolRequestChip({
 function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: () => void }) {
   return (
     <div className="group flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-(--foreground) px-2 text-xs font-medium text-(--background)">
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         type="button"
         onClick={onClear}
-        className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-75"
+        className="relative h-4 w-4 shrink-0 rounded-full p-0 text-current transition-opacity hover:bg-transparent hover:text-current hover:opacity-75"
         aria-label={`Remove ${chip === 'image' ? 'image' : 'video'} mode`}
       >
         {chip === 'image' ? (
@@ -501,7 +513,7 @@ function GenerationChip({ chip, onClear }: { chip: 'image' | 'video'; onClear: (
           <Video size={10} className="absolute opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0" />
         )}
         <X size={9} className="absolute opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" />
-      </button>
+      </Button>
       {chip === 'image' ? 'Image' : 'Video'}
     </div>
   )

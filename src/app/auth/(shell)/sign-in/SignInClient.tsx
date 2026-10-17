@@ -1,4 +1,6 @@
 "use client";
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState, useEffect } from "react";
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
@@ -195,16 +197,16 @@ function SsoProviderButtons({
   return (
     <div className="space-y-3 mb-6">
       {providers.map((provider) => (
-        <button
+        <Button variant="ghost"
           key={provider.id}
           type="button"
           onClick={() => onSelect(provider.id)}
           disabled={ssoLoading !== null}
-          className={className}
+          className={unstyledButton(className)}
         >
           <SsoProviderIcon icon={provider.icon} />
           {ssoLoading === provider.id ? "Redirecting..." : provider.label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -250,13 +252,13 @@ function EmailPasswordForm({
         <label htmlFor="email" className={`block text-sm font-medium mb-2 ${styles.labelText}`}>
           Email
         </label>
-        <input
+        <Input
           id="email"
           type="email"
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
           required
-          className={styles.field}
+          className={unstyledInput(styles.field)}
           placeholder="you@example.com"
         />
       </div>
@@ -272,20 +274,20 @@ function EmailPasswordForm({
           </Link>
           ) : null}
         </div>
-        <input
+        <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => onPasswordChange(e.target.value)}
           required
-          className={styles.field}
+          className={unstyledInput(styles.field)}
           placeholder="••••••••"
         />
       </div>
 
-      <button type="submit" disabled={loading} className={styles.submit}>
+      <Button variant="ghost" type="submit" disabled={loading} className={unstyledButton(styles.submit)}>
         {loading ? "Signing in..." : "Sign in"}
-      </button>
+      </Button>
     </form>
   );
 }

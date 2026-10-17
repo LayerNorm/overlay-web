@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useLayoutEffect, useState } from 'react'
 import { Dialog, DialogContent } from '@overlay/ui'
@@ -42,11 +44,11 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
         aria-labelledby="sign-in-modal-title"
         className="block w-full max-w-sm gap-0 rounded-2xl p-8"
       >
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-4 top-4 text-(--muted) transition-colors hover:text-(--foreground)"
+          className={unstyledButton(`absolute right-4 top-4 text-(--muted) transition-colors hover:text-(--foreground)`)}
         >
           <svg
             width='15'
@@ -60,7 +62,7 @@ export function SignInFullScreenModal({ reason, onClose, isClosing = false, ssoE
               fill="currentColor"
             />
           </svg>
-        </button>
+        </Button>
 
         <div className="mb-6 text-center">
           <h2

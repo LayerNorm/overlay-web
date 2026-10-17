@@ -4,7 +4,7 @@ import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 import { ExternalLink, PanelRight } from 'lucide-react'
 import type { LinkOpenPreference } from '@overlay/app-core'
 import { safeHttpUrl } from '@/shared/security/safe-url'
-import { Popover, PopoverAnchor, PopoverContent } from '@overlay/ui'
+import { Button, Popover, PopoverAnchor, PopoverContent } from '@overlay/ui'
 
 /**
  * Marks a region whose links participate in the open-in-Overlay flow. Anything
@@ -130,28 +130,30 @@ export function LinkOpenInterceptor({
         >
           {hostOf(choice.url)}
         </p>
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => {
             onOpenInOverlay(choice.url, choice.label)
             close()
           }}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+          className="h-auto w-full justify-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
         >
           <PanelRight size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
           Open in Overlay
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => {
             openInNewTab(choice.url)
             close()
           }}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+          className="h-auto w-full justify-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
         >
           <ExternalLink size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
           Open in new tab
-        </button>
+        </Button>
       </PopoverContent>
     </Popover>
   )

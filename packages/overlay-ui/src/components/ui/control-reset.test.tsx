@@ -1,0 +1,80 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+
+import { unstyledButton, unstyledInput, unstyledTextarea } from '../../control-reset'
+import { Button } from './button'
+import { Input } from './input'
+import { Textarea } from './textarea'
+
+function renderedClasses(element: React.ReactElement) {
+  const match = renderToStaticMarkup(element).match(/\bclass="([^"]*)"/)
+  assert.ok(match)
+  return new Set(match[1].split(/\s+/))
+}
+
+test('unstyled buttons reset shared layout and typography classes', () => {
+  const classes = renderedClasses(
+    <Button variant="ghost" className={unstyledButton('flex w-full')}>
+      Menu
+    </Button>,
+  )
+
+  for (const leaked of ['justify-center', 'items-center', 'gap-2', 'shrink-0', 'text-sm']) {
+    assert.equal(classes.has(leaked), false, `${leaked} should be reset`)
+  }
+  for (const reset of ['justify-normal', 'items-stretch', 'gap-0', 'shrink', 'text-[length:inherit]']) {
+    assert.equal(classes.has(reset), true, `${reset} should be present`)
+  }
+})
+
+test('unstyled button consumer layout and typography classes take precedence', () => {
+  const classes = renderedClasses(
+    <Button
+      variant="ghost"
+      className={unstyledButton('flex items-center justify-between gap-3 text-xs')}
+    >
+      Menu
+    </Button>,
+  )
+
+  for (const consumer of ['items-center', 'justify-between', 'gap-3', 'text-xs']) {
+    assert.equal(classes.has(consumer), true, `${consumer} should be preserved`)
+  }
+})
+
+test('unstyled inputs reset base typography while preserving consumer classes', () => {
+  const resetClasses = renderedClasses(<Input className={unstyledInput('w-full')} />)
+  assert.equal(resetClasses.has('border-(--border)'), false)
+  assert.equal(resetClasses.has('border-current'), true)
+  assert.equal(resetClasses.has('text-sm'), false)
+  assert.equal(resetClasses.has('text-[length:inherit]'), true)
+  assert.equal(resetClasses.has('leading-[inherit]'), true)
+
+  const consumerClasses = renderedClasses(<Input className={unstyledInput('text-xs')} />)
+  assert.equal(consumerClasses.has('text-xs'), true)
+  assert.equal(consumerClasses.has('text-[length:inherit]'), false)
+})
+
+test('unstyled textareas reset base layout and typography while preserving consumer classes', () => {
+  const resetClasses = renderedClasses(<Textarea className={unstyledTextarea('w-full')} />)
+  assert.equal(resetClasses.has('border-(--border)'), false)
+  assert.equal(resetClasses.has('border-current'), true)
+  assert.equal(resetClasses.has('min-h-24'), false)
+  assert.equal(resetClasses.has('resize-none'), false)
+  assert.equal(resetClasses.has('resize-y'), true)
+  assert.equal(resetClasses.has('text-sm'), false)
+  assert.equal(resetClasses.has('leading-6'), false)
+  assert.equal(resetClasses.has('min-h-auto'), true)
+  assert.equal(resetClasses.has('text-[length:inherit]'), true)
+  assert.equal(resetClasses.has('leading-[inherit]'), true)
+
+  const consumerClasses = renderedClasses(
+    <Textarea className={unstyledTextarea('resize-none text-xs leading-relaxed')} />,
+  )
+  assert.equal(consumerClasses.has('resize-none'), true)
+  assert.equal(consumerClasses.has('resize-y'), false)
+  assert.equal(consumerClasses.has('text-xs'), true)
+  assert.equal(consumerClasses.has('leading-relaxed'), true)
+})

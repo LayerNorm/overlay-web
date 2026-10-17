@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, Maximize2, PanelRightOpen, RotateCw } from 'lucide-react'
 import { safeHttpUrl } from '@overlay/chat-core'
@@ -35,15 +38,15 @@ function PanelIconButton({
   children: React.ReactNode
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+      className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -155,22 +158,22 @@ function LinkPreviewFallback({
       </div>
       <div className="flex items-center gap-2">
         {safeUrl ? (
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onOpenInNewTab}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)"
+            className={unstyledButton(`inline-flex items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--border)`)}
           >
             <ExternalLink size={13} strokeWidth={1.75} />
             Open in New Tab
-          </button>
+          </Button>
         ) : null}
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onClose}
-          className="rounded-lg px-3 py-1.5 text-xs font-medium text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton(`rounded-lg px-3 py-1.5 text-xs font-medium text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         >
           Close
-        </button>
+        </Button>
       </div>
     </div>
   )

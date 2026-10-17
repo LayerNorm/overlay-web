@@ -90,8 +90,6 @@ export function NewChannelDialog({
     }
   }
 
-  const selectedSet = new Set(selected)
-
   return (
     <DialogFrame
       open={open}
@@ -126,10 +124,10 @@ export function NewChannelDialog({
               ['public', Hash, 'Everyone joins automatically'],
               ['private', Lock, 'Only invited members can open it'],
             ] as const).map(([value, Icon, detail]) => (
-              <button key={value} type="button" onClick={() => setVisibility(value)} className={`rounded-lg border p-3 text-left ${visibility === value ? 'border-(--foreground) bg-(--surface-subtle)' : 'border-(--border)'}`}>
+              <Button variant="ghost" key={value} type="button" onClick={() => setVisibility(value)} className={`h-auto justify-start rounded-lg border p-3 text-left font-normal text-(--foreground) hover:bg-transparent ${visibility === value ? 'border-(--foreground) bg-(--surface-subtle)' : 'border-(--border)'}`}>
                 <span className="flex items-center gap-2 text-xs font-medium capitalize"><Icon size={13} />{value}</span>
                 <span className="mt-1 block text-[10px] leading-4 text-(--muted-light)">{detail}</span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -147,11 +145,11 @@ export function NewChannelDialog({
                 const active = selectedSet.has(principalId)
                 const Icon = item.principalType === 'agent' ? Bot : UserRound
                 return (
-                  <button key={principalId} type="button" onClick={() => setSelected((current) => active ? current.filter((id) => id !== principalId) : [...current, principalId])} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-(--surface-subtle)">
+                  <Button variant="ghost" key={principalId} type="button" onClick={() => setSelected((current) => active ? current.filter((id) => id !== principalId) : [...current, principalId])} className="h-auto w-full justify-start gap-2 rounded-md px-2 py-2 text-left font-normal text-(--foreground) hover:bg-(--surface-subtle)">
                     <Icon size={13} className="text-(--muted)" />
                     <span className="min-w-0 flex-1 truncate text-xs">{item.name}</span>
                     <span className={`flex h-4 w-4 items-center justify-center rounded-sm border ${active ? 'border-(--muted) bg-(--muted) text-(--background)' : 'border-(--border)'}`}>{active ? <Check size={10} /> : null}</span>
-                  </button>
+                  </Button>
                 )
               })
               })()}

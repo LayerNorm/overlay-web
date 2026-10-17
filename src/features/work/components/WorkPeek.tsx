@@ -1,9 +1,10 @@
 'use client'
+import { unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CalendarDays, CircleDot, CornerDownRight, Flag, Undo2, User, UserCheck } from 'lucide-react'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
-import { Button, Toggle } from '@overlay/ui/primitives'
+import { Button, Toggle, Input, Textarea } from '@overlay/ui/primitives'
 import { WORK_UPDATED_EVENT, type UpdateWorkItemRequest, type WorkItem, type WorkPerson } from '@overlay/app-core'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { validateWorkDates, validateWorkTitle } from '@/shared/work/status'
@@ -29,13 +30,13 @@ function PropertyRow({ icon, label, children }: { icon: ReactNode; label: string
 
 function DateField({ label, value, disabled, onChange }: { label: string; value: string | null; disabled: boolean; onChange: (value: string | null) => void }) {
   return (
-    <input
+    <Input
       type="date"
       aria-label={label}
       value={value ?? ''}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value || null)}
-      className="h-7 rounded-md border border-transparent bg-transparent px-1.5 text-[13px] text-(--foreground) outline-none transition-colors [color-scheme:light] hover:bg-(--surface-subtle) focus:border-(--muted-light) disabled:cursor-default disabled:hover:bg-transparent dark:[color-scheme:dark]"
+      className={unstyledInput(`h-7 rounded-md border border-transparent bg-transparent px-1.5 text-[13px] text-(--foreground) outline-none transition-colors [color-scheme:light] hover:bg-(--surface-subtle) focus:border-(--muted-light) disabled:cursor-default disabled:hover:bg-transparent dark:[color-scheme:dark]`)}
     />
   )
 }
@@ -71,7 +72,7 @@ function PeekTitle({ item, editable, onSave }: { item: WorkItem; editable: boole
     field.current.style.height = `${field.current.scrollHeight}px`
   }, [title, item.id])
   return (
-    <textarea
+    <Textarea
       ref={field}
       value={title}
       rows={1}
@@ -88,7 +89,7 @@ function PeekTitle({ item, editable, onSave }: { item: WorkItem; editable: boole
         if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
         if (event.key === 'Escape') { event.stopPropagation(); setDraft(null); event.currentTarget.blur() }
       }}
-      className="mb-4 block w-full resize-none overflow-hidden bg-transparent font-serif text-2xl leading-tight tracking-tight text-(--foreground) outline-none disabled:opacity-100"
+      className={unstyledTextarea(`mb-4 block w-full resize-none overflow-hidden bg-transparent font-serif text-2xl leading-tight tracking-tight text-(--foreground) outline-none disabled:opacity-100`)}
     />
   )
 }

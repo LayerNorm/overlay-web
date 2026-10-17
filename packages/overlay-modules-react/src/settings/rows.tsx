@@ -1,8 +1,8 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ReactNode } from 'react'
 import type { ThemePresetId } from '@overlay/app-core'
-import { ListboxSelect } from '@overlay/ui/primitives'
+import { ListboxSelect, Button } from '@overlay/ui/primitives'
 
 export interface SettingsToggleProps {
   checked: boolean
@@ -13,25 +13,25 @@ export interface SettingsToggleProps {
 
 export function SettingsToggle({ checked, disabled, onChange, 'aria-label': ariaLabel }: SettingsToggleProps) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${
+      className={unstyledButton(`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${
         checked
           ? 'border-(--muted) bg-(--muted)'
           : 'border-(--border) bg-(--surface-subtle)'
-      } ${disabled ? 'cursor-wait opacity-70' : ''}`}
+      } ${disabled ? 'cursor-wait opacity-70' : ''}`)}
     >
       <span
         className={`inline-block h-5 w-5 rounded-full bg-(--surface-elevated) transition-transform ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
-    </button>
+    </Button>
   )
 }
 

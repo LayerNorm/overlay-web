@@ -198,11 +198,12 @@ function MemberListItem({
 }) {
   const principalId = item.principalId!
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={() => onToggle(principalId)}
-      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-        checked ? 'bg-(--surface-subtle)' : 'hover:bg-(--surface-subtle)'
+      className={`h-auto w-full justify-start gap-3 rounded-lg px-3 py-2.5 text-left font-normal transition-colors ${
+        checked ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--foreground) hover:bg-(--surface-subtle)'
       }`}
     >
       {item.principalType === 'agent' ? (
@@ -225,7 +226,7 @@ function MemberListItem({
       }`}>
         {checked ? <Check size={12} /> : null}
       </span>
-    </button>
+    </Button>
   )
 }
 
@@ -267,11 +268,12 @@ function CandidateListBody({
           onToggle={onToggle}
         />
       )) : emailQuery ? (
-        <button
+        <Button
+          variant="ghost"
           type="button"
           disabled={busy || inviteSent}
           onClick={() => void onInvite(emailQuery)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-(--surface-subtle) disabled:opacity-60"
+          className="h-auto w-full justify-start gap-3 rounded-lg px-3 py-3 text-left font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-60"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-muted)">
             <UserPlus size={14} />
@@ -284,7 +286,7 @@ function CandidateListBody({
               They can join this workspace, then you can message them.
             </span>
           </span>
-        </button>
+        </Button>
       ) : (
         <div className="px-3 py-6 text-center text-xs text-(--muted-light)">
           {query.trim() ? 'No matching people.' : 'Invite someone to this workspace to start a DM.'}

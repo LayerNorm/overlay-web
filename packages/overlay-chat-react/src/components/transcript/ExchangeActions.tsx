@@ -1,3 +1,5 @@
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { BookOpen, GitBranch, Reply, RotateCw, Trash2 } from 'lucide-react'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { FlashCopyIconButton } from '../DraftReviewModal'
@@ -53,63 +55,63 @@ export function ExchangeActions({
         ariaLabel="Copy response"
       />
       {onRetry && (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onRetry}
           disabled={retryDisabled}
-          className="rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30"
+          className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
           aria-label="Regenerate response"
           title="Regenerate response"
         >
           <RotateCw size={14} strokeWidth={1.75} />
-        </button>
+        </Button>
       )}
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onDeleteTurn}
         disabled={!turnIdForActions || actionsLocked || isExiting}
-        className="rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30"
+        className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
         aria-label="Delete this turn from history"
       >
         <Trash2 size={14} strokeWidth={1.75} />
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
         onClick={onReply}
         disabled={isExiting}
-        className="rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30"
+        className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
         aria-label="Reply"
       >
         <Reply size={14} strokeWidth={1.75} />
-      </button>
+      </Button>
       {onBranch ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onBranch}
           disabled={!turnIdForActions || actionsLocked || isExiting}
-          className="rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30"
+          className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
           aria-label="Branch chat from here"
           title="Branch chat from here"
         >
           <GitBranch size={14} strokeWidth={1.75} />
-        </button>
+        </Button>
       ) : null}
       {sources.length > 0 && onOpenSources ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => onOpenSources(turnIdForActions ?? userMsgId, [...sources])}
           disabled={isExiting}
-          className={`ml-0.5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 ${
+          className={unstyledButton(`ml-0.5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30 ${
             isSourcesOpenForThis
               ? 'bg-(--surface-subtle) text-(--foreground)'
               : 'text-(--muted)'
-          }`}
+          }`)}
           aria-label="Open sources"
           aria-pressed={isSourcesOpenForThis}
         >
           <BookOpen size={14} strokeWidth={1.75} className="shrink-0" />
           <span className="text-[11px] font-medium">Sources</span>
-        </button>
+        </Button>
       ) : null}
       {showModelLabel ? (
         <span className="ml-2 min-w-0 text-left text-[11px] text-(--muted-light)">

@@ -1,7 +1,23 @@
 # Phase 8 subplan: ad-hoc markup sweep
 
-Status: ready to implement after #232 merges. Last audited 2026-10-15 on
-the Phase 7 branch.
+Status: implementation complete through the final 8.12 guardrail. Raw-control
+inventory has 0 controls outside annotated browser-semantics exceptions. Last
+audited 2026-10-17.
+
+Implementation status:
+
+- 8.1-8.4: #234, #235, #236, #237; authenticated preview QA passed.
+- 8.5-8.8: #240, #241, #242, #243, #244, #245; authenticated preview QA
+  passed on every slice, including #242 once its preview served.
+- 8.9-8.11: #249, #250, #251, #252, #253; authenticated preview QA passed
+  on every slice.
+- Preview builds were unblocked by #255 (turbopackFileSystemCacheForBuild
+  opt-out plus next 16.4.2), which fixes the Basic build container OOM
+  introduced by the Next.js 16.4 upgrade in #248.
+- 8.12: #254; final guardrail: ESLint errors on raw interactive controls and
+  npm run check:raw-controls fails on unannotated controls. The baseline is
+  empty. Native browser-semantics exceptions need an `overlay:raw-control`
+  comment with the reason and an adjacent ESLint suppression.
 
 ## Goal
 
@@ -197,15 +213,18 @@ Verify editors, dialogs, toolbar menus, file viewing, list actions, and forms.
 
 Land only after the sweeps are complete.
 
-- Add an `AGENTS.md` rule requiring `@overlay/ui` primitives for new
-  interactive controls, with documented exceptions.
-- Add ESLint `no-restricted-syntax` for raw `<button>`, `<input>`,
-  `<textarea>`, and `<select>` in production app/package paths.
-- Exempt `*.test.tsx`, `*.stories.tsx`, fixtures, `packages/overlay-ui`
-  internals, and explicitly annotated browser-semantics cases.
-- Consider a small inventory script before enabling errors if CI needs a
-  ratchet instead of a hard cutoff.
-
+- AGENTS.md requires @overlay/ui primitives for interactive controls and
+  comments for native browser-semantics exceptions.
+- ESLint no-restricted-syntax errors on raw button, input, textarea, and select
+  JSX elements in production app/package paths.
+- npm run check:raw-controls fails on any unannotated raw control. The
+  scripts/ci/raw-control-baseline.json file remains empty.
+- *.test.tsx, *.stories.tsx, fixture directories, packages/overlay-ui
+  internals, semantic file/range/color/hidden inputs, and explicitly annotated
+  browser-semantics cases are exempt.
+- Land #254 as a single merge commit (not squash). It contains #255 and every
+  sweep branch, and centralizes the reset helpers in `@overlay/ui/control-reset`;
+  merging the sweeps separately would trip the exact-duplicate check.
 ## Required checks per PR
 
 Run the smallest check covering the changed surface, plus the standard gates:

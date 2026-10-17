@@ -1,8 +1,8 @@
 'use client'
-
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { FileTreeEntry } from '@overlay/app-core'
 import { childFilesForTree, rootFilesForTree } from '@overlay/app-core'
-import { SidebarMenuSub, SidebarMenuSubItem } from '@overlay/ui/primitives'
+import { SidebarMenuSub, SidebarMenuSubItem, Button } from '@overlay/ui/primitives'
 import { BookOpen, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
@@ -61,22 +61,22 @@ export function FilesInlineBranch({
         className={`${panelItemClass} ${dragOver ? 'bg-(--surface-subtle) ring-1 ring-inset ring-(--foreground)' : activeFileId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
       >
         {file.type === 'folder' ? (
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={(event) => {
               event.stopPropagation()
               onToggle(file._id)
             }}
-            className="shrink-0 rounded-sm p-0.5 text-(--muted) hover:bg-(--border) hover:text-(--foreground)"
+            className={unstyledButton("shrink-0 rounded-sm p-0.5 text-(--muted) hover:bg-(--border) hover:text-(--foreground)")}
             aria-label={open ? 'Collapse folder' : 'Expand folder'}
           >
             <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
-          </button>
+          </Button>
         ) : null}
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => onOpen(file)}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs text-left outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
+          className={unstyledButton("flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs text-left outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)")}
         >
           {file.type === 'folder'
             ? open
@@ -86,7 +86,7 @@ export function FilesInlineBranch({
               ? <BookOpen size={12} className="shrink-0 text-(--muted-light)" />
               : <FileTypeIcon file={file} size={12} className="text-(--muted-light)" />}
           <span className="min-w-0 flex-1 truncate">{file.name}</span>
-        </button>
+        </Button>
       </div>
 
       {file.type === 'folder' && open && children.length > 0 ? (

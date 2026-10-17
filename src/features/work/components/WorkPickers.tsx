@@ -1,8 +1,9 @@
 'use client'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useRef, useState, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
-import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { FloatingMenu, MenuItem, Button } from '@overlay/ui/primitives'
 import type { WorkPerson, WorkStatus } from '@overlay/app-core'
 import { WORK_STATUSES, WORK_STATUS_LABELS } from '@/shared/work/status'
 import { WORK_PRIORITIES, WORK_PRIORITY_LABELS } from '@/shared/work/status'
@@ -29,7 +30,7 @@ export function Picker({
   const [open, setOpen] = useState(false)
   return (
     <>
-      <button
+      <Button variant="ghost"
         ref={anchor}
         type="button"
         aria-label={label}
@@ -40,10 +41,10 @@ export function Picker({
           event.stopPropagation()
           setOpen((current) => !current)
         }}
-        className={`rounded-md transition-colors enabled:hover:bg-(--surface-subtle) disabled:cursor-default ${className}`}
+        className={unstyledButton(`rounded-md transition-colors enabled:hover:bg-(--surface-subtle) disabled:cursor-default ${className}`)}
       >
         {trigger(open)}
-      </button>
+      </Button>
       <FloatingMenu anchorRef={anchor} open={open} onOpenChange={setOpen} className="min-w-52 max-h-80 overflow-y-auto" role="menu" aria-label={label} data-work-menu>
         {children(() => setOpen(false))}
       </FloatingMenu>
