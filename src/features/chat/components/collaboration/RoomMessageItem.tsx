@@ -1142,7 +1142,7 @@ function PinMessageButton({ buttonClass, pinned, disabled, onTogglePinned }: {
       type="button"
       onClick={onTogglePinned}
       disabled={disabled}
-      className={`h-auto w-auto ${buttonClass} ${pinned ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+      className={`h-auto w-auto ${buttonClass} ${pinned ? 'bg-(--surface-subtle)' : ''}`}
       aria-label={pinned ? 'Unpin message' : 'Pin message'}
       aria-pressed={pinned}
     >
@@ -1164,7 +1164,7 @@ function SaveMessageButton({ buttonClass, saved, disabled, onToggleSaved }: {
       type="button"
       onClick={onToggleSaved}
       disabled={disabled}
-      className={`h-auto w-auto ${buttonClass} ${saved ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+      className={`h-auto w-auto ${buttonClass} ${saved ? 'bg-(--surface-subtle)' : ''}`}
       aria-label={saved ? 'Remove from saved' : 'Save message'}
       aria-pressed={saved}
     >
@@ -1190,7 +1190,7 @@ function EditDeleteButtons({ buttonClass, disabled, onStartEdit, onDelete }: {
         type="button"
         onClick={onDelete}
         disabled={disabled}
-        className={`h-auto w-auto ${buttonClass} hover:text-red-500`}
+        className={`h-auto w-auto ${buttonClass.replace('hover:text-(--foreground)', 'hover:text-red-500')}`}
         aria-label="Delete message"
       >
         <Trash2 size={14} strokeWidth={1.75} />
@@ -1326,7 +1326,7 @@ function EmojiPickerButton({
         type="button"
         onClick={() => setOpen(!open)}
         disabled={disabled}
-        className={`h-auto w-auto ${buttonClass} ${open ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+        className={`h-auto w-auto ${buttonClass} ${open ? 'bg-(--surface-subtle)' : ''}`}
         aria-label="Add reaction"
         aria-expanded={open}
         aria-haspopup="dialog"

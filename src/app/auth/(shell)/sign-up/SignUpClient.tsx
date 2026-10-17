@@ -202,7 +202,7 @@ function CheckEmailScreen({
             onChange={(e) => onCodeChange(e.target.value)}
             placeholder="Enter 6-digit code"
             maxLength={6}
-            className={unstyledInput(`${fieldClass} text-center text-lg font-mono tracking-widest`)}
+            className={unstyledInput(`${fieldClass} text-center font-mono tracking-widest`)}
             ref={codeInputRef}
           />
           <Button variant="ghost"

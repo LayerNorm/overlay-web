@@ -41,7 +41,7 @@ export function OutputFilterMenu({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-(--border) bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--foreground) ${
-          open ? 'bg-(--border)' : 'hover:bg-(--border)'
+          open ? '' : 'hover:bg-(--border)'
         }`)}
       >
         <span className="min-w-0 truncate">{OUTPUT_FILTER_LABELS[outputFilter]}</span>

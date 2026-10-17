@@ -23,7 +23,7 @@ export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: ()
         <Button variant="ghost"
           key={file._id}
           type="button"
-          className={unstyledButton(`${rowClass} ${activeId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`)}
+          className={unstyledButton(`${rowClass} ${activeId === file._id ? 'bg-(--surface-subtle)' : ''}`)}
           onClick={() => {
             router.push(`/app/files?${new URLSearchParams({ showcase: '1', file: file._id }).toString()}`)
             onNavigate?.()
@@ -50,7 +50,7 @@ export function PublicShowcaseAutomationsInlinePanel({ onNavigate }: { onNavigat
           <Button variant="ghost"
             key={id}
             type="button"
-            className={unstyledButton(`${rowClass} ${activeId === id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`)}
+            className={unstyledButton(`${rowClass} ${activeId === id ? 'bg-(--surface-subtle)' : ''}`)}
             onClick={() => {
               router.push(`/app/automations?${new URLSearchParams({ showcase: '1', automationId: id }).toString()}`)
               onNavigate?.()

@@ -53,7 +53,7 @@ const floatingToolbarButtonClass =
   'inline-flex h-8 w-8 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-40'
 
 const floatingToolbarActiveButtonClass =
-  'bg-(--surface-subtle) text-(--foreground)'
+  'bg-(--surface-subtle)'
 
 const floatingToolbarDividerClass = 'mx-1 h-5 w-px shrink-0 bg-(--border)'
 

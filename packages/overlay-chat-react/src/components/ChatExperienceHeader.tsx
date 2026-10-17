@@ -519,7 +519,7 @@ function ModelSelectionModeButtons({
             disabled={disabled}
             className={unstyledButton(`rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
               isActive
-                ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs'
+                ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
                 : 'text-(--muted) hover:text-(--foreground)'
             } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`)}
           >

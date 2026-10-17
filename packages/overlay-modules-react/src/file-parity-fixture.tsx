@@ -275,7 +275,7 @@ function FileRows({
                 <Button variant="ghost" type="button" role="menuitem" className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Open</Button>
                 <Button variant="ghost" type="button" role="menuitem" className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Move to folder</Button>
                 <Button variant="ghost" type="button" role="menuitem" className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Rename</Button>
-                <Button variant="ghost" type="button" role="menuitem" data-danger className={unstyledButton(`${FILE_PARITY_CONTEXT_MENU_ITEM_CLASS} text-(--danger)`)}>Delete</Button>
+                <Button variant="ghost" type="button" role="menuitem" data-danger className={unstyledButton(FILE_PARITY_CONTEXT_MENU_ITEM_CLASS)}>Delete</Button>
               </div>
             ) : null}
           </div>

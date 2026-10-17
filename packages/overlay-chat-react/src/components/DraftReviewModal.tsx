@@ -44,9 +44,11 @@ export function FlashCopyIconButton({
       type="button"
       onClick={() => void handleClick()}
       disabled={disabled || !copyText}
-      className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
-        showCheck ? 'text-emerald-600 hover:text-emerald-600 hover:bg-[#ecfdf5]' : ''
-      }`)}
+      className={unstyledButton(`rounded-md p-1.5 ${
+        showCheck
+          ? 'text-emerald-600 hover:text-emerald-600 hover:bg-[#ecfdf5]'
+          : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
+      } transition-all duration-200 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`)}
       aria-label={ariaLabel}
     >
       {showCheck ? <Check size={14} strokeWidth={1.75} /> : <Copy size={14} strokeWidth={1.75} />}

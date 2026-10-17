@@ -14,7 +14,7 @@ export type ScopeChange =
   | { action: 'restore' }
 
 const ICON_BUTTON =
-  'shrink-0 rounded-sm p-1 text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50'
+  'shrink-0 rounded-sm p-1 transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50'
 const TEXT_BUTTON =
   'inline-flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-50'
 
@@ -110,7 +110,7 @@ export function ScopeItemActions({
             event.stopPropagation()
             onClick()
           }}
-          className={unstyledButton(`${ICON_BUTTON}${error ? ' text-red-500' : ''}`)}
+          className={unstyledButton(`${ICON_BUTTON} ${error ? 'text-red-500' : 'text-(--muted-light)'}`)}
         >
           <Icon size={12} />
         </Button>

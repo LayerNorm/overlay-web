@@ -32,7 +32,7 @@ export function ConversationList({ conversations, activeId, onSelect }: Conversa
               key={conversation.id}
               type="button"
               onClick={() => onSelect(conversation.id)}
-              className={unstyledButton(`${panelItemClass} text-left ${active ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`)}
+              className={unstyledButton(`${panelItemClass} text-left ${active ? 'bg-(--surface-subtle)' : ''}`)}
             >
               <MessageSquare size={12} className="mt-0.5 shrink-0 self-start" strokeWidth={1.75} />
               <div className="min-w-0 flex-1">

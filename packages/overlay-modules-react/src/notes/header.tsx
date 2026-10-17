@@ -137,7 +137,7 @@ function NotebookHeaderIconButton({ compact, active, label, title, onClick, chil
       title={title}
       aria-label={label}
       className={unstyledButton(`inline-flex shrink-0 items-center justify-center text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${compact ? 'h-7 w-7 rounded-md' : 'h-9 w-9 rounded-lg'} ${
-        active ? 'bg-(--surface-subtle) text-(--foreground)' : ''
+        active ? 'bg-(--surface-subtle)' : ''
       }`)}
     >
       {children}

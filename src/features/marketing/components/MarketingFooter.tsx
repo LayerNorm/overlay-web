@@ -16,7 +16,7 @@ import {
 } from "@/shared/marketing/marketing";
 
 const linkClass =
-  "block py-1 text-[13px] text-(--muted) hover:text-(--foreground) transition-colors";
+  "py-1 text-[13px] text-(--muted) hover:text-(--foreground) transition-colors";
 
 const colClass = "mb-3.5 text-xs font-semibold text-(--foreground)";
 
@@ -100,12 +100,12 @@ export function MarketingFooter() {
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={linkClass}
+                    className={`block ${linkClass}`}
                   >
                     {link.label}
                   </a>
                 ) : (
-                  <Link key={link.label} href={link.href} className={linkClass}>
+                  <Link key={link.label} href={link.href} className={`block ${linkClass}`}>
                     {link.label}
                   </Link>
                 ),
