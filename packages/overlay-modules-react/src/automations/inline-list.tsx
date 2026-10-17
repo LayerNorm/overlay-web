@@ -1,5 +1,6 @@
 'use client'
-
+import { Button, Input } from '@overlay/ui/primitives'
+import { unstyledButton, unstyledInput } from '../control-reset'
 import type { MouseEvent, ReactNode } from 'react'
 import { Loader2, Pencil, Trash2, Workflow } from 'lucide-react'
 import type { AutomationSummary } from '@overlay/app-core'
@@ -94,7 +95,7 @@ export function AutomationsInlineList({
                 ) : (
                   <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
                 )}
-                <input
+                <Input
                   aria-label="Automation name"
                   ref={(el) => { el?.focus() }}
                   value={editingAutomationName}
@@ -110,15 +111,15 @@ export function AutomationsInlineList({
                     }
                   }}
                   onBlur={() => onCommitRename(automation)}
-                  className="min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden"
+                  className={unstyledInput("min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) outline-hidden")}
                 />
               </div>
             ) : (
-              <button
+              <Button variant="ghost"
                 type="button"
                 disabled={isDeleting || pendingNavId === automation._id}
                 onClick={() => onNavigateAutomation(automation, href)}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-xs px-0.5 text-left disabled:cursor-default disabled:opacity-50"
+                className={unstyledButton("flex min-w-0 flex-1 items-center gap-2 rounded-xs px-0.5 text-left disabled:cursor-default disabled:opacity-50")}
               >
                 {pendingNavId === automation._id ? (
                   <Loader2 size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-(--muted)" />
@@ -126,20 +127,20 @@ export function AutomationsInlineList({
                   <Workflow size={13} strokeWidth={1.75} className={`shrink-0 ${iconColor}`} />
                 )}
                 <span className="flex-1 truncate text-left">{automationLabel}</span>
-              </button>
+              </Button>
             )}
             {!isEditing ? (
               <>
                 {isConfirmingDelete ? (
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     onClick={(event) => onConfirmDelete(automation, event)}
                     disabled={isDeleting}
-                    className={`${inlineConfirmDeleteButtonClass} disabled:opacity-30`}
+                    className={unstyledButton(`${inlineConfirmDeleteButtonClass} disabled:opacity-30`)}
                     aria-label="Confirm delete automation"
                   >
                     Confirm
-                  </button>
+                  </Button>
                 ) : (
                   <>
                     {renderRowActions ? (
@@ -147,24 +148,24 @@ export function AutomationsInlineList({
                         {renderRowActions(automation)}
                       </span>
                     ) : null}
-                    <button
+                    <Button variant="ghost"
                       type="button"
                       onClick={(event) => onBeginRename(automation, event)}
                       disabled={isDeleting}
-                      className="shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
+                      className={unstyledButton("shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100")}
                       aria-label="Rename automation"
                     >
                       <Pencil size={11} />
-                    </button>
-                    <button
+                    </Button>
+                    <Button variant="ghost"
                       type="button"
                       onClick={(event) => onRequestDelete(automation, event)}
                       disabled={isDeleting}
-                      className="shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100"
+                      className={unstyledButton("shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-(--border) hover:text-red-500 disabled:opacity-30 group-hover/automation-row:opacity-100 focus-visible:opacity-100")}
                       aria-label="Delete automation"
                     >
                       <Trash2 size={11} />
-                    </button>
+                    </Button>
                   </>
                 )}
               </>

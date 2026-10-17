@@ -1,9 +1,9 @@
 'use client'
-
+import { unstyledButton } from '../control-reset'
 import { useState } from 'react'
 import { lazy, Suspense } from 'react'
 import type { AutomationGraph, AutomationRunSummary } from '@overlay/app-core'
-import { Select } from '@overlay/ui/primitives'
+import { Select, Button } from '@overlay/ui/primitives'
 import { useRunStatus, useReplayStatus } from './run-viewer-hooks'
 
 const AutomationGraphCanvas = lazy(() =>
@@ -98,29 +98,29 @@ function RunModeSelector({
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => onSelectMode('live')}
         disabled={liveDisabled}
-        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+        className={unstyledButton(`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
           mode === 'live'
             ? 'bg-(--surface-muted) text-(--foreground)'
             : 'border border-(--border) bg-(--surface-elevated) text-(--foreground) hover:bg-(--border)'
-        } disabled:opacity-40`}
+        } disabled:opacity-40`)}
       >
         Live
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
         onClick={() => onSelectMode('replay')}
-        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+        className={unstyledButton(`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
           mode === 'replay'
             ? 'bg-(--surface-muted) text-(--foreground)'
             : 'border border-(--border) bg-(--surface-elevated) text-(--foreground) hover:bg-(--border)'
-        }`}
+        }`)}
       >
         Replay
-      </button>
+      </Button>
     </div>
   )
 }
@@ -313,19 +313,19 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
         {/* Event timeline */}
         <div className="flex flex-wrap gap-1">
           {events.map((event, i) => (
-            <button
+            <Button variant="ghost"
               key={event.eventId}
               type="button"
               onClick={() => setCurrentIndex(i + 1)}
-              className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+              className={unstyledButton(`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
                 i < currentIndex
                   ? 'bg-(--surface-muted) text-(--foreground)'
                   : 'bg-(--surface-subtle) text-(--muted) hover:bg-(--border)'
-              }`}
+              }`)}
               title={`${event.eventType}${event.stepName ? `: ${event.stepName}` : ''}`}
             >
               {event.eventType.replace(/^(step_|run_)/, '')}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

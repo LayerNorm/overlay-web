@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import type {
 ExtensionCatalogItem
 } from '@overlay/app-core'
@@ -49,9 +50,9 @@ export function ExtensionCatalog({
             )}
           >
             <div className="flex items-start justify-between gap-3">
-              <button
+              <Button variant="ghost"
                 type="button"
-                className="min-w-0 flex-1 text-left"
+                className={unstyledButton("min-w-0 flex-1 text-left")}
                 disabled={disabledByPolicy}
                 onClick={() => onSelectItem?.(item)}
               >
@@ -62,7 +63,7 @@ export function ExtensionCatalog({
                 {description ? (
                   <p className="mt-2 line-clamp-2 text-xs leading-5 text-(--muted)">{description}</p>
                 ) : null}
-              </button>
+              </Button>
               {item.kind === 'skill' && onToggleSkill ? (
                 <Toggle checked={item.enabled !== false} onCheckedChange={(checked) => onToggleSkill(item, checked)} />
               ) : null}
