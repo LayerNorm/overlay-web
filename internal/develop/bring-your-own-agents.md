@@ -356,7 +356,7 @@ the agent's grant intersected with workspace policy, entitlements, and the summo
 mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
 duplicate the agent's own machine (`computer_*`) and generated UI are
 withheld. A tool whose server policy requires approval creates one canonical card in the run's
-conversation. Host 0.4.1 advertises signed form-elicitation bridging: the original MCP call remains
+conversation. Its recorded expiry is the earliest of the one-hour approval window, task deadline, delivered grant expiry and durable call expiry; the same value reaches the card and lifecycle. Cloud cards disclose continuing machine billing. Expired unanswered requests cannot be allowed, while replaying an earlier persisted decision keeps its receipt. Host 0.4.1 advertises signed form-elicitation bridging: the original MCP call remains
 pending across bounded SSE connections, and `GET` with `Last-Event-ID` resumes the durable call.
 The host correlates the signed form to that card, including decisions delivered before the form,
 without creating a second permission card. Only the persisted human decision can authorize a tool;

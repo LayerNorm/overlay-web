@@ -28,7 +28,7 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false) {
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false) {
   return renderToStaticMarkup(
     <RoomMessageItem
       message={toRoomMessageView({
@@ -59,6 +59,7 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = 
       onOpenAttachmentPreview={() => undefined}
       onCopyPermalink={() => undefined}
       onControlRemoteQueue={() => undefined}
+      onResolveRemoteRequest={canResolve ? () => undefined : undefined}
       grouped={grouped}
     />,
   )
@@ -297,6 +298,23 @@ test('active lifecycle messages expose their canonical task deadline and termina
       assert.match(html, /dateTime="2026-10-17T13:05:00.000Z"/i)
       assert.match(html, /1:05 PM UTC/)
     }
+  }
+})
+
+test('a reloaded MCP approval shows its recorded expiry and discloses billing only for a cloud machine', () => {
+  const expiresAt = Date.parse('2026-10-17T13:05:00Z')
+  for (const machineCostContinues of [true, false]) {
+    const message = record({ authorKind: 'agent', authorPrincipalId: 'agent-1', content: '', status: 'generating', parts: [
+      { type: 'data-remote-agent-request', data: { runId: 'run-1', requestKey: 'mcp_call:one', kind: 'permission',
+        prompt: 'Allow public read?', state: 'pending', expiresAt, machineCostContinues,
+        options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }] } },
+    ] })
+    const html = render(message, 'Agent', false, false, true)
+    assert.match(html, /Expires /)
+    assert.ok(html.includes(new Date(expiresAt).toLocaleString()))
+    assert.equal(html.includes('Machine time continues to be billed while waiting.'), machineCostContinues)
+    assert.equal((html.match(/>Allow<\/button>/g) ?? []).length, 1)
+    assert.equal((html.match(/>Deny<\/button>/g) ?? []).length, 1)
   }
 })
 

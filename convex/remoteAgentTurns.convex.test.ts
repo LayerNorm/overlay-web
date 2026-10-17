@@ -740,6 +740,62 @@ async function providerStopFixture() {
     expectedRevision: snapshot.run.remoteLifecycle.revision, now: now + 3}}
 }
 
+test.each([
+  { grant: 120_000, call: 60_000, expected: 60_000, kind: 'overlay_cloud' as const },
+  { grant: 60_000, call: 120_000, expected: 60_000, kind: 'overlay_cloud' as const },
+  { grant: 7_200_000, call: 7_200_000, expected: 3_600_000, kind: 'overlay_cloud' as const },
+  { grant: 120_000, call: 60_000, expected: 60_000, kind: 'local' as const },
+])('MCP approval shows its enforced expiry and actual machine cost ($kind, $grant/$call)', async ({ grant, call: callExpiry, expected, kind }) => {
+  const f = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await f.lifecycle('claim', owner); await f.lifecycle('advance', owner)
+  await f.events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'acp' })], now + 1)
+  await f.convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    await ctx.db.patch(environment!._id, { kind })
+    await ctx.db.insert('agentMcpCalls', { callId: 'expiry-call', workspaceId, environmentId, runId: 'run-remote-turn',
+      sessionId: 'session-remote-turn', execution: { attemptId: 'session-remote-turn', generation: 1 },
+      clientSessionId: 'client', rpcId: '1', toolName: 'public_read', argumentsJson: '{}',
+      requestKey: 'mcp_call:expiry-call', state: { kind: 'pending' }, expiresAt: now + callExpiry, retireAt: now + 86_400_000, createdAt: now })
+  })
+  const ask = (at: number) => f.call('requestMcpApprovalByServer', { workspaceId, environmentId, runId: 'run-remote-turn',
+    sessionId: 'session-remote-turn', execution: { attemptId: 'session-remote-turn', generation: 1 },
+    requestKey: 'mcp_call:expiry-call', prompt: 'Allow public read?', bridge: true, expiresAt: now + grant, now: at })
+  expect(await ask(now + 2)).toEqual({ state: 'pending' })
+  expect(await ask(now + 3)).toEqual({ state: 'pending' })
+  const state = await projectedState(f.convex, f.started.messageId)
+  const card = state.message?.parts?.find(part => part.type === 'data-remote-agent-request')
+  expect(card?.data).toMatchObject({ expiresAt: now + expected, machineCostContinues: kind === 'overlay_cloud' })
+  expect(state.run?.remoteLifecycle?.approval?.expiresAt).toBe(now + expected)
+  const requests = await f.convex.run(ctx => ctx.db.query('agentApprovalRequests').collect())
+  expect(requests).toHaveLength(1)
+  expect(requests[0]?.payload).toMatchObject({ expiresAt: now + expected, machineCostContinues: kind === 'overlay_cloud' })
+  expect(await ask(now + expected)).toEqual({ state: 'unavailable' })
+  expect(await f.call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: f.seeded.conversationId,
+    runId: 'run-remote-turn', requestKey: 'mcp_call:expiry-call', decision: 'allow', now: now + expected })).toEqual({ applied: false })
+})
+
+test('legacy MCP approval enforces its displayed one-hour cap without changing an earlier decision on replay', async () => {
+  const convex = convexTest(schema, modules), seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 1,
+    events: [event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'acp' })] })
+  const ask = (requestKey: string, at: number) => call('requestMcpApprovalByServer', { workspaceId, environmentId,
+    runId: 'run-remote-turn', requestKey, prompt: 'Allow?', expiresAt: now + 7_200_000, now: at })
+  expect(await ask('late', now + 2)).toEqual({ state: 'pending' })
+  const card = (await projectedState(convex, started.messageId)).message?.parts?.find(part => part.type === 'data-remote-agent-request')
+  expect(card?.data).toMatchObject({ expiresAt: now + 3_600_002, machineCostContinues: false })
+  const decide = (requestKey: string, at: number) => call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+    conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey, decision: 'allow', now: at })
+  expect(await decide('late', now + 3_600_002)).toEqual({ applied: false })
+  expect(await ask('late', now + 3_600_002)).toEqual({ state: 'unavailable' })
+  expect(await ask('on-time', now + 3_600_003)).toEqual({ state: 'pending' })
+  expect(await decide('on-time', now + 3_600_004)).toMatchObject({ applied: true })
+  expect(await decide('on-time', now + 7_200_003)).toMatchObject({ applied: true })
+})
+
 test('provider stop proof is durable and idempotent for its exact execution, but cannot revive cancellation', async () => {
   const {convex, lifecycle, call, seeded, started, input} = await providerStopFixture()
   const before = await projectedState(convex, started.messageId)

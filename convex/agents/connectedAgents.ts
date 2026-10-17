@@ -1196,18 +1196,21 @@ export const requestMcpApprovalByServer = mutation({
     requireServerSecret(args.serverSecret)
     const session = await currentRemoteAttempt(ctx, args.runId)
     if (!session || !agentMcpAttemptMatches(args, { ...session, id: session.sessionId })) return { state: 'unavailable' as const }
+    let authorityExpiresAt = args.expiresAt
     if (args.bridge) {
       const callId = args.requestKey.startsWith('mcp_call:') ? args.requestKey.slice('mcp_call:'.length) : ''
       const call = callId ? await ctx.db.query('agentMcpCalls').withIndex('by_callId', q => q.eq('callId', callId)).unique() : null
       if (!call || call.requestKey !== args.requestKey || call.workspaceId !== args.workspaceId || call.runId !== args.runId
         || call.environmentId !== args.environmentId || call.sessionId !== session.sessionId || call.expiresAt <= args.now
         || call.execution?.attemptId !== args.execution?.attemptId || call.execution?.generation !== args.execution?.generation) return { state: 'unavailable' as const }
+      authorityExpiresAt = Math.min(authorityExpiresAt ?? call.expiresAt, call.expiresAt)
     }
     const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId)).unique()
     const existing = await ctx.db.query('agentApprovalRequests')
       .withIndex('by_remoteSessionId_requestKey', (q) => q.eq('remoteSessionId', session.sessionId).eq('requestKey', args.requestKey)).unique()
     // A request keeps reporting its answer after the run ends (the run's end closes it), so a call still waiting is told.
     if (existing) {
+      if (!existing.resolution && typeof existing.payload?.expiresAt === 'number' && existing.payload.expiresAt <= args.now) return { state: 'unavailable' as const }
       if (existing.resolution && run?.remoteLifecycle && existing.payload?.bridge !== true) await applyRemoteFact(ctx, run, { type: 'decision_delivered', requestKey: args.requestKey }, args.now)
       return existing.resolution
         ? { state: 'resolved' as const, decision: existing.resolution.decision }
@@ -1217,12 +1220,16 @@ export const requestMcpApprovalByServer = mutation({
     const message = run?.assistantMessageId ? await ctx.db.get(run.assistantMessageId) : null
     if (!run || !message) return { state: 'unavailable' as const }
     if (run.remoteLifecycle && !['running', 'waiting_for_approval', 'waiting_for_input'].includes(run.remoteLifecycle.phase)) return { state: 'unavailable' as const }
+    const expiresAt = Math.min(args.now + 60 * 60_000, run.remoteLifecycle?.hardDeadlineAt ?? Infinity, authorityExpiresAt ?? Infinity)
+    if (expiresAt <= args.now) return { state: 'unavailable' as const }
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', args.environmentId)).unique()
+    const requestContext = { expiresAt, machineCostContinues: environment?.kind === 'overlay_cloud' }
     const options = [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }]
     await ctx.db.insert('agentApprovalRequests', {
       approvalId: `approval_${crypto.randomUUID()}`, workspaceId: args.workspaceId, runId: args.runId,
       remoteSessionId: session.sessionId, requestKey: args.requestKey, kind: 'permission', prompt: args.prompt,
       options: options.map((option) => option.id),
-      payload: { source: MCP_APPROVAL_SOURCE, ...(args.bridge ? { bridge: true } : {}), requestKey: args.requestKey, prompt: args.prompt, options },
+      payload: { source: MCP_APPROVAL_SOURCE, ...(args.bridge ? { bridge: true } : {}), requestKey: args.requestKey, prompt: args.prompt, options, ...requestContext },
       requestedAt: args.now,
     })
     const snapshot = session.capabilitySnapshot && typeof session.capabilitySnapshot === 'object'
@@ -1233,7 +1240,7 @@ export const requestMcpApprovalByServer = mutation({
       events: [{
         protocolVersion: 1, eventId: `mcp-approval:${args.requestKey}`, environmentId: args.environmentId, runId: args.runId,
         sourceSequence: session.eventCursor, type: 'approval_requested', occurredAt: args.now,
-        payload: { requestKey: args.requestKey, prompt: args.prompt, options },
+        payload: { requestKey: args.requestKey, prompt: args.prompt, options, context: requestContext },
       } as AgentRemoteEvent],
       environmentName: typeof snapshot.environmentName === 'string' ? snapshot.environmentName : 'connected environment',
       queueExpiresAt: typeof snapshot.queueExpiresAt === 'number' ? snapshot.queueExpiresAt : args.now,
@@ -1241,7 +1248,7 @@ export const requestMcpApprovalByServer = mutation({
     })
     await ctx.db.patch(message._id, { parts: conversationParts(projection.parts), status: 'generating', updatedAt: args.now })
     if (run.remoteLifecycle) await applyRemoteFact(ctx, run, { type: 'request', requestKey: args.requestKey,
-      kind: 'permission', expiresAt: Math.min(args.now + 60 * 60_000, run.remoteLifecycle.hardDeadlineAt) }, args.now)
+      kind: 'permission', expiresAt }, args.now)
     else await ctx.db.patch(run._id, { status: 'waiting_for_approval', updatedAt: args.now })
     await ctx.db.patch(session._id, { status: 'waiting_for_approval', updatedAt: args.now })
     await ctx.db.insert('conversationEvents', {
@@ -1367,6 +1374,8 @@ export const resolveRemoteRequestByServer = mutation({
         messageId: run.assistantMessageId,
       }
     }
+    const expiresAt = request.payload?.expiresAt
+    if (typeof expiresAt === 'number' && expiresAt <= args.now) return { applied: false }
     const kind = request.kind === 'elicitation' ? 'elicitation' : 'permission'
     if (kind === 'permission' && !request.options.includes(args.decision)) throw new Error('AGENT_APPROVAL_OPTION_INVALID')
     if (kind === 'elicitation' && !['accept', 'decline', 'cancel'].includes(args.decision)) throw new Error('AGENT_ELICITATION_ACTION_INVALID')

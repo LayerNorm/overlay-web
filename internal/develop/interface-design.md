@@ -64,7 +64,7 @@ viewer and any edit start from the complete object-store content, not its search
 Lifecycle-v2 agent messages show the canonical task deadline below live progress, including
 while queued, recovering or needing attention. Use an absolute UTC time, independent of the
 viewer's control permissions; terminal messages hide the active deadline. Request cards retain
-their separate approval expiry. Displaying a deadline does not attest that a process has stopped.
+their separate approval expiry, including owner-required MCP tool cards. Cloud approval cards show that machine time continues to be billed while waiting. Displaying a deadline does not attest that a process has stopped.
 
 ## Command palette
 
