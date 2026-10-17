@@ -1,9 +1,11 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from './control-reset'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Copy, FolderUp, Terminal } from 'lucide-react'
 import type { AgentProfileImportCodeResource, AgentProfileResource, AgentProfileStateResource } from '@overlay/api-client'
-import { Button } from '@overlay/ui/primitives'
+import { Button, Checkbox, Input } from '@overlay/ui/primitives'
 import { AGENT_PROFILE_TOP_LEVEL, AGENT_PROFILE_LIMITS } from '@layernorm/overlay-agent-bridge-protocol'
 import { useEditorLoad } from './EditorLoadGate'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -201,8 +203,8 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
                       </>
                     ) : (
                       <>
-                        <input
-                          type="password" autoComplete="off" className={INPUT} placeholder="Value" aria-label={`${secret.name} value`}
+                        <Input
+                          type="password" autoComplete="off" className={unstyledInput(INPUT)} placeholder="Value" aria-label={`${secret.name} value`}
                           value={secretValues[secret.name] ?? ''} onChange={(event) => setSecretValues((current) => ({ ...current, [secret.name]: event.target.value }))}
                         />
                         <Button
@@ -221,9 +223,9 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
 
             {staged.meta?.hooks.length ? (
               <label className="flex items-start gap-2 text-[11px] leading-4">
-                <input
-                  type="checkbox" className="mt-0.5" checked={hooksOn}
-                  onChange={(event) => setHooksOn(event.target.checked)}
+                <Checkbox
+                  className="mt-0.5" checked={hooksOn}
+                  onCheckedChange={(checked) => setHooksOn(checked === true)}
                 />
                 <span>
                   Also turn on {staged.meta.hooks.length} command{staged.meta.hooks.length === 1 ? '' : 's'} that run automatically
@@ -234,9 +236,9 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
 
             {staged.summary?.dropped ? (
               <div>
-                <button type="button" className="text-[11px] text-(--muted) underline-offset-2 hover:underline" onClick={() => setShowDropped((value) => !value)}>
+                <Button variant="ghost" type="button" className={unstyledButton(`text-[11px] text-(--muted) underline-offset-2 hover:underline`)} onClick={() => setShowDropped((value) => !value)}>
                   {staged.summary.dropped} item{staged.summary.dropped === 1 ? '' : 's'} left out {showDropped ? '(hide)' : '(show)'}
-                </button>
+                </Button>
                 {showDropped ? (
                   <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto text-[11px] leading-4 text-(--muted)">
                     {staged.meta?.dropped.map((drop) => <li key={`${drop.path}:${drop.reason}`}><span className="font-mono">{drop.path}</span> — {drop.reason}</li>)}
@@ -256,11 +258,12 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
 
         {active && !staged && (active.meta?.hooks.length ?? 0) > 0 ? (
           <label className="flex items-center gap-2 text-[11px]">
-            <input
-              type="checkbox" checked={active.hooksEnabled} disabled={busy !== null}
-              onChange={(event) => void run('hooks', async () => {
-                await overlayAppClient.agentProfiles.setHooks(workspaceId!, agentId, active.id, event.target.checked)
-                await overlayAppClient.agentProfiles.apply(workspaceId!, agentId, active.id, event.target.checked)
+            <Checkbox
+              checked={active.hooksEnabled} disabled={busy !== null}
+              onCheckedChange={(checked) => void run('hooks', async () => {
+                const enabled = checked === true
+                await overlayAppClient.agentProfiles.setHooks(workspaceId!, agentId, active.id, enabled)
+                await overlayAppClient.agentProfiles.apply(workspaceId!, agentId, active.id, enabled)
               })}
             />
             Run imported hooks and commands
