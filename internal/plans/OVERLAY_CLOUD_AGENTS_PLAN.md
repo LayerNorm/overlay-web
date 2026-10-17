@@ -1,6 +1,6 @@
 # Other agents on Overlay Cloud
 
-Status: plan, 2026-10-01. Nothing here is built yet. "On your machine" agents (Agent Host + ACP) are mostly done; this plan covers the second subcategory: Claude Code and Codex running on a machine Overlay hosts. They are what nearly everyone uses with their own subscriptions, and most other agents are derivatives of them. Hermes and others come later.
+Status: implementation and live acceptance tracked below. Boat/Box provisioning, E2B runtime support, provider accounts and the cloud-agent UI are implemented. Durable lifecycle acceptance and host/image rollout are tracked in `DURABLE_REMOTE_AGENT_RUNS.md`; historical planning sections below are not proof that the product is disabled. This plan covers the second subcategory: coding agents running on a machine Overlay hosts.
 
 ## Goal
 

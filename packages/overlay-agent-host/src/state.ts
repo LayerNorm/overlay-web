@@ -3,7 +3,7 @@ import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { agentHostEventSchema, type AgentHostEvent } from '@layernorm/overlay-agent-bridge-protocol'
 
-export type StoredRemoteSession = { runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
+export type StoredRemoteSession = { config?: { version: 1; model?: string; configReference?: string; toolsReference?: string }; execution?: { attemptId: string; generation: number; hostBootId?: string };  runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
 export type StoredCommandResult = { accepted: boolean; errorCode?: string; errorMessage?: string; sequence: number }
 export type StoredAdapterSessionState = { runId: string; adapterId: string; state: Record<string, unknown> }
 export type HostStateScope = { environmentId: string; workspaceId: string }
@@ -16,6 +16,7 @@ export class SqliteHostStateStore {
     this.database = new DatabaseSync(path)
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;')
     this.database.exec(`
+      CREATE TABLE IF NOT EXISTS command_claims (command_id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS processed_commands (
         command_id TEXT PRIMARY KEY,
         sequence INTEGER NOT NULL,
@@ -39,6 +40,8 @@ export class SqliteHostStateStore {
         working_directory TEXT NOT NULL,
         updated_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS execution_claims (run_id TEXT PRIMARY KEY, attempt_id TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS remote_session_config (run_id TEXT PRIMARY KEY, config_json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS adapter_session_state (
         run_id TEXT PRIMARY KEY,
         adapter_id TEXT NOT NULL,
@@ -95,6 +98,10 @@ export class SqliteHostStateStore {
     }
   }
 
+  claimCommand(commandId: string): boolean {
+    return this.database.prepare('INSERT OR IGNORE INTO command_claims(command_id) VALUES (?)').run(commandId).changes === 1
+  }
+
   commandCursor(): number {
     const row = this.database.prepare("SELECT value FROM host_state WHERE key = 'command_cursor'").get() as { value: number } | undefined
     return Number(row?.value ?? 0)
@@ -105,6 +112,15 @@ export class SqliteHostStateStore {
     if (this.commandCursor() !== 0) return false
     this.database.prepare(`INSERT INTO host_state(key, value) VALUES ('command_cursor', ?)
       ON CONFLICT(key) DO UPDATE SET value=MAX(value, excluded.value)`).run(lastConsumedSequence)
+    return true
+  }
+
+  // Forward-only cursor move used when the server attests that skipped numbers are resolved:
+  // unlike adoptCommandCursor this also runs once a cursor exists, and it can never move back.
+  resumeCommandCursor(resolvedThroughSequence: number): boolean {
+    if (resolvedThroughSequence < 1) return false
+    this.database.prepare(`INSERT INTO host_state(key, value) VALUES ('command_cursor', ?)
+      ON CONFLICT(key) DO UPDATE SET value=MAX(value, excluded.value)`).run(resolvedThroughSequence)
     return true
   }
 
@@ -119,11 +135,17 @@ export class SqliteHostStateStore {
       )
       this.database.prepare(`INSERT INTO host_state(key, value) VALUES ('command_cursor', ?)
         ON CONFLICT(key) DO UPDATE SET value=MAX(value, excluded.value)`).run(result.sequence)
+      this.database.prepare('DELETE FROM command_claims WHERE command_id = ?').run(commandId)
       this.database.exec('COMMIT')
     } catch (error) {
       this.database.exec('ROLLBACK')
       throw error
     }
+  }
+
+  claimExecution(runId: string, attemptId: string): boolean {
+    // Commit before the process can perform an external action. An unknown outcome is never re-prompted.
+    return this.database.prepare('INSERT OR IGNORE INTO execution_claims(run_id, attempt_id) VALUES (?, ?)').run(runId, attemptId).changes === 1
   }
 
   saveSession(session: StoredRemoteSession, now = Date.now()): void {
@@ -133,16 +155,21 @@ export class SqliteHostStateStore {
       ON CONFLICT(run_id) DO UPDATE SET adapter_id=excluded.adapter_id, remote_session_id=excluded.remote_session_id,
         working_directory=excluded.working_directory, updated_at=excluded.updated_at
     `).run(session.runId, session.adapterId, session.remoteSessionId, session.workingDirectory, now)
+    if (session.config || session.execution) this.database.prepare('INSERT INTO remote_session_config(run_id, config_json) VALUES (?, ?) ON CONFLICT(run_id) DO UPDATE SET config_json=excluded.config_json').run(session.runId, JSON.stringify({ config: session.config, execution: session.execution }))
   }
 
   getSession(runId: string): StoredRemoteSession | undefined {
     const row = this.database.prepare('SELECT run_id, adapter_id, remote_session_id, working_directory FROM remote_sessions WHERE run_id = ?').get(runId) as Record<string, unknown> | undefined
     if (!row) return undefined
-    return { runId: String(row.run_id), adapterId: String(row.adapter_id), remoteSessionId: String(row.remote_session_id), workingDirectory: String(row.working_directory) }
+    const saved = this.database.prepare('SELECT config_json FROM remote_session_config WHERE run_id = ?').get(runId) as { config_json: string } | undefined
+    const configuration = saved ? JSON.parse(saved.config_json) as Pick<StoredRemoteSession, 'config' | 'execution'> : {}
+    return { ...configuration, runId: String(row.run_id), adapterId: String(row.adapter_id), remoteSessionId: String(row.remote_session_id), workingDirectory: String(row.working_directory) }
   }
 
   deleteSession(runId: string): void {
     this.database.prepare('DELETE FROM remote_sessions WHERE run_id = ?').run(runId)
+    this.database.prepare('DELETE FROM remote_session_config WHERE run_id = ?').run(runId)
+    this.database.prepare('DELETE FROM execution_claims WHERE run_id = ?').run(runId)
   }
 
   saveAdapterSessionState(runId: string, adapterId: string, state: Record<string, unknown>, now = Date.now()): void {
@@ -170,12 +197,13 @@ export class SqliteHostStateStore {
   appendEvent(event: Omit<AgentHostEvent, 'sourceSequence'>): AgentHostEvent {
     this.database.exec('BEGIN IMMEDIATE')
     try {
-      const row = this.database.prepare('SELECT last_sequence FROM run_sequences WHERE run_id = ?').get(event.runId) as { last_sequence: number } | undefined
+      const streamId = eventStreamId(event.runId, event.execution?.attemptId)
+      const row = this.database.prepare('SELECT last_sequence FROM run_sequences WHERE run_id = ?').get(streamId) as { last_sequence: number } | undefined
       const stored = agentHostEventSchema.parse({ ...event, sourceSequence: Number(row?.last_sequence ?? 0) + 1 })
       this.database.prepare('INSERT INTO event_outbox(event_id, environment_id, run_id, source_sequence, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(stored.eventId, stored.environmentId, stored.runId, stored.sourceSequence, JSON.stringify(stored), Date.now())
+        .run(stored.eventId, stored.environmentId, streamId, stored.sourceSequence, JSON.stringify(stored), Date.now())
       this.database.prepare(`INSERT INTO run_sequences(run_id, last_sequence) VALUES (?, ?)
-        ON CONFLICT(run_id) DO UPDATE SET last_sequence=excluded.last_sequence`).run(stored.runId, stored.sourceSequence)
+        ON CONFLICT(run_id) DO UPDATE SET last_sequence=excluded.last_sequence`).run(streamId, stored.sourceSequence)
       this.database.exec('COMMIT')
       return stored
     } catch (error) {
@@ -191,12 +219,12 @@ export class SqliteHostStateStore {
     return rows.map((row) => agentHostEventSchema.parse(JSON.parse(row.body)))
   }
 
-  acknowledgeEvents(runId: string, throughSequence: number): void {
-    this.database.prepare('DELETE FROM event_outbox WHERE run_id = ? AND source_sequence <= ?').run(runId, throughSequence)
+  acknowledgeEvents(runId: string, throughSequence: number, attemptId?: string): void {
+    this.database.prepare('DELETE FROM event_outbox WHERE run_id = ? AND source_sequence <= ?').run(eventStreamId(runId, attemptId), throughSequence)
   }
 
-  discardEventsBefore(runId: string, expectedSequence: number): void {
-    this.database.prepare('DELETE FROM event_outbox WHERE run_id = ? AND source_sequence < ?').run(runId, expectedSequence)
+  discardEventsBefore(runId: string, expectedSequence: number, attemptId?: string): void {
+    this.database.prepare('DELETE FROM event_outbox WHERE run_id = ? AND source_sequence < ?').run(eventStreamId(runId, attemptId), expectedSequence)
   }
 
   outboxSize(): number {
@@ -204,3 +232,5 @@ export class SqliteHostStateStore {
     return Number(row.count)
   }
 }
+
+function eventStreamId(runId: string, attemptId?: string) { return attemptId ? JSON.stringify([runId, attemptId]) : runId }

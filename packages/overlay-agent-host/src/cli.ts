@@ -23,7 +23,7 @@ import { checkOverlayImage } from './image-check.js'
 import { exportConfig } from './export-config.js'
 import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.10'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.3.11'
 
 assertSupportedNodeVersion()
 
@@ -84,6 +84,7 @@ if (command === 'image-check') {
   const connection = await connectAgentHost({
     code,
     serverUrl,
+    ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? { durableLifecycle: true } : {}),
     stateDirectory,
     name: option(args, '--name'),
     kind: option(args, '--kind') as 'local' | 'vps' | 'overlay_cloud' | 'external' | undefined,
@@ -99,6 +100,7 @@ if (command === 'image-check') {
   })
   const persistentConfigPath = join(stateDirectory, 'config.json')
   const persistentConfig: Omit<AgentHostConfig, 'credential'> = {
+    ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? { durableLifecycle: true } : {}),
     environmentId: connection.environmentId,
     workspaceId: connection.workspaceId,
     controlPlaneUrl: connection.controlPlaneUrl,
@@ -165,6 +167,7 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
     workspaceId: config.workspaceId,
   })
   const runtime = new AgentHostRuntime({
+    durableLifecycle: config.durableLifecycle === true || process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2',
     // Only Overlay Cloud credentials carry this method (see the control plane's createCredential).
     fetchRunCredentials: stored?.methods.includes('agent:run-credentials') === true,
     environmentId: config.environmentId,
