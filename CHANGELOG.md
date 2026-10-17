@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Wrap long hashes and identifiers inside chat tables while preserving horizontal scrolling for tables with many columns.
+
+- Avoid a duplicate environment lookup on signed agent requests while preserving legacy-backend fallback, device proofs and current revocation checks.
+
 - Read Drive manifest sources with bounded parallelism while retaining deterministic cache limits, file order and full-content verification.
 
 - Resolve attached terminal details with their completed command while an agent keeps working, and keep long shell scripts out of the compact status line.

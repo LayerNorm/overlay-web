@@ -30,6 +30,10 @@ const credentialInput = v.object({
   audience: v.string(), methods: v.array(v.string()), tokenNonce: v.string(), expiresAt: v.number(),
   revokedAt: v.optional(v.number()), createdAt: v.number(),
 })
+const environmentResult = v.object({
+  ...environmentInput.omit('now').fields, environmentId: v.string(),
+  filesystemGrant: v.optional(v.any()), createdAt: v.number(), updatedAt: v.number(),
+})
 
 function clean<T extends Record<string, unknown>>(row: T) {
   const copy = { ...row }
@@ -236,10 +240,14 @@ export const issueEnvironmentCredentialByServer = mutation({
 })
 export const findEnvironmentCredentialByServer = query({
   args: { serverSecret: v.string(), tokenHash: v.string() },
+  returns: v.union(v.null(), v.object({ ...credentialInput.fields, credentialId: v.string(),
+    environment: v.union(v.null(), environmentResult) })),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const row = await ctx.db.query('agentEnvironmentCredentials').withIndex('by_tokenHash', q => q.eq('tokenHash', args.tokenHash)).unique()
-    return row ? toCredential(row) : null
+    if (!row) return null
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', row.environmentId)).unique()
+    return { ...toCredential(row), environment: environment?.workspaceId === row.workspaceId ? toEnvironment(environment) : null }
   },
 })
 export const consumeEnvironmentProofNonceByServer = mutation({

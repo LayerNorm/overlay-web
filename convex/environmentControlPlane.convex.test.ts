@@ -15,6 +15,30 @@ const challengeHash = 'b'.repeat(64)
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex agent-environment control plane', () => {
+  test('credential lookup joins only its own environment and nonce consumption still rechecks revocation', async () => {
+    const convex = convexTest(schema, modules)
+    const environmentKey = await convex.run(async ctx => {
+      const key = await ctx.db.insert('agentEnvironments', { environmentId, workspaceId, kind: 'local',
+        name: 'Snapshot fixture', status: 'online', capabilities: {}, approvedAt: now,
+        filesystemGrant: { mode: 'selected_roots', roots: ['/workspace'] }, createdAt: now, updatedAt: now })
+      await ctx.db.insert('agentEnvironmentCredentials', { credentialId: 'snapshot-credential', workspaceId, environmentId,
+        tokenHash: 'd'.repeat(64), audience: 'overlay-agent-control-plane', methods: ['agent:events:write'],
+        tokenNonce: 'snapshot-token-nonce', expiresAt: now + 60_000, createdAt: now })
+      return key
+    })
+    const lookup = () => convex.query(controlQuery('findEnvironmentCredentialByServer'), { serverSecret: secret, tokenHash: 'd'.repeat(64) })
+    expect((await lookup()).environment).toMatchObject({ id: environmentId, workspaceId, status: 'online' })
+    await convex.run(ctx => ctx.db.patch(environmentKey, { workspaceId: 'foreign-workspace' }))
+    expect((await lookup()).environment).toBeNull()
+    await convex.run(ctx => ctx.db.patch(environmentKey, { workspaceId, status: 'revoked', revokedAt: now + 1 }))
+    expect((await lookup()).environment.status).toBe('revoked')
+    await expect(convex.mutation(controlMutation('consumeEnvironmentProofNonceByServer'), { serverSecret: secret,
+      credentialId: 'snapshot-credential', nonceHash: 'e'.repeat(64), expiresAt: now + 10_000, now: now + 2 })).rejects.toThrow()
+    expect(await convex.run(ctx => ctx.db.query('agentEnvironmentCredentialNonces')
+      .withIndex('by_credentialId_nonceHash', q => q.eq('credentialId', 'snapshot-credential').eq('nonceHash', 'e'.repeat(64))).unique())).toBeNull()
+    expect(await convex.query(controlQuery('findEnvironmentCredentialByServer'), { serverSecret: secret, tokenHash: 'f'.repeat(64) })).toBeNull()
+  })
+
   test('rotation adds only a newly negotiated drive method without expanding other scopes', async () => {
     for (const input of [
       { capabilities: { drive: { version: 1 } }, omitEventWrite: false, accepted: true },

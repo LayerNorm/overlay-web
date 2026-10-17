@@ -23,4 +23,3 @@ export async function cleanupDriveVersions(dependencies: {
   }
   return { deleted: deleted + convexDeleted, deferred: objects.length - deleted }
 }
-

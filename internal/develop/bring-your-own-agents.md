@@ -89,7 +89,11 @@ the exact method, pathname and query, body hash, timestamp, request nonce, and t
 Canonical routes are `/api/v1/agent-environments`, `/enrollment-sessions`, `/enroll`, and the
 environment-scoped `approve`, `roots`, `revoke`, `credentials`, `credentials/refresh`, `heartbeat`,
 `capabilities`, `commands`, command acknowledgement, and `events` subresources. Enrollment-code,
-challenge, credential, and request-nonce consumption is atomic in Convex and PostgreSQL. Only
+challenge, credential, and request-nonce consumption is atomic in Convex. Host credential lookup
+also returns its matching environment from the same indexed query snapshot, avoiding a second
+backend request on every signed call. Older backends may omit that snapshot and retain the
+separate lookup. Signature, method, expiry and scope validation still precede nonce consumption;
+nonce consumption independently rechecks current environment authority after the read. Only
 hashes of enrollment codes, proof challenges, opaque credentials, and request nonces are stored.
 The Convex credential validator derives its method allowlist from the canonical workspace
 contract so artifact upload authority and future method additions cannot drift by provider.
@@ -518,8 +522,8 @@ Changing a rollout variable requires a new production deployment so the immutabl
 the approved values. Roll back by setting the rollout stage to `off`; use either global feature flag
 as the incident kill switch when the entire control plane or all new remote dispatch must stop.
 
-Route services read these flags before selecting a database repository, so Convex and
-PostgreSQL have identical disabled behavior. Enabling a dependent feature does not implicitly
+Route services read these flags before selecting a database repository, so disabled features
+cannot reach the backend. Enabling a dependent feature does not implicitly
 enable its prerequisite: Overlay Cloud requires all three, and remote runs require the first
 two. These are server policy switches, not client assertions; bootstrap may expose only the
 resulting authorized capability.

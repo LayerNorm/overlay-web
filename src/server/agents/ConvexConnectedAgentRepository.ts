@@ -53,7 +53,7 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
     return controlMutationNullable<AgentEnvironmentCredential | null>('issueEnvironmentCredentialByServer', input)
   }
   findEnvironmentCredential(input: Parameters<ConnectedAgentRepository['findEnvironmentCredential']>[0]) {
-    return controlQuery<AgentEnvironmentCredential | null>('findEnvironmentCredentialByServer', input)
+    return controlQuery<Awaited<ReturnType<ConnectedAgentRepository['findEnvironmentCredential']>>>('findEnvironmentCredentialByServer', input)
   }
   consumeEnvironmentProofNonce(input: Parameters<ConnectedAgentRepository['consumeEnvironmentProofNonce']>[0]) {
     return controlMutation<boolean>('consumeEnvironmentProofNonceByServer', input)

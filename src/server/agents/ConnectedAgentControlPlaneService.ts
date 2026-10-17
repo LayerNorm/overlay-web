@@ -720,11 +720,11 @@ export class ConnectedAgentControlPlaneService {
       !credential.methods.includes(args.requiredMethod)) {
       throw controlPlaneError('Environment credential is invalid or expired', 401, 'credential_invalid')
     }
-    const environment = await this.dependencies.repository.getEnvironment({
+    const environment = credential.environment !== undefined ? credential.environment : await this.dependencies.repository.getEnvironment({
       workspaceId: credential.workspaceId,
       environmentId: credential.environmentId,
     })
-    if (!environment || environment.status === 'revoked' || !environment.approvedAt || !environment.filesystemGrant) {
+    if (!environment || !hasCredentialEnvironmentAuthority({ environment, credential })) {
       throw controlPlaneError('Environment is revoked or unavailable', 401, 'environment_unavailable')
     }
     const requestUrl = new URL(args.request.url)
@@ -1243,6 +1243,13 @@ function createCredential(environment: AgentEnvironment, now: number) {
     createdAt: now,
   }
   return { credential, token }
+}
+
+function hasCredentialEnvironmentAuthority({ environment, credential }: {
+  environment: AgentEnvironment; credential: AgentEnvironmentCredential
+}): boolean {
+  return environment.id === credential.environmentId && environment.workspaceId === credential.workspaceId
+    && environment.status !== 'revoked' && Boolean(environment.approvedAt && environment.filesystemGrant)
 }
 
 function credentialResponse(

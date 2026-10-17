@@ -9,6 +9,8 @@ import type {
 } from '@overlay/workspace-contracts'
 
 export type ConnectedAgentCreateEnvironment = Omit<AgentEnvironment, 'createdAt' | 'updatedAt'> & { now: number }
+/** Older backends omit the snapshot; null means the credential has no matching environment. */
+export type AgentEnvironmentCredentialLookup = AgentEnvironmentCredential & { environment?: AgentEnvironment | null }
 export type ConnectedAgentCreateBinding = Omit<AgentBinding, 'createdAt' | 'updatedAt'> & { now: number }
 export type ConnectedAgentCreateSession = Omit<AgentRemoteSession, 'createdAt' | 'updatedAt'> & { now: number }
 export type ConnectedAgentEnqueueCommand = Omit<AgentRunCommand,
@@ -221,7 +223,7 @@ export interface ConnectedAgentRepository {
     credential: AgentEnvironmentCredential
     now: number
   }): Promise<AgentEnvironmentCredential | null>
-  findEnvironmentCredential(args: { tokenHash: string }): Promise<AgentEnvironmentCredential | null>
+  findEnvironmentCredential(args: { tokenHash: string }): Promise<AgentEnvironmentCredentialLookup | null>
   consumeEnvironmentProofNonce(args: {
     credentialId: string
     nonceHash: string

@@ -380,6 +380,10 @@ they do not inherit the root homepage canonical.
 
 ## Streamed agent replies
 
+Markdown table cells wrap long identifiers and hashes without changing their text.
+Keep horizontal scrolling for genuinely wide tables with many columns; a single
+unbroken value must not force an otherwise narrow table beyond the chat pane.
+
 Render streamed text as complete formatted chunks. Markdown defaults to paragraph
 blocks plus a shimmed in-flight tail, with no per-character pacing or character
 spans. Room/agent transcripts suppress inline markers and keep one loading-dots

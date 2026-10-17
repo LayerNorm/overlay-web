@@ -145,6 +145,41 @@ test('host authentication accepts an exact request once and rejects nonce replay
   await assertControlPlaneError(() => service.authenticateHostRequest(args), 'proof_replayed')
 })
 
+test('host authentication uses an atomic credential/environment snapshot without a second environment read', async () => {
+  const f = fixture()
+  f.repository.findEnvironmentCredential = async () => ({ ...f.credential, environment: f.environment })
+  f.repository.getEnvironment = async () => { throw Error('Unexpected separate environment read') }
+  const args = signedRequest({ target: '/api/v1/agent-environments/environment-1/events' })
+  assert.equal((await f.service.authenticateHostRequest(args)).environment.id, f.environment.id)
+  await assertControlPlaneError(() => f.service.authenticateHostRequest(args), 'proof_replayed')
+})
+
+test('an absent, mismatched or revoked environment snapshot cannot fall back to a different read', async () => {
+  const valid = fixture().environment
+  const snapshots: Array<AgentEnvironment | null> = [null,
+    { ...valid, id: 'other-environment' }, { ...valid, workspaceId: 'other-workspace' },
+    { ...valid, status: 'revoked' }, { ...valid, approvedAt: undefined }, { ...valid, filesystemGrant: undefined },
+  ]
+  for (const environment of snapshots) {
+    const f = fixture()
+    f.repository.findEnvironmentCredential = async () => ({ ...f.credential, environment })
+    f.repository.getEnvironment = async () => { throw Error('Snapshot must not fall back') }
+    await assertControlPlaneError(() => f.service.authenticateHostRequest(
+      signedRequest({ target: '/api/v1/agent-environments/environment-1/events' })), 'environment_unavailable')
+  }
+})
+
+test('a bundled environment does not bypass credential expiry or device signature verification', async () => {
+  const expired = fixture({}, { expiresAt: NOW - 1 })
+  expired.repository.findEnvironmentCredential = async () => ({ ...expired.credential, environment: expired.environment })
+  await assertControlPlaneError(() => expired.service.authenticateHostRequest(
+    signedRequest({ target: '/api/v1/agent-environments/environment-1/events' })), 'credential_invalid')
+  const active = fixture()
+  active.repository.findEnvironmentCredential = async () => ({ ...active.credential, environment: active.environment })
+  const request = signedRequest({ target: '/api/v1/agent-environments/environment-1/events', body: '{}' })
+  await assertControlPlaneError(() => active.service.authenticateHostRequest({ ...request, rawBody: new TextEncoder().encode('{"forged":true}') }), 'proof_invalid')
+})
+
 test('host authentication rejects query tampering and forged event bodies', async () => {
   const { service } = fixture()
   const signed = signedRequest({ target: '/api/v1/agent-environments/environment-1/events?limit=1', body: '{"events":[]}' })
