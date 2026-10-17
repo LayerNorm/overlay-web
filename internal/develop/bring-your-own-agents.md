@@ -1326,6 +1326,18 @@ Sidebar list subscriptions observe only indexed conversation changes and message
 Streaming deltas update the open transcript without causing an HTTP conversation-list read per chunk;
 versions remain monotonic across long streams.
 
+Preview timing QA can opt in with the branch-scoped `OVERLAY_AGENT_UI_TRACE=1` build
+setting and `?agentUiTrace=1` in the conversation URL. The build forces this off outside
+Vercel Preview. Connected-message toolbars then export a local IndexedDB JSONL trace:
+run/message/recording identity, candidate SHA, wall/monotonic timestamps, normalized DOM
+text length/SHA-256 and clipped last-glyph geometry. No text, cookies or credentials are
+stored or transmitted. Sampling continues independently of the coding agent's tool turns;
+reload creates another recording segment. Storage is bounded to 120,000 rows and a
+one-million-unit sample; blocked/full storage stops recording and shows an error.
+Missing terminal markers, hidden tabs, reloads, clock uncertainty and observation gaps
+must remain in the analysis. DOM/layout timestamps do not establish pixel-paint timing,
+and recording/export alone does not prove the latency acceptance threshold.
+
 Per-run ten-second heartbeats carry process proof, quiet time and open-tool ages.
 They update run liveness without transcript parts. A live three-minute tool remains
 running; quiet output alone cannot prove a stall. The bottom loading row distinguishes

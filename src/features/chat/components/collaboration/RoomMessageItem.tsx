@@ -38,6 +38,7 @@ import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvid
 import { roomMessageDomId } from './room-message-view'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus } from './RemoteDriveStatus'
+import { RemoteRunTrace } from './RemoteRunTrace'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -336,6 +337,7 @@ export function RoomMessageItem({
       onTogglePinned={onTogglePinned}
       onToggleSaved={onToggleSaved}
       onCopyPermalink={onCopyPermalink}
+      diagnostics={message.remoteRun ? <RemoteRunTrace runId={message.remoteRun.runId} messageId={message.id} state={message.remoteRun.state} /> : undefined}
     />
   )
 
@@ -1193,6 +1195,7 @@ function EditDeleteButtons({ buttonClass, disabled, onStartEdit, onDelete }: {
 }
 
 function RoomMessageToolbar({
+  diagnostics,
   alignEnd,
   floating,
   copyText,
@@ -1212,6 +1215,7 @@ function RoomMessageToolbar({
   onToggleSaved,
   onCopyPermalink,
 }: {
+  diagnostics?: ReactNode
   alignEnd: boolean
   floating: boolean
   copyText: string
@@ -1239,6 +1243,7 @@ function RoomMessageToolbar({
 
   return (
     <div className={railClass}>
+      {diagnostics}
       {onStop ? (
         <ToolbarIconButton buttonClass={buttonClass} onClick={onStop} disabled={disabled} ariaLabel="Stop response" title="Stop response">
           <Square size={13} strokeWidth={1.75} className="fill-current" />

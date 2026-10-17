@@ -76,6 +76,17 @@ The server chooses the seeded QA identity; callers cannot supply an arbitrary
 user ID. This route returns 404 outside Preview. Real human OAuth uses
 the same canonical preview origin with the WorkOS sandbox wildcard callback.
 
+For long connected-agent timing checks, the Preview-only branch build setting
+`OVERLAY_AGENT_UI_TRACE=1` and conversation query `agentUiTrace=1` enable a local
+recorder. Hover the assistant toolbar and use **Export timing trace** to download its
+JSONL through the actual QA browser. The recorder continues across automation tool-turn
+interruptions; reload starts a new segment. It stores text hashes and DOM/layout timing,
+not chat text or credentials, and never uploads the trace. Start before native output,
+retain every source checkpoint, validate hashes against canonical rendered text, include
+clock intervals/gaps and require final coverage before accepting a latency result.
+An error icon, hidden tab or missing segment is incomplete measurement, not a passing
+result. Export before clearing site storage; Production builds disable the recorder.
+
 ### Deployment protection
 
 PR previews run in the `overlay-landing` project's Preview environment. Use the

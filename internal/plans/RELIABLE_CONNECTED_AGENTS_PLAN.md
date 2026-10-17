@@ -9,6 +9,11 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- A Preview-only local browser recorder now captures bounded DOM/layout timing independently
+  of automation tool turns, with text hashes, viewport geometry, run/message identity and
+  a real toolbar download. Production builds force it off. Focused validation and hosted
+  recording/reload/export acceptance are in progress; this does not establish the latency gate.
+
 - The published candidate Claude repeat completes after approximately 122 minutes and 77 tool calls, with zero rejected batches or approval cards. All 60 post-recovery calls independently belong to the original native conversation. All thirteen files match full Files API and original-machine hashes; every CSV row has seven cells, the memo/summary and six briefings meet their word limits, and all thirteen index links resolve. OS readback finds no native task process. Reload preserves Recovered, the saved summary and all 29,175 normalized visible Markdown units. A 34-minute browser-observation interruption leaves whole-run latency unproven; the new deliverables still require fresh-machine hydration. This run predates the final-save boundary follow-up below.
 
 - Native Codex acceptance exposes a final-save boundary race in a real host integration regression: a naturally finished provider can report lost health while drive saving is pending and revoke its writes. The local follow-up stops native probes at terminal intent, preserves pending text, and introduces a fenced, nonrenewable final-save period capped by the task deadline; actual failures and Stop remain authoritative. Host, lifecycle and backend authorization regressions cover the boundary. Hosted acceptance on a rebuilt candidate remains required; the retained HTTP 403 establishes the failed request, but does not by itself identify its historical exception.

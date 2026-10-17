@@ -44,6 +44,10 @@ const staticSecurityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_AGENT_UI_TRACE: process.env.VERCEL_ENV === "preview" && process.env.OVERLAY_AGENT_UI_TRACE === "1" ? "1" : "",
+    NEXT_PUBLIC_AGENT_UI_TRACE_SHA: process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_GIT_COMMIT_SHA ?? "" : "",
+  },
   cacheComponents: true,
   partialPrefetching: true,
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",

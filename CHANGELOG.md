@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add opt-in Preview browser timing exports that continue recording across automation interruptions without storing conversation text.
+
 - Keep final agent file saving authorized after the native provider finishes, with a bounded saving phase that respects Stop and task deadlines.
 
 - Hydrate concurrently updated agent files with bounded revision refreshes and reuse authenticated manifests for unchanged files.

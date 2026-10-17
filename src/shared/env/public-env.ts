@@ -16,6 +16,8 @@ export const publicEnv = {
     read(process.env.DEV_NEXT_PUBLIC_CONVEX_URL),
   /** Client TTFT milestone logging (pair with server TTFT_DEBUG). */
   ttftDebug: read(process.env.NEXT_PUBLIC_TTFT_DEBUG) === 'true',
+  agentUiTrace: read(process.env.NEXT_PUBLIC_AGENT_UI_TRACE) === '1',
+  agentUiTraceSha: read(process.env.NEXT_PUBLIC_AGENT_UI_TRACE_SHA),
   sentryDsn: read(process.env.NEXT_PUBLIC_SENTRY_DSN),
 } as const
 
