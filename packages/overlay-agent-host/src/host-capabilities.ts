@@ -39,14 +39,14 @@ export async function updateHostCapabilities(client: AgentControlPlaneClient, ca
 
 
 export function buildHostCapabilities(adapters: AdapterCapability[], options: {
-  durableLifecycle: boolean; drive: boolean; filesystem: FilesystemGrant; maxConcurrentRuns: number
+  durableLifecycle: boolean; drive: boolean; hostVersion: string; filesystem: FilesystemGrant; maxConcurrentRuns: number
 }): HostCapabilities {
   return {
     protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
     ...(options.durableLifecycle ? {remoteLifecycleVersion: 2} : {}),
     streaming: {textDeltas: true, heartbeats: true}, mcp: {approvalBridge: true},
     ...(options.drive ? {drive: {version: 1}} : {}),
-    hostVersion: '0.4.2', platform: `${platform()} ${release()}`,
+    hostVersion: options.hostVersion, platform: `${platform()} ${release()}`,
     adapters: adapters.map(capability => {
       if (options.durableLifecycle) return capability
       const {recovery, ...legacy} = capability
