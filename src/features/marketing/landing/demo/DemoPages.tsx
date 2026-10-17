@@ -1,3 +1,5 @@
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../../control-reset'
 import type { ReactNode } from 'react'
 import { LandingLogo } from '../LandingLogo'
 import { DIcon } from './demo-icons'
@@ -87,7 +89,7 @@ export function ExtensionsPage({ state, dispatch }: { state: DemoState; dispatch
             <div key={e.n} className="card">
               <div className="top"><span className="tile"><LandingLogo name={e.l} className="lg" /></span>{e.n}</div>
               <p>{e.d}</p>
-              <button type="button" tabIndex={-1} className={e.on ? 'btn2 on' : 'btn2'} onClick={() => dispatch({ type: 'ext', i })}>{e.on ? 'Connected' : 'Connect'}</button>
+              <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton(e.on ? 'btn2 on' : 'btn2')} onClick={() => dispatch({ type: 'ext', i })}>{e.on ? 'Connected' : 'Connect'}</Button>
             </div>
           ))}
         </div>
@@ -100,11 +102,11 @@ export function ExtensionsPage({ state, dispatch }: { state: DemoState; dispatch
 export function ModelMenu({ state, dispatch }: { state: DemoState; dispatch: (a: DemoAction) => void }): ReactNode {
   return (
     <span className="mwrap">
-      <button type="button" tabIndex={-1} className="chip" onClick={() => dispatch({ type: 'menu' })}>{state.model} <DIcon name="down" /></button>
+      <Button variant="ghost" type="button" tabIndex={-1} className={unstyledButton("chip")} onClick={() => dispatch({ type: 'menu' })}>{state.model} <DIcon name="down" /></Button>
       {state.menu ? (
         <div className="menu">
           {MODELS.map((m) => (
-            <button key={m} type="button" tabIndex={-1} className={m === state.model ? 'mi on' : 'mi'} onClick={() => dispatch({ type: 'model', name: m })}>{m}</button>
+            <Button variant="ghost" key={m} type="button" tabIndex={-1} className={unstyledButton(m === state.model ? 'mi on' : 'mi')} onClick={() => dispatch({ type: 'model', name: m })}>{m}</Button>
           ))}
         </div>
       ) : null}
