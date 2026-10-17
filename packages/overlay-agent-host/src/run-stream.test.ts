@@ -4,6 +4,25 @@ import type { NormalizedAgentEvent } from './adapter.js'
 import { createRunStream } from './run-stream.js'
 import { applyRemoteText } from '../../../src/shared/agents/remote-agent-text.js'
 
+test('an in-flight process probe cannot publish loss after provider completion begins draining', async () => {
+  const events: NormalizedAgentEvent[] = []
+  let active = true, release: (value: 'lost') => void = () => { throw Error('probe not started') }
+  const probe = new Promise<'lost'>(resolve => { release = resolve })
+  const stream = createRunStream(async event => { events.push(event) }, {
+    streaming: () => true, active: () => active, observe: () => probe, onError: error => { throw error },
+  })
+  try {
+    const pending = stream.heartbeat()
+    active = false
+    release('lost')
+    await pending
+    await stream.emit({type: 'text_checkpoint', payload: {text: 'Retained final answer', final: true}})
+    await stream.emit({type: 'completed', payload: {usage: {}}})
+    assert.deepEqual(events.map(event => event.type), ['text_delta', 'completed'])
+    assert.equal(events[0].type === 'text_delta' && events[0].payload.text, 'Retained final answer')
+  } finally { release('lost'); stream.stop() }
+})
+
 test('a replacement stream appends after the canonical prefix, including corrections and bounded anchors', async () => {
   const prefix = 'Already committed 🙂\n'.repeat(4000)
   for (const streaming of [true, false]) {

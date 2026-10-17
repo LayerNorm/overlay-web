@@ -2,6 +2,36 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { reduceRemoteRun, remoteRunCoarseStatus, type RemoteRunState, type RemoteRunFact } from './remote-run'
 const state = (): RemoteRunState => ({ version: 2, revision: 0, phase: 'running', currentAttemptId: 'attempt', executionGeneration: 1, coordinatorGeneration: 1, coordinatorId: 'owner', hardDeadlineAt: 86_400_000, claimDeadlineAt: 120_000 })
+test('final saving has one fixed deadline, tolerates provider exit and cannot claim provider health', () => {
+  let s = apply(state(), {type: 'finalize'}, 1000).state
+  assert.equal(s.phase, 'finalizing')
+  assert.equal(s.finalizationDeadlineAt, 301000)
+  assert.equal(s.lastHealthAt, undefined)
+  for (const process of ['lost', 'unknown', 'live'] as const) {
+    const next = apply(s, {type: 'health', process}, 100000)
+    assert.equal(next.applied, false)
+    assert.equal(next.state.lastHealthAt, undefined)
+  }
+  assert.equal(apply(s, {type: 'finalize'}, 200000).state.finalizationDeadlineAt, 301000)
+  s = apply(s, {type: 'progress'}, 299000).state
+  assert.equal(apply(s, {type: 'observe'}, 300999).state.phase, 'finalizing')
+  assert.equal(apply(s, {type: 'complete'}, 300999).state.phase, 'completed')
+  assert.equal(apply(s, {type: 'complete'}, 301000).state.cause, 'finalization_timeout')
+  assert.equal(apply(s, {type: 'observe'}, 301000).state.cause, 'finalization_timeout')
+  assert.equal(apply(s, {type: 'failure'}, 2000).state.phase, 'needs_attention')
+})
+test('final saving cannot bypass approvals, revive lost execution or outlive cancellation and task deadlines', () => {
+  for (const phase of ['needs_attention', 'recovering', 'waiting_for_approval', 'cancelling'] as const) {
+    assert.equal(apply({...state(), phase}, {type: 'finalize'}).applied, false)
+  }
+  const pending = apply(state(), {type: 'request', requestKey: 'approval', expiresAt: 10000}).state
+  assert.equal(apply(pending, {type: 'finalize'}).applied, false)
+  const s = apply({...state(), hardDeadlineAt: 2000}, {type: 'finalize'}, 1000).state
+  assert.equal(s.finalizationDeadlineAt, 2000)
+  assert.equal(apply(s, {type: 'complete'}, 2000).state.phase, 'cancelling')
+  const cancelled = apply(s, {type: 'cancel', cause: 'user'}, 1500).state
+  assert.equal(apply(cancelled, {type: 'complete'}, 1501).applied, false)
+})
 test('native restoration gets a bounded startup window, not a fabricated live-provider observation', () => {
   const recovery: RemoteRunState = {...state(), phase: 'recovering', cause: 'native_restoration'}
   assert.equal(apply(recovery, {type: 'observe'}, 30_000).state.phase, 'recovering')

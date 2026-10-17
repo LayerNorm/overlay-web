@@ -1346,7 +1346,7 @@ export default defineSchema({
               runId: v.string(),
               state: v.union(
                 v.literal('waiting'), v.literal('starting'), v.literal('running'), v.literal('waiting_for_approval'),
-                v.literal('waiting_for_input'), v.literal('recoverable'), v.literal('recovering'), v.literal('needs_attention'), v.literal('cancelling'), v.literal('completed'),
+                v.literal('waiting_for_input'), v.literal('recoverable'), v.literal('recovering'), v.literal('finalizing'), v.literal('needs_attention'), v.literal('cancelling'), v.literal('completed'),
                 v.literal('failed'), v.literal('cancelled'),
               ),
               retryable: v.optional(v.boolean()),

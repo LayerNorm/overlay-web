@@ -57,6 +57,24 @@ async function fixture() {
   return { convex, ids, args, read: (patch: Record<string, unknown> = {}) => convex.query(readRef, { ...args, ...patch }) }
 }
 
+test('final saving retains drive access only within its execution and fixed finalization deadline', async () => {
+  const f = await fixture(), now = Date.now()
+  await f.convex.run(async ctx => {
+    await ctx.db.patch(f.ids.run, {remoteLifecycle: {version: 2, revision: 1, phase: 'finalizing',
+      currentAttemptId: 's', executionGeneration: 1, coordinatorGeneration: 1,
+      hardDeadlineAt: now + 600000, claimDeadlineAt: now + 120000, finalizationDeadlineAt: now + 300000}})
+    await ctx.db.patch(f.ids.session, {status: 'finalizing', hardDeadlineAt: now + 600000})
+  })
+  const claims = {expiresAt: now + 600000}
+  expect((await f.read(claims)).rows.length).toBeGreaterThan(0)
+  await expect(f.read({...claims, execution: {attemptId: 'foreign', generation: 1}})).rejects.toThrow(/DRIVE_RUN_UNAVAILABLE/)
+  vi.useFakeTimers()
+  vi.setSystemTime(now + 299999)
+  expect((await f.read(claims)).rows.length).toBeGreaterThan(0)
+  vi.setSystemTime(now + 300000)
+  await expect(f.read(claims)).rejects.toThrow(/DRIVE_RUN_UNAVAILABLE/)
+})
+
 test('expected drive failures carry application data through production message redaction', async () => {
   const f = await fixture()
   await expect(f.read({ runId: 'foreign' })).rejects.toMatchObject({ data: 'DRIVE_RUN_UNAVAILABLE' })

@@ -76,7 +76,7 @@ export function createRunStream(emit: EmitAgentEvent, options: {
     heartbeatBusy = true
     try {
       const process = await options.observe()
-      if (terminal) return
+      if (terminal || options.active?.() === false) return
       const quietMs = Math.max(0, now() - lastActivityAt)
       await emit({ type: 'heartbeat', payload: { quietMs, process,
         openTools: [...openTools].slice(-20).map(([actionId, tool]) => ({ actionId, title: tool.title, runningMs: Math.max(0, now() - tool.startedAt) })),

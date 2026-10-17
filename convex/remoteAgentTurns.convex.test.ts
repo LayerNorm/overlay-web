@@ -723,6 +723,29 @@ async function durableFixture(overrides: Record<string, unknown> = {}) {
   return { convex, seeded, call, lifecycle, started, events }
 }
 
+test('fenced final saving survives provider exit without fabricating health and settles completion or failure', async () => {
+  for (const terminal of ['completed', 'failed'] as const) {
+    const f = await durableFixture()
+    const owner = {runId: 'run-remote-turn', coordinatorId: 'final-save-owner', generation: 1, now}
+    await f.lifecycle('claim', owner)
+    await f.lifecycle('advance', owner)
+    await f.events([event(1, 'session_started', {remoteSessionId: 'native', adapterId: 'acp'})], now + 1)
+    await f.events([event(2, 'drive_sync', {state: 'saving'}), event(3, 'heartbeat', {
+      process: 'lost', quietMs: 1, openTools: [], stalled: false,
+    })], now + 2)
+    const pending = await projectedState(f.convex, f.started.messageId)
+    expect(pending.run?.remoteLifecycle).toMatchObject({phase: 'finalizing', lastHealthAt: now + 1, finalizationDeadlineAt: now + 300002})
+    expect(pending.session?.status).toBe('finalizing')
+    expect(pending.message?.parts?.find(part => part.type === 'data-remote-agent-status')?.data).toMatchObject({state: 'finalizing'})
+    await f.lifecycle('advance', {...owner, now: now + 120000})
+    expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.phase).toBe('finalizing')
+    await f.events([terminal === 'completed' ? event(4, 'completed', {usage: {}})
+      : event(4, 'failed', {code: 'drive_unsaved', message: 'Local files retained', retryable: true})], now + 120001)
+    expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.phase)
+      .toBe(terminal === 'completed' ? 'completed' : 'needs_attention')
+  }
+})
+
 async function providerStopFixture() {
   const fixture = await durableFixture({sandboxBilling: {leaseId: 'recovery-lease'}})
   const owner = {runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now}

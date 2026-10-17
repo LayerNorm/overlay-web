@@ -13,6 +13,7 @@ import {
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
 import { RuntimeDriveController } from './runtime-drive-controller.js'
+import {observeActiveNativeRuns, withNativeTerminalBoundary} from './runtime-terminal-boundary.js'
 import { HostHeartbeat } from './host-heartbeat.js'
 import { updateHostCapabilities } from './host-capabilities.js'
 import { PendingHostPrompts, quiesceHostRuns } from './runtime-shutdown.js'
@@ -189,11 +190,8 @@ export class AgentHostRuntime {
 
   private async heartbeat(): Promise<void> {
     await this.options.controlPlane.heartbeat?.()
-    if (this.options.durableLifecycle) for (const [runId, session] of this.sessions) {
-      const execution = this.executions.get(runId)
-      if (!execution || this.terminalRuns.has(runId)) continue
-      await this.emit(runId, { type: 'process_observation', payload: { process: await session.observe?.() ?? 'unknown' } }, execution)
-    }
+    if (this.options.durableLifecycle) await observeActiveNativeRuns(this.sessions, this.executions, this.terminalRuns,
+      (runId, process, execution) => this.emit(runId, {type: 'process_observation', payload: {process}}, execution))
   }
 
   async processCommand(command: AgentHostCommand, preparationSignal?: AbortSignal): Promise<void> {
@@ -474,7 +472,7 @@ export class AgentHostRuntime {
     const stream = createRunStream(event => this.emit(runId, event, execution), {
       streaming: () => negotiated,
       textBaseOffset,
-      active: () => this.sessions.has(runId),
+      active: () => this.sessions.has(runId) && !this.terminalRuns.has(runId),
       observe: async () => await this.sessions.get(runId)?.observe?.() ?? 'unknown',
       onError: error => this.logger.warn('run heartbeat deferred', { runId, error: safeError(error) }),
     })
@@ -485,7 +483,8 @@ export class AgentHostRuntime {
       this.drives.set(runId, controller)
       forward = controller.emit
     }
-    return event => this.shuttingDown && ['completed', 'failed', 'cancelled'].includes(event.type) ? Promise.resolve() : forward(event)
+    return withNativeTerminalBoundary({forward, execution, currentExecution: () => this.executions.get(runId),
+      shuttingDown: () => this.shuttingDown, markEnded: () => {this.terminalRuns.add(runId)}})
   }
 
   /**

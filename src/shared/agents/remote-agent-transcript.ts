@@ -21,7 +21,7 @@ export type RemoteAgentStatusPart = {
     queueExpiresAt: number
     hardDeadlineAt?: number
     runId: string
-    state: 'waiting' | 'starting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'recovering' | 'needs_attention' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
+    state: 'waiting' | 'starting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'recovering' | 'finalizing' | 'needs_attention' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
     retryable?: boolean
     retryClass?: 'transient' | 'timeout' | 'host_offline' | 'permission' | 'fatal'
   }

@@ -63,7 +63,7 @@ function conversationParts(parts: Array<Record<string, unknown>>) {
       ...(['attached_live', 'restored', 'requires_new_attempt', 'unavailable'].includes(String(data.recoveryOutcome))
         ? {recoveryOutcome: data.recoveryOutcome} : {}),
       runId: typeof data.runId === 'string' ? data.runId : 'remote-agent',
-      state: ['waiting', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recoverable', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled'].includes(String(data.state))
+      state: ['waiting', 'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recoverable', 'recovering', 'finalizing', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled'].includes(String(data.state))
         ? data.state : 'running',
       ...(typeof data.retryable === 'boolean' ? { retryable: data.retryable } : {}),
       ...(['transient', 'timeout', 'host_offline', 'permission', 'fatal'].includes(String(data.retryClass))
@@ -2655,9 +2655,10 @@ export const applyRemoteEventsByServer = mutation({
           type: 'request' as const, requestKey: String(event.payload.requestKey),
           kind: event.type === 'approval_requested' ? 'permission' as const : 'elicitation' as const,
           expiresAt: Math.min(args.now + 60 * 60_000, state.hardDeadlineAt),
-        } : event.type === 'completed' ? { type: 'complete' as const }
+        } : event.type === 'drive_sync' && event.payload.state === 'saving' ? { type: 'finalize' as const }
+        : event.type === 'completed' ? { type: 'complete' as const }
         : event.type === 'cancelled' ? { type: 'stopped' as const }
-        : event.type === 'failed' ? { type: 'health' as const, process: 'lost' as const }
+        : event.type === 'failed' ? { type: 'failure' as const }
         : { type: 'progress' as const }
       const result = await applyRemoteFact(ctx, canonicalRun, fact, args.now, { deferMessageProjection: true })
       if (result?.applied) canonicalRun = { ...canonicalRun, remoteLifecycle: result.state }

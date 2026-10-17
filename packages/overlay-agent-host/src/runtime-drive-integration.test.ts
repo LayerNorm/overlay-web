@@ -128,6 +128,44 @@ test('runtime hydrates the fixed scope before provider start, then saves before 
   } finally { await f.cleanup() }
 })
 
+test('native completion cannot revoke drive authority while its final save is pending', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+  const f = await fixture(), saving = deferred<void>(), release = deferred<void>()
+  const drive = f.options.drive
+  assert.ok(drive?.create)
+  const create = drive.create, adapter = f.options.adapters[0], start = adapter.start.bind(adapter)
+  let finished = false, writable = true
+  adapter.start = async (...args) => ({ ...await start(...args), observe: async () => finished ? 'lost' : 'live' })
+  f.options.controlPlane.pollCommands = async () => ({ commands: [], streaming: { textDeltas: true, heartbeats: true } })
+  const upload = f.options.controlPlane.uploadEvents.bind(f.options.controlPlane)
+  f.options.controlPlane.uploadEvents = async batch => {
+    if (batch.events.some(event => event.type === 'heartbeat' && event.payload.process === 'lost')) writable = false
+    return upload(batch)
+  }
+  drive.create = async input => ({ ...await create(input), sync: async final => {
+    if (final) { saving.resolve(); await release.promise }
+    if (!writable) throw Error('DRIVE_RUN_UNAVAILABLE')
+    return []
+  } })
+  let ending: Promise<void> | undefined
+  try {
+    await f.runtime.pollOnce(0)
+    await f.runtime.processCommand(f.command)
+    finished = true
+    ending = f.emit({ type: 'completed', payload: { usage: {} } })
+    await saving.promise
+    t.mock.timers.tick(10_000)
+    await setImmediate()
+    await f.runtime.flushOutbox()
+    assert.equal(writable, true, 'a naturally finished provider must not revoke the pending final save')
+    assert.equal(f.events.flatMap(batch => batch.events).some(event => event.type === 'completed'), false)
+    release.resolve()
+    await ending
+    await f.runtime.flushOutbox()
+    assert.equal(f.events.flatMap(batch => batch.events).at(-1)?.type, 'completed')
+  } finally { release.resolve(); await ending; await f.cleanup() }
+})
+
 test('unavailable provider credentials never acquire a drive lease or launch an adapter', async () => {
   const f = await fixture()
   try {

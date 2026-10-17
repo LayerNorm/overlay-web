@@ -62,8 +62,8 @@ export class RuntimeDriveController {
         await this.forward(event)
         return
       }
-      await this.syncing
       await this.forward({ type: 'drive_sync', payload: { state: 'saving' } })
+      await this.syncing
       try {
         const entries = await this.drive.sync(true)
         await this.publish(entries, true)

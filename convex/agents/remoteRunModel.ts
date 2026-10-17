@@ -8,11 +8,12 @@ const remoteApprovalValidator = v.object({ requestKey: v.string(), expiresAt: v.
 export const remoteLifecycleValidator = v.object({
   version: v.literal(2), revision: v.number(), phase: v.union(
     v.literal('queued'), v.literal('waking'), v.literal('starting'), v.literal('running'),
-    v.literal('waiting_for_approval'), v.literal('waiting_for_input'), v.literal('recovering'),
+    v.literal('waiting_for_approval'), v.literal('waiting_for_input'), v.literal('recovering'), v.literal('finalizing'),
     v.literal('needs_attention'), v.literal('cancelling'), v.literal('completed'), v.literal('cancelled'), v.literal('failed')),
   currentAttemptId: v.string(), executionGeneration: v.number(), coordinatorGeneration: v.number(),
   coordinatorId: v.optional(v.string()), hardDeadlineAt: v.number(), claimDeadlineAt: v.number(),
   lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()), lastPreparationAt: v.optional(v.number()),
+  finalizationDeadlineAt: v.optional(v.number()),
   approval: v.optional(remoteApprovalValidator), approvals: v.optional(v.array(remoteApprovalValidator)),
   providerStop: v.optional(v.object({provider: v.literal('box'), environmentId: v.string(), leaseId: v.string(),
     providerReference: v.string(), attemptId: v.string(), executionGeneration: v.number(), observedAt: v.number(), recordedAtRevision: v.number()})),
@@ -65,7 +66,9 @@ export async function applyRemoteFact(ctx: MutationCtx, run: Doc<'conversationAg
   await ctx.db.patch(run._id, { remoteLifecycle: result.state, status: remoteRunCoarseStatus(result.state.phase), updatedAt: now })
   const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', result.state.currentAttemptId)).unique()
   if (attempt) await ctx.db.patch(attempt._id, { status: result.state.phase,
-    ...(result.state.lastHealthAt !== undefined ? { lastHealthAt: result.state.lastHealthAt, executionLeaseExpiresAt: Math.min(result.state.lastHealthAt + 90_000, result.state.hardDeadlineAt) } : {}),
+    ...(result.state.phase === 'finalizing' ? {executionLeaseExpiresAt: result.state.finalizationDeadlineAt} : {}),
+    ...(result.state.lastHealthAt !== undefined ? { lastHealthAt: result.state.lastHealthAt,
+      ...(result.state.phase !== 'finalizing' ? {executionLeaseExpiresAt: Math.min(result.state.lastHealthAt + 90_000, result.state.hardDeadlineAt)} : {}) } : {}),
     ...(result.state.lastProgressAt !== undefined ? { lastProgressAt: result.state.lastProgressAt } : {}), updatedAt: now })
   const invalidateRequests = result.state.phase === 'cancelling' || result.state.cause === 'approval_context_lost'
   if (attempt && invalidateRequests) {

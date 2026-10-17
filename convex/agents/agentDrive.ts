@@ -50,6 +50,7 @@ export async function requireDriveAuthority(ctx: QueryCtx | MutationCtx, args: A
   if (run.bindingId !== session.bindingId || run.environmentId !== session.environmentId) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
   const phase = run.remoteLifecycle?.phase ?? run.status
   if (['cancelled', 'cancelling', 'completed', 'failed', 'needs_attention'].includes(phase)) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
+  if (run.remoteLifecycle?.phase === 'finalizing' && Date.now() >= (run.remoteLifecycle.finalizationDeadlineAt ?? 0)) throw new ConvexError('DRIVE_RUN_UNAVAILABLE')
   if (!isCurrentDriveRun(args, {
     actorUserId: run.userId, agentId: run.agentId ?? '', runId: run.externalRunId ?? '',
     sessionId: session.sessionId, bindingId: session.bindingId, environmentId: session.environmentId,

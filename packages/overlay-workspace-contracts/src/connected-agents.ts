@@ -168,7 +168,7 @@ export type AgentRunCommand = {
 }
 
 export const AGENT_REMOTE_SESSION_STATUSES = [
-  'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering',
+  'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering', 'finalizing',
   'completed', 'failed', 'cancelled',
 ] as const
 export type AgentRemoteSessionStatus = (typeof AGENT_REMOTE_SESSION_STATUSES)[number]
