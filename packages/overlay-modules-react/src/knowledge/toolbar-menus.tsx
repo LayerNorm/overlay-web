@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import type React from 'react'
 import {
   BookOpen,
@@ -34,36 +35,36 @@ export function OutputFilterMenu({
 }) {
   return (
     <div ref={outputFilterRef} className="relative h-8 w-fit max-w-52">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className={`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-(--border) bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--foreground) ${
+        className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-(--border) bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--foreground) ${
           open ? 'bg-(--border)' : 'hover:bg-(--border)'
-        }`}
+        }`)}
       >
         <span className="min-w-0 truncate">{OUTPUT_FILTER_LABELS[outputFilter]}</span>
         <ChevronDown size={11} className="shrink-0" />
-      </button>
+      </Button>
       {open && (
         <div
           className="overlay-pop-in absolute left-0 top-full z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg"
           role="listbox"
         >
           {(['all', 'image', 'video', 'files'] as const).map((id) => (
-            <button
+            <Button variant="ghost"
               key={id}
               type="button"
               role="option"
               aria-selected={outputFilter === id}
               onClick={() => onCommit(id)}
-              className={`w-full whitespace-nowrap px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-(--surface-muted) ${
+              className={unstyledButton(`w-full whitespace-nowrap px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-(--surface-muted) ${
                 outputFilter === id ? 'font-medium text-(--foreground)' : 'text-(--muted)'
-              }`}
+              }`)}
             >
               {OUTPUT_FILTER_LABELS[id]}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -108,88 +109,88 @@ export function FilesCreateUploadControls({
     <>
       {mode === 'files' ? (
         <div ref={createMenuRef} className="relative">
-          <button
+          <Button variant="ghost"
             type="button"
             title="Create"
             onClick={() => {
               setCreateMenuOpen((v) => !v)
               setUploadMenuOpen(false)
             }}
-            className={TOOLBAR_ICON_BUTTON_CLASS}
+            className={unstyledButton(TOOLBAR_ICON_BUTTON_CLASS)}
             aria-expanded={createMenuOpen}
             aria-haspopup="menu"
           >
             <Plus size={15} />
-          </button>
+          </Button>
           {createMenuOpen ? (
             <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={() => {
                   setCreateMenuOpen(false)
                   onCreateNoteFile()
                 }}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+                className={unstyledButton("flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)")}
               >
                 <BookOpen size={13} />
                 New Note
-              </button>
-              <button
+              </Button>
+              <Button variant="ghost"
                 type="button"
                 onClick={() => {
                   setCreateMenuOpen(false)
                   setDialog({ type: 'folder', parentId: activeFolder?._id ?? null })
                   setDialogName('')
                 }}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+                className={unstyledButton("flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)")}
               >
                 <FolderPlus size={13} />
                 New Folder
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
       ) : null}
       <div ref={uploadMenuRef} className="relative">
-        <button
+        <Button variant="ghost"
           type="button"
           title="Upload"
           onClick={() => {
             setUploadMenuOpen((v) => !v)
             setCreateMenuOpen(false)
           }}
-          className={TOOLBAR_ICON_BUTTON_CLASS}
+          className={unstyledButton(TOOLBAR_ICON_BUTTON_CLASS)}
           aria-expanded={uploadMenuOpen}
           aria-haspopup="menu"
         >
           <Upload size={15} />
-        </button>
+        </Button>
         {uploadMenuOpen ? (
           <div className="overlay-pop-in absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={() => {
                 setUploadMenuOpen(false)
                 if (onPickFile) onPickFile()
                 else fileUploadRef.current?.click()
               }}
-              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+              className={unstyledButton("flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)")}
             >
               <FilePlus size={13} />
               Upload File
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               onClick={() => {
                 setUploadMenuOpen(false)
                 if (onPickFolder) onPickFolder()
                 else folderUploadRef.current?.click()
               }}
-              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+              className={unstyledButton("flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)")}
             >
               <FolderInput size={13} />
               Upload Folder
-            </button>
+            </Button>
           </div>
         ) : null}
       </div>

@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import type { KnowledgeFileNode } from '@overlay/app-core'
 import { filePathLabel } from '@overlay/app-core'
 import { BookOpen, Folder, Trash2 } from 'lucide-react'
@@ -127,10 +128,10 @@ export function FileTreeRow({
         style={{ paddingLeft: '12px' }}
       >
         {bulkSelectMode ? <BulkSelectMarker selected={isBulkSelected} className="mt-0.5 shrink-0" /> : null}
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={handleRowClick}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs text-left outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)"
+          className={unstyledButton("flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xs text-left outline-hidden focus-visible:ring-1 focus-visible:ring-(--foreground)")}
         >
           {node.type === 'folder' ? (
             <Folder size={14} className="shrink-0 text-(--muted-light)" />
@@ -140,21 +141,21 @@ export function FileTreeRow({
             <FileTypeIcon file={node} size={15} className="text-(--muted-light)" />
           )}
           <span className="min-w-0 flex-1 truncate leading-relaxed">{node.name}</span>
-        </button>
+        </Button>
         {!bulkSelectMode ? (
           <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             {renderRowActions?.(node)}
           </span>
         ) : null}
         {!bulkSelectMode ? (
-          <button
+          <Button variant="ghost"
             type="button"
             aria-label={`Delete ${node.name}`}
             onClick={(event) => onDelete(node._id, event)}
-            className="shrink-0 rounded-sm p-1 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-red-500 group-hover:opacity-100"
+            className={unstyledButton("shrink-0 rounded-sm p-1 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-red-500 group-hover:opacity-100")}
           >
             <Trash2 size={12} />
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>
@@ -259,7 +260,7 @@ export function FileCard({
     : ''
 
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       draggable={!selectMode}
       onDragStart={(event) => {
@@ -267,9 +268,9 @@ export function FileCard({
         event.dataTransfer.effectAllowed = 'move'
       }}
       onClick={onOpen}
-      className={`overlay-knowledge-card overlay-knowledge-card--file group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-(--surface-elevated) text-left transition-shadow hover:shadow-md ${
+      className={unstyledButton(`overlay-knowledge-card overlay-knowledge-card--file group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-(--surface-elevated) text-left transition-shadow hover:shadow-md ${
         bulkSel ? 'border-(--foreground) ring-1 ring-(--foreground)/20' : 'border-(--border)'
-      }`}
+      }`)}
       style={{ breakInside: 'avoid' }}
     >
       {selectMode ? (
@@ -312,7 +313,7 @@ export function FileCard({
           }
         </p>
       </div>
-    </button>
+    </Button>
   )
 }
 
@@ -331,7 +332,7 @@ export function FolderCard({
 }) {
   const [dragOver, setDragOver] = useState(false)
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       draggable={!selectMode}
       onDragStart={(event) => {
@@ -355,11 +356,11 @@ export function FolderCard({
         onMove(fileId, folder._id)
       }}
       onClick={onOpen}
-      className={`overlay-knowledge-card overlay-knowledge-card--folder group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-(--surface-elevated) text-left transition-shadow hover:shadow-md ${
+      className={unstyledButton(`overlay-knowledge-card overlay-knowledge-card--folder group relative mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border bg-(--surface-elevated) text-left transition-shadow hover:shadow-md ${
         dragOver
           ? 'border-(--foreground) ring-1 ring-(--foreground)/20'
           : bulkSel ? 'border-(--foreground) ring-1 ring-(--foreground)/20' : 'border-(--border)'
-      }`}
+      }`)}
       style={{ breakInside: 'avoid' }}
     >
       <div className="flex h-28 items-center justify-center bg-(--surface-muted)">
@@ -371,7 +372,7 @@ export function FolderCard({
         </p>
         <p className="mt-1 text-[10px] text-(--muted-light)">Folder</p>
       </div>
-    </button>
+    </Button>
   )
 }
 
