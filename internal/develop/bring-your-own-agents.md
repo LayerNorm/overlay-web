@@ -1196,6 +1196,8 @@ and cancellation. Coordinator takeover requires the Workflow runtime to confirm 
 previous owner stopped, followed by a canonical compare-and-set. It does not start a
 second external writer.
 
+Drive hydration reuses authenticated snapshot download grants across same-execution credential renewal. Only explicit source-revision or missing-revision responses refresh the manifest, with three download attempts per file. A refreshed entry must retain its file id, path and ready-file kind; moved, deleted, deferred or continuously changing sources remain refused. Persist the chosen revision before installing verified bytes, and refuse installation over local edits made during the download.
+
 Lifecycle-v2 starts request `metadata.overlayPreparation: 1` on delivery. Supporting
 hosts emit fenced `session_preparing` receipts while credentials, drive hydration
 and provider initialization are pending. These renew a 90-second preparation lease

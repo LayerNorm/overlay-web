@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Hydrate concurrently updated agent files with bounded revision refreshes and reuse authenticated manifests for unchanged files.
+
 - Show expiry and ongoing cloud machine costs on MCP approval cards, and refuse unanswered approvals after their recorded expiry.
 
 - Settle interrupted tool rows and timers after fenced native recovery, and show the actual running count in collapsed work groups.

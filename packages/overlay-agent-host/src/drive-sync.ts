@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import type { DriveContentResult, DriveManifestEntry, DriveMetadataResult, DriveSavedEntry } from '@layernorm/overlay-agent-bridge-protocol'
+import type { DriveContentResult, DriveManifestEntry, DriveMetadataResult, DriveReadyEntry, DriveSavedEntry } from '@layernorm/overlay-agent-bridge-protocol'
 import { AgentDriveCache, type DriveCacheEntry, type DriveCacheIdentity } from './drive-cache.js'
-import { AgentDriveClient } from './drive-client.js'
+import { AgentDriveClient, DriveRequestError } from './drive-client.js'
 import { SqliteDriveJournal } from './drive-journal.js'
 import { SqliteDriveSyncState, type DriveBaseline, type DriveLocalReference, type DriveSyncOperation } from './drive-sync-state.js'
 import { AgentDriveWriter } from './drive-writer.js'
@@ -334,11 +334,11 @@ export class AgentDriveSynchronizer {
       if (item && (!prior || !sameIdentity(item.identity, prior.identity) || !previous || !sameContent(item, previous.entry))) throw Error('DRIVE_LOCAL_PATH_CONFLICT')
       if (entry.kind === 'folder') await this.options.cache.ensureFolder(path)
       else if (entry.hydration === 'ready') {
-        // Refresh expired run grants only for this exact immutable version.
-        const fresh = (await this.options.client.manifest()).find(item => item.fileId === entry.fileId)
-        if (!fresh || fresh.kind !== 'file' || fresh.hydration !== 'ready' || !sameVersion(fresh, entry)) throw Error('DRIVE_HYDRATION_VERSION_CHANGED')
-        await this.options.cache.hydrate(path, await this.options.client.download(fresh), fresh.sha256)
-        entry = fresh
+        const downloaded = await this.downloadHydration(entry)
+        entry = downloaded.entry
+        const current = (await this.options.cache.inventory()).find(item => item.path === path)
+        if (item && !current || current && (!item || !previous || !sameIdentity(current.identity, item.identity) || !sameContent(current, previous.entry))) throw Error('DRIVE_LOCAL_PATH_CONFLICT')
+        await this.options.cache.hydrate(path, downloaded.bytes, entry.sha256)
       } else throw Error('DRIVE_DEFERRED_LOCAL_CHANGES')
       item = (await this.options.cache.inventory()).find(item => item.path === path)
     }
@@ -347,6 +347,22 @@ export class AgentDriveSynchronizer {
     if (state.phase !== 'hydrating') throw Error('DRIVE_SYNC_STATE_CHANGED')
     this.options.state.write({ phase: 'idle', initialized: state.initialized, turn: state.turn,
       baseline: [...state.baseline.filter(row => row.entry.fileId !== entry.fileId), { entry, local: reference(item) }] })
+  }
+
+  private async downloadHydration(entry: DriveReadyEntry): Promise<{entry: DriveReadyEntry; bytes: Uint8Array}> {
+    for (let attempt = 0; ; attempt++) {
+      try { return {entry, bytes: await this.options.client.download(entry)} }
+      catch (error) {
+        if (!(error instanceof DriveRequestError) || !['DRIVE_SOURCE_CHANGED', 'DRIVE_FILE_UNAVAILABLE'].includes(error.code)) throw error
+        if (attempt >= 2) throw Error('DRIVE_HYDRATION_VERSION_CHANGED')
+        const fresh = (await this.options.client.manifest()).find(item => item.fileId === entry.fileId)
+        if (!fresh || fresh.kind !== 'file' || fresh.hydration !== 'ready' || fresh.path !== entry.path) throw Error('DRIVE_HYDRATION_VERSION_CHANGED')
+        const pending = this.options.state.read()
+        if (pending.phase !== 'hydrating') throw Error('DRIVE_SYNC_STATE_CHANGED')
+        entry = fresh
+        this.options.state.write({...pending, entry})
+      }
+    }
   }
 
   private async normalizeAliases(): Promise<void> {
