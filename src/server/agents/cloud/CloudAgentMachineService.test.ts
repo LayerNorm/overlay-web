@@ -44,7 +44,7 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; activeExecution?: boolean } = {}) {
+function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; activeExecution?: boolean; enrollmentError?: Error } = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
   let removed = false
@@ -62,7 +62,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
     sleep: async () => undefined,
     now: () => 1_000,
     controlPlane: {
-      createEnrollmentSession: async () => ({ code: 'one-time-code', expiresAt: 0, enrollmentSessionId: 'abcdef12-0000' }),
+      createEnrollmentSession: async () => {if (options.enrollmentError) throw options.enrollmentError; return {code: 'one-time-code', expiresAt: 0, enrollmentSessionId: 'abcdef12-0000'}},
       approveEnvironment: async (args: unknown) => { log.push(['approve', args]); return {} as never },
       upsertBinding: async (args: unknown) => { log.push(['bind', args]); return { id: 'binding-1' } as never },
       revokeEnvironment: async (args: unknown) => { log.push(['revoke', args]) },
@@ -389,4 +389,17 @@ test('managed startup propagates lifecycle v2 only after explicit enablement', (
     assert.equal(cloudAgentConnectCommand(input, env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
     assert.equal(cloudAgentRunCommand(env).includes('OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2'), value === '2')
   }
+})
+
+
+test('an enrollment setup failure records a terminal failed phase before any machine is allocated', async () => {
+  const machine = fakeMachine(), failure = Error('Enrollment setup unavailable: private diagnostic')
+  const f = deps(machine.machine, {enrollmentError: failure})
+  await assert.rejects(f.service.provision(provisionArgs), error => error === failure)
+  assert.deepEqual(f.phases.map(row => row.phase), ['allocating', 'failed'])
+  assert.ok(f.phases.at(-1)?.error)
+  assert.doesNotMatch(f.phases.at(-1)?.error ?? '', /private diagnostic/)
+  assert.deepEqual(f.created, [])
+  assert.deepEqual(machine.calls, [])
+  assert.deepEqual(f.log.filter(([kind]) => kind === 'bind' || kind === 'lease' || kind === 'revoke'), [])
 })

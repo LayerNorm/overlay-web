@@ -88,16 +88,16 @@ export class CloudAgentMachineService {
           error: error instanceof Error ? error.message : String(error),
         }))
     await phase('allocating')
-    const runtime = this.runtime()
-    const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
-      actorUserId: args.actorUserId,
-      workspaceId: args.workspaceId,
-    })
-    const name = `overlay-cloud-${enrollment.enrollmentSessionId.slice(0, 8).toLowerCase()}`
-    const resources = CLOUD_AGENT_RESOURCES[args.size]
     let machine: SandboxInstance | null = null
     let environment: AgentEnvironment | null = null
     try {
+      const runtime = this.runtime()
+      const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
+        actorUserId: args.actorUserId,
+        workspaceId: args.workspaceId,
+      })
+      const name = `overlay-cloud-${enrollment.enrollmentSessionId.slice(0, 8).toLowerCase()}`
+      const resources = CLOUD_AGENT_RESOURCES[args.size]
       machine = await runtime.create({
         name,
         snapshotId: this.dependencies.image ?? cloudAgentImageFromEnv(),
