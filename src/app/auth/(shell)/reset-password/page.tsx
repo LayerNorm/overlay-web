@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '../../../control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -134,14 +136,14 @@ function ResetPasswordContent() {
               >
                 New password
               </label>
-              <input
+              <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
-                className={field}
+                className={unstyledInput(field)}
                 placeholder="••••••••"
               />
               <p className={`mt-1.5 text-xs ${muted}`}>
@@ -156,20 +158,20 @@ function ResetPasswordContent() {
               >
                 Confirm new password
               </label>
-              <input
+              <Input
                 id="confirmPassword"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className={field}
+                className={unstyledInput(field)}
                 placeholder="••••••••"
               />
             </div>
 
-            <button type='submit' disabled={loading} className={submit}>
+            <Button variant="ghost" type='submit' disabled={loading} className={unstyledButton(submit)}>
               {loading ? 'Resetting...' : 'Reset password'}
-            </button>
+            </Button>
           </form>
         )}
 

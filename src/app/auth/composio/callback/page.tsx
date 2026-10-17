@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -49,12 +51,12 @@ function CallbackContent() {
             Connected successfully
           </p>
           <p className="text-xs text-[#888] mt-1">Closing in {countdown}…</p>
-          <button
+          <Button variant="ghost"
             onClick={() => window.close()}
-            className="mt-4 text-xs text-[#525252] underline underline-offset-2 hover:text-[#0a0a0a]"
+            className={unstyledButton(`mt-4 text-xs text-[#525252] underline underline-offset-2 hover:text-[#0a0a0a]`)}
           >
             Close now
-          </button>
+          </Button>
         </>
       ) : (
         <>
@@ -67,12 +69,12 @@ function CallbackContent() {
             Connection failed
           </p>
           {error && <p className="text-xs text-[#888] mt-1">{error}</p>}
-          <button
+          <Button variant="ghost"
             onClick={() => window.close()}
-            className="mt-4 text-xs text-[#525252] underline underline-offset-2 hover:text-[#0a0a0a]"
+            className={unstyledButton(`mt-4 text-xs text-[#525252] underline underline-offset-2 hover:text-[#0a0a0a]`)}
           >
             Close
-          </button>
+          </Button>
         </>
       )}
     </div>

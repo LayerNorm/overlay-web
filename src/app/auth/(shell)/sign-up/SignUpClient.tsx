@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '../../../control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -193,34 +195,34 @@ function CheckEmailScreen({
         )}
 
         <form onSubmit={onVerify} className="space-y-4">
-          <input
+          <Input
             type="text"
             aria-label="Verification code"
             value={verificationCode}
             onChange={(e) => onCodeChange(e.target.value)}
             placeholder="Enter 6-digit code"
             maxLength={6}
-            className={`${fieldClass} text-center text-lg font-mono tracking-widest`}
+            className={unstyledInput(`${fieldClass} text-center text-lg font-mono tracking-widest`)}
             ref={codeInputRef}
           />
-          <button
+          <Button variant="ghost"
             type="submit"
             disabled={verifying || verificationCode.length < 6}
-            className={submitClass}
+            className={unstyledButton(submitClass)}
           >
             {verifying ? 'Verifying...' : 'Verify email'}
-          </button>
+          </Button>
         </form>
 
         <div className="mt-4 flex items-center justify-center gap-2 text-sm text-(--muted)">
           <span>Didn&apos;t receive the code?</span>
-          <button
+          <Button variant="ghost"
             onClick={onResend}
             disabled={resending}
-            className="text-(--foreground) hover:underline font-medium disabled:opacity-50"
+            className={unstyledButton(`text-(--foreground) hover:underline font-medium disabled:opacity-50`)}
           >
             {resending ? 'Sending...' : 'Resend'}
-          </button>
+          </Button>
         </div>
 
         <div className="mt-6 pt-4 border-t border-(--border) text-center">
@@ -250,16 +252,16 @@ function SsoProviderButtons({
   return (
     <div className="space-y-3 mb-6">
       {providers.map((provider) => (
-        <button
+        <Button variant="ghost"
           key={provider.id}
           type="button"
           onClick={() => onSelect(provider.id)}
           disabled={ssoLoading !== null}
-          className={ssoClass}
+          className={unstyledButton(ssoClass)}
         >
           <SsoProviderIcon icon={provider.icon} />
           {ssoLoading === provider.id ? 'Redirecting...' : provider.label}
-        </button>
+        </Button>
       ))}
     </div>
   )
@@ -307,12 +309,12 @@ function EmailPasswordSignUpForm({
           <label htmlFor="firstName" className={`block text-sm font-medium mb-2 ${labelClass}`}>
             First name
           </label>
-          <input
+          <Input
             id="firstName"
             type="text"
             value={firstName}
             onChange={(e) => onFirstNameChange(e.target.value)}
-            className={fieldClass}
+            className={unstyledInput(fieldClass)}
             placeholder="John"
           />
         </div>
@@ -320,12 +322,12 @@ function EmailPasswordSignUpForm({
           <label htmlFor="lastName" className={`block text-sm font-medium mb-2 ${labelClass}`}>
             Last name
           </label>
-          <input
+          <Input
             id="lastName"
             type="text"
             value={lastName}
             onChange={(e) => onLastNameChange(e.target.value)}
-            className={fieldClass}
+            className={unstyledInput(fieldClass)}
             placeholder="Doe"
           />
         </div>
@@ -335,13 +337,13 @@ function EmailPasswordSignUpForm({
         <label htmlFor="email" className={`block text-sm font-medium mb-2 ${labelClass}`}>
           Email
         </label>
-        <input
+        <Input
           id="email"
           type="email"
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
           required
-          className={fieldClass}
+          className={unstyledInput(fieldClass)}
           placeholder="you@example.com"
         />
       </div>
@@ -350,13 +352,13 @@ function EmailPasswordSignUpForm({
         <label htmlFor="password" className={`block text-sm font-medium mb-2 ${labelClass}`}>
           Password
         </label>
-        <input
+        <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => onPasswordChange(e.target.value)}
           required
-          className={fieldClass}
+          className={unstyledInput(fieldClass)}
           placeholder="••••••••"
         />
         <p className={`mt-1.5 text-xs ${mutedClass}`}>Must be at least 8 characters</p>
@@ -366,20 +368,20 @@ function EmailPasswordSignUpForm({
         <label htmlFor="confirmPassword" className={`block text-sm font-medium mb-2 ${labelClass}`}>
           Confirm password
         </label>
-        <input
+        <Input
           id="confirmPassword"
           type="password"
           value={confirmPassword}
           onChange={(e) => onConfirmPasswordChange(e.target.value)}
           required
-          className={fieldClass}
+          className={unstyledInput(fieldClass)}
           placeholder="••••••••"
         />
       </div>
 
-      <button type="submit" disabled={loading} className={submitClass}>
+      <Button variant="ghost" type="submit" disabled={loading} className={unstyledButton(submitClass)}>
         {loading ? 'Creating account...' : 'Create account'}
-      </button>
+      </Button>
     </form>
   )
 }

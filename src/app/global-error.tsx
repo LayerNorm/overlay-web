@@ -1,4 +1,6 @@
 "use client";
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
@@ -39,7 +41,7 @@ export default function GlobalError({
         <h1 style={{ fontSize: "1.5rem", fontWeight: 500, marginBottom: "1rem" }}>
           something went wrong
         </h1>
-        <button
+        <Button variant="ghost"
           onClick={reset}
           style={{
             padding: "0.5rem 1.25rem",
@@ -50,9 +52,9 @@ export default function GlobalError({
             fontSize: "0.875rem",
             cursor: "pointer",
           }}
-        >
+         className={unstyledButton()}>
           try again
-        </button>
+        </Button>
       </body>
     </html>
   );

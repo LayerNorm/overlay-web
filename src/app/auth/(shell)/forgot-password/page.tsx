@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '../../../control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -103,20 +105,20 @@ export default function ForgotPasswordPage() {
             <label htmlFor="email" className="block text-sm font-medium mb-2">
               Email
             </label>
-            <input
+            <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className={field}
+              className={unstyledInput(field)}
               placeholder="you@example.com"
             />
           </div>
 
-          <button type='submit' disabled={loading} className={submit}>
+          <Button variant="ghost" type='submit' disabled={loading} className={unstyledButton(submit)}>
             {loading ? 'Sending...' : 'Send reset link'}
-          </button>
+          </Button>
         </form>
 
         <p className={`mt-8 text-center text-sm ${muted}`}>
