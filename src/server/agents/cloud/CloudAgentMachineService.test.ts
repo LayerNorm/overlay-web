@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SandboxCreateRequest, SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { AgentEnvironment, AgentSandboxLease } from '@overlay/workspace-contracts'
+import {ConnectedAgentControlPlaneError} from '../ConnectedAgentControlPlaneService'
 import { CloudAgentMachineService } from './CloudAgentMachineService'
 import { CLOUD_AGENT_WORKSPACE, cloudAgentConnectCommand, cloudAgentRunCommand, cloudAgentStopHostCommand } from './cloud-agent-machine'
 import { CLOUD_AGENT_PREVIEW_ACCESS_PATH } from './cloud-agent-preview-access'
@@ -402,4 +403,15 @@ test('an enrollment setup failure records a terminal failed phase before any mac
   assert.deepEqual(f.created, [])
   assert.deepEqual(machine.calls, [])
   assert.deepEqual(f.log.filter(([kind]) => kind === 'bind' || kind === 'lease' || kind === 'revoke'), [])
+})
+
+
+test('workspace enrollment limits are shown as workspace limits and allocate no provider machine', async () => {
+  const machine = fakeMachine(), failure = new ConnectedAgentControlPlaneError('private diagnostic', 429, 'environment_limit_reached')
+  const f = deps(machine.machine, {enrollmentError: failure})
+  await assert.rejects(f.service.provision(provisionArgs), error => error === failure)
+  assert.deepEqual(f.phases, [{phase: 'allocating'}, {phase: 'failed',
+    error: 'This workspace has reached its connected-environment limit. Remove an unused connection and try again.'}])
+  assert.deepEqual(f.created, [])
+  assert.deepEqual(machine.calls, [])
 })

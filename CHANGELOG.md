@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Name workspace connection limits correctly when cloud-agent enrollment is refused before machine allocation.
+
 - Record cloud-agent setup failures before allocation instead of leaving startup pending indefinitely.
 
 - Renew private Preview hosting access when explicitly restarting a managed agent host.

@@ -1473,7 +1473,9 @@ the capability defaults off. An individual ACP/acpx adapter or manifest entry ma
 Protected Preview explicit machine restart, resume and recovery all renew the one-shot host access file
 before launching the managed host; legacy leases keep their original access path.
 Enrollment setup and provider selection belong to the provisioning failure boundary too: a refusal
-before machine creation records a failed phase instead of leaving allocation pending.
+before machine creation records a failed phase instead of leaving allocation pending. A connected-
+environment limit is a workspace limit, not a provider capacity or credit failure; its startup error
+asks the owner to remove an unused connection before retrying.
 This opt-in is for owned native acceptance before rollout; existing agents and shared machine images
 remain unchanged. It does not enable live interrupted-turn continuation or approval restoration.
 Host admission checks the original native id, adapter, previous execution/boot, next generation,

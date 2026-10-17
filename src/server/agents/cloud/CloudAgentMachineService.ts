@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { AgentBinding, AgentEnvironment, AgentSandboxLease, ComputerSize } from '@overlay/workspace-contracts'
 import type { AuditService } from '@/server/admin'
-import type { ConnectedAgentControlPlaneService } from '../ConnectedAgentControlPlaneService'
+import { ConnectedAgentControlPlaneError, type ConnectedAgentControlPlaneService } from '../ConnectedAgentControlPlaneService'
 import type { ConnectedAgentRepository } from '../ConnectedAgentRepository'
 import type { CloudAgentProvisionRepository } from './CloudAgentProvisionRepository'
 import { prepareCloudAgentPreviewAccess } from './cloud-agent-preview-access'
@@ -557,6 +557,8 @@ export class CloudAgentMachineService {
 /** What a person is told when a machine fails to start: known causes by name, everything else generically. */
 export function provisionFailureMessage(error: unknown): string {
   if (error instanceof CloudAgentMachineError) return error.message
+  if (error instanceof ConnectedAgentControlPlaneError && error.code === 'environment_limit_reached')
+    return 'This workspace has reached its connected-environment limit. Remove an unused connection and try again.'
   const message = error instanceof Error ? error.message : ''
   if (/credit|balance|quota|limit/i.test(message)) return 'The machine provider is out of capacity or credit. Try again later.'
   return 'Could not start the machine. Try again.'
