@@ -1,10 +1,10 @@
 'use client'
-
+import { unstyledButton } from '../../control-reset'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
-import { SidebarShell } from '@overlay/ui/primitives'
+import { SidebarShell, Button } from '@overlay/ui/primitives'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 
 export interface PrimaryRailItem {
@@ -97,15 +97,15 @@ function RailButton({
   }
 
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onSelect}
       disabled={disabled}
       aria-label={disabled ? `${label} (coming soon)` : label}
       {...sharedProps}
-    >
+     className={unstyledButton()}>
       {content}
-    </button>
+    </Button>
   )
 }
 

@@ -1,8 +1,8 @@
 'use client'
-
+import { unstyledButton } from '../control-reset'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Toaster, toast } from '@overlay/ui/primitives'
+import { Toaster, toast, Button } from '@overlay/ui/primitives'
 import { ARCHIVE_TOAST_EVENT, ARCHIVED_SETTINGS_HREF, type ArchiveToastDetail } from '@/shared/app/archive-toast'
 
 const VISIBLE_MS = 8000
@@ -32,9 +32,9 @@ function ArchiveToastContent({ detail, dismiss }: { detail: ArchiveToastDetail; 
         {failed ? 'Could not undo that.' : (detail.summary ?? `Archived “${detail.name}”`)}
       </span>
       {detail.undo && !failed ? (
-        <button type="button" disabled={busy} onClick={() => void undo()} className="shrink-0 font-medium underline-offset-2 hover:underline disabled:opacity-50">
+        <Button variant="ghost" type="button" disabled={busy} onClick={() => void undo()} className={unstyledButton("shrink-0 font-medium underline-offset-2 hover:underline disabled:opacity-50")}>
           Undo
-        </button>
+        </Button>
       ) : null}
       <Link href={ARCHIVED_SETTINGS_HREF} onClick={dismiss} className="shrink-0 text-(--muted) underline-offset-2 hover:text-(--foreground) hover:underline">
         View archived
