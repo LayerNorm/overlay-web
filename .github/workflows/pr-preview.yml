@@ -1,9 +1,6 @@
 name: PR Preview
 
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, reopened, synchronize, closed, ready_for_review, edited, labeled, unlabeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -18,7 +15,7 @@ permissions:
 
 jobs:
   inventory:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: release-control
     outputs:
@@ -36,15 +33,12 @@ jobs:
           CONVEX_PREVIEW_CONTROL_KEY: ${{ secrets.CONVEX_PREVIEW_CONTROL_KEY }}
 
   preview:
-    if: >-
-      github.event_name != 'schedule' &&
-      (github.event_name == 'workflow_dispatch' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: release-control
     timeout-minutes: 40
     concurrency:
-      group: pr-preview-${{ github.event.pull_request.number || inputs.pr_number }}
+      group: pr-preview-${{ inputs.pr_number }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -63,7 +57,7 @@ jobs:
 
   reconcile:
     needs: inventory
-    if: github.event_name == 'schedule' && needs.inventory.outputs.numbers != '[]'
+    if: github.event_name == 'schedule' && github.ref == 'refs/heads/main' && needs.inventory.outputs.numbers != '[]'
     runs-on: ubuntu-latest
     environment: release-control
     timeout-minutes: 40

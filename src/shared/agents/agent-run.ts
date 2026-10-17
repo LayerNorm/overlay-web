@@ -1,3 +1,5 @@
+import type { RemoteRunState } from './remote-run'
+
 /**
  * `room` is a workspace-agent turn in a DM or channel. It is a distinct mode
  * from `chat`/`work` because the author is an agent principal rather than the
@@ -70,6 +72,8 @@ export type AgentRunMetrics = {
 }
 
 export type AgentRun = {
+  /** Only remote runs select the versioned lifecycle; personal Work mode is unchanged. */
+  remoteLifecycle?: RemoteRunState
   id: string
   conversationId: string
   turnId: string

@@ -12,6 +12,7 @@ import { saveStoredConnection, type StoredAgentConnection } from './connection.j
 import { loadOrCreateDeviceKeyPair } from './device-key.js'
 
 export type ConnectAgentHostOptions = {
+  durableLifecycle?: boolean
   code: string
   serverUrl: string
   stateDirectory?: string
@@ -30,9 +31,15 @@ export async function connectAgentHost(options: ConnectAgentHostOptions): Promis
   const keys = await loadOrCreateDeviceKeyPair(stateDirectory)
   const capabilities: HostCapabilities = {
     protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
-    hostVersion: '0.0.1',
+    ...(options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
+    hostVersion: '0.3.11',
     platform: `${platform()} ${release()}`,
-    adapters: options.adapters ?? [],
+    adapters: (options.adapters ?? []).map(capability => {
+      if (options.durableLifecycle) return capability
+      const { recovery, ...legacy } = capability
+      void recovery
+      return legacy
+    }),
     filesystem: { mode: 'all_user_files' },
     maxConcurrentRuns: 1,
   }
