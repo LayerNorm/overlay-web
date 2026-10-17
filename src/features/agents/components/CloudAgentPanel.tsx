@@ -119,7 +119,11 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
 
   const retry = async () => {
     const adapterId = status?.machine?.adapterId ?? status?.adapterId
-    if (!workspaceId || !status?.account || (!adapterId || !(AGENT_PROVIDER_IDS as readonly string[]).includes(adapterId)) || busy) return
+    if (!workspaceId || busy) return
+    if (!status?.account || !adapterId || !(AGENT_PROVIDER_IDS as readonly string[]).includes(adapterId)) {
+      setActionError('Reconnect this agent’s account before starting a new machine.')
+      return
+    }
     setBusy('retry')
     setActionError(null)
     try {
@@ -157,7 +161,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
 
   const openReconnect = async () => {
     // Only the account's owner can reconnect it; for anyone else the list will not contain it.
-    const accounts = await overlayAppClient.providerAccounts.list({ cache: 'no-store' }).catch((_error) => null)
+    const accounts = await overlayAppClient.providerAccounts.list({ cache: 'no-store' }).catch(() => null)
     const account = accounts?.data.find((candidate) => candidate.id === status?.account?.id)
     if (account) setReconnect(account)
     else setActionError('Only the person who connected this account can reconnect it.')
@@ -170,7 +174,7 @@ export function CloudAgentPanel({ agentId }: { agentId: string }) {
   }
 
   const phase = status.provision?.phase
-  const adapterLabel = status.machine?.adapterId === 'codex' ? OTHER_AGENT_LABEL.codex : OTHER_AGENT_LABEL['claude-code']
+  const adapterLabel = (status.machine?.adapterId ?? status.adapterId) === 'codex' ? OTHER_AGENT_LABEL.codex : OTHER_AGENT_LABEL['claude-code']
 
   return (
     <div className="space-y-3">

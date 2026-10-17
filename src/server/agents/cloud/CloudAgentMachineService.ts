@@ -180,12 +180,13 @@ export class CloudAgentMachineService {
       this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId }),
     ])
     const found = await this.cloudBinding(args.workspaceId, bindings)
+    const setup = found ? this.bindingSetup(found.binding) : await this.priorCloudSetup(args.workspaceId, bindings)
     const lease = found ? await this.dependencies.repository.getActiveSandboxLease({
       workspaceId: args.workspaceId, environmentId: found.environment.id,
     }) : null
     const machine = lease ? await this.readMachine(lease) : null
-    const ownerUserId = typeof found?.binding.adapterConfig.providerAccountOwnerUserId === 'string' ? found.binding.adapterConfig.providerAccountOwnerUserId : ''
-    const accountId = typeof found?.binding.adapterConfig.providerAccountId === 'string' ? found.binding.adapterConfig.providerAccountId : ''
+    const ownerUserId = setup?.ownerUserId ?? ''
+    const accountId = setup?.accountId ?? ''
     const account = ownerUserId && accountId && this.dependencies.accountSummary
       ? await this.dependencies.accountSummary(ownerUserId, accountId).catch((_error) => null)
       : null
@@ -198,8 +199,7 @@ export class CloudAgentMachineService {
       machine,
       account,
     }
-    const configuredAdapter = found?.binding.adapterConfig.adapterId
-    const adapterId = typeof configuredAdapter === 'string' && configuredAdapter ? configuredAdapter : (found?.binding as { adapterId?: string } | undefined)?.adapterId
+    const adapterId = setup?.adapterId
     return { agentId: args.agentId, ...(adapterId ? { adapterId } : {}), ...parts, state: deriveCloudAgentState({
       ...parts,
       // A host is "online" only while it keeps checking in.
@@ -343,6 +343,26 @@ export class CloudAgentMachineService {
     for (const binding of bindings.filter((candidate) => candidate.enabled)) {
       const environment = await this.dependencies.repository.getEnvironment({ workspaceId, environmentId: binding.environmentId })
       if (environment?.kind === 'overlay_cloud' && environment.status !== 'revoked') return { binding, environment }
+    }
+    return null
+  }
+
+  private bindingSetup(binding: AgentBinding) {
+    const configuredAdapter = binding.adapterConfig.adapterId
+    const legacyAdapter = 'adapterId' in binding ? binding.adapterId : undefined
+    return {
+      adapterId: typeof configuredAdapter === 'string' && configuredAdapter ? configuredAdapter
+        : typeof legacyAdapter === 'string' ? legacyAdapter : undefined,
+      ownerUserId: typeof binding.adapterConfig.providerAccountOwnerUserId === 'string' ? binding.adapterConfig.providerAccountOwnerUserId : '',
+      accountId: typeof binding.adapterConfig.providerAccountId === 'string' ? binding.adapterConfig.providerAccountId : '',
+    }
+  }
+
+  /** Retained setup can recreate a machine; it never supplies an active environment or lease. */
+  private async priorCloudSetup(workspaceId: string, bindings: AgentBinding[]) {
+    for (const binding of bindings) {
+      const environment = await this.dependencies.repository.getEnvironment({workspaceId, environmentId: binding.environmentId})
+      if (environment?.workspaceId === workspaceId && environment.kind === 'overlay_cloud') return this.bindingSetup(binding)
     }
     return null
   }

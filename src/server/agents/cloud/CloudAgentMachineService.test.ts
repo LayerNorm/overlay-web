@@ -45,7 +45,7 @@ const environment = (overrides: Partial<AgentEnvironment> = {}): AgentEnvironmen
   capabilities: {}, createdAt: 0, updatedAt: 0, ...overrides,
 })
 
-function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; activeExecution?: boolean; enrollmentError?: Error } = {}) {
+function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: AgentSandboxLease | null; env?: AgentEnvironment; bound?: boolean; disabled?: boolean; activeExecution?: boolean; enrollmentError?: Error } = {}) {
   const log: Array<[string, unknown]> = []
   const phases: Array<{ phase: string; error?: string }> = []
   let removed = false
@@ -53,6 +53,10 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
   const service = new CloudAgentMachineService({
     audit: { record: async () => undefined } as never,
     image: 'overlay-agent-v5',
+    accountSummary: async (userId, accountId) => {
+      log.push(['account-read', {userId, accountId}])
+      return {id: accountId, label: 'Existing subscription', provider: 'claude-code', method: 'subscription', status: 'active'}
+    },
     provisions: {
       get: async () => null,
       begin: async () => ({ started: true, phase: 'queued' }),
@@ -82,7 +86,7 @@ function deps(machine: SandboxInstance, options: { enrolled?: boolean; lease?: A
       },
       patchSandboxLeaseUsage: async (args: unknown) => { log.push(['patch', args]); return null },
       listBindings: async () => (options.bound === false ? [] : [{
-        id: 'binding-1', workspaceId: 'ws', agentId: 'agent-1', environmentId: 'env-1', adapterId: 'claude-code', enabled: true,
+        id: 'binding-1', workspaceId: 'ws', agentId: 'agent-1', environmentId: 'env-1', adapterId: 'claude-code', enabled: !options.disabled,
         adapterConfig: { providerAccountId: 'account-1', providerAccountOwnerUserId: 'user' },
       } as never]),
     },
@@ -358,6 +362,30 @@ test('reviving never touches an agent whose machine exists', async () => {
   assert.equal(await service.reviveIfMachineGone({ actorUserId: 'user', workspaceId: 'ws', agentId: 'agent-1' }), false)
   assert.equal(log.some(([name]) => name === 'revoke'), false)
   assert.equal(wasRemoved(), false)
+})
+
+test('a deleted cloud machine retains its prior account and adapter as setup, without restoring execution authority', async () => {
+  const {machine, calls} = fakeMachine()
+  const {service, log} = deps(machine, {disabled: true, env: environment({status: 'revoked'}), lease: null})
+  const status = await service.status({workspaceId: 'ws', agentId: 'agent-1'})
+  assert.equal(status.state, 'unavailable')
+  assert.equal(status.environment, null)
+  assert.equal(status.machine, null)
+  assert.equal(status.adapterId, 'claude-code')
+  assert.deepEqual(status.account, {id: 'account-1', label: 'Existing subscription', provider: 'claude-code', method: 'subscription', status: 'active'})
+  await assert.rejects(service.control({workspaceId: 'ws', agentId: 'agent-1', action: 'resume'}), /no Overlay Cloud machine/)
+  assert.equal(log.some(([name]) => name === 'lease-read'), false)
+  assert.deepEqual(calls, [])
+})
+
+test('prior machine setup ignores local and foreign-workspace environments', async () => {
+  for (const env of [environment({kind: 'local'}), environment({workspaceId: 'another-workspace'})]) {
+    const {service, log} = deps(fakeMachine().machine, {disabled: true, env, lease: null})
+    const status = await service.status({workspaceId: 'ws', agentId: 'agent-1'})
+    assert.equal(status.account, null)
+    assert.equal(status.adapterId, undefined)
+    assert.equal(log.some(([name]) => name === 'account-read'), false)
+  }
 })
 
 test('wake never replaces a stale bridge while an observed execution may still own external writes', async () => {

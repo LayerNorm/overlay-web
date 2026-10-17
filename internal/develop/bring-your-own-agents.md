@@ -589,9 +589,14 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   the machine (`CloudAgentMachineService.status/control/teardown`). The new-agent dialog and the
   agent page's Machine section are its only clients; a cloud agent's binding is never rewritten
   by the agent editor's save (it would drop the account). Paid plans only.
+  After machine deletion, status retains the last cloud adapter and account summary as setup
+  metadata so Start a new machine can submit a normal provisioning request. Revoked environments
+  and disabled bindings do not regain execution authority; local and foreign-workspace setup is
+  excluded. Missing setup produces a visible retry error instead of a no-op.
 - **Provider accounts.** An Overlay Cloud agent runs on one of its creator's own accounts
   (Settings → Agent accounts): a `claude setup-token` token or Anthropic API key for Claude Code,
-  an OpenAI API key for Codex. The secret goes to the credential vault (`ByokCredentialStore`:
+  a ChatGPT subscription or OpenAI API key for Codex. Codex subscription delivery follows
+  [`codex-subscription.md`](./codex-subscription.md). The secret goes to the credential vault (`ByokCredentialStore`:
   WorkOS Vault, or AWS Secrets Manager when configured); Convex keeps `agentProviderAccounts`
   metadata and the opaque vault reference, which no API response includes. A binding records the
   account and the user who chose it (`adapterConfig.providerAccountId`/`providerAccountOwnerUserId`).
