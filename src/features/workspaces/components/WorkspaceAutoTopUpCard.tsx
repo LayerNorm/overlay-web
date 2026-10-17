@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from './control-reset'
+
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button, Select } from '@overlay/ui/primitives'
@@ -73,7 +75,7 @@ export function WorkspaceAutoTopUpCard({
             <p className="text-[11px] leading-4 text-(--muted-light)">
               {enabled ? 'Saving lets Overlay charge the card on file for each top-up, never past your monthly limit.' : ''}
             </p>
-            <Button
+            <Button variant="ghost"
               size="sm"
               disabled={!dirty || busy}
               onClick={() => onSave({ enabled, amountCents, monthlyLimitCents: effectiveLimit })}
@@ -89,12 +91,12 @@ export function WorkspaceAutoTopUpCard({
 
 function Option({ checked, onSelect, title, text }: { checked: boolean; onSelect: () => void; title: string; text: string }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       role="radio"
       aria-checked={checked}
       onClick={onSelect}
-      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${checked ? 'border-(--foreground)' : 'border-(--border) hover:border-(--muted-light)'}`}
+      className={unstyledButton(`flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${checked ? 'border-(--foreground)' : 'border-(--border) hover:border-(--muted-light)'}`)}
     >
       <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${checked ? 'border-(--foreground)' : 'border-(--border)'}`}>
         {checked ? <span className="h-2 w-2 rounded-full bg-(--foreground)" /> : null}
@@ -103,6 +105,6 @@ function Option({ checked, onSelect, title, text }: { checked: boolean; onSelect
         <span className="block text-sm text-(--foreground)">{title}</span>
         <span className="block text-xs leading-5 text-(--muted)">{text}</span>
       </span>
-    </button>
+    </Button>
   )
 }
