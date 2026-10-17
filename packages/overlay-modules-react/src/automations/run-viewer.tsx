@@ -301,6 +301,7 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
           </span>
           {snapshot && <span>Run: {snapshot.runStatus}</span>}
         </div>
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native range input preserves slider semantics, keyboard behavior, and accessibility. */}
         <input
           type="range"
           aria-label="Event timeline"
