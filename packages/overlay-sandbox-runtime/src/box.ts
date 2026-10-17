@@ -110,6 +110,8 @@ function sandboxFromEnvelope(envelope: SandboxEnvelope): BoxInfo | undefined {
 export type BoxSandboxRuntimeOptions = {
   apiKey?: string
   baseUrl?: string
+  /** Named Boat environment; isolates Preview from production resources. */
+  environment?: string
   fetch?: BoxFetch
 }
 
@@ -118,6 +120,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
   readonly capabilities = CAPABILITIES
   private readonly apiKey: string
   private readonly baseUrl: string
+  private readonly environment: string | undefined
   private readonly fetch: BoxFetch
 
   constructor(options: BoxSandboxRuntimeOptions = {}) {
@@ -125,6 +128,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     if (!apiKey) throw new Error('BOAT_API_KEY (or legacy BOX_API_KEY) is not configured')
     this.apiKey = apiKey
     this.baseUrl = (options.baseUrl ?? process.env.BOAT_API_BASE_URL?.trim() ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    this.environment = options.environment?.trim() || process.env.BOAT_ENVIRONMENT?.trim() || undefined
     this.fetch = options.fetch ?? (async (input, init) => {
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
       const response = await fetch(input, init)
@@ -181,6 +185,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
         ttlSeconds: request.hardTimeoutMs > 0 ? Math.ceil(request.hardTimeoutMs / 1000) : null,
         env: request.environment,
         noEnv: true,
+        ...(this.environment ? { environment: this.environment } : {}),
         from: request.snapshotId,
       },
     })

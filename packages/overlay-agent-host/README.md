@@ -144,3 +144,13 @@ sandbox.
 Native adapters such as OpenClaw are added only when the harness cannot expose ACP and only after
 the unchanged Agent Host conformance suite passes. Hermes uses its official ACP server. MCP remains
 a tool/resource protocol; it is not used as the execution lifecycle transport.
+
+### Durable lifecycle extension
+
+Candidate 0.3.11 can opt in with `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2`
+against a server that supports the same negotiated extension. Keep this unset
+against older servers. Live reattachment, session loading, interrupted-turn
+continuation, approval restoration and provider checkpoints are separate
+capabilities. ACP/acpx session history alone cannot restore an interrupted turn.
+Unknown/orphaned execution needs inspection before another writer can start.
+Upgrade only idle/drained hosts; do not restart active non-restorable work.

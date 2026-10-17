@@ -91,6 +91,7 @@ export class AcpxAgentAdapter implements AgentAdapter {
     this.capability = {
       id: options.id, displayName: options.displayName, protocol: 'acp' as const,
       supports: { prompt: true, approval: true, cancel: true, resume: true },
+      recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: false, approvalRestoration: false, providerCheckpoints: false },
     }
     this.registry = createAgentRegistry(options.registryOverrides ? { overrides: options.registryOverrides } : {})
   }
@@ -231,7 +232,10 @@ export class AcpxAgentAdapter implements AgentAdapter {
         if (activeTurn) await activeTurn.cancel({ reason: reason ?? 'cancelled from Overlay' })
         else await runtime.cancel({ handle, reason: reason ?? 'cancelled from Overlay' })
       },
-      resume: async () => undefined,
+      observe: async () => activeTurn ? 'live' : 'unknown',
+      resume: async () => {
+        if (!activeTurn) throw new Error('acpx session loading does not restore an interrupted turn; inspect the previous process before continuing')
+      },
       stop: async (reason) => {
         for (const pending of permissions.values()) pending.response.resolve({ outcome: 'cancel' })
         for (const pending of elicitations.values()) pending.response.resolve({ action: 'cancel' })

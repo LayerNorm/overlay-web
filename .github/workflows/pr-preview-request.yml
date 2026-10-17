@@ -1,0 +1,34 @@
+name: PR Preview Request
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, closed, ready_for_review, edited, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  request:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Request main-only preview reconciliation
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const pull = context.payload.pull_request;
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            if (pull?.head?.repo?.full_name !== repository ||
+                pull?.base?.repo?.full_name !== repository || pull.base.ref !== 'main' ||
+                !Number.isSafeInteger(pull.number) || pull.number <= 0) {
+              core.setFailed('Invalid internal main PR.');
+              return;
+            }
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo,
+              workflow_id: 'pr-preview.yml',
+              ref: 'main',
+              inputs: { pr_number: String(pull.number) },
+            });
