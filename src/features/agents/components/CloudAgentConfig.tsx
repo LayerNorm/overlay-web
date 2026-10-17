@@ -169,6 +169,7 @@ export function CloudAgentConfig({ agentId, harness }: { agentId: string; harnes
               <Button variant="secondary" size="sm" className="w-full" disabled={busy !== null} onClick={() => folderRef.current?.click()}>
                 <FolderUp size={13} />{busy === 'upload' ? 'Uploading…' : 'Upload folder'}
               </Button>
+              {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native directory picker provides webkitdirectory folder selection and FileList. */}
               <input
                 ref={folderRef} type="file" className="hidden" multiple aria-label="Choose a config folder"
                 {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
