@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import type { ReactNode } from 'react'
 import { useState, useRef, useEffect } from 'react'
@@ -11,9 +13,6 @@ import {
   FileJson,
   Check,
   Share2,
-  Lock,
-  Globe,
-  Loader2,
 } from 'lucide-react'
 import { useExport, type ExportFormat } from '@/features/files/hooks/useExport'
 import type {
@@ -160,10 +159,10 @@ function ExportMenuDropdown({
 }: ExportMenuDropdownProps) {
   return (
     <div className="overlay-pop-in absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onCopy}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors`)}
       >
         {copied ? (
           <>
@@ -176,32 +175,32 @@ function ExportMenuDropdown({
             <span>Copy as Markdown</span>
           </>
         )}
-      </button>
+      </Button>
 
       <div className="my-1 border-t border-(--border)" />
 
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onToggleExportSubmenu}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors`)}
       >
         <FileDown size={14} />
         <span>Export as...</span>
-      </button>
+      </Button>
 
       {showExportSubmenu && (
         <div className="border-t border-(--border) bg-(--surface-subtle) py-1">
           {EXPORT_OPTIONS.map(({ format, label, icon: Icon }) => (
-            <button
+            <Button variant="ghost"
               key={format}
               type="button"
               onClick={() => onExport(format)}
               disabled={isExporting}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50"
+              className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50`)}
             >
               <Icon size={14} />
               <span>{label}</span>
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -209,17 +208,17 @@ function ExportMenuDropdown({
       {canShare && (
         <>
           <div className="my-1 border-t border-(--border)" />
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onToggleShareSubmenu}
-            className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors"
+            className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors`)}
           >
             <Share2 size={14} />
             <span>Share</span>
             {shareVisibility === 'public' && (
               <span className="ml-auto text-[10px] font-medium text-emerald-500">On</span>
             )}
-          </button>
+          </Button>
           {showShareSubmenu && (
             <ShareVisibilitySubmenu
               shareVisibility={shareVisibility}
@@ -313,18 +312,18 @@ export function ExportMenu({
 
   return (
     <div ref={menuRef} className={`relative ${className}`}>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => setShowMenu(!showMenu)}
         disabled={isExporting}
         // Rests transparent like the sibling header actions (delete, assistant) and
         // only fills on hover. A resting background made this one button read as
         // selected next to them.
-        className="inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
+        className={unstyledButton(`inline-flex h-8 min-h-8 w-8 items-center justify-center rounded-md text-(--muted) transition-[color,background-color,transform] duration-200 hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`)}
         aria-label="Export options"
       >
         <MoreVertical size={16} strokeWidth={1.75} />
-      </button>
+      </Button>
 
       {showMenu && (
         <ExportMenuDropdown

@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useLayoutEffect, useState } from 'react'
 import { X } from 'lucide-react'
@@ -37,14 +39,14 @@ export function SignInCornerPopover({ onDismiss, isClosing = false, ssoEnabled =
           <OverlayMark size={16} label="" />
           <p className="text-sm font-medium text-(--foreground)">Sign in or create an account</p>
         </div>
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="mt-0.5 shrink-0 text-(--muted) transition-colors hover:text-(--foreground)"
+          className={unstyledButton(`mt-0.5 shrink-0 text-(--muted) transition-colors hover:text-(--foreground)`)}
         >
           <X size={15} />
-        </button>
+        </Button>
       </div>
       <p className="px-5 pb-3 text-xs text-(--muted)">
         Save your chats, notes, and knowledge across sessions.
