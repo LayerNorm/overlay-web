@@ -41,7 +41,7 @@ export class CloudAgentMachineError extends Error {
 type ControlPlane = Pick<ConnectedAgentControlPlaneService,
   'createEnrollmentSession' | 'approveEnvironment' | 'upsertBinding' | 'revokeEnvironment' | 'sweepRemoteRuns'>
 type Repository = Pick<ConnectedAgentRepository,
-  'listEnvironments' | 'getEnvironment' | 'createSandboxLease' | 'getActiveSandboxLease' | 'patchSandboxLeaseUsage' | 'listBindings'>
+  'environmentHasActiveExecution' | 'listEnvironments' | 'getEnvironment' | 'createSandboxLease' | 'getActiveSandboxLease' | 'patchSandboxLeaseUsage' | 'listBindings'>
 
 /** The account an agent runs on, as the person sees it. */
 export type CloudAgentAccountSummary = { id: string; label: string; provider: string; method: string; status: 'active' | 'needs_reauth' }
@@ -383,6 +383,11 @@ export class CloudAgentMachineService {
     const machine = await runtime.reconnect(lease.providerReference, { resume: false })
     const status = await machine.status()
     if (status === 'running' && await this.hostIsOnline(args)) return 'running'
+    if (status === 'running' && await this.dependencies.repository.environmentHasActiveExecution?.({ environmentId: args.environmentId })) {
+      // A stale heartbeat does not prove its child stopped. Do not restart a bridge
+      // and destroy a live, non-restorable approval promise while trying to wake it.
+      return 'unavailable'
+    }
     if (status !== 'running') await machine.resume()
     await this.runDetached(machine, cloudAgentStopHostCommand())
     await this.runDetached(machine, cloudAgentRunCommand())
@@ -394,6 +399,16 @@ export class CloudAgentMachineService {
       idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
     })
     return status === 'running' ? 'running' : 'resumed'
+  }
+
+  /** Stop a machine without waking it; only a provider state readback proves isolation. */
+  async stopExecution(args: { workspaceId: string; environmentId: string }): Promise<boolean> {
+    const lease = await this.dependencies.repository.getActiveSandboxLease(args)
+    if (!lease?.providerReference) return false
+    const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, { resume: false })
+    if (await machine.status() === 'running') await machine.stop()
+    const state = await machine.status()
+    return state === 'stopped' || state === 'deleted'
   }
 
   private async hostIsOnline(args: { workspaceId: string; environmentId: string }) {

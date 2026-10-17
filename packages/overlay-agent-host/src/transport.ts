@@ -26,7 +26,7 @@ export class ControlPlaneRequestError extends Error {
 }
 
 export interface AgentControlPlaneClient {
-  pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number }>
+  pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number; resolvedThroughSequence?: number }>
   acknowledgeCommand(acknowledgement: CommandAcknowledgement): Promise<void>
   uploadEvents(batch: EventBatch): Promise<EventAcknowledgement>
   heartbeat?(): Promise<void>
@@ -66,13 +66,17 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     this.credentialExpiresAt = options.credentialExpiresAt
   }
 
-  async pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number }> {
+  async pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<{ commands: AgentHostCommand[]; retryAfterMs?: number; resolvedThroughSequence?: number }> {
     const url = new URL('commands', withSlash(this.options.baseUrl))
     url.searchParams.set('environmentId', this.options.environmentId)
     url.searchParams.set('waitMs', String(Math.min(Math.max(args.waitMs, 0), 30_000)))
     const response = await this.request(url, { method: 'GET', signal: args.signal })
     const parsed = commandPollResponseSchema.parse(await response.json())
-    return { commands: parsed.commands, ...(parsed.retryAfterMs === undefined ? {} : { retryAfterMs: parsed.retryAfterMs }) }
+    return {
+      commands: parsed.commands,
+      ...(parsed.retryAfterMs === undefined ? {} : { retryAfterMs: parsed.retryAfterMs }),
+      ...(parsed.resolvedThroughSequence === undefined ? {} : { resolvedThroughSequence: parsed.resolvedThroughSequence }),
+    }
   }
 
   async acknowledgeCommand(acknowledgement: CommandAcknowledgement): Promise<void> {

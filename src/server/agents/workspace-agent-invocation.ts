@@ -39,6 +39,7 @@ import type { AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import type { AgentMcpToolGrant } from '@/server/agents/agent-mcp-tools'
 import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/agent-mcp-token'
 import { getAgentFacingBaseUrl } from '@/server/web/app-url'
+import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
 import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
 
 /**
@@ -631,6 +632,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
       })
     }
     const started = await server.appData.repositories.connectedAgents.startRemoteAgentTurn({
+      ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? { lifecycleVersion: 2 as const } : {}),
       actorUserId: args.actorUserId,
       agentId: args.invocation.agentId,
       authorPrincipalId: args.invocation.agentPrincipalId,
@@ -703,11 +705,13 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         sandboxReservationId: sandboxBilling?.reservationId,
         eventCursor: 0,
       },
-    })
+    }).catch((error) => logger.warn('[remote-agent-run] dispatch audit deferred', { runId: started.runId, error }))
+    // Best-effort acceleration only; the transactional intent and reconciliation own delivery.
+    await ensureRemoteRunCoordinator(started.runId).catch((error) => logger.warn('[remote-agent-run] start deferred', { runId: started.runId, error }))
     // Every Overlay Cloud turn checks its machine: an idle-stopped machine can
     // still read online for a heartbeat window. wake() is a no-op when the
     // machine is running with a live host.
-    if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
+    if (started.lifecycleVersion !== 2 && args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
       wakeCloudAgentAfterResponse({ workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId })
     }
     return started

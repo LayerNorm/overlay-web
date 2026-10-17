@@ -1,7 +1,7 @@
 import { Client, isCurrentTurnBoundaryEvent, type ClientSession, type InputRequest, type InputResponse, type MessageResponse, type MessageStreamEvent } from 'eve/client'
 import type { AgentAdapter, AgentAdapterSession, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 
-type EveSessionLike = Pick<ClientSession, 'state' | 'send' | 'respond' | 'cancel' | 'stream'>
+type EveSessionLike = Pick<ClientSession, 'state' | 'send' | 'respond' | 'cancel' | 'stream'> & Partial<Pick<ClientSession, 'snapshot'>>
 type EveResponseLike = Pick<MessageResponse, 'cancel'> & AsyncIterable<MessageStreamEvent>
 type EveClientLike = {
   sessions: {
@@ -62,6 +62,7 @@ export class EveAgentAdapter implements AgentAdapter {
       displayName: options.displayName ?? 'Eve agent',
       protocol: 'eve' as const,
       version: '0.44.4',
+      recovery: { liveReattachment: true, sessionLoading: true, interruptedTurnContinuation: true, approvalRestoration: true, providerCheckpoints: true },
       supports: { prompt: true, approval: true, cancel: true, resume: true },
     }
     this.createClient = options.clientFactory ?? (() => new Client({
@@ -158,6 +159,13 @@ export class EveAgentAdapter implements AgentAdapter {
       cancel: async () => {
         if (activeResponse) await activeResponse.cancel()
         else await session.cancel()
+      },
+      observe: async () => {
+        if (!session.snapshot) return 'unknown'
+        // A finite authenticated read proves the exact native session/cursor exists.
+        // It cannot dispatch model or tool work, and does not advance this stream handle.
+        const observed = await session.snapshot()
+        return observed.session.sessionId === session.state.sessionId ? 'live' : 'unknown'
       },
       resume: async () => { await consume(session.stream()) },
       stop: async () => {
