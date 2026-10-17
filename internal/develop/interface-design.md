@@ -63,6 +63,9 @@ Connected-agent drive status sits below the answer without modifying provider Ma
 and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
 Files links, with a link to Files for larger results. Folders navigate by folder id; files open by
 file id using the current workspace route. Successful turn completion waits for the final save.
+Provider Markdown links resolve relative or Cloud Drive paths only when they exactly match
+one saved entry. Render the canonical Files URL without rewriting provider text; preserve
+ordinary external links, and leave unknown, ambiguous or traversing paths unresolved.
 Only canonical `kind: note` records open in the Notes editor. Text/Markdown uploads
 retain their file identity and open in the file viewer; MIME type and extension do
 not turn them into notes. The file detail adapter requests `fullText: true` so the

@@ -1350,6 +1350,9 @@ one-million-unit sample; blocked/full storage stops recording and shows an error
 Missing terminal markers, hidden tabs, reloads, clock uncertainty and observation gaps
 must remain in the analysis. DOM/layout timestamps do not establish pixel-paint timing,
 and recording/export alone does not prove the latency acceptance threshold.
+For transient Markdown syntax, the smoke frame-index helper verifies a complete recorded
+hash against the actual renderer before crediting its unchanged canonical prefix; unknown
+frames and missing source observations remain uncredited. Keep visibility and clock bounds.
 Use one foreground conversation at a time when in-app tabs can become hidden; inspecting
 a tab may activate it, so visibility spot checks cannot prove continuous coverage.
 
@@ -1445,6 +1448,9 @@ forwarding completion. A final write failure emits an unsaved summary and a fail
 forwards cancellation before draining an existing write and preserves the pending journal. Saved
 summaries carry bounded Files links separately from provider text. Hosted acceptance remains required
 before enabling the feature.
+Provider Markdown paths resolve only against those saved entries, using the current workspace's
+file/folder id routes. Relative and Cloud Drive paths are supported without rewriting source text;
+unknown, ambiguous, external and traversing paths receive no filesystem lookup or additional access.
 Native terminal intent stops provider-health probes before the host drains pending text and files;
 an already-running probe must recheck that boundary before reporting loss. Final saving uses the
 execution-fenced `finalizing` phase with a fixed five-minute limit capped by the original task deadline.

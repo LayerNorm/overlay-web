@@ -9,6 +9,14 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Current-candidate Codex completes the full native forced-recovery run, with exact final files,
+  preserved baseline bytes, drained native processes and complete visible timing coverage below
+  the target. Renderer-backed frame verification accounts for transient Markdown only after
+  matching the complete recorded hash; the original analysis is retained. Fresh-machine final
+  hydration and Claude's current-candidate repeat remain open. Clicking the provider's relative
+  deliverable link reproduced a 404; a scoped render-only saved-entry resolver now has local
+  regression coverage and requires hosted acceptance.
+
 - The next native Codex run passes a single forced-recovery admission on an upgraded idle host, retaining the original assistant/native session, exact pre-stop file hashes and completed work on a new OS boot. Its larger uninterrupted timing sample still exceeds the target. A local follow-up projects the current payer's plan with the existing session read, preserving access, wallet, downgrade and legacy-initialization behavior while removing repeated full billing lookups from uploads. Hosted timing and completed native acceptance remain pending.
 
 - Managed recovery now has an explicit startup rollout switch for the validated acpx Claude Code and Codex launchers, gated by lifecycle v2. Unset retains private opt-ins; explicit off overrides them on the next host boot. Experimental adapters stay excluded. The switch remains disabled pending rebuilt-image native acceptance and release review.

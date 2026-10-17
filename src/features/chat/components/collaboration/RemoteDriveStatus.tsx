@@ -1,9 +1,22 @@
 'use client'
 
 import { ChevronRight, FileText, Folder } from 'lucide-react'
+import { useMemo } from 'react'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
+import { savedDriveHref, savedDriveLinkTargets } from './remote-drive-links'
+
+export function useSavedDriveLinkResolver(status: DriveSyncStatus | undefined) {
+  const workspace = useOptionalWorkspace()
+  const filesHref = workspace?.activeWorkspaceId ? buildWorkspaceHref(workspace.activeWorkspaceId, '/app/files') : '/app/files'
+  const links = savedDriveLinkTargets({ status, filesHref })
+  return useMemo(() => {
+    if (!links) return undefined
+    const targets = new URLSearchParams(links)
+    return (href: string) => savedDriveHref({ href, targets })
+  }, [links])
+}
 
 export function RemoteDriveStatus({ status }: { status: DriveSyncStatus }) {
   const workspace = useOptionalWorkspace()

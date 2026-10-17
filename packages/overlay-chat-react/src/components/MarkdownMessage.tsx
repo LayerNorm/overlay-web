@@ -54,6 +54,8 @@ interface Props {
    *   pulsing Overlay logo as the trailing indicator. The in-flight tail updates as one formatted block; no character pacing.
   */
   streamingMode?: ChatStreamingMode
+  /** Host-authorized saved paths can open their canonical Files records. */
+  resolveFileHref?: (href: string) => string | undefined
   onOpenAttachmentPreview?: (
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
@@ -67,6 +69,7 @@ function MarkdownMessageImpl({
   webSources,
   suppressTypingIndicator = false,
   streamingMode = 'chunk',
+  resolveFileHref,
   appBaseUrl = null,
   mentions,
   renderMentionAvatar,
@@ -126,6 +129,8 @@ function MarkdownMessageImpl({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         a(props: any) {
           const href = props.href
+          const savedHref = typeof href === 'string' ? resolveFileHref?.(href) : undefined
+          if (savedHref) return <a href={savedHref}>{props.children}</a>
           const linkText = extractLinkText(props.children as ReactNode).trim()
 
           if (isMentionHref(href)) {
@@ -230,7 +235,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview],
+    [knowledgeSources, sourceCitations, webSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
   )
   const activeRemarkPlugins = useMemo(
     () => [...markdownRemarkPlugins, createMentionRemarkPlugin(mentions)],
@@ -375,6 +380,7 @@ export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
     prev.text === next.text &&
     prev.isStreaming === next.isStreaming &&
     prev.streamingMode === next.streamingMode &&
+    prev.resolveFileHref === next.resolveFileHref &&
     prev.suppressTypingIndicator === next.suppressTypingIndicator &&
     prev.appBaseUrl === next.appBaseUrl &&
     prev.mentions === next.mentions &&

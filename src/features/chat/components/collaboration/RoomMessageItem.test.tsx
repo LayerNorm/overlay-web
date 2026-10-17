@@ -65,6 +65,20 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = 
   )
 }
 
+test('provider Markdown paths use saved Files ids while source text and external links stay intact', () => {
+  const text = '[the briefing](briefing/INDEX.md) and [NASA](https://science.nasa.gov/earth/)'
+  const message = record({ authorKind: 'agent', authorPrincipalId: 'agent', content: text, parts: [
+    { type: 'text', text },
+    { type: 'data-remote-agent-drive', data: { state: 'saved', fileCount: 1, folderCount: 0,
+      entries: [{ fileId: 'report', path: 'briefing/INDEX.md', kind: 'file' }] } },
+  ] })
+  const html = render(message)
+  assert.match(html, /href="\/app\/files\?file=report">the briefing<\/a>/)
+  assert.doesNotMatch(html, /href="briefing\/INDEX.md"/)
+  assert.match(html, /href="https:\/\/science.nasa.gov\/earth\/"/)
+  assert.equal(toRoomMessageView({ message, currentPrincipalId: ME, authorName: 'Agent' }).text, text)
+})
+
 test('a member’s own message is just the personal gray bubble', () => {
   const html = render(record())
   assert.match(html, /Ship the onboarding fix/)

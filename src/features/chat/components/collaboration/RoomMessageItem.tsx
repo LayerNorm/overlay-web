@@ -37,7 +37,7 @@ import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { roomMessageDomId } from './room-message-view'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
-import { RemoteDriveStatus } from './RemoteDriveStatus'
+import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
 
 export type RoomMessageReaction = {
@@ -709,6 +709,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
+  const resolveFileHref = useSavedDriveLinkResolver(message.remoteDrive)
   return (
     <>
       {message.askedBy ? (
@@ -736,6 +737,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
         suppressTypingIndicator
+        resolveFileHref={resolveFileHref}
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}

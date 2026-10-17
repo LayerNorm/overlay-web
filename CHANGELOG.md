@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Open connected agents' saved deliverable links in Files by their verified ids, including relative paths in the answer.
+
+- Verify partially rendered Markdown frames in streaming QA without discarding already-visible prose or relaxing timing and visibility checks.
+
 - Read current event-rate policy inputs with the agent session, retaining live access and wallet checks and legacy billing initialization without loading full usage history for every upload.
 
 - Add an explicit managed startup rollout switch for fenced Claude Code and Codex recovery, with lifecycle-v2 gating and an off setting for subsequent host boots.

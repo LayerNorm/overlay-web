@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, type ComponentProps, type ReactNode } from 'react'
 import type {
   AssistantVisualSegment,
   DraftModalState,
@@ -59,6 +59,7 @@ export interface AssistantSegmentRenderContext {
   sourceCitations?: SourceCitationMap
   webSources?: WebSourceItem[]
   suppressTypingIndicator?: boolean
+  resolveFileHref?: ComponentProps<typeof MarkdownMessage>['resolveFileHref']
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: AutomationDraftModalState) => void | Promise<void>
   onOpenAttachmentPreview?: (
@@ -311,6 +312,7 @@ function TextSegmentItem({ seg, ctx }: SegmentItemProps<'text'>) {
         sourceCitations={isLastText ? ctx.sourceCitations : undefined}
         webSources={isLastText && ctx.webSources && ctx.webSources.length > 0 ? ctx.webSources : undefined}
         suppressTypingIndicator={ctx.suppressTypingIndicator}
+        resolveFileHref={ctx.resolveFileHref}
         onOpenAttachmentPreview={ctx.onOpenAttachmentPreview}
       />
     </div>
