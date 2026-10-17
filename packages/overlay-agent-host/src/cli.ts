@@ -79,13 +79,12 @@ if (command === 'image-check') {
   usage()
 } else {
   const config = await loadAgentHostConfig(configPath)
-  const adapters = buildAdapters(config.adapters, config.stateDirectory)
   if (command === 'doctor') {
-  const checks = await diagnoseHost(config, adapters)
+  const checks = await diagnoseHost(config, buildAdapters(config.adapters, config.stateDirectory))
   for (const check of checks) process.stdout.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}: ${check.detail}\n`)
   if (checks.some((check) => !check.ok)) process.exitCode = 1
   } else {
-    await withPreviewHostingAccess(option(args, '--hosting-auth-file') ?? config.hostingAuthFile, config.controlPlaneUrl, hosting => runHost(config, adapters, hosting))
+    await withPreviewHostingAccess(option(args, '--hosting-auth-file') ?? config.hostingAuthFile, config.controlPlaneUrl, hosting => runHost(config, hosting))
   }
 }
 
@@ -163,17 +162,17 @@ async function connectFromArgs(args: string[]) {
       await runHost({
         ...persistentConfig,
         credential: connection.token,
-      }, undefined, hosting)
+      }, hosting)
     }
   })
 }
 
-async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[], hosting?: PreviewHostingTransport) {
+async function runHost(config: AgentHostConfig, hosting?: PreviewHostingTransport) {
   const durableLifecycle = config.durableLifecycle === true || process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2'
   const configuredAdapters = managedRestorationAdapters(config.adapters, {
     durableLifecycle, rollout: process.env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION,
   })
-  const adapters = (prebuiltAdapters ?? buildAdapters(configuredAdapters, config.stateDirectory)).map(adapter => hosting ? hosting.wrapAdapter(adapter) : adapter)
+  const adapters = buildAdapters(configuredAdapters, config.stateDirectory).map(adapter => hosting ? hosting.wrapAdapter(adapter) : adapter)
   if (!config.credential) throw new Error(`agent host credential is missing from ${config.credentialEnv} and local connection state`)
   const [keys, stored] = await Promise.all([
     loadOrCreateDeviceKeyPair(config.stateDirectory),

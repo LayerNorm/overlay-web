@@ -1531,7 +1531,7 @@ Managed startup can opt in the validated acpx Claude Code and Codex launchers wi
 `OVERLAY_REMOTE_RUN_FENCED_RESTORATION=1`, only alongside lifecycle v2. The switch defaults
 unset and is not an acceptance claim: enable it only after native hosted recovery passes for
 the deployed image. Connect persists the selection; managed restart also applies the current
-switch to the saved configuration. Explicit `0` removes the advertised capability on the next
+switch before constructing adapters from the saved configuration. Explicit `0` removes the advertised capability on the next
 host boot, including saved opt-ins. Unset preserves private adapter configuration. Experimental
 adapters and custom ACP commands are never automatically enabled. Upgrade idle or drained hosts;
 changing the switch does not interrupt an active execution. Existing global remote-execution
