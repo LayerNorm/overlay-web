@@ -1338,6 +1338,10 @@ Missing terminal markers, hidden tabs, reloads, clock uncertainty and observatio
 must remain in the analysis. DOM/layout timestamps do not establish pixel-paint timing,
 and recording/export alone does not prove the latency acceptance threshold.
 
+Streaming Markdown recognizes underscore emphasis by delimiter position and skips inline
+code. A completion marker or filename must not gain a literal closing underscore while
+streaming and lose it on completion; rendered regressions cover that boundary.
+
 Per-run ten-second heartbeats carry process proof, quiet time and open-tool ages.
 They update run liveness without transcript parts. A live three-minute tool remains
 running; quiet output alone cannot prove a stall. The bottom loading row distinguishes

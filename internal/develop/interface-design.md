@@ -8,6 +8,13 @@ description: "Product UI decisions every surface follows: toggles-only controls,
 Product UI decisions that every surface follows. When a new control is needed,
 check here first — the answer is usually "use the existing pattern".
 
+Connected-agent output uses formatted chunks and one bottom loading indicator. Streaming
+Markdown may close an actual unfinished emphasis span, but identifiers and inline-code
+filenames keep their literal underscores; completion must not remove synthetic visible text.
+Preview-only timing diagnostics use a Lucide download control in the existing message toolbar,
+with recording/stopped/error in its accessible label. They require both the branch build opt-in
+and conversation query, and remain absent from Production.
+
 ## Tailwind CSS v4 configuration
 
 `postcss.config.mjs` loads `@tailwindcss/postcss`. The app imports `tailwindcss`

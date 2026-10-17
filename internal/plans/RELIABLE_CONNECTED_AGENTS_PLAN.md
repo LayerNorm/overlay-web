@@ -9,6 +9,17 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- The current Preview's local timing export survives tool-turn interruptions and reload with
+  its prior samples intact. A short native Claude pilot completes, saves both outputs with exact
+  original-machine/full Files bytes and drains its native process. All 65 baseline files,
+  including the latest research deliverables, match on its fresh machine. The controlled
+  concurrent source revision is rejected stale, refreshed and admitted without rejected batches.
+  The pilot's 2.94-second p95 fails the latency target. A real rendered regression reproduces
+  a synthetic underscore on identifiers while streaming; the local correction requires a
+  hosted repeat. Codex saves its outputs but enters needs-attention: an unknown health event
+  precedes completion during native adapter cleanup. Its corrected observer retains that
+  boundary for an adapter regression; current native completion and whole-plan gates remain pending.
+
 - A Preview-only local browser recorder now captures bounded DOM/layout timing independently
   of automation tool turns, with text hashes, viewport geometry, run/message identity and
   a real toolbar download. Production builds force it off. Focused validation and hosted

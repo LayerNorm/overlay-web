@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve literal underscores in streaming agent identifiers and filenames instead of appending a character that disappears at completion.
+
 - Add opt-in Preview browser timing exports that continue recording across automation interruptions without storing conversation text.
 
 - Keep final agent file saving authorized after the native provider finishes, with a bounded saving phase that respects Stop and task deadlines.
