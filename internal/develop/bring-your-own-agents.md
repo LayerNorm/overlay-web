@@ -36,15 +36,17 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 ## Implementation status
 
 Phases 0 through 8 are implemented. Phase 9 release controls and repeatable local evidence are
-implemented, but Phase 9 is not complete until the live Convex and PostgreSQL browser matrices,
-managed-provider conformance, and production stability gates are recorded.
+implemented, but release acceptance still requires the current PR Preview browser matrix,
+managed-provider conformance, package/image acceptance and clean VPS conformance. Production
+activation and its stability checks follow the approved release workflow. Convex is canonical;
+the retired PostgreSQL backend and staging environment are not current acceptance lanes.
 Overlay Cloud activation remains
-gated on the configured provider's live conformance and current host/image acceptance; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
-conformance run against staging. The connected-agent repository now includes command
+gated on the configured provider's live conformance and current host/image acceptance; package
+publication and clean VPS conformance remain release gates. The connected-agent repository includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
-an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
-required live gate whenever the local or remote contract database is available.
+an in-process Convex runtime; the current PR's isolated Convex backend, managed provider and
+browser checks provide hosted acceptance. Historical PostgreSQL conformance is not a release gate.
 
 Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 
