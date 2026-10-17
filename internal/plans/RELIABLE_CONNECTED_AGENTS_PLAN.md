@@ -9,6 +9,8 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Managed recovery now has an explicit startup rollout switch for the validated acpx Claude Code and Codex launchers, gated by lifecycle v2. Unset retains private opt-ins; explicit off overrides them on the next host boot. Experimental adapters stay excluded. The switch remains disabled pending rebuilt-image native acceptance and release review.
+
 - Current-candidate Claude completes its native forced-recovery run after more than an hour, preserving the original assistant and native session on a new OS boot. Independent checks verify all required steps and tool calls, exact final task bytes through the full Files API, and drained native processes. Fresh-machine hydration remains pending. Whole-run timing fails: rendered updates exceed the target, long hashes extend the final table past the pane, and an automation transition leaves a retained hidden-browser interval. The local table-wrapping and authentication-query follow-ups require hosted validation and a new uninterrupted timing run; this is not whole-plan acceptance.
 
 - Native long-run timing exposed insufficient latency headroom during larger text segments. A local follow-up returns the host credential and its scoped environment from one query snapshot, retaining the older backend response and all signature, expiry, scope, revocation and nonce checks. Service and Convex regressions pass, including legacy fallback, revoked or mismatched snapshots, forged proofs and revocation between lookup and nonce consumption. Hosted timing acceptance remains pending.

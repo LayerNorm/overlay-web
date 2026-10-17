@@ -1527,8 +1527,16 @@ Enrollment setup and provider selection belong to the provisioning failure bound
 before machine creation records a failed phase instead of leaving allocation pending. A connected-
 environment limit is a workspace limit, not a provider capacity or credit failure; its startup error
 asks the owner to remove an unused connection before retrying.
-This opt-in is for owned native acceptance before rollout; existing agents and shared machine images
-remain unchanged. It does not enable live interrupted-turn continuation or approval restoration.
+Managed startup can opt in the validated acpx Claude Code and Codex launchers with
+`OVERLAY_REMOTE_RUN_FENCED_RESTORATION=1`, only alongside lifecycle v2. The switch defaults
+unset and is not an acceptance claim: enable it only after native hosted recovery passes for
+the deployed image. Connect persists the selection; managed restart also applies the current
+switch to the saved configuration. Explicit `0` removes the advertised capability on the next
+host boot, including saved opt-ins. Unset preserves private adapter configuration. Experimental
+adapters and custom ACP commands are never automatically enabled. Upgrade idle or drained hosts;
+changing the switch does not interrupt an active execution. Existing global remote-execution
+feature flags remain the immediate rollback boundary. This does not enable live interrupted-turn
+continuation or approval restoration.
 Host admission checks the original native id, adapter, previous execution/boot, next generation,
 canonical text offset and new-attempt drive descriptor. It rejects an in-memory writer, atomically
 transfers the durable execution claim once, retains adapter identity and requires the same physical

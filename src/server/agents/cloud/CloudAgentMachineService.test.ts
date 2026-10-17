@@ -420,6 +420,18 @@ test('managed startup propagates lifecycle v2 only after explicit enablement', (
   }
 })
 
+test('managed startup forwards fenced recovery only with lifecycle v2 and forwards explicit rollback', () => {
+  const input = {enrollmentCode: 'fixture-code', serverUrl: 'https://preview.example.test', name: 'fixture', adapterId: 'codex' as const}
+  for (const lifecycle of [undefined, '2']) for (const rollout of [undefined, '0', '1', '1; unsafe']) {
+    const env = {OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION: lifecycle, OVERLAY_REMOTE_RUN_FENCED_RESTORATION: rollout}
+    const expected = rollout === '0' || (rollout === '1' && lifecycle === '2')
+    for (const command of [cloudAgentConnectCommand(input, env), cloudAgentRunCommand(env)]) {
+      assert.equal(command.includes('OVERLAY_REMOTE_RUN_FENCED_RESTORATION='), expected)
+      assert.ok(!command.includes('unsafe'))
+    }
+  }
+})
+
 
 test('an enrollment setup failure records a terminal failed phase before any machine is allocated', async () => {
   const machine = fakeMachine(), failure = Error('Enrollment setup unavailable: private diagnostic')

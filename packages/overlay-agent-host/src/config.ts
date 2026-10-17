@@ -73,3 +73,17 @@ export async function saveAgentHostConfig(
   await rename(temporary, path)
   await chmod(path, 0o600)
 }
+
+/** Managed rollout affects the next host boot; private adapter opt-ins remain explicit. */
+export function managedRestorationAdapters(adapters: AgentHostConfig['adapters'], options: {
+  durableLifecycle: boolean; rollout: string | undefined
+}): AgentHostConfig['adapters'] {
+  if (options.rollout === undefined) return adapters
+  return adapters.map(adapter => {
+    if (adapter.protocol !== 'acp' && adapter.protocol !== 'acpx') return adapter
+    const validated = adapter.protocol === 'acpx' && (
+      (adapter.id === 'claude-code' && adapter.agent === 'claude')
+      || (adapter.id === 'codex' && adapter.agent === 'codex'))
+    return {...adapter, fencedSessionRestoration: options.durableLifecycle && options.rollout === '1' && validated}
+  })
+}

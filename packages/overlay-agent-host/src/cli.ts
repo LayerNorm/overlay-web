@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { AcpAgentAdapter } from './acp-adapter.js'
 import { ACPX_AGENT_DISPLAY_NAMES, ACPX_AGENT_LAUNCH_OVERRIDES, AcpxAgentAdapter, acpxAgentNameFor } from './acpx-adapter.js'
 import type { AgentAdapter } from './adapter.js'
-import { loadAgentHostConfig, saveAgentHostConfig } from './config.js'
+import { loadAgentHostConfig, managedRestorationAdapters, saveAgentHostConfig } from './config.js'
 import type { AgentHostConfig } from './config.js'
 import { diagnoseHost } from './doctor.js'
 import { FakeAgentAdapter } from './fake-adapter.js'
@@ -147,7 +147,10 @@ async function connectFromArgs(args: string[]) {
       credentialEnv: 'OVERLAY_AGENT_HOST_CREDENTIAL',
       stateDirectory,
       filesystem: connection.filesystemGrant,
-      adapters: adapterConfigs,
+      adapters: managedRestorationAdapters(adapterConfigs, {
+        durableLifecycle: process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2',
+        rollout: process.env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION,
+      }),
     }
     await saveAgentHostConfig(persistentConfigPath, persistentConfig)
     if (hostingAuthFile) process.stdout.write('Protected Preview restarts require managed provisioning to prepare a fresh private access file.\n')
@@ -166,7 +169,11 @@ async function connectFromArgs(args: string[]) {
 }
 
 async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[], hosting?: PreviewHostingTransport) {
-  const adapters = (prebuiltAdapters ?? buildAdapters(config.adapters, config.stateDirectory)).map(adapter => hosting ? hosting.wrapAdapter(adapter) : adapter)
+  const durableLifecycle = config.durableLifecycle === true || process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2'
+  const configuredAdapters = managedRestorationAdapters(config.adapters, {
+    durableLifecycle, rollout: process.env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION,
+  })
+  const adapters = (prebuiltAdapters ?? buildAdapters(configuredAdapters, config.stateDirectory)).map(adapter => hosting ? hosting.wrapAdapter(adapter) : adapter)
   if (!config.credential) throw new Error(`agent host credential is missing from ${config.credentialEnv} and local connection state`)
   const [keys, stored] = await Promise.all([
     loadOrCreateDeviceKeyPair(config.stateDirectory),
@@ -178,7 +185,7 @@ async function runHost(config: AgentHostConfig, prebuiltAdapters?: AgentAdapter[
     workspaceId: config.workspaceId,
   })
   const runtime = new AgentHostRuntime({
-    durableLifecycle: config.durableLifecycle === true || process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2',
+    durableLifecycle,
     // Only Overlay Cloud credentials carry this method (see the control plane's createCredential).
     fetchRunCredentials: stored?.methods.includes('agent:run-credentials') === true,
     environmentId: config.environmentId,

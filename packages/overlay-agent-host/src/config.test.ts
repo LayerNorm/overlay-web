@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { agentHostConfigSchema, loadAgentHostConfig, saveAgentHostConfig } from './config.js'
+import type { AgentHostConfig } from './config.js'
+import { agentHostConfigSchema, loadAgentHostConfig, managedRestorationAdapters, saveAgentHostConfig } from './config.js'
 
 test('enrollment restart configuration is private and excludes credentials', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-host-config-'))
@@ -65,4 +66,24 @@ test('native restoration is an explicit per-adapter opt-in requiring durable lif
       {id: 'eve', displayName: 'Eve', protocol: 'eve', host: 'https://example.com', fencedSessionRestoration: true},
     ]}).success, false)
   } finally {await rm(directory, {recursive: true, force: true})}
+})
+
+test('managed recovery rollout enables only validated native launchers and an explicit off overrides saved opt-ins', () => {
+  const adapters: AgentHostConfig['adapters'] = [
+    {id: 'claude-code', displayName: 'Claude', protocol: 'acpx', agent: 'claude'},
+    {id: 'codex', displayName: 'Codex', protocol: 'acpx', agent: 'codex'},
+    {id: 'hermes', displayName: 'Hermes', protocol: 'acpx', agent: 'hermes'},
+    {id: 'codex', displayName: 'Other', protocol: 'acpx', agent: 'other'},
+    {id: 'codex', displayName: 'Direct', protocol: 'acp', command: 'other'},
+    {id: 'fake', displayName: 'Fake', protocol: 'fake'},
+  ]
+  const flags = (rows: typeof adapters) => rows.map(row => 'fencedSessionRestoration' in row && row.fencedSessionRestoration === true)
+  const enabled = managedRestorationAdapters(adapters, {durableLifecycle: true, rollout: '1'})
+  assert.deepEqual(flags(enabled), [true, true, false, false, false, false])
+  assert.deepEqual(flags(managedRestorationAdapters(enabled, {durableLifecycle: true, rollout: '0'})), adapters.map(() => false))
+  for (const rollout of ['1', 'invalid']) {
+    assert.deepEqual(flags(managedRestorationAdapters(adapters, {durableLifecycle: false, rollout})), adapters.map(() => false))
+  }
+  assert.equal(managedRestorationAdapters(enabled, {durableLifecycle: true, rollout: undefined}), enabled)
+  assert.deepEqual(flags(adapters), adapters.map(() => false))
 })

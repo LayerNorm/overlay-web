@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add an explicit managed startup rollout switch for fenced Claude Code and Codex recovery, with lifecycle-v2 gating and an off setting for subsequent host boots.
+
 - Wrap long hashes and identifiers inside chat tables while preserving horizontal scrolling for tables with many columns.
 
 - Avoid a duplicate environment lookup on signed agent requests while preserving legacy-backend fallback, device proofs and current revocation checks.

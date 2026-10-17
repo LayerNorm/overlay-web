@@ -44,6 +44,8 @@ function detached(command: string, env: Record<string, string | undefined>): str
   return `mkdir -p ${shellQuote(CLOUD_AGENT_WORKSPACE)} ${shellQuote(CLOUD_AGENT_STATE_DIR)} && `
     // acpx ignores ~/.claude (skills, commands, subagents, settings) unless told to; an imported profile lives there.
     + (env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? 'OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2 ' : '')
+    + (env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION === '0' || (env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION === '1' && env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2')
+      ? `OVERLAY_REMOTE_RUN_FENCED_RESTORATION=${env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION} ` : '')
     + `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1 nohup ${command} >> ${shellQuote(CLOUD_AGENT_LOG_PATH)} 2>&1 < /dev/null &`
 }
 
