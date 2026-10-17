@@ -752,7 +752,7 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
               style={{ animationDelay: `${dot * 120}ms` }}
             />
           ))}
-          {remoteStatus}
+          {message.remoteRun?.state !== 'finalizing' ? remoteStatus : null}
         </div>
       ) : null}
       {message.remoteQueue && onControlRemoteQueue ? (

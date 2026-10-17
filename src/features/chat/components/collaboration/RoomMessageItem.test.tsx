@@ -28,7 +28,7 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false) {
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode) {
   return renderToStaticMarkup(
     <RoomMessageItem
       message={toRoomMessageView({
@@ -61,6 +61,7 @@ function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = 
       onControlRemoteQueue={() => undefined}
       onResolveRemoteRequest={canResolve ? () => undefined : undefined}
       grouped={grouped}
+      remoteStatus={remoteStatus}
     />,
   )
 }
@@ -374,4 +375,19 @@ test('stopping an agent keeps its earlier narrative visible while tool details r
   const view = toRoomMessageView({message, currentPrincipalId: ME, authorName: 'Agent'})
   assert.ok(view.blocks.some(block => block.kind === 'tool' && block.toolInput?.title === 'Research'))
   assert.match(html, />Cancelled<\/p>/)
+})
+
+
+test('final saving retains progress and deadline without stale native connection status', () => {
+  for (const state of ['running', 'finalizing']) {
+    const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent-1', status: 'generating', content: 'Retained answer', parts: [
+      { type: 'text', text: 'Retained answer' },
+      { type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state, hardDeadlineAt: Date.parse('2026-10-17T13:05:00Z') } },
+      { type: 'data-remote-agent-drive', data: { state: 'saving' } },
+    ] }), 'Agent', false, true, false, <span>Waiting for agent connection</span>)
+    assert.match(html, /Saving files/)
+    assert.match(html, /Task deadline/)
+    assert.match(html, /aria-label="Agent is responding"/)
+    assert.equal(html.includes('Waiting for agent connection'), state === 'running')
+  }
 })

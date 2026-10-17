@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show final file saving without a stale agent connection warning after native execution ends.
+
+- Keep source-link punctuation cleanup linear for untrusted tool output.
+
 - Open connected agents' saved deliverable links in Files by their verified ids, including relative paths in the answer.
 
 - Verify partially rendered Markdown frames in streaming QA without discarding already-visible prose or relaxing timing and visibility checks.

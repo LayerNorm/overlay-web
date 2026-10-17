@@ -152,7 +152,9 @@ function collectSourceCandidatesFromUnknown(
 
   if (typeof value === 'string') {
     for (const rawUrl of extractHttpUrlsFromText(value)) {
-      const url = safeHttpUrl(rawUrl.replace(/[.,;]+$/, ''))
+      let end = rawUrl.length
+      while (end > 0 && '.,;'.includes(rawUrl.charAt(end - 1))) end--
+      const url = safeHttpUrl(rawUrl.slice(0, end))
       if (!url || seen.has(url)) continue
       seen.add(url)
       acc.push({ url, title: webSourceDisplayKey(url), origin })

@@ -9,6 +9,10 @@ smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agen
 
 ## Progress
 
+- Security analysis flags an existing source-link punctuation regex with quadratic behavior.
+  An isolated long-input regression reproduces the timeout; a linear trailing scan preserves
+  URL punctuation and deduplication. Hosted/security revalidation remains required.
+
 - Current-candidate Codex completes the full native forced-recovery run, with exact final files,
   preserved baseline bytes, drained native processes and complete visible timing coverage below
   the target. Renderer-backed frame verification accounts for transient Markdown only after

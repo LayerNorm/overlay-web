@@ -1454,6 +1454,8 @@ unknown, ambiguous, external and traversing paths receive no filesystem lookup o
 Native terminal intent stops provider-health probes before the host drains pending text and files;
 an already-running probe must recheck that boundary before reporting loss. Final saving uses the
 execution-fenced `finalizing` phase with a fixed five-minute limit capped by the original task deadline.
+During that phase, the UI retains saving progress and the deadline while hiding native connection
+liveness, since the native process has deliberately ended.
 It grants only the existing drive authority, does not assert provider liveness or allow new MCP work,
 and cannot extend itself through repeated save/progress events. Stop, revocation and deadline checks
 still win; expiry or a real save failure preserves the unsaved journal and requires attention.
