@@ -73,10 +73,12 @@ const TOUR_STEPS: TourStep[] = [
     placement: 'right',
   },
   {
+    // Anchors to the Files rail item: memories and connectors moved out, so the
+    // copy describes what this surface actually holds (notes, files, outputs).
     target: 'nav-knowledge',
-    title: 'All your knowledge in one place',
+    title: 'Files and notes',
     description:
-      "Store memories, files, connectors, skills, and MCPs — your AI's long-term context and extensions, always at hand.",
+      'Uploads, notes, and everything your AI generates live here.',
     placement: 'right',
   },
 ]
