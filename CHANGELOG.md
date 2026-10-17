@@ -184,6 +184,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Make connected-agent transport failures diagnosable (reliable connected agents, Phase 0). Agent Host routes return `x-overlay-request-id` and log failed or slow requests. Server failures and Convex call errors are logged with a safe classification: type, class, codes, Convex function and request id. Each connected-agent run records stream counters (batches, bytes, text snapshot size, message rewrites, refused batches, host lag, quiet gaps, longest tool), returned as `streamSummary` by `GET /api/v1/conversations/run`. The long-horizon smoke gains `--via overlay` to run a real cloud agent on a PR preview.
 
+- Keep Turbopack route bootstraps external so the optimized app hydrates under nonce-based Content Security Policy after the Next.js upgrade.
+
 - Preserve protected-route query parameters through sign-in and stale-session reauthentication so desktop login handoffs retain their PKCE challenge.
 
 - Patch Next.js to 16.4.1 in both web apps and Better Auth/SSO to 1.7.7. Replace the privileged PR preview trigger with a secret-free PR request that dispatches the protected main controller.

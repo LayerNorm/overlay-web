@@ -60,11 +60,15 @@ const nextConfig: NextConfig = {
     : undefined,
   // Explicit server action body size limit. Prevents DoS via large payloads.
   experimental: {
-    // Keep compilation isolated from route collection on the Basic build machine.
+    // Keep compilation isolated from route collection.
     webpackBuildWorker: true,
     webpackMemoryOptimizations: true,
     // NodeNext workspace packages name emitted .js files while web compiles their TS source.
     extensionAlias: { ".js": [".ts", ".tsx", ".js"] },
+
+    // Keep route bootstraps in external assets: the shared runtime emits an
+    // unnonced inline bootstrap in the cached shell, which nonce CSP blocks.
+    turbopackSharedRuntime: false,
     serverActions: {
       bodySizeLimit: "10mb",
     },
