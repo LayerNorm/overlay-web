@@ -43,6 +43,8 @@ export interface AgentControlPlaneClient {
   completeArtifactUpload?(artifactId: string): Promise<void>
   /** Overlay Cloud only: the provider credentials for one of this host's runs. */
   fetchRunCredentials?(runId: string): Promise<Record<string, string>>
+  /** Overlay Cloud only: account delivery for an idle adapter's option probe. */
+  fetchDiscoveryCredentials?(adapterId: string): Promise<Record<string, string>>
   fetchDriveCredentials?(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse>
   /** Refresh the approved policy through the existing device-signed credential rotation. */
   refreshFilesystemGrant?(): Promise<FilesystemGrant>
@@ -142,6 +144,14 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     const response = await this.request(new URL('run-credentials', withSlash(this.options.baseUrl)), {
       method: 'POST',
       body: JSON.stringify({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, runId }),
+      headers: { 'content-type': 'application/json' },
+    })
+    return runCredentialsResponseSchema.parse(await response.json()).env
+  }
+
+  async fetchDiscoveryCredentials(adapterId: string): Promise<Record<string, string>> {
+    const response = await this.request(new URL('run-credentials', withSlash(this.options.baseUrl)), {
+      method: 'POST', body: JSON.stringify({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, adapterId }),
       headers: { 'content-type': 'application/json' },
     })
     return runCredentialsResponseSchema.parse(await response.json()).env

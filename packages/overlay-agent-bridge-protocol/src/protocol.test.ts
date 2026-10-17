@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { agentHostCommandSchema, agentHostEventSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
-import { driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema, startAdapterPayloadSchema, recoveryCapabilitiesSchema } from './index'
+import { providerCredentialsRequestSchema, driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema, startAdapterPayloadSchema, recoveryCapabilitiesSchema } from './index'
 
 test('fenced native restoration requires its original session and a complete stopped-provider receipt', () => {
   const base = {bindingId: 'binding', adapterId: 'claude-code', workingDirectory: '/home/user/drive', prompt: 'Continue', metadata: {}}
@@ -122,4 +122,15 @@ test('proof canonicalization binds every security-relevant request field', () =>
     method: 'POST', pathname: '/api/v1/agent-environments/e1/events', timestamp: '1800000000000',
     nonce: 'request-nonce', bodySha256: 'forged-body', tokenSha256: 'token-hash',
   }))
+})
+
+
+test('provider credential requests distinguish active runs from bound-adapter discovery without accepting caller-selected accounts', () => {
+  for (const input of [{protocolVersion: 1, runId: 'run'}, {protocolVersion: 1, adapterId: 'codex'}])
+    assert.deepEqual(providerCredentialsRequestSchema.parse(input), input)
+  for (const input of [
+    {protocolVersion: 1}, {protocolVersion: 1, runId: 'run', adapterId: 'codex'},
+    {protocolVersion: 1, adapterId: 'codex', accountId: 'other-account'},
+    {protocolVersion: 1, adapterId: 'codex', ownerUserId: 'other-owner'},
+  ]) assert.equal(providerCredentialsRequestSchema.safeParse(input).success, false)
 })

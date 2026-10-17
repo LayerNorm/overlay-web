@@ -9,7 +9,7 @@ import {
   type EventAcknowledgement,
   type EventBatch,
 } from '@layernorm/overlay-agent-bridge-protocol'
-import type { AgentAdapter, StartAdapterSessionInput } from './adapter'
+import type { AgentAdapter, EmitAgentEvent, StartAdapterSessionInput } from './adapter'
 import { AgentHostRuntime } from './runtime'
 import { SqliteHostStateStore } from './state'
 import { ControlPlaneRequestError, type AgentControlPlaneClient } from './transport'
@@ -17,9 +17,12 @@ import { ControlPlaneRequestError, type AgentControlPlaneClient } from './transp
 class CapturingAdapter implements AgentAdapter {
   readonly capability = { id: 'claude-code', displayName: 'Claude Code', protocol: 'acp' as const, supports: { prompt: true, approval: true, cancel: true, resume: true } }
   starts: StartAdapterSessionInput[] = []
-  async discover() { return this.capability }
-  async start(input: StartAdapterSessionInput) {
+  completeOnStart = false
+  discoveries: Array<Parameters<AgentAdapter['discover']>[0]> = []
+  async discover(input?: Parameters<AgentAdapter['discover']>[0]) { this.discoveries.push(input); return this.capability }
+  async start(input: StartAdapterSessionInput, emit: EmitAgentEvent) {
     this.starts.push(input)
+    if (this.completeOnStart) await emit({type: 'completed', payload: {usage: {}}})
     return {
       remoteSessionId: 'remote-1', initialPromptHandled: true,
       prompt: async () => undefined, approve: async () => undefined, elicit: async () => undefined,
@@ -32,6 +35,13 @@ class Plane implements AgentControlPlaneClient {
   commands: AgentHostCommand[] = []
   events: EventBatch[] = []
   fetched: string[] = []
+  discoveryFetched: string[] = []
+  discoveryResult: Record<string, string> | Error = { CLAUDE_CODE_OAUTH_TOKEN: 'catalog-token' }
+  async fetchDiscoveryCredentials(adapterId: string) {
+    this.discoveryFetched.push(adapterId)
+    if (this.discoveryResult instanceof Error) throw this.discoveryResult
+    return this.discoveryResult
+  }
   credentialsResult: Record<string, string> | Error = { CLAUDE_CODE_OAUTH_TOKEN: 'token-for-this-run' }
   private cursor = 0
   async pollCommands() { return { commands: this.commands.splice(0) } }
@@ -125,5 +135,68 @@ test('a host that does not fetch credentials never asks, even if a command says 
     assert.equal(eventTypes(plane).includes('session_started'), true)
     assert.deepEqual(plane.fetched, [])
     assert.equal(adapter.starts[0]?.credentials, undefined)
+  } finally { await cleanup() }
+})
+
+
+test('Cloud catalog discovery receives its bound account before the first run', async () => {
+  const { plane, adapter, runtime, cleanup } = await setup({ fetchRunCredentials: true })
+  try {
+    await runtime.discoverCapabilities()
+    assert.deepEqual(plane.discoveryFetched, ['claude-code'])
+    assert.deepEqual(adapter.discoveries[0]?.credentials, { CLAUDE_CODE_OAUTH_TOKEN: 'catalog-token' })
+    assert.deepEqual(plane.fetched, [])
+    assert.deepEqual(adapter.starts, [])
+    assert.deepEqual(plane.events, [])
+  } finally { await cleanup() }
+})
+
+test('catalog lookup failure leaves fallback options without starting an unsigned-in probe or a task', async () => {
+  const { plane, adapter, runtime, cleanup } = await setup({ fetchRunCredentials: true })
+  try {
+    plane.discoveryResult = new ControlPlaneRequestError(409, 'provider_discovery_busy')
+    await runtime.discoverCapabilities()
+    assert.deepEqual(plane.discoveryFetched, ['claude-code'])
+    assert.deepEqual(adapter.discoveries, [])
+    assert.deepEqual(adapter.starts, [])
+    assert.deepEqual(plane.events, [])
+  } finally { await cleanup() }
+})
+
+test('local catalog discovery uses local sign-in without requesting Cloud credentials', async () => {
+  const { plane, adapter, runtime, cleanup } = await setup()
+  try {
+    await runtime.discoverCapabilities()
+    assert.deepEqual(plane.discoveryFetched, [])
+    assert.equal(adapter.discoveries.length, 1)
+    assert.equal(adapter.discoveries[0]?.credentials, undefined)
+  } finally { await cleanup() }
+})
+
+
+test('catalog publication during active native work never fetches credentials or opens another provider session', async () => {
+  const {plane, adapter, runtime, start, cleanup} = await setup({fetchRunCredentials: true})
+  try {
+    plane.commands.push(start({runCredentials: true}))
+    await runtime.pollOnce(0)
+    const discoveries = adapter.discoveries.length, fetched = plane.discoveryFetched.length
+    assert.equal(adapter.starts.length, 1)
+    assert.deepEqual(await runtime.discoverCapabilities(), [adapter.capability])
+    assert.equal(adapter.discoveries.length, discoveries)
+    assert.equal(plane.discoveryFetched.length, fetched)
+  } finally { await cleanup() }
+})
+
+
+test('completed retained sessions do not prevent a later idle catalog refresh', async () => {
+  const {plane, adapter, runtime, start, cleanup} = await setup({fetchRunCredentials: true})
+  try {
+    adapter.completeOnStart = true
+    plane.commands.push(start({runCredentials: true}))
+    await runtime.pollOnce(0)
+    const fetched = plane.discoveryFetched.length
+    await runtime.discoverCapabilities()
+    assert.equal(plane.discoveryFetched.length, fetched + 1)
+    assert.equal(adapter.starts.length, 1)
   } finally { await cleanup() }
 })

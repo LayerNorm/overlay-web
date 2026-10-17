@@ -918,6 +918,7 @@ retain the agent's own default. Explicit unsupported settings fail visibly. acpx
 host/image adapter pins, preferring the matching installed image binary over its older registry
 ranges. These candidate changes still require hosted/provider acceptance before release.
 If no separate temporary directory is available, discovery retains the default catalog; it never puts scratch state into synced Files.
+Cloud startup discovery obtains only the account of the unique enabled binding for its advertised adapter, through the signed provider-credential endpoint. The account owner must still belong to the workspace, and active work prevents discovery delivery. Codex uses the existing broker-owned auth-file delivery; Claude credentials stay in the probe environment. Missing credentials/catalogs retain the fallback and retry after one minute; successful catalogs refresh after 24 hours. After authenticated starts, hosts publish their captured catalog without another probe or auth-file replacement during work. Imported agent secrets and workspace MCP tools are not part of discovery.
 
 Phase 4 connects `AgentDriveCache` to agent turns and scoped Overlay Files commits, behind the
 drive feature gate. It validates portable relative paths, rejects symlink/special-file snapshots,

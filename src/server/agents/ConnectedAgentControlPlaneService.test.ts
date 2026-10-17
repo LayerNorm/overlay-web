@@ -346,12 +346,15 @@ function providerAccountHarness(options: {
   environmentKind?: AgentEnvironment['kind']
   resolve?: () => Promise<{ env: Record<string, string>; files: Array<{ path: string; contents: string; mode?: number }>; provider: 'claude-code' | 'codex'; method: 'subscription' }>
   deliver?: 'fail' | 'none'
+  discoveryBindings?: 'none' | 'foreign' | 'disabled' | 'ambiguous'
+  activeRuns?: boolean
+  memberRevoked?: boolean
 } = {}) {
   const delivered: unknown[] = []
   const environment: AgentEnvironment = {
     id: 'environment-cloud', workspaceId: 'workspace-1', kind: options.environmentKind ?? 'overlay_cloud',
     name: 'Cloud machine', status: 'online', publicKey: 'public-key',
-    capabilities: { adapters: [{ id: 'claude-code', protocol: 'acp' }, { id: 'hermes', protocol: 'acp' }, { id: 'eve', protocol: 'acp' }] },
+    capabilities: { adapters: [{ id: 'claude-code', protocol: 'acp' }, { id: 'codex', protocol: 'acp' }, { id: 'hermes', protocol: 'acp' }, { id: 'eve', protocol: 'acp' }] },
     filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] },
     approvedAt: NOW - 1_000, approvedByUserId: 'user-1', createdAt: NOW - 2_000, updatedAt: NOW - 1_000,
   }
@@ -372,10 +375,17 @@ function providerAccountHarness(options: {
       async getEnvironment() { return environment },
       async upsertBinding(input: { adapterConfig: Record<string, unknown> }) { upserts.push(input); return { ...binding, adapterConfig: input.adapterConfig } },
       async getRemoteSessionForRun(args: { runId: string }) { return args.runId === 'run-1' ? session : null },
-      async listBindings() { return [binding] },
+      async listBindings() {
+        if (options.discoveryBindings === 'none') return []
+        if (options.discoveryBindings === 'foreign') return [{ ...binding, environmentId: 'other-environment' }]
+        if (options.discoveryBindings === 'disabled') return [{ ...binding, enabled: false }]
+        if (options.discoveryBindings === 'ambiguous') return [binding, { ...binding, id: 'binding-2' }]
+        return [binding]
+      },
+      async environmentHasActiveRuns() { return options.activeRuns === true },
     } as unknown as ConnectedAgentRepository,
     audit: { record: async () => {} } as unknown as AuditService,
-    workspaces: { async resolveActiveWorkspace() { return { membership: { role: 'admin' } } } } as unknown as WorkspaceService,
+    workspaces: { async resolveActiveWorkspace() { if (options.memberRevoked) throw Error('Workspace membership revoked'); return { membership: { role: 'admin' } } } } as unknown as WorkspaceService,
     agentProviderAccounts: {
       async requireUsable(args: { userId: string; accountId: string; provider: string }) {
         if (args.accountId !== 'account-1' || args.userId !== 'user-1') throw Object.assign(new Error('Account not found'), { statusCode: 404 })
@@ -662,4 +672,44 @@ test('a batch Convex refuses as unusable is counted against its run, and the ref
   // A failing counter never replaces the original refusal.
   Object.assign(repository, { async recordRejectedEventBatch() { throw new Error('convex down') } })
   await assert.rejects(() => service.applyEvents(auth as never, batch as never), /AGENT_EVENT_BATCH_TOO_LARGE/)
+})
+
+
+test('idle Cloud options discovery resolves only its unique enabled adapter binding account', async () => {
+  const {service, auth, issued} = providerAccountHarness()
+  assert.deepEqual(await service.issueDiscoveryCredentials(auth, 'claude-code'), {env: {CLAUDE_CODE_OAUTH_TOKEN: 'secret-token'}})
+  assert.deepEqual(issued, [{accountId: 'account-1', ownerUserId: 'user-1', expectedProvider: 'claude-code'}])
+})
+
+test('options discovery refuses local hosts, foreign/disabled/ambiguous bindings, unsupported adapters and active work before credential lookup', async () => {
+  for (const discoveryBindings of ['none', 'foreign', 'disabled', 'ambiguous'] as const) {
+    const {service, auth, issued} = providerAccountHarness({discoveryBindings})
+    await assertControlPlaneError(() => service.issueDiscoveryCredentials(auth, 'claude-code'), 'provider_account_missing')
+    assert.deepEqual(issued, [])
+  }
+  const local = providerAccountHarness({environmentKind: 'local'})
+  await assertControlPlaneError(() => local.service.issueDiscoveryCredentials(local.auth, 'claude-code'), 'run_credentials_forbidden')
+  assert.deepEqual(local.issued, [])
+  const busy = providerAccountHarness({activeRuns: true})
+  await assertControlPlaneError(() => busy.service.issueDiscoveryCredentials(busy.auth, 'claude-code'), 'provider_discovery_busy')
+  assert.deepEqual(busy.issued, [])
+  const unsupported = providerAccountHarness()
+  await assertControlPlaneError(() => unsupported.service.issueDiscoveryCredentials(unsupported.auth, 'eve'), 'provider_account_missing')
+  assert.deepEqual(unsupported.issued, [])
+  const revoked = providerAccountHarness({memberRevoked: true})
+  await assert.rejects(revoked.service.issueDiscoveryCredentials(revoked.auth, 'claude-code'), /membership revoked/)
+  assert.deepEqual(revoked.issued, [])
+})
+
+test('Codex catalog discovery uses broker-owned file delivery and fails closed if delivery is unavailable', async () => {
+  const files = [{path: '/home/user/.codex/auth.json', contents: 'placeholder-refresh-test-fixture', mode: 0o600}]
+  for (const deliver of [undefined, 'fail', 'none'] as const) {
+    const harness = providerAccountHarness({deliver, bindingConfig: {adapterId: 'codex', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1'},
+      resolve: async () => ({env: {}, files, provider: 'codex', method: 'subscription'})})
+    if (deliver) await assertControlPlaneError(() => harness.service.issueDiscoveryCredentials(harness.auth, 'codex'), deliver === 'fail' ? 'machine_files_failed' : 'machine_files_unavailable')
+    else {
+      assert.deepEqual(await harness.service.issueDiscoveryCredentials(harness.auth, 'codex'), {env: {}})
+      assert.deepEqual(harness.delivered, [{workspaceId: 'workspace-1', environmentId: 'environment-cloud', files}])
+    }
+  }
 })

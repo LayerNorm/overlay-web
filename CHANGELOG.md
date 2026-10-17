@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Discover Cloud agent model, effort and permission choices using the bound account before the first task, with bounded fallback refresh and no credential replacement during active work.
+
 - Retry unstable file snapshots during fenced recovery preparation, without retrying permanent conflicts or an uncertain provider start.
 
 - Resume startup file hydration after unchanged cached files acquire new filesystem identities, while preserving local-edit and in-flight replacement conflicts.

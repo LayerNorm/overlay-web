@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Phases 1–5 are implemented. Phase 0 metrics are in place, but the historical poll-500 diagnosis and whole-plan native acceptance remain open. Short native checks passed before the cache-identity follow-up; that follow-up needs an updated image and hosted recovery QA.
+Status: Phases 1–5 are implemented. Phase 0 metrics are in place, but the historical poll-500 diagnosis and whole-plan native acceptance remain open. The cache-identity and snapshot-retry image is ready; fresh-machine QA exposed a startup catalog-credential gap. Its follow-up needs an updated image and hosted acceptance.
 
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -8,6 +8,8 @@ mockup [`mockups/reliable-agents-mockup.html`](./mockups/reliable-agents-mockup.
 smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agent-long-horizon/).
 
 ## Progress
+
+- Fresh-machine QA exposed startup options discovery running without its bound account credentials, leaving only Default before the first task. The follow-up delivers credentials only for the unique enabled Cloud binding and advertised adapter, checks current owner membership and refuses active work. Host/wire/server regressions cover first-run discovery, fallback, local sign-in and account isolation. Updated-image hosted acceptance remains pending.
 
 - Native Claude recovery stopped during file preparation with `DRIVE_FILE_CHANGED`; its
   preserved cache later passed a clean inventory read. A real filesystem metadata-race regression

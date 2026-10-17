@@ -13,9 +13,9 @@ adapter are three independent parts of the connected-agent system.
 
 **Refresh.** `AgentProviderAccountService.freshCodexTokens` refreshes server-side when the access token expires within 25 minutes. A Convex lease (`refreshLockOwner` / `refreshLockUntil` on `agentProviderAccounts`, `acquireRefreshLockByServer` / `releaseRefreshLockByServer`) lets exactly one run refresh at a time; others wait up to 20 s then reread. New tokens are stored *before* the lock is released. A rejected refresh (`invalid_grant`, 400/401) flags the account `needs_reauth`; a transient failure does not.
 
-**Delivery.** On `issueRunCredentials` the app server writes a per-run `/home/user/.codex/auth.json` to the machine through `deliverMachineFiles` (`CloudAgentMachineService.writeFiles`; paths must be under `/home/user/`). It holds a fresh access token and a **placeholder** refresh token, so a machine can never rotate the real one. Codex only refreshes after 8 days or on a 401; a placeholder refresh therefore fails harmlessly and the next run gets a new file. The host protocol is unchanged.
+**Delivery.** On `issueRunCredentials` or idle bound-adapter option discovery the app server writes a per-run `/home/user/.codex/auth.json` to the machine through `deliverMachineFiles` (`CloudAgentMachineService.writeFiles`; paths must be under `/home/user/`). It holds a fresh access token and a **placeholder** refresh token, so a machine can never rotate the real one. Codex only refreshes after 8 days or on a 401; a placeholder refresh therefore fails harmlessly and the next run gets a new file. The signed credential endpoint accepts an exclusive run id or adapter id. Discovery uses only the unique enabled binding on that Cloud environment and refuses active work; callers cannot select an account or owner. Existing run requests and credential method scopes remain compatible.
 
-**Known limit.** `auth.json` (with a short-lived access token) stays on the machine's disk after a run, until the next run overwrites it.
+**Known limit.** `auth.json` (with a short-lived access token) stays on the machine's disk after a catalog probe or run, until the next broker delivery overwrites it.
 
 Protected PR Preview hosting access is separate from Codex sign-in. The compatible host consumes
 a private one-shot access file before starting adapters and keeps hosting headers on its exact

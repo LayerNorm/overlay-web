@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { OVERLAY_AGENT_PROTOCOL_VERSION, runCredentialsRequestSchema } from '@layernorm/overlay-agent-bridge-protocol'
+import { OVERLAY_AGENT_PROTOCOL_VERSION, providerCredentialsRequestSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentEnvironmentErrorResponse, environmentIdFrom } from '../../shared'
 import { enforceAgentHostRateLimit, readAgentHostBody } from '../../host-security'
 
-/** An Overlay Cloud host fetches the provider credentials for one of its active runs. */
+/** Cloud-only, device-signed provider delivery for an active run or idle bound-adapter discovery. */
 export async function POST(request: Request, context: { params: Promise<Record<string, string | string[]>> }) {
   try {
     const limited = await enforceAgentHostRateLimit(request, 'run-credentials', 60)
@@ -15,8 +15,9 @@ export async function POST(request: Request, context: { params: Promise<Record<s
     const auth = await service.authenticateHostRequest({
       request, environmentId, requiredMethod: 'agent:run-credentials', rawBody,
     })
-    const input = runCredentialsRequestSchema.parse(parsed)
-    const { env } = await service.issueRunCredentials(auth, input.runId)
+    const input = providerCredentialsRequestSchema.parse(parsed)
+    const { env } = 'runId' in input ? await service.issueRunCredentials(auth, input.runId)
+      : await service.issueDiscoveryCredentials(auth, input.adapterId)
     return NextResponse.json({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, env }, {
       headers: { 'Cache-Control': 'no-store' },
     })

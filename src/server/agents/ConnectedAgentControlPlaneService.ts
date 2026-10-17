@@ -48,7 +48,7 @@ import type { ProviderConnectionRepository } from '@/server/ai/provider-connecti
 import { describeFailure } from '@/server/observability/failure-classification'
 import { logger } from '@/server/observability/logger'
 import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
-import type { AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
+import { AgentProviderAccountError, type AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
 import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
 
 const ENROLLMENT_TTL_MS = 10 * 60_000
@@ -803,18 +803,54 @@ export class ConnectedAgentControlPlaneService {
       }, runId, 'agent_run')
       // The agent's own values go in first so they can never replace the account's credential.
       const own = agentId && this.dependencies.agentSecretEnv ? await this.dependencies.agentSecretEnv(agentId).catch((_error) => ({})) : {}
-      if (resolved.files.length > 0) {
-        if (!this.dependencies.deliverMachineFiles) throw controlPlaneError('This account cannot be delivered to a machine', 501, 'machine_files_unavailable')
-        try {
-          await this.dependencies.deliverMachineFiles({ workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, files: resolved.files })
-        } catch (_error) {
-          throw controlPlaneError('The machine could not be prepared for this run. Try again.', 502, 'machine_files_failed')
-        }
-      }
+      await this.deliverProviderFiles(auth, resolved.files)
       return { env: { ...own, ...resolved.env } }
     } catch (error) {
       const detail = error as { message?: string; statusCode?: number; code?: string }
       throw controlPlaneError(detail.message ?? 'Account is unavailable', detail.statusCode ?? 409, detail.code ?? 'account_unavailable')
+    }
+  }
+
+  async issueDiscoveryCredentials(auth: HostAuthentication, adapterId: string): Promise<{ env: Record<string, string> }> {
+    const accounts = this.dependencies.agentProviderAccounts
+    if (!accounts) throw controlPlaneError('Provider accounts are unavailable', 503, 'provider_accounts_unavailable')
+    if (auth.environment.kind !== 'overlay_cloud') throw controlPlaneError('Only Overlay Cloud environments receive provider credentials', 403, 'run_credentials_forbidden')
+    const adapters = auth.environment.capabilities.adapters
+    const offered = Array.isArray(adapters) && adapters.some((adapter: unknown) =>
+      typeof adapter === 'object' && adapter !== null && 'id' in adapter && adapter.id === adapterId)
+    if (!isAgentProviderId(adapterId) || !offered)
+      throw controlPlaneError('This adapter is unavailable', 409, 'provider_account_missing')
+    const bindings = await this.dependencies.repository.listBindings({ workspaceId: auth.credential.workspaceId })
+    const matches = bindings.filter(binding => binding.enabled && binding.environmentId === auth.environment.id && binding.adapterConfig.adapterId === adapterId)
+    const binding = matches.length === 1 ? matches[0] : undefined
+    const accountId = binding?.adapterConfig.providerAccountId, ownerUserId = binding?.adapterConfig.providerAccountOwnerUserId
+    if (typeof accountId !== 'string' || !accountId || typeof ownerUserId !== 'string' || !ownerUserId)
+      throw controlPlaneError('No unique bound provider account is available', 409, 'provider_account_missing')
+    await this.dependencies.workspaces.resolveActiveWorkspace(ownerUserId, auth.credential.workspaceId)
+    if (await this.dependencies.repository.environmentHasActiveRuns({ environmentId: auth.environment.id }))
+      throw controlPlaneError('Option discovery waits until this machine is idle', 409, 'provider_discovery_busy')
+    try {
+      const resolved = await accounts.resolveRunEnvironment({ accountId, ownerUserId, expectedProvider: adapterId })
+      await this.deliverProviderFiles(auth, resolved.files)
+      await this.audit('agent_options.credentials_issued', 'service', undefined, {
+        workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, adapterId,
+        provider: resolved.provider, method: resolved.method,
+      }, auth.environment.id, 'agent_environment')
+      return { env: resolved.env }
+    } catch (error) {
+      if (error instanceof ConnectedAgentControlPlaneError) throw error
+      if (error instanceof AgentProviderAccountError) throw controlPlaneError(error.message, error.statusCode, error.code)
+      throw controlPlaneError('Account is unavailable', 503, 'account_unavailable')
+    }
+  }
+
+  private async deliverProviderFiles(auth: HostAuthentication, files: Array<{ path: string; contents: string; mode?: number }>): Promise<void> {
+    if (!files.length) return
+    if (!this.dependencies.deliverMachineFiles) throw controlPlaneError('This account cannot be delivered to a machine', 501, 'machine_files_unavailable')
+    try {
+      await this.dependencies.deliverMachineFiles({ workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, files })
+    } catch (_error) {
+      throw controlPlaneError('The machine could not be prepared. Try again.', 502, 'machine_files_failed')
     }
   }
 

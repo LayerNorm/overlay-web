@@ -3973,7 +3973,7 @@
     "/api/v1/agent-environments/{environmentId}/run-credentials": {
       "post": {
         "operationId": "postAgentEnvironmentsEnvironmentIdRunCredentials",
-        "summary": "Release the provider credentials for one active run to an Overlay Cloud host",
+        "summary": "Release provider credentials for an active run or idle bound-adapter discovery to an Overlay Cloud host",
         "tags": [
           "Agent environments"
         ],
@@ -4042,24 +4042,50 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "protocolVersion": {
-                    "type": "number",
-                    "enum": [
-                      1
-                    ]
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "protocolVersion": {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "runId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "protocolVersion",
+                      "runId"
+                    ],
+                    "additionalProperties": false
                   },
-                  "runId": {
-                    "type": "string",
-                    "minLength": 1
+                  {
+                    "type": "object",
+                    "properties": {
+                      "protocolVersion": {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "adapterId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "protocolVersion",
+                      "adapterId"
+                    ],
+                    "additionalProperties": false
                   }
-                },
-                "required": [
-                  "protocolVersion",
-                  "runId"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }

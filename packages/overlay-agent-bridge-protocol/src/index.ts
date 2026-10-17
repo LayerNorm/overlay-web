@@ -85,6 +85,13 @@ export const runCredentialsRequestSchema = z.object({
 }).strict()
 export type RunCredentialsRequest = z.infer<typeof runCredentialsRequestSchema>
 
+/** A Cloud host discovers options using its sole enabled binding for this adapter. */
+export const providerDiscoveryCredentialsRequestSchema = z.object({
+  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
+  adapterId: identifier,
+}).strict()
+export const providerCredentialsRequestSchema = z.union([runCredentialsRequestSchema, providerDiscoveryCredentialsRequestSchema])
+
 export const driveCredentialsRequestSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), runId: identifier, sessionId: identifier,
   execution: executionFenceSchema.omit({ hostBootId: true }).optional(),
@@ -103,7 +110,7 @@ export type DriveCredentialsResponse = z.infer<typeof driveCredentialsResponseSc
 
 export const runCredentialsResponseSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
-  /** Environment variables for the agent process of this run only. */
+  /** Provider environment for the run or isolated option probe, never stored in commands or capabilities. */
   env: z.record(z.string().min(1).max(128), z.string().min(1).max(8_192)),
 }).strict()
 export type RunCredentialsResponse = z.infer<typeof runCredentialsResponseSchema>

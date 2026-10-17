@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { homedir, platform, release } from 'node:os'
+import { homedir } from 'node:os'
 import { setTimeout as wait } from 'node:timers/promises'
 import { agentSettingsSchema } from './acp-settings.js'
 import {
@@ -15,7 +15,7 @@ import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
 import { RuntimeDriveController } from './runtime-drive-controller.js'
 import {createNativeTerminalIntent, observeActiveNativeRuns, withNativeTerminalBoundary} from './runtime-terminal-boundary.js'
 import { HostHeartbeat } from './host-heartbeat.js'
-import { updateHostCapabilities } from './host-capabilities.js'
+import { buildHostCapabilities, updateHostCapabilities } from './host-capabilities.js'
 import { PendingHostPrompts, quiesceHostRuns } from './runtime-shutdown.js'
 import {withRunPreparation} from './run-preparation.js'
 import {fetchProviderRunCredentials} from './provider-run-credentials.js'
@@ -91,8 +91,21 @@ export class AgentHostRuntime {
   }
 
   async discoverCapabilities() {
+    // Authenticated starts already captured the live catalog. Publish it without probing or replacing auth files during work.
+    if (this.options.fetchRunCredentials && [...this.sessions.keys()].some(runId => !this.terminalRuns.has(runId))) return [...this.adapters.values()].map(adapter => adapter.capability)
     const root = this.options.filesystem.mode === 'all_user_files' ? homedir() : this.options.filesystem.roots[0]
-    return Promise.all([...this.adapters.values()].map(adapter => adapter.discover(root ? { workingDirectory: root } : undefined)))
+    return Promise.all([...this.adapters.values()].map(async adapter => {
+      if (!root) return adapter.capability
+      let credentials: Record<string, string> | undefined
+      if (this.options.fetchRunCredentials && this.options.controlPlane.fetchDiscoveryCredentials) {
+        try { credentials = await this.options.controlPlane.fetchDiscoveryCredentials(adapter.capability.id) }
+        catch {
+          this.logger.warn('adapter option credentials unavailable; keeping fallback catalog', { adapterId: adapter.capability.id })
+          return adapter.capability
+        }
+      }
+      return adapter.discover({ workingDirectory: root, ...(credentials ? { credentials } : {}) })
+    }))
   }
 
   async pollOnce(waitMs = 25_000, signal?: AbortSignal): Promise<number> {
@@ -157,26 +170,14 @@ export class AgentHostRuntime {
 
   private async refreshHostState(): Promise<void> {
     if (this.options.controlPlane.updateCapabilities) {
-      const capabilities = {
-        protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
-        ...(this.options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
-        streaming: { textDeltas: true as const, heartbeats: true as const },
-        mcp: { approvalBridge: true as const },
-        ...(this.options.drive ? { drive: { version: 1 as const } } : {}),
-        hostVersion: '0.4.2',
-        platform: `${platform()} ${release()}`,
-        adapters: (await this.discoverCapabilities()).map((capability) => {
-          if (this.options.durableLifecycle) return capability
-          const { recovery, ...legacy } = capability
-          void recovery
-          return legacy
-        }),
-        filesystem: this.options.filesystem,
-        maxConcurrentRuns: Math.max(1, this.adapters.size),
-      }
+      const capabilities = buildHostCapabilities(await this.discoverCapabilities(), {
+        durableLifecycle: this.options.durableLifecycle === true, drive: Boolean(this.options.drive),
+        filesystem: this.options.filesystem, maxConcurrentRuns: this.adapters.size,
+      })
       await updateHostCapabilities(this.options.controlPlane, capabilities)
     }
-    this.nextCapabilityRefreshAt = Date.now() + 24 * 60 * 60_000
+    const missingCloudCatalog = this.options.fetchRunCredentials && [...this.adapters.values()].some(adapter => !adapter.capability.options)
+    this.nextCapabilityRefreshAt = Date.now() + (missingCloudCatalog ? 60_000 : 24 * 60 * 60_000)
     await this.hostHeartbeat.send()
   }
 
