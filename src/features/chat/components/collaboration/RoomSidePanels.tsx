@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { Bell, BellOff, Pin, Send, UserPlus } from 'lucide-react'
+import { Button, Textarea } from '@overlay/ui/primitives'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import type { ConversationParticipant, ConversationPresence } from '@overlay/workspace-contracts'
 
@@ -56,16 +57,17 @@ export function RoomPeoplePanel({
           </div>
         ))}
         {onAddPeople ? (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={onAddPeople}
-            className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className="mt-2 h-auto w-full justify-start gap-3 rounded-lg px-3 py-2 text-sm font-normal text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-(--border)">
               <UserPlus size={14} />
             </span>
             Add people
-          </button>
+          </Button>
         ) : null}
       </div>
     </AppScreenSidePanel>
@@ -104,15 +106,16 @@ export function RoomThreadPanel({
       bodyClassName="flex flex-col"
     >
       <div className="flex items-center justify-end border-b border-(--border) px-3 py-2">
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={onToggleFollow}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className="h-auto gap-1.5 rounded-md px-2 py-1 text-[11px] font-normal text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
           aria-pressed={following}
         >
           {following ? <BellOff size={12} /> : <Bell size={12} />}
           {following ? 'Following' : 'Follow thread'}
-        </button>
+        </Button>
       </div>
       <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-5">{messages}</div>
@@ -129,13 +132,13 @@ export function RoomThreadPanel({
           onSubmit()
         }}
       >
-        <textarea
+        <Textarea
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
           rows={1}
           placeholder="Reply…"
           aria-label="Reply in thread"
-          className="min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-hidden placeholder:text-(--muted-light)"
+          className="min-h-9 w-auto flex-1 resize-none rounded-none border-0 bg-transparent px-2 py-2 text-sm shadow-none outline-hidden placeholder:text-(--muted-light) focus:ring-0"
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -143,14 +146,16 @@ export function RoomThreadPanel({
             }
           }}
         />
-        <button
+        <Button
+          variant="primary"
+          size="icon"
           type="submit"
           disabled={!input.trim()}
           aria-label="Send thread reply"
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-(--foreground) text-(--background) disabled:opacity-30"
+          className="h-9 w-9 rounded-lg bg-(--foreground) p-0 text-(--background) disabled:opacity-30"
         >
           <Send size={14} />
-        </button>
+        </Button>
       </form>
       )}
     </AppScreenSidePanel>
@@ -192,10 +197,11 @@ export function RoomPinnedPanel({
               key={item.messageId}
               className='group/pin flex items-start gap-1'
             >
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => onJump(item.messageId)}
-                className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left transition-colors hover:bg-(--surface-subtle)"
+                className="h-auto min-w-0 flex-1 justify-start rounded-lg px-2 py-2 text-left font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
               >
                 <span className="flex items-baseline gap-2">
                   <span className='truncate text-xs font-medium text-(--foreground)'>
@@ -215,15 +221,17 @@ export function RoomPinnedPanel({
                 <span className='mt-0.5 line-clamp-2 block text-xs text-(--muted)'>
                   {item.preview}
                 </span>
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 type="button"
                 onClick={() => onUnpin(item.messageId)}
                 aria-label={`Unpin ${item.authorName}'s message`}
-                className="mt-2 shrink-0 rounded-md p-1.5 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:opacity-100 group-hover/pin:opacity-100"
+                className="mt-2 h-auto w-auto shrink-0 rounded-md p-1.5 text-(--muted-light) opacity-0 transition-opacity hover:bg-(--surface-subtle) hover:text-(--foreground) focus-visible:opacity-100 group-hover/pin:opacity-100"
               >
                 <Pin size={13} strokeWidth={1.75} className="fill-current" />
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

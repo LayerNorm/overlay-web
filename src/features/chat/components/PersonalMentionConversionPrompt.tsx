@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Hash, MessageCircle } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { savePendingCollaborationMessage } from '../lib/pending-collaboration-message'
@@ -74,27 +75,29 @@ export function PersonalMentionConversionPrompt({
       <span className="min-w-0 flex-1">
         You mentioned {names.join(', ')}. Send this in a shared conversation instead of your Personal chat; your existing Personal chat stays private.
       </span>
-      <button
+      <Button
+        variant="primary"
         type="button"
         onClick={() => void create('dm')}
         disabled={Boolean(busy)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-(--foreground) px-2.5 font-medium text-(--background) disabled:opacity-60"
+        className="h-8 gap-1.5 rounded-lg bg-(--foreground) px-2.5 font-medium text-(--background) disabled:opacity-60"
       >
         <MessageCircle size={13} />
         {busy === 'dm' ? 'Starting…' : 'Start DM'}
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="secondary"
         type="button"
         onClick={() => void create('channel')}
         disabled={Boolean(busy)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 font-medium text-(--foreground) disabled:opacity-60"
+        className="h-8 gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) px-2.5 font-medium text-(--foreground) hover:bg-(--surface-elevated) disabled:opacity-60"
       >
         <Hash size={13} />
         {busy === 'channel' ? 'Creating…' : 'Private channel'}
-      </button>
-      <button type="button" onClick={onCancel} disabled={Boolean(busy)} className="h-8 rounded-lg px-2 text-(--muted) hover:bg-(--border) hover:text-(--foreground) disabled:opacity-60">
+      </Button>
+      <Button variant="ghost" type="button" onClick={onCancel} disabled={Boolean(busy)} className="h-8 rounded-lg px-2 font-normal text-(--muted) hover:bg-(--border) hover:text-(--foreground) disabled:opacity-60">
         Keep editing
-      </button>
+      </Button>
       {error ? <span role="alert" className="w-full text-red-500">{error}</span> : null}
     </div>
   )
