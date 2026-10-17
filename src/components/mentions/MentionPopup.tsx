@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -228,7 +229,7 @@ interface OptionButtonProps {
 
 function OptionButton({ index, active, itemRef, onMouseEnter, onClick, compact, children }: OptionButtonProps) {
   return (
-    <button
+    <Button variant="ghost"
       ref={itemRef}
       type="button"
       role="option"
@@ -236,10 +237,10 @@ function OptionButton({ index, active, itemRef, onMouseEnter, onClick, compact, 
       aria-selected={active}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
-      className={optionClassName(active, compact)}
+      className={unstyledButton(optionClassName(active, compact))}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -338,13 +339,13 @@ function CategoryBreadcrumb({
 }) {
   return (
     <div className="flex items-center gap-1.5 border-b border-(--border) bg-(--surface-muted) px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-(--muted-light)">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onBack}
-        className="hover:text-(--foreground) transition-colors"
+        className={unstyledButton("hover:text-(--foreground) transition-colors")}
       >
         All
-      </button>
+      </Button>
       <ChevronRight size={10} className="opacity-60" />
       <CategoryIcon icon={meta.icon} className="opacity-60" />
       <span>{meta.label}</span>

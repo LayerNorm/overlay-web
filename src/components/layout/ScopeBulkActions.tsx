@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '../control-reset'
 import { useState } from 'react'
 import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
@@ -61,22 +62,22 @@ export function ScopeBulkActions({
   return (
     <>
       {moveTo ? (
-        <button type="button" disabled={busy} onClick={() => void move(moveTo)} className={BUTTON}>
+        <Button variant="ghost" type="button" disabled={busy} onClick={() => void move(moveTo)} className={unstyledButton(BUTTON)}>
           {moveTo === 'workspace' ? <Users size={13} /> : <User size={13} />}
           {moveTo === 'workspace' ? 'Move to Workspace' : 'Move to Personal'} ({count})
-        </button>
+        </Button>
       ) : null}
       {canArchive ? (
-        <button type="button" disabled={busy} onClick={() => void run(actions.archive, true)} className={BUTTON}>
+        <Button variant="ghost" type="button" disabled={busy} onClick={() => void run(actions.archive, true)} className={unstyledButton(BUTTON)}>
           <Archive size={13} />
           Archive ({count})
-        </button>
+        </Button>
       ) : null}
       {canRestore ? (
-        <button type="button" disabled={busy} onClick={() => void run(actions.restore)} className={BUTTON}>
+        <Button variant="ghost" type="button" disabled={busy} onClick={() => void run(actions.restore)} className={unstyledButton(BUTTON)}>
           <RotateCcw size={13} />
           Restore ({count})
-        </button>
+        </Button>
       ) : null}
       {failed > 0 ? <span role="alert" className="text-xs text-red-500">{failed} could not be changed.</span> : null}
     </>
