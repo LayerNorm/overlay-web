@@ -348,7 +348,9 @@ export async function proxy(request: NextRequest) {
         )
       }
       const signInUrl = new URL('/auth/sign-in', request.url)
-      signInUrl.searchParams.set('redirect', pathname)
+      // Preserve the original query: the desktop auth handoff carries
+      // desktop_code_challenge on /account and must survive sign-in.
+      signInUrl.searchParams.set('redirect', pathname + request.nextUrl.search)
       return applyBrowserSecurityHeaders(
         NextResponse.redirect(signInUrl),
         cspHeaderName,
@@ -370,7 +372,7 @@ export async function proxy(request: NextRequest) {
         )
       }
       const signInUrl = new URL('/auth/sign-in', request.url)
-      signInUrl.searchParams.set('redirect', pathname)
+      signInUrl.searchParams.set('redirect', pathname + request.nextUrl.search)
       return applyBrowserSecurityHeaders(
         NextResponse.redirect(signInUrl),
         cspHeaderName,
@@ -390,6 +392,7 @@ export async function proxy(request: NextRequest) {
         )
       }
       const signInUrl = new URL('/auth/sign-in', request.url)
+      signInUrl.searchParams.set('redirect', pathname + request.nextUrl.search)
       return applyBrowserSecurityHeaders(
         NextResponse.redirect(signInUrl),
         cspHeaderName,

@@ -55,6 +55,9 @@ const nextConfig: NextConfig = {
     : undefined,
   // Explicit server action body size limit. Prevents DoS via large payloads.
   experimental: {
+    // Keep route bootstraps in external assets: the shared runtime emits an
+    // unnonced inline bootstrap in the cached shell, which nonce CSP blocks.
+    turbopackSharedRuntime: false,
     // The persistent build cache raises Turbopack peak memory past the
     // Basic Vercel build container limit; keep builds cold but bounded.
     turbopackFileSystemCacheForBuild: false,
