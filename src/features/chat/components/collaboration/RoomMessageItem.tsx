@@ -34,6 +34,7 @@ import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
+import { unstyledButton } from './control-reset'
 import { roomMessageDomId } from './room-message-view'
 
 export type RoomMessageReaction = {
@@ -1018,11 +1019,11 @@ function RemoteRunControls({ run, onControl }: {
   if (run.state === 'needs_attention') return (
     <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
       <p role="status">Execution needs attention. Stop or isolate the original process before starting fresh.</p>
-      <button type="button" className="shrink-0 rounded-md border border-(--border) px-2 py-1 text-(--foreground)"
+      <Button variant="ghost" type="button" className={unstyledButton("shrink-0 rounded-md border border-(--border) px-2 py-1 text-(--foreground)")}
         onClick={() => {
           if (window.confirm('Confirm that you inspected and stopped or isolated the original process. Starting fresh creates a new attempt and does not resume the old process.'))
             onControl(run.runId, 'start_fresh')
-        }}>Start fresh</button>
+        }}>Start fresh</Button>
     </div>
   )
   if (run.state === 'recoverable') return (
