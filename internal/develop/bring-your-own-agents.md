@@ -1417,6 +1417,8 @@ execution-fenced `finalizing` phase with a fixed five-minute limit capped by the
 It grants only the existing drive authority, does not assert provider liveness or allow new MCP work,
 and cannot extend itself through repeated save/progress events. Stop, revocation and deadline checks
 still win; expiry or a real save failure preserves the unsaved journal and requires attention.
+Provider failure keeps the same pending-approval invalidation boundary as observed process loss;
+the save phase cannot retain executable approvals from a failed native session.
 The conversation-message schema permits the projected drive data part; ingestion keeps the same
 assistant row and retries an unacknowledged batch unchanged. Constrained staging PUTs sign the
 checksum as a header, matching the host request. Do not hoist it into the query and also send the

@@ -1841,7 +1841,7 @@ test('overlapping durable permission and input wait for both host acknowledgemen
   expect(snapshot.message?._id).toBe(started.messageId)
 })
 
-test('canonical request projection preserves decisions and closes lost execution context across later output', async () => {
+test.each(['process_observation', 'failed'] as const)('canonical request projection preserves decisions and closes %s context across later output', async source => {
   const { convex, seeded, call, lifecycle, started, events } = await durableFixture()
   const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
   await lifecycle('claim', owner); await lifecycle('advance', owner)
@@ -1851,13 +1851,18 @@ test('canonical request projection preserves decisions and closes lost execution
   await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), request(2, 'answered'), request(3, 'lost')], now + 1)
   await call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: seeded.conversationId,
     runId: 'run-remote-turn', requestKey: 'answered', decision: 'allow', now: now + 2 })
-  await events([event(4, 'process_observation', { process: 'lost' }), event(5, 'text_checkpoint', { text: 'late buffered output' })], now + 3)
+  const failure = source === 'failed' ? event(4, 'failed', {code: 'provider_error', message: 'Native provider failed', retryable: true})
+    : event(4, 'process_observation', {process: 'lost'})
+  await events([failure, event(5, 'text_checkpoint', { text: 'late buffered output' })], now + 3)
   const snapshot = await projectedState(convex, started.messageId)
   expect(snapshot.run?.remoteLifecycle?.cause).toBe('approval_context_lost')
   expect(snapshot.message?.parts).toEqual(expect.arrayContaining([
     expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'answered', state: 'resolved', resolution: expect.objectContaining({ decision: 'allow' }) }) }),
-    expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'lost', state: 'resolved', resolution: expect.objectContaining({ decision: 'approval_context_lost' }) }) }),
+    expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'lost', state: 'resolved', resolution: expect.objectContaining({ decision: source === 'failed' ? 'run_failed' : 'approval_context_lost' }) }) }),
   ]))
+  const requests = await convex.run(ctx => ctx.db.query('agentApprovalRequests')
+    .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', workspaceId).eq('runId', 'run-remote-turn')).take(10))
+  expect(requests.find(request => request.requestKey === 'lost')?.resolution?.decision).toBe('approval_context_lost')
   await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: seeded.conversationId,
     runId: 'run-remote-turn', requestKey: 'lost', decision: 'allow', now: now + 4 })).rejects.toThrow(/ALREADY_RESOLVED/)
 })

@@ -75,6 +75,11 @@ function needsAttention(next: RemoteRunState, cause: string) {
   next.phase = 'needs_attention'
   next.cause = cause
 }
+function loseNativeProcess(current: RemoteRunState, next: RemoteRunState) {
+  needsAttention(next, pendingRemoteApprovals(current).length > 0 ? 'approval_context_lost' : 'process_lost')
+  delete next.approval
+  delete next.approvals
+}
 export function pendingRemoteApprovals(state: RemoteRunState): RemoteRunApproval[] {
   return (state.approvals ?? (state.approval ? [state.approval] : [])).filter(request => !request.delivered)
 }
@@ -133,11 +138,8 @@ const factHandlers: FactHandlers = {
         next.phase = phaseAfterAttach(current)
         delete next.cause
       }
-    } else if (fact.process === 'lost') {
-      needsAttention(next, pendingRemoteApprovals(current).length > 0 ? 'approval_context_lost' : 'process_lost')
-      delete next.approval
-      delete next.approvals
-    } else needsAttention(next, 'process_health_unknown')
+    } else if (fact.process === 'lost') loseNativeProcess(current, next)
+    else needsAttention(next, 'process_health_unknown')
   },
   progress({ next, now }) { next.lastProgressAt = now },
   finalize({ current, next, now }) {
@@ -145,7 +147,7 @@ const factHandlers: FactHandlers = {
     next.phase = 'finalizing'
     next.finalizationDeadlineAt = Math.min(current.hardDeadlineAt, now + 5 * 60_000)
   },
-  failure({ next }) { needsAttention(next, 'process_lost') },
+  failure({ current, next }) { loseNativeProcess(current, next) },
   isolated_source({current, next}, fact) {
     if (!['recovering', 'needs_attention'].includes(current.phase)) return 'conflict'
     delete next.lastPreparationAt

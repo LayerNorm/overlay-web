@@ -32,6 +32,18 @@ test('final saving cannot bypass approvals, revive lost execution or outlive can
   const cancelled = apply(s, {type: 'cancel', cause: 'user'}, 1500).state
   assert.equal(apply(cancelled, {type: 'complete'}, 1501).applied, false)
 })
+test('provider failure invalidates every pending approval through the same boundary as process loss', () => {
+  let pending = apply(state(), {type: 'request', requestKey: 'first', expiresAt: 10000}).state
+  pending = apply(pending, {type: 'request', requestKey: 'second', kind: 'elicitation', expiresAt: 10000}).state
+  for (const fact of [{type: 'failure'}, {type: 'health', process: 'lost'}] as const) {
+    const failed = apply(pending, fact, 2000).state
+    assert.equal(failed.phase, 'needs_attention')
+    assert.equal(failed.cause, 'approval_context_lost')
+    assert.equal(failed.approval, undefined)
+    assert.equal(failed.approvals, undefined)
+    assert.equal(apply(failed, {type: 'finalize'}, 2001).applied, false)
+  }
+})
 test('native restoration gets a bounded startup window, not a fabricated live-provider observation', () => {
   const recovery: RemoteRunState = {...state(), phase: 'recovering', cause: 'native_restoration'}
   assert.equal(apply(recovery, {type: 'observe'}, 30_000).state.phase, 'recovering')
