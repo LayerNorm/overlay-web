@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 // Compatibility wrapper: account and billing transport lives behind @overlay/api-client
 // while this web container keeps current billing flows and redirects unchanged.
@@ -355,14 +357,14 @@ function DesktopAppSection({
         <p className={`mt-1 text-sm ${mutedClass}`}>Open your existing desktop session, or download the macOS app.</p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        <button
+        <Button variant="ghost"
           onClick={onOpenInApp}
           disabled={opening}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-(--button-secondary-border) bg-(--button-secondary-bg) px-3 py-2 text-sm font-medium text-(--button-secondary-text) transition-colors hover:bg-(--surface-muted) disabled:opacity-50"
+          className={unstyledButton(`inline-flex items-center justify-center gap-2 rounded-lg border border-(--button-secondary-border) bg-(--button-secondary-bg) px-3 py-2 text-sm font-medium text-(--button-secondary-text) transition-colors hover:bg-(--surface-muted) disabled:opacity-50`)}
         >
           {opening ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
           {opening ? 'Opening…' : 'Open app'}
-        </button>
+        </Button>
         <Link
           href="/download"
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-(--button-secondary-border) bg-(--button-secondary-bg) px-3 py-2 text-sm font-medium text-(--button-secondary-text) transition-colors hover:bg-(--surface-muted)"
@@ -411,13 +413,13 @@ function AuthenticatedAccountPanels({
         email={email}
         actions={
           <div className="flex items-center gap-1">
-            <button
+            <Button variant="ghost"
               onClick={onSignOut}
               disabled={signingOut}
-              className="rounded-md px-2 py-1.5 text-xs font-medium text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50"
+              className={unstyledButton(`rounded-md px-2 py-1.5 text-xs font-medium text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground) disabled:opacity-50`)}
             >
               {signingOut ? 'Signing out…' : 'Sign out'}
-            </button>
+            </Button>
             <Suspense fallback={null}>
               <DeleteAccountSection isLandingDark={dark} />
             </Suspense>

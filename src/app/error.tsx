@@ -1,4 +1,6 @@
 "use client";
+import { unstyledButton } from './control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useEffect } from "react";
 
@@ -16,12 +18,12 @@ export default function Error({
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#fafafa] text-[#0a0a0a]">
       <h1 className="text-2xl font-medium mb-4">something went wrong</h1>
-      <button
+      <Button variant="ghost"
         onClick={reset}
-        className="px-4 py-2 bg-[#0a0a0a] text-white rounded-full text-sm hover:bg-[#27272a] transition-colors"
+        className={unstyledButton(`px-4 py-2 bg-[#0a0a0a] text-white rounded-full text-sm hover:bg-[#27272a] transition-colors`)}
       >
         try again
-      </button>
+      </Button>
     </div>
   );
 }
