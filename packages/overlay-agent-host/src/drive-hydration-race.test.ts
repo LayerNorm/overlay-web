@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
-import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises'
+import {mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import test from 'node:test'
@@ -11,6 +11,7 @@ async function hydrate(race: 'once' | 'always' | 'stable' | 'moved' | 'denied' |
   const project = join(directory, 'project')
   await mkdir(project)
   let version = 1, manifests = 0, downloads = 0
+  let beforeDownload: (() => Promise<void>) | undefined
   const bytes = (value: number) => Buffer.from(`Verified source revision ${value}\n`)
   const entry = () => ({fileId: 'source', path: race === 'moved' && version > 1 ? 'moved.md' : 'source.md',
     updatedAt: version, kind: 'file', hydration: 'ready', sizeBytes: bytes(version).length,
@@ -29,6 +30,7 @@ async function hydrate(race: 'once' | 'always' | 'stable' | 'moved' | 'denied' |
       }
       assert.equal(body.action, 'download', 'hydration must not publish any writes')
       downloads++
+      await beforeDownload?.()
       if (race === 'denied') return Response.json({error: 'DRIVE_RUN_UNAVAILABLE'}, {status: 403})
       if (race === 'local-write') {
         const cache = (await readdir(project)).find(name => name.startsWith('.overlay-drive-'))
@@ -43,11 +45,23 @@ async function hydrate(race: 'once' | 'always' | 'stable' | 'moved' | 'denied' |
       return new Response(bytes(version), {status: 206, headers: {'x-overlay-drive-size': String(bytes(version).length),
         'content-range': `bytes 0-${bytes(version).length - 1}/${bytes(version).length}`}})
     }})
-  return {start, stats: () => ({manifests, downloads}), localText: async () => {
+  const cacheFile = async () => {
     const cache = (await readdir(project)).find(name => name.startsWith('.overlay-drive-'))
     assert.ok(cache)
-    return readFile(join(project, cache, 'source.md'), 'utf8')
-  }, clean: () => rm(directory, {recursive: true, force: true})}
+    return join(project, cache, 'source.md')
+  }
+  return {start, stats: () => ({manifests, downloads}), advance: () => {version++},
+    beforeDownload: (callback: (() => Promise<void>) | undefined) => {beforeDownload = callback},
+    recreateLocal: async (content?: string) => {
+      const path = await cacheFile()
+      await writeFile(`${path}.recreated`, content ?? await readFile(path))
+      await rename(`${path}.recreated`, path)
+    }, moveAndRecreateLocal: async () => {
+      const path = await cacheFile(), content = await readFile(path)
+      await rename(path, `${path}.moved`)
+      await writeFile(path, content)
+    }, localText: async () => readFile(await cacheFile(), 'utf8'),
+    clean: () => rm(directory, {recursive: true, force: true})}
 }
 
 test('startup hydrates the current same-path revision after another agent updates its source', async () => {
@@ -58,6 +72,63 @@ test('startup hydrates the current same-path revision after another agent update
       assert.equal(await readFile(join(drive.workingDirectory, 'source.md'), 'utf8'), 'Verified source revision 2\n')
       assert.deepEqual(f.stats(), {manifests: 3, downloads: 2})
     } finally {await drive.close()}
+  } finally {await f.clean()}
+})
+
+test('warm startup refreshes a newer remote version after unchanged cache bytes acquire a new inode', async () => {
+  const f = await hydrate('stable')
+  try {
+    const initial = await f.start()
+    await initial.close()
+    await f.recreateLocal()
+    f.advance()
+    const resumed = await f.start()
+    try {assert.equal(await f.localText(), 'Verified source revision 2\n')}
+    finally {await resumed.close()}
+  } finally {await f.clean()}
+})
+
+test('a replacement during hydration is rejected, then unchanged baseline bytes can resume on the next startup', async () => {
+  const f = await hydrate('stable')
+  try {
+    const initial = await f.start()
+    await initial.close()
+    f.advance()
+    f.beforeDownload(() => f.recreateLocal())
+    await assert.rejects(f.start(), /DRIVE_LOCAL_PATH_CONFLICT/)
+    assert.equal(await f.localText(), 'Verified source revision 1\n')
+    f.beforeDownload(undefined)
+    const resumed = await f.start()
+    try {assert.equal(await f.localText(), 'Verified source revision 2\n')}
+    finally {await resumed.close()}
+  } finally {await f.clean()}
+})
+
+test('restarting interrupted hydration still preserves changed local bytes at the same path', async () => {
+  const f = await hydrate('stable')
+  try {
+    const initial = await f.start()
+    await initial.close()
+    f.advance()
+    f.beforeDownload(() => f.recreateLocal('Retain my concurrent local edit\n'))
+    await assert.rejects(f.start(), /DRIVE_LOCAL_PATH_CONFLICT/)
+    f.beforeDownload(undefined)
+    await assert.rejects(f.start(), /DRIVE_LOCAL_PATH_CONFLICT/)
+    assert.equal(await f.localText(), 'Retain my concurrent local edit\n')
+  } finally {await f.clean()}
+})
+
+test('restarting hydration does not adopt a copied path while the original file identity has moved', async () => {
+  const f = await hydrate('stable')
+  try {
+    const initial = await f.start()
+    await initial.close()
+    f.advance()
+    f.beforeDownload(() => f.moveAndRecreateLocal())
+    await assert.rejects(f.start(), /DRIVE_LOCAL_PATH_CONFLICT/)
+    f.beforeDownload(undefined)
+    await assert.rejects(f.start(), /DRIVE_LOCAL_PATH_CONFLICT/)
+    assert.equal(await f.localText(), 'Verified source revision 1\n')
   } finally {await f.clean()}
 })
 

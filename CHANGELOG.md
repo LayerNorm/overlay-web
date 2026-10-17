@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resume startup file hydration after unchanged cached files acquire new filesystem identities, while preserving local-edit and in-flight replacement conflicts.
+
 - Stop native health probes as soon as an adapter receives its turn result, preserving completion while its connection closes and files finish saving.
 
 - Preserve literal underscores in streaming agent identifiers and filenames instead of appending a character that disappears at completion.

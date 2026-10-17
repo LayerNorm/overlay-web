@@ -1412,6 +1412,9 @@ identity pins the canonical cache path and drive scope, and its database must re
 working directory. Cache inventories include empty folders and exact integer filesystem identities so equal
 content alone cannot identify a rename. Atomic download temporaries live in a private sibling directory,
 so a crash cannot expose a partial download as a new deliverable in the next scan.
+Bootstrap hydration refreshes a recreated file's identity only at its recorded path with unchanged
+baseline bytes, including a pending hydration resumed after restart. Changed bytes, moves and
+replacements during a download retain their existing conflict checks.
 
 The synchronizer persists its baseline, current turn's saved-file links and one pending effect outside
 the drive. It hydrates before use, propagates file/folder creates, moves and explicit hydrated-entry

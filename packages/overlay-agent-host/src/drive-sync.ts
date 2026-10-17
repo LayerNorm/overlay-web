@@ -20,6 +20,7 @@ export class AgentDriveSynchronizer {
 
   initialize(): Promise<void> {
     return this.serial(async () => {
+      await this.refreshHydrationReference()
       await this.recover()
       const snapshot = this.options.state.read()
       if (snapshot.phase !== 'idle') throw Error('DRIVE_WRITE_UNSAVED')
@@ -76,10 +77,23 @@ export class AgentDriveSynchronizer {
         else if (unchanged) { await this.options.cache.removeUnchanged(current); this.drop(row.entry.fileId) }
         else this.forceCopies.add(row.entry.fileId)
       } else if (sameVersion(fresh, row.entry)) this.replaceBaseline({ ...row, entry: fresh })
-      else if (unchanged) await this.hydrate(fresh, row.local.path, row.local)
+      else if (unchanged && current) await this.hydrate(fresh, row.local.path,
+        current.path === row.local.path ? reference(current) : row.local)
       else if (!current) throw Error('DRIVE_DELETE_CONFLICT')
       else this.forceCopies.add(row.entry.fileId)
     }
+  }
+
+  /** Bootstrap only: a restored filesystem may recreate unchanged files with new identities. */
+  private async refreshHydrationReference() {
+    const snapshot = this.options.state.read()
+    if (snapshot.phase !== 'hydrating' || !snapshot.prior) return
+    const previous = snapshot.baseline.find(row => row.entry.fileId === snapshot.entry.fileId)
+    if (previous?.entry.kind !== 'file' || previous.local?.path !== snapshot.path || snapshot.prior.path !== snapshot.path) return
+    const prior = snapshot.prior, inventory = await this.options.cache.inventory()
+    const current = inventory.find(item => sameIdentity(item.identity, prior.identity)) ?? localEntry(inventory, previous)
+    if (current?.kind === 'file' && current.path === snapshot.path && sameContent(current, previous.entry) && !sameIdentity(current.identity, prior.identity))
+      this.options.state.write({...snapshot, prior: reference(current)})
   }
 
   private async reconcileRemovedFolders(remote: DriveManifestEntry[]) {

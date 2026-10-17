@@ -1,6 +1,6 @@
 # Reliable connected agents
 
-Status: Implementation for Phases 1–5 is in place; Phase 0 smoke/observability is implemented, but the historical poll-500 cause remains unconfirmed. Current-candidate short native Claude/Codex checks pass; long-run recovery, full-run visible latency and remaining approval/settings acceptance are pending.
+Status: Phases 1–5 are implemented. Phase 0 metrics are in place, but the historical poll-500 diagnosis and whole-plan native acceptance remain open. Short native checks passed before the cache-identity follow-up; that follow-up needs an updated image and hosted recovery QA.
 
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
@@ -8,6 +8,12 @@ mockup [`mockups/reliable-agents-mockup.html`](./mockups/reliable-agents-mockup.
 smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agent-long-horizon/).
 
 ## Progress
+
+- Forced native Codex recovery exposed a startup cache-identity conflict: unchanged cached
+  bytes acquired a new filesystem identity, preventing a newer remote revision from hydrating.
+  Bootstrap now refreshes only same-path, baseline-matching file references, including pending
+  hydration. Real cache/SQLite regressions reproduce the failure and preserve changed local
+  bytes and in-flight replacement checks. Updated-image native acceptance remains pending.
 
 - The native cleanup and streaming-identifier follow-ups now pass current-candidate short
   Claude and Codex acceptance on normally provisioned machines. Both preserve all baseline
