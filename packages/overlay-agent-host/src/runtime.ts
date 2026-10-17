@@ -15,6 +15,8 @@ import type { AgentControlPlaneClient } from './transport.js'
 import { ControlPlaneRequestError, nextReconnectDelay } from './transport.js'
 
 export type AgentHostRuntimeOptions = {
+  /** Opt in only against a server supporting the negotiated lifecycle extension. */
+  durableLifecycle?: boolean
   environmentId: string
   workspaceId: string
   filesystem: FilesystemGrant
@@ -32,7 +34,11 @@ export class AgentHostRuntime {
   private readonly sessions = new Map<string, AgentAdapterSession>()
   private readonly logger: StructuredLogger
   private flushing?: Promise<void>
+  private readonly terminalRuns = new Set<string>()
   private lastHeartbeatAt = 0
+  private readonly bootId = randomUUID()
+  private readonly executions = new Map<string, { attemptId: string; generation: number; hostBootId?: string }>()
+  private resolvedThroughSequence = 0
 
   constructor(private readonly options: AgentHostRuntimeOptions) {
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.capability.id, adapter]))
@@ -49,6 +55,8 @@ export class AgentHostRuntime {
       if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) throw new Error('event outbox backpressure limit reached')
     }
     const response = await this.options.controlPlane.pollCommands({ waitMs, ...(signal ? { signal } : {}) })
+    if (response.resolvedThroughSequence !== undefined)
+      this.resolvedThroughSequence = Math.max(this.resolvedThroughSequence, response.resolvedThroughSequence)
     // Sequential on purpose: commands arrive ordered and may build on each
     // other (e.g. stop after start), so they must be processed in order.
     for (const command of response.commands) {
@@ -81,9 +89,15 @@ export class AgentHostRuntime {
     if (this.options.controlPlane.updateCapabilities) {
       await this.options.controlPlane.updateCapabilities({
         protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
-        hostVersion: '0.0.1',
+        ...(this.options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
+        hostVersion: '0.3.11',
         platform: `${platform()} ${release()}`,
-        adapters: await this.discoverCapabilities(),
+        adapters: (await this.discoverCapabilities()).map((capability) => {
+          if (this.options.durableLifecycle) return capability
+          const { recovery, ...legacy } = capability
+          void recovery
+          return legacy
+        }),
         filesystem: this.options.filesystem,
         maxConcurrentRuns: Math.max(1, this.adapters.size),
       })
@@ -94,6 +108,11 @@ export class AgentHostRuntime {
   private async heartbeat(): Promise<void> {
     await this.options.controlPlane.heartbeat?.()
     this.lastHeartbeatAt = Date.now()
+    if (this.options.durableLifecycle) for (const [runId, session] of this.sessions) {
+      const execution = this.executions.get(runId)
+      if (!execution || this.terminalRuns.has(runId)) continue
+      await this.emit(runId, { type: 'process_observation', payload: { process: await session.observe?.() ?? 'unknown' } }, execution)
+    }
   }
 
   async processCommand(command: AgentHostCommand): Promise<void> {
@@ -111,8 +130,20 @@ export class AgentHostRuntime {
     }
     const expectedSequence = this.options.state.commandCursor() + 1
     if (command.sequence !== expectedSequence) {
-      await this.acknowledge(command, false, `expected command sequence ${expectedSequence}`, 'command_sequence_gap')
-      throw new Error(`expected command sequence ${expectedSequence}, received ${command.sequence}`)
+      // The server attests which skipped numbers are already resolved; a hole it reports as
+      // resolved is safe to jump over instead of wedging the whole command stream behind it.
+      if (command.sequence > expectedSequence && command.sequence - 1 <= this.resolvedThroughSequence) {
+        this.options.state.resumeCommandCursor(command.sequence - 1)
+      } else {
+        await this.acknowledge(command, false, `expected command sequence ${expectedSequence}`, 'command_sequence_gap')
+        throw new Error(`expected command sequence ${expectedSequence}, received ${command.sequence}`)
+      }
+    }
+    if (!this.options.state.claimCommand(command.commandId)) {
+      const message = 'The previous command outcome is unknown; inspect the current execution instead of replaying it.'
+      this.options.state.recordCommandResult(command.commandId, { sequence: command.sequence, accepted: false, errorCode: 'command_outcome_unknown', errorMessage: message })
+      await this.acknowledge(command, false, message, 'command_outcome_unknown')
+      return
     }
     try {
       await this.dispatch(command)
@@ -166,12 +197,12 @@ export class AgentHostRuntime {
         if (acknowledgement.acknowledgedSequence !== lastSentSequence) {
           throw new Error(`server acknowledged ${acknowledgement.acknowledgedSequence}, expected ${lastSentSequence}`)
         }
-        this.options.state.acknowledgeEvents(batch.runId, acknowledgement.acknowledgedSequence)
+        this.options.state.acknowledgeEvents(batch.runId, acknowledgement.acknowledgedSequence, batch.events[0].execution?.attemptId)
         continue
       }
       const lastSentSequence = batch.events.at(-1)!.sourceSequence
-      if (acknowledgement.expectedSequence > events[0].sourceSequence && acknowledgement.expectedSequence <= lastSentSequence + 1) {
-        this.options.state.discardEventsBefore(batch.runId, acknowledgement.expectedSequence)
+      if (!events[0].execution && acknowledgement.expectedSequence > events[0].sourceSequence && acknowledgement.expectedSequence <= lastSentSequence + 1) {
+        this.options.state.discardEventsBefore(batch.runId, acknowledgement.expectedSequence, batch.events[0].execution?.attemptId)
         continue
       }
       throw new Error(`server requested unavailable event sequence ${acknowledgement.expectedSequence}`)
@@ -179,40 +210,22 @@ export class AgentHostRuntime {
   }
 
   private async dispatch(command: AgentHostCommand): Promise<void> {
-    if (command.type === 'start') {
-      if (command.payload.fresh) {
-        await this.sessions.get(command.runId)?.stop('Starting a fresh session')
-        this.sessions.delete(command.runId)
-        this.options.state.deleteSession(command.runId)
-        this.options.state.deleteAdapterSessionState(command.runId)
-      } else if (this.sessions.has(command.runId)) return
-      const adapter = this.requireAdapter(command.payload.adapterId)
-      const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
-      const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
-      if (credentials === 'unavailable') return
-      const session = await adapter.start({
-        runId: command.runId,
-        workingDirectory: scope.workingDirectory,
-        additionalDirectories: scope.additionalDirectories,
-        prompt: command.payload.prompt,
-        ...(command.payload.sessionId ? { remoteSessionId: command.payload.sessionId } : {}),
-        metadata: command.payload.metadata,
-        ...(credentials ? { credentials } : {}),
-        adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
-        persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
-      }, (event) => this.emit(command.runId, event))
-      this.sessions.set(command.runId, session)
-      this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory })
-      await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
-      if (!session.initialPromptHandled) {
-        void session.prompt(command.payload.prompt).catch((error) => this.emit(command.runId, { type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
-      }
+    this.acceptExecutionFence(command)
+    if (command.type === 'observe') {
+      const session = this.sessions.get(command.runId)
+      await this.emit(command.runId, { type: 'process_observation', payload: { process: session ? await session.observe?.() ?? 'unknown' : 'unknown' } })
       return
     }
+    if (command.type === 'start') { await this.startSession(command); return }
     if (command.type === 'shutdown') {
       const session = this.sessions.get(command.runId)
       if (session) await session.stop(command.payload.reason)
       this.sessions.delete(command.runId)
+      return
+    }
+    if (command.execution && command.type === 'cancel' && !this.sessions.has(command.runId)) {
+      // An empty JS map does not prove an orphaned subprocess stopped.
+      await this.emit(command.runId, { type: 'process_observation', payload: { process: 'unknown', recoveryOutcome: 'unavailable' } })
       return
     }
     const session = await this.requireSession(command.runId, command.type === 'reconnect' ? command.payload.remoteSessionId : undefined)
@@ -220,7 +233,81 @@ export class AgentHostRuntime {
     else if (command.type === 'approval_response') await session.approve(command.payload.requestKey, command.payload.optionId)
     else if (command.type === 'elicitation_response') await session.elicit(command.payload.requestKey, command.payload.action, command.payload.content)
     else if (command.type === 'cancel') await session.cancel(command.payload.reason)
-    else if (command.type === 'reconnect') await session.resume()
+    else if (command.type === 'reconnect') {
+      const stored = this.options.state.getSession(command.runId)
+      if (command.execution && stored && this.requireAdapter(stored.adapterId).capability.protocol === 'eve') {
+        const process = await session.observe?.() ?? 'unknown'
+        await this.emit(command.runId, { type: 'process_observation', payload: { process, recoveryOutcome: process === 'live' ? 'attached_live' : 'unavailable' } })
+        if (process === 'live') void session.resume().catch(error => this.emit(command.runId, { type: 'failed', payload: { code: 'native_stream_unavailable', message: safeError(error), retryable: true } }))
+        return
+      }
+      await session.resume()
+      if (command.execution) await this.emit(command.runId, { type: 'process_observation', payload: { process: await session.observe?.() ?? 'unknown', recoveryOutcome: 'attached_live' } })
+    }
+  }
+
+  private acceptExecutionFence(command: AgentHostCommand): void {
+    if (!command.execution) return
+    if (!this.options.durableLifecycle) throw new Error('remote lifecycle extension was not negotiated')
+    // The server delivers shutdowns for runs this host may never have seen (or whose
+    // attempt was replaced): they cannot start a writer, so they bypass the fence.
+    if (command.type === 'shutdown') return
+    const previous = this.executions.get(command.runId) ?? this.options.state.getSession(command.runId)?.execution
+    const replacesPrevious = previous && (previous.attemptId !== command.execution.attemptId || previous.generation !== command.execution.generation)
+    // The server only emits `fresh` on an explicit start_fresh: that user action is the
+    // proof-of-intent that authorizes replacing a persisted execution whose writer state
+    // is unknown (e.g. this host restarted while a detached adapter child was running).
+    if (replacesPrevious && !(command.type === 'start' && command.payload.fresh === true))
+      throw new Error('execution replacement requires proof that the old writer stopped')
+    this.executions.set(command.runId, { ...command.execution, hostBootId: this.bootId })
+    if (replacesPrevious) this.terminalRuns.delete(command.runId)
+  }
+
+  private async startSession(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<void> {
+    if (command.payload.fresh) {
+      // An explicit start_fresh authorizes teardown even when the persisted session is
+      // not live here: the old process may be an orphan, and refusing would leave the
+      // run unrecoverable.
+      await this.sessions.get(command.runId)?.stop('Starting a fresh session')
+      this.sessions.delete(command.runId)
+      this.options.state.deleteSession(command.runId)
+      this.options.state.deleteAdapterSessionState(command.runId)
+    } else if (this.sessions.has(command.runId)) return
+    else if (this.options.state.getSession(command.runId)) {
+      // A crash after the external write but before the local ack leaves an unknown outcome.
+      // Do not create another process or re-prompt it merely because delivery was repeated.
+      throw new Error('persisted execution exists; observe or inspect its outcome before starting again')
+    }
+    if (command.execution && !this.options.state.claimExecution(command.runId, command.execution.attemptId))
+      throw new Error('execution start outcome is unknown; inspect the existing process before continuing')
+    const adapter = this.requireAdapter(command.payload.adapterId)
+    const scope = await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
+    const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true)
+    if (credentials === 'unavailable') return
+    // Bind callbacks before adapter code can emit, including during old-session teardown.
+    const execution = this.executions.get(command.runId)
+    const emit = (event: NormalizedAgentEvent) => this.emit(command.runId, event, execution)
+    const session = await adapter.start({
+      runId: command.runId,
+      workingDirectory: scope.workingDirectory,
+      additionalDirectories: scope.additionalDirectories,
+      prompt: command.payload.prompt,
+      ...(command.payload.sessionId ? { remoteSessionId: command.payload.sessionId } : {}),
+      metadata: command.payload.metadata,
+      ...(credentials ? { credentials } : {}),
+      adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
+      persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
+    }, emit)
+    this.sessions.set(command.runId, session)
+    this.options.state.saveSession({ runId: command.runId, adapterId: command.payload.adapterId, remoteSessionId: session.remoteSessionId, workingDirectory: scope.workingDirectory,
+      config: { version: 1, configReference: command.payload.bindingId, toolsReference: command.runId, ...(typeof command.payload.metadata.model === 'string' ? { model: command.payload.metadata.model } : {}) },
+      ...(command.execution ? { execution: { ...command.execution, hostBootId: this.bootId } } : {}),
+    })
+    await this.emit(command.runId, { type: 'session_started', payload: { remoteSessionId: session.remoteSessionId, adapterId: command.payload.adapterId } })
+    if (!session.initialPromptHandled) {
+      void session.prompt(command.payload.prompt).catch((error) => emit({ type: 'failed', payload: { code: 'adapter_prompt_failed', message: safeError(error), retryable: true } }))
+    }
+    return
   }
 
   private async requireSession(runId: string, requestedRemoteSessionId?: string): Promise<AgentAdapterSession> {
@@ -229,13 +316,18 @@ export class AgentHostRuntime {
     const stored = this.options.state.getSession(runId)
     if (!stored) throw new Error(`remote session not found for run ${runId}`)
     if (requestedRemoteSessionId && requestedRemoteSessionId !== stored.remoteSessionId) throw new Error('reconnect session does not match persisted session')
+    const adapter = this.requireAdapter(stored.adapterId)
+    if (adapter.capability.recovery?.interruptedTurnContinuation !== true) {
+      if (this.options.durableLifecycle) await this.emit(runId, { type: 'process_observation', payload: { process: 'unknown', recoveryOutcome: 'unavailable' } })
+      throw new Error('adapter cannot restore interrupted execution or in-memory approval; inspect the original process')
+    }
     const scope = await resolveFilesystemScope(this.options.filesystem, stored.workingDirectory)
     // A resumed session needs its credentials again; whether this run has an account is the server's call.
     const credentials = await this.runCredentials(runId, this.options.fetchRunCredentials === true)
     if (credentials === 'unavailable') throw new Error('provider credentials are unavailable for this run')
     const session = await this.requireAdapter(stored.adapterId).start({
       runId, workingDirectory: scope.workingDirectory, additionalDirectories: scope.additionalDirectories,
-      prompt: '', remoteSessionId: stored.remoteSessionId, metadata: {},
+      prompt: '', remoteSessionId: stored.remoteSessionId, metadata: { ...(stored.config?.model ? { model: stored.config.model } : {}) },
       ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(runId, stored.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),
@@ -278,16 +370,21 @@ export class AgentHostRuntime {
     return adapter
   }
 
-  private async emit(runId: string, event: NormalizedAgentEvent): Promise<void> {
+  private async emit(runId: string, event: NormalizedAgentEvent,
+    execution = this.executions.get(runId)): Promise<void> {
     if (this.options.state.outboxSize() >= (this.options.maxOutboxEvents ?? 10_000)) {
       throw new Error('event outbox backpressure limit reached')
     }
     const stored: Omit<AgentHostEvent, 'sourceSequence'> = {
       protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
+      ...(execution ? { execution } : {}),
       eventId: randomUUID(), environmentId: this.options.environmentId, runId,
       occurredAt: Date.now(), ...event,
     } as Omit<AgentHostEvent, 'sourceSequence'>
     this.options.state.appendEvent(stored)
+    const currentExecution = this.executions.get(runId)
+    if (this.options.durableLifecycle && execution?.attemptId === currentExecution?.attemptId
+      && execution?.generation === currentExecution?.generation && ['completed', 'cancelled', 'failed'].includes(event.type)) this.terminalRuns.add(runId)
     try { await this.flushOutbox() } catch (error) { this.logger.warn('event upload deferred', { runId, error: safeError(error) }) }
   }
 

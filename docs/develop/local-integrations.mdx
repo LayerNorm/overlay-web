@@ -30,6 +30,8 @@ For OIDC deployments, including Keycloak-compatible realm issuers, verify browse
 
 Default web sign-in/sign-up and server SSO callbacks use the shared authenticated home (`/app/work`) when no return destination is supplied. Explicit same-origin paths, including `/account`, and supported desktop handoff redirects retain their existing validation and routing.
 
+Protected-route sign-in redirects preserve the full path and query for both missing and invalid sessions, including Better Auth sign-in. In particular, `/account?desktop_code_challenge=...` must retain its PKCE challenge through sign-in and the account-settings alias; do not reduce the return destination to a pathname. Protected APIs still return 401 JSON rather than browser redirects.
+
 ## PR preview authentication
 
 Migration previews use `https://pr-<number>.preview.getoverlay.io` with the

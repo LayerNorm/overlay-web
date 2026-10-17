@@ -6,6 +6,7 @@ import { loadStoredConnection } from './connection.js'
 import { ACP_ADAPTER_MANIFESTS, resolveAcpAdapterManifest } from './adapter-manifests.js'
 
 export const agentHostConfigSchema = z.object({
+  durableLifecycle: z.boolean().optional(),
   environmentId: z.string().min(1),
   workspaceId: z.string().min(1),
   controlPlaneUrl: z.string().url(),

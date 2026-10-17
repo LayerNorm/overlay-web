@@ -4,6 +4,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep Turbopack route bootstraps external so the optimized app hydrates under nonce-based Content Security Policy after the Next.js upgrade.
+
+- Preserve protected-route query parameters through sign-in and stale-session reauthentication so desktop login handoffs retain their PKCE challenge.
+
+- Patch Next.js to 16.4.1 in both web apps and Better Auth/SSO to 1.7.7. Replace the privileged PR preview trigger with a secret-free PR request that dispatches the protected main controller.
+
+- Retry cloud cancellation stop-proof checks from the durable coordinator timer after the notification has been consumed, preventing stuck cancelling runs and retained holds.
+
+- Scope Boat Preview machine creation to its isolated named environment while keeping account credentials excluded; document the approved one-year Preview key renewal requirement.
+
+- Preserve connected-agent approval/input waits across transcript batches and healthy long waits. Add opt-in versioned remote lifecycle coordination, fenced host observations, durable control/finalization intents, truthful recovery limits, and reconnect output protection. Host/protocol candidate: 0.3.11; image candidate: v6. New enrollment remains disabled pending hosted/provider acceptance.
+
 - Complete operator backend separation: retire customer-secret operator endpoints, keep operational audit append-only, and provision ordinary member permissions through a restricted initializer.
 
 - Add a restricted ordinary-member initializer before retiring legacy operator writes, preserving safe web/backend release ordering.
@@ -136,6 +148,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - **Agent accounts (Phase 1 of Overlay Cloud agents).** Settings → Agent accounts connects the Claude Code and Codex credentials an Overlay Cloud agent runs on: a `claude setup-token` token or Anthropic API key, or an OpenAI API key. Secrets go to the credential vault; only metadata and an opaque reference are stored, and no API response or log includes a credential. A cloud agent is bound to one of its creator's accounts, and the host fetches the credentials for each run (new `POST /api/v1/agent-environments/{id}/run-credentials`, Overlay Cloud environments only) and hands them to the agent process in memory. An agent that rejects its credentials ends the run with `auth_required` and flags the account "Needs reconnecting" until it is reconnected. `POST /api/v1/agent-environments/cloud` now requires `providerAccountId`. The agent image is now `overlay-agent-v2` (the bridge protocol gained the run-credentials method); `OVERLAY_CLOUD_AGENT_IMAGE` defaults to it.
 
 ### Fixed
+
+- Harden durable remote-run integration: preserve legacy host polling, validate fresh recovery commands, expose confirmed fresh starts, require stop evidence before cancellation settlement, fence old callbacks and keep replacement health reporting active.
 
 - Keep standalone admin navigation accessible when mobile labels collapse to icons.
 

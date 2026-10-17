@@ -28,6 +28,15 @@ and backend resources. Production stays on native Git. Reuse credentials across 
 shared settings for each feature. No Production deployment token or purchased
 Preview Deployment Suffix is needed.
 
+`PR Preview Request` handles ordinary `pull_request` events without checkout or
+deployment secrets. For internal PRs it dispatches `PR Preview` on `main` with
+only the PR number. The controller accepts dispatches only on `main`, checks out
+`main`, and keeps the `release-control` environment restricted to that branch.
+Fork requests are skipped. Dependabot events have a read-only token and are
+also skipped; label the PR as a maintainer or dispatch the controller on `main`.
+PRs with merge conflicts may not emit request runs, so manual dispatch and the
+six-hour reconciliation remain the fallback for builds and cleanup.
+
 Labeled open PR backends renew within Convex's retention limits. Closing a PR or
 removing `needs-preview` settles running builds, removes its owned URL and branch
 app setting, deletes its isolated Convex backend and synthetic data, and leaves

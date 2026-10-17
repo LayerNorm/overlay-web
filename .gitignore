@@ -127,3 +127,11 @@ benchmarks/memory/results/
 benchmarks/memory/probe-*.ts
 benchmarks/memory/purge-*.ts
 benchmarks/memory/sweep-*.ts
+
+# Agent implementation scratch and generated workflow test data
+/work/
+/tests/workflow-runtime/work/
+
+/tests/workflow-runtime/node_modules/
+
+/tests/workflow-runtime/.gitignore

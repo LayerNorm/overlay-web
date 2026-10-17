@@ -6,6 +6,7 @@ import { agentEnvironmentErrorResponse } from '../../../agent-environments/share
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
     const body = context.parsedJson as Partial<{
+      controlRequestId: string
       action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
       conversationId: string
       runId: string
@@ -21,6 +22,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       workspaceId: context.workspace.workspace.id,
       conversationId,
       runId,
+      ...(typeof body.controlRequestId === 'string' && body.controlRequestId.length <= 200 ? { controlRequestId: body.controlRequestId } : {}),
       action: action!,
     })
     return NextResponse.json(result)

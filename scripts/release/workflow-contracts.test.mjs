@@ -26,8 +26,51 @@ test('CodeQL initialization, analysis and SARIF upload share one pinned version'
 test('Git automatically deploys only main; preview label changes trigger trusted reconciliation', () => {
   const config = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'))
   assert.deepEqual(config.git.deploymentEnabled, { '*': false, main: true })
-  const events = workflow('pr-preview').on.pull_request_target.types
+  const events = workflow('pr-preview-request').on.pull_request.types
   for (const event of ['labeled', 'unlabeled', 'synchronize', 'closed']) assert.ok(events.includes(event))
+})
+
+test('preview credentials stay in a main-only controller without privileged PR triggers', () => {
+  const controller = workflow('pr-preview')
+  assert.deepEqual(Object.keys(controller.on).sort(), ['schedule', 'workflow_dispatch'])
+  for (const job of Object.values(controller.jobs)) {
+    assert.match(job.if, /github\.ref == 'refs\/heads\/main'/)
+  }
+  const request = workflow('pr-preview-request')
+  assert.deepEqual(Object.keys(request.on), ['pull_request'])
+  assert.deepEqual(request.permissions, {})
+  assert.deepEqual(request.jobs.request.permissions, { actions: 'write' })
+  assert.match(request.jobs.request.if, /head\.repo\.full_name == github\.repository/)
+  assert.match(request.jobs.request.if, /github\.actor != 'dependabot\[bot\]'/)
+  assert.equal(request.jobs.request.environment, undefined)
+  assert.equal(request.jobs.request.steps.length, 1)
+  assert.match(request.jobs.request.steps[0].uses, /^actions\/github-script@[a-f0-9]{40}$/)
+  assert.ok(!JSON.stringify(request).includes('secrets.'))
+})
+
+test('preview requests dispatch only main with a validated PR number, never PR source or inputs', async () => {
+  const source = workflow('pr-preview-request').jobs.request.steps[0].with.script
+  const repository = 'LayerNorm/overlay-web'
+  const pull = { number: 123, head: { repo: { full_name: repository } },
+    base: { ref: 'main', repo: { full_name: repository } } }
+  const run = async payload => {
+    const calls = []; const errors = []
+    await vm.runInNewContext(`(async () => { ${source} })()`, {
+      context: { repo: { owner: 'LayerNorm', repo: 'overlay-web' }, payload: { pull_request: payload } },
+      core: { setFailed: message => errors.push(message) },
+      github: { rest: { actions: { createWorkflowDispatch: async args => calls.push(JSON.parse(JSON.stringify(args))) } } },
+    }, { timeout: 2000 })
+    return { calls, errors }
+  }
+  assert.deepEqual(await run(pull), { calls: [{ owner: 'LayerNorm', repo: 'overlay-web',
+    workflow_id: 'pr-preview.yml', ref: 'main', inputs: { pr_number: '123' } }], errors: [] })
+  for (const invalid of [undefined, { ...pull, number: '123; echo bad' }, { ...pull, number: -1 },
+    { ...pull, head: { repo: { full_name: 'outsider/fork' } } },
+    { ...pull, base: { ...pull.base, ref: 'other' } }]) {
+    const result = await run(invalid)
+    assert.deepEqual(result.calls, [])
+    assert.deepEqual(result.errors, ['Invalid internal main PR.'])
+  }
 })
 
 test('new PR revisions cancel obsolete checks without canceling main releases or merge groups', () => {
