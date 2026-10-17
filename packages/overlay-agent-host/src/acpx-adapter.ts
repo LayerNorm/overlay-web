@@ -190,8 +190,18 @@ export class AcpxAgentAdapter implements AgentAdapter {
       }, { ...input.metadata, ...(!options.model ? { model: undefined } : {}) }, options)
       this.capability.options = selected
     }
+    const openConfiguredSession = async () => {
+      const target = await ensure()
+      try { await applySettings(target) }
+      catch (error) {
+        try { await runtime.close({handle: target, reason: 'overlay session configuration failed'}) }
+        catch (closeError) { throw new AggregateError([error, closeError], 'Agent configuration failed and process closure is unconfirmed') }
+        throw error
+      }
+      return target
+    }
     let handle: AcpRuntimeHandle
-    try { handle = await ensure() }
+    try { handle = await openConfiguredSession() }
     catch (error) { this.mcpBySession.delete(sessionKey); throw error }
     let activeTurn: AcpRuntimeTurn | undefined
     const permissions = new Map<string, PendingPermission>()
@@ -261,10 +271,9 @@ export class AcpxAgentAdapter implements AgentAdapter {
         if (connection.state === 'closing') await connection.completion
         if (connection.state === 'uncertain') throw Error('Native process closure is unconfirmed; stop it before prompting again')
         if (connection.state === 'closed') {
-          handle = await ensure()
+          handle = await openConfiguredSession()
           connection = {state: 'connected'}
         }
-        await applySettings(handle)
         textCheckpoint = ''
         const turn = runtime.startTurn({
           handle, text: prompt, mode: 'prompt', requestId: randomUUID(),

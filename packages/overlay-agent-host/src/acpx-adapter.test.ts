@@ -38,6 +38,7 @@ test('acpx adapter streams updates and bridges approval and elicitation like the
       events.push(event)
     })
     const prompt = session.prompt('test ACP via acpx')
+    assert.equal(await session.observe?.(), 'live', 'dispatching the prepared prompt must not report unknown health')
     await waitFor(() => events.some((event) => event.type === 'approval_requested'))
     await session.approve('fixture-write', 'allow_once')
     await waitFor(() => events.some((event) => event.type === 'elicitation_requested'))
@@ -177,6 +178,22 @@ test('checkpoint persistence failure closes the new native process before return
   } finally { await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}) }
 })
 
+test('configuration failure closes the native process without publishing a session', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-config-failure-'))
+  const log = join(directory, 'sessions.jsonl')
+  try {
+    await assert.rejects(fixtureAdapter(join(directory, 'state')).start({runId: 'config-failure',
+      workingDirectory: directory, additionalDirectories: [], prompt: '', metadata: {model: 'not-offered'},
+      credentials: {FIXTURE_SESSION_LOG: log},
+    }, async () => {}))
+    const record = JSON.parse((await readFile(log, 'utf8')).trim())
+    await waitFor(() => {
+      try {process.kill(record.pid, 0); return false}
+      catch (error) {return error instanceof Error && 'code' in error && error.code === 'ESRCH'}
+    })
+  } finally { await rm(directory, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}) }
+})
+
 test('an unconfirmed acpx close rejects Stop and further prompts, and Stop can retry after storage recovers', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-acpx-close-failure-'))
   const state = join(directory, 'state'), records = join(state, 'acpx'), backup = join(state, 'acpx-backup')
@@ -232,6 +249,12 @@ test('acpx applies live model, effort and cloud mode before every prompt', async
       credentials: { FIXTURE_OPTIONS_LOG: log },
       metadata: { model: 'future-model', effort: 'high', permissionContext: 'cloud' },
     }, async () => {})
+    const prepared = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    assert.deepEqual(prepared.filter(record => record.kind === 'selection').map(({id, value}) => ({id, value})), [
+      { id: 'provider-model', value: 'future-model' },
+      { id: 'provider-effort', value: 'high' },
+      { id: 'permissions', value: 'auto' },
+    ], 'start must apply the selected options before publishing a session to host heartbeats')
     await session.prompt('first')
     await session.prompt('second')
     const records = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line))

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Configure acpx sessions before exposing them to liveness, preventing a startup settings gap from marking a restored run as needing attention.
+
 - Name workspace connection limits correctly when cloud-agent enrollment is refused before machine allocation.
 
 - Record cloud-agent setup failures before allocation instead of leaving startup pending indefinitely.

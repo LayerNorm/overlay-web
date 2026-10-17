@@ -899,8 +899,11 @@ calls, diffs, terminal references, permissions, elicitations, completion, and fa
 normalized Agent Bridge Protocol.
 
 The Phase 3 candidate reads model, effort and mode selectors from `session/new` configuration
-options (legacy model/mode lists remain supported). Direct ACP and acpx apply settings before
-each prompt. Discovery uses a private OS temporary directory outside the working drive and creates a temporary session without a prompt or workspace MCP tools,
+options (legacy model/mode lists remain supported). Direct ACP applies settings before
+each prompt. acpx applies them before publishing a newly opened or reloaded session to host
+liveness, so its first prompt starts without an asynchronous configuration gap that can report
+unknown health. Configuration failure closes the native process; an unconfirmed close fails
+explicitly. Discovery uses a private OS temporary directory outside the working drive and creates a temporary session without a prompt or workspace MCP tools,
 cleans its directory, and refreshes after authenticated starts and every 24 hours. Options are
 reported on environment capabilities; the editor uses only its agent's bound environment.
 Cloud defaults to advertised Auto; local/VPS defaults to advertised Accept edits. Missing modes
@@ -909,10 +912,10 @@ host/image adapter pins, preferring the matching installed image binary over its
 ranges. These candidate changes still require hosted/provider acceptance before release.
 If no separate temporary directory is available, discovery retains the default catalog; it never puts scratch state into synced Files.
 
-Phase 4 source includes a dedicated `AgentDriveCache` foundation for a child of an approved root.
-It validates portable relative paths, rejects symlink/special-file snapshots, bounds reads and
-checks downloaded hashes before atomic replacement. It is not wired into agent turns or Overlay
-Files yet; the current workspace remains the working folder until scoped server commits and
+Phase 4 connects `AgentDriveCache` to agent turns and scoped Overlay Files commits, behind the
+drive feature gate. It validates portable relative paths, rejects symlink/special-file snapshots,
+bounds reads and checks downloaded hashes before atomic replacement. Cloud turns hydrate their
+working drive before provider startup; scoped server commits and
 the run-scoped drive protocol are implemented and verified.
 The manifest candidate mapper preserves canonical folder relationships and excludes archived,
 foreign-workspace and out-of-scope rows. It refuses inaccessible parents, cycles, duplicate ids,
