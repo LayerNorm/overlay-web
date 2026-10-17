@@ -144,6 +144,7 @@ function UsagePanel({ deposit, out, usage, sliderMax, status, onUsage }: {
       </div>
       <div className={s.sim}>
         <div className={s.t}><span>Simulate a month of use</span><b>{formatUsd(usage, true)}</b></div>
+        {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native range input preserves slider semantics, keyboard behavior, and accessibility. */}
         <input type="range" min={0} max={sliderMax} step={0.5} value={usage} onChange={(e) => onUsage(Number(e.target.value))} aria-label="Simulated usage" />
       </div>
     </div>
