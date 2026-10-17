@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { Check, Globe, Loader2, Lock } from 'lucide-react'
 
@@ -20,17 +22,17 @@ export function ShareVisibilitySubmenu({
 }) {
   return (
     <div className="border-t border-(--border) bg-(--surface-subtle) py-1">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => onUpdateVisibility('private')}
         disabled={shareBusy}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50`)}
       >
         <Lock size={14} />
         <span className="flex-1 text-left">Private</span>
         {shareVisibility === 'private' && <Check size={14} className="text-emerald-500" />}
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
         onClick={() => {
           if (shareVisibility === 'public') {
@@ -40,7 +42,7 @@ export function ShareVisibilitySubmenu({
           onUpdateVisibility('public')
         }}
         disabled={shareBusy}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50"
+        className={unstyledButton(`flex w-full items-center gap-2 px-3 py-2 text-xs text-(--foreground) hover:bg-(--surface-muted) transition-colors disabled:opacity-50`)}
       >
         {shareBusy && shareVisibility !== 'public' ? (
           <Loader2 size={14} className="animate-spin" />
@@ -49,7 +51,7 @@ export function ShareVisibilitySubmenu({
         )}
         <span className="flex-1 text-left">Anyone with the link</span>
         {shareVisibility === 'public' && <Check size={14} className="text-emerald-500" />}
-      </button>
+      </Button>
     </div>
   )
 }
