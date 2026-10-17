@@ -1,5 +1,5 @@
 'use client'
-
+import { unstyledButton, unstyledInput } from '../control-reset'
 import React, { createContext, useContext, type ReactNode } from 'react'
 import {
   ArrowLeft,
@@ -19,7 +19,7 @@ import type {
   KnowledgeTab as Tab,
 } from '@overlay/app-core'
 import { AppScreenHeader } from '@overlay/modules-react/shell'
-import { HeaderSearch } from '@overlay/ui/primitives'
+import { HeaderSearch, Button, Input } from '@overlay/ui/primitives'
 import { KnowledgeRowActionsContext } from './file-views'
 import { FilesCreateUploadControls, OutputFilterMenu } from './toolbar-menus'
 
@@ -48,21 +48,21 @@ function SelectedFileHeader({
   const renderRowActions = useContext(KnowledgeRowActionsContext)
   return (
     <>
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={onClose}
         title="Back to files"
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
       >
         <ArrowLeft size={17} />
-      </button>
-      <input
+      </Button>
+      <Input
         type="text"
         aria-label="File title"
         value={fileTitle}
         onChange={(e) => onTitleChange(e.target.value)}
         placeholder="File title..."
-        className="min-w-0 flex-1 bg-transparent font-medium text-xl text-(--foreground) outline-hidden placeholder:text-(--muted)"
+        className={unstyledInput("min-w-0 flex-1 bg-transparent font-medium text-xl text-(--foreground) outline-hidden placeholder:text-(--muted)")}
         style={{ fontFamily: 'var(--font-serif)' }}
       />
       {isSavingFile ? (
@@ -90,7 +90,7 @@ function FolderHeader({
 }) {
   return (
     <div className="flex min-w-0 shrink flex-1 items-center gap-2">
-      <button
+      <Button variant="ghost"
         type="button"
         onClick={() => navigateToFolder(activeFolder.parentId)}
         onDragOver={(e) => {
@@ -105,32 +105,32 @@ function FolderHeader({
           moveFileToParent(fileId, activeFolder.parentId)
         }}
         title={activeFolder.parentId ? 'Back to parent folder' : 'Back to all files'}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
       >
         <ArrowLeft size={17} />
-      </button>
+      </Button>
       <FolderOpen size={18} className="shrink-0 text-(--muted-light)" />
       <nav aria-label="Folder breadcrumbs" className="flex min-w-0 items-center gap-1 truncate text-sm">
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => navigateToFolder(null)}
-          className="shrink-0 text-(--muted) transition-colors hover:text-(--foreground)"
+          className={unstyledButton("shrink-0 text-(--muted) transition-colors hover:text-(--foreground)")}
         >
           Files
-        </button>
+        </Button>
         {folderBreadcrumb.map((node, i) => (
           <span key={node._id} className="flex min-w-0 items-center gap-1">
             <ChevronRight size={12} className="shrink-0 text-(--muted-light)" />
             {i === folderBreadcrumb.length - 1 ? (
               <span aria-current="page" className="truncate font-medium text-(--foreground)">{node.name}</span>
             ) : (
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={() => navigateToFolder(node._id)}
-                className="truncate text-(--muted) transition-colors hover:text-(--foreground)"
+                className={unstyledButton("truncate text-(--muted) transition-colors hover:text-(--foreground)")}
               >
                 {node.name}
-              </button>
+              </Button>
             )}
           </span>
         ))}
@@ -216,25 +216,25 @@ function BulkSelectControls({
 
   if (!selectMode) {
     return (
-      <button
+      <Button variant="ghost"
         type="button"
         title="Select items"
         aria-label="Select items"
         onClick={() => onSetSelectMode(true)}
-        className={TOOLBAR_ICON_BUTTON_CLASS}
+        className={unstyledButton(TOOLBAR_ICON_BUTTON_CLASS)}
       >
         <SquareMousePointer size={14} />
-      </button>
+      </Button>
     )
   }
 
   return (
     <>
-      <button type="button" onClick={onExitSelectMode} className={TOOLBAR_FILLED_BUTTON_CLASS}>
+      <Button variant="ghost" type="button" onClick={onExitSelectMode} className={unstyledButton(TOOLBAR_FILLED_BUTTON_CLASS)}>
         Cancel
-      </button>
+      </Button>
       {activeTab === 'files' && bulkSelection && selectedCount > 0 ? renderBulkActions?.(bulkSelection) : null}
-      <button
+      <Button variant="ghost"
         type="button"
         disabled={bulkDeleting || selectedCount === 0}
         onClick={() => {
@@ -242,11 +242,11 @@ function BulkSelectControls({
           else if (activeTab === 'files') onBulkDeleteFiles()
           else onBulkDeleteOutputs()
         }}
-        className="inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-0 text-xs leading-none text-red-600 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+        className={unstyledButton("inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-0 text-xs leading-none text-red-600 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40")}
       >
         <Trash2 size={13} />
         {bulkDeleting ? 'Deleting…' : `Delete (${selectedCount})`}
-      </button>
+      </Button>
     </>
   )
 }
@@ -260,34 +260,34 @@ function LayoutControls({
 }) {
   return (
     <div className="flex h-8 min-h-8 items-center rounded-md border border-(--border) bg-(--surface-muted) p-0.5">
-      <button
+      <Button variant="ghost"
         type="button"
         title="List"
         aria-label="List layout"
         aria-pressed={layout === 'list'}
         onClick={() => onUpdateQuery({ layout: 'list' })}
-        className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
+        className={unstyledButton(`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'list'
             ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
             : 'text-(--muted-light) hover:text-(--foreground)'
-        }`}
+        }`)}
       >
         <LayoutList size={14} strokeWidth={1.75} />
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost"
         type="button"
         title="Cards"
         aria-label="Cards layout"
         aria-pressed={layout === 'cards'}
         onClick={() => onUpdateQuery({ layout: 'cards' })}
-        className={`inline-flex h-7 items-center rounded px-2 transition-colors ${
+        className={unstyledButton(`inline-flex h-7 items-center rounded px-2 transition-colors ${
           layout === 'cards'
             ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
             : 'text-(--muted-light) hover:text-(--foreground)'
-        }`}
+        }`)}
       >
         <LayoutGrid size={14} strokeWidth={1.75} />
-      </button>
+      </Button>
     </div>
   )
 }
@@ -403,14 +403,14 @@ function TabActionControls({
   if (activeTab === 'memories') {
     return (
       <>
-        <button type="button" onClick={onImportMemory} className={TOOLBAR_FILLED_BUTTON_CLASS}>
+        <Button variant="ghost" type="button" onClick={onImportMemory} className={unstyledButton(TOOLBAR_FILLED_BUTTON_CLASS)}>
           <FolderInput size={13} />
           Import
-        </button>
-        <button type="button" onClick={onNewMemory} className={TOOLBAR_FILLED_BUTTON_CLASS}>
+        </Button>
+        <Button variant="ghost" type="button" onClick={onNewMemory} className={unstyledButton(TOOLBAR_FILLED_BUTTON_CLASS)}>
           <Plus size={13} />
           New Memory
-        </button>
+        </Button>
       </>
     )
   }
@@ -542,14 +542,14 @@ function TabToolbar({
         <LayoutControls layout={layout} onUpdateQuery={onUpdateQuery} />
       ) : null}
       {activeTab === 'outputs' ? (
-        <button
+        <Button variant="ghost"
           type="button"
           title="Refresh"
           onClick={onRefreshOutputs}
-          className={TOOLBAR_ICON_BUTTON_CLASS}
+          className={unstyledButton(TOOLBAR_ICON_BUTTON_CLASS)}
         >
           <RefreshCw size={14} strokeWidth={1.75} />
-        </button>
+        </Button>
       ) : null}
       <TabActionControls
         activeTab={activeTab}
