@@ -14,28 +14,38 @@ const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acp-d
 const launch = [process.execPath, fixture]
 
 test('live ACP and acpx catalog probes cannot become drive upload candidates', async t => {
-  for (const kind of ['acp', 'acpx']) await t.test(kind, async () => {
+  const probes: Array<{kind: 'acp' | 'acpx'; initializeDelayMs: number}> = [
+    {kind: 'acp', initializeDelayMs: 0}, {kind: 'acpx', initializeDelayMs: 0}, {kind: 'acpx', initializeDelayMs: 10000},
+  ]
+  for (const {kind, initializeDelayMs} of probes) await t.test(`${kind}${initializeDelayMs ? ' with delayed initialization' : ''}`, async () => {
     const directory = await mkdtemp(join(tmpdir(), 'overlay-discovery-cache-test-'))
     const cache = await AgentDriveCache.create(directory, 'drive')
     const log = join(directory, 'probe.jsonl'), gate = join(directory, 'continue')
     const adapter = kind === 'acp'
       ? new AcpAgentAdapter({id: 'fixture', displayName: 'Fixture', command: process.execPath, args: launch.slice(1)})
       : new AcpxAgentAdapter({id: 'fixture', displayName: 'Fixture', agent: 'fixture', stateDirectory: join(directory, 'state'), registryOverrides: {fixture: launch}})
-    const pending = adapter.discover({workingDirectory: cache.root, credentials: {FIXTURE_OPTIONS_LOG: log, FIXTURE_DISCOVERY_GATE: gate}})
+    const pending = adapter.discover({workingDirectory: cache.root, credentials: {
+      FIXTURE_OPTIONS_LOG: log, FIXTURE_DISCOVERY_GATE: gate, FIXTURE_INITIALIZE_DELAY_MS: String(initializeDelayMs),
+    }})
+    let discoverySettled = false
+    void pending.then(() => {discoverySettled = true}, () => {discoverySettled = true})
     let probeDirectory: string | undefined
     try {
-      for (let attempt = 0; attempt < 500; attempt++) {
+      // Discovery owns its startup deadline; filesystem polling must not impose an earlier one.
+      for (;;) {
         const content = await readFile(log, 'utf8').catch(error => {
           if (error.code !== 'ENOENT') throw error
           return ''
         })
         if (content) {
           const record = content.trim().split('\n').map(line => JSON.parse(line)).find(record => record.kind === 'discovery')
-          if (!record) {await new Promise(resolve => setTimeout(resolve, 10)); continue}
-          assert.equal(typeof record.cwd, 'string')
-          probeDirectory = record.cwd
-          break
+          if (record) {
+            assert.equal(typeof record.cwd, 'string')
+            probeDirectory = record.cwd
+            break
+          }
         }
+        if (discoverySettled) break
         await new Promise(resolve => setTimeout(resolve, 10))
       }
       const trace = await readFile(log, 'utf8').catch(() => 'No fixture boot record')
