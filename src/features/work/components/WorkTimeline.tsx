@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '../../control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { useCompactViewport } from '../lib/use-compact-viewport'
@@ -66,13 +68,13 @@ function RowLabel({ row, label, selected, collapsed, onToggle, onOpen }: Pick<Ro
   return (
     <div className={`sticky left-0 z-10 flex shrink-0 items-center gap-2.5 border-r border-(--border) bg-(--background) pr-4 text-[13px] group-hover/row:bg-(--surface-muted) ${indent} ${selected ? 'bg-(--surface-subtle)' : ''}`} style={{ width: label }}>
       {row.kind === 'objective' ? (
-        <button type="button" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${item.title}`} aria-expanded={!collapsed} onClick={onToggle} className="grid h-4 w-4 place-items-center text-(--muted-light)">
+        <Button variant="ghost" type="button" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${item.title}`} aria-expanded={!collapsed} onClick={onToggle} className={unstyledButton(`grid h-4 w-4 place-items-center text-(--muted-light)`)}>
           <ChevronDown size={13} className={`transition-transform ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
-        </button>
+        </Button>
       ) : <StatusIcon status={item.status} />}
-      <button type="button" onClick={() => onOpen(item.id)} className={`min-w-0 flex-1 truncate text-left text-(--foreground) ${row.kind === 'objective' ? 'font-medium' : ''}`}>
+      <Button variant="ghost" type="button" onClick={() => onOpen(item.id)} className={unstyledButton(`min-w-0 flex-1 truncate text-left text-(--foreground) ${row.kind === 'objective' ? 'font-medium' : ''}`)}>
         {item.title}
-      </button>
+      </Button>
       {row.kind === 'objective' ? <span className="text-xs text-(--muted-light)">{row.childCount}</span> : <Avatar person={assignee} size={20} />}
     </div>
   )
@@ -172,7 +174,7 @@ export function WorkTimeline({
   selectedId: string | null
   onOpen: (id: string) => void
 }) {
-  const { updateTask, canWork, personByPrincipal } = useWorkData()
+  const { updateTask, canWork } = useWorkData()
   const LABEL = useCompactViewport() ? TIMELINE_LABEL_WIDTH_COMPACT : TIMELINE_LABEL_WIDTH
   const allRows = useMemo(() => buildTimelineRows(items), [items])
   const range = useMemo(() => timelineRange(allRows, today), [allRows, today])

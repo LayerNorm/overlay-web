@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '../../control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useEffect, useRef, useState } from 'react'
 import type { WorkItem } from '@overlay/app-core'
@@ -15,7 +17,7 @@ function InlineTitle({ title, done, onCommit, onCancel }: { title: string; done:
     input.current?.select()
   }, [])
   return (
-    <input
+    <Input
       ref={input}
       value={value}
       maxLength={200}
@@ -33,7 +35,7 @@ function InlineTitle({ title, done, onCommit, onCancel }: { title: string; done:
           onCancel()
         }
       }}
-      className={`min-w-0 flex-1 rounded border border-(--muted-light) bg-(--surface-elevated) px-1.5 py-0.5 text-sm outline-none ${done ? 'text-(--muted)' : 'text-(--foreground)'}`}
+      className={unstyledInput(`min-w-0 flex-1 rounded border border-(--muted-light) bg-(--surface-elevated) px-1.5 py-0.5 text-sm outline-none ${done ? 'text-(--muted)' : 'text-(--foreground)'}`)}
     />
   )
 }
@@ -79,7 +81,7 @@ export function WorkRow({
           }}
         />
       ) : (
-        <button
+        <Button variant="ghost"
           type="button"
           onDoubleClick={(event) => {
             if (!editable) return
@@ -93,10 +95,10 @@ export function WorkRow({
             }
           }}
           title={editable ? 'Double-click to rename' : undefined}
-          className={`min-w-0 flex-1 truncate text-left text-sm ${done ? 'text-(--muted) line-through decoration-(--muted-light)' : 'text-(--foreground)'}`}
+          className={unstyledButton(`min-w-0 flex-1 truncate text-left text-sm ${done ? 'text-(--muted) line-through decoration-(--muted-light)' : 'text-(--foreground)'}`)}
         >
           {item.title}
-        </button>
+        </Button>
       )}
       <div className="flex shrink-0 items-center gap-3.5 text-[12.5px] text-(--muted)">
         {item.blocked ? <Tag tone="danger">Blocked</Tag> : null}
