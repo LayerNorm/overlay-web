@@ -16,8 +16,9 @@ Implementation status:
   introduced by the Next.js 16.4 upgrade in #248.
 - 8.12: #254; final guardrail: ESLint errors on raw interactive controls and
   npm run check:raw-controls fails on unannotated controls. The baseline is
-  empty. Native browser-semantics exceptions need an `overlay:raw-control`
-  comment with the reason and an adjacent ESLint suppression.
+  empty. Native browser-semantics exceptions need a contiguous
+  `overlay:raw-control: <reason>` comment and an adjacent ESLint suppression.
+  Bare suppressions and annotations without a reason are rejected.
 
 ## Goal
 
@@ -219,9 +220,10 @@ Land only after the sweeps are complete.
   JSX elements in production app/package paths.
 - npm run check:raw-controls fails on any unannotated raw control. The
   scripts/ci/raw-control-baseline.json file remains empty.
-- *.test.tsx, *.stories.tsx, fixture directories, packages/overlay-ui
-  internals, semantic file/range/color/hidden inputs, and explicitly annotated
-  browser-semantics cases are exempt.
+- *.test.tsx, *.stories.tsx, fixture directories, and packages/overlay-ui
+  internals are outside the scan. Every raw control, including semantic
+  file/range/color/hidden inputs, needs a reasoned annotation to be exempt.
+  Bare suppressions and annotations without a reason are rejected.
 - Land #254 as a single merge commit (not squash). It contains #255 and every
   sweep branch, and centralizes the reset helpers in `@overlay/ui/control-reset`;
   merging the sweeps separately would trip the exact-duplicate check.
