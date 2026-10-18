@@ -15,7 +15,7 @@ export class AgentDriveDownloadCache {
       if (!entry.pending) { this.entries.delete(id); used -= entry.bytes }
     }
     if (!Number.isSafeInteger(size) || size < 0 || used + size > this.maximumBytes || this.entries.size >= 64) throw Error('DRIVE_DOWNLOAD_BUSY')
-    const entry = {bytes: size, expiresAt: Infinity, pending: true, value: Promise.resolve().then(load)}
+    const entry = {bytes: size, expiresAt: Infinity, pending: true, value: Promise.resolve().then(load).then(bytes => Uint8Array.from(bytes))}
     this.entries.set(key, entry)
     try {
       const bytes = await entry.value

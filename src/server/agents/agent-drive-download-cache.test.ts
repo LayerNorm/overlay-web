@@ -27,3 +27,11 @@ test('failed loads release reserved capacity and cannot poison retries', async (
   await assert.rejects(cache.read('failed', 4, async () => {throw Error('storage failure')}), /storage failure/)
   assert.deepEqual(await cache.read('failed', 4, async () => Uint8Array.of(1, 2, 3, 4)), Uint8Array.of(1, 2, 3, 4))
 })
+
+test('the retained verified buffer cannot be changed through the storage reader reference', async () => {
+  const cache = new AgentDriveDownloadCache(4)
+  const source = Uint8Array.of(1, 2, 3, 4)
+  await cache.read('immutable', 4, async () => source)
+  source[0] = 9
+  assert.equal((await cache.read('immutable', 4, async () => {throw Error('unexpected reread')}))[0], 1)
+})
