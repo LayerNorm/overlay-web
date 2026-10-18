@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { saveAgentHostConfig } from './config.js'
+import type { AgentHostConfig } from './config.js'
+import { agentHostConfigSchema, loadAgentHostConfig, managedRestorationAdapters, saveAgentHostConfig } from './config.js'
 
 test('enrollment restart configuration is private and excludes credentials', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'overlay-host-config-'))
@@ -37,4 +38,52 @@ test('enrollment restart configuration is private and excludes credentials', asy
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
+})
+
+
+test('native restoration is an explicit per-adapter opt-in requiring durable lifecycle and survives private config reload', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'overlay-native-config-'))
+  const path = join(directory, 'config.json')
+  const base = {environmentId: 'environment', workspaceId: 'workspace', controlPlaneUrl: 'https://example.com/host/',
+    stateDirectory: directory, filesystem: {mode: 'selected_roots' as const, roots: ['/workspace']}}
+  try {
+    for (const adapter of [
+      {manifest: 'claude-code' as const},
+      {id: 'direct', displayName: 'Direct', protocol: 'acp' as const, command: 'agent'},
+      {id: 'codex', displayName: 'Codex', protocol: 'acpx' as const, agent: 'codex'},
+    ]) {
+      assert.equal(agentHostConfigSchema.safeParse({...base, adapters: [adapter]}).success, true)
+      assert.equal(agentHostConfigSchema.safeParse({...base, adapters: [{...adapter, fencedSessionRestoration: true}]}).success, false)
+      await writeFile(path, JSON.stringify({...base, durableLifecycle: true, adapters: [{...adapter, fencedSessionRestoration: true}]}), {mode: 0o600})
+      const loaded = await loadAgentHostConfig(path)
+      assert.equal(loaded.durableLifecycle, true)
+      assert.equal('fencedSessionRestoration' in loaded.adapters[0] && loaded.adapters[0].fencedSessionRestoration, true)
+    }
+    assert.equal(agentHostConfigSchema.safeParse({...base, durableLifecycle: true, adapters: [
+      {id: 'fake', displayName: 'Fake', protocol: 'fake', fencedSessionRestoration: true},
+    ]}).success, false)
+    assert.equal(agentHostConfigSchema.safeParse({...base, durableLifecycle: true, adapters: [
+      {id: 'eve', displayName: 'Eve', protocol: 'eve', host: 'https://example.com', fencedSessionRestoration: true},
+    ]}).success, false)
+  } finally {await rm(directory, {recursive: true, force: true})}
+})
+
+test('managed recovery rollout enables only validated native launchers and an explicit off overrides saved opt-ins', () => {
+  const adapters: AgentHostConfig['adapters'] = [
+    {id: 'claude-code', displayName: 'Claude', protocol: 'acpx', agent: 'claude'},
+    {id: 'codex', displayName: 'Codex', protocol: 'acpx', agent: 'codex'},
+    {id: 'hermes', displayName: 'Hermes', protocol: 'acpx', agent: 'hermes'},
+    {id: 'codex', displayName: 'Other', protocol: 'acpx', agent: 'other'},
+    {id: 'codex', displayName: 'Direct', protocol: 'acp', command: 'other'},
+    {id: 'fake', displayName: 'Fake', protocol: 'fake'},
+  ]
+  const flags = (rows: typeof adapters) => rows.map(row => 'fencedSessionRestoration' in row && row.fencedSessionRestoration === true)
+  const enabled = managedRestorationAdapters(adapters, {durableLifecycle: true, rollout: '1'})
+  assert.deepEqual(flags(enabled), [true, true, false, false, false, false])
+  assert.deepEqual(flags(managedRestorationAdapters(enabled, {durableLifecycle: true, rollout: '0'})), adapters.map(() => false))
+  for (const rollout of ['1', 'invalid']) {
+    assert.deepEqual(flags(managedRestorationAdapters(adapters, {durableLifecycle: false, rollout})), adapters.map(() => false))
+  }
+  assert.equal(managedRestorationAdapters(enabled, {durableLifecycle: true, rollout: undefined}), enabled)
+  assert.deepEqual(flags(adapters), adapters.map(() => false))
 })

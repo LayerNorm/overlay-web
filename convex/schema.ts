@@ -1,4 +1,7 @@
+import { driveUploadFields } from './lib/agentDriveUploadSchema'
 import { remoteLifecycleValidator } from './agents/remoteRunModel'
+import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
+import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
@@ -1226,6 +1229,25 @@ export default defineSchema({
       cancellationAcknowledgedAt: v.optional(v.number()),
       staleDetectedAt: v.optional(v.number()),
     })),
+    liveness: v.optional(v.object({ lastActivityAt: v.number(), lastHeartbeatAt: v.number(), quietMs: v.number(),
+      openTools: v.array(v.object({ actionId: v.string(), title: v.string(), runningMs: v.number() })), stalled: v.boolean() })),
+    // Connected-agent transport counters (src/shared/agents/remote-run-stream-stats.ts).
+    streamStats: v.optional(v.object({
+      batches: v.number(),
+      events: v.number(),
+      eventBytes: v.number(),
+      textCheckpointChars: v.number(),
+      textDeltaChars: v.optional(v.number()),
+      messageWrites: v.number(),
+      rejectedBatches: v.number(),
+      firstEventAt: v.optional(v.number()),
+      lastEventAt: v.optional(v.number()),
+      maxQuietGapMs: v.number(),
+      maxHostLagMs: v.number(),
+      longestToolMs: v.number(),
+      longestToolTitle: v.optional(v.string()),
+      openTools: v.array(v.object({ actionId: v.string(), title: v.string(), startedAt: v.number() })),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1267,6 +1289,10 @@ export default defineSchema({
     mode: v.union(v.literal('ask'), v.literal('act')),
     content: v.string(),
     contentType: v.union(v.literal('text'), v.literal('image'), v.literal('video')),
+    remoteTextStored: v.optional(v.object({
+      contentSource: v.union(v.literal('parts'), v.literal('separate')),
+      chunks: v.number(),
+    })),
     parts: v.optional(
       v.array(
         v.union(
@@ -1313,12 +1339,14 @@ export default defineSchema({
           v.object({
             type: v.literal('data-remote-agent-status'),
             data: v.object({
+              recoveryOutcome: remoteLifecycleValidator.fields.recoveryOutcome,
               environmentName: v.string(),
               queueExpiresAt: v.number(),
+              hardDeadlineAt: v.optional(v.number()),
               runId: v.string(),
               state: v.union(
-                v.literal('waiting'), v.literal('running'), v.literal('waiting_for_approval'),
-                v.literal('waiting_for_input'), v.literal('recoverable'), v.literal('recovering'), v.literal('needs_attention'), v.literal('cancelling'), v.literal('completed'),
+                v.literal('waiting'), v.literal('starting'), v.literal('running'), v.literal('waiting_for_approval'),
+                v.literal('waiting_for_input'), v.literal('recoverable'), v.literal('recovering'), v.literal('finalizing'), v.literal('needs_attention'), v.literal('cancelling'), v.literal('completed'),
                 v.literal('failed'), v.literal('cancelled'),
               ),
               retryable: v.optional(v.boolean()),
@@ -1326,7 +1354,7 @@ export default defineSchema({
             }),
           }),
           v.object({
-            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-agent-lineage')),
+            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-remote-agent-drive'), v.literal('data-agent-lineage')),
             data: v.any(),
           }),
           v.object({
@@ -1382,6 +1410,13 @@ export default defineSchema({
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  remoteMessageTextChunks: defineTable({
+    messageId: v.id('conversationMessages'),
+    partIndex: v.number(),
+    chunkIndex: v.number(),
+    text: v.string(),
+  }).index('by_messageId_partIndex_chunkIndex', ['messageId', 'partIndex', 'chunkIndex']),
 
   conversationContextSummaries: defineTable({
     conversationId: v.id('conversations'),
@@ -1573,6 +1608,28 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
 
+  agentDriveRetiredObjects: defineTable({
+    purpose: v.union(v.literal('version'), v.literal('staging'), v.literal('uncommitted')),
+    ownerUserId: v.string(), sizeBytes: v.number(), retiredAt: v.number(), nextAttemptAt: v.number(),
+    source: v.union(v.object({ kind: v.literal('object'), key: v.string() }),
+      v.object({ kind: v.literal('convex'), storageId: v.id('_storage') })),
+    state: v.union(v.object({ kind: v.literal('waiting') }),
+      v.object({ kind: v.literal('deleting'), claim: v.string() })),
+  }).index('by_nextAttemptAt', ['nextAttemptAt']),
+
+  agentDriveUploads: defineTable(driveUploadFields).index('by_uploadId', ['uploadId']).index('by_runId_requestId', ['runId', 'requestId'])
+    .index('by_expiresAt', ['expiresAt']).index('by_retireAt', ['retireAt']),
+
+  agentDriveWriteBudgets: defineTable({ runId: v.string(), uploads: v.number(), bytes: v.number(), expiresAt: v.number() })
+    .index('by_runId', ['runId']).index('by_expiresAt', ['expiresAt']),
+
+  agentDriveMetadataReceipts: defineTable({
+    runId: v.string(), sessionId: v.string(), requestId: v.string(),
+    attemptId: v.optional(v.string()), generation: v.optional(v.number()),
+    fingerprint: v.string(), result: v.object({ fileId: v.id('files'), updatedAt: v.number() }),
+    createdAt: v.number(), retireAt: v.optional(v.number()),
+  }).index('by_runId_requestId', ['runId', 'requestId']).index('by_retireAt', ['retireAt']),
+
   files: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
@@ -1653,6 +1710,8 @@ export default defineSchema({
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])
     .index('by_duplicateOfFileId', ['duplicateOfFileId'])
+    .index('by_r2Key', ['r2Key'])
+    .index('by_storageId', ['storageId'])
     .index('by_parentId', ['parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
@@ -2041,6 +2100,8 @@ export default defineSchema({
       v.literal('hermes'),
     ),
     modelId: v.string(),
+    permissionMode: v.optional(v.string()),
+    effort: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
     avatarShape: v.optional(v.string()),
     allowedToolIds: v.array(v.string()),
@@ -2153,7 +2214,10 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_messageId', ['messageId'])
     .index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_type', ['workspaceId', 'type'])
+    .index('by_userId_type', ['userId', 'type'])
     .index('by_userId_createdAt', ['userId', 'createdAt']),
 
   conversationParticipants: defineTable({
@@ -2415,10 +2479,15 @@ export default defineSchema({
     sessionId: v.string(), workspaceId: v.string(), environmentId: v.string(), bindingId: v.string(),
     runId: v.string(), remoteSessionId: v.optional(v.string()), status: v.string(),
     attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
+    restorationCommandId: v.optional(v.string()), preparationRetryCount: v.optional(v.number()),
+    lastPreparationStopAt: v.optional(v.number()),
+    nativeStartAdmission: v.optional(nativeStartAdmissionValidator),
+    nativeStartAdmissionRequired: v.optional(v.literal(true)),
     hostBootId: v.optional(v.string()), lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()),
     checkpointReference: v.optional(v.string()), recoveryCause: v.optional(v.string()), recoveryResult: v.optional(v.string()),
     hardDeadlineAt: v.optional(v.number()), claimDeadlineAt: v.optional(v.number()), executionLeaseExpiresAt: v.optional(v.number()),
     commandCursor: v.number(), eventCursor: v.number(), capabilitySnapshot: v.any(),
+    stopConfirmedAt: v.optional(v.number()),
     startedAt: v.optional(v.number()), endedAt: v.optional(v.number()),
     createdAt: v.number(), updatedAt: v.number(),
   }).index('by_sessionId', ['sessionId'])
@@ -2447,6 +2516,22 @@ export default defineSchema({
   agentWorkspacePolicyUsage: defineTable({
     workspaceId: v.string(), activeArtifactBytes: v.number(), updatedAt: v.number(),
   }).index('by_workspaceId', ['workspaceId']),
+
+  agentMcpCalls: defineTable({
+    callId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(), sessionId: v.string(),
+    execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
+    clientSessionId: v.string(), rpcId: v.string(), toolName: v.string(), argumentsJson: v.string(), requestKey: v.string(),
+    state: agentMcpCallState, expiresAt: v.number(), retireAt: v.number(), createdAt: v.number(),
+    elicitationAnsweredAt: v.optional(v.number()),
+  }).index('by_callId', ['callId'])
+    .index('by_session_rpc', ['sessionId', 'clientSessionId', 'rpcId'])
+    .index('by_retireAt', ['retireAt']),
+
+  agentMcpResultChunks: defineTable({ callId: v.string(), index: v.number(), data: v.bytes() })
+    .index('by_callId_index', ['callId', 'index']),
+
+  agentMcpCallBudgets: defineTable({ runId: v.string(), calls: v.number(), bytes: v.number(), retireAt: v.number() })
+    .index('by_runId', ['runId']).index('by_retireAt', ['retireAt']),
 
   agentApprovalRequests: defineTable({
     approvalId: v.string(), workspaceId: v.string(), runId: v.string(), remoteSessionId: v.string(),

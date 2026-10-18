@@ -36,15 +36,17 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 ## Implementation status
 
 Phases 0 through 8 are implemented. Phase 9 release controls and repeatable local evidence are
-implemented, but Phase 9 is not complete until the live Convex and PostgreSQL browser matrices,
-managed-provider conformance, and production stability gates are recorded.
+implemented, but release acceptance still requires the current PR Preview browser matrix,
+managed-provider conformance, package/image acceptance and clean VPS conformance. Production
+activation and its stability checks follow the approved release workflow. Convex is canonical;
+the retired PostgreSQL backend and staging environment are not current acceptance lanes.
 Overlay Cloud activation remains
-gated on the configured provider's live conformance and current host/image acceptance; Phase 7 release remains gated on publishing the host packages and passing a clean VPS
-conformance run against staging. The connected-agent repository now includes command
+gated on the configured provider's live conformance and current host/image acceptance; package
+publication and clean VPS conformance remain release gates. The connected-agent repository includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
-an in-process Convex runtime; the PostgreSQL suite uses a migrated real database and is the
-required live gate whenever the local or remote contract database is available.
+an in-process Convex runtime; the current PR's isolated Convex backend, managed provider and
+browser checks provide hosted acceptance. Historical PostgreSQL conformance is not a release gate.
 
 Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 
@@ -57,6 +59,12 @@ Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
   official ACP TypeScript SDK adapter. A pristine host state store adopts the server's command
   stream position on first delivery (a previous host incarnation may have consumed earlier
   sequences); once a cursor exists, out-of-order commands still fail closed as replays.
+
+ACP and acpx tool titles are display labels, not command inputs. Both adapters shorten
+oversized labels to the bridge's 2,000-character limit with an ellipsis at a complete
+Unicode boundary before action, terminal and liveness events are emitted. A long shell
+script must not fail a turn merely because its provider uses the script as its title.
+The original command, approval decision and streamed answer are unaffected.
 
 The host executable supports `connect <code> --server <origin>`. The agent editor emits a single
 harness-specific command with `--adapter <id> --run`; the same command works on a local computer,
@@ -81,7 +89,11 @@ the exact method, pathname and query, body hash, timestamp, request nonce, and t
 Canonical routes are `/api/v1/agent-environments`, `/enrollment-sessions`, `/enroll`, and the
 environment-scoped `approve`, `roots`, `revoke`, `credentials`, `credentials/refresh`, `heartbeat`,
 `capabilities`, `commands`, command acknowledgement, and `events` subresources. Enrollment-code,
-challenge, credential, and request-nonce consumption is atomic in Convex and PostgreSQL. Only
+challenge, credential, and request-nonce consumption is atomic in Convex. Host credential lookup
+also returns its matching environment from the same indexed query snapshot, avoiding a second
+backend request on every signed call. Older backends may omit that snapshot and retain the
+separate lookup. Signature, method, expiry and scope validation still precede nonce consumption;
+nonce consumption independently rechecks current environment authority after the read. Only
 hashes of enrollment codes, proof challenges, opaque credentials, and request nonces are stored.
 The Convex credential validator derives its method allowlist from the canonical workspace
 contract so artifact upload authority and future method additions cannot drift by provider.
@@ -347,14 +359,15 @@ automations, connected apps, and MCP servers — built by the same pipeline (`bu
 the agent's grant intersected with workspace policy, entitlements, and the summoning message's
 mutation gating). Tools act as the human who summoned the agent (the delegate model). Tools that
 duplicate the agent's own machine (`computer_*`) and generated UI are
-withheld. An MCP call whose server policy requires approval asks in the run's conversation
-(`createMcpApprovalGate`, `requestMcpApprovalByServer`): the same approval card an agent's own
-permission request shows, but the answer goes to the waiting call and never to the host as a command
-(`resolveRemoteRequestByServer` skips the host command for requests marked `source: overlay_mcp`). The
-call waits about 25 seconds, since agent hosts time MCP calls out in about a minute; if the person has
-not answered it returns "waiting for approval, call again with the same arguments", and the answer
-(remembered for the run, per tool and arguments) makes the retry run at once. A denial or the run ending
-refuses. Overlay skills are also offered as MCP prompts (Claude shows them as slash commands), so no
+withheld. A tool whose server policy requires approval creates one canonical card in the run's
+conversation. Its recorded expiry is the earliest of the one-hour approval window, task deadline, delivered grant expiry and durable call expiry; the same value reaches the card and lifecycle. Cloud cards disclose continuing machine billing. Expired unanswered requests cannot be allowed, while replaying an earlier persisted decision keeps its receipt. Host 0.4.1 advertises signed form-elicitation bridging: the original MCP call remains
+pending across bounded SSE connections, and `GET` with `Last-Event-ID` resumes the durable call.
+The host correlates the signed form to that card, including decisions delivered before the form,
+without creating a second permission card. Only the persisted human decision can authorize a tool;
+a client form answer acknowledges delivery. Granted tools without an owner-required decision run
+immediately, including under Auto. Auto and Bypass do not override workspace tool policy.
+Older hosts retain the legacy short-wait/retry path until upgraded. A denial or ended run refuses.
+Overlay skills are also offered as MCP prompts (Claude shows them as slash commands), so no
 writes into the harness's own skill folders are needed. `MCP_GROUP_COVERAGE` (`src/shared/mcp/access.ts`)
 records, per tool group, whether it reaches MCP clients or why not, and a contract test fails when a
 group is added without being placed.
@@ -368,6 +381,15 @@ group is added without being placed.
   after the run-time cap plus slack, and is refused as soon as the run's remote session is no longer
   live. Older hosts ignore the metadata key, so no protocol version change was needed; a published
   host release is required for connected agents to use the tools.
+
+Delivered MCP grants bind the Overlay session and lifecycle execution generation. Command polling
+re-signs each start for its current attempt without extending the original expiry or changing its
+scope/grant. A replaced attempt cannot execute tools or create approval requests in its replacement.
+Authority is read again during approval waits and immediately before execution. Older unfenced grants
+remain compatible with legacy sessions and the first lifecycle-v2 generation only; subsequent
+generations require an exact fence. Canonical token encoding rejects trailing segments and aliases.
+Interrupted-turn continuation and durable pending-tool follow-up still require implementation and
+hosted acceptance before Phase 5 is complete.
 
 
 - Overlay owns workspace identity, authorization, `AgentRun`, commands, approvals, budgets,
@@ -396,6 +418,44 @@ group is added without being placed.
   `all_user_files` choice accurately represents an unrestricted local harness.
 - A human initiator and the agent principal are distinct. Authorization and billing remain
   attributable to the initiator; messages and delegated actions are authored by the agent.
+
+## Transport diagnostics
+
+A run that seems stuck needs evidence from both sides. Decisions (see
+`internal/plans/RELIABLE_CONNECTED_AGENTS_PLAN.md`, Phase 0):
+
+- **Request ids.** The poll, events, ack and heartbeat routes return `x-overlay-request-id`. Host warnings for a
+  failed request include it (`[request …]`), so a host log line matches the server log for the same request.
+  Healthy fast polls are not logged. Failed or slower-than-3 s requests log one line with route, status and
+  duration.
+- **Failure classification, never messages.** The logger drops error messages and redacts keys containing `name`
+  or `error`. A bare `logger.error(..., error)` therefore records nothing useful. Log
+  `describeFailure(error)` instead (`src/server/observability/failure-classification.ts`). It records the error
+  type, a class (`convex_occ`, `convex_limit`, `convex_timeout`, `convex_unavailable`, `convex_function`,
+  `control_plane`, `validation`, …), our SCREAMING_SNAKE codes, and for Convex calls the function path and Convex
+  request id. `callConvex` tags every thrown error with its function path for this purpose.
+- **Caught-failure receipts.** Unexpected agent-environment 500s return `x-overlay-diagnostic-id`, matching the
+  structured server record and explicit Sentry event id. The existing `x-overlay-request-id` links the host warning
+  to that record. Preserve the backend request id even when structured Convex error data replaces the exception
+  message. Fixed signatures distinguish argument/return validation, authorization, non-unique results and missing
+  functions; unmatched failures remain `CONVEX_UNCLASSIFIED`. Only bounded source locations are retained, never
+  raw messages, arguments, absolute paths or credentials. Reporting failure cannot replace the original response.
+- **Diagnostic acceptance.** Run `NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs npx tsx
+  scripts/smoke/cloud-agent-long-horizon/diagnostics.ts --backend-url https://<owned-PR-backend>.convex.cloud`.
+  It performs one read-only invalid query against an explicitly selected backend, then exercises the real local
+  HTTP boundary and Sentry SDK with an in-memory transport. It does not inject hosted BFF faults, prove remote
+  Sentry delivery or establish the cause of an older incident. Unit coverage checks correlation, known/unknown
+  causes, redaction and unchanged expected rejection statuses. Diagnose retained events by diagnostic id first,
+  then request/backend ids; record retention gaps honestly rather than inferring a historical cause.
+- **Run stream counters.** `applyRemoteEventsByServer` keeps `conversationAgentRuns.streamStats` (batches, events,
+  bytes, `text_checkpoint` characters, message rewrites, refused batches, host-to-server lag, longest gap between
+  batches, longest tool call). `GET /api/v1/conversations/run` returns them as `streamSummary`, including the
+  current silence and longest still-open tool for an active run. `textCheckpointChars` divided by the final text
+  length is the snapshot amplification that Phase 1 removes. A host whose outbox is wedged never reaches the
+  server, so it shows up as a growing `currentQuietMs`, not as refused batches.
+- **Smoke.** `scripts/smoke/cloud-agent-long-horizon/harness.mts --via overlay --preview-url <PR preview>` runs a
+  real Claude Code cloud agent through the product API and reports visible progress, visible stalls (90 s with
+  nothing new on screen), the counters, and with `--cancel-after-s` whether text survives Stop.
 
 ## Data classification and retention
 
@@ -450,15 +510,15 @@ The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLAN
 `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS`, and
 `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
 They are positive, server-side switches: missing, false, or malformed values resolve to disabled.
-This makes each switch an environment-controlled, fail-closed incident control. Overlay Cloud's
-switch remains false for the production workspace rollout, and the agent editor does not expose a
-managed-environment choice while that release is deferred.
+This makes each switch an environment-controlled, fail-closed incident control. A BYOA-only rollout
+keeps the cloud switch disabled. Internal managed-cloud activation additionally requires the
+validated image and exact eligible workspace allowlist; it does not widen artifact access.
 
 Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
 workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
 does not make any workspace eligible.
 
-The first production activation is intentionally narrow:
+A BYOA-only production activation is intentionally narrow:
 
 - publish and independently install-smoke the exact Agent Host and bridge-protocol versions;
 - set `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE=1` and
@@ -475,8 +535,8 @@ Changing a rollout variable requires a new production deployment so the immutabl
 the approved values. Roll back by setting the rollout stage to `off`; use either global feature flag
 as the incident kill switch when the entire control plane or all new remote dispatch must stop.
 
-Route services read these flags before selecting a database repository, so Convex and
-PostgreSQL have identical disabled behavior. Enabling a dependent feature does not implicitly
+Route services read these flags before selecting a database repository, so disabled features
+cannot reach the backend. Enabling a dependent feature does not implicitly
 enable its prerequisite: Overlay Cloud requires all three, and remote runs require the first
 two. These are server policy switches, not client assertions; bootstrap may expose only the
 resulting authorized capability.
@@ -497,6 +557,25 @@ same environment before that date, update shared Vercel Preview `BOAT_API_KEY`,
 verify Preview access and production denial, then revoke the predecessor. Do not
 copy the production key or treat the exception as permission to expire other
 shared Preview credentials. No automatic renewal is configured.
+
+Protected PR Preview machines receive the existing environment-scoped hosting credential in
+a mode-0600 `preview-hosting.json` under host state. Managed provisioning and host restart
+prepare it through the machine file API; commands and saved configuration carry only its path
+(`--hosting-auth-file`). A compatible host verifies ownership, mode and exact HTTPS origin,
+then consumes/unlinks it before provider startup. Windows rejects this POSIX-only Cloud path.
+The in-memory transport adds hosting authentication only to that Preview's `/api/` origin and
+refuses redirects. Provider MCP uses a loopback relay authorized by the original active run token;
+hosting access stays out of provider environment/configuration and response headers. Application
+authentication, device signing and run fences still apply. Production never receives this file.
+Candidate source tests do not prove unattended enrollment: the compatible candidate image must
+pass fresh-machine Preview provisioning and resume without a manual shim before activation.
+Only leases enrolled through this path record `previewHostingAccessVersion: 1` and receive
+a new access file on restart. Older leases retain their original restart path until explicitly
+upgraded, so an older host cannot leave a newly delivered hosting file unconsumed.
+The Boat adapter applies explicit file modes through its command channel because the file
+API does not apply them; a failed permission change fails delivery. Preview startup secures
+the dedicated host-state directory to 0700 before writing the access file, keeping its bytes
+private during upload as well as after the file becomes 0600.
 An Overlay Cloud agent uses the same connected-agent protocol and host:
 
 - **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,
@@ -527,9 +606,14 @@ An Overlay Cloud agent uses the same connected-agent protocol and host:
   the machine (`CloudAgentMachineService.status/control/teardown`). The new-agent dialog and the
   agent page's Machine section are its only clients; a cloud agent's binding is never rewritten
   by the agent editor's save (it would drop the account). Paid plans only.
+  After machine deletion, status retains the last cloud adapter and account summary as setup
+  metadata so Start a new machine can submit a normal provisioning request. Revoked environments
+  and disabled bindings do not regain execution authority; local and foreign-workspace setup is
+  excluded. Missing setup produces a visible retry error instead of a no-op.
 - **Provider accounts.** An Overlay Cloud agent runs on one of its creator's own accounts
   (Settings → Agent accounts): a `claude setup-token` token or Anthropic API key for Claude Code,
-  an OpenAI API key for Codex. The secret goes to the credential vault (`ByokCredentialStore`:
+  a ChatGPT subscription or OpenAI API key for Codex. Codex subscription delivery follows
+  [`codex-subscription.md`](./codex-subscription.md). The secret goes to the credential vault (`ByokCredentialStore`:
   WorkOS Vault, or AWS Secrets Manager when configured); Convex keeps `agentProviderAccounts`
   metadata and the opaque vault reference, which no API response includes. A binding records the
   account and the user who chose it (`adapterConfig.providerAccountId`/`providerAccountOwnerUserId`).
@@ -727,6 +811,8 @@ A workspace owner or admin creates a ten-minute, single-use enrollment code in O
 Host proves possession of its device key, and the browser confirms the same short verification
 phrase before approving filesystem roots.
 
+Verification phrases select three words with cryptographic `randomInt`, avoiding modulo assumptions if the vocabulary changes.
+
 ```mermaid
 sequenceDiagram
     actor Owner as Workspace owner
@@ -821,8 +907,8 @@ flowchart LR
     Codex["Codex manifest"]
     Claude["Claude Code manifest"]
     Hermes["Hermes manifest"]
-    CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@1.7.0"]
-    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.70.0"]
+    CodexProcess["npx -y<br/>@agentclientprotocol/codex-acp@2.2.2"]
+    ClaudeProcess["npx -y<br/>@agentclientprotocol/claude-agent-acp@0.91.0"]
     HermesProcess["hermes acp<br/>Hermes 0.20.6 or newer"]
     Session["ACP session over stdio"]
 
@@ -835,6 +921,114 @@ For each run, the ACP adapter spawns the process in the validated working direct
 ACP, creates or loads a session, and sends the prompt. It converts ACP message chunks, plans, tool
 calls, diffs, terminal references, permissions, elicitations, completion, and failure into the
 normalized Agent Bridge Protocol.
+
+The Phase 3 candidate reads model, effort and mode selectors from `session/new` configuration
+options (legacy model/mode lists remain supported). Direct ACP applies settings before
+each prompt. acpx applies them before publishing a newly opened or reloaded session to host
+liveness, so its first prompt starts without an asynchronous configuration gap that can report
+unknown health. Configuration failure closes the native process; an unconfirmed close fails
+explicitly. Discovery uses a private OS temporary directory outside the working drive and creates a temporary session without a prompt or workspace MCP tools,
+cleans its directory, and refreshes after authenticated starts and every 24 hours. Options are
+reported on environment capabilities; the editor uses only its agent's bound environment.
+Cloud defaults to advertised Auto; local/VPS defaults to advertised Accept edits. Missing modes
+retain the agent's own default. Explicit unsupported settings fail visibly. acpx uses exact
+host/image adapter pins, preferring the matching installed image binary over its older registry
+ranges. These candidate changes still require hosted/provider acceptance before release.
+If no separate temporary directory is available, discovery retains the default catalog; it never puts scratch state into synced Files.
+Cloud startup discovery obtains only the account of the unique enabled binding for its advertised adapter, through the signed provider-credential endpoint. The account owner must still belong to the workspace, and active work prevents discovery delivery. Codex uses the existing broker-owned auth-file delivery; Claude credentials stay in the probe environment. Missing credentials/catalogs retain the fallback and retry after one minute; successful catalogs refresh after 24 hours. After authenticated starts, hosts publish their captured catalog without another probe or auth-file replacement during work. Imported agent secrets and workspace MCP tools are not part of discovery.
+
+Phase 4 connects `AgentDriveCache` to agent turns and scoped Overlay Files commits, behind the
+drive feature gate. It validates portable relative paths, rejects symlink/special-file snapshots,
+bounds reads and checks downloaded hashes before atomic replacement. Cloud turns hydrate their
+working drive before provider startup; scoped server commits and
+the run-scoped drive protocol are implemented and verified.
+The manifest candidate mapper preserves canonical folder relationships and excludes archived,
+foreign-workspace and out-of-scope rows. It refuses inaccessible parents, cycles, duplicate ids,
+portable-name collisions and mismatched object ownership. Object-backed text stays an object
+reference rather than becoming the row's searchable prefix; the server materializer verifies
+full source bytes before issuing a host manifest.
+Run-scoped drive token and authorization helpers use a separate signing domain, bounded expiry,
+session/attempt fencing, live membership and binding readback, creator-derived personal scope
+and explicit local/VPS opt-in. The read endpoint uses these helpers; final Convex commits
+must repeat the authority checks atomically before publishing a file revision.
+`AgentDriveMaterializer` hashes full source bytes through a bounded reader, verifies download
+size/hash against the manifest and rejects changed or truncated sources. Files over the file
+or total-cache cap remain explicit deferred entries, with no empty local placeholder. The
+reader now uses bounded configured object-store downloads and authorized Convex storage metadata.
+Convex checks the exact file revision/source and run authority before resolving a storage URL; the
+server verifies the blob digest and never includes storage URLs in host manifests. Backend manifest
+pages repeat membership, scope, binding, run and attempt checks behind the default-off
+`OVERLAY_CONNECTED_AGENT_DRIVE` flag. Metadata commits create folders, move existing rows and tombstone explicit entries under the same
+authority and edit policy. Revision checks and transaction receipts prevent stale or duplicate
+changes; folders must be empty before deletion. New names reuse the portable wire-path
+validator and reject case/Unicode aliases rather than creating an ambiguous cache. Object quota remains charged until cleanup.
+Content uploads and host synchronization remain pending. Convex imports portable-path validation
+from the protocol source module, without depending on package `dist` artifacts in hosted builds.
+
+Manifest construction uses metadata-only pages and exact-revision inline references, so note bodies
+do not accumulate across the drive. One short-lived SDK client pins all pages to one timestamp;
+current authority is checked separately before each page and after materialization. The experimental
+`consistentQuery` API is isolated behind the repository, covered by a transport test and aborted
+after 20 seconds; never fall back to mixed-timestamp pages. Manifest metadata is capped at 32 MiB.
+Ready entries carry a purpose-separated download MAC bound to the run, scope, attempt, expiry,
+revision, path and content hash. Source reads run in groups of at most four. Reserve cache bytes
+in manifest order before concurrent reads, verify actual sizes and full hashes, and retain entry order.
+Downloads reread Files and recheck authority after verifying bytes.
+
+`POST /api/agent-drive` accepts only a run-scoped `ovdrive_` bearer token, independent of app
+cookies or query parameters. It requires both web `connectedAgentControlPlane` and
+`connectedAgentDrive` features (`OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE=1` for the latter),
+plus backend `OVERLAY_CONNECTED_AGENT_DRIVE=1`. Drive access defaults off on both sides.
+Signing uses `OVERLAY_AGENT_DRIVE_SECRET` when configured, otherwise the existing service/API
+secret, with a separate signature domain; storage credentials never reach the host.
+Manifest responses stream NDJSON with explicit header and completion frames. Downloads verify
+canonical full bytes before returning ranges of at most 1 MiB; a host must hash the assembled
+file before replacement. Requests are capped at 32 KiB and rate limited by IP and hashed bearer.
+Revoked authority and changed revisions fail closed. Expected backend failures use structured
+`ConvexError` application data so production message redaction preserves the HTTP status.
+Only recognized codes are returned; legacy message parsing supports web-first deployment overlap.
+Stack/request details are never returned. Responses are private and never cached.
+`metadata` commits create folders or explicitly move/remove authenticated hydrated entries. A
+purpose-separated manifest MAC binds each existing entry to its run, path and revision; deferred
+files have no mutation grant. The transaction also checks current ancestors, so a remote parent
+move invalidates the old child path. Retry receipts prevent repeated mutation after a lost response.
+`upload` allocates an immutable expected size/hash and a staging-only signed PUT. `commit` reads
+all staged bytes within the file limit, verifies size/SHA-256, and writes that verified buffer to
+a separate server-only final key before the guarded Files transaction. Retrying a confirmed commit
+returns its original result without resealing. Signed size/checksum constraints include empty files.
+Only the configured store supplies reads/writes; there is no silent cross-provider fallback.
+Start-command issuance and runtime synchronization are implemented. Keep general activation
+gated on current-head native-provider, Files and recovery acceptance.
+
+Device-signed `POST /api/v1/agent-environments/[environmentId]/drive-credentials` issues or
+renews a separate run-scoped drive token. The new method is granted only after drive v1 capability
+advertisement, so strict older hosts keep their existing method list. The host supplies only the
+run, session and execution fence; the backend resolves actor, binding and scope and rechecks live
+authority, including local/VPS opt-in. Tokens last at most one hour and never outlive the execution.
+Download and metadata grants bind the execution and revision, allowing a renewed token to use an
+existing grant; expiry, revocation and stale-execution checks still apply on every operation.
+The signed host transport and drive HTTP client are implemented. The shared bridge package owns
+wire schemas. The client requires a manifest header and matching terminal entry count, bounds
+streams/ranges, verifies full hashes, keeps tokens in memory and renews through a single flight.
+Renewal cannot switch scope; only an explicit 401 receives one retry. Signed staging PUTs omit
+drive/device credentials and refuse redirects. Ambiguous writes require a journaled same-id retry.
+Persistent journals, hydration and runtime synchronization are implemented; their ownership
+and shutdown rules are described below. Package/image activation remains gated on acceptance.
+
+A successful options discovery with no model catalog offers only the runtime default and the
+saved choice marked unreported; it never substitutes the legacy hard-coded list. The model
+control stays disabled while its bound environment is still loading. Older undiscovered hosts
+retain their existing fallback until upgraded.
+For older combined model/effort ids, the UI preserves exact advertised ids first, then
+resolves separate controls only when both values are offered. Explicit effort wins over
+the suffix; changing a model retains the effective effort instead of adopting discovery defaults.
+
+`Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
+manually from main. It updates both adapter pins, the lockstep host/protocol patch version,
+image version/range and enrollment references, then requires `check:byo-agents:release` before
+creating a draft PR. Existing version branches are preserved. It never publishes or merges.
+Drafts still need ordinary required CI and subscription-provider Preview QA; the workflow token
+does not trigger normal PR workflows, so review must dispatch checks or trigger a trusted PR event.
 
 Hermes uses its official `hermes acp` server. Overlay does not translate Hermes through a private
 protocol. OpenClaw and other native adapters require the unchanged host conformance suite when ACP
@@ -982,9 +1176,10 @@ private chain of thought.
 ### Current rollout boundary
 
 The local and VPS host architecture and the Codex, Claude Code, and Hermes ACP manifests are
-implemented. The managed-sandbox implementation uses the same host image and protocol, but Overlay
-Cloud remains unavailable in the ordinary product UI until its image, conformance, credential,
-egress, billing, cleanup, security-review, and stability gates are complete.
+implemented. Managed sandboxes use the same host image and protocol and appear only when their
+cloud, run and control-plane flags and workspace rollout eligibility all pass. Broad availability
+still requires image, conformance, credential, egress, billing, cleanup, security-review and stability
+acceptance; internal eligibility does not imply a general release.
 
 The server controls connected agents through independent, default-off feature flags and a separate
 workspace rollout stage. Enabling one flag does not implicitly enable its prerequisites. See
@@ -1007,6 +1202,13 @@ Use these files when tracing or changing the architecture:
 
 ## Versioned remote lifecycle (opt-in)
 
+Signed event uploads obtain the current payer's plan inputs alongside the scoped session.
+This indexed projection checks active workspace access and canonical wallet/balance availability;
+it does not cache a plan or change event limits, reservations or budget enforcement. Only the
+canonical billing-backed policy consumes it. Explicit unavailable projections refuse ingestion;
+absent projections retain the legacy resolver, including personal-wallet initialization and older
+backends. Control reads still return their session when a policy is unavailable, preserving Stop.
+
 The server enrolls a new run in lifecycle v2 only when
 `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2` and the host advertises
 `remoteLifecycleVersion: 2`. Selection is persisted in `conversationAgentRuns.remoteLifecycle`;
@@ -1021,6 +1223,17 @@ and cancellation. Coordinator takeover requires the Workflow runtime to confirm 
 previous owner stopped, followed by a canonical compare-and-set. It does not start a
 second external writer.
 
+Drive hydration reuses authenticated snapshot download grants across same-execution credential renewal. Only explicit source-revision or missing-revision responses refresh the manifest, with three download attempts per file. A refreshed entry must retain its file id, path and ready-file kind; moved, deleted, deferred or continuously changing sources remain refused. Persist the chosen revision before installing verified bytes, and refuse installation over local edits made during the download.
+
+Lifecycle-v2 starts request `metadata.overlayPreparation: 1` on delivery. Supporting
+hosts emit fenced `session_preparing` receipts while credentials, drive hydration
+and provider initialization are pending. These renew a 90-second preparation lease
+without reporting a live provider or extending the task deadline. The two-minute
+claim window applies only until receipt; a lost preparation lease requires attention
+and cannot be revived by a late receipt. Older hosts ignore the request, and newer
+hosts send no preparation event to servers that did not request it. Starting work
+retains `starting` in the transcript rather than reconnect/Retry controls.
+
 An atomic start transaction reserves the first environment command sequence and
 writes a durable start intent. Workflow 4.8.9 commits its hook registration before
 claiming/dispatching. The existing minute reconciliation bridge retries starts and
@@ -1034,9 +1247,9 @@ and cumulative machine baselines.
 The bridge remains protocol v1 with an explicitly negotiated lifecycle-v2 extension:
 optional execution fences and new observe/observation messages are sent only for v2
 runs. Hosts opt in using the same environment setting. Default legacy capability
-payloads omit the extension. Candidate packages are lockstep 0.3.11 and candidate
-image v6; publication is a separate main-only release workflow, not evidence from a
-source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
+payloads omit the extension. Candidate package versions remain lockstep in their package manifests; the candidate image
+version and adapter pins live in `infra/agent-image/versions.json`. Publication is a separate
+main-only release workflow, not evidence from a source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
 compatible active runs drain on their persisted version.
 
 Direct ACP and acpx advertise live reattachment and session loading separately from
@@ -1073,14 +1286,385 @@ prompt errors and teardown output. New attempts reset terminal health suppressio
 old callbacks cannot suppress their observations or claim the replacement identity.
 Resolved legacy requests do not resurrect a wait when later output arrives.
 
-ACP cancellation waits for the complete process group to drain after termination;
-wrapper exit alone is not proof that descendants stopped. Stop confirmation fails
-closed if the bounded drain cannot establish that the group is gone.
+ACP cancellation waits for all live process-group members to stop; wrapper exit
+alone does not establish that descendants stopped. POSIX readback excludes exited
+zombies, which cannot execute. Darwin may refuse to
+signal a zombie-only group with EPERM; only an OS process-table readback with no
+live group members accepts that result. Live permission failures and unreadable
+process state still prevent stop confirmation. The bounded drain must establish
+that no live group members remain.
 
 Starting a fresh attempt atomically resolves the old process's outstanding request
 cards as `execution_replaced`, preserving decisions already recorded, and projects
 `recovering` on the same assistant row before dispatching the replacement.
 Replacement attempts clear the previous host boot and health lease; the first
 accepted replacement event binds the new boot, while old attempt events remain fenced.
+Fresh commands carry a server-derived `metadata.recoveryTextOffset` when the existing
+answer is nonempty. It is the full canonical UTF-16 length, including chunk-backed
+text, and overrides any old request metadata. The host adds that base to new deltas
+and bounded correction anchors, preserving the committed prefix in both negotiated
+and checkpoint-only streams. This preserves text during an explicit replacement;
+it does not establish native-session continuation or permission to replay old writes.
+An expired pending drive intent can be renewed only under current authorized run,
+session and attempt claims with the identical operation, checksum, size and MIME type.
+Renewal retains the upload/object identities and quota reservation, and is bounded by
+the credential, task deadline and a new fifteen-minute intent window. Before retrying
+an uncertain commit, the host reissues that same intent to obtain a retained receipt
+or renew its pending authority; already uploaded bytes are not sent again. This does
+not adopt writes belonging to a different execution.
 During web-first rollout, new control request IDs are sent to Convex only when
 lifecycle v2 is enabled; ordinary controls retain the legacy validator shape.
+
+
+### Reliable streaming transport
+
+Host 0.3.12 coalesces text at 250 ms or 2 KiB and flushes before non-text events.
+The SQLite outbox drains independently of command polling and agent callbacks,
+packing each upload under the byte limit. Unsent tail checkpoints may be replaced;
+once an upload is attempted its sequences are immutable, including after restart
+or a lost acknowledgement. Existing queued rows are protected during upgrade.
+Oversized legacy checkpoints retain a bounded prefix and visible truncation marker
+so tools and completion can still arrive. Deltas will remove this temporary limit.
+
+Stop preserves written text, tools and resolved decisions. Legacy buffered text
+may commit until the host's stop event confirms termination; later output cannot
+change the cancelled result. Observation-only batches skip unchanged transcript
+writes. Lifecycle-v2 event ingestion defers reducer transcript projection until the
+batch boundary, so health facts cannot reintroduce per-event message writes.
+Candidate package/image updates still require current-preview acceptance
+and the separate main-only publication path; source changes do not upgrade hosts.
+
+Host/protocol 0.4.0 adds optional `streaming: { textDeltas: true, heartbeats: true }`.
+The server accepts the schema first and echoes support on command polls; a new host
+retries capability discovery without the extension against an old strict server.
+Each run fixes its negotiated mode. UTF-16 delta offsets are contiguous and replay-safe;
+bounded checkpoint tails anchor progress without resending the entire answer. Packet,
+anchor and correction boundaries preserve Unicode code points.
+
+Negotiated text is canonical in `remoteMessageTextChunks`, indexed by parent message,
+logical text part and chunk position. The assistant row keeps references and a bounded
+preview cache. Authorized history, room, share, context and knowledge reads hydrate the
+original text parts before returning; Markdown never sees storage chunk boundaries.
+Only changed chunks are written. Text-only changes still emit conversation events
+without rewriting the assistant row, and hard message/account/workspace deletion removes
+owned chunks. Existing checkpoint-only rows require no migration.
+
+Sidebar list subscriptions observe only indexed conversation changes and message creation/completion/failure.
+Streaming deltas update the open transcript without causing an HTTP conversation-list read per chunk;
+versions remain monotonic across long streams.
+
+Preview timing QA can opt in with the branch-scoped `OVERLAY_AGENT_UI_TRACE=1` build
+setting and `?agentUiTrace=1` in the conversation URL. The build forces this off outside
+Vercel Preview. Check the export button's storage-at-page-load tooltip before a long run;
+the local store is bounded to 240,000 rows across recordings. Exhaustion preserves existing
+records and fails the capture closed; a partial export cannot prove whole-run timing.
+Connected-message toolbars export a local IndexedDB JSONL trace:
+run/message/recording identity, candidate SHA, wall/monotonic timestamps, normalized DOM
+text length/SHA-256 and clipped last-glyph geometry. No text, cookies or credentials are
+stored or transmitted. Sampling continues independently of the coding agent's tool turns;
+reload creates another recording segment. Storage is bounded to 120,000 rows and a
+one-million-unit sample; blocked/full storage stops recording and shows an error.
+Missing terminal markers, hidden tabs, reloads, clock uncertainty and observation gaps
+must remain in the analysis. DOM/layout timestamps do not establish pixel-paint timing,
+and recording/export alone does not prove the latency acceptance threshold.
+For transient Markdown syntax, the smoke frame-index helper verifies a complete recorded
+hash against the actual renderer before crediting its unchanged canonical prefix; unknown
+frames and missing source observations remain uncredited. Keep visibility and clock bounds.
+Use one foreground conversation at a time when in-app tabs can become hidden; inspecting
+a tab may activate it, so visibility spot checks cannot prove continuous coverage.
+
+Streaming Markdown recognizes underscore emphasis by delimiter position and skips inline
+code. A completion marker or filename must not gain a literal closing underscore while
+streaming and lose it on completion; rendered regressions cover that boundary.
+
+Per-run ten-second heartbeats carry process proof, quiet time and open-tool ages.
+They update run liveness without transcript parts. A live three-minute tool remains
+running; quiet output alone cannot prove a stall. The bottom loading row distinguishes
+tool activity from missing heartbeats and scopes its read to the exact run and workspace.
+
+The direct ACP transport drains session-update notifications in wire order before
+forwarding later responses. SDK notifications are otherwise dispatched independently,
+which lets prompt completion overtake final text in a shared input buffer. The drain
+waits on local event persistence, never network upload; malformed or stuck update
+processing fails within a bounded timeout instead of declaring incomplete output done.
+
+Room history and subscriptions carry the same remote message event revision. Chunk-only updates
+advance that revision without rewriting the assistant row; a per-message event index keeps reads
+bounded. The UI keeps the newest revision when history and live updates race. Browser Convex
+token issuance retries a 401 once through AuthContext’s shared session-refresh lock; failed
+network requests release the token broker without creating an unhandled rejection.
+
+Lifecycle Stop confirmation clears the run's liveness tool list even when the
+confirming event is a process observation. A terminal run must not advertise an
+open tool after its transcript actions have closed.
+
+MCP call storage binds each client request identity and normalized arguments to
+the current run/session/attempt. Execution ownership cannot be taken over after
+a lost executor; its outcome must be checked rather than repeating a write.
+Completed results use immutable bounded chunks with size/hash verification on
+readback, so a reconnect returns the original result. The per-run journal budget
+is 1,000 calls and 64 MiB including inputs/results; expired entries retire after
+one day through bounded hourly cleanup. An execution-bound MCP session and stable event cursor
+resume the same JSON-RPC call through fresh server instances; concurrent reconnects share one
+execution claim. Lost executors produce an explicit unknown-outcome result, never automatic
+write replay. The new transport requires advertised host bridging and native form support, and is
+enabled for the verified Claude Code and Codex adapters;
+legacy hosts remain compatible. Hosted/provider acceptance remains a release gate.
+
+Outbox retries retain the persisted attempted sequence boundary. New events stay
+behind an unacknowledged batch, including after restart; migration does not raise
+an existing watermark to cover unattempted rows. Acknowledgements may exceed a
+newly packed batch after an upgrade only within that stream's attempted watermark.
+
+Drive write transactions allocate a distinct staging key and immutable final version key,
+with fixed expected size/hash and an attempt-bound request receipt. Commits recheck file/parent
+edit policy and quota and preserve newer revisions as named conflict copies. Retained object
+versions are queued atomically and remain charged for at least 24 hours. The existing authenticated
+artifact-cleanup tick processes at most 32 retired objects, checks indexed Files references
+(including archived/deleted rows), and releases quota only after confirmed deletion. Object-store
+deletion requires absence readback and a matching retryable claim; Convex blob deletion and quota
+release are transactional.
+
+Upload intents pre-register both staging and final keys, with zero additional quota release,
+for cleanup after the complete execution deadline plus one day. Cleanup preserves referenced
+final objects even when commit responses were lost. Upload receipts and per-run budgets remain
+through the hard deadline plus two days, then prune in bounded batches. Metadata receipts use
+the same retention; older receipts migrate in bounded pages with at least seven days and the
+complete session deadline preserved. Notes retain complete inline Markdown; edits beyond the inline prefix
+limit save a separate object-backed file so the Notes source is never truncated. Server-side
+byte verification/sealing and upload/commit transport are implemented locally.
+
+The host's private SQLite journal stores complete pending payloads before network I/O and binds
+each immutable request to its environment, drive scope and execution. The serialized writer
+reuses that identity after lost acknowledgements and persists confirmed receipts before dropping
+payloads. Completed replays make no network request. Pending operations from another execution
+fail visibly instead of being adopted without reconciliation. Tokens and signed URLs remain
+memory-only; runtime integration must place the journal outside the agent's working directory
+and hold exclusive cache ownership throughout the turn. Journal capacity fails closed rather
+than dropping unsaved writes. A separate private SQLite lease excludes concurrent cache owners
+through a lifetime OS lock; process death releases it without timeout-based takeover. Its immutable
+identity pins the canonical cache path and drive scope, and its database must remain outside the
+working directory. Cache inventories include empty folders and exact integer filesystem identities so equal
+content alone cannot identify a rename. Atomic download temporaries live in a private sibling directory,
+so a crash cannot expose a partial download as a new deliverable in the next scan.
+Bootstrap hydration refreshes a recreated file's identity only at its recorded path with unchanged
+baseline bytes, including a pending hydration resumed after restart. Changed bytes, moves and
+replacements during a download retain their existing conflict checks.
+
+The synchronizer persists its baseline, current turn's saved-file links and one pending effect outside
+the drive. It hydrates before use, propagates file/folder creates, moves and explicit hydrated-entry
+deletions, and updates local inode tracking after atomic editor replacements. Content writes retain
+their immutable journal identity until the acknowledged server revision is reconciled locally.
+Lost write or manifest responses remain unsaved and restart from the original receipt. Concurrent
+canonical edits preserve a separate complete conflict copy; bootstrap normalizes that local alias
+before restoring the newer canonical file. Deferred files are never inferred deleted. The current
+implementation refreshes the manifest after each committed effect; operations and cache sizes remain
+bounded. The host now hydrates before adapter start, coalesces completed-action and 15-second
+background synchronization outside the streaming path, and waits for final synchronization before
+forwarding completion. A final write failure emits an unsaved summary and a failed turn; Stop
+forwards cancellation before draining an existing write and preserves the pending journal. Saved
+summaries carry bounded Files links separately from provider text. Hosted acceptance remains required
+before enabling the feature.
+Provider Markdown paths resolve only against those saved entries, using the current workspace's
+file/folder id routes. Relative and Cloud Drive paths are supported without rewriting source text;
+unknown, ambiguous, external and traversing paths receive no filesystem lookup or additional access.
+Inside a Markdown deliverable, the web Files viewer resolves sibling and descendant links against
+the opened file's parent through authenticated, scope-bound metadata pages. It does not rewrite
+source bytes or follow parent traversal; unavailable or ambiguous paths stay disabled. Ordinary
+external links retain their existing behavior.
+Native terminal intent stops provider-health probes before the host drains pending text and files;
+an already-running probe must recheck that boundary before reporting loss. Final saving uses the
+execution-fenced `finalizing` phase with a fixed five-minute limit capped by the original task deadline.
+During that phase, the UI retains saving progress and the deadline while hiding native connection
+liveness, since the native process has deliberately ended.
+It grants only the existing drive authority, does not assert provider liveness or allow new MCP work,
+and cannot extend itself through repeated save/progress events. Stop, revocation and deadline checks
+still win; expiry or a real save failure preserves the unsaved journal and requires attention.
+Provider failure keeps the same pending-approval invalidation boundary as observed process loss;
+the save phase cannot retain executable approvals from a failed native session.
+Adapters notify the host when a native turn result is known, before closing the native
+connection. That local notification is fenced to its attempt/generation and stops health
+probes without inventing a live process. Completion still follows verified native cleanup
+and final file saving; a closing connection cannot publish unknown health in between.
+The conversation-message schema permits the projected drive data part; ingestion keeps the same
+assistant row and retries an unacknowledged batch unchanged. Constrained staging PUTs sign the
+checksum as a header, matching the host request. Do not hoist it into the query and also send the
+header: R2 rejects that combination with a signature mismatch.
+
+The runtime drive wrapper consumes the signed execution's fixed scope, checks local parents
+physically before creating a dedicated child, and requires an explicit approved Cloud drive root.
+It holds the cache lease through initialization and the turn, drains synchronization before close,
+and releases ownership after failed hydration so that the same execution can retry safely. Host
+command/runtime wiring refreshes the approved filesystem policy before invoking this wrapper.
+Prepare a newly approved dedicated drive before resolving the complete physical root list:
+the Cloud drive may legitimately not exist yet. Provider credentials are checked before acquiring
+the cache lease; no adapter starts until hydration succeeds. Independent, single-flight host
+heartbeats continue while initialization waits, and shutdown drains an already-started heartbeat.
+Host shutdown first stops command intake and periodic drive work, then confirms adapter stops,
+settles background prompts and drains pending text before closing drive journals and leases.
+It waits for an in-flight upload to finish its SQLite acknowledgement; unattempted events stay
+durable for the next host. Shutdown-induced provider errors are not terminal run outcomes.
+If a provider stop is unconfirmed, cache ownership is retained and the CLI does not explicitly
+close its state store while callbacks can still arrive. This does not establish restart recovery.
+An abort during hydration cannot launch a provider afterwards.
+Acpx closes its native connection before publishing a terminal outcome. Concurrent close callers
+join the same operation; a failed close remains unconfirmed, rejects further prompts and allows
+an explicit Stop to retry. Cache ownership cannot be released on a swallowed close error.
+Session checkpoints retain the validated model, permission mode, effort and Cloud/local context
+alongside nonsecret configuration references. Restoration reuses that same settings schema;
+MCP tokens and provider credentials are excluded and must be reissued by the control plane.
+Preserving settings does not authorize native continuation without old-writer isolation proof.
+The server can record a provider-stop receipt only against the current execution revision,
+attempt, generation, environment and the immutable sandbox lease captured when that attempt
+was admitted. The lease must remain the unique active machine for that scope. Cancellation,
+revocation, stale observations and a replacement machine cannot authorize the old execution;
+fresh attempts clear the receipt. Recording this prerequisite does not start a continuation. A separate server transaction can queue
+one native continuation against that receipt and the current coordinator revision. It rechecks active
+conversation membership, binding, funding, the unique admitted machine lease, native identity,
+explicit adapter capability and unresolved database approvals. It keeps the assistant message and
+full chunked answer, advances the execution generation once, rebinds the drive descriptor and
+preserves validated original settings. The hard deadline never moves. Duplicate delivery is safe
+only while the latest authorized delivery remains pending; an unknown native-start outcome is never replayed.
+Old unfinished commands become ordered shutdowns, retaining the host's command sequence.
+The queued restoration has a bounded preparation window without asserting provider health;
+queueing alone does not claim successful restoration or enable the capability.
+A current drive credential can use the read-only `recover` action for the immediately previous
+execution's immutable request receipt. The backend requires the native restoration snapshot, exact
+provider-stop proof, isolated source attempt, unchanged unique machine lease and current scope/access.
+The request selects only its original id, kind and fingerprint. A committed content result includes its immutable upload id, including when the original intent
+acknowledgement was lost, and contains no storage keys; a missing or pending request is definitively uncommitted because the old generation cannot
+write after replacement. A conflicting identity, unavailable receipt retention or unknown response
+blocks recovery. This lookup neither replays a write nor authorizes adopting another execution's
+local journal. Under the cache lease, a preparation retry may reopen its current execution's own
+pending journal only after foreign unfinished writes are excluded. Otherwise restoration opens
+only the exact previous journal and looks up its pending request with the new execution's
+credential before hydration. A committed
+receipt settles the original identity and saved baseline without sending the old write. A definitive
+uncommitted outcome is archived with its immutable bytes before the pending baseline is cleared;
+the new execution rescans local files under new request ids. Reopening after either durable outcome
+repairs the baseline without another write or receipt lookup. Unknown outcomes and foreign unfinished
+journals remain blocked. Hosted native acceptance remains required before enabling fenced restoration.
+The machine recovery gate observes a stopped Boat machine without resuming it, waits for the
+backend to authorize a queued restoration, and rechecks the same active lease before and after
+resume. The run coordinator retries this inspection only for an eligible recovery state and an
+explicitly advertised fenced-loading capability. It records the stop receipt and queues the
+continuation before authorizing resume; replay after queueing reuses the original receipt and
+source generation. It restarts only that captured machine's host. Live machines, rejected authorization,
+unsupported providers and concurrent lease replacements do not trigger a host restart.
+The bridge reserves an explicit `restore` start payload with the original native session id,
+previous execution fence and stopped-provider receipt. Its independent optional
+`fencedSessionRestoration` capability does not enable live interrupted-turn reattachment.
+Hosts without the completed admission path reject that payload before starting a session;
+the capability defaults off. An individual ACP/acpx adapter or manifest entry may explicitly set
+`fencedSessionRestoration: true` in its private host configuration, only with `durableLifecycle: true`.
+Protected Preview explicit machine restart, resume and recovery all renew the one-shot host access file
+before launching the managed host; legacy leases keep their original access path.
+Enrollment setup and provider selection belong to the provisioning failure boundary too: a refusal
+before machine creation records a failed phase instead of leaving allocation pending. A connected-
+environment limit is a workspace limit, not a provider capacity or credit failure; its startup error
+asks the owner to remove an unused connection before retrying.
+Managed startup can opt in the validated acpx Claude Code and Codex launchers with
+`OVERLAY_REMOTE_RUN_FENCED_RESTORATION=1`, only alongside lifecycle v2. The switch defaults
+unset and is not an acceptance claim: enable it only after native hosted recovery passes for
+the deployed image. Connect persists the selection; managed restart also applies the current
+switch before constructing adapters from the saved configuration. Explicit `0` removes the advertised capability on the next
+host boot, including saved opt-ins. Unset preserves private adapter configuration. Experimental
+adapters and custom ACP commands are never automatically enabled. Upgrade idle or drained hosts.
+Rollbacks use explicit `0` for subsequent boots and existing global feature flags for execution
+availability. Active runs use normal Stop and provider-confirmed termination. This does not enable live interrupted-turn
+continuation or approval restoration.
+Host admission checks the original native id, adapter, previous execution/boot, next generation,
+canonical text offset and new-attempt drive descriptor. It rejects an in-memory writer, atomically
+transfers the durable execution claim once, retains adapter identity and requires the same physical
+working directory after hydration. Duplicate or unknown takeover outcomes are not re-prompted.
+Native restoration records a private preparation fingerprint separately from the provider-start
+boundary. The fingerprint binds the complete command, settings, cursor and source proof while
+excluding the rotating MCP delivery token and current receiver boot. Preparation keeps the old
+execution claim and native identity intact. Immediately before adapter startup, one SQLite
+transaction advances the marker, transfers the execution claim and checkpoints the original native
+identity under the new execution. Checkpoint failure rolls back all three. A preparation interrupted
+before this boundary may resume its exact outstanding command; provider-starting and unknown legacy
+claims cannot replay. Concurrent deliveries in one host join the same preparation, and concurrent
+receivers still have only one successful native-start transition.
+A recognized transient transport error or typed unstable drive snapshot is retryable only while
+the durable marker is still preparing. Snapshot retries repeat verified reads; identity conflicts,
+unsafe paths and ordinary file-change errors remain permanent refusals.
+Credential lookup preserves that distinction instead of emitting a false provider failure; sign-in
+requirements and permanent refusals remain explicit. The backend permits at most three new deliveries
+on the same attempt/generation, rechecking active principal, workspace, agent, membership, binding,
+funding, approvals, machine lease, source receipt and the fixed deadline. Duplicate rejection cannot
+allocate another retry, and the latest pending delivery is the only resume authorization. Exhaustion
+keeps the run for inspection. Preparation receipts bind neither receiver boot nor provider start time;
+the first native event establishes the boot fence, and late preparation cannot override it. Old-boot
+text remains fenced. The capability remains gated on hosted native acceptance.
+Queueing and retrying project recovering status and the current preparation deadline onto the
+existing assistant, publishing a message delta while preserving its text chunks and work history.
+The native start receipt must name the original conversation and adapter, match the latest claimed
+restoration delivery and canonical isolation receipt, retain the exact machine lease, and have no
+unresolved approval. Only that receipt projects a restored outcome. The transcript retains a small
+Recovered status through history reload and completion; queueing, preparation and live reattachment
+do not claim native restoration. A refused continuation cannot retain a restored outcome.
+
+Restoration commands require `overlayNativeAdmission: 1`. Before the local durable startup boundary,
+the host drains its isolated source's persisted event watermark, then crosses the boundary and emits `native_start_requested`.
+Its acknowledgement supplies a fixed canonical text offset and binds the delivery, attempt, generation,
+receiver boot, source event cursor and original hard deadline. Only then may adapter code start.
+Lost acknowledgement replay rechecks current access, funding, source proof and machine ownership;
+missing, expired or mismatched admission fails closed. Waiting targets those watermarks, not unrelated
+upload activity. The admission itself proves no live process and does not set Recovered. Command polling
+continues during startup preparation. A later Stop for the same run and execution interrupts waiting
+for the source watermark or startup acknowledgement, retaining buffered output and preventing adapter
+startup. Command results remain serial and durable; observing Stop does not acknowledge it early or
+prove an unknown process stopped. Cancellation after the local startup boundary cannot replay it.
+
+Before admission, the immediately isolated source may drain buffered output under its original boot
+and exact stored source receipt. Text, work and usage remain on the original assistant; source health
+does not refresh the current execution. Buffered completion can complete the task without a new writer.
+Buffered approvals are closed as lost context and cannot be executed. Cancellation still wins while
+already-produced text drains. Admission seals this historical window before fixing the new cursor. Once that admitted boundary seals the drained source, unresolved action and terminal rows become interrupted, without asserting a confirmed result or replaying a side effect. Their timers stop at the provider-stop observation; completed rows and historical text remain intact. New execution work is unaffected, and duplicate admission does not settle it.
+This path is available only to restorations explicitly requiring startup admission; legacy replacement
+attempts retain their stale-event fence.
+
+A stopped preparation with no startup admission may receive another bounded delivery on the same
+execution after a fresh provider-isolation readback, retaining its original source proof and deadline.
+An admitted startup cannot use that retry: a later stop requires a new isolated generation because
+the provider-start outcome may be unknown. Local SQLite still refuses reusing an uncertain start.
+Acpx records a versioned, nonsecret ACP session identity before the first prompt: its local session key, provider agent, working directory and ACP backend session id. Restoration requires a matching record or checkpoint and explicitly requests that backend id; missing identities, conflicting records and provider load refusal cannot create a replacement conversation. Checkpoint failure closes the new runtime before initialization returns. This identity safeguard does not enable interrupted-turn continuation. Direct ACP session loading consumes replayed answer/work notifications through first-prompt admission, including buffered frames after the load response, without appending them to the canonical answer; current command catalogs remain available.
+Lifecycle-v2 transcript status carries the canonical hard deadline through initial queueing,
+control actions and event projection. The UI shows that absolute UTC deadline for nonterminal
+turns; approval cards show their own expiry. These are policy times, not process-stop proof.
+The host transport exposes that refresh through the existing signed credential-rotation endpoint.
+Concurrent refresh callers share one rotation; callbacks retain its complete method grant and
+filesystem policy, and a response for another environment is rejected before replacing credentials.
+Rotation may add the drive-credentials method only when the environment's current capabilities
+advertise drive v1. Convex checks that capability atomically with credential replacement and keeps
+all other method scopes unchanged, so an already enrolled host can negotiate the extension.
+Cloud drive preparation may add only `/home/user/drive` to an existing approved, drive-capable
+environment and audits that scope change. Local/VPS grants never expand automatically; these
+bindings must explicitly opt in. Start metadata selects the cache location and internal remote
+session id; token issuance derives workspace, owner and permissions from the persisted binding.
+
+
+### Drive failure settlement and bounded reads
+
+A committed write receipt is settled independently of later remote edits or deletion.
+Unchanged acknowledged local bytes can yield to the current remote revision; later
+local edits remain a separate create, preserving newer remote content. Startup
+rejection releases the prepared Drive only when the adapter reports confirmed native
+termination. Unknown startup ownership remains fenced, including through shutdown.
+A failed turn must confirm native stop before final saving or releasing its lease.
+
+Hydration inventories the cache once and validates only the affected path around each
+write. Download ranges reuse a verified byte copy for at most 30 seconds, bounded to
+32 MiB and 64 entries including in-flight reads. Every range still verifies its
+credential, current Files revision/source, scope and live authorization before return;
+cache keys bind the exact execution grant and signed content identity. Cache pressure
+returns a retryable unavailable response rather than exceeding the bound.
+
+Long-horizon provider smoke defaults come from `infra/agent-image/versions.json`;
+`--adapter-version` is an explicit override for investigating a different candidate.
+Shared room run-status reads require active workspace membership and conversation
+participation; personal conversations remain owner-only. During web-first deployment,
+only the previous validator's explicit extra-`remoteRunId` rejection retries the legacy
+read with the same actor and conversation. Its result must match the requested run;
+authorization and unrelated errors never trigger a fallback.

@@ -18,6 +18,8 @@
       "@/server/*": ["../src/server/*"],
       "@/shared/*": ["../src/shared/*"],
       "@/features/*": ["../src/features/*"],
+      "@layernorm/overlay-agent-bridge-protocol": ["../packages/overlay-agent-bridge-protocol/src/index.ts"],
+      "@layernorm/overlay-agent-bridge-protocol/*": ["../packages/overlay-agent-bridge-protocol/src/*"],
       "@overlay/api-client": ["../packages/overlay-api-client/src/index.ts"],
       "@overlay/api-client/*": ["../packages/overlay-api-client/src/*"]
     },

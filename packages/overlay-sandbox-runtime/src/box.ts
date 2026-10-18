@@ -127,7 +127,10 @@ export class BoxSandboxRuntime implements SandboxRuntime {
     const apiKey = options.apiKey ?? boatApiKeyFromEnv()
     if (!apiKey) throw new Error('BOAT_API_KEY (or legacy BOX_API_KEY) is not configured')
     this.apiKey = apiKey
-    this.baseUrl = (options.baseUrl ?? process.env.BOAT_API_BASE_URL?.trim() ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
+    const baseUrl = options.baseUrl ?? process.env.BOAT_API_BASE_URL?.trim() ?? DEFAULT_BASE_URL
+    let end = baseUrl.length
+    while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) end--
+    this.baseUrl = baseUrl.slice(0, end)
     this.environment = options.environment?.trim() || process.env.BOAT_ENVIRONMENT?.trim() || undefined
     this.fetch = options.fetch ?? (async (input, init) => {
       // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
@@ -410,10 +413,17 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
   }
 
   async writeFiles(files: Array<{ path: string; contents: Uint8Array; mode?: number }>): Promise<void> {
-    await Promise.all(files.map((file) =>
-      this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
+    if (files.some(file => file.mode !== undefined && (!Number.isSafeInteger(file.mode) || file.mode < 0 || file.mode > 0o777)))
+      throw new BoxApiError(400, 'invalid_file_mode', 'File permissions must be between 0000 and 0777')
+    await Promise.all(files.map(async file => {
+      await this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
         body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })))
+      })
+      if (file.mode !== undefined) {
+        const result = await (await this.runCommand({command: 'chmod', args: ['--', file.mode.toString(8), file.path], timeoutMs: 15_000})).wait()
+        if (result.exitCode !== 0) throw new BoxApiError(500, 'file_permissions_failed', 'Could not set machine file permissions')
+      }
+    }))
   }
 
   async readFile(path: string): Promise<Uint8Array | null> {

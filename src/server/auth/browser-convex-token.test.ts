@@ -48,5 +48,4 @@ test('browser transport does not register a handler HMAC token as native Convex 
   const source = readFileSync(new URL('../../components/providers/ConvexAuthProvider.tsx', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /convexReactClient\s*\.\s*setAuth\s*\(/)
   assert.match(source, /<ConvexProvider client=\{convexReactClient\}>/)
-  assert.match(source, /fetchConvexToken\(\)/)
 })

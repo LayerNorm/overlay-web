@@ -168,7 +168,7 @@ export type AgentRunCommand = {
 }
 
 export const AGENT_REMOTE_SESSION_STATUSES = [
-  'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering',
+  'starting', 'running', 'waiting_for_approval', 'waiting_for_input', 'recovering', 'finalizing',
   'completed', 'failed', 'cancelled',
 ] as const
 export type AgentRemoteSessionStatus = (typeof AGENT_REMOTE_SESSION_STATUSES)[number]
@@ -250,8 +250,10 @@ export type AgentSandboxLease = {
 
 export const AGENT_REMOTE_EVENT_TYPES = [
   'process_observation',
-  'session_started', 'text_checkpoint', 'action', 'approval_requested', 'elicitation_requested',
-  'plan', 'commands_update', 'diff', 'terminal', 'artifact', 'completed', 'failed', 'cancelled',
+  'session_preparing',
+  'native_start_requested',
+  'session_started', 'text_checkpoint', 'text_delta', 'heartbeat', 'action', 'approval_requested', 'elicitation_requested',
+  'plan', 'commands_update', 'diff', 'terminal', 'artifact', 'drive_sync', 'completed', 'failed', 'cancelled',
 ] as const
 export type AgentRemoteEventType = (typeof AGENT_REMOTE_EVENT_TYPES)[number]
 
@@ -334,6 +336,8 @@ export const AGENT_ENVIRONMENT_CREDENTIAL_METHODS = [
   'agent:credentials:refresh',
   /** Overlay Cloud machines only: fetch the provider credentials for one of their runs. */
   'agent:run-credentials',
+  /** Only hosts advertising drive v1: exact run/session/attempt-scoped drive credentials. */
+  'agent:drive-credentials',
 ] as const
 export type AgentEnvironmentCredentialMethod = (typeof AGENT_ENVIRONMENT_CREDENTIAL_METHODS)[number]
 
@@ -363,4 +367,13 @@ export type AgentEnvironmentEnrollmentView = {
   environment: AgentEnvironment
   verificationPhrase: string
   enrollmentExpiresAt: number
+}
+
+
+export type RemoteRunLiveness = {
+  lastActivityAt: number
+  lastHeartbeatAt: number
+  quietMs: number
+  openTools: Array<{ actionId: string; title: string; runningMs: number }>
+  stalled: boolean
 }

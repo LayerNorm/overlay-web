@@ -20,6 +20,8 @@ export type CreateWorkspaceAgentRecord = {
   instructions: string
   harness: WorkspaceAgentHarness
   modelId: string
+  permissionMode?: string
+  effort?: string
   avatarColor?: string
   avatarShape?: WorkspaceAgentCreatureShape
   allowedToolIds: string[]
@@ -32,7 +34,7 @@ export type CreateWorkspaceAgentRecord = {
 
 export type UpdateWorkspaceAgentRecord = Partial<Pick<
   WorkspaceAgentDefinition,
-  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'avatarColor' | 'avatarShape' | 'allowedToolIds' | 'visibility'
+  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'permissionMode' | 'effort' | 'avatarColor' | 'avatarShape' | 'allowedToolIds' | 'visibility'
 >> & {
   agentId: string
   workspaceId: string

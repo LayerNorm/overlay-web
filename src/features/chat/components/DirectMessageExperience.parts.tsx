@@ -1,5 +1,6 @@
 'use client'
 
+import { RemoteRunLiveness } from './collaboration/RemoteRunLiveness'
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import type { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -519,7 +520,10 @@ export function RoomMessage({
     teaserMessage,
     teaserAuthor,
   })
-  return <RoomMessageItem {...itemProps} />
+  return <RoomMessageItem {...itemProps} remoteStatus={view.streaming && view.remoteRun
+    ? <RemoteRunLiveness key={view.remoteRun.runId} conversationId={ctx.conversationId} runId={view.remoteRun.runId}
+        workspaceId={ctx.participants.find(participant => participant.principalId === ctx.currentPrincipalId)?.workspaceId} />
+    : null} />
 }
 
 function RoomEmptyState({

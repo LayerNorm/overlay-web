@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { asSchema, type ToolSet } from '@/server/ai/sdk'
 import { logger } from '@/server/observability/logger'
+import { McpDeferredCall } from './mcp-deferred-call'
 
 /**
  * MCP over Streamable HTTP, stateless, JSON responses (no SSE stream): the protocol
@@ -45,7 +46,7 @@ async function listTools(tools: ToolSet) {
   })))
 }
 
-async function callTool(tools: ToolSet, params: Record<string, unknown> | undefined, logContext: Record<string, unknown>) {
+export async function executeMcpTool(tools: ToolSet, params: Record<string, unknown> | undefined, logContext: Record<string, unknown>, toolCallId = `mcp_${randomUUID()}`): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const name = typeof params?.name === 'string' ? params.name : ''
   const definition = tools[name] as (ToolSet[string] & {
     execute?: (input: unknown, options: { toolCallId: string; messages: [] }) => unknown
@@ -61,10 +62,11 @@ async function callTool(tools: ToolSet, params: Record<string, unknown> | undefi
     input = validated.value
   }
   try {
-    const output = await definition.execute(input, { toolCallId: `mcp_${randomUUID()}`, messages: [] })
+    const output = await definition.execute(input, { toolCallId, messages: [] })
     const failed = Boolean(output && typeof output === 'object' && (output as { success?: unknown }).success === false)
     return { content: [{ type: 'text', text: toolOutputText(output) }], ...(failed ? { isError: true } : {}) }
   } catch (error) {
+    if (error instanceof McpDeferredCall) throw error
     logger.warn('[mcp] tool failed', { ...logContext, tool: name, error: error instanceof Error ? error.message : String(error) })
     return { content: [{ type: 'text', text: error instanceof Error ? error.message : 'Tool failed' }], isError: true }
   }
@@ -106,7 +108,7 @@ async function handleMessage(
     case 'tools/list':
       return rpcResult(id, { tools: await listTools((await context.tools()).tools) })
     case 'tools/call':
-      return rpcResult(id, await callTool((await context.tools()).tools, message.params, context.logContext))
+      return rpcResult(id, await executeMcpTool((await context.tools()).tools, message.params, context.logContext))
     default:
       return rpcError(id, -32601, `Method not found: ${message.method}`)
   }

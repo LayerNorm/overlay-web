@@ -2,8 +2,9 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { agentHostEventSchema, type AgentHostEvent } from '@layernorm/overlay-agent-bridge-protocol'
+import type { AgentSettings } from './acp-settings.js'
 
-export type StoredRemoteSession = { config?: { version: 1; model?: string; configReference?: string; toolsReference?: string }; execution?: { attemptId: string; generation: number; hostBootId?: string };  runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
+export type StoredRemoteSession = { config?: AgentSettings & { version: 1; configReference?: string; toolsReference?: string }; execution?: { attemptId: string; generation: number; hostBootId?: string };  runId: string; adapterId: string; remoteSessionId: string; workingDirectory: string }
 export type StoredCommandResult = { accepted: boolean; errorCode?: string; errorMessage?: string; sequence: number }
 export type StoredAdapterSessionState = { runId: string; adapterId: string; state: Record<string, unknown> }
 export type HostStateScope = { environmentId: string; workspaceId: string }
@@ -17,6 +18,8 @@ export class SqliteHostStateStore {
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;')
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS command_claims (command_id TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS native_start_preparations (command_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+        phase TEXT NOT NULL CHECK(phase IN ('preparing','provider_starting')));
       CREATE TABLE IF NOT EXISTS processed_commands (
         command_id TEXT PRIMARY KEY,
         sequence INTEGER NOT NULL,
@@ -57,12 +60,17 @@ export class SqliteHostStateStore {
         created_at INTEGER NOT NULL,
         UNIQUE(run_id, source_sequence)
       );
+      CREATE TABLE IF NOT EXISTS attempted_uploads (run_id TEXT PRIMARY KEY, through_sequence INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS run_sequences (
         run_id TEXT PRIMARY KEY,
         last_sequence INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS event_outbox_run_sequence ON event_outbox(run_id, source_sequence);
     `)
+    // Queued rows from an older host may already have reached the server. Treat them as immutable on upgrade too.
+    this.database.exec(`INSERT INTO attempted_uploads(run_id, through_sequence)
+      SELECT run_id, MAX(source_sequence) FROM event_outbox GROUP BY run_id
+      ON CONFLICT(run_id) DO NOTHING`)
     if (scope) this.assertScope(scope)
   }
 
@@ -100,6 +108,49 @@ export class SqliteHostStateStore {
 
   claimCommand(commandId: string): boolean {
     return this.database.prepare('INSERT OR IGNORE INTO command_claims(command_id) VALUES (?)').run(commandId).changes === 1
+  }
+
+  claimNativePreparation(commandId: string, fingerprint: string): boolean {
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const existing = this.database.prepare('SELECT fingerprint,phase FROM native_start_preparations WHERE command_id=?').get(commandId)
+      let accepted = false
+      if (existing) accepted = existing.fingerprint === fingerprint && existing.phase === 'preparing'
+        && Boolean(this.database.prepare('SELECT command_id FROM command_claims WHERE command_id=?').get(commandId))
+      else if (this.claimCommand(commandId)) {
+        this.database.prepare("INSERT INTO native_start_preparations(command_id,fingerprint,phase) VALUES(?,?,'preparing')").run(commandId, fingerprint)
+        accepted = true
+      }
+      this.database.exec('COMMIT')
+      return accepted
+    } catch (error) {this.database.exec('ROLLBACK'); throw error}
+  }
+
+  nativePreparationPending(commandId: string, fingerprint: string): boolean {
+    const row = this.database.prepare('SELECT fingerprint,phase FROM native_start_preparations WHERE command_id=?').get(commandId)
+    return row?.fingerprint === fingerprint && row.phase === 'preparing'
+      && Boolean(this.database.prepare('SELECT command_id FROM command_claims WHERE command_id=?').get(commandId))
+  }
+
+  /** Commit the native-start boundary, ownership transfer and recoverable original identity together. */
+  enterNativeProviderStart(input: {commandId: string; fingerprint: string; previous: StoredRemoteSession;
+    nextExecution: NonNullable<StoredRemoteSession['execution']>}) {
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const stage = this.database.prepare('SELECT fingerprint,phase FROM native_start_preparations WHERE command_id=?').get(input.commandId)
+      const current = this.getSession(input.previous.runId), previous = input.previous.execution
+      if (stage?.phase !== 'preparing' || stage.fingerprint !== input.fingerprint || !previous
+        || !this.database.prepare('SELECT command_id FROM command_claims WHERE command_id=?').get(input.commandId)
+        || current?.remoteSessionId !== input.previous.remoteSessionId || current.adapterId !== input.previous.adapterId
+        || current.workingDirectory !== input.previous.workingDirectory || current.execution?.attemptId !== previous.attemptId
+        || current.execution.generation !== previous.generation || current.execution.hostBootId !== previous.hostBootId
+        || input.nextExecution.attemptId === previous.attemptId || input.nextExecution.generation !== previous.generation + 1
+        || !this.replaceExecutionClaim(input.previous.runId, previous.attemptId, input.nextExecution.attemptId))
+        throw Error('Native restoration outcome is unknown; the execution claim cannot be replayed')
+      this.database.prepare("UPDATE native_start_preparations SET phase='provider_starting' WHERE command_id=?").run(input.commandId)
+      this.saveSession({...input.previous, execution: input.nextExecution})
+      this.database.exec('COMMIT')
+    } catch (error) {this.database.exec('ROLLBACK'); throw error}
   }
 
   commandCursor(): number {
@@ -146,6 +197,12 @@ export class SqliteHostStateStore {
   claimExecution(runId: string, attemptId: string): boolean {
     // Commit before the process can perform an external action. An unknown outcome is never re-prompted.
     return this.database.prepare('INSERT OR IGNORE INTO execution_claims(run_id, attempt_id) VALUES (?, ?)').run(runId, attemptId).changes === 1
+  }
+
+  replaceExecutionClaim(runId: string, previousAttemptId: string, nextAttemptId: string): boolean {
+    if (previousAttemptId === nextAttemptId) return false
+    return this.database.prepare('UPDATE execution_claims SET attempt_id=? WHERE run_id=? AND attempt_id=?')
+      .run(nextAttemptId, runId, previousAttemptId).changes === 1
   }
 
   saveSession(session: StoredRemoteSession, now = Date.now()): void {
@@ -212,11 +269,75 @@ export class SqliteHostStateStore {
     }
   }
 
+  /**
+   * Appends a text checkpoint, or replaces the queued one when it is the newest event of its stream and is not
+   * being uploaded (`inFlightThrough` is the highest sequence currently in flight). Only the latest checkpoint
+   * matters to the transcript, so while uploads are slow the backlog stays one row instead of growing with every
+   * flush. Sequence numbers stay contiguous because the replaced row keeps its own.
+   */
+  appendOrReplaceTextCheckpoint(event: Omit<AgentHostEvent, 'sourceSequence'>, inFlightThrough: number): AgentHostEvent {
+    if (event.type !== 'text_checkpoint') return this.appendEvent(event)
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const streamId = eventStreamId(event.runId, event.execution?.attemptId)
+      const tail = this.database.prepare('SELECT source_sequence, body FROM event_outbox WHERE run_id = ? ORDER BY source_sequence DESC LIMIT 1')
+        .get(streamId) as { source_sequence: number; body: string } | undefined
+      const tailEvent = tail ? JSON.parse(tail.body) as AgentHostEvent : undefined
+      if (tail && tailEvent?.type === 'text_checkpoint' && Number(tail.source_sequence) > Math.max(inFlightThrough, this.attemptedThrough(streamId))
+        && JSON.stringify(tailEvent.execution ?? null) === JSON.stringify(event.execution ?? null)) {
+        const stored = agentHostEventSchema.parse({ ...event, sourceSequence: Number(tail.source_sequence) })
+        this.database.prepare('UPDATE event_outbox SET event_id = ?, body = ? WHERE run_id = ? AND source_sequence = ?')
+          .run(stored.eventId, JSON.stringify(stored), streamId, stored.sourceSequence)
+        this.database.exec('COMMIT')
+        return stored
+      }
+      this.database.exec('COMMIT')
+    } catch (error) {
+      this.database.exec('ROLLBACK')
+      throw error
+    }
+    return this.appendEvent(event)
+  }
+
+  /** Rewrites one queued event in place (same stream and sequence), e.g. to shrink a checkpoint that cannot be sent. */
+  replaceQueuedEvent(event: AgentHostEvent): void {
+    const stored = agentHostEventSchema.parse(event)
+    this.database.prepare('UPDATE event_outbox SET body = ? WHERE run_id = ? AND source_sequence = ?')
+      .run(JSON.stringify(stored), eventStreamId(stored.runId, stored.execution?.attemptId), stored.sourceSequence)
+  }
+
+  /** An upload may have reached the server even when its response was lost. Never rewrite those sequences. */
+  markUploadAttempt(events: AgentHostEvent[]): void {
+    const last = events.at(-1)
+    if (!last) return
+    this.database.prepare(`INSERT INTO attempted_uploads(run_id, through_sequence) VALUES (?, ?)
+      ON CONFLICT(run_id) DO UPDATE SET through_sequence = MAX(through_sequence, excluded.through_sequence)`)
+      .run(eventStreamId(last.runId, last.execution?.attemptId), last.sourceSequence)
+  }
+
+  private attemptedThrough(streamId: string): number {
+    const row = this.database.prepare('SELECT through_sequence FROM attempted_uploads WHERE run_id = ?').get(streamId)
+    return Number(row?.through_sequence ?? 0)
+  }
+
   pendingEvents(limit: number): AgentHostEvent[] {
     const first = this.database.prepare('SELECT run_id FROM event_outbox ORDER BY created_at, source_sequence LIMIT 1').get() as { run_id: string } | undefined
     if (!first) return []
     const rows = this.database.prepare('SELECT body FROM event_outbox WHERE run_id = ? ORDER BY source_sequence LIMIT ?').all(first.run_id, limit) as Array<{ body: string }>
     return rows.map((row) => agentHostEventSchema.parse(JSON.parse(row.body)))
+  }
+
+  /** A retry cannot absorb events recorded after its acknowledgement was lost. */
+  pendingUploadEvents(limit: number): AgentHostEvent[] {
+    const events = this.pendingEvents(limit)
+    const first = events[0]
+    if (!first) return events
+    const attempted = this.uploadAttemptWatermark(first.runId, first.execution?.attemptId)
+    return attempted >= first.sourceSequence ? events.filter(event => event.sourceSequence <= attempted) : events
+  }
+
+  uploadAttemptWatermark(runId: string, attemptId?: string): number {
+    return this.attemptedThrough(eventStreamId(runId, attemptId))
   }
 
   acknowledgeEvents(runId: string, throughSequence: number, attemptId?: string): void {
@@ -230,6 +351,16 @@ export class SqliteHostStateStore {
   outboxSize(): number {
     const row = this.database.prepare('SELECT COUNT(*) AS count FROM event_outbox').get() as { count: number }
     return Number(row.count)
+  }
+
+  lastEventSequence(runId: string, attemptId: string): number {
+    const row = this.database.prepare('SELECT last_sequence FROM run_sequences WHERE run_id = ?').get(eventStreamId(runId, attemptId))
+    return Number(row?.last_sequence ?? 0)
+  }
+
+  hasPendingEventsThrough(runId: string, attemptId: string, throughSequence: number): boolean {
+    return Boolean(this.database.prepare('SELECT 1 FROM event_outbox WHERE run_id = ? AND source_sequence <= ? LIMIT 1')
+      .get(eventStreamId(runId, attemptId), throughSequence))
   }
 }
 

@@ -6,6 +6,9 @@ import {
   filesystemGrantSchema,
   hostCapabilitiesSchema,
   initialCredentialRequestSchema,
+  driveCredentialsRequestSchema,
+  driveCredentialsResponseSchema,
+  providerCredentialsRequestSchema,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import {
   CreateWebhookSubscriptionRequest,
@@ -690,8 +693,14 @@ export const webApiBoundaryDefinitions = [
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/run-credentials', routePath: '/api/v1/agent-environments/[environmentId]/run-credentials',
     pattern: /^\/api\/v1\/agent-environments\/[^/]+\/run-credentials$/,
-    schema: { json: z.object({ protocolVersion: z.literal(1), runId: z.string().min(1) }).strict(), response: UnknownResponse },
-    summary: 'Release the provider credentials for one active run to an Overlay Cloud host', tag: 'Agent environments',
+    schema: { json: providerCredentialsRequestSchema, response: UnknownResponse },
+    summary: 'Release provider credentials for an active run or idle bound-adapter discovery to an Overlay Cloud host', tag: 'Agent environments',
+  },
+  {
+    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/drive-credentials', routePath: '/api/v1/agent-environments/[environmentId]/drive-credentials',
+    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/drive-credentials$/,
+    schema: { json: driveCredentialsRequestSchema, response: driveCredentialsResponseSchema },
+    summary: 'Issue or renew execution-scoped drive credentials for a device-signed host request', tag: 'Agent environments',
   },
   { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },

@@ -3,6 +3,8 @@ import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { applyRemoteFact, currentRemoteAttempt } from './remoteRunModel'
 import type { RemoteRunState } from '../../src/shared/agents/remote-run'
+import {matchesCurrentRecoveryMachine} from '../lib/remoteRecoveryMachine'
+import {nativeRecoverySnapshotSchema} from '../lib/nativeRecoveryPayload'
 
 export const readByServer = query({
   args: { serverSecret: v.string(), runId: v.string() }, returns: v.any(),
@@ -11,10 +13,16 @@ export const readByServer = query({
     const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique()
     if (!run?.remoteLifecycle) return null
     const attempt = await currentRemoteAttempt(ctx, args.runId)
+    const capabilities = nativeRecoverySnapshotSchema.safeParse(attempt?.capabilitySnapshot)
+    const nativeRestorationAdvertised = Boolean(attempt?.remoteSessionId && capabilities.success
+      && capabilities.data.adapters.some(adapter => adapter.protocol === 'acp'
+        && adapter.recovery?.sessionLoading && adapter.recovery.fencedSessionRestoration))
     const environment = run.environmentId ? await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', run.environmentId!)).unique() : null
     // No start payload, credentials or transcript crosses the Workflow boundary.
+    const nativePreparationPending = Boolean(attempt?.restorationCommandId && !attempt.nativeStartAdmission
+      && attempt.startedAt === undefined && run.remoteLifecycle.lastHealthAt === undefined)
     return { runId: args.runId, workspaceId: attempt?.workspaceId, environmentId: run.environmentId,
-      environmentKind: environment?.kind, lifecycle: run.remoteLifecycle }
+      environmentKind: environment?.kind, lifecycle: run.remoteLifecycle, nativeRestorationAdvertised, nativePreparationPending }
   },
 })
 
@@ -139,5 +147,31 @@ export const confirmStoppedByServer = mutation({
     if (!run?.remoteLifecycle || run.remoteLifecycle.phase !== 'cancelling' || run.remoteLifecycle.currentAttemptId !== args.attemptId
       || run.remoteLifecycle.executionGeneration !== args.generation) return false
     return (await applyRemoteFact(ctx, run, { type: 'stopped' }, args.now))?.applied === true
+  },
+})
+
+/** The trusted caller must read the provider's stopped state before recording it, and before resuming. */
+export const recordProviderStopByServer = mutation({
+  args: {serverSecret: v.string(), runId: v.string(), environmentId: v.string(), leaseId: v.string(),
+    providerReference: v.string(), attemptId: v.string(), generation: v.number(), expectedRevision: v.number(), now: v.number()},
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique()
+    const state = run?.remoteLifecycle
+    if (!state || !['needs_attention', 'recovering'].includes(state.phase) || state.currentAttemptId !== args.attemptId
+      || state.executionGeneration !== args.generation || run.environmentId !== args.environmentId
+      || !Number.isSafeInteger(args.now) || args.now < run.createdAt || args.now >= state.hardDeadlineAt) return false
+    if (!await matchesCurrentRecoveryMachine(ctx, args)) return false
+    const prior = state.providerStop
+    if (state.revision === args.expectedRevision + 1 && prior?.recordedAtRevision === args.expectedRevision
+      && prior.attemptId === args.attemptId && prior.executionGeneration === args.generation
+      && prior.leaseId === args.leaseId && prior.providerReference === args.providerReference) return true
+    if (state.revision !== args.expectedRevision) return false
+    await ctx.db.patch(run._id, {remoteLifecycle: {...state, revision: state.revision + 1, providerStop: {
+      provider: 'box', environmentId: args.environmentId, leaseId: args.leaseId, providerReference: args.providerReference,
+      attemptId: args.attemptId, executionGeneration: args.generation, observedAt: args.now, recordedAtRevision: state.revision,
+    }}, updatedAt: args.now})
+    return true
   },
 })

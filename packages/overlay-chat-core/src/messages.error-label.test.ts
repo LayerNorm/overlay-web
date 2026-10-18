@@ -46,3 +46,16 @@ test('persistedGenerationErrorMessage keeps real stored error strings', () => {
     'generation_interrupted_server_timeout',
   )
 })
+
+test('provider error labels preserve ordered terms and line boundaries for long untrusted input', () => {
+  const fallback = 'Something went wrong. Please try again.'
+  const unavailable = 'That model is not available from the provider right now. Try another model.'
+  for (const text of ['gateway auth unavailable', 'provider billing disabled', 'GATEWAY key refused', 'provider quota exhausted'])
+    assert.equal(errorLabel(new Error(text)), text)
+  for (const separator of ['\n', '\r', '\u2028', '\u2029']) {
+    assert.equal(errorLabel(new Error('gateway' + separator + 'quota')), fallback)
+    assert.equal(errorLabel(new Error('model' + separator + 'not found')), fallback)
+  }
+  for (const text of ['Model unavailable: not found', 'not found: model', 'MODEL_NOT_FOUND']) assert.equal(errorLabel(new Error(text)), unavailable)
+  for (const prefix of ['gateway', 'provider', 'model', 'not found']) assert.equal(errorLabel(new Error(prefix.repeat(20000))), fallback)
+})

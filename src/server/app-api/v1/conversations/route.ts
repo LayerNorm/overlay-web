@@ -18,6 +18,7 @@ import type {
   ConversationMessageRow,
 } from '@/server/conversations/ActConversationRepository'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
+import {conversationMessageParts} from './message-parts'
 
 function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
   const requested =
@@ -410,22 +411,8 @@ export async function DELETE(request: NextRequest, context: AppApiRouteContext) 
   }
 }
 
-function partsHaveVisibleAssistantContent(parts: Array<Record<string, unknown>> | undefined): boolean {
-  if (!parts?.length) return false
-  return parts.some((part) => {
-    const type = typeof part.type === 'string' ? part.type : ''
-    if (type === 'text' || type === 'output-text' || type === 'reasoning') {
-      return typeof part.text === 'string' && part.text.trim().length > 0
-    }
-    if (type === 'tool-invocation' || type === 'file' || type === 'data') return true
-    return type.startsWith('tool-')
-  })
-}
-
 function serializeConversationMessage(message: ConversationMessageRow) {
-  const visibleParts = partsHaveVisibleAssistantContent(message.parts)
-    ? message.parts!.map(serializeConversationMessagePart)
-    : [{ type: 'text' as const, text: message.content }]
+  const visibleParts = conversationMessageParts({content: message.content, parts: message.parts}).map(serializeConversationMessagePart)
   return {
     id: message._id,
     turnId: message.turnId,
@@ -434,6 +421,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     variantIndex: message.variantIndex,
     createdAt: message.createdAt,
     ...(message.updatedAt ? { updatedAt: message.updatedAt } : {}),
+    ...(message.eventSequence !== undefined ? { eventSequence: message.eventSequence } : {}),
     role: message.role,
     parts: visibleParts,
     model: message.modelId,

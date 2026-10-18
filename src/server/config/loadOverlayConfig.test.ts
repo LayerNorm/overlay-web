@@ -142,6 +142,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE: 'true',
     OVERLAY_FEATURE_REMOTE_AGENT_RUNS: 'true',
     OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS: 'true',
+    OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE: 'true',
     OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS: 'true',
     OVERLAY_PROVIDER_SANDBOX: 'none',
     OVERLAY_PROVIDER_BROWSER: 'none',
@@ -165,6 +166,7 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     connectedAgentControlPlane: true,
     remoteAgentRuns: true,
     connectedAgentArtifacts: true,
+    connectedAgentDrive: true,
     overlayCloudEnvironments: true,
   })
   assert.deepEqual(overrides.providers, {

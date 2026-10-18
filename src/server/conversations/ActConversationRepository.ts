@@ -97,6 +97,7 @@ export type ConversationMessageRow = {
   variantIndex?: number
   createdAt: number
   updatedAt?: number
+  eventSequence?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string
@@ -355,6 +356,7 @@ export interface ActConversationRepository {
     stoppedCount: number
   }>
   getLatestAgentRun(args: {
+    remoteRunId?: string
     conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null>
