@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Make a single shadcn sidebar the default app shell: Personal/Workspace toggle under the brand, Files and Extensions under a hover Explore menu, page subviews as header tabs, and no divider lines between sidebar, header and body. The rail and panel layout remains under Settings > Customization.
+- Make a single shadcn sidebar the default app shell: Personal/Workspace toggle under the brand, Files and Extensions under a hover Explore menu, page subviews as header tabs, and no divider lines between sidebar, header and body. The rail and panel layout remains under Settings > Customization. Add Workspace AI chats: chats started from Workspace > Chats are filed under that scope (stored as an optional conversation `scope`; existing chats stay Personal).
 
 - Make first-run onboarding deterministic: it starts only on the post-signup redirect or an explicit replay, waits for the workspace to load before the name step, mounts the tour only on the chat surface where its targets render, holds the model picker open through the tour's early steps, and no longer refires on refresh or pops up mid-session.
 
