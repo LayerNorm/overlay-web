@@ -2,13 +2,9 @@
 import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { MoonStar, SunMedium } from "lucide-react";
-import { OverlayMark } from "@/components/orb/Orb";
+import { BrandLockup } from "@/components/brand/BrandLockup";
 import Link from "next/link";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
-import {
-  MARKETING_LOGO_SIZE,
-  marketingSerifStyle,
-} from "@/features/marketing/lib/marketingLayout";
 import {
   MARKETING_DOCS_URL,
   MARKETING_GITHUB_URL,
@@ -75,14 +71,8 @@ export function MarketingFooter() {
       <div className="mx-auto max-w-7xl">
         <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div>
-            <Link href="/home" className="flex items-center gap-2">
-              <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
-              <span
-                className="text-lg font-medium tracking-tight text-(--foreground)"
-                style={marketingSerifStyle()}
-              >
-                overlay
-              </span>
+            <Link href="/home" className="inline-flex text-(--foreground)">
+              <BrandLockup style={{ fontSize: 18 }} />
             </Link>
             <p className="mt-3 text-xs leading-5 text-(--muted)">
               The control plane for AI employees.

@@ -1,5 +1,4 @@
-import { OverlayMark } from '@/components/orb/Orb'
-import { MARKETING_LOGO_SIZE } from '@/features/marketing/lib/marketingLayout'
+import { BrandLockup } from '@/components/brand/BrandLockup'
 
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <div className={`ui-skeleton-line rounded-md ${className}`} aria-hidden />
@@ -46,10 +45,7 @@ export function AuthPageSkeleton() {
       aria-label="Loading"
     >
       <aside className="hidden w-[45%] flex-col justify-between border-r border-(--border) bg-(--surface-subtle) px-12 py-12 lg:flex xl:px-16">
-        <div className="flex items-center gap-2.5">
-          <OverlayMark size={MARKETING_LOGO_SIZE} label="" />
-          <span className="font-serif text-xl font-medium tracking-tight">overlay</span>
-        </div>
+        <BrandLockup style={{ fontSize: 20 }} />
         <div className="max-w-md">
           <SkeletonBlock className="h-9 w-full" />
           <SkeletonBlock className="mt-3 h-9 w-3/4" />
@@ -63,9 +59,8 @@ export function AuthPageSkeleton() {
       </aside>
       <main className="flex flex-1 flex-col items-center px-6 py-16 sm:px-10">
         <div className="my-auto w-full max-w-sm">
-          <div className="mb-10 flex items-center justify-center gap-2.5 lg:hidden">
-            <OverlayMark size={MARKETING_LOGO_SIZE} label="" />
-            <span className="font-serif text-xl font-medium tracking-tight">overlay</span>
+          <div className="mb-10 flex items-center justify-center lg:hidden">
+            <BrandLockup style={{ fontSize: 20 }} />
           </div>
           <SkeletonBlock className="mb-2 h-8 w-44" />
           <SkeletonBlock className="mb-8 h-4 w-60 max-w-full" />

@@ -3,14 +3,13 @@ import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
 import { Github, Menu, MoonStar, SunMedium, X } from "lucide-react";
-import { OverlayMark } from "@/components/orb/Orb";
+import { BrandLockup } from "@/components/brand/BrandLockup";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLandingThemeOptional } from "@/contexts/LandingThemeContext";
 import {
-  MARKETING_LOGO_SIZE,
   marketingNavText,
   marketingSerifStyle,
 } from "@/features/marketing/lib/marketingLayout";
@@ -276,16 +275,10 @@ export function MarketingNavbar() {
         <nav className="relative flex h-14 items-center justify-between gap-4">
           <Link
             href="/home"
-            className="flex min-w-0 items-center gap-2"
+            className="flex min-w-0 items-center"
             onClick={closeMobileMenu}
           >
-            <OverlayMark size={MARKETING_LOGO_SIZE} label="Overlay" />
-            <span
-              className="truncate text-xl font-medium tracking-tight"
-              style={serif}
-            >
-              overlay
-            </span>
+            <BrandLockup style={{ fontSize: 20 }} />
           </Link>
 
           <DesktopNavLinks pathname={pathname} navText={navText} serif={serif} />

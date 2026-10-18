@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Github } from 'lucide-react'
 import { MARKETING_GITHUB_URL } from '@/shared/marketing/marketing'
 import { HeroDemo } from './demo/HeroDemo'
-import { LandingOrb } from './LandingOrb'
+import { BrandLockup } from '@/components/brand/BrandLockup'
 
 /**
  * Section 1: the logo, the one-line pitch and a working miniature of the app.
@@ -14,8 +14,7 @@ export const LandingHero = memo(function LandingHero({ appHref }: { appHref: str
   return (
     <section className="hero" data-lp="hero">
       <Link className="lockup" data-lp="hero-lockup" href="/home" aria-label="Overlay home">
-        <LandingOrb />
-        overlay
+        <BrandLockup />
       </Link>
       <h1 className="sub" data-lp="sub">
         <span className="w">The</span>
