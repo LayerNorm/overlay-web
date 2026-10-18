@@ -20,6 +20,7 @@ export interface UploadUrl {
 export type UploadConstraints = {
   expiresIn?: number
   contentLength?: number
+  /** Lowercase hexadecimal SHA-256; providers encode the wire checksum. */
   checksumSha256?: string
 }
 
@@ -39,6 +40,7 @@ export interface ObjectStore {
   listObjects(prefix: string): Promise<FileMetadata[]>
   headObject?(key: string): Promise<{ sizeBytes: number; contentType: string | undefined } | null>
   downloadBuffer?(key: string, maximumBytes?: number): Promise<Uint8Array>
+  uploadBuffer?(key: string, body: Uint8Array, contentType: string): Promise<void>
 }
 
 export interface VectorStore {

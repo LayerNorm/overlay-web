@@ -5,9 +5,10 @@ import { randomUUID } from 'node:crypto'
 import type { SandboxInstance, SandboxRuntime } from '@overlay/sandbox-runtime'
 import type { AgentBinding, AgentEnvironment, AgentSandboxLease, ComputerSize } from '@overlay/workspace-contracts'
 import type { AuditService } from '@/server/admin'
-import type { ConnectedAgentControlPlaneService } from '../ConnectedAgentControlPlaneService'
+import { ConnectedAgentControlPlaneError, type ConnectedAgentControlPlaneService } from '../ConnectedAgentControlPlaneService'
 import type { ConnectedAgentRepository } from '../ConnectedAgentRepository'
 import type { CloudAgentProvisionRepository } from './CloudAgentProvisionRepository'
+import { prepareCloudAgentPreviewAccess } from './cloud-agent-preview-access'
 import {
   deriveCloudAgentState,
   type CloudAgentAction,
@@ -87,16 +88,16 @@ export class CloudAgentMachineService {
           error: error instanceof Error ? error.message : String(error),
         }))
     await phase('allocating')
-    const runtime = this.runtime()
-    const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
-      actorUserId: args.actorUserId,
-      workspaceId: args.workspaceId,
-    })
-    const name = `overlay-cloud-${enrollment.enrollmentSessionId.slice(0, 8).toLowerCase()}`
-    const resources = CLOUD_AGENT_RESOURCES[args.size]
     let machine: SandboxInstance | null = null
     let environment: AgentEnvironment | null = null
     try {
+      const runtime = this.runtime()
+      const enrollment = await this.dependencies.controlPlane.createEnrollmentSession({
+        actorUserId: args.actorUserId,
+        workspaceId: args.workspaceId,
+      })
+      const name = `overlay-cloud-${enrollment.enrollmentSessionId.slice(0, 8).toLowerCase()}`
+      const resources = CLOUD_AGENT_RESOURCES[args.size]
       machine = await runtime.create({
         name,
         snapshotId: this.dependencies.image ?? cloudAgentImageFromEnv(),
@@ -111,11 +112,13 @@ export class CloudAgentMachineService {
         metadata: { overlay: 'true', kind: 'cloud-agent', workspace: args.workspaceId, agent: args.agentId },
       })
       await phase('booting')
+      const hostingAuthFile = await prepareCloudAgentPreviewAccess(machine, args.serverUrl)
       await this.runDetached(machine, cloudAgentConnectCommand({
         enrollmentCode: enrollment.code,
         serverUrl: args.serverUrl,
         name,
         adapterId: args.adapterId,
+        ...(hostingAuthFile ? {hostingAuthFile} : {}),
       }))
       await phase('connecting')
       environment = await this.waitForEnrollment(args.workspaceId, name)
@@ -127,6 +130,7 @@ export class CloudAgentMachineService {
       })
       const lease = await this.createLease(args.workspaceId, environment.id, runtime.provider, machine.reference, {
         resources, adapterId: args.adapterId, agentId: args.agentId, image: this.dependencies.image ?? cloudAgentImageFromEnv(),
+        ...(hostingAuthFile ? {previewHostingAccessVersion: 1 as const} : {}),
       })
       const binding = await this.bindWhenOnline({ ...args, environmentId: environment.id })
       await this.dependencies.audit.record({
@@ -176,12 +180,13 @@ export class CloudAgentMachineService {
       this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId }),
     ])
     const found = await this.cloudBinding(args.workspaceId, bindings)
+    const setup = found ? this.bindingSetup(found.binding) : await this.priorCloudSetup(args.workspaceId, bindings)
     const lease = found ? await this.dependencies.repository.getActiveSandboxLease({
       workspaceId: args.workspaceId, environmentId: found.environment.id,
     }) : null
     const machine = lease ? await this.readMachine(lease) : null
-    const ownerUserId = typeof found?.binding.adapterConfig.providerAccountOwnerUserId === 'string' ? found.binding.adapterConfig.providerAccountOwnerUserId : ''
-    const accountId = typeof found?.binding.adapterConfig.providerAccountId === 'string' ? found.binding.adapterConfig.providerAccountId : ''
+    const ownerUserId = setup?.ownerUserId ?? ''
+    const accountId = setup?.accountId ?? ''
     const account = ownerUserId && accountId && this.dependencies.accountSummary
       ? await this.dependencies.accountSummary(ownerUserId, accountId).catch((_error) => null)
       : null
@@ -194,8 +199,7 @@ export class CloudAgentMachineService {
       machine,
       account,
     }
-    const configuredAdapter = found?.binding.adapterConfig.adapterId
-    const adapterId = typeof configuredAdapter === 'string' && configuredAdapter ? configuredAdapter : (found?.binding as { adapterId?: string } | undefined)?.adapterId
+    const adapterId = setup?.adapterId
     return { agentId: args.agentId, ...(adapterId ? { adapterId } : {}), ...parts, state: deriveCloudAgentState({
       ...parts,
       // A host is "online" only while it keeps checking in.
@@ -226,13 +230,7 @@ export class CloudAgentMachineService {
     }
     // Restart: make sure the machine is up, then replace the host process.
     if (await machine.status() !== 'running') await machine.resume()
-    await this.runDetached(machine, cloudAgentStopHostCommand())
-    await this.runDetached(machine, cloudAgentRunCommand())
-    await this.dependencies.repository.patchSandboxLeaseUsage({
-      workspaceId: args.workspaceId, leaseId: lease.id, patch: { lastActiveAt: this.now() }, now: this.now(),
-      // A machine woken for something other than a run still stops after the idle window.
-      idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
-    })
+    await this.restartManagedHost(machine, lease, {workspaceId: args.workspaceId, environmentId: found.environment.id})
   }
 
   /**
@@ -349,6 +347,26 @@ export class CloudAgentMachineService {
     return null
   }
 
+  private bindingSetup(binding: AgentBinding) {
+    const configuredAdapter = binding.adapterConfig.adapterId
+    const legacyAdapter = 'adapterId' in binding ? binding.adapterId : undefined
+    return {
+      adapterId: typeof configuredAdapter === 'string' && configuredAdapter ? configuredAdapter
+        : typeof legacyAdapter === 'string' ? legacyAdapter : undefined,
+      ownerUserId: typeof binding.adapterConfig.providerAccountOwnerUserId === 'string' ? binding.adapterConfig.providerAccountOwnerUserId : '',
+      accountId: typeof binding.adapterConfig.providerAccountId === 'string' ? binding.adapterConfig.providerAccountId : '',
+    }
+  }
+
+  /** Retained setup can recreate a machine; it never supplies an active environment or lease. */
+  private async priorCloudSetup(workspaceId: string, bindings: AgentBinding[]) {
+    for (const binding of bindings) {
+      const environment = await this.dependencies.repository.getEnvironment({workspaceId, environmentId: binding.environmentId})
+      if (environment?.workspaceId === workspaceId && environment.kind === 'overlay_cloud') return this.bindingSetup(binding)
+    }
+    return null
+  }
+
   private async readMachine(lease: AgentSandboxLease): Promise<NonNullable<CloudAgentStatus['machine']>> {
     const usage = lease.usage ?? {}
     const resources = usage.resources as { vcpus?: number } | undefined
@@ -389,8 +407,38 @@ export class CloudAgentMachineService {
       return 'unavailable'
     }
     if (status !== 'running') await machine.resume()
+    await this.restartManagedHost(machine, lease, args)
+    return status === 'running' ? 'running' : 'resumed'
+  }
+
+  /** The callback must persist the stopped-machine fence and authorize its queued restoration before resume. */
+  async resumeStoppedExecution(args: {workspaceId: string; environmentId: string;
+    authorize: (proof: {leaseId: string; providerReference: string; observedAt: number}) => Promise<boolean>
+  }): Promise<'resumed' | 'unavailable'> {
+    const scope = {workspaceId: args.workspaceId, environmentId: args.environmentId}
+    const lease = await this.dependencies.repository.getActiveSandboxLease(scope)
+    // Only Boat's disk-only stop/resume contract proves that the previous OS processes cannot return.
+    if (!lease?.providerReference || lease.status !== 'running' || lease.provider !== 'box') return 'unavailable'
+    const machine = await this.runtime(lease.provider).reconnect(lease.providerReference, {resume: false})
+    if (await machine.status() !== 'stopped') return 'unavailable'
+    if (!await args.authorize({leaseId: lease.id, providerReference: lease.providerReference, observedAt: this.now()})) return 'unavailable'
+    if (!await this.ownsRecoveryMachine(scope, lease) || await machine.status() !== 'stopped') return 'unavailable'
+    await machine.resume()
+    if (!await this.ownsRecoveryMachine(scope, lease)) return 'unavailable'
+    await this.restartManagedHost(machine, lease, scope)
+    return 'resumed'
+  }
+
+  private async ownsRecoveryMachine(args: {workspaceId: string; environmentId: string}, expected: AgentSandboxLease) {
+    const current = await this.dependencies.repository.getActiveSandboxLease(args)
+    return current?.id === expected.id && current.status === 'running' && current.provider === expected.provider
+      && current.providerReference === expected.providerReference
+  }
+
+  private async restartManagedHost(machine: SandboxInstance, lease: AgentSandboxLease, args: {workspaceId: string; environmentId: string}) {
+    const hostingAuthFile = lease.usage?.previewHostingAccessVersion === 1 ? await prepareCloudAgentPreviewAccess(machine) : undefined
     await this.runDetached(machine, cloudAgentStopHostCommand())
-    await this.runDetached(machine, cloudAgentRunCommand())
+    await this.runDetached(machine, cloudAgentRunCommand(process.env, hostingAuthFile))
     await this.dependencies.repository.patchSandboxLeaseUsage({
       workspaceId: args.workspaceId,
       leaseId: lease.id,
@@ -398,7 +446,6 @@ export class CloudAgentMachineService {
       now: this.now(),
       idleCheckInMs: MANAGED_SANDBOX_IDLE_TIMEOUT_MS,
     })
-    return status === 'running' ? 'running' : 'resumed'
   }
 
   /** Stop a machine without waking it; only a provider state readback proves isolation. */
@@ -421,7 +468,7 @@ export class CloudAgentMachineService {
     environmentId: string,
     provider: string,
     providerReference: string,
-    details: { resources: unknown; adapterId: string; agentId: string; image: string },
+    details: { resources: unknown; adapterId: string; agentId: string; image: string; previewHostingAccessVersion?: 1 },
   ): Promise<AgentSandboxLease> {
     const now = this.now()
     const created = await this.dependencies.repository.createSandboxLease({
@@ -530,6 +577,8 @@ export class CloudAgentMachineService {
 /** What a person is told when a machine fails to start: known causes by name, everything else generically. */
 export function provisionFailureMessage(error: unknown): string {
   if (error instanceof CloudAgentMachineError) return error.message
+  if (error instanceof ConnectedAgentControlPlaneError && error.code === 'environment_limit_reached')
+    return 'This workspace has reached its connected-environment limit. Remove an unused connection and try again.'
   const message = error instanceof Error ? error.message : ''
   if (/credit|balance|quota|limit/i.test(message)) return 'The machine provider is out of capacity or credit. Try again later.'
   return 'Could not start the machine. Try again.'

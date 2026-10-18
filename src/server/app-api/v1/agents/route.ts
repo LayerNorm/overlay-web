@@ -25,6 +25,10 @@ export async function GET(request: Request, context: AppApiRouteContext) {
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
     const body = context.parsedJson as Partial<WorkspaceAgentCreateInput>
+    if ((body.permissionMode !== undefined && typeof body.permissionMode !== 'string')
+      || (body.effort !== undefined && typeof body.effort !== 'string')) {
+      return NextResponse.json({ error: 'Invalid agent settings' }, { status: 400 })
+    }
     const agent = await getOverlayServerContext().workspaceAgentService.create({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
@@ -34,6 +38,8 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
         instructions: typeof body.instructions === 'string' ? body.instructions : '',
         harness: body.harness,
         modelId: typeof body.modelId === 'string' ? body.modelId : '',
+        ...(body.permissionMode === undefined ? {} : { permissionMode: body.permissionMode }),
+        ...(body.effort === undefined ? {} : { effort: body.effort }),
         avatarColor: typeof body.avatarColor === 'string' ? body.avatarColor : undefined,
         avatarShape: typeof body.avatarShape === 'string' ? body.avatarShape : undefined,
         allowedToolIds: strings(body.allowedToolIds),

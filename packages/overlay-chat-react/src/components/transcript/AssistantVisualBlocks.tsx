@@ -34,6 +34,7 @@ export interface AssistantVisualBlocksProps {
   sourceCitations?: SourceCitationMap
   /** Hide the trailing caret while a separate loading row already signals progress. */
   suppressTypingIndicator?: boolean
+  resolveFileHref?: AssistantSegmentRenderContext['resolveFileHref']
   /** Persisted turn duration when the host has one; the live-measured value otherwise. */
   workedDurationMs?: number | null
   /** Agent replies: the collapsed view is the final answer only (earlier text folds with the work). */
@@ -68,6 +69,7 @@ export function AssistantVisualBlocks({
   isTextStreaming,
   sourceCitations,
   suppressTypingIndicator = false,
+  resolveFileHref,
   workedDurationMs,
   foldWorkIntoSummary = false,
   onOpenDraft,
@@ -124,6 +126,7 @@ export function AssistantVisualBlocks({
     sourceCitations,
     webSources,
     suppressTypingIndicator,
+    resolveFileHref,
     onOpenDraft,
     onCreateAutomationDraft,
     onOpenAttachmentPreview,
@@ -132,7 +135,7 @@ export function AssistantVisualBlocks({
   }), [
     blockKeyPrefix, markdownKeyPrefix, blocks.length, lastTextBlockIndex,
     isStreaming, isTextStreaming, sourceCitations, webSources,
-    suppressTypingIndicator, onOpenDraft, onCreateAutomationDraft,
+    suppressTypingIndicator, resolveFileHref, onOpenDraft, onCreateAutomationDraft,
     onOpenAttachmentPreview, generatedUiConnectorActions, onGeneratedUiChange,
   ])
 

@@ -64,3 +64,21 @@ test('an unanswered request stops waiting and tells the agent to call again, not
   assert.match(outcome.allowed === false ? outcome.message : '', /call call_mcp_tool again with the same arguments/)
   assert.ok(elapsed() >= 6_000 && elapsed() < 8_000, `waited ${elapsed()}ms`)
 })
+
+test('a waiting approval stops polling when its execution is revoked and carries its fence to the backend', async () => {
+  let live = true
+  let calls = 0
+  const gate = createMcpApprovalGate({ workspaceId: 'w', environmentId: 'e', runId: 'r', sessionId: 'attempt-2',
+    execution: { attemptId: 'attempt-2', generation: 2 }, expiresAt: 50000,
+    now: () => 100, authorize: async () => live, sleep: async () => { live = false },
+    repository: { requestMcpApproval: async args => {
+      calls++
+      assert.equal(args.sessionId, 'attempt-2')
+      assert.deepEqual(args.execution, { attemptId: 'attempt-2', generation: 2 })
+      assert.equal(args.expiresAt, 50000)
+      return { state: 'pending' }
+    } },
+  })
+  assert.deepEqual(await gate('call_mcp_tool', {}), { allowed: false, message: 'This agent execution is no longer authorized.' })
+  assert.equal(calls, 1)
+})

@@ -1,11 +1,20 @@
 # Reliable connected agents
 
-Status: proposed; nothing implemented. Phase 1 is the first PR.
-Date: 2026-10-15.
+Status: Phases 1–5 are implemented. Native Claude Code and Codex functional recovery, fresh-machine verification and strict latency acceptance pass. The historical poll-500 search is closed with its cause unknown. Its retrospective named-cause requirement is replaced by repeatable diagnostic acceptance below; this does not establish the old cause. Keep the complete change in draft PR #247 pending current-head diagnostic validation and final release review.
+
 Related: [`DURABLE_REMOTE_AGENT_RUNS.md`](./DURABLE_REMOTE_AGENT_RUNS.md) (run lifecycle v2),
 [`internal/develop/bring-your-own-agents.md`](../develop/bring-your-own-agents.md),
 mockup [`mockups/reliable-agents-mockup.html`](./mockups/reliable-agents-mockup.html),
 smoke [`scripts/smoke/cloud-agent-long-horizon/`](../../scripts/smoke/cloud-agent-long-horizon/).
+
+## Progress
+
+- Durable transport, negotiated deltas, canonical text storage, liveness and cancellation are implemented.
+- Account-backed model, effort and permission discovery, per-turn settings and resumable MCP approval delivery are implemented.
+- Scoped Drive synchronization, exact-revision hydration, immutable write receipts, conflict preservation and final-save settlement are implemented.
+- Managed lifecycle-v2 recovery preserves the native conversation, assistant, settings, file bytes and execution fences; interrupted rows and timers settle before continuation.
+- Hosted native recovery, completed-file verification and strict latency acceptance pass for both supported providers. Retain the earlier failed latency result and the inconclusive historical-error search in the PR's QA record; detailed run evidence belongs there or in the private evidence store.
+- Required CI and security checks pass on the tested candidate. Package publication, production image activation, matching backend deployment and production smoke follow final integration review; none is claimed complete here.
 
 ## Outcome
 
@@ -68,13 +77,17 @@ Each phase is one PR to `main` unless noted, with its own preview QA. Phases 1 a
   it, and read the transcript through the API rather than the box. The current direct mode stays as the
   provider baseline.
 - Add structured logs, with request id, route, error class and duration, to the host routes that returned 500
-  in production: poll, events, acknowledge, heartbeat. Find their root causes. Likely candidates are Convex OCC
+  in production: poll, events, acknowledge, heartbeat. Diagnose failures from retained records. Possible causes are Convex OCC
   contention from rewriting the full message on every batch, payload size, and function timeouts. Record the
   findings in the PR, not in the repo.
 - Add counters per run: events received, bytes, rejected batches, max quiet gap, longest open tool. Store them
   on `conversationAgentRuns` so QA can read them back.
 
-**Done when:** a preview smoke run reports these numbers and the 500s have a named cause.
+**Done when:** a preview smoke run reports these numbers; controlled failures prove HTTP/server/backend
+correlation, safe known-cause signatures, explicit unknown causes and redacted Sentry SDK delivery. Exercise
+the actual isolated backend with the repeatable read-only diagnostic smoke and verify current-head Preview
+behavior. Record the separate limits of local transport, remote event ingestion and historical retention.
+An exhausted historical search stays closed with cause unknown; passing new tests cannot establish its cause.
 
 ---
 
@@ -152,6 +165,15 @@ turn is active, the same mechanism as `driver.mjs` in the smoke. After 90 s quie
 `stalled: true` on the heartbeat.
 
 **Server and UI**
+- Persist negotiated text in indexed, bounded Convex chunks. The assistant row keeps stable text-part
+  references and a short preview cache; authorized history, room, share and agent-context reads hydrate
+  each logical text part before returning it. Chunk boundaries must never split Unicode code points or
+  become Markdown boundaries. Only changed tail chunks are written. Legacy rows need no migration;
+  hard message deletion removes owned chunks. Text changes still emit conversation events even when
+  the assistant row itself is unchanged. This avoids both the single-document limit and full-message
+  rewrites; no stream content is silently truncated.
+- A quiet tool is not stalled while the adapter reports a live process. The 90-second warning needs
+  missing/unknown process evidence; a missing heartbeat is reported as a connection problem.
 - `remote-agent-transcript.ts`: `text_delta` appends. `heartbeat` updates a small `liveness` field on the run
   (`lastActivityAt`, `openTools`, `stalled`), not the message parts.
 - The chat status line uses liveness:
@@ -206,14 +228,16 @@ message rewrites per run drop by at least 10×.
      approval card.
    - A mode or model the agent no longer offers fails the run with the agent's own message.
 6. **Overlay MCP approvals.** Under `auto` and `bypassPermissions`, Overlay tools allowed by the agent's
-   tool-access level are pre-approved, so the 25 s gate is skipped. For tools that still need approval, pick
-   one of these (decision needed):
+   tool-access level are pre-approved, so the 25 s gate is skipped. For tools that still need approval, choose a durable flow:
    - **(a) Preferred if supported:** MCP elicitation from the Overlay MCP server, so the agent sees a normal
      pending request rather than a failure. Verify Claude Code and Codex support for it first.
    - **(b)** Return a structured "approval pending" result immediately. Once the person decides, inject a
      short follow-up prompt into the same session.
 
-   Either way, remove the "call again" text.
+   Selected (a): native Claude and Codex form/reconnect probes pass. Upgraded hosts use one signed
+   canonical card and a durable result journal; remove "call again" instructions on that negotiated path.
+   Legacy hosts retain their compatibility flow until upgrade. Auto never bypasses an explicit owner
+   tool policy; ordinary granted tools are already immediate.
 7. **UI**, matching the mockup's settings card: a segmented Permissions control (Manual · Edits · Plan · Auto ·
    Bypass) with one line of help, a Model select and an Effort select. Lucide icons only, existing chrome.
 
@@ -233,6 +257,45 @@ in Auto mode completes with zero prompts on Overlay Cloud.
 
 Write a short design note first, as its own section in this file or a sub-plan, then implement behind
 `connectedAgentDrive` (default off).
+
+#### Implementation design (source work in progress)
+
+- **Authority:** resolve scope from the persisted agent and binding, never a host-supplied user/workspace/path.
+  Personal means the creator's personal files within that workspace; workspace means workspace-shared files.
+  Revalidate the invoking member and existing content edit policy on every commit. Readable does not imply
+  writable: another member's workspace file retains its current edit rules. Revocation, scope changes,
+  terminal runs and stale lifecycle attempts revoke access before issuing URLs or accepting commits.
+- **Transport:** a separate signed drive token carries run, attempt/generation, binding, scope and owner.
+  It authorizes only manifest, download, upload-intent and commit operations at `/api/agent-drive`.
+  Tokens and presigned URLs stay out of transcript/logs. Local/VPS is opt-in; cloud defaults on only after
+  `connectedAgentDrive` is enabled. Never reuse provider credentials or grant object-store keys.
+- **Canonical files:** Convex owns path-to-file mapping, scope, revision checks, quota and idempotency.
+  Reuse real `files` rows/folders and existing object-store adapters. Object keys remain file-owner/file-id
+  keys, not a workspace prefix invented by the host. Upload each version to a new immutable key; publish its
+  row pointer only in the guarded commit, so a racing upload cannot overwrite the currently visible object.
+  Verify uploaded size and SHA-256 server-side before commit; a host checksum or HEAD size alone is not proof.
+  Full text lives in the object with `textInObjectStore`; row text is only a searchable prefix.
+- **Manifest:** page a stable scope snapshot with parent relationships, file ids, revision, hash, size and
+  content kind. Inline-only text rows must be materialized from their full canonical content. Reject cycles,
+  ambiguous sibling names and unsafe paths explicitly. Preserve Unicode names; never silently merge names
+  through normalization/case folding. Record unsupported names rather than dropping them from acceptance.
+- **Machine cache:** cloud uses `/home/user/drive`; local uses a dedicated child of the approved root.
+  The host checks each segment with `lstat`, rejects symlinks/special files and traversals, writes downloads
+  atomically, verifies hashes and keeps a private journal outside the drive. Never scan the person's entire
+  home or the original workspace. Serialize sync per scope cache to avoid two turns mutating it concurrently.
+- **Sync:** hydrate before prompting, diff hashes after writing tools and every 15 seconds, then final-sync
+  before forwarding completion. A failed final sync leaves an actionable unsaved state and prevents successful
+  completion. Persist idempotency keys before upload; retry the same intent/commit after acknowledgement loss.
+  Deletions apply only to previously hydrated entries: missing/unhydrated files are never inferred deleted.
+  Moves carry file id and revision, preserving row identity; writes racing a newer revision save a distinct
+  `name (agent).ext` sibling and report the conflict. Folder operations cannot escape the fixed scope.
+- **Bounds:** start with 16 MiB per hydrated file, 256 MiB cached bytes and 10,000 manifest entries. The server
+  enforces the account's tighter quota too. Oversized entries remain explicit manifest-only entries and must
+  not become empty files or deletions. Lazy hydration beyond these limits remains a later FUSE/cache feature;
+  ordinary deliverables must still pass full-byte fresh-machine verification.
+- **Proof:** test path/symlink/scope boundaries, stale revisions/attempts, conflict copies, quota, exact text
+  beyond the searchable prefix, lost acknowledgements and final-sync failure. Hosted acceptance must read the
+  actual Files rows, compare object SHA-256 values, and recreate the machine with an empty cache.
 
 **Model**
 - Personal agent → the owner's personal files. Workspace agent → the workspace's files. The scope is fixed by
@@ -319,18 +382,18 @@ Every host release follows the existing lockstep publish (protocol, then host) a
 
 Run the Phase 0 smoke through Overlay preview with Claude Code on a subscription, and the same with Codex:
 
-- [ ] Long task (≥ 30 min, ≥ 40 tool calls) completes; no rejected batches; stream visible throughout
-- [ ] Max visible lag between agent output and UI under 2 s at p95
-- [ ] Zero false stalls; a forced 3-minute tool shows "running" the whole time
-- [ ] Stop mid-run keeps all text and tool rows
-- [ ] Auto mode: zero prompts for ordinary work; risky actions still surface one card
-- [ ] Model list matches the adapter's live list; the chosen model is reported by the agent
-- [ ] All deliverables present in Overlay Files with matching sha256; identical after rehydrating a new machine
-- [ ] Forced machine stop/resume mid-run recovers on the same message
+- [x] Long task (≥ 30 min, ≥ 40 tool calls) completes; no rejected batches; stream visible throughout
+- [x] Max visible lag between agent output and UI under 2 s at p95
+- [x] Zero false stalls; a forced 3-minute tool shows "running" the whole time
+- [x] Stop mid-run keeps all text and tool rows
+- [x] Auto mode: zero prompts for ordinary work; risky actions still surface one card
+- [x] Model list matches the adapter's live list; the chosen model is reported by the agent
+- [x] All deliverables present in Overlay Files with matching sha256; identical after rehydrating a new machine
+- [x] Forced machine stop/resume mid-run recovers on the same message
 
 ## Open questions
 
-1. MCP approvals: elicitation (needs agent support) or injected follow-up prompt? See Phase 3 step 6.
+1. MCP approvals use elicitation for verified Claude/Codex clients; retain hosted acceptance in Phase 3 step 6.
 2. Default for Overlay Cloud: `auto` or `bypassPermissions`? The plan proposes `auto`, so destructive
    commands still ask.
 3. Drive size cap and lazy hydration threshold.

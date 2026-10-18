@@ -1,9 +1,13 @@
-import { agentHostCommandSchema } from '../packages/overlay-agent-bridge-protocol/src/index'
+import { SignJWT } from 'jose'
+import { mergeRoomMessages, type RoomMessageRecord } from '../src/features/chat/components/collaboration/room-message-view'
+import { agentHostCommandSchema, nativeStartAdmissionSchema } from '../packages/overlay-agent-bridge-protocol/src/index'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import { internal } from './_generated/api'
+import { hydrateRemoteMessage } from './lib/remoteMessageText'
+import {nativeRestorationSnapshotSchema} from './lib/nativeRecoveryPayload'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'remote-agent-turn-test-secret'
@@ -18,6 +22,59 @@ const agentPrincipalId = 'principal-agent-remote-turn'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex remote agent room turns', () => {
+  test('a legacy fresh retry retains the committed prefix and receives its canonical offset', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    const prefix = 'Preserve this answer 🙂'
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(1, 'text_checkpoint', { text: prefix }), event(2, 'failed', { code: 'offline', message: 'Offline', retryable: true })], now: now + 1 })
+    const fresh = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
+      actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn',
+      action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 2,
+    })
+    expect(fresh.applied).toBe(true)
+    const commands = await call<Array<{ id: string; payload: { metadata: Record<string, unknown> } }>>('claimCommandsByServer', {
+      workspaceId, environmentId, now: now + 3, leaseMs: 5000, limit: 10,
+    })
+    expect(commands.find(command => command.id === fresh.commandId)?.payload.metadata.recoveryTextOffset).toBe(prefix.length)
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(3, 'session_started', { remoteSessionId: 'new', adapterId: 'acp' }),
+        event(4, 'text_delta', { offset: prefix.length, text: '\nNew output' })], now: now + 4 })
+    expect((await projectedState(convex, started.messageId)).message?.content).toBe(prefix + '\nNew output')
+  })
+
+  test('drive progress persists on the original assistant row and a retried batch settles exactly once', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    const entries = [{ fileId: 'report-file', path: 'report.md', kind: 'file' }]
+    const events = [event(1, 'text_checkpoint', { text: 'Report complete' }),
+      event(2, 'drive_sync', { state: 'saving' }),
+      event(3, 'drive_sync', { state: 'unsaved', code: 'DRIVE_SYNC_FAILED', message: 'Local copies kept' }),
+      event(4, 'drive_sync', { state: 'saved', fileCount: 1, folderCount: 0, entries }),
+      event(5, 'completed', { usage: {} })]
+    const progress = { workspaceId, environmentId, sessionId: 'session-remote-turn', events: events.slice(0, 3), now: now + 99 }
+    expect(await call('applyRemoteEventsByServer', progress)).toMatchObject({ accepted: true, duplicate: false })
+    const pending = await projectedState(convex, started.messageId)
+    expect(pending.message?.parts?.find(part => part.type === 'data-remote-agent-drive')?.data).toMatchObject({ state: 'unsaved' })
+    const input = { workspaceId, environmentId, sessionId: 'session-remote-turn', events: events.slice(3), now: now + 100 }
+    expect(await call('applyRemoteEventsByServer', input)).toMatchObject({ accepted: true, duplicate: false })
+    const state = await projectedState(convex, started.messageId)
+    expect(state.message?.content).toBe('Report complete')
+    expect(state.message?.parts?.filter(part => part.type === 'data-remote-agent-drive')).toEqual([
+      { type: 'data-remote-agent-drive', data: { key: 'drive', state: 'saved', fileCount: 1, folderCount: 0, entries } },
+    ])
+    expect(await call('applyRemoteEventsByServer', { ...input, now: now + 101 })).toMatchObject({ accepted: true, duplicate: true })
+    expect((await projectedState(convex, started.messageId)).eventCount).toBe(state.eventCount)
+  })
+
   test('binding discovery is tenant-scoped and requires a real agent principal', async () => {
     const convex = convexTest(schema, modules)
     await seedRoom(convex)
@@ -201,6 +258,52 @@ describe('Convex remote agent room turns', () => {
     })).toEqual(expect.objectContaining({ accepted: true, acknowledgedSequence: 4, stale: 'stale_terminal' }))
   })
 
+  test('stream stats record batches, snapshot size, quiet gaps, host lag, tool time and refused batches', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
+    const apply = (events: Array<ReturnType<typeof event>>, at: number) => call<{ accepted: boolean }>('applyRemoteEventsByServer', {
+      workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at,
+    })
+    await apply([
+      event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' }),
+      event(2, 'text_checkpoint', { text: 'Searching' }),
+      event(3, 'action', { actionId: 'search-1', title: 'Web search', status: 'started' }),
+    ], now + 1_000)
+    // A gap in sequence numbers is refused and counted, and changes nothing else.
+    expect(await apply([event(9, 'text_checkpoint', { text: 'out of order' })], now + 2_000))
+      .toEqual({ accepted: false, expectedSequence: 4 })
+    await apply([
+      { ...event(4, 'action', { actionId: 'search-1', title: 'Web search', status: 'completed' }), occurredAt: now + 4_000 },
+      { ...event(5, 'text_checkpoint', { text: 'Searching done' }), occurredAt: now + 4_001 },
+    ], now + 5_000)
+    // A batch the server could not use at all (scope or schema) is counted through the separate mutation.
+    expect(await call('recordRemoteEventBatchRejectionByServer', { workspaceId, environmentId, runId: 'run-remote-turn' })).toBe(true)
+    expect(await call('recordRemoteEventBatchRejectionByServer', { workspaceId: 'other-workspace', environmentId, runId: 'run-remote-turn' })).toBe(false)
+
+    const { run, message } = await projectedState(convex, started.messageId)
+    expect(message?.content).toBe('Searching done')
+    expect(run?.streamStats).toEqual(expect.objectContaining({
+      batches: 2,
+      events: 5,
+      textCheckpointChars: 'Searching'.length + 'Searching done'.length,
+      messageWrites: 2,
+      rejectedBatches: 2,
+      firstEventAt: now + 1_000,
+      lastEventAt: now + 5_000,
+      maxQuietGapMs: 4_000,
+      longestToolMs: 4_000 - 3,
+      longestToolTitle: 'Web search',
+      openTools: [],
+    }))
+    expect(run?.streamStats?.eventBytes).toBeGreaterThan(0)
+    // The second batch arrived 1 s after its events happened on the host.
+    expect(run?.streamStats?.maxHostLagMs).toBe(1_000)
+  })
+
   test('a rejected host command terminates the visible run with a recoverable error', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await seedRoom(convex)
@@ -337,6 +440,35 @@ describe('Convex remote agent room turns', () => {
     expect(after.run?.status).toBe('running')
     const resolvedCard = (after.message?.parts ?? []).find(part => part.type === 'data-remote-agent-request') as { data: Record<string, unknown> }
     expect(resolvedCard.data.state).toBe('resolved')
+  })
+
+  test('a bridged MCP approval uses one canonical card and delivers its answer as elicitation', async () => {
+    const convex = convexTest(schema, modules)
+    const seeded = await seedRoom(convex)
+    const call = <T>(operation: string, args: Record<string, unknown>) =>
+      convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
+    await call('upsertBindingByServer', bindingInput())
+    await call('startRemoteAgentTurnByServer', startInput(seeded))
+    await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 10,
+      events: [event(1, 'session_started', { remoteSessionId: 'acp-session', adapterId: 'acp' })] })
+    const callId = 'd3c2acb6-f09a-4ec6-97eb-39fad2eed724'
+    const requestKey = `mcp_call:${callId}`
+    const ask = () => call('requestMcpApprovalByServer', { workspaceId, environmentId, runId: 'run-remote-turn',
+      sessionId: 'session-remote-turn', requestKey, prompt: 'Allow synthetic tool?', bridge: true, now: now + 11 })
+    expect(await ask()).toEqual({ state: 'unavailable' })
+    await convex.run(ctx => ctx.db.insert('agentMcpCalls', { callId, workspaceId, environmentId, runId: 'run-remote-turn',
+      sessionId: 'session-remote-turn', clientSessionId: 'client', rpcId: '1', toolName: 'synthetic', argumentsJson: '{}',
+      requestKey, state: { kind: 'pending' }, expiresAt: now + 60000, retireAt: now + 86400000, createdAt: now }))
+    expect(await ask()).toEqual({ state: 'pending' })
+    expect(await ask()).toEqual({ state: 'pending' })
+    expect(await convex.run(ctx => ctx.db.query('agentApprovalRequests').collect())).toHaveLength(1)
+    const resolved = await call<{ commandId?: string }>('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey, decision: 'allow', now: now + 12 })
+    const command = await convex.run(ctx => ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', resolved.commandId!)).unique())
+    expect(command).toMatchObject({ type: 'elicitation_response', payload: { requestKey, action: 'accept', content: { confirm: true } } })
+    const replay = await call<{ commandId?: string }>('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+      conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey, decision: 'allow', now: now + 13 })
+    expect(replay.commandId).toBe(resolved.commandId)
   })
 
   test('an MCP approval left unanswered is closed when the run ends, so the waiting call is refused', async () => {
@@ -570,7 +702,7 @@ async function projectedState(convex: ReturnType<typeof convexTest>, messageId: 
 function mutationRef(operation: string) { return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`) }
 function queryRef(operation: string) { return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`) }
 
-async function durableFixture() {
+async function durableFixture(overrides: Record<string, unknown> = {}) {
   const convex = convexTest(schema, modules)
   const seeded = await seedRoom(convex)
   const call = <T = Record<string, unknown>>(operation: string, args: Record<string, unknown>) =>
@@ -583,13 +715,914 @@ async function durableFixture() {
     await ctx.db.patch(environment!._id, { kind: 'overlay_cloud', status: 'online', lastSeenAt: now, capabilities: { ...environment!.capabilities, remoteLifecycleVersion: 2 } })
   })
   await seedWorkspaceReservation(convex)
-  const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, { lifecycleVersion: 2, maxRunTimeMs: 3_600_000, reservationId: 'reservation-remote-turn' }))
+  const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, { lifecycleVersion: 2, maxRunTimeMs: 3_600_000, reservationId: 'reservation-remote-turn', ...overrides }))
   const events = (items: Array<ReturnType<typeof event>>, at: number) => call('applyRemoteEventsByServer', {
     workspaceId, environmentId, sessionId: 'session-remote-turn', now: at,
     events: items.map(e => ({ ...e, execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1' } })),
   })
   return { convex, seeded, call, lifecycle, started, events }
 }
+
+test('fenced final saving survives provider exit without fabricating health and settles completion or failure', async () => {
+  for (const terminal of ['completed', 'failed'] as const) {
+    const f = await durableFixture()
+    const owner = {runId: 'run-remote-turn', coordinatorId: 'final-save-owner', generation: 1, now}
+    await f.lifecycle('claim', owner)
+    await f.lifecycle('advance', owner)
+    await f.events([event(1, 'session_started', {remoteSessionId: 'native', adapterId: 'acp'})], now + 1)
+    await f.events([event(2, 'drive_sync', {state: 'saving'}), event(3, 'heartbeat', {
+      process: 'lost', quietMs: 1, openTools: [], stalled: false,
+    })], now + 2)
+    const pending = await projectedState(f.convex, f.started.messageId)
+    expect(pending.run?.remoteLifecycle).toMatchObject({phase: 'finalizing', lastHealthAt: now + 1, finalizationDeadlineAt: now + 300002})
+    expect(pending.session?.status).toBe('finalizing')
+    expect(pending.message?.parts?.find(part => part.type === 'data-remote-agent-status')?.data).toMatchObject({state: 'finalizing'})
+    await f.lifecycle('advance', {...owner, now: now + 120000})
+    expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.phase).toBe('finalizing')
+    await f.events([terminal === 'completed' ? event(4, 'completed', {usage: {}})
+      : event(4, 'failed', {code: 'drive_unsaved', message: 'Local files retained', retryable: true})], now + 120001)
+    expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.phase)
+      .toBe(terminal === 'completed' ? 'completed' : 'needs_attention')
+  }
+})
+
+async function providerStopFixture() {
+  const fixture = await durableFixture({sandboxBilling: {leaseId: 'recovery-lease'}})
+  const owner = {runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now}
+  await fixture.lifecycle('claim', owner)
+  await fixture.lifecycle('advance', owner)
+  await fixture.events([event(1, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp'}),
+    event(2, 'process_observation', {process: 'unknown'})], now + 2)
+  const lease = {leaseId: 'recovery-lease', workspaceId, environmentId, provider: 'box', providerReference: 'owned-machine',
+    status: 'running', reservedUntil: now + 3_600_000, usage: {}, cleanupAttempts: 0, createdAt: now - 100, updatedAt: now}
+  const leaseDocId = await fixture.convex.run(ctx => ctx.db.insert('agentSandboxLeases', lease))
+  const snapshot = await projectedState(fixture.convex, fixture.started.messageId)
+  if (!snapshot.run?.remoteLifecycle) throw Error('Missing lifecycle fixture')
+  return {...fixture, lease, leaseDocId, input: {runId: 'run-remote-turn', environmentId, leaseId: lease.leaseId,
+    providerReference: lease.providerReference, attemptId: 'session-remote-turn', generation: 1,
+    expectedRevision: snapshot.run.remoteLifecycle.revision, now: now + 3}}
+}
+
+test.each([
+  { grant: 120_000, call: 60_000, expected: 60_000, kind: 'overlay_cloud' as const },
+  { grant: 60_000, call: 120_000, expected: 60_000, kind: 'overlay_cloud' as const },
+  { grant: 7_200_000, call: 7_200_000, expected: 3_600_000, kind: 'overlay_cloud' as const },
+  { grant: 120_000, call: 60_000, expected: 60_000, kind: 'local' as const },
+])('MCP approval shows its enforced expiry and actual machine cost ($kind, $grant/$call)', async ({ grant, call: callExpiry, expected, kind }) => {
+  const f = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await f.lifecycle('claim', owner); await f.lifecycle('advance', owner)
+  await f.events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'acp' })], now + 1)
+  await f.convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    await ctx.db.patch(environment!._id, { kind })
+    await ctx.db.insert('agentMcpCalls', { callId: 'expiry-call', workspaceId, environmentId, runId: 'run-remote-turn',
+      sessionId: 'session-remote-turn', execution: { attemptId: 'session-remote-turn', generation: 1 },
+      clientSessionId: 'client', rpcId: '1', toolName: 'public_read', argumentsJson: '{}',
+      requestKey: 'mcp_call:expiry-call', state: { kind: 'pending' }, expiresAt: now + callExpiry, retireAt: now + 86_400_000, createdAt: now })
+  })
+  const ask = (at: number) => f.call('requestMcpApprovalByServer', { workspaceId, environmentId, runId: 'run-remote-turn',
+    sessionId: 'session-remote-turn', execution: { attemptId: 'session-remote-turn', generation: 1 },
+    requestKey: 'mcp_call:expiry-call', prompt: 'Allow public read?', bridge: true, expiresAt: now + grant, now: at })
+  expect(await ask(now + 2)).toEqual({ state: 'pending' })
+  expect(await ask(now + 3)).toEqual({ state: 'pending' })
+  const state = await projectedState(f.convex, f.started.messageId)
+  const card = state.message?.parts?.find(part => part.type === 'data-remote-agent-request')
+  expect(card?.data).toMatchObject({ expiresAt: now + expected, machineCostContinues: kind === 'overlay_cloud' })
+  expect(state.run?.remoteLifecycle?.approval?.expiresAt).toBe(now + expected)
+  const requests = await f.convex.run(ctx => ctx.db.query('agentApprovalRequests').collect())
+  expect(requests).toHaveLength(1)
+  expect(requests[0]?.payload).toMatchObject({ expiresAt: now + expected, machineCostContinues: kind === 'overlay_cloud' })
+  expect(await ask(now + expected)).toEqual({ state: 'unavailable' })
+  expect(await f.call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: f.seeded.conversationId,
+    runId: 'run-remote-turn', requestKey: 'mcp_call:expiry-call', decision: 'allow', now: now + expected })).toEqual({ applied: false })
+})
+
+test('legacy MCP approval enforces its displayed one-hour cap without changing an earlier decision on replay', async () => {
+  const convex = convexTest(schema, modules), seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 1,
+    events: [event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'acp' })] })
+  const ask = (requestKey: string, at: number) => call('requestMcpApprovalByServer', { workspaceId, environmentId,
+    runId: 'run-remote-turn', requestKey, prompt: 'Allow?', expiresAt: now + 7_200_000, now: at })
+  expect(await ask('late', now + 2)).toEqual({ state: 'pending' })
+  const card = (await projectedState(convex, started.messageId)).message?.parts?.find(part => part.type === 'data-remote-agent-request')
+  expect(card?.data).toMatchObject({ expiresAt: now + 3_600_002, machineCostContinues: false })
+  const decide = (requestKey: string, at: number) => call('resolveRemoteRequestByServer', { actorUserId, workspaceId,
+    conversationId: seeded.conversationId, runId: 'run-remote-turn', requestKey, decision: 'allow', now: at })
+  expect(await decide('late', now + 3_600_002)).toEqual({ applied: false })
+  expect(await ask('late', now + 3_600_002)).toEqual({ state: 'unavailable' })
+  expect(await ask('on-time', now + 3_600_003)).toEqual({ state: 'pending' })
+  expect(await decide('on-time', now + 3_600_004)).toMatchObject({ applied: true })
+  expect(await decide('on-time', now + 7_200_003)).toMatchObject({ applied: true })
+})
+
+test('provider stop proof is durable and idempotent for its exact execution, but cannot revive cancellation', async () => {
+  const {convex, lifecycle, call, seeded, started, input} = await providerStopFixture()
+  const before = await projectedState(convex, started.messageId)
+  expect(await lifecycle('recordProviderStop', input)).toBe(true)
+  expect(await lifecycle('recordProviderStop', input)).toBe(true)
+  const after = await projectedState(convex, started.messageId)
+  expect(after.run?.remoteLifecycle).toMatchObject({phase: 'needs_attention', revision: input.expectedRevision + 1,
+    providerStop: {provider: 'box', environmentId, leaseId: input.leaseId, providerReference: input.providerReference,
+      attemptId: input.attemptId, executionGeneration: input.generation, observedAt: input.now, recordedAtRevision: input.expectedRevision}})
+  expect(after.message).toEqual(before.message)
+  await call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: seeded.conversationId,
+    runId: input.runId, action: 'cancel', queueExpiresAt: now + 60_000, now: now + 4})
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+})
+
+test('provider stop proof rejects stale and cross-scope facts and requires the server credential', async () => {
+  const {convex, lifecycle, started, input} = await providerStopFixture()
+  for (const change of [{attemptId: 'old-attempt'}, {generation: 2}, {expectedRevision: input.expectedRevision - 1},
+    {environmentId: 'other-environment'}, {leaseId: 'other-lease'}, {providerReference: 'other-machine'},
+    {runId: 'other-run'}, {now: now - 1}, {now: now + 3_600_001}]) {
+    expect(await lifecycle('recordProviderStop', {...input, ...change})).toBe(false)
+  }
+  await expect(convex.mutation(makeFunctionReference<'mutation'>('agents/remoteRuns:recordProviderStopByServer'), {
+    ...input, serverSecret: 'wrong-secret',
+  })).rejects.toThrow(/Unauthorized/)
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.providerStop).toBeUndefined()
+})
+
+test('a fresh attempt clears the previous provider stop receipt', async () => {
+  const {convex, lifecycle, call, seeded, started, input} = await providerStopFixture()
+  expect(await lifecycle('recordProviderStop', input)).toBe(true)
+  expect(await call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: seeded.conversationId,
+    runId: input.runId, action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 4})).toMatchObject({applied: true})
+  const state = (await projectedState(convex, started.messageId)).run?.remoteLifecycle
+  expect(state?.executionGeneration).toBe(2)
+  expect(state?.providerStop).toBeUndefined()
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+})
+
+test('stopping a replacement or ambiguous machine cannot authorize the original native execution', async () => {
+  const {convex, lifecycle, input, lease, leaseDocId} = await providerStopFixture()
+  await convex.run(ctx => ctx.db.insert('agentSandboxLeases', {...lease, leaseId: 'replacement-lease',
+    providerReference: 'replacement-machine', createdAt: now + 1, updatedAt: now + 1}))
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+  await convex.run(ctx => ctx.db.patch(leaseDocId, {status: 'released'}))
+  expect(await lifecycle('recordProviderStop', {...input, leaseId: 'replacement-lease', providerReference: 'replacement-machine'})).toBe(false)
+})
+
+test('provider stop proof refuses a foreign, released, unsupported or revoked machine scope', async () => {
+  const {convex, lifecycle, input, lease, leaseDocId} = await providerStopFixture()
+  for (const change of [{provider: 'e2b'}, {workspaceId: 'other-workspace'}, {environmentId: 'other-environment'}, {status: 'released'}]) {
+    await convex.run(ctx => ctx.db.patch(leaseDocId, change))
+    expect(await lifecycle('recordProviderStop', input)).toBe(false)
+    await convex.run(ctx => ctx.db.patch(leaseDocId, lease))
+  }
+  await convex.run(async ctx => {
+    const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
+    if (!environment) throw Error('Missing environment fixture')
+    await ctx.db.patch(environment._id, {revokedAt: now + 2})
+  })
+  expect(await lifecycle('recordProviderStop', input)).toBe(false)
+})
+
+async function nativeQueueFixture() {
+  const f = await providerStopFixture()
+  await f.convex.run(async ctx => {
+    await ctx.db.insert('workspaceAgentDefinitions', {agentId, workspaceId, principalId: agentPrincipalId,
+      name: 'Native recovery fixture', instructions: '', harness: 'codex', modelId: 'byo/codex', allowedToolIds: [], visibility: 'creator',
+      createdByPrincipalId: actorPrincipalId, invocationPolicy: 'mention', createdAt: now, updatedAt: now})
+    const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.input.attemptId)).unique()
+    const command = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', 'command-remote-turn')).unique()
+    if (!attempt || !command) throw Error('Missing native fixture')
+    await ctx.db.patch(attempt._id, {capabilitySnapshot: {...attempt.capabilitySnapshot,
+      adapters: [{id: 'acp', protocol: 'acp', recovery: {sessionLoading: true, fencedSessionRestoration: true}}]}})
+    await ctx.db.patch(command._id, {payload: {...command.payload, metadata: {...command.payload.metadata,
+      model: 'original-model', effort: 'high', overlayMcp: {url: 'https://preview.invalid/api/agent-mcp', token: 'original-grant'},
+      overlayDrive: {version: 1, sessionId: f.input.attemptId, location: 'cloud'}}}})
+  })
+  const prefix = 'Keep the full answer before interruption 🙂\n'.repeat(100)
+  await f.events([event(3, 'text_delta', {offset: 0, text: prefix})], now + 3)
+  const before = await projectedState(f.convex, f.started.messageId)
+  if (!before.run?.remoteLifecycle) throw Error('Missing lifecycle')
+  const stop = {...f.input, expectedRevision: before.run.remoteLifecycle.revision, now: now + 4}
+  expect(await f.lifecycle('recordProviderStop', stop)).toBe(true)
+  const input = {runId: stop.runId, attemptId: stop.attemptId, generation: stop.generation, leaseId: stop.leaseId,
+    providerReference: stop.providerReference, coordinatorId: 'owner', coordinatorGeneration: 1,
+    expectedRevision: stop.expectedRevision + 1, now: now + 5}
+  const begin = (change: Record<string, unknown> = {}) => f.convex.mutation(makeFunctionReference<'mutation'>('agents/nativeRecovery:beginByServer'),
+    {...input, ...change, serverSecret: secret})
+  return {...f, input, begin, prefix}
+}
+
+test('native continuation queues one new generation on the same assistant with original settings and fresh drive scope', async () => {
+  const {convex, started, begin, prefix, input} = await nativeQueueFixture()
+  expect(await begin()).toBe(true)
+  expect(await begin()).toBe(true)
+  const result = await projectedState(convex, started.messageId)
+  expect(result.run?.assistantMessageId).toBe(started.messageId)
+  const hydrated = await convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', input.runId)).unique()
+    const message = run && await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing restored message')
+    return hydrateRemoteMessage(ctx, message)
+  })
+  expect(hydrated.content).toBe(prefix)
+  expect(result.run?.remoteLifecycle).toMatchObject({executionGeneration: 2, phase: 'recovering', cause: 'native_restoration',
+    hardDeadlineAt: now + 3_600_000, claimDeadlineAt: input.now + 120_000})
+  const commands = await convex.run(ctx => ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', input.runId)).take(10))
+  const continuation = commands.find(command => command.type === 'start')
+  expect(continuation?.payload).toMatchObject({sessionId: 'native-session', fresh: false,
+    metadata: {model: 'original-model', effort: 'high', recoveryTextOffset: prefix.length,
+      overlayMcp: {token: 'original-grant'}, overlayDrive: {sessionId: result.run?.remoteLifecycle?.currentAttemptId}},
+    restore: {previousExecution: {attemptId: input.attemptId, generation: 1, hostBootId: 'boot-1'},
+      providerStop: {leaseId: input.leaseId, providerReference: input.providerReference}}})
+  expect(continuation?.payload.prompt).toContain('You were interrupted')
+  expect(commands.filter(command => command.type === 'start')).toHaveLength(1)
+  expect(commands.find(command => command.commandId === 'command-remote-turn')?.type).toBe('shutdown')
+  const attempts = await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_runId', q => q.eq('runId', input.runId)).take(10))
+  expect(attempts).toHaveLength(2)
+})
+
+test('native continuation refuses stale coordinator, execution, receipt and machine facts', async () => {
+  const {begin, input} = await nativeQueueFixture()
+  for (const change of [{coordinatorId: 'other'}, {coordinatorGeneration: 2}, {attemptId: 'other'}, {generation: 2},
+    {expectedRevision: input.expectedRevision - 1}, {leaseId: 'other'}, {providerReference: 'other'}, {now: now + 3_600_001}])
+    expect(await begin(change)).toBe(false)
+})
+
+async function nativeRetryFixture() {
+  const f = await nativeQueueFixture()
+  expect(await f.begin()).toBe(true)
+  await f.call('claimCommandsByServer', {workspaceId, environmentId, now: now + 6, leaseMs: 5000, limit: 10})
+  const command = await f.convex.run(async ctx => {
+    const commands = await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', f.input.runId)).take(10)
+    const start = commands.find(command => command.type === 'start')
+    if (!start?.attemptId) throw Error('Missing continuation command')
+    return start
+  })
+  const reject = (commandId = command.commandId, code = 'native_preparation_retryable', at = now + 10) =>
+    f.call('acknowledgeCommandByServer', {workspaceId, environmentId, commandId, accepted: false, errorCode: code, now: at})
+  return {...f, command, reject}
+}
+
+async function admitNativeFixture(f: Pick<Awaited<ReturnType<typeof nativeQueueFixture>>, 'convex' | 'call' | 'started'>,
+  boot = 'new-boot', at = now + 7) {
+  const current = await f.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique()
+    if (!run?.remoteLifecycle) throw Error('Missing lifecycle')
+    const attemptId = run.remoteLifecycle.currentAttemptId
+    const session = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', attemptId)).unique()
+    if (!session?.restorationCommandId) throw Error('Missing restoration delivery')
+    const restoration = nativeRestorationSnapshotSchema.parse(session.capabilitySnapshot).nativeRestoration
+    const source = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', restoration.previousExecution.attemptId)).unique()
+    if (!source) throw Error('Missing restoration source')
+    return {session, source, restoration}
+  })
+  const request = {workspaceId, environmentId, sessionId: current.session.sessionId, now: at,
+    events: [{...event(current.session.eventCursor + 1, 'native_start_requested', {commandId: current.session.restorationCommandId,
+      remoteSessionId: current.restoration.nativeSessionId, adapterId: 'acp', sourceEventCursor: current.source.eventCursor}),
+      eventId: `admit-${current.session.sessionId}`, execution: {attemptId: current.session.sessionId,
+        generation: current.session.executionGeneration, hostBootId: boot}}]}
+  const response = await f.call('applyRemoteEventsByServer', request)
+  return {request, admitted: nativeStartAdmissionSchema.parse(response.nativeStartAdmission)}
+}
+
+test('native start admission binds a drained source and full canonical cursor without claiming health, and its lost ACK is idempotent', async () => {
+  const f = await nativeRetryFixture()
+  const {request, admitted} = await admitNativeFixture(f)
+  expect(admitted).toMatchObject({commandId: f.command.commandId, attemptId: f.command.attemptId, generation: 2,
+    hostBootId: 'new-boot', sourceEventCursor: 3, canonicalTextOffset: f.prefix.length, hardDeadlineAt: now + 3600000})
+  const before = await projectedState(f.convex, f.started.messageId)
+  expect(before.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+  expect(before.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+  expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true, nativeStartAdmission: admitted})
+  expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.revision).toBe(before.run?.remoteLifecycle?.revision)
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(false, 'an admitted provider start is no longer retryable preparation')
+  await f.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: f.seeded.conversationId,
+    runId: f.input.runId, action: 'cancel', queueExpiresAt: now + 60000, now: now + 11})
+  expect(await f.call('applyRemoteEventsByServer', {...request, now: now + 12})).not.toHaveProperty('nativeStartAdmission')
+})
+
+test('drained native admission settles interrupted work without losing completed work or closing the next writer', async () => {
+  const f = await nativeRetryFixture()
+  const buffered = [event(4, 'action', {actionId: 'interrupted', title: 'Old terminal', status: 'started'}),
+    event(5, 'terminal', {terminalId: 'interrupted', title: 'Old terminal', status: 'running', text: 'Retained terminal output'}),
+    event(6, 'action', {actionId: 'finished', title: 'Finished work', status: 'started'}),
+    event(7, 'action', {actionId: 'finished', title: 'Finished work', status: 'completed'})]
+    .map(item => ({...item, occurredAt: now + 3, execution: {attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1'}}))
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: 'session-remote-turn', events: buffered, now: now + 6})).toMatchObject({accepted: true})
+  const before = await projectedState(f.convex, f.started.messageId)
+  expect(before.run?.streamStats?.openTools.map(tool => tool.actionId)).toEqual(['interrupted'])
+  await expect(f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+    events: [{...event(1, 'native_start_requested', {commandId: f.command.commandId, remoteSessionId: 'native-session', adapterId: 'acp', sourceEventCursor: 6}),
+      execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}],
+  })).rejects.toThrow('AGENT_NATIVE_SOURCE_NOT_DRAINED')
+  const rejected = await projectedState(f.convex, f.started.messageId)
+  expect(rejected.message).toEqual(before.message)
+  expect(rejected.run?.streamStats).toEqual(before.run?.streamStats)
+  const {request, admitted} = await admitNativeFixture(f)
+  const after = await projectedState(f.convex, f.started.messageId)
+  expect(after.run?.streamStats?.openTools).toEqual([])
+  expect(after.run?.streamStats?.events).toBe((before.run?.streamStats?.events ?? 0) + 1)
+  expect(after.run?.streamStats?.longestToolMs).toBe(1)
+  expect(after.message?.parts).toContainEqual(expect.objectContaining({type: 'tool-invocation', toolInvocation: expect.objectContaining({
+    toolCallId: 'interrupted', state: 'output-error', toolOutput: expect.objectContaining({status: 'cancelled', reason: 'execution_interrupted'}),
+  })}))
+  expect(after.message?.parts).toContainEqual(expect.objectContaining({type: 'data-remote-agent-terminal', data: expect.objectContaining({
+    terminalId: 'interrupted', status: 'failed', resolution: 'interrupted', text: 'Retained terminal output',
+  })}))
+  const finished = (parts: NonNullable<typeof before.message>['parts']) => parts?.find(part => part.type === 'tool-invocation'
+    && part.toolInvocation?.toolCallId === 'finished')
+  expect(finished(after.message?.parts)).toEqual(finished(before.message?.parts))
+  expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true})
+  expect((await projectedState(f.convex, f.started.messageId)).message).toEqual(after.message)
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: admitted.attemptId, now: now + 9,
+    events: [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: admitted.commandId}),
+      event(3, 'action', {actionId: 'new-work', title: 'New terminal', status: 'started'})]
+      .map(item => ({...item, eventId: `continued-${item.eventId}`, execution: {attemptId: admitted.attemptId, generation: 2, hostBootId: admitted.hostBootId}})),
+  })).toMatchObject({accepted: true})
+  const running = await projectedState(f.convex, f.started.messageId)
+  expect(running.run?.streamStats?.openTools.map(tool => tool.actionId)).toEqual(['new-work'])
+  expect(running.run?.remoteLifecycle?.recoveryOutcome).toBe('restored')
+  expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true})
+  const duplicate = await projectedState(f.convex, f.started.messageId)
+  expect(duplicate.message).toEqual(running.message)
+  expect(duplicate.run?.streamStats).toEqual(running.run?.streamStats)
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: admitted.attemptId, now: now + 10,
+    events: [event(4, 'action', {actionId: 'new-work', title: 'New terminal', status: 'completed'}), event(5, 'completed', {usage: {}})]
+      .map(item => ({...item, eventId: `continued-${item.eventId}`, execution: {attemptId: admitted.attemptId, generation: 2, hostBootId: admitted.hostBootId}})),
+  })).toMatchObject({accepted: true})
+  const completed = await projectedState(f.convex, f.started.messageId)
+  expect(completed.run?.status).toBe('completed')
+  expect(completed.message?.parts).toContainEqual(expect.objectContaining({type: 'tool-invocation', toolInvocation: expect.objectContaining({
+    toolCallId: 'interrupted', state: 'output-error', toolOutput: expect.objectContaining({status: 'cancelled', outcomeKnown: false}),
+  })}))
+  const content = await f.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique()
+    if (!run) throw Error('Missing run')
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing message')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(content).toBe(f.prefix)
+})
+
+test('native admission refuses an undrained source without consuming the request or recording startup', async () => {
+  const f = await nativeRetryFixture()
+  const request = {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+    events: [{...event(1, 'native_start_requested', {commandId: f.command.commandId, remoteSessionId: 'native-session', adapterId: 'acp', sourceEventCursor: 4}),
+      execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}]}
+  await expect(f.call('applyRemoteEventsByServer', request)).rejects.toThrow('AGENT_NATIVE_SOURCE_NOT_DRAINED')
+  const session = await f.convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.command.attemptId ?? '')).unique())
+  expect(session?.nativeStartAdmission).toBeUndefined()
+  expect(session?.eventCursor).toBe(0)
+  expect(session?.hostBootId).toBeUndefined()
+  expect(session?.startedAt).toBeUndefined()
+  await admitNativeFixture(f)
+})
+
+test('native admission rechecks current access and funding even after the restoration command was claimed', async () => {
+  for (const scenario of ['binding', 'funding', 'principal']) {
+    const f = await nativeRetryFixture()
+    await f.convex.run(async ctx => {
+      if (scenario === 'binding') {
+        const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+        if (!binding) throw Error('Missing binding')
+        await ctx.db.patch(binding._id, {enabled: false})
+      } else if (scenario === 'funding') {
+        const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()
+        if (!reservation) throw Error('Missing reservation')
+        await ctx.db.patch(reservation._id, {status: 'released'})
+      } else {
+        const principal = await ctx.db.query('workspacePrincipals').withIndex('by_principalId', q => q.eq('principalId', actorPrincipalId)).unique()
+        if (!principal) throw Error('Missing principal')
+        await ctx.db.patch(principal._id, {archivedAt: now + 6})
+      }
+    })
+    await expect(admitNativeFixture(f)).rejects.toThrow('AGENT_NATIVE_START_NOT_ADMITTED')
+  }
+})
+
+test('a lost native-admission ACK cannot reauthorize a revoked binding', async () => {
+  const f = await nativeRetryFixture(), {request} = await admitNativeFixture(f)
+  await f.convex.run(async ctx => {
+    const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+    if (!binding) throw Error('Missing binding')
+    await ctx.db.patch(binding._id, {enabled: false})
+  })
+  await expect(f.call('applyRemoteEventsByServer', request)).rejects.toThrow('AGENT_NATIVE_START_NOT_ADMITTED')
+})
+
+test('a same-batch failure cannot return permission to launch a native process', async () => {
+  const f = await nativeRetryFixture()
+  const response = await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+    events: [event(1, 'native_start_requested', {commandId: f.command.commandId, remoteSessionId: 'native-session', adapterId: 'acp', sourceEventCursor: 3}),
+      event(2, 'failed', {code: 'preparation_failed', message: 'The preparation failed', retryable: false})]
+      .map(item => ({...item, execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}))})
+  expect(response).toMatchObject({accepted: true})
+  expect(response).not.toHaveProperty('nativeStartAdmission')
+  expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.phase).toBe('needs_attention')
+})
+
+test('a confirmed preparation failure queues one new delivery on the same execution without extending its hard deadline', async () => {
+  const {convex, started, command, reject, begin, input, prefix} = await nativeRetryFixture()
+  expect(await reject()).toBe(true)
+  expect(await reject()).toBe(false)
+  const projected = await projectedState(convex, started.messageId), state = projected.run?.remoteLifecycle
+  expect(state).toMatchObject({phase: 'recovering', cause: 'native_restoration', currentAttemptId: command.attemptId,
+    executionGeneration: 2, hardDeadlineAt: now + 3_600_000, claimDeadlineAt: now + 120010})
+  expect(projected.message?.parts).toContainEqual(expect.objectContaining({type: 'data-remote-agent-status', data: expect.objectContaining({
+    state: 'recovering', queueExpiresAt: now + 120010, hardDeadlineAt: now + 3_600_000,
+  })}))
+  const result = await convex.run(async ctx => {
+    const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', command.attemptId ?? '')).unique()
+    const commands = await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', input.runId)).take(10)
+    const message = projected.run && await ctx.db.get(projected.run.assistantMessageId)
+    return {attempt, commands, text: message && (await hydrateRemoteMessage(ctx, message)).content}
+  })
+  const retried = result.commands.find(candidate => candidate.status === 'pending' && candidate.type === 'start')
+  expect(result.text).toBe(prefix)
+  expect(retried?.commandId).not.toBe(command.commandId)
+  expect(retried?.payload).toEqual(command.payload)
+  expect(retried?.attemptId).toBe(command.attemptId)
+  expect(retried?.executionGeneration).toBe(2)
+  expect(retried?.sequence).toBeGreaterThan(command.sequence)
+  expect(result.attempt?.restorationCommandId).toBe(retried?.commandId)
+  expect(result.attempt?.preparationRetryCount).toBe(1)
+  expect(await begin(), 'stopped-machine replay authorizes the latest pending delivery, preserving the source proof').toBe(true)
+})
+
+test('preparation retry is bounded and never fabricates another execution or a fresh native conversation', async () => {
+  const {convex, call, reject, command, started, input} = await nativeRetryFixture()
+  let currentId = command.commandId
+  for (let count = 0; count < 4; count++) {
+    expect(await reject(currentId, 'native_preparation_retryable', now + 10 + count * 10)).toBe(true)
+    const pending = await convex.run(async ctx => (await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', input.runId)).take(20))
+      .filter(candidate => candidate.type === 'start' && candidate.status === 'pending'))
+    expect(pending).toHaveLength(count < 3 ? 1 : 0)
+    if (count < 3) {
+      const retry = pending[0]
+      if (!retry) throw Error('Missing bounded retry')
+      currentId = retry.commandId
+      await call('claimCommandsByServer', {workspaceId, environmentId, now: now + 11 + count * 10, leaseMs: 5000, limit: 10})
+    }
+  }
+  const state = (await projectedState(convex, started.messageId)).run?.remoteLifecycle
+  expect(state?.phase).toBe('needs_attention')
+  expect(state?.currentAttemptId).toBe(command.attemptId)
+  expect(state?.executionGeneration).toBe(2)
+  expect(await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_runId', q => q.eq('runId', input.runId)).take(10))).toHaveLength(2)
+})
+
+test('a retry-delivery sequence gap is not a provider health verdict and leaves the same command claimable', async () => {
+  const {convex, reject, started, command} = await nativeRetryFixture()
+  const before = (await projectedState(convex, started.messageId)).run?.remoteLifecycle
+  expect(await reject(command.commandId, 'command_sequence_gap')).toBe(true)
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle).toEqual(before)
+  const pending = await convex.run(ctx => ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', command.commandId)).unique())
+  expect(pending?.status).toBe('claimed')
+  expect(await reject()).toBe(true)
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('recovering')
+})
+
+test('preparation rejection cannot retry unknown native starts, permanent failures, revocation, cancellation, approvals or a replaced machine', async () => {
+  for (const scenario of ['unknown', 'permanent', 'started', 'binding', 'funding', 'cancel', 'approval', 'machine', 'deadline', 'principal', 'workspace', 'agent']) {
+    const f = await nativeRetryFixture()
+    await f.convex.run(async ctx => {
+      if (scenario === 'binding') {
+        const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+        if (!binding) throw Error('Missing binding')
+        await ctx.db.patch(binding._id, {enabled: false})
+      }
+      if (scenario === 'funding') {
+        const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()
+        if (!reservation) throw Error('Missing reservation')
+        await ctx.db.patch(reservation._id, {status: 'released'})
+      }
+      if (scenario === 'machine') await ctx.db.patch(f.leaseDocId, {providerReference: 'replacement-machine'})
+      if (scenario === 'principal') {
+        const principal = await ctx.db.query('workspacePrincipals').withIndex('by_principalId', q => q.eq('principalId', actorPrincipalId)).unique()
+        if (!principal) throw Error('Missing principal')
+        await ctx.db.patch(principal._id, {archivedAt: now + 7})
+      }
+      if (scenario === 'workspace') {
+        const workspace = await ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
+        if (!workspace) throw Error('Missing workspace')
+        await ctx.db.patch(workspace._id, {archivedAt: now + 7})
+      }
+      if (scenario === 'agent') {
+        const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', agentId)).unique()
+        if (!agent) throw Error('Missing agent')
+        await ctx.db.patch(agent._id, {archivedAt: now + 7})
+      }
+      if (scenario === 'approval') await ctx.db.insert('agentApprovalRequests', {approvalId: 'pending-retry-approval', workspaceId,
+        runId: f.input.runId, remoteSessionId: f.command.attemptId ?? '', requestKey: 'pending', prompt: 'Allow?', options: ['allow'], payload: {}, requestedAt: now})
+    })
+    if (scenario === 'cancel') await f.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: f.seeded.conversationId,
+      runId: f.input.runId, action: 'cancel', queueExpiresAt: now + 60000, now: now + 7})
+    if (scenario === 'started') await admitNativeFixture(f)
+    if (scenario === 'started') await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId,
+      events: [{...event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: f.command.commandId}), eventId: 'already-started',
+        execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}], now: now + 7})
+    await f.reject(f.command.commandId, scenario === 'unknown' ? 'command_outcome_unknown' : scenario === 'permanent' ? 'command_rejected' : 'native_preparation_retryable',
+      scenario === 'deadline' ? now + 3_600_001 : now + 10)
+    const pending = await f.convex.run(async ctx => (await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', f.input.runId)).take(20))
+      .filter(command => command.type === 'start' && command.status === 'pending'))
+    expect(pending).toHaveLength(0)
+    expect((await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle?.currentAttemptId).toBe(f.command.attemptId)
+  }
+})
+
+test('preparation does not bind a receiver boot or provider start time, and the native start fences later foreign boot output', async () => {
+  const {convex, call, command, started, prefix} = await nativeRetryFixture()
+  const send = (sequence: number, type: string, payload: Record<string, unknown>, boot: string) => call('applyRemoteEventsByServer', {
+    workspaceId, environmentId, sessionId: command.attemptId, now: now + 6 + sequence,
+    events: [{...event(sequence, type, payload), eventId: `new-attempt-${sequence}`,
+      execution: {attemptId: command.attemptId, generation: 2, hostBootId: boot}}],
+  })
+  expect(await send(1, 'session_preparing', {}, 'preparation-boot')).toMatchObject({accepted: true})
+  const attempt = await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', command.attemptId ?? '')).unique())
+  expect(attempt?.hostBootId).toBeUndefined()
+  expect(attempt?.startedAt).toBeUndefined()
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+  expect(await send(2, 'session_preparing', {}, 'resumed-preparation-boot')).not.toHaveProperty('stale')
+  await admitNativeFixture({convex, call, started}, 'resumed-preparation-boot', now + 9)
+  expect(await send(4, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: command.commandId}, 'resumed-preparation-boot')).not.toHaveProperty('stale')
+  expect(await send(5, 'session_preparing', {}, 'preparation-boot')).not.toHaveProperty('stale')
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle).toMatchObject({phase: 'running', lastHealthAt: now + 10})
+  expect(await send(6, 'text_delta', {offset: prefix.length, text: 'old writer'}, 'preparation-boot')).toMatchObject({stale: 'stale_execution'})
+  const current = await convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', command.attemptId ?? '')).unique())
+  expect(current?.hostBootId).toBe('resumed-preparation-boot')
+  expect(current?.startedAt).toBe(now + 10)
+})
+
+test('a queued native continuation appends on the original assistant and fences buffered old execution output', async () => {
+  const {convex, call, events, begin, prefix, input, started} = await nativeQueueFixture()
+  expect(await begin()).toBe(true)
+  const state = (await projectedState(convex, started.messageId)).run?.remoteLifecycle
+  if (!state) throw Error('Missing recovery state')
+  expect(state.recoveryOutcome).toBeUndefined()
+  await call('claimCommandsByServer', {workspaceId, environmentId, now: now + 6, leaseMs: 5000, limit: 10})
+  const {admitted} = await admitNativeFixture({convex, call, started})
+  expect(await events([event(4, 'text_delta', {offset: prefix.length, text: 'STALE_WRITER'})], now + 8))
+    .toMatchObject({accepted: true, stale: 'stale_attempt'})
+  const tail = '\nContinued in the original native conversation.'
+  const continuationEvents = [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: admitted.commandId}),
+    event(3, 'text_delta', {offset: prefix.length, text: tail}), event(4, 'completed', {usage: {}})]
+    .map(e => ({...e, eventId: `restored-${e.eventId}`, execution: {attemptId: state.currentAttemptId,
+      generation: state.executionGeneration, hostBootId: 'new-boot'}}))
+  expect(await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: state.currentAttemptId,
+    events: continuationEvents, now: now + 7})).toMatchObject({accepted: true})
+  await convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', input.runId)).unique()
+    if (!run) throw Error('Missing run')
+    expect(run.assistantMessageId).toBe(started.messageId)
+    expect(run.status).toBe('completed')
+    expect(run.remoteLifecycle?.recoveryOutcome).toBe('restored')
+    expect(run.remoteLifecycle?.lastPreparationAt).toBeUndefined()
+    const message = await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing message')
+    expect((await hydrateRemoteMessage(ctx, message)).content).toBe(prefix + tail)
+  })
+})
+
+test('a new stopped-machine readback can redeliver claimed preparation without replacing its execution or source proof', async () => {
+  const f = await nativeRetryFixture()
+  const before = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+  for (const observedStoppedAt of [now + 4, now + 11, NaN]) {
+    expect(await f.begin({observedStoppedAt, now: now + 10})).toBe(false)
+  }
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(true)
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(true)
+  const after = await projectedState(f.convex, f.started.messageId)
+  expect(after.run?.remoteLifecycle).toMatchObject({currentAttemptId: before?.currentAttemptId,
+    executionGeneration: before?.executionGeneration, providerStop: before?.providerStop, hardDeadlineAt: before?.hardDeadlineAt})
+  const result = await f.convex.run(async ctx => ({
+    session: await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.command.attemptId ?? '')).unique(),
+    commands: await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', f.input.runId)).take(20),
+  }))
+  expect(result.commands.find(command => command.commandId === f.command.commandId)?.status).toBe('cancelled')
+  expect(result.commands.filter(command => command.type === 'start' && command.status === 'pending')).toHaveLength(1)
+  expect(result.session).toMatchObject({preparationRetryCount: 1, lastPreparationStopAt: now + 9})
+  await f.call('claimCommandsByServer', {workspaceId, environmentId, now: now + 11, leaseMs: 5000, limit: 10})
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 12})).toBe(false)
+})
+
+async function isolatedNativeFixture() {
+  const f = await nativeRetryFixture()
+  await admitNativeFixture(f, 'pre-stop-boot')
+  expect(await f.begin({observedStoppedAt: now + 9, now: now + 10})).toBe(false)
+  const before = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+  if (!before) throw Error('Missing admitted lifecycle')
+  expect(await f.lifecycle('recordProviderStop', {runId: f.input.runId, environmentId, leaseId: f.input.leaseId,
+    providerReference: f.input.providerReference, attemptId: before.currentAttemptId, generation: 2,
+    expectedRevision: before.revision, now: now + 9})).toBe(true)
+  expect(await f.begin({attemptId: before.currentAttemptId, generation: 2, expectedRevision: before.revision + 1, now: now + 10})).toBe(true)
+  return {...f, sourceAttemptId: before.currentAttemptId}
+}
+
+test('buffered native startup and output survive isolation when startup acknowledgement had not reached the server', async () => {
+  const f = await isolatedNativeFixture()
+  const tail = '\nDurable output produced before the second machine stop.'
+  await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 11,
+    events: [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: f.command.commandId}),
+      event(3, 'text_delta', {offset: f.prefix.length, text: tail})].map(item => ({...item, occurredAt: now + 8,
+        eventId: `buffered-${item.eventId}`, execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'pre-stop-boot'}}))})
+  const content = await f.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+    const message = run && await ctx.db.get(run.assistantMessageId)
+    if (!message) throw Error('Missing original assistant')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(content).toBe(f.prefix + tail)
+  const retained = await projectedState(f.convex, f.started.messageId)
+  expect(retained.run?.remoteLifecycle).toMatchObject({phase: 'recovering', executionGeneration: 3})
+  expect(retained.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+  expect(retained.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+  await f.call('claimCommandsByServer', {workspaceId, environmentId, now: now + 12, leaseMs: 5000, limit: 10})
+  const {admitted} = await admitNativeFixture(f, 'second-native-boot', now + 13)
+  expect(admitted.canonicalTextOffset).toBe(f.prefix.length + tail.length)
+  expect(admitted.sourceEventCursor).toBe(3)
+  const source = await f.convex.run(ctx => ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.sourceAttemptId)).unique())
+  expect(source).toMatchObject({status: 'failed', recoveryCause: 'provider_isolated', hostBootId: 'pre-stop-boot'})
+  const nextTail = '\nContinued after the fully drained source.'
+  expect(await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: admitted.attemptId, now: now + 14,
+    events: [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: admitted.commandId}),
+      event(3, 'text_delta', {offset: admitted.canonicalTextOffset, text: nextTail}), event(4, 'completed', {usage: {}})]
+      .map(item => ({...item, eventId: `next-${item.eventId}`, execution: {attemptId: admitted.attemptId, generation: 3, hostBootId: admitted.hostBootId}}))})).toMatchObject({accepted: true})
+  const final = await projectedState(f.convex, f.started.messageId)
+  expect(final.run?.remoteLifecycle).toMatchObject({phase: 'completed', recoveryOutcome: 'restored', lastHealthAt: now + 14})
+  const text = await f.convex.run(async ctx => {
+    const message = final.run && await ctx.db.get(final.run.assistantMessageId)
+    if (!message) throw Error('Missing final assistant')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(text).toBe(f.prefix + tail + nextTail)
+})
+
+test('isolated-source completion, failure and approval history never recreates live health or executable requests', async () => {
+  for (const outcome of ['completed', 'failed', 'cancelled', 'approval_requested']) {
+    const f = await isolatedNativeFixture(), tail = `\nRetained ${outcome} history.`
+    const payload = outcome === 'approval_requested' ? {requestKey: 'old-risky-action', prompt: 'Allow the old action?', options: [{id: 'allow_once', label: 'Allow once'}]}
+      : outcome === 'failed' ? {code: 'provider_failed', message: 'Old provider failed', retryable: false} : {}
+    const events = [event(2, 'session_started', {remoteSessionId: 'native-session', adapterId: 'acp', restorationCommandId: f.command.commandId}),
+      event(3, 'text_delta', {offset: f.prefix.length, text: tail}), event(4, outcome, payload)]
+      .map(item => ({...item, eventId: `old-${item.eventId}`, execution: {attemptId: f.sourceAttemptId, generation: 2, hostBootId: 'pre-stop-boot'}}))
+    const request = {workspaceId, environmentId, sessionId: f.sourceAttemptId, events, now: now + 11}
+    expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true})
+    expect(await f.call('applyRemoteEventsByServer', request)).toMatchObject({accepted: true, duplicate: true})
+    const result = await projectedState(f.convex, f.started.messageId)
+    expect(result.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+    expect(result.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+    const rows = await f.convex.run(async ctx => {
+      const message = result.run && await ctx.db.get(result.run.assistantMessageId)
+      if (!message) throw Error('Missing retained assistant')
+      return {text: (await hydrateRemoteMessage(ctx, message)).content,
+        current: await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', result.run?.remoteLifecycle?.currentAttemptId ?? '')).unique(),
+        approvals: await ctx.db.query('agentApprovalRequests').withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', f.sourceAttemptId)).take(10)}
+    })
+    expect(rows.text).toContain(f.prefix + tail)
+    expect(rows.current?.hostBootId).toBeUndefined()
+    expect(rows.current?.startedAt).toBeUndefined()
+    expect(rows.current?.nativeStartAdmission).toBeUndefined()
+    if (outcome === 'completed') expect(result.run?.remoteLifecycle?.phase).toBe('completed')
+    else expect(result.run?.remoteLifecycle?.phase).toBe('needs_attention')
+    if (outcome === 'approval_requested') {
+      expect(result.run?.remoteLifecycle?.cause).toBe('approval_context_lost')
+      expect(rows.approvals).toHaveLength(1)
+      expect(rows.approvals[0].resolution?.decision).toBe('approval_context_lost')
+      expect(result.message?.parts?.filter(part => part.type === 'data-remote-agent-request')).toMatchObject([{data: {state: 'resolved'}}])
+    }
+  }
+})
+
+test('cancel wins over isolated-source outcomes while already-produced text still drains after confirmed stop', async () => {
+  const f = await isolatedNativeFixture()
+  await f.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: f.seeded.conversationId,
+    runId: f.input.runId, action: 'cancel', queueExpiresAt: now + 60000, now: now + 11})
+  const send = (sequence: number, text: string, offset: number) => f.call('applyRemoteEventsByServer', {workspaceId, environmentId,
+    sessionId: f.sourceAttemptId, now: now + 12 + sequence,
+    events: [{...event(sequence, 'text_delta', {offset, text}), execution: {attemptId: f.sourceAttemptId, generation: 2, hostBootId: 'pre-stop-boot'}}]})
+  expect(await send(2, '\nBefore stop.', f.prefix.length)).toMatchObject({accepted: true})
+  const cancelling = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+  if (!cancelling) throw Error('Missing cancellation')
+  expect(cancelling.phase).toBe('cancelling')
+  await f.lifecycle('confirmStopped', {runId: f.input.runId, attemptId: cancelling.currentAttemptId, generation: 3, now: now + 15})
+  expect(await send(3, '\nBuffered tail.', f.prefix.length + '\nBefore stop.'.length)).toMatchObject({accepted: true})
+  const result = await projectedState(f.convex, f.started.messageId)
+  expect(result.run?.remoteLifecycle?.phase).toBe('cancelled')
+  expect(result.run?.remoteLifecycle?.lastHealthAt).toBeUndefined()
+  const text = await f.convex.run(async ctx => {
+    const message = result.run && await ctx.db.get(result.run.assistantMessageId)
+    if (!message) throw Error('Missing cancelled assistant')
+    return (await hydrateRemoteMessage(ctx, message)).content
+  })
+  expect(text).toBe(f.prefix + '\nBefore stop.\nBuffered tail.')
+})
+
+test('historical ingestion rejects another source, receipt, boot or legacy admission contract', async () => {
+  for (const scenario of ['receipt', 'source', 'source_running', 'legacy', 'boot']) {
+    const f = await isolatedNativeFixture()
+    await f.convex.run(async ctx => {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+      if (!run?.remoteLifecycle?.providerStop) throw Error('Missing receipt')
+      const state = run.remoteLifecycle, id = state.currentAttemptId
+      const current = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', id)).unique()
+      const source = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.sourceAttemptId)).unique()
+      if (!current || !source) throw Error('Missing isolated source')
+      if (scenario === 'receipt') await ctx.db.patch(run._id, {remoteLifecycle: {...state, providerStop: {...run.remoteLifecycle.providerStop, providerReference: 'foreign-machine'}}})
+      if (scenario === 'source') await ctx.db.patch(source._id, {bindingId: 'foreign-binding'})
+      if (scenario === 'source_running') await ctx.db.patch(source._id, {status: 'running'})
+      if (scenario === 'legacy') await ctx.db.patch(current._id, {nativeStartAdmissionRequired: undefined})
+    })
+    const response = await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.sourceAttemptId, now: now + 11,
+      events: [{...event(2, 'text_delta', {offset: f.prefix.length, text: 'MUST_NOT_APPEND'}), execution: {
+        attemptId: f.sourceAttemptId, generation: 2, hostBootId: scenario === 'boot' ? 'foreign-boot' : 'pre-stop-boot'}}]})
+    expect(response).toHaveProperty('stale')
+    const run = (await projectedState(f.convex, f.started.messageId)).run
+    const text = await f.convex.run(async ctx => {
+      const message = run && await ctx.db.get(run.assistantMessageId)
+      if (!message) throw Error('Missing assistant')
+      return (await hydrateRemoteMessage(ctx, message)).content
+    })
+    expect(text).toBe(f.prefix)
+  }
+})
+
+test('preparation timeout requires a fresh isolation receipt before another delivery can resume the same execution', async () => {
+  for (const cause of ['preparation_health_required', 'command_unclaimed']) {
+    const f = await nativeRetryFixture()
+    await f.convex.run(async ctx => {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+      if (!run?.remoteLifecycle) throw Error('Missing lifecycle')
+      await ctx.db.patch(run._id, {remoteLifecycle: {...run.remoteLifecycle, phase: 'needs_attention', cause}})
+      if (cause === 'command_unclaimed') await ctx.db.patch(f.command._id, {status: 'pending'})
+    })
+    expect(await f.begin({now: now + 130000})).toBe(false)
+    expect(await f.begin({observedStoppedAt: now + 129999, now: now + 130000})).toBe(true)
+    const current = (await projectedState(f.convex, f.started.messageId)).run?.remoteLifecycle
+    expect(current).toMatchObject({phase: 'recovering', cause: 'native_restoration', currentAttemptId: f.command.attemptId,
+      executionGeneration: 2, claimDeadlineAt: now + 250000, hardDeadlineAt: now + 3600000})
+    expect(current?.lastHealthAt).toBeUndefined()
+  }
+})
+
+test('native restoration start rejects a replacement conversation, adapter, delivery, source receipt or machine', async () => {
+  for (const scenario of ['conversation', 'missing_identity', 'adapter', 'pending_delivery', 'superseded_delivery', 'missing_receipt', 'machine', 'approval']) {
+    const f = await nativeRetryFixture()
+    await admitNativeFixture(f)
+    await f.convex.run(async ctx => {
+      if (scenario === 'pending_delivery') await ctx.db.patch(f.command._id, {status: 'pending'})
+      if (scenario === 'machine') await ctx.db.patch(f.leaseDocId, {providerReference: 'another-machine'})
+      if (scenario === 'approval') await ctx.db.insert('agentApprovalRequests', {approvalId: 'unrestored-approval', workspaceId,
+        runId: f.input.runId, remoteSessionId: f.command.attemptId ?? '', requestKey: 'pending', prompt: 'Allow?', options: ['allow'], payload: {}, requestedAt: now})
+      if (scenario === 'superseded_delivery') {
+        const session = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', f.command.attemptId ?? '')).unique()
+        if (!session) throw Error('Missing current attempt')
+        await ctx.db.patch(session._id, {restorationCommandId: 'another-delivery'})
+      }
+      if (scenario === 'missing_receipt') {
+        const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', f.input.runId)).unique()
+        if (!run?.remoteLifecycle) throw Error('Missing current lifecycle')
+        const lifecycle = {...run.remoteLifecycle}
+        delete lifecycle.providerStop
+        await ctx.db.patch(run._id, {remoteLifecycle: lifecycle})
+      }
+    })
+    const result = await f.call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: f.command.attemptId, now: now + 7,
+      events: [{...event(2, 'session_started', {restorationCommandId: f.command.commandId, remoteSessionId: scenario === 'conversation' ? 'replacement-native' : scenario === 'missing_identity' ? '' : 'native-session',
+        adapterId: scenario === 'adapter' ? 'another-adapter' : 'acp'}), eventId: `invalid-start-${scenario}`,
+        execution: {attemptId: f.command.attemptId, generation: 2, hostBootId: 'new-boot'}}]})
+    expect(result).toMatchObject({accepted: true, stale: 'stale_execution'})
+    const projected = await projectedState(f.convex, f.started.messageId)
+    expect(projected.run?.remoteLifecycle?.phase).toBe('recovering')
+    expect(projected.run?.remoteLifecycle?.recoveryOutcome).toBeUndefined()
+    expect(projected.message?.parts?.some(part => part.type === 'data-remote-agent-status' && 'data' in part && part.data.recoveryOutcome === 'restored')).toBe(false)
+  }
+})
+
+test('native continuation never replaces a cancelled run or a lost approval context', async () => {
+  const cancelled = await nativeQueueFixture()
+  await cancelled.call('controlRemoteAgentTurnByServer', {actorUserId, workspaceId, conversationId: cancelled.seeded.conversationId,
+    runId: cancelled.input.runId, action: 'cancel', queueExpiresAt: now + 60_000, now: now + 6})
+  expect(await cancelled.begin()).toBe(false)
+  const approval = await nativeQueueFixture()
+  await approval.convex.run(async ctx => {
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', approval.input.runId)).unique()
+    if (!run?.remoteLifecycle) throw Error('Missing lifecycle')
+    await ctx.db.patch(run._id, {remoteLifecycle: {...run.remoteLifecycle, cause: 'approval_context_lost'}})
+  })
+  expect(await approval.begin()).toBe(false)
+})
+
+test('native continuation refuses unavailable capabilities, missing native identity and oversized commands', async () => {
+  for (const scenario of ['unsupported', 'missing-identity', 'oversized']) {
+    const {convex, begin, input, started} = await nativeQueueFixture()
+    await convex.run(async ctx => {
+      const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', input.attemptId)).unique()
+      const command = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', 'command-remote-turn')).unique()
+      if (!attempt || !command) throw Error('Missing native fixture')
+      if (scenario === 'unsupported') await ctx.db.patch(attempt._id, {capabilitySnapshot: {...attempt.capabilitySnapshot,
+        adapters: [{id: 'acp', protocol: 'acp', recovery: {sessionLoading: true}}]}})
+      if (scenario === 'missing-identity') await ctx.db.patch(attempt._id, {remoteSessionId: undefined})
+      if (scenario === 'oversized') await ctx.db.patch(command._id, {payload: {...command.payload,
+        metadata: {...command.payload.metadata, oversized: 'x'.repeat(128 * 1024)}}})
+    })
+    expect(await begin()).toBe(false)
+    expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.currentAttemptId).toBe(input.attemptId)
+  }
+})
+
+test('native continuation checks current membership, binding, funding and unresolved database approvals', async () => {
+  for (const scenario of ['membership', 'binding', 'funding', 'approval']) {
+    const {convex, begin, input} = await nativeQueueFixture()
+    await convex.run(async ctx => {
+      if (scenario === 'membership') {
+        const member = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspaceId).eq('principalId', actorPrincipalId)).unique()
+        if (!member) throw Error('Missing membership')
+        await ctx.db.delete(member._id)
+      }
+      if (scenario === 'binding') {
+        const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+        if (!binding) throw Error('Missing binding')
+        await ctx.db.patch(binding._id, {enabled: false})
+      }
+      if (scenario === 'funding') {
+        const attempt = await ctx.db.query('agentRemoteSessions').withIndex('by_sessionId', q => q.eq('sessionId', input.attemptId)).unique()
+        if (!attempt) throw Error('Missing attempt')
+        await ctx.db.patch(attempt._id, {capabilitySnapshot: {...attempt.capabilitySnapshot, billing: {reservationId: 'missing-reservation'}}})
+      }
+      if (scenario === 'approval') await ctx.db.insert('agentApprovalRequests', {approvalId: 'unresolved', workspaceId,
+        runId: input.runId, remoteSessionId: input.attemptId, requestKey: 'pending-decision', prompt: 'Allow?',
+        options: ['allow', 'deny'], payload: {}, requestedAt: now})
+    })
+    expect(await begin()).toBe(false)
+  }
+})
+
+test('native continuation rejects claimed replay and receipts from another environment or the future', async () => {
+  const queued = await nativeQueueFixture()
+  expect(await queued.begin()).toBe(true)
+  await queued.convex.run(async ctx => {
+    const commands = await ctx.db.query('agentRunCommands').withIndex('by_runId', q => q.eq('runId', queued.input.runId)).take(10)
+    const command = commands.find(candidate => candidate.type === 'start')
+    if (!command) throw Error('Missing continuation')
+    await ctx.db.patch(command._id, {status: 'claimed'})
+  })
+  expect(await queued.begin()).toBe(false)
+  for (const receipt of [{environmentId: 'foreign'}, {observedAt: now + 100}]) {
+    const {convex, begin, input} = await nativeQueueFixture()
+    await convex.run(async ctx => {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', input.runId)).unique()
+      if (!run?.remoteLifecycle?.providerStop) throw Error('Missing stop receipt')
+      await ctx.db.patch(run._id, {remoteLifecycle: {...run.remoteLifecycle,
+        providerStop: {...run.remoteLifecycle.providerStop, ...receipt}}})
+    })
+    expect(await begin()).toBe(false)
+  }
+})
+
+test('fresh-drive preparation survives the two-minute claim window without granting authority to stale startup', async () => {
+  const {convex, lifecycle, call, started, events} = await durableFixture()
+  const previous = process.env.OVERLAY_CONNECTED_AGENT_DRIVE
+  process.env.OVERLAY_CONNECTED_AGENT_DRIVE = '1'
+  try {
+    await convex.run(async ctx => {
+      const existing = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', agentId)).unique()
+      if (!existing) await ctx.db.insert('workspaceAgentDefinitions', {agentId, workspaceId, principalId: agentPrincipalId,
+        name: 'Drive agent', instructions: '', harness: 'codex', modelId: 'byo/codex', allowedToolIds: [], visibility: 'creator',
+        createdByPrincipalId: actorPrincipalId, invocationPolicy: 'mention', createdAt: now, updatedAt: now})
+    })
+    const owner = {runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1}
+    await lifecycle('claim', {...owner, now})
+    await lifecycle('advance', {...owner, now})
+    const authority = () => convex.query(makeFunctionReference<'query'>('agents/agentDrive:credentialAuthorityByServer'), {
+      serverSecret: secret, workspaceId, environmentId, runId: 'run-remote-turn', sessionId: 'session-remote-turn',
+      execution: {attemptId: 'session-remote-turn', generation: 1},
+    })
+    await authority()
+    const initial = await convex.run(async ctx => (await ctx.db.query('conversationMessages').collect()).find(row => row._id === started.messageId))
+    expect(initial?.parts).toContainEqual(expect.objectContaining({type: 'data-remote-agent-status', data: expect.objectContaining({state: 'starting'})}))
+    for (let sequence = 1; sequence <= 6; sequence++) {
+      const receipt = now + sequence * 50_000
+      await events([event(sequence, 'session_preparing', {})], receipt)
+      const state = await lifecycle('advance', {...owner, now: receipt})
+      expect(state).toMatchObject({phase: 'starting', lastPreparationAt: receipt, hardDeadlineAt: now + 3_600_000})
+      expect(state.lastHealthAt).toBeUndefined()
+      await authority()
+    }
+    const commands = await call<Array<{type: string}>>('claimCommandsByServer', {workspaceId, environmentId, now: now + 300_001, leaseMs: 5000, limit: 10})
+    expect(commands[0]?.type).toBe('start')
+    await call('applyRemoteEventsByServer', {workspaceId, environmentId, sessionId: 'session-remote-turn', now: now + 350_000,
+      events: [{...event(7, 'session_preparing', {}), execution: {attemptId: 'session-remote-turn', generation: 0, hostBootId: 'old-boot'}}]})
+    expect(await lifecycle('advance', {...owner, now: now + 350_000})).toMatchObject({phase: 'starting', lastPreparationAt: now + 300_000})
+    const stale = await lifecycle('advance', {...owner, now: now + 390_000})
+    expect(stale).toMatchObject({phase: 'needs_attention', cause: 'preparation_health_required'})
+    await expect(authority()).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+    await events([event(7, 'session_preparing', {})], now + 390_001)
+    await expect(authority()).rejects.toMatchObject({data: 'DRIVE_RUN_UNAVAILABLE'})
+  } finally {
+    if (previous === undefined) delete process.env.OVERLAY_CONNECTED_AGENT_DRIVE
+    else process.env.OVERLAY_CONNECTED_AGENT_DRIVE = previous
+  }
+})
 
 test('durable API-exit intent survives and duplicate Workflow claims allow exactly one issuer', async () => {
   const { convex, lifecycle, call } = await durableFixture()
@@ -607,20 +1640,31 @@ test('durable API-exit intent survives and duplicate Workflow claims allow exact
 
 test('durable approval crosses 20 minutes with health and unrelated output then finishes on the same row', async () => {
   const { convex, lifecycle, call, started, events } = await durableFixture()
+  expect((await projectedState(convex, started.messageId)).message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({
+    type: 'data-remote-agent-status', data: expect.objectContaining({hardDeadlineAt: now + 3_600_000}),
+  })]))
   const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
   await lifecycle('claim', owner); await lifecycle('advance', owner)
   await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), event(2, 'approval_requested', {
     requestKey: 'clone', prompt: 'Allow clone?', options: [{ id: 'allow', label: 'Allow' }], context: {},
   })], now + 1)
+  const beforeHealth = await projectedState(convex, started.messageId)
+  expect(beforeHealth.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({
+    type: 'data-remote-agent-status', data: expect.objectContaining({hardDeadlineAt: now + 3_600_000}),
+  })]))
   for (let minute = 1; minute <= 20; minute++) {
     const at = now + minute * 60_000
     await events([event(minute + 2, 'process_observation', { process: 'live' })], at)
     await call('sweepRemoteRunsByServer', { now: at, hostOfflineBefore: at - 45_000, limit: 100 })
   }
+  expect((await projectedState(convex, started.messageId)).message?.updatedAt).toBe(beforeHealth.message?.updatedAt)
   await events([event(23, 'text_checkpoint', { text: 'Waiting for your decision.' }), event(24, 'commands_update', { commands: [] })], now + 1_200_001)
   let result = await projectedState(convex, started.messageId)
   expect(result.run?.status).toBe('waiting_for_approval')
   expect(result.session?.status).toBe('waiting_for_approval')
+  expect(result.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({
+    type: 'data-remote-agent-status', data: expect.objectContaining({hardDeadlineAt: now + 3_600_000}),
+  })]))
   expect(result.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ state: 'pending' }) })]))
   const decision = await call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: result.run!.conversationId,
     runId: 'run-remote-turn', requestKey: 'clone', decision: 'allow', now: now + 1_200_002 })
@@ -797,7 +1841,7 @@ test('overlapping durable permission and input wait for both host acknowledgemen
   expect(snapshot.message?._id).toBe(started.messageId)
 })
 
-test('canonical request projection preserves decisions and closes lost execution context across later output', async () => {
+test.each(['process_observation', 'failed'] as const)('canonical request projection preserves decisions and closes %s context across later output', async source => {
   const { convex, seeded, call, lifecycle, started, events } = await durableFixture()
   const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
   await lifecycle('claim', owner); await lifecycle('advance', owner)
@@ -807,13 +1851,18 @@ test('canonical request projection preserves decisions and closes lost execution
   await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }), request(2, 'answered'), request(3, 'lost')], now + 1)
   await call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: seeded.conversationId,
     runId: 'run-remote-turn', requestKey: 'answered', decision: 'allow', now: now + 2 })
-  await events([event(4, 'process_observation', { process: 'lost' }), event(5, 'text_checkpoint', { text: 'late buffered output' })], now + 3)
+  const failure = source === 'failed' ? event(4, 'failed', {code: 'provider_error', message: 'Native provider failed', retryable: true})
+    : event(4, 'process_observation', {process: 'lost'})
+  await events([failure, event(5, 'text_checkpoint', { text: 'late buffered output' })], now + 3)
   const snapshot = await projectedState(convex, started.messageId)
   expect(snapshot.run?.remoteLifecycle?.cause).toBe('approval_context_lost')
   expect(snapshot.message?.parts).toEqual(expect.arrayContaining([
     expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'answered', state: 'resolved', resolution: expect.objectContaining({ decision: 'allow' }) }) }),
-    expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'lost', state: 'resolved', resolution: expect.objectContaining({ decision: 'approval_context_lost' }) }) }),
+    expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'lost', state: 'resolved', resolution: expect.objectContaining({ decision: source === 'failed' ? 'run_failed' : 'approval_context_lost' }) }) }),
   ]))
+  const requests = await convex.run(ctx => ctx.db.query('agentApprovalRequests')
+    .withIndex('by_workspaceId_runId', q => q.eq('workspaceId', workspaceId).eq('runId', 'run-remote-turn')).take(10))
+  expect(requests.find(request => request.requestKey === 'lost')?.resolution?.decision).toBe('approval_context_lost')
   await expect(call('resolveRemoteRequestByServer', { actorUserId, workspaceId, conversationId: seeded.conversationId,
     runId: 'run-remote-turn', requestKey: 'lost', decision: 'allow', now: now + 4 })).rejects.toThrow(/ALREADY_RESOLVED/)
 })
@@ -829,6 +1878,36 @@ test('cancellation before coordinator claim delivers shutdown and cancel without
   expect(commands.map(command => command.type)).toEqual(['shutdown', 'cancel'])
   expect(commands.map(command => command.sequence)).toEqual([1, 2])
   expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelled')
+})
+
+test('fresh lifecycle attempt appends to the full canonical text after a lost process', async () => {
+  const { convex, call, lifecycle, seeded, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  const prefix = 'Committed before restart 🙂\n'.repeat(4000)
+  await events([event(1, 'session_started', { remoteSessionId: 'old', adapterId: 'acp' }),
+    event(2, 'text_delta', { offset: 0, text: prefix }),
+    event(3, 'process_observation', { process: 'unknown' })], now + 2)
+  const fresh = await call<{ applied: boolean; commandId: string }>('controlRemoteAgentTurnByServer', {
+    actorUserId, workspaceId, conversationId: seeded.conversationId, runId: 'run-remote-turn',
+    action: 'start_fresh', queueExpiresAt: now + 60_000, now: now + 3,
+  })
+  expect(fresh.applied).toBe(true)
+  const commands = await call<Array<{ id: string; payload: { metadata: Record<string, unknown> } }>>('claimCommandsByServer', {
+    workspaceId, environmentId, now: now + 4, leaseMs: 5000, limit: 10,
+  })
+  const command = commands.find(command => command.id === fresh.commandId)!
+  expect(command.payload.metadata.recoveryTextOffset).toBe(prefix.length)
+  const run = await convex.run(ctx => ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', 'run-remote-turn')).unique())
+  const replacement = run!.remoteLifecycle!.currentAttemptId
+  expect(await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: replacement, now: now + 5,
+    events: [event(1, 'session_started', { remoteSessionId: 'new', adapterId: 'acp' }),
+      event(2, 'text_delta', { offset: command.payload.metadata.recoveryTextOffset, text: '\nRecovered output ✓' })]
+      .map(e => ({ ...e, execution: { attemptId: replacement, generation: 2, hostBootId: 'new-boot' } })),
+  })).toMatchObject({ accepted: true, acknowledgedSequence: 2 })
+  const message = await convex.run(async ctx => hydrateRemoteMessage(ctx, (await ctx.db.get(run!.assistantMessageId))!))
+  expect(message.content).toBe(prefix + '\nRecovered output ✓')
+  expect(message._id).toBe(run!.assistantMessageId)
 })
 
 test('fresh lifecycle attempt uses a strict executable start rather than checkpoint references', async () => {
@@ -876,4 +1955,193 @@ test('fresh lifecycle attempt uses a strict executable start rather than checkpo
   expect(active.message?.parts).toEqual(expect.arrayContaining([
     expect.objectContaining({ type: 'data-remote-agent-request', data: expect.objectContaining({ requestKey: 'new-write', state: 'pending' }) }),
   ]))
+  const mcp = { workspaceId, environmentId, runId: 'run-remote-turn', prompt: 'Allow old MCP call?', now: now + 6 }
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:replayed' })).toEqual({ state: 'unavailable' })
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:replayed', sessionId: 'session-remote-turn',
+    execution: { attemptId: 'session-remote-turn', generation: 1 } })).toEqual({ state: 'unavailable' })
+  expect(await convex.run(ctx => ctx.db.query('agentApprovalRequests')
+    .withIndex('by_remoteSessionId_requestKey', q => q.eq('remoteSessionId', replacement).eq('requestKey', 'mcp:replayed')).unique())).toBeNull()
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:expired', sessionId: replacement,
+    execution: { attemptId: replacement, generation: 2 }, expiresAt: now + 6 })).toEqual({ state: 'unavailable' })
+  expect(await call('requestMcpApprovalByServer', { ...mcp, requestKey: 'mcp:current', sessionId: replacement,
+    execution: { attemptId: replacement, generation: 2 }, expiresAt: now + 60000 })).toEqual({ state: 'pending' })
+})
+
+test('legacy Stop preserves text and tools, accepts buffered output until stop confirmation and fences later text', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const apply = (events: ReturnType<typeof event>[], at: number) => call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at })
+  await apply([event(1, 'text_checkpoint', { text: 'Keep this answer' }), event(2, 'action', { actionId: 'tool', title: 'Research', status: 'started' })], now + 1)
+  await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 2 })
+  let state = await projectedState(convex, started.messageId)
+  expect(state.message?.content).toBe('Keep this answer')
+  expect(state.message?.parts).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'tool-invocation', toolInvocation: expect.objectContaining({ toolOutput: expect.objectContaining({ status: 'cancelled' }) }) })]))
+  await apply([event(3, 'text_checkpoint', { text: 'Keep this answer and its buffered tail' }), event(4, 'completed', { usage: {} }), event(5, 'cancelled', {})], now + 3)
+  state = await projectedState(convex, started.messageId)
+  expect(state.run?.status).toBe('cancelled')
+  expect(state.message?.content).toBe('Keep this answer and its buffered tail')
+  await apply([event(6, 'text_checkpoint', { text: 'Should never replace cancelled output' })], now + 4)
+  expect((await projectedState(convex, started.messageId)).message?.content).toBe('Keep this answer and its buffered tail')
+})
+
+test('Stop before any text uses Cancelled and observations do not rewrite an unchanged message', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const apply = (events: ReturnType<typeof event>[], at: number) => call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at })
+  await apply([event(1, 'session_started', { remoteSessionId: 'provider-session', adapterId: 'fake' })], now + 1)
+  const before = await projectedState(convex, started.messageId)
+  await apply([event(2, 'process_observation', { process: 'live' })], now + 2)
+  const after = await projectedState(convex, started.messageId)
+  expect(after.message?.updatedAt).toBe(before.message?.updatedAt)
+  expect(after.run?.streamStats?.messageWrites).toBe(before.run?.streamStats?.messageWrites)
+  await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId, runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 3 })
+  expect((await projectedState(convex, started.messageId)).message?.content).toBe('Cancelled')
+})
+
+test('negotiated deltas are idempotent and a refused offset leaves the event cursor available for retry', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const apply = (events: ReturnType<typeof event>[], at: number) => call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn', events, now: at })
+  await apply([event(1, 'text_checkpoint', { text: 'Hello' }), event(2, 'text_delta', { offset: 5, text: ' world' })], now + 1)
+  expect((await projectedState(convex, started.messageId)).message?.content).toBe('Hello world')
+  expect(await apply([event(2, 'text_delta', { offset: 5, text: ' world' })], now + 2)).toEqual(expect.objectContaining({ accepted: true, duplicate: true }))
+  expect(await apply([event(3, 'text_delta', { offset: 100, text: 'gap' })], now + 3)).toEqual({ accepted: false, expectedSequence: 3 })
+  const before = await projectedState(convex, started.messageId)
+  await apply([event(3, 'heartbeat', { quietMs: 180000, openTools: [{ actionId: 'slow', title: 'Slow tool', runningMs: 180000 }], process: 'live', stalled: false })], now + 4)
+  const after = await projectedState(convex, started.messageId)
+  expect(after.message?.content).toBe('Hello world')
+  expect(after.message?.updatedAt).toBe(before.message?.updatedAt)
+  expect(after.run?.streamStats?.messageWrites).toBe(before.run?.streamStats?.messageWrites)
+  expect(after.run?.liveness?.openTools[0]?.title).toBe('Slow tool')
+  expect(after.run?.liveness?.stalled).toBe(false)
+})
+
+test('explicit remote-run readback is restricted to the authorized conversation', async () => {
+  const convex = convexTest(schema, modules); const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput()); await call('startRemoteAgentTurnByServer', startInput(seeded))
+  const ref = makeFunctionReference<'query'>('chat/conversations:getLatestAgentRun')
+  const args = { serverSecret: secret, conversationId: seeded.conversationId, userId: actorUserId, remoteRunId: 'run-remote-turn' }
+  expect(await convex.query(ref, args)).toEqual(expect.objectContaining({ externalRunId: 'run-remote-turn' }))
+  expect(await convex.query(ref, { ...args, remoteRunId: 'foreign-run' })).toBeNull()
+  await expect(convex.query(ref, { ...args, userId: 'another-person' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+})
+
+test('megabyte delta output stays lossless across storage, authorized reads, Stop and hard deletion with fewer message writes', async () => {
+  const convex = convexTest(schema, modules)
+  const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded)) as { messageId: string }
+  const delta = '🙂 markdown **continues** across packets\n'.repeat(50)
+  let content = ''
+  for (let index = 0; index < 560; index++) {
+    const accepted = await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+      events: [event(index + 1, 'text_delta', { offset: content.length, text: delta })], now: now + index + 1 })
+    expect(accepted).toEqual(expect.objectContaining({ accepted: true }))
+    content += delta
+  }
+  expect(new TextEncoder().encode(content).byteLength).toBeGreaterThan(1_000_000)
+  const stored = await projectedState(convex, started.messageId)
+  expect(stored.message!.content.length).toBeLessThanOrEqual(2048)
+  expect(stored.run!.streamStats!.messageWrites).toBeLessThan(56)
+  const hydrated = await convex.run(async ctx => {
+    const message = await ctx.db.get(started.messageId as never)
+    if (!message) throw Error('missing message')
+    return hydrateRemoteMessage(ctx, message)
+  })
+  expect(hydrated.content).toBe(content)
+  expect(hydrated.parts?.filter(part => part.type === 'text')).toEqual([{ type: 'text', text: content }])
+  const chunks = await convex.run(ctx => ctx.db.query('remoteMessageTextChunks').collect())
+  expect(chunks.every(chunk => new TextEncoder().encode(JSON.stringify(chunk)).byteLength < 200_000)).toBe(true)
+  const read = makeFunctionReference<'query'>('chat/conversations:getMessages')
+  const args = { serverSecret: secret, conversationId: seeded.conversationId, userId: actorUserId }
+  const messages = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(messages.find(message => message._id === started.messageId)?.content).toBe(content)
+  const roomHistory = await convex.query(makeFunctionReference<'query'>('collaboration/directMessages:listMessages'), {
+    serverSecret: secret, actorUserId, workspaceId, conversationId: seeded.conversationId, limit: 100,
+  })
+  expect(roomHistory.find((row: { _id: string }) => row._id === started.messageId)?.content).toBe(content)
+  expect(await convex.query(read, { ...args, userId: 'foreign-user' })).toEqual([])
+  await call('controlRemoteAgentTurnByServer', { actorUserId, conversationId: seeded.conversationId, workspaceId,
+    runId: 'run-remote-turn', action: 'cancel', queueExpiresAt: now + 60_000, now: now + 1000 })
+  const stopped = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(stopped.find(message => message._id === started.messageId)?.content).toBe(content)
+  const buffered = 'buffered before Stop\n'.repeat(2000)
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(561, 'text_delta', { offset: content.length, text: buffered }), event(562, 'cancelled', {})], now: now + 1001 })
+  const drained = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(drained.find(message => message._id === started.messageId)?.content).toBe(content + buffered)
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(563, 'text_delta', { offset: content.length + buffered.length, text: 'must be fenced' })], now: now + 1002 })
+  const fenced = await convex.query(read, args) as Array<{ _id: string; content: string }>
+  expect(fenced.find(message => message._id === started.messageId)?.content).toBe(content + buffered)
+  const message = stored.message!
+  await convex.mutation(makeFunctionReference<'mutation'>('chat/conversations:deleteTurn'), { ...args, turnId: message.turnId })
+  expect(await convex.run(ctx => ctx.db.query('remoteMessageTextChunks').collect())).toHaveLength(0)
+}, 60000)
+
+test('fresh heartbeat proof keeps a long lifecycle-v2 tool running without rewriting its transcript', async () => {
+  const { convex, lifecycle, started, events } = await durableFixture()
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  await events([event(1, 'session_started', { remoteSessionId: 'native', adapterId: 'fake' }),
+    event(2, 'action', { actionId: 'slow', title: 'Long tool', status: 'started' })], now + 1)
+  const before = await projectedState(convex, started.messageId)
+  await events([event(3, 'heartbeat', { process: 'live', quietMs: 180000, stalled: false,
+    openTools: [{ actionId: 'slow', title: 'Long tool', runningMs: 180000 }] })], now + 180001)
+  await lifecycle('advance', { ...owner, now: now + 180002 })
+  const after = await projectedState(convex, started.messageId)
+  expect(after.run?.status).toBe('running')
+  expect(after.run?.remoteLifecycle?.lastHealthAt).toBe(now + 180001)
+  expect(after.message?.updatedAt).toBe(before.message?.updatedAt)
+  expect(after.run?.liveness?.stalled).toBe(false)
+})
+
+test('real room subscriptions supersede HTTP snapshots even for same-millisecond chunk-only updates', async () => {
+  const convex = convexTest(schema, modules)
+  const seeded = await seedRoom(convex)
+  const call = (operation: string, args: Record<string, unknown>) => convex.mutation(mutationRef(operation), { ...args, serverSecret: secret })
+  await call('upsertBindingByServer', bindingInput())
+  const started = await call('startRemoteAgentTurnByServer', startInput(seeded))
+  const token = await new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(actorUserId)
+    .setIssuer('overlay-browser-convex').setAudience('overlay-convex').setIssuedAt().setExpirationTime('10m')
+    .sign(new TextEncoder().encode(secret))
+  const watch = async () => {
+    const result = await convex.query(makeFunctionReference<'query'>('collaboration/directMessages:watchRoomMessages'), {
+      accessToken: token, actorUserId, workspaceId, conversationId: seeded.conversationId, limit: 100, mainOnly: true,
+    })
+    expect(result.ok).toBe(true)
+    return result.messages.find((message: RoomMessageRecord) => message.id === started.messageId) as RoomMessageRecord
+  }
+  const firstText = 'a'.repeat(3000)
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(1, 'text_delta', { offset: 0, text: firstText })], now: now + 1 })
+  const snapshot = await watch()
+  const parentBefore = await convex.run(ctx => ctx.db.get(started.messageId))
+  await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
+    events: [event(2, 'text_delta', { offset: firstText.length, text: 'continued' })], now: now + 1 })
+  const live = await watch()
+  const parentAfter = await convex.run(ctx => ctx.db.get(started.messageId))
+  expect(parentAfter).toEqual(parentBefore)
+  expect(live.content).toBe(firstText + 'continued')
+  expect(live.updatedAt).toBe(snapshot.updatedAt)
+  expect(live.eventSequence).toBeGreaterThan(snapshot.eventSequence!)
+  expect(mergeRoomMessages([live], [snapshot])[0]?.content).toBe(live.content)
+  expect(mergeRoomMessages([snapshot], [live])[0]?.content).toBe(live.content)
+  const httpRows = await convex.query(makeFunctionReference<'query'>('collaboration/directMessages:listMessages'), {
+    serverSecret: secret, actorUserId, workspaceId, conversationId: seeded.conversationId, limit: 100,
+  })
+  const http = httpRows.find((row: { _id: string }) => row._id === started.messageId)
+  expect(http?.eventSequence).toBe(live.eventSequence)
+  expect(http?.content).toBe(live.content)
+  await expect(convex.query(makeFunctionReference<'query'>('collaboration/directMessages:listMessages'), {
+    serverSecret: secret, actorUserId: 'foreign-user', workspaceId, conversationId: seeded.conversationId, limit: 100,
+  })).rejects.toThrow(/WORKSPACE_ACCESS_DENIED/)
 })

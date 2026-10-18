@@ -130,6 +130,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/run-credentials', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/drive-credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/heartbeat', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/capabilities', methods: { PUT: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },

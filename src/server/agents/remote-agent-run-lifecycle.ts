@@ -5,7 +5,8 @@ import { createCloudAgentMachineService } from './cloud/create-cloud-agent-machi
 import type { RemoteRunState } from '@/shared/agents/remote-run'
 
 type Coordinator = { runId: string; coordinatorId: string; generation: number }
-export type RemoteRunSnapshot = { runId: string; workspaceId: string; environmentId: string; environmentKind: string; lifecycle: RemoteRunState }
+export type RemoteRunSnapshot = { runId: string; workspaceId: string; environmentId: string; environmentKind: string; lifecycle: RemoteRunState;
+  nativeRestorationAdvertised?: boolean; nativePreparationPending?: boolean }
 export async function readRemoteRun(runId: string): Promise<RemoteRunSnapshot | null> {
   'use step'
   return lazyConvex.query('agents/remoteRuns:readByServer', { serverSecret: getInternalApiSecret(), runId }, { throwOnError: true })
@@ -30,6 +31,40 @@ export async function wakeRemoteRun(input: Coordinator): Promise<void> {
     const outcome = await createCloudAgentMachineService().wake({ workspaceId: snapshot.workspaceId, environmentId: snapshot.environmentId })
     if (outcome === 'unavailable') throw new Error('remote_machine_unavailable: inspect the machine and the original execution before continuing')
   }
+}
+
+export async function restoreStoppedRemoteRun(input: Coordinator): Promise<void> {
+  'use step'
+  const serverSecret = getInternalApiSecret()
+  const snapshot = await lazyConvex.query<RemoteRunSnapshot | null>('agents/remoteRuns:readByServer',
+    {serverSecret, runId: input.runId}, {throwOnError: true})
+  if (!snapshot || snapshot.environmentKind !== 'overlay_cloud' || !snapshot.nativeRestorationAdvertised
+    || snapshot.lifecycle.coordinatorId !== input.coordinatorId || snapshot.lifecycle.coordinatorGeneration !== input.generation
+    || !['needs_attention', 'recovering'].includes(snapshot.lifecycle.phase)
+    || !['process_health_unknown', 'process_health_required', 'process_lost', 'execution_stopped', 'old_writer_not_isolated',
+      'native_restoration', 'preparation_health_required', 'command_unclaimed'].includes(snapshot.lifecycle.cause ?? '')
+    || Date.now() >= snapshot.lifecycle.hardDeadlineAt) return
+  // This service only observes already-stopped machines. It never stops a live writer for recovery.
+  await createCloudAgentMachineService().resumeStoppedExecution({workspaceId: snapshot.workspaceId, environmentId: snapshot.environmentId,
+    authorize: async proof => {
+      const state = snapshot.lifecycle
+      const queued = snapshot.nativePreparationPending && state.providerStop && state.lastHealthAt === undefined
+        && state.executionGeneration === state.providerStop.executionGeneration + 1 && state.currentAttemptId !== state.providerStop.attemptId
+        && ['native_restoration', 'preparation_health_required', 'command_unclaimed'].includes(state.cause ?? '') ? state.providerStop : undefined
+      const source = queued ? {attemptId: queued.attemptId, generation: queued.executionGeneration,
+        expectedRevision: queued.recordedAtRevision + 1} : {attemptId: state.currentAttemptId,
+        generation: state.executionGeneration, expectedRevision: state.revision}
+      if (!queued && !await lazyConvex.mutation<boolean>('agents/remoteRuns:recordProviderStopByServer', {
+        serverSecret, runId: input.runId, environmentId: snapshot.environmentId, ...source,
+        leaseId: proof.leaseId, providerReference: proof.providerReference, now: proof.observedAt,
+      }, {throwOnError: true})) return false
+      return await lazyConvex.mutation<boolean>('agents/nativeRecovery:beginByServer', {
+        serverSecret, runId: input.runId, coordinatorId: input.coordinatorId, coordinatorGeneration: input.generation,
+        ...source, expectedRevision: queued ? source.expectedRevision : source.expectedRevision + 1,
+        leaseId: proof.leaseId, providerReference: proof.providerReference, now: Date.now(),
+        ...(queued ? {observedStoppedAt: proof.observedAt} : {}),
+      }, {throwOnError: true}) ?? false
+    }})
 }
 
 export async function stopUnreachableRemoteRun(runId: string): Promise<void> {

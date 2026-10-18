@@ -18,6 +18,7 @@ import type * as agents_artifactCleanup from "../agents/artifactCleanup.js";
 import type * as agents_connectedAgents from "../agents/connectedAgents.js";
 import type * as agents_environmentControlPlane from "../agents/environmentControlPlane.js";
 import type * as agents_idleStop from "../agents/idleStop.js";
+import type * as agents_mcpCalls from "../agents/mcpCalls.js";
 import type * as agents_profiles from "../agents/profiles.js";
 import type * as agents_settlementReconciliation from "../agents/settlementReconciliation.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
@@ -131,6 +132,7 @@ declare const fullApi: ApiFromModules<{
   "agents/connectedAgents": typeof agents_connectedAgents;
   "agents/environmentControlPlane": typeof agents_environmentControlPlane;
   "agents/idleStop": typeof agents_idleStop;
+  "agents/mcpCalls": typeof agents_mcpCalls;
   "agents/profiles": typeof agents_profiles;
   "agents/settlementReconciliation": typeof agents_settlementReconciliation;
   "auth/apiKeys": typeof auth_apiKeys;

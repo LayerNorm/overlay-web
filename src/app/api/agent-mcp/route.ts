@@ -12,9 +12,10 @@ export async function POST(request: NextRequest) {
   return handleAgentMcpRequest(request)
 }
 
-/** Stateless server: no server-initiated SSE stream and no sessions to end. */
-export async function GET() {
-  return new Response(null, { status: 405, headers: { Allow: 'POST' } })
+/** New hosts resume the same unfinished tool call using its SSE event cursor. */
+export async function GET(request: NextRequest) {
+  const { handleAgentMcpRequest } = await import('@/server/agents/agent-mcp-server')
+  return handleAgentMcpRequest(request)
 }
 
 export async function DELETE() {

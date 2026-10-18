@@ -1,4 +1,5 @@
 import 'server-only'
+import { readCompatibleAgentRun } from './compatible-agent-run-read'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -18,7 +19,7 @@ import {
 } from './ActConversationRepository'
 import type { ContextSummarySnapshot } from '@/server/chat/context-compaction'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
-import type { Id } from '../../../convex/_generated/dataModel'
+import type { Doc, Id } from '../../../convex/_generated/dataModel'
 import type {
   AgentRun,
   AgentRunMode,
@@ -223,7 +224,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     userId: string
     workspaceId?: string
   }): Promise<{ content: string } | null> {
-    return await convex.query<{ content: string } | null>('knowledge/memoryProfiles:getProfile', {
+    return await convex.query<{ content: string } | null>('knowledge/memoryProfileStore:getProfile', {
       ownerId: args.userId,
       workspaceId: args.workspaceId,
       serverSecret: this.serverSecret,
@@ -405,13 +406,15 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 
   async getLatestAgentRun(args: {
+    remoteRunId?: string
     conversationId: ConversationId
     userId: string
   }): Promise<AgentRun | null> {
-    const run = await convex.query<ConvexAgentRunDoc | null>('chat/conversations:getLatestAgentRun', {
-      ...args,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true })
+    const run = await readCompatibleAgentRun(args.remoteRunId, remoteRunId =>
+      convex.query<ConvexAgentRunDoc | null>('chat/conversations:getLatestAgentRun', {
+        conversationId: args.conversationId, userId: args.userId,
+        ...(remoteRunId ? {remoteRunId} : {}), serverSecret: this.serverSecret,
+      }, {throwOnError: true}))
     return run ? mapConvexAgentRun(run) : null
   }
 
@@ -528,7 +531,7 @@ export class ConvexActConversationRepository implements ActConversationRepositor
   }
 }
 
-type ConvexAgentRunDoc = Omit<AgentRun, 'id'> & { _id: string }
+type ConvexAgentRunDoc = Omit<AgentRun, 'id'> & Pick<Doc<'conversationAgentRuns'>, 'externalRunId'> & { _id: string }
 
 function mapConvexAgentRun(run: ConvexAgentRunDoc): AgentRun {
   const { _id, ...rest } = run

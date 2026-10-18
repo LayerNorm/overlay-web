@@ -451,6 +451,64 @@
                       1
                     ]
                   },
+                  "remoteLifecycleVersion": {
+                    "type": "number",
+                    "enum": [
+                      2
+                    ]
+                  },
+                  "streaming": {
+                    "type": "object",
+                    "properties": {
+                      "textDeltas": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      },
+                      "heartbeats": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      }
+                    },
+                    "required": [
+                      "textDeltas",
+                      "heartbeats"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "mcp": {
+                    "type": "object",
+                    "properties": {
+                      "approvalBridge": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      }
+                    },
+                    "required": [
+                      "approvalBridge"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "drive": {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      }
+                    },
+                    "required": [
+                      "version"
+                    ],
+                    "additionalProperties": false
+                  },
                   "hostVersion": {
                     "type": "string",
                     "minLength": 1,
@@ -489,6 +547,194 @@
                           "type": "string",
                           "minLength": 1,
                           "maxLength": 100
+                        },
+                        "recovery": {
+                          "type": "object",
+                          "properties": {
+                            "liveReattachment": {
+                              "type": "boolean"
+                            },
+                            "sessionLoading": {
+                              "type": "boolean"
+                            },
+                            "interruptedTurnContinuation": {
+                              "type": "boolean"
+                            },
+                            "approvalRestoration": {
+                              "type": "boolean"
+                            },
+                            "providerCheckpoints": {
+                              "type": "boolean"
+                            },
+                            "fencedSessionRestoration": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "liveReattachment",
+                            "sessionLoading",
+                            "interruptedTurnContinuation",
+                            "approvalRestoration",
+                            "providerCheckpoints"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "options": {
+                          "type": "object",
+                          "properties": {
+                            "model": {
+                              "type": "object",
+                              "properties": {
+                                "configId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "currentValue": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "values": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "description": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "label"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 200
+                                }
+                              },
+                              "required": [
+                                "values"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "mode": {
+                              "type": "object",
+                              "properties": {
+                                "configId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "currentValue": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "values": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "description": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "label"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 200
+                                }
+                              },
+                              "required": [
+                                "values"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "effort": {
+                              "type": "object",
+                              "properties": {
+                                "configId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "currentValue": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "values": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "description": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "label"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 200
+                                }
+                              },
+                              "required": [
+                                "values"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "discoveredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "discoveredAt"
+                          ],
+                          "additionalProperties": false
                         },
                         "supports": {
                           "type": "object",
@@ -1096,6 +1342,129 @@
         }
       }
     },
+    "/api/v1/agent-environments/{environmentId}/drive-credentials": {
+      "post": {
+        "operationId": "postAgentEnvironmentsEnvironmentIdDriveCredentials",
+        "summary": "Issue or renew execution-scoped drive credentials for a device-signed host request",
+        "tags": [
+          "Agent environments"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "environmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "protocolVersion": {
+                    "type": "number",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "runId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "execution": {
+                    "type": "object",
+                    "properties": {
+                      "attemptId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "exclusiveMinimum": true,
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "attemptId",
+                      "generation"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "protocolVersion",
+                  "runId",
+                  "sessionId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/agent-environments/{environmentId}/events": {
       "post": {
         "operationId": "postAgentEnvironmentsEnvironmentIdEvents",
@@ -1193,6 +1562,325 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "session_preparing"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {},
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "native_start_requested"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "commandId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "remoteSessionId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "adapterId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "sourceEventCursor": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "commandId",
+                                "remoteSessionId",
+                                "adapterId",
+                                "sourceEventCursor"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "process_observation"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "process": {
+                                  "type": "string",
+                                  "enum": [
+                                    "live",
+                                    "lost",
+                                    "unknown"
+                                  ]
+                                },
+                                "recoveryOutcome": {
+                                  "type": "string",
+                                  "enum": [
+                                    "attached_live",
+                                    "restored",
+                                    "requires_new_attempt",
+                                    "unavailable"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "process"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1241,6 +1929,11 @@
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 200
+                                },
+                                "restorationCommandId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
                                 }
                               },
                               "required": [
@@ -1265,6 +1958,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1309,6 +2027,10 @@
                                 },
                                 "final": {
                                   "type": "boolean"
+                                },
+                                "offset": {
+                                  "type": "integer",
+                                  "minimum": 0
                                 }
                               },
                               "required": [
@@ -1332,6 +2054,257 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "text_delta"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "offset": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 65536
+                                }
+                              },
+                              "required": [
+                                "offset",
+                                "text"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "heartbeat"
+                              ]
+                            },
+                            "payload": {
+                              "type": "object",
+                              "properties": {
+                                "quietMs": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "openTools": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "actionId": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      },
+                                      "title": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      },
+                                      "runningMs": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "required": [
+                                      "actionId",
+                                      "title",
+                                      "runningMs"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "maxItems": 20
+                                },
+                                "stalled": {
+                                  "type": "boolean"
+                                },
+                                "process": {
+                                  "type": "string",
+                                  "enum": [
+                                    "live",
+                                    "lost",
+                                    "unknown"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "quietMs",
+                                "openTools"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1417,6 +2390,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1518,6 +2516,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1599,6 +2622,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1693,6 +2741,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1780,6 +2853,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1860,6 +2958,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -1948,6 +3071,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -2036,6 +3184,213 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "protocolVersion": {
+                              "type": "number",
+                              "enum": [
+                                1
+                              ]
+                            },
+                            "eventId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "environmentId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "runId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "sourceSequence": {
+                              "type": "integer",
+                              "exclusiveMinimum": true,
+                              "minimum": 0
+                            },
+                            "occurredAt": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "drive_sync"
+                              ]
+                            },
+                            "payload": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "state": {
+                                      "type": "string",
+                                      "enum": [
+                                        "saving"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "state"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "state": {
+                                      "type": "string",
+                                      "enum": [
+                                        "saved"
+                                      ]
+                                    },
+                                    "fileCount": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "folderCount": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 10000
+                                    },
+                                    "entries": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "fileId": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "path": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 4096
+                                          },
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": [
+                                              "file",
+                                              "folder"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "fileId",
+                                          "path",
+                                          "kind"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "maxItems": 32
+                                    }
+                                  },
+                                  "required": [
+                                    "state",
+                                    "fileCount",
+                                    "folderCount",
+                                    "entries"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "state": {
+                                      "type": "string",
+                                      "enum": [
+                                        "unsaved"
+                                      ]
+                                    },
+                                    "code": {
+                                      "type": "string",
+                                      "pattern": "^DRIVE_[A-Z_]+$",
+                                      "maxLength": 200
+                                    },
+                                    "message": {
+                                      "type": "string",
+                                      "maxLength": 1000
+                                    }
+                                  },
+                                  "required": [
+                                    "state",
+                                    "code",
+                                    "message"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "protocolVersion",
+                            "eventId",
+                            "environmentId",
+                            "runId",
+                            "sourceSequence",
+                            "occurredAt",
+                            "type",
+                            "payload"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -2103,6 +3458,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -2178,6 +3558,31 @@
                         {
                           "type": "object",
                           "properties": {
+                            "execution": {
+                              "type": "object",
+                              "properties": {
+                                "attemptId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "generation": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": true,
+                                  "minimum": 0
+                                },
+                                "hostBootId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "attemptId",
+                                "generation"
+                              ],
+                              "additionalProperties": false
+                            },
                             "protocolVersion": {
                               "type": "number",
                               "enum": [
@@ -2568,7 +3973,7 @@
     "/api/v1/agent-environments/{environmentId}/run-credentials": {
       "post": {
         "operationId": "postAgentEnvironmentsEnvironmentIdRunCredentials",
-        "summary": "Release the provider credentials for one active run to an Overlay Cloud host",
+        "summary": "Release provider credentials for an active run or idle bound-adapter discovery to an Overlay Cloud host",
         "tags": [
           "Agent environments"
         ],
@@ -2637,24 +4042,50 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "protocolVersion": {
-                    "type": "number",
-                    "enum": [
-                      1
-                    ]
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "protocolVersion": {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "runId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "protocolVersion",
+                      "runId"
+                    ],
+                    "additionalProperties": false
                   },
-                  "runId": {
-                    "type": "string",
-                    "minLength": 1
+                  {
+                    "type": "object",
+                    "properties": {
+                      "protocolVersion": {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "adapterId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "protocolVersion",
+                      "adapterId"
+                    ],
+                    "additionalProperties": false
                   }
-                },
-                "required": [
-                  "protocolVersion",
-                  "runId"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }
@@ -2864,6 +4295,64 @@
                           1
                         ]
                       },
+                      "remoteLifecycleVersion": {
+                        "type": "number",
+                        "enum": [
+                          2
+                        ]
+                      },
+                      "streaming": {
+                        "type": "object",
+                        "properties": {
+                          "textDeltas": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
+                          },
+                          "heartbeats": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
+                          }
+                        },
+                        "required": [
+                          "textDeltas",
+                          "heartbeats"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "mcp": {
+                        "type": "object",
+                        "properties": {
+                          "approvalBridge": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
+                          }
+                        },
+                        "required": [
+                          "approvalBridge"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "drive": {
+                        "type": "object",
+                        "properties": {
+                          "version": {
+                            "type": "number",
+                            "enum": [
+                              1
+                            ]
+                          }
+                        },
+                        "required": [
+                          "version"
+                        ],
+                        "additionalProperties": false
+                      },
                       "hostVersion": {
                         "type": "string",
                         "minLength": 1,
@@ -2902,6 +4391,194 @@
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 100
+                            },
+                            "recovery": {
+                              "type": "object",
+                              "properties": {
+                                "liveReattachment": {
+                                  "type": "boolean"
+                                },
+                                "sessionLoading": {
+                                  "type": "boolean"
+                                },
+                                "interruptedTurnContinuation": {
+                                  "type": "boolean"
+                                },
+                                "approvalRestoration": {
+                                  "type": "boolean"
+                                },
+                                "providerCheckpoints": {
+                                  "type": "boolean"
+                                },
+                                "fencedSessionRestoration": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "liveReattachment",
+                                "sessionLoading",
+                                "interruptedTurnContinuation",
+                                "approvalRestoration",
+                                "providerCheckpoints"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "options": {
+                              "type": "object",
+                              "properties": {
+                                "model": {
+                                  "type": "object",
+                                  "properties": {
+                                    "configId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "currentValue": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "values": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "label": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "description": {
+                                            "type": "string",
+                                            "maxLength": 2000
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "label"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 200
+                                    }
+                                  },
+                                  "required": [
+                                    "values"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "mode": {
+                                  "type": "object",
+                                  "properties": {
+                                    "configId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "currentValue": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "values": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "label": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "description": {
+                                            "type": "string",
+                                            "maxLength": 2000
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "label"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 200
+                                    }
+                                  },
+                                  "required": [
+                                    "values"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "effort": {
+                                  "type": "object",
+                                  "properties": {
+                                    "configId": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "currentValue": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "values": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "label": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          },
+                                          "description": {
+                                            "type": "string",
+                                            "maxLength": 2000
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "label"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 200
+                                    }
+                                  },
+                                  "required": [
+                                    "values"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "discoveredAt": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "discoveredAt"
+                              ],
+                              "additionalProperties": false
                             },
                             "supports": {
                               "type": "object",

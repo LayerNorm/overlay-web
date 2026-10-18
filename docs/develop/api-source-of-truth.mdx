@@ -4,6 +4,12 @@ description: "Why the web app owns backend route contracts and how other surface
 ---
 The web app owns backend route contracts for every surface. Desktop, mobile, Chrome, and future surfaces should call the same `/api/v1/*` endpoints through `@overlay/api-client` rather than copying route-specific fetch logic.
 
+On an isolated protected Preview, server-side workspace-tool requests to that Preview's
+own `/api/` routes add the existing Vercel automation hosting header. The configured PR
+origin must match exactly; redirects are refused. Overlay's bearer/service identity,
+workspace checks and idempotency keys remain required. Other origins and Production
+never receive this hosting credential.
+
 ## Route catalogs
 
 The API documentation generator also checks each v1 filesystem route against
@@ -12,6 +18,10 @@ definition or an explicit exclusion with its authorization and contract status.
 Agent permanent deletion and workspace automatic top-up policy are accounted
 for in that narrower registry; their behavior remains documented in the full
 route catalog and enforced by their existing services.
+
+Drive credential renewal uses the bridge protocol's request/response schemas in
+that registry. Its explicit public-route exception replaces app-session authority
+with device signatures, method-scoped host credentials and current execution checks.
 
 The filesystem under `src/app/api/**/route.ts` is authoritative for route existence and exported HTTP methods. Use the [full web API route catalog](./api-route-catalog.mdx) for behavior, authentication boundaries, and implementation files, or the [compact API route catalog](./compact-api-route-catalog.mdx) for a one-line inventory. `npm run docs:health` verifies that both catalogs match every route entry point. The generated OpenAPI document intentionally covers a narrower public contract set.
 
@@ -33,6 +43,46 @@ the API returns (400, or 409 for an archived task), and `Unauthorized` becomes 4
 Workspace, archiving and restoring are not Work routes: use `POST /api/v1/scope` with `resource: 'work'`. The wire types
 (`WorkItem`, `WorkEvent`, `WorkContext`, and the request bodies) live in `@overlay/app-core`; `@overlay/api-client`
 exposes them as `client.work`.
+
+## Connected-agent drive
+
+The bearer-only `/api/agent-drive` transport is separate from app-session APIs and defaults off.
+Convex owns scope, edit policy, quota, revisions and immutable upload receipts. The web service
+issues staging uploads, verifies full size/SHA-256 and seals the verified byte buffer at a
+server-only object key before asking Convex to publish the Files pointer. A mutable staging key
+never becomes a canonical file. Retries use the same intent and commit result; newer revisions
+produce conflict copies. The configured object-store contract supplies bounded reads and server
+writes for both R2 and S3-compatible storage. Hosted acceptance remains required before enabling
+the drive. Superseded versions are retired
+atomically with replacement; the authenticated artifact-cleanup tick checks indexed Files
+references and confirms deletion before releasing retained quota. Staging and abandoned final
+keys are registered before upload, then collected after the full run deadline plus one day;
+a referenced committed final is preserved. Upload and metadata receipts and budgets remain for
+two days past the hard deadline, with bounded migration for older metadata receipts.
+
+Drive credential issuance/renewal uses a device-signed host endpoint and the current persisted
+run/session/attempt. The host cannot choose actor or scope. Credentials expire within one hour
+and the hard deadline; execution-bound file grants survive renewal while live authority remains
+required on every operation. The credential method is advertised only to drive v1 hosts.
+
+The bridge protocol package owns public drive wire schemas; server validators re-export those
+schemas and retain private storage records locally. The host client requires complete framed
+manifests and verifies full download hashes across bounded ranges. Token renewal preserves the
+execution and scope, while ambiguous write responses retain their durable journal identity.
+The runtime hydrates the dedicated approved cache before prompting, synchronizes in the background
+after actions and periodically, and awaits a final save before forwarding successful completion.
+Failed final writes preserve local recovery data and report an unsaved failure. Bounded saved-file
+summaries project separately from provider text and link to authorized Files rows.
+R2/S3 constrained uploads bind the digest in the signed checksum header sent by the host,
+rather than duplicating a query-hoisted checksum in headers. Message persistence accepts the
+drive status data part so an upload failure can be projected without wedging the event outbox.
+
+## Memory profiles
+
+Compiled profiles are read through `knowledge/memoryProfileStore:getProfile` in
+the default Convex runtime. `knowledge/memoryProfiles` owns the Node compilation
+action; it does not expose profile queries. Conversation context repositories
+must target the store when loading a profile.
 
 ## Expected backend errors
 
@@ -67,6 +117,11 @@ media models stay unavailable instead of creating unreconcilable usage. The
 settings model catalog uses this route for chat enablement and image/video defaults.
 
 ## Agent environments
+
+Connected-agent prompt context limits preserve complete UTF-16 characters. Both
+per-message history and the total context envelope must avoid splitting surrogate
+pairs; otherwise Convex rejects the next command before its handler executes.
+Canonical transcript bytes are preserved separately from bounded prompt context.
 
 `/api/v1/agent-environments/**` is the only public control plane for connected hosts. Browser
 clients use `AgentEnvironmentsClient` for list, enrollment creation, approval, root-scope changes,

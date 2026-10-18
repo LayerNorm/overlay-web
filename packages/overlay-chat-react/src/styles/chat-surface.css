@@ -190,7 +190,7 @@
   min-width: 7rem;
   white-space: normal;
   word-break: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
 }
 
 :where(.overlay-chat-surface) .markdown-content td {
@@ -200,7 +200,7 @@
   min-width: 7rem;
   white-space: normal;
   word-break: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
 }
 
 :where(.overlay-chat-surface) .markdown-content td ul,

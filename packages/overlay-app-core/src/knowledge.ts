@@ -65,10 +65,9 @@ export function createManualMemoryRequest(content: string): CreateMemoryRequest 
 }
 
 export function opensInDocumentEditor(file: Pick<KnowledgeFile, 'kind' | 'extension' | 'mimeType' | 'name'>): boolean {
-  if (file.kind === 'note') return true
-  const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase()
-  const mime = (file.mimeType || '').toLowerCase()
-  return ext === 'md' || ext === 'markdown' || ext === 'txt' || mime === 'text/markdown' || mime.startsWith('text/')
+  // Notes are canonical note records. Text uploads retain their file identity;
+  // the Notes API cannot load them just because their MIME type is textual.
+  return file.kind === 'note'
 }
 
 export function filePathLabel(all: readonly Pick<KnowledgeFile, '_id' | 'name' | 'parentId'>[], file: Pick<KnowledgeFile, 'parentId'>): string {

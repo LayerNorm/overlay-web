@@ -1,0 +1,72 @@
+name: Weekly agent adapter updates
+
+on:
+  schedule:
+    - cron: '31 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-agent-adapter-updates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.repository == 'LayerNorm/overlay-web' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # actions/setup-node v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Prepare exact adapter and lockstep host pins
+        id: versions
+        run: node scripts/ci/update-agent-adapters.mjs
+      - name: Require host conformance and clean package installation
+        if: steps.versions.outputs.changed == 'true'
+        run: npm run check:byo-agents:release
+      - name: Open a draft update PR
+        if: steps.versions.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: ${{ steps.versions.outputs.branch }}
+          UPDATE_VERSION: ${{ steps.versions.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          set +e
+          git ls-remote --exit-code origin "refs/heads/$UPDATE_BRANCH" >/dev/null
+          branch_status=$?
+          set -e
+          if [ "$branch_status" -eq 0 ]; then
+            echo "This version already has a branch; preserving its review and changes."
+            exit 0
+          fi
+          test "$branch_status" -eq 2
+          mapfile -t update_paths < <(node --input-type=module -e "import {ADAPTER_UPDATE_FILES} from './scripts/ci/update-agent-adapters.mjs'; process.stdout.write(ADAPTER_UPDATE_FILES.join('\n'))")
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "${update_paths[@]}"
+          git commit -m "Update agent adapters and prepare host $UPDATE_VERSION"
+          git push origin "HEAD:refs/heads/$UPDATE_BRANCH"
+          cat > "$RUNNER_TEMP/adapter-update-pr.md" <<'BODY'
+          Update Claude Code and Codex ACP pins together with the host, protocol and image release references.
+
+          Validation: `npm run check:byo-agents:release` passed before this PR was created, including host conformance and clean package installation. No packages or images were published.
+
+          This remains a draft. Normal required checks, current-head Preview QA and subscription-provider acceptance are still required before release. The workflow token does not trigger ordinary pull-request workflows; dispatch the existing check workflows or trigger a new trusted PR event during review. No force pushes, automatic merges or production changes are made.
+          BODY
+          gh pr create --base main --head "$UPDATE_BRANCH" --draft \
+            --title "Update agent adapters (host $UPDATE_VERSION)" \
+            --body-file "$RUNNER_TEMP/adapter-update-pr.md"

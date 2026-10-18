@@ -7,13 +7,14 @@ import ts from 'typescript'
 // Exercise the actual coordinator loop with its SDK/step boundaries replaced.
 // The installed SDK's registration/replay contracts have separate runtime tests.
 async function exercise(phases: string[]) {
-  const calls = { stop: 0, sleep: 0, disposed: 0 }
+  const calls = { stop: 0, restore: 0, sleep: 0, disposed: 0 }
   const exports: Record<string, (input: { runId: string; generation: number }) => Promise<void>> = {}
   const steps = {
     claimRemoteRunCoordinator: async () => true,
     wakeRemoteRun: async () => undefined,
     advanceRemoteRun: async () => ({ phase: phases.shift() ?? 'cancelled' }),
     readRemoteRun: async () => ({ lifecycle: { coordinatorId: 'owner' } }),
+    restoreStoppedRemoteRun: async () => { calls.restore++ },
     stopUnreachableRemoteRun: async (runId: string) => {
       assert.equal(runId, 'run')
       calls.stop++
@@ -46,12 +47,19 @@ async function exercise(phases: string[]) {
 
 test('cancellation retries stop proof on timer passes after all notifications are consumed', async () => {
   assert.deepEqual(await exercise(['cancelling', 'cancelling', 'cancelled']), {
-    stop: 2, sleep: 2, disposed: 1,
+    stop: 2, restore: 0, sleep: 2, disposed: 1,
   })
 })
 
 test('ordinary and terminal phases never invoke cancellation stop proof', async () => {
   assert.deepEqual(await exercise(['starting', 'running', 'completed']), {
-    stop: 0, sleep: 2, disposed: 1,
+    stop: 0, restore: 0, sleep: 2, disposed: 1,
+  })
+})
+
+
+test('recovery retries inspection only while the canonical run needs recovery', async () => {
+  assert.deepEqual(await exercise(['needs_attention', 'recovering', 'running', 'completed']), {
+    stop: 0, restore: 2, sleep: 3, disposed: 1,
   })
 })

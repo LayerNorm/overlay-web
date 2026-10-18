@@ -16,6 +16,19 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
+test('saved drive summaries retain file links separately from the provider answer and reject malformed paths', () => {
+  const status = { state: 'saved', fileCount: 1, folderCount: 0,
+    entries: [{ fileId: 'report', path: 'reports/result.md', kind: 'file' }] }
+  const view = (data: Record<string, unknown>) => toRoomMessageView({ message: record({
+    content: '# Result', parts: [{ type: 'text', text: '# Result' }, { type: 'data-remote-agent-drive', data }],
+  }), currentPrincipalId: 'me', authorName: 'Agent' })
+  const saved = view({ ...status, key: 'drive' })
+  assert.deepEqual(saved.remoteDrive, status)
+  assert.equal(saved.text, '# Result')
+  assert.deepEqual(saved.blocks, [{ kind: 'text', text: '# Result' }])
+  assert.equal(view({ ...status, entries: [{ fileId: 'report', path: '../private', kind: 'file' }] }).remoteDrive, undefined)
+})
+
 test('agent messages derive workedDurationMs from createdAt→updatedAt', () => {
   const view = toRoomMessageView({
     message: record({ createdAt: 1_000, updatedAt: 44_000 }),

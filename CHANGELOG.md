@@ -6,6 +6,22 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Standardize the orb + wordmark on `BrandLockup` across the loader, landing, auth, and marketing surfaces, and play the loader's word reveal only once so it keeps blinking until the app appears. Once the app has rendered real content the loader can never reappear: boundary remounts and route fallbacks show plain skeletons instead.
 
+- Fix connected-agent Drive recovery after remote edits, release leases after confirmed startup failure, and retain fencing for uncertain writers. Authorize shared-room run status correctly, bound repeated Drive reads, and derive QA adapter defaults from image pins.
+
+- Make caught agent failures traceable across response, server logs and Sentry with diagnostic ids, preserved backend request ids, safe cause signatures and bounded source locations. Keep unknown causes explicit and raw exception content private.
+- Keep connected-agent output streaming during uploads with coalesced text, byte-bounded batches, durable retry boundaries and negotiated incremental text. Preserve partial answers and tool history through cancellation, failure and reconnects.
+- Render live replies as formatted Markdown with bottom loading dots, compact tool groups, accurate tool ages and task deadlines. Preserve literal identifiers and wrap long hashes in tables.
+- Discover model, effort and permission choices from the bound agent account before the first task; persist and apply the selected settings across native recovery.
+- Add execution-fenced workspace-tool calls and resumable approval delivery with one decision card, signed expiry and current-access checks. Show approval expiry and ongoing machine costs.
+- Add guarded Drive synchronization with exact revisions, immutable upload receipts, full-byte verification, bounded hydration and conflict preservation. Save incrementally and wait for final file settlement before reporting completion.
+- Open saved agent deliverables in Files by verified file ids, including relative links in answers and scoped sibling/descendant links inside Markdown deliverables, and load text uploads with their complete stored content.
+- Add opt-in same-conversation recovery for lifecycle-v2 Claude Code and Codex hosts. Fence replacement execution, reconcile interrupted writes before hydration, preserve selected settings and reject uncertain starts or unresolved approvals.
+- Confirm native termination before releasing ownership; drain buffered output and active writes during shutdown. Keep Stop available during startup and final saving, and settle interrupted action timers after recovery.
+- Report enrollment failures and connection limits accurately, retain account setup after machine deletion, and keep fresh-machine hydration authorized without claiming provider liveness prematurely.
+- Reduce repeated authorization and billing reads on agent uploads while retaining current access, wallet, revocation and legacy-backend checks. Read Drive sources with bounded parallelism and deterministic cache limits.
+- Add request ids, safe failure classifications and per-run stream counters to connected-agent diagnostics. Extend the cloud smoke to run through Overlay, and add opt-in Preview timing exports with bounded storage and visible capacity.
+- Harden oversized tool titles, Unicode limits, untrusted text parsing and storage download boundaries. Keep protected Preview access in host-only state and retain hosted TypeScript validation in memory-optimized builds.
+
 - Keep Turbopack route bootstraps external so the optimized app hydrates under nonce-based Content Security Policy after the Next.js upgrade.
 
 - Preserve protected-route query parameters through sign-in and stale-session reauthentication so desktop login handoffs retain their PKCE challenge.

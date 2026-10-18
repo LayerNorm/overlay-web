@@ -35,7 +35,7 @@ import {
 
 interface FilesClientLike {
   get<T>(query?: { limit?: number; view?: PanelScope }, options?: { signal?: AbortSignal }): Promise<T>
-  getResponse(query: { fileId: string }, options?: { signal?: AbortSignal }): Promise<Response>
+  getResponse(query: { fileId: string; fullText?: boolean }, options?: { signal?: AbortSignal }): Promise<Response>
   createResponse(input: CreateFileRequest): Promise<Response>
   updateResponse(input: UpdateFileRequest): Promise<Response>
   deleteResponse(input: { fileId: string }): Promise<Response>
@@ -128,7 +128,7 @@ export function createWebKnowledgeRepository(
   const repository: KnowledgeRepository = {
     list,
     async get(id, signal) {
-      const response = await client.files.getResponse({ fileId: id }, { signal })
+      const response = await client.files.getResponse({ fileId: id, fullText: true }, { signal })
       if (response.status === 404) return null
       if (!response.ok) throw await responseError(response, 'Could not load file')
       const node = normalizeKnowledgeSurfaceNode(await response.json() as KnowledgeFile)

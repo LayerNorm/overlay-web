@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 import createBundleAnalyzer from "@next/bundle-analyzer";
 import { withWorkflow } from "workflow/next";
+import { skipDuplicateBuildTypecheck } from "./scripts/release/build-typecheck-policy.mjs";
 
 const withBundleAnalyzer = createBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -43,18 +44,28 @@ const staticSecurityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_AGENT_UI_TRACE: process.env.VERCEL_ENV === "preview" && process.env.OVERLAY_AGENT_UI_TRACE === "1" ? "1" : "",
+    NEXT_PUBLIC_AGENT_UI_TRACE_SHA: process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_GIT_COMMIT_SHA ?? "" : "",
+  },
   cacheComponents: true,
   partialPrefetching: true,
   distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   output: process.env.NEXT_OUTPUT_MODE?.trim() === "standalone" ? "standalone" : undefined,
   transpilePackages: ["@overlay/app-core"],
-  // Vercel's build container OOMs in `Running TypeScript` on the externalized
-  // harness .d.ts trees; typecheck stays enforced via `npm run typecheck`.
-  typescript: process.env.OVERLAY_SKIP_BUILD_TYPECHECK === "1"
+  // Only CI's compilation lane omits its duplicate TypeScript pass; the separate
+  // required typecheck remains enforced. Hosted builds retain Next's typecheck.
+  typescript: skipDuplicateBuildTypecheck(process.env)
     ? { ignoreBuildErrors: true }
     : undefined,
   // Explicit server action body size limit. Prevents DoS via large payloads.
   experimental: {
+    // Keep compilation isolated from route collection.
+    webpackBuildWorker: true,
+    webpackMemoryOptimizations: true,
+    // NodeNext workspace packages name emitted .js files while web compiles their TS source.
+    extensionAlias: { ".js": [".ts", ".tsx", ".js"] },
+
     // Keep route bootstraps in external assets: the shared runtime emits an
     // unnonced inline bootstrap in the cached shell, which nonce CSP blocks.
     turbopackSharedRuntime: false,

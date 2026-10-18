@@ -19,6 +19,15 @@ npm run dev
 
 `npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Native Vercel production deployment does not push Convex.
 
+## Source imports and typechecks
+
+`convex/tsconfig.json` resolves the backend and its transitive shared imports independently
+of the root web config. Keep bridge-protocol and API-client source aliases aligned with
+the root paths; a clean backend build must not depend on package `dist` artifacts.
+Run `npx tsc --noEmit -p convex/tsconfig.json` as well as web typechecking when those
+imports change. `scripts/ci/convex-typecheck-contract.test.mjs` checks bridge source
+resolution with generated package output unavailable.
+
 ## Isolated PR preview backends
 
 Add `needs-preview` when isolated hosted QA is needed; the trusted controller

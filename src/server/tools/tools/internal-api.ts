@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { OverlayToolsOptions } from './types'
 import { buildServiceAuthToken, getServiceAuthHeaderName } from '@/server/auth/service-auth'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { internalPreviewRequestOptions } from './preview-api-request'
 
 export function toolAuthBody(options: OverlayToolsOptions): {
   userId: string
@@ -70,9 +71,12 @@ export async function callInternalApi(
           path: path.split('?')[0]!,
         })
       : null
+  const protection = internalPreviewRequestOptions(url)
   return fetch(url, {
+    ...protection,
     method,
     headers: {
+      ...protection.headers,
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
@@ -112,9 +116,12 @@ export async function callInternalApiGet(
           path: urlObject.pathname,
         })
       : null
+  const protection = internalPreviewRequestOptions(url)
   return fetch(url, {
+    ...protection,
     method: 'GET',
     headers: {
+      ...protection.headers,
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(serviceAuthHeader ? { [getServiceAuthHeaderName()]: serviceAuthHeader } : {}),
       ...(workspaceId?.trim() ? { [ACTIVE_WORKSPACE_HEADER]: workspaceId.trim() } : {}),

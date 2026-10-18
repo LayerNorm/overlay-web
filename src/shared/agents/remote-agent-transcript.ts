@@ -1,6 +1,8 @@
+import { applyRemoteText } from './remote-agent-text'
 import type { AgentRemoteEvent, AgentRemoteSessionStatus } from '@overlay/workspace-contracts'
 import type { AgentRunStatus, AgentRunTerminalError } from './agent-run'
 import { AGENT_AUTH_FAILURE_CODE } from './provider-accounts'
+import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
 
 const AGENT_ACCOUNTS_SETTINGS_HREF = '/app/settings?section=agent-accounts'
 
@@ -10,14 +12,16 @@ export const REMOTE_AGENT_PLAN_PART_TYPE = 'data-remote-agent-plan'
 export const REMOTE_AGENT_DIFF_PART_TYPE = 'data-remote-agent-diff'
 export const REMOTE_AGENT_TERMINAL_PART_TYPE = 'data-remote-agent-terminal'
 export const REMOTE_AGENT_COMMANDS_PART_TYPE = 'data-remote-agent-commands'
+export const REMOTE_AGENT_DRIVE_PART_TYPE = 'data-remote-agent-drive'
 
 export type RemoteAgentStatusPart = {
   type: typeof REMOTE_AGENT_STATUS_PART_TYPE
   data: {
     environmentName: string
     queueExpiresAt: number
+    hardDeadlineAt?: number
     runId: string
-    state: 'waiting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'recovering' | 'needs_attention' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
+    state: 'waiting' | 'starting' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'recoverable' | 'recovering' | 'finalizing' | 'needs_attention' | 'cancelling' | 'completed' | 'failed' | 'cancelled'
     retryable?: boolean
     retryClass?: 'transient' | 'timeout' | 'host_offline' | 'permission' | 'fatal'
   }
@@ -37,6 +41,7 @@ export type RemoteAgentProjection = {
 export function waitingRemoteAgentParts(input: {
   environmentName: string
   queueExpiresAt: number
+  hardDeadlineAt?: number
   runId: string
 }): Array<Record<string, unknown>> {
   return [
@@ -84,6 +89,13 @@ export function projectRemoteAgentEvents(input: {
 
   for (const event of input.events) {
     if (terminal) break
+    if (event.type === 'session_preparing') {
+      removeWaiting()
+      sessionStatus = 'starting'
+      runStatus = 'queued'
+      parts = upsertStatusPart(parts, input, 'starting')
+      continue
+    }
     if (event.type === 'session_started') {
       removeWaiting()
       remoteSessionId = stringValue(event.payload.remoteSessionId)
@@ -91,15 +103,20 @@ export function projectRemoteAgentEvents(input: {
         ? 'waiting_for_input' : sessionStatus === 'waiting_for_approval' ? 'waiting_for_approval' : 'running')
       continue
     }
-    if (event.type === 'text_checkpoint') {
+    if (event.type === 'text_checkpoint' || event.type === 'text_delta') {
       removeWaiting()
-      content = stringValue(event.payload.text) ?? content
+      content = applyRemoteText(content, event)
       parts = replaceTextPart(parts, content)
       continue
     }
     if (event.type === 'action') {
       removeWaiting()
       parts = upsertActionPart(parts, event.payload)
+      continue
+    }
+    if (event.type === 'drive_sync') {
+      const status = driveSyncStatusSchema.parse(event.payload)
+      parts = upsertDataPart(parts, REMOTE_AGENT_DRIVE_PART_TYPE, 'drive', status)
       continue
     }
     if (event.type === 'approval_requested' || event.type === 'elicitation_requested') {
@@ -228,16 +245,21 @@ export function projectRemoteAgentEvents(input: {
 function closePendingRequestParts(parts: Array<Record<string, unknown>>, decision: string, resolvedAt: number) {
   return parts.map((part) => {
     const data = objectValue(part.data)
-    if (part.type !== REMOTE_AGENT_REQUEST_PART_TYPE || data?.state !== 'pending') return part
-    return { ...part, data: { ...data, state: 'resolved', resolution: {
+    if (part.type !== REMOTE_AGENT_REQUEST_PART_TYPE || !data || !['pending', 'decision_pending'].includes(String(data.state))) return part
+    return { ...part, data: { ...data, state: 'resolved', resolution: data.resolution ?? {
       decision, resolvedByPrincipalId: 'system:remote-supervisor', resolvedAt,
     } } }
   })
 }
 
+/** Call only after the stopped source is drained and fenced from further work updates. */
+export function interruptRemoteAgentToolParts(parts: Array<Record<string, unknown>>, stoppedAt: number) {
+  return closeRunningRemoteToolParts(parts, 'interrupted', stoppedAt)
+}
+
 function closeRunningRemoteToolParts(
   parts: Array<Record<string, unknown>>,
-  outcome: 'completed' | 'failed' | 'cancelled',
+  outcome: 'completed' | 'failed' | 'cancelled' | 'interrupted',
   resolvedAt: number,
 ) {
   return parts.map((part) => {
@@ -270,9 +292,10 @@ function closeRunningRemoteToolParts(
         state: outcome === 'completed' ? 'output-available' : 'output-error',
         toolOutput: {
           success: outcome === 'completed',
-          status: outcome,
+          status: outcome === 'interrupted' ? 'cancelled' : outcome,
           title,
           resolvedAt,
+          ...(outcome === 'interrupted' ? {reason: 'execution_interrupted', outcomeKnown: false} : {}),
         },
       },
     }

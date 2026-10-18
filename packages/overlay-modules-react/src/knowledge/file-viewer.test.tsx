@@ -91,3 +91,13 @@ test('PDFs without extracted text explain why a fallback is unavailable', () => 
   )
   assert.match(markup, /No extracted text is available for this file/)
 })
+
+test('Markdown file links use authorized routes, preserve external links and disable unknown paths', () => {
+  const content = '[Guide](GUIDE.md) [Unknown](missing.md) [Website](https://example.test)'
+  const html = renderToStaticMarkup(<FileViewer name="INDEX.md" content={content}
+    resolveFileHref={href => href === 'GUIDE.md' ? '?file=canonical-guide' : href.startsWith('https:') ? href : undefined} />)
+  assert.match(html, /href="\?file=canonical-guide"/)
+  assert.match(html, /href="https:\/\/example.test"/)
+  assert.doesNotMatch(html, /href="(?:GUIDE|missing)\.md"/)
+  assert.match(html, /aria-disabled="true"/)
+})

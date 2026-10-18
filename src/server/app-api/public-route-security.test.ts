@@ -19,6 +19,8 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/agent-gateway/[provider]/[...path]': ['GET', 'POST'],
   // Per-turn bearer-token MCP server for connected agents — not session auth.
   '/api/agent-mcp': ['DELETE', 'GET', 'POST'],
+  // Exact run/scope/attempt bearer tokens; default-off drive service, no app-session authorization.
+  '/api/agent-drive': ['POST'],
   '/api/auth/callback': ['GET'],
   '/api/auth/convex-token': ['GET'],
   '/api/auth/desktop-link': ['GET', 'POST'],

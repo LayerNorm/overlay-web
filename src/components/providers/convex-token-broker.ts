@@ -9,21 +9,24 @@
 
 let inFlight: Promise<string | null> | null = null
 
-export async function fetchConvexToken(): Promise<string | null> {
+export async function fetchConvexToken(refreshSession: () => Promise<void>): Promise<string | null> {
   if (inFlight) return inFlight
-  const request = doFetchConvexToken()
+  const request = doFetchConvexToken(refreshSession)
   inFlight = request
-  void request.finally(() => {
-    if (inFlight === request) inFlight = null
-  })
+  const clear = () => { if (inFlight === request) inFlight = null }
+  // finally() creates a second rejected promise on network failure unless that promise is caught.
+  void request.then(clear, clear)
   return request
 }
 
-async function doFetchConvexToken(): Promise<string | null> {
-  const response = await fetch('/api/auth/convex-token', {
-    credentials: 'same-origin',
-    cache: 'no-store',
-  })
+async function doFetchConvexToken(refreshSession: () => Promise<void>): Promise<string | null> {
+  const options: RequestInit = { credentials: 'same-origin', cache: 'no-store' }
+  let response = await fetch('/api/auth/convex-token', options)
+  if (response.status === 401) {
+    // Use AuthContext's shared, locked refresh path so this cannot race refresh-token rotation.
+    await refreshSession()
+    response = await fetch('/api/auth/convex-token', options)
+  }
   if (!response.ok) return null
   const data = await response.json() as { token?: string }
   return data.token?.trim() || null

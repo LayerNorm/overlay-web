@@ -4,9 +4,22 @@ import test from 'node:test'
 import {
   buildRemoteAgentPrompt,
   reconcileUnverifiedAgentActionClaims,
+  shouldPrepareConnectedAgentDrive,
 } from './workspace-agent-invocation'
 
 const root = process.cwd()
+
+test('drive starts require the rollout flag, current host capability and local opt-in', () => {
+  const cloud = { enabled: true, environmentKind: 'overlay_cloud', optedIn: false, capabilities: { drive: { version: 1 } } }
+  assert.equal(shouldPrepareConnectedAgentDrive(cloud), true)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, enabled: false }), false)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: {} }), false)
+  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: { drive: { version: 2 } } }), false)
+  for (const environmentKind of ['local', 'vps', 'external']) {
+    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind }), false)
+    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind, optedIn: true }), true)
+  }
+})
 
 test('agent external-action claims require a successful tool result', () => {
   const corrected = reconcileUnverifiedAgentActionClaims({
@@ -250,4 +263,28 @@ test('room memory ingestion is owner-scoped and gated by the message toggle', as
   assert.match(convexExtractor, /targetActor === "agent" \? AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT/)
   assert.match(convexExtractor, /memoryOwnerId/)
   assert.match(convexMemoryQuery, /hasSameMemoryExtractionAuthor\(message, validTarget\)/)
+})
+
+// Convex rejects malformed Unicode before the command mutation handler runs.
+test('remote history truncation cannot break the next turn after an emoji reply', () => {
+  const prompt = buildRemoteAgentPrompt({
+    contextBlock: '',
+    messages: [{ role: 'assistant', content: 'a'.repeat(1999) + '🙂' + 'tail'.repeat(300000) }],
+    prompt: 'Continue the task',
+  })
+  assert.equal(prompt.isWellFormed(), true)
+  assert.ok(prompt.includes('a'.repeat(1999)))
+  assert.ok(prompt.includes('CURRENT_USER_MESSAGE_BEGIN\nContinue the task\nCURRENT_USER_MESSAGE_END'))
+})
+
+test('the total remote context limit preserves complete Unicode characters', () => {
+  const empty = buildRemoteAgentPrompt({ contextBlock: '', messages: [], prompt: 'Continue' })
+  const prefixLength = empty.indexOf('OVERLAY_CONTEXT_END')
+  // The nonempty block replaces the end marker after the same envelope prefix.
+  const contextStart = prefixLength
+  const contextBlock = 'a'.repeat(79999 - contextStart) + '🙂' + 'b'.repeat(100)
+  const prompt = buildRemoteAgentPrompt({ contextBlock, messages: [], prompt: 'Continue' })
+  assert.equal(prompt.isWellFormed(), true)
+  assert.match(prompt, /Overlay context truncated/)
+  assert.match(prompt, /CURRENT_USER_MESSAGE_BEGIN\nContinue\nCURRENT_USER_MESSAGE_END/)
 })

@@ -3,25 +3,29 @@ import { OVERLAY_AGENT_PROTOCOL_VERSION } from '@layernorm/overlay-agent-bridge-
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentEnvironmentErrorResponse, environmentIdFrom } from '../../shared'
 import { emptyBody, enforceAgentHostRateLimit } from '../../host-security'
+import { withAgentHostRouteTelemetry } from '../../host-route-telemetry'
 
 export async function GET(request: Request, context: { params: Promise<Record<string, string | string[]>> }) {
-  try {
-    const limited = await enforceAgentHostRateLimit(request, 'commands', 120)
-    if (limited) return limited
-    const environmentId = await environmentIdFrom(context)
-    const service = getOverlayServerContext().connectedAgentControlPlane
-    const auth = await service.authenticateHostRequest({
-      request, environmentId, requiredMethod: 'agent:commands:poll', rawBody: emptyBody(),
-    })
-    const requestedLimit = Number(new URL(request.url).searchParams.get('limit') ?? 20)
-    const { commands, resolvedThroughSequence } = await service.pollCommands(auth, Number.isFinite(requestedLimit) ? requestedLimit : 20)
-    return NextResponse.json({
-      protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
-      commands,
-      retryAfterMs: commands.length === 0 ? 1_000 : undefined,
-      resolvedThroughSequence,
-    }, { headers: { 'Cache-Control': 'no-store' } })
-  } catch (error) {
-    return agentEnvironmentErrorResponse(error)
-  }
+  return withAgentHostRouteTelemetry('commands.poll', request, async () => {
+    try {
+      const limited = await enforceAgentHostRateLimit(request, 'commands', 120)
+      if (limited) return limited
+      const environmentId = await environmentIdFrom(context)
+      const service = getOverlayServerContext().connectedAgentControlPlane
+      const auth = await service.authenticateHostRequest({
+        request, environmentId, requiredMethod: 'agent:commands:poll', rawBody: emptyBody(),
+      })
+      const requestedLimit = Number(new URL(request.url).searchParams.get('limit') ?? 20)
+      const { commands, resolvedThroughSequence, streaming } = await service.pollCommands(auth, Number.isFinite(requestedLimit) ? requestedLimit : 20)
+      return NextResponse.json({
+        protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
+        commands,
+        ...(streaming ? { streaming } : {}),
+        retryAfterMs: commands.length === 0 ? 1_000 : undefined,
+        resolvedThroughSequence,
+      }, { headers: { 'Cache-Control': 'no-store' } })
+    } catch (error) {
+      return agentEnvironmentErrorResponse(error)
+    }
+  })
 }

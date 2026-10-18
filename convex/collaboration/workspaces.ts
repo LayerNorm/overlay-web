@@ -1,3 +1,4 @@
+import { deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
@@ -1214,6 +1215,7 @@ export const purgeArchivedWorkspaceByServer = mutation({
       // stay retrievable after the workspace is gone.
       await Promise.all(convoMessages.flatMap((m) => [
         deleteChunksForSource(ctx.db, 'message', m._id),
+        deleteRemoteMessageText(ctx, m),
         ctx.db.delete(m._id),
       ]))
       await ctx.db.delete(conversation._id)

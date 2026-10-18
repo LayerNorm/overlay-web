@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
+import { RemoteRunDeadline } from './RemoteRunDeadline'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks } from '@overlay/chat-react/transcript'
@@ -36,6 +37,9 @@ import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
+import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
+import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
+import { RemoteRunTrace } from './RemoteRunTrace'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -87,12 +91,14 @@ export type RoomMessageView = {
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
     options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
-  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string }
+  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string; hardDeadlineAt?: number; recovered?: boolean }
+  remoteDrive?: DriveSyncStatus
   /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
   workedDurationMs?: number
 }
 
 export type RoomMessageItemProps = {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -284,6 +290,7 @@ export function RoomMessageItem({
   highlighted = false,
   grouped = false,
   personalChatStyle = false,
+  remoteStatus,
 }: RoomMessageItemProps) {
   const { mine } = message
   const isAgent =
@@ -332,10 +339,12 @@ export function RoomMessageItem({
       onTogglePinned={onTogglePinned}
       onToggleSaved={onToggleSaved}
       onCopyPermalink={onCopyPermalink}
+      diagnostics={message.remoteRun ? <RemoteRunTrace runId={message.remoteRun.runId} messageId={message.id} state={message.remoteRun.state} /> : undefined}
     />
   )
 
   const content: RoomMessageContentProps = {
+    remoteStatus,
     message,
     reactions,
     replyCount,
@@ -401,6 +410,7 @@ type RoomMessageRootProps = {
 
 /** Props shared by the sent and received message rows. */
 type RoomMessageContentProps = {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -701,13 +711,15 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
   )
 }
 
-function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest }: {
+function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
+  remoteStatus?: ReactNode
   message: RoomMessageView
   onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
   onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
+  const resolveFileHref = useSavedDriveLinkResolver(message.remoteDrive)
   return (
     <>
       {message.askedBy ? (
@@ -731,14 +743,17 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
         blockKeyPrefix={message.id}
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}
-        foldWorkIntoSummary={collapseAgentWork}
+        foldWorkIntoSummary={collapseAgentWork && !['cancelled', 'failed', 'recoverable'].includes(message.remoteRun?.state ?? '')}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
+        suppressTypingIndicator
+        resolveFileHref={resolveFileHref}
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
       />
-      {message.streaming && message.blocks.length === 0 ? (
+      {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
+      {message.streaming ? (
         <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
           {[0, 1, 2].map((dot) => (
             <span
@@ -747,11 +762,15 @@ function AgentMessageBody({ message, onOpenAttachmentPreview, onControlRemoteQue
               style={{ animationDelay: `${dot * 120}ms` }}
             />
           ))}
+          {message.remoteRun?.state !== 'finalizing' ? remoteStatus : null}
         </div>
       ) : null}
       {message.remoteQueue && onControlRemoteQueue ? (
         <RemoteQueueControls queue={message.remoteQueue} onControl={onControlRemoteQueue} />
       ) : null}
+      {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
+      {message.remoteRun?.recovered ? <p className="mt-1 text-xs text-(--muted)" role="status">Recovered</p> : null}
+      {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}
       {message.remoteRequest && onResolveRemoteRequest ? (
         <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
       ) : null}
@@ -833,6 +852,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
           />
         ) : isAgent ? (
           <AgentMessageBody
+            remoteStatus={content.remoteStatus}
             message={message}
             onOpenAttachmentPreview={content.onOpenAttachmentPreview}
             onControlRemoteQueue={onControlRemoteQueue}
@@ -1200,6 +1220,7 @@ function EditDeleteButtons({ buttonClass, disabled, onStartEdit, onDelete }: {
 }
 
 function RoomMessageToolbar({
+  diagnostics,
   alignEnd,
   floating,
   copyText,
@@ -1219,6 +1240,7 @@ function RoomMessageToolbar({
   onToggleSaved,
   onCopyPermalink,
 }: {
+  diagnostics?: ReactNode
   alignEnd: boolean
   floating: boolean
   copyText: string
@@ -1242,10 +1264,11 @@ function RoomMessageToolbar({
   const buttonClass =
     'rounded-md p-1.5 text-(--muted) transition-[color,background-color,transform] hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30'
 
-  const railClass = toolbarRailClass(floating, pickerOpen, alignEnd)
+  const railClass = toolbarRailClass(floating, pickerOpen || Boolean(onStop), alignEnd)
 
   return (
     <div className={railClass}>
+      {diagnostics}
       {onStop ? (
         <ToolbarIconButton buttonClass={buttonClass} onClick={onStop} disabled={disabled} ariaLabel="Stop response" title="Stop response">
           <Square size={13} strokeWidth={1.75} className="fill-current" />

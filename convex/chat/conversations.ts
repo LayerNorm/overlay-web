@@ -1,3 +1,4 @@
+import { hydrateRemoteMessages, deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { internalMutation, mutation, query } from '../_generated/server'
@@ -6,6 +7,8 @@ import type { Doc } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
+import { requireConversationAccess } from '../collaboration/directMessages'
+import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 
 const generatedUiVariant = v.object({
@@ -454,7 +457,7 @@ export const getMessages = query({
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('asc')
       .collect()
-    return messages
+    return hydrateRemoteMessages(ctx, messages)
   },
 })
 
@@ -490,7 +493,7 @@ export const getMessagesSince = query({
         .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
         .order('asc')
         .collect()
-      return compactToolPayloads ? messages.map((m) => compactMessageForHistory(m, true)) : messages
+      return (await hydrateRemoteMessages(ctx, messages)).map(m => compactMessageForHistory(m, compactToolPayloads))
     }
     // Load only the unsummarized tail: messages at or after the summary cursor.
     const messages = await ctx.db
@@ -500,7 +503,7 @@ export const getMessagesSince = query({
       )
       .order('asc')
       .collect()
-    return compactToolPayloads ? messages.map((m) => compactMessageForHistory(m, true)) : messages
+    return (await hydrateRemoteMessages(ctx, messages)).map(m => compactMessageForHistory(m, compactToolPayloads))
   },
 })
 
@@ -552,7 +555,7 @@ export const getRecentMessages = query({
     const messages = recentScan
       .filter((message) => selectedTurnIdSet.has(message.turnId?.trim() || message._id))
       .sort((a, b) => a.createdAt - b.createdAt)
-    return messages.map((message) => compactMessageForHistory(message, compactToolPayloads))
+    return (await hydrateRemoteMessages(ctx, messages)).map(message => compactMessageForHistory(message, compactToolPayloads))
   },
 })
 
@@ -998,14 +1001,24 @@ export const failAgentRun = mutation({
 export const getLatestAgentRun = query({
   args: {
     conversationId: v.id('conversations'),
+    remoteRunId: v.optional(v.string()),
     serverSecret: v.string(),
     userId: v.string(),
   },
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
     const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
-      throw new Error('Unauthorized')
+    if (!conversation || conversation.deletedAt) throw new Error('Unauthorized')
+    if ((conversation.conversationType ?? 'personal') === 'personal') {
+      if (conversation.userId !== args.userId) throw new Error('Unauthorized')
+    } else {
+      if (!conversation.workspaceId) throw new Error('Unauthorized')
+      await requireConversationAccess(ctx, {actorUserId: args.userId, conversationId: args.conversationId,
+        workspaceId: conversation.workspaceId, serverSecret: args.serverSecret})
+    }
+    if (args.remoteRunId) {
+      const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.remoteRunId)).unique()
+      return run?.conversationId === args.conversationId ? run : null
     }
     const active: Doc<'conversationAgentRuns'>[] = []
     const runsByStatus = await Promise.all(
@@ -1388,13 +1401,14 @@ export const watchMessages = query({
         .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
         .order('desc')
         .take(messageLimit)
-      return recent.sort((a, b) => a.createdAt - b.createdAt)
+      return hydrateRemoteMessages(ctx, recent.sort((a, b) => a.createdAt - b.createdAt))
     }
-    return await ctx.db
+    const messages = await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId', (q) => q.eq('conversationId', conversationId))
       .order('asc')
       .collect()
+    return hydrateRemoteMessages(ctx, messages)
   },
 })
 
@@ -1448,8 +1462,8 @@ export const watchAgentRun = query({
 
 /**
  * Lightweight browser-facing invalidation signal for the personal conversation
- * list.  Returns the _creationTime of the latest conversationEvent for the
- * user.  When the version changes, the client fetches the delta (updatedSince)
+ * list. Returns the latest list-relevant event version for the user. Streaming
+ * deltas update the open transcript without refetching sidebar history.  When the version changes, the client fetches the delta (updatedSince)
  * and upserts individual rows instead of reloading the full list.
  */
 export const watchPersonalConversationListVersion = query({
@@ -1467,12 +1481,7 @@ export const watchPersonalConversationListVersion = query({
     } catch {
       return { ok: false, version: 0 }
     }
-    const latest = await ctx.db
-      .query('conversationEvents')
-      .withIndex('by_userId_createdAt', (q) => q.eq('userId', userId))
-      .order('desc')
-      .first()
-    return { ok: true, version: latest?._creationTime ?? 0 }
+    return { ok: true, version: await conversationListVersion(ctx, { userId }) }
   },
 })
 
@@ -1505,6 +1514,7 @@ export const deleteTurn = mutation({
     // orphaned sourceKind:'message' chunks would stay retrievable.
     await Promise.all(turnMessages.flatMap((m) => [
       deleteChunksForSource(ctx.db, 'message', m._id),
+      deleteRemoteMessageText(ctx, m),
       ctx.db.delete(m._id),
     ]))
     const deletedMessages = turnMessages.length
@@ -1641,7 +1651,7 @@ export const getPublicByToken = query({
       title: conversation.title,
       createdAt: conversation.createdAt,
       sharedAt: conversation.sharedAt ?? conversation.createdAt,
-      messages: messages
+      messages: (await hydrateRemoteMessages(ctx, messages))
         .filter((m) => m.status !== 'generating')
         .map((m) => ({
           _id: m._id,

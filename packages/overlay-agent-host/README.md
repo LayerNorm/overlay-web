@@ -147,10 +147,20 @@ a tool/resource protocol; it is not used as the execution lifecycle transport.
 
 ### Durable lifecycle extension
 
-Candidate 0.3.11 can opt in with `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2`
+Candidate 0.4.2 can opt in with `OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2`
 against a server that supports the same negotiated extension. Keep this unset
 against older servers. Live reattachment, session loading, interrupted-turn
 continuation, approval restoration and provider checkpoints are separate
 capabilities. ACP/acpx session history alone cannot restore an interrupted turn.
 Unknown/orphaned execution needs inspection before another writer can start.
 Upgrade only idle/drained hosts; do not restart active non-restorable work.
+
+Streaming uses a durable background outbox with byte-budget uploads and coalesced text. Checkpoints exceeding one upload are visibly shortened; completion continues. Never rewrite attempted sequences on retry. Upgrade only idle/drained hosts.
+
+
+An ACP/acpx adapter (including a manifest entry) may opt into guarded native recovery with
+`fencedSessionRestoration: true` in its private configuration. This requires
+`durableLifecycle: true` on the host and defaults off. Use it on owned native acceptance machines first; enable it on other hosts only after the adapter
+has passed native recovery acceptance. The server still requires isolation of the old provider, the original
+conversation identity, current authority and a startup acknowledgement; the option does not allow
+live interrupted-turn continuation or restore pending approvals.
