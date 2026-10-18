@@ -11,6 +11,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./control-reset": "./src/control-reset.ts",
     "./styles.css": "./src/styles.css",
     "./tokens": "./src/tokens.ts",
     "./primitives": "./src/primitives.ts",

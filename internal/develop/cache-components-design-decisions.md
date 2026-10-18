@@ -220,3 +220,8 @@ React's shell-time script (`$RT`) and the theme initializer (`THEME_INIT_SCRIPT`
 `csp-nonce.test.ts` recomputes both hashes (React's from the installed
 `next/dist/compiled/react-dom`) and fails when an upgrade or edit changes them. Any new inline script in a prerendered
 shell needs the same treatment.
+
+
+### Turbopack route bootstrap and nonce CSP
+
+Keep `experimental.turbopackSharedRuntime: false` in `next.config.ts`. The shared runtime introduced in Next.js 16.4 emits an inline route bootstrap in the prerendered shell without a request nonce; enforcing CSP blocks it and prevents hydration. External route runtimes avoid this mismatch while retaining nonce CSP, Cache Components and partial prefetching. Validate framework upgrades with an optimized build and a fresh authenticated hard navigation under `SECURITY_CSP_NONCE=true`; a development server or a preview with nonces disabled cannot establish this acceptance.

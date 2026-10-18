@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useState, useCallback, useEffect, useRef, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -197,14 +199,14 @@ export function AutomationsInlinePanel({
         )}
       />
       {hasMore ? (
-        <button
+        <Button variant="ghost"
           type="button"
           disabled={loadingMore}
           onClick={() => void loadMoreAutomations()}
-          className="h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
+          className={unstyledButton(`h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60`)}
         >
           {loadingMore ? 'Loading...' : 'Load more'}
-        </button>
+        </Button>
       ) : null}
     </div>
   )

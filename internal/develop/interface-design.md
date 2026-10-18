@@ -124,6 +124,13 @@ with the compatibility `Select`. Trigger dimensions, option rows, Overlay CSS
 variables and portalled `z-10090` remain unchanged. `portal=false` stays inline
 at `z-50`, with Radix collision handling in both modes.
 
+## Primitive style resets
+
+When migrating a control while preserving its existing visual contract, import
+`unstyledButton`, `unstyledInput`, or `unstyledTextarea` from
+`@overlay/ui/control-reset`. Apply the helper at the existing control so local
+classes and native semantics remain explicit.
+
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,
 agent defaults/accounts); an unmatched controlled value retains its display text

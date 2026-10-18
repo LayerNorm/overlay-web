@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { Fragment, cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from 'react'
 import { ToggleLeft, ToggleRight } from 'lucide-react'
 
@@ -19,11 +20,11 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 
 export function EnabledToggle({ enabled, onChange }: { enabled: boolean; onChange(): void }) {
   return (
-    <button type="button" onClick={onChange} className="flex items-center gap-1.5 text-xs text-(--muted) transition-colors hover:text-(--foreground)">
+    <Button variant="ghost" type="button" onClick={onChange} className={unstyledButton("flex items-center gap-1.5 text-xs text-(--muted) transition-colors hover:text-(--foreground)")}>
       {enabled
         ? <ToggleRight size={18} className="text-(--foreground)" />
         : <ToggleLeft size={18} className="text-(--muted-light)" />}
       <span>{enabled ? 'Active' : 'Disabled'}</span>
-    </button>
+    </Button>
   )
 }

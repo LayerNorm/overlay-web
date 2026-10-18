@@ -1,10 +1,11 @@
 "use client";
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
-import { ListboxSelect } from '@overlay/ui/primitives'
+import { ListboxSelect, Button, Textarea } from '@overlay/ui/primitives'
 import { Dialog, DialogContent } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -565,33 +566,33 @@ function MemoriesHeaderActions({
         className="w-40"
         buttonClassName="min-h-8 rounded-md py-1 text-xs"
       />
-      <button
+      <Button variant="ghost"
         onClick={onToggleSelectionMode}
-        className={`flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs transition-colors ${
+        className={unstyledButton(`flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs transition-colors ${
           selectionMode
             ? 'bg-(--surface-subtle) text-(--foreground)'
             : 'bg-(--surface-elevated) text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
-        }`}
+        }`)}
       >
         <CheckSquare size={12} />
         {selectionMode ? 'Done' : 'Select'}
-      </button>
+      </Button>
       {selectionMode && selectedCount > 0 && (
-        <button
+        <Button variant="ghost"
           onClick={() => void onBulkDelete()}
-          className="flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15"
+          className={unstyledButton(`flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/15`)}
         >
           <Trash2 size={12} />
           Delete {selectedCount}
-        </button>
+        </Button>
       )}
-      <button
+      <Button variant="ghost"
         onClick={onAddMemory}
-        className={actionButtonClass}
+        className={unstyledButton(actionButtonClass)}
       >
         <Plus size={12} />
         Add memory
-      </button>
+      </Button>
     </>
   )
 }
@@ -633,15 +634,15 @@ function AddMemoryDialog({
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 id="add-memory-title" className="text-sm font-medium text-(--foreground)">Add memory</h3>
-          <button
+          <Button variant="ghost"
             aria-label="Close"
             onClick={onClose}
-            className="rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className={unstyledButton(`rounded-sm p-1 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
           >
             <X size={14} />
-          </button>
+          </Button>
         </div>
-        <textarea
+        <Textarea
           aria-label="Memory content"
           value={addText}
           onChange={(event) => onAddTextChange(event.target.value)}
@@ -651,7 +652,7 @@ function AddMemoryDialog({
           onKeyDown={(event) => {
             if (event.key === 'Enter' && event.metaKey) void onSave()
           }}
-          className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)"
+          className={unstyledTextarea(`w-full resize-none rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-2.5 text-sm text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted-light) focus:border-(--muted)`)}
         />
         <div className="mt-3 grid grid-cols-2 gap-3">
           <label className="text-xs text-(--muted)">
@@ -689,19 +690,19 @@ function AddMemoryDialog({
           </p>
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
-          <button
+          <Button variant="ghost"
             onClick={onClose}
-            className={dialogButtonClass}
+            className={unstyledButton(dialogButtonClass)}
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             onClick={() => void onSave()}
             disabled={!addText.trim() || isSaving}
-            className={`${dialogButtonClass} disabled:opacity-40`}
+            className={unstyledButton(`${dialogButtonClass} disabled:opacity-40`)}
           >
             {isSaving ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -725,12 +726,12 @@ function MemoriesEmptyState({
           ? 'No memories yet'
           : `No memories from ${members.find((member) => member.principalId === selectedMemberPrincipalId)?.name ?? 'this owner'}`}
       </p>
-      <button
+      <Button variant="ghost"
         onClick={onAddMemory}
-        className="text-xs text-(--foreground) underline underline-offset-2 transition-colors"
+        className={unstyledButton(`text-xs text-(--foreground) underline underline-offset-2 transition-colors`)}
       >
         Add your first memory
-      </button>
+      </Button>
     </div>
   )
 }
@@ -805,14 +806,14 @@ function MemoryCard({
     >
       <div className="flex items-start gap-3">
         {selectionMode && memory.canDelete && (
-          <button
+          <Button variant="ghost"
             type="button"
             aria-label={isSelected ? 'Deselect memory' : 'Select memory'}
             onClick={() => onToggleSelected(memory.memoryId)}
-            className="mt-0.5 shrink-0 text-(--muted)"
+            className={unstyledButton(`mt-0.5 shrink-0 text-(--muted)`)}
           >
             {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-          </button>
+          </Button>
         )}
         <div className="min-w-0 flex-1">
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-(--foreground)">
@@ -839,21 +840,21 @@ function MemoryCard({
         </div>
         {!selectionMode && (
           <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <button
+            <Button variant="ghost"
               onClick={() => void onCopy(memory)}
-              className="rounded-sm p-1 transition-colors hover:bg-(--surface-subtle)"
+              className={unstyledButton(`rounded-sm p-1 transition-colors hover:bg-(--surface-subtle)`)}
               title="Copy memory"
             >
               <Copy size={13} className="text-(--muted)" />
-            </button>
+            </Button>
             {memory.canDelete ? (
-              <button
+              <Button variant="ghost"
                 onClick={() => void onDelete(memory.memoryId)}
-                className="rounded-sm p-1 transition-colors hover:bg-red-500/10"
+                className={unstyledButton(`rounded-sm p-1 transition-colors hover:bg-red-500/10`)}
                 title="Delete memory"
               >
                 <Trash2 size={13} className="text-red-400" />
-              </button>
+              </Button>
             ) : null}
           </div>
         )}

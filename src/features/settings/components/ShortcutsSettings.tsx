@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledInput } from '@overlay/ui/control-reset'
+import { Input } from '@overlay/ui/primitives'
+
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { SettingsGroup } from '@overlay/modules-react/settings'
 import {
@@ -63,13 +66,13 @@ export function ShortcutsSettings() {
 
   return (
     <div className="flex flex-col gap-4">
-      <input
+      <Input
         type="search"
         aria-label="Search shortcuts"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search shortcuts..."
-        className="w-full rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2 text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light) focus:border-(--muted-light)"
+        className={unstyledInput(`w-full rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2 text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light) focus:border-(--muted-light)`)}
       />
 
       {groups.length === 0 ? (

@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
@@ -235,12 +237,12 @@ export function ArchivedSettings() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)">
           <div className="flex h-10 items-center gap-3 border-b border-(--border) px-3">
-            <input
+            <Input
               type="checkbox"
               checked={allVisibleSelected}
               onChange={toggleAllVisible}
               aria-label="Select all shown"
-              className="h-3.5 w-3.5 shrink-0 accent-(--foreground)"
+              className={unstyledInput(`h-3.5 w-3.5 shrink-0 accent-(--foreground)`)}
             />
             {selectedItems.length > 0 ? (
               <>
@@ -278,13 +280,13 @@ export function ArchivedSettings() {
                   key={item.key}
                   className="group flex items-center gap-3 border-b border-(--border) px-3 py-2 last:border-b-0 hover:bg-(--surface-subtle)"
                 >
-                  <input
+                  <Input
                     type="checkbox"
                     checked={checked}
                     onChange={() => undefined}
                     onClick={(event) => toggle(item, event.shiftKey)}
                     aria-label={`Select ${item.name}`}
-                    className="h-3.5 w-3.5 shrink-0 accent-(--foreground)"
+                    className={unstyledInput(`h-3.5 w-3.5 shrink-0 accent-(--foreground)`)}
                   />
                   <Icon size={15} className="shrink-0 text-(--muted)" aria-hidden />
                   {item.href && item.kind === 'chat' ? (
@@ -295,26 +297,26 @@ export function ArchivedSettings() {
                   <span className="hidden w-24 shrink-0 text-right text-xs text-(--muted-light) sm:inline">{ARCHIVED_KIND_LABELS[item.kind]}</span>
                   <span className="flex w-18 shrink-0 justify-end">{item.scope ? <ScopeTag scope={item.scope} /> : null}</span>
                   <span className="hidden w-12 shrink-0 text-right text-xs text-(--muted-light) sm:inline">{archivedOn(item.archivedAt)}</span>
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     title="Restore"
                     aria-label={`Restore ${item.name}`}
                     disabled={busy}
                     onClick={() => void restore([item])}
-                    className="shrink-0 rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground) disabled:opacity-50"
+                    className={unstyledButton(`shrink-0 rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--border) hover:text-(--foreground) disabled:opacity-50`)}
                   >
                     <RotateCcw size={14} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button variant="ghost"
                     type="button"
                     title="Delete forever"
                     aria-label={`Delete ${item.name} forever`}
                     disabled={busy}
                     onClick={() => setPendingDelete([item])}
-                    className="shrink-0 rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--border) hover:text-red-400 disabled:opacity-50"
+                    className={unstyledButton(`shrink-0 rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--border) hover:text-red-400 disabled:opacity-50`)}
                   >
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </li>
               )
             })}

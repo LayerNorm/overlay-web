@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { useCallback, useMemo, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import type {
@@ -120,18 +122,18 @@ function AdvancedSection({ draft, onChange, modelOptions }: {
   }
   return (
     <div className="rounded-xl border border-(--border)">
-      <button
+      <Button variant="ghost"
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left hover:bg-(--surface-muted)"
+        className={unstyledButton(`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left hover:bg-(--surface-muted)`)}
       >
         <span className="text-xs font-medium">Advanced</span>
         <span className={`min-w-0 flex-1 truncate text-right text-[11px] text-(--muted) ${open ? 'invisible' : ''}`}>
           {modelLabel} · {toolsLabel}
         </span>
         <ChevronDown size={14} className={`shrink-0 text-(--muted) transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+      </Button>
       {open ? (
         <div className="space-y-4 px-3 pb-3 pt-0.5">
           <div>
@@ -408,14 +410,14 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       aria-label="New agent"
       className="flex max-h-[min(860px,calc(100vh-32px))] w-[min(440px,94vw)]! flex-col rounded-[20px]! p-0! [&>div:first-child]:px-5 [&>div:first-child]:pt-4"
       actions={(
-        <button
+        <Button variant="ghost"
           type="button"
           aria-label="Close"
           onClick={close}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton(`flex h-7 w-7 items-center justify-center rounded-lg text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         >
           <X size={16} strokeWidth={1.75} />
-        </button>
+        </Button>
       )}
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-1">

@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 
 import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, type JSONContent } from '@tiptap/react'
@@ -240,18 +242,18 @@ function ToolbarButton({
   children: React.ReactNode
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onClick}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+      className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
         active
           ? 'bg-(--foreground) text-(--background)'
           : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
-      }`}
+      }`)}
       aria-label={label}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -348,13 +350,13 @@ export function AutomationInstructionsEditor({
             <Quote size={14} />
           </ToolbarButton>
         </div>
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="rounded-md px-2 py-1 text-[11px] font-medium text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton(`rounded-md px-2 py-1 text-[11px] font-medium text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         >
           {expanded ? 'Collapse' : 'Expand'}
-        </button>
+        </Button>
       </div>
       <div className={expanded ? 'max-h-128 overflow-y-auto' : 'max-h-36 overflow-hidden'}>
         <EditorContent editor={editor} />

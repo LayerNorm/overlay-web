@@ -43,6 +43,7 @@ import type { ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import { logger } from '@/server/observability/logger'
+import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
 import type { AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
 import { AGENT_AUTH_FAILURE_CODE, isAgentProviderId, type AgentProviderId } from '@/shared/agents/provider-accounts'
 
@@ -100,6 +101,7 @@ export class ConnectedAgentControlPlaneService {
     deliverMachineFiles?: (args: { workspaceId: string; environmentId: string; files: Array<{ path: string; contents: string; mode?: number }> }) => Promise<void>
     /** The agent's own secret values (an imported MCP server's token), added to a run's environment. */
     agentSecretEnv?: (agentId: string) => Promise<Record<string, string>>
+    wakeMachine?: (args: { workspaceId: string; environmentId: string }) => Promise<'running' | 'resumed' | 'unavailable'>
     now?: () => number
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
     artifactsEnabled?: () => boolean | Promise<boolean>
@@ -394,16 +396,42 @@ export class ConnectedAgentControlPlaneService {
     conversationId: string
     workspaceId: string
     runId: string
+    controlRequestId?: string
     action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
   }) {
     await this.assertEnabled(args.workspaceId)
     const now = this.now()
+    // Old Convex validators reject unknown arguments during web-first rollout.
+    // Enable the optional control extension only after the v2 backend is live.
+    const { controlRequestId, ...control } = args
     const result = await this.dependencies.repository.controlRemoteAgentTurn({
-      ...args,
+      ...control,
+      ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' && controlRequestId ? { controlRequestId } : {}),
       now,
       queueExpiresAt: now + INTERACTIVE_QUEUE_TTL_MS,
     })
-    if (!result.applied) throw controlPlaneError('Queued remote run was not found', 404, 'remote_run_not_found')
+    if (!result.applied) {
+      const reason = result.reason ?? 'conflicting_state'
+      const errors = {
+        missing: [404, 'The remote run was not found.'],
+        forbidden: [403, 'You cannot control this remote run.'],
+        conflicting_state: [409, 'This remote run cannot accept that control in its current state.'],
+        unsupported_recovery: [409, 'This host cannot restore the interrupted execution. Inspect the original process before starting another attempt.'],
+        expired_deadline: [409, 'This task reached its hard deadline. Start a new task.'],
+      } as const
+      throw controlPlaneError(errors[reason][1], errors[reason][0], `remote_run_${reason}`)
+    }
+    if (args.action !== 'cancel' && this.dependencies.wakeMachine) {
+      const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
+      // Resolve the authorized run through its session; never wake a BYOA environment.
+      for (const environment of environments) {
+        const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
+        if (!session || environment.kind !== 'overlay_cloud') continue
+        const outcome = await this.dependencies.wakeMachine({ workspaceId: args.workspaceId, environmentId: environment.id })
+        if (outcome === 'unavailable') throw controlPlaneError('The agent machine is unavailable. Inspect its state before continuing.', 409, 'remote_machine_unavailable')
+        break
+      }
+    }
     if (result.terminal && this.dependencies.settleUsage &&
       (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
       await this.settleWithAudit(result.terminal)
@@ -781,19 +809,27 @@ export class ConnectedAgentControlPlaneService {
   }
 
   async pollCommands(auth: HostAuthentication, limit: number) {
-    const commands = await this.dependencies.repository.claimCommands({
-      workspaceId: auth.credential.workspaceId,
-      environmentId: auth.credential.environmentId,
-      now: this.now(),
-      leaseMs: 30_000,
-      limit: Math.max(1, Math.min(limit, 50)),
-    })
-    return commands.map((command) => {
+    const [commands, resolvedThroughSequence] = await Promise.all([
+      this.dependencies.repository.claimCommands({
+        workspaceId: auth.credential.workspaceId,
+        environmentId: auth.credential.environmentId,
+        now: this.now(),
+        leaseMs: 30_000,
+        limit: Math.max(1, Math.min(limit, 50)),
+      }),
+      auth.environment.capabilities.remoteLifecycleVersion === 2
+        ? this.dependencies.repository.commandResolutionFloor({
+          workspaceId: auth.credential.workspaceId,
+          environmentId: auth.credential.environmentId,
+        }) : Promise.resolve(undefined),
+    ])
+    const parsedCommands = commands.map((command) => {
       if (new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_COMMAND_BYTES) {
         throw controlPlaneError('Queued command exceeds the bridge protocol byte limit', 413, 'command_too_large')
       }
       const parsed = agentHostCommandSchema.safeParse({
         protocolVersion: 1,
+        ...(command.attemptId ? { execution: { attemptId: command.attemptId, generation: command.executionGeneration } } : {}),
         commandId: command.id,
         environmentId: command.environmentId,
         workspaceId: command.workspaceId,
@@ -808,9 +844,27 @@ export class ConnectedAgentControlPlaneService {
       }
       if (parsed.data.type === 'start') {
         this.assertWorkingDirectory(auth.environment, parsed.data.payload.workingDirectory)
+        if (parsed.data.payload.fresh) {
+          const mcp = parsed.data.payload.metadata.overlayMcp
+          if (mcp !== undefined) {
+            if (!mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string')
+              throw controlPlaneError('Recovery tool credentials are invalid', 409, 'recovery_credentials_invalid')
+            const claims = verifyAgentMcpToken(mcp.token)
+            if (!claims || claims.runId !== command.runId || claims.workspaceId !== command.workspaceId
+              || claims.environmentId !== command.environmentId)
+              throw controlPlaneError('Recovery tool credentials expired or do not match this run', 409, 'recovery_credentials_invalid')
+            const { expiresAt, ...scope } = claims
+            // Refresh delivery without extending the original grant's authority or lifetime.
+            const token = mintAgentMcpToken({ ...scope, ttlMs: expiresAt - Date.now() })
+            if (!token) throw controlPlaneError('Recovery tool credentials unavailable', 409, 'recovery_credentials_invalid')
+            parsed.data.payload.metadata.overlayMcp = { ...mcp, token }
+          }
+        }
       }
       return parsed.data
     })
+    return { commands: parsedCommands,
+      ...(auth.environment.capabilities.remoteLifecycleVersion === 2 ? { resolvedThroughSequence } : {}) }
   }
 
   async acknowledgeCommand(auth: HostAuthentication, acknowledgement: CommandAcknowledgement) {
@@ -844,12 +898,17 @@ export class ConnectedAgentControlPlaneService {
     const limits = this.dependencies.policyLimits && billingUserId
       ? await this.dependencies.policyLimits({ userId: billingUserId, workspaceId: auth.credential.workspaceId })
       : undefined
+    // A batch carries one event stream: after a start_fresh the host still owes events
+    // from the previous attempt, which live on that attempt's session row with its own
+    // event cursor. Route by the declared attemptId so stale-stream batches reach their
+    // cursor (and the stale-attempt fence) instead of deadlocking on the new cursor.
+    const batchSessionId = batch.events.find((event) => event.execution?.attemptId)?.execution?.attemptId ?? session.id
     let result
     try {
       result = await this.dependencies.repository.applyRemoteEvents({
         workspaceId: auth.credential.workspaceId,
         environmentId: auth.credential.environmentId,
-        sessionId: session.id,
+        sessionId: batchSessionId,
         events: batch.events,
         ...(limits ? { maxEventsPerMinute: limits.maxEventsPerMinute } : {}),
         now: this.now(),
@@ -867,6 +926,17 @@ export class ConnectedAgentControlPlaneService {
         workspaceId: auth.credential.workspaceId, agentId: billingAgentId(session.capabilitySnapshot),
         environmentId: auth.environment.id, runId: batch.runId, remoteSessionId: session.id,
         eventCursor: session.eventCursor, expectedSequence: result.expectedSequence,
+      }, batch.runId, 'agent_run')
+      return result
+    }
+    if (result.stale) {
+      // Events fenced out by the durable lifecycle (dead attempt, superseded boot, or
+      // post-terminal leftovers) are acknowledged so the host drops them instead of
+      // retrying a batch that can never apply.
+      await this.audit('agent_remote_run.stale_events_swallowed', 'service', undefined, {
+        workspaceId: auth.credential.workspaceId, agentId: billingAgentId(session.capabilitySnapshot),
+        environmentId: auth.environment.id, runId: batch.runId, remoteSessionId: session.id,
+        eventCursor: result.acknowledgedSequence, eventCount: batch.events.length, stale: result.stale,
       }, batch.runId, 'agent_run')
       return result
     }
@@ -985,6 +1055,11 @@ export class ConnectedAgentControlPlaneService {
     await this.dependencies.repository.finalizeArtifact({ workspaceId: artifact.workspaceId,
       environmentId: artifact.environmentId, artifactId: artifact.id, status: 'rejected', scanResult: result, now: this.now() })
     await this.requireObjectStore().deleteObject(artifact.objectKey).catch((_error) => undefined)
+  }
+
+  async finalizeRemoteRunUsage(settlement: RemoteAgentUsageSettlement) {
+    await this.settleWithAudit(settlement)
+    await this.dependencies.onTerminalMessage?.(settlement)
   }
 
   private async settleWithAudit(settlement: RemoteAgentUsageSettlement) {

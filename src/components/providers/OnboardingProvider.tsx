@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import {
   createContext,
   useCallback,
@@ -122,13 +123,13 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
             memories, files, connectors, skills & MCPs
           </li>
         </ul>
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={onDismiss}
-          className="w-full rounded-md bg-(--foreground) py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-80"
+          className={unstyledButton("w-full rounded-md bg-(--foreground) py-2 text-xs font-medium text-(--background) transition-opacity hover:opacity-80")}
         >
           Get started
-        </button>
+        </Button>
       </div>
     </div>
   )

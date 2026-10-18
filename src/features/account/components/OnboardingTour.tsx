@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
+import { Button, Textarea } from '@overlay/ui/primitives'
 
 import {
   useEffect,
@@ -374,14 +376,14 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
           <h2 id="onboarding-import-title" className="text-base font-semibold text-(--foreground)">
             Import memories from other assistants
           </h2>
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={onFinish}
-            className="rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className={unstyledButton(`rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             aria-label="Skip import"
           >
             <X size={16} />
-          </button>
+          </Button>
         </div>
         <p className="mb-6 text-xs text-(--muted)">
           Optional — bring over context from ChatGPT, Claude, or other tools. Copy the prompt, paste it there, then paste the reply below. We&apos;ll save it into your Overlay memories.
@@ -400,18 +402,18 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
             </p>
             <div className="relative rounded-lg border border-(--border) bg-(--surface-muted) px-3 pb-10 pt-3">
               <p className="text-xs leading-relaxed text-(--foreground)">{ONBOARDING_IMPORT_MEMORY_PROMPT}</p>
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={async () => {
                   await navigator.clipboard.writeText(ONBOARDING_IMPORT_MEMORY_PROMPT)
                   setMemoryPromptCopied(true)
                   window.setTimeout(() => setMemoryPromptCopied(false), 2000)
                 }}
-                className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+                className={unstyledButton(`absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-elevated) px-2 py-1 text-[11px] text-(--foreground) transition-colors hover:bg-(--surface-subtle)`)}
               >
                 {memoryPromptCopied ? <Check size={11} /> : <Copy size={11} />}
                 {memoryPromptCopied ? 'Copied!' : 'Copy'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -424,13 +426,13 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
             <p className="mb-2 text-xs font-medium text-(--foreground)">
               Paste results below to add to Overlay memories
             </p>
-            <textarea
+            <Textarea
               aria-label="Memory import results"
               value={importPaste}
               onChange={(e) => setImportPaste(e.target.value)}
               placeholder="Paste your memory details here"
               rows={6}
-              className="w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 text-xs text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted) focus:border-(--muted)"
+              className={unstyledTextarea(`w-full resize-none rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2.5 text-xs text-(--foreground) outline-hidden transition-colors placeholder:text-(--muted) focus:border-(--muted)`)}
             />
             {importError ? (
               <p className="mt-2 text-xs text-red-500">{importError}</p>
@@ -439,17 +441,17 @@ function ImportMemoriesStep({ onFinish }: { onFinish: () => void }) {
         </div>
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-          <button type="button" onClick={onFinish} className={DIALOG_SECONDARY_CLASS}>
+          <Button variant="ghost" type="button" onClick={onFinish} className={unstyledButton(DIALOG_SECONDARY_CLASS)}>
             Skip
-          </button>
-          <button
+          </Button>
+          <Button variant="ghost"
             type="button"
             onClick={() => void saveImportedMemories()}
             disabled={!importPaste.trim() || isImportSaving}
-            className={DIALOG_PRIMARY_CLASS}
+            className={unstyledButton(DIALOG_PRIMARY_CLASS)}
           >
             {isImportSaving ? 'Saving…' : 'Add to memory'}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -584,14 +586,14 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
             <h2 id="onboarding-connectors-title" className="text-base font-semibold text-(--foreground)">
               Connect your tools
             </h2>
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onFinish}
-              className="rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
               aria-label="Close"
             >
               <X size={16} />
-            </button>
+            </Button>
           </div>
           <p className="mb-4 text-xs leading-relaxed text-(--muted)">
             Optional — connect apps you use with Overlay. Use Connect on a card below (same OAuth flow as Extensions), or{' '}
@@ -617,11 +619,11 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
                   <p className="mb-2.5 mt-0.5 line-clamp-3 flex-1 text-[10px] leading-snug text-(--muted)">
                     {c.description}
                   </p>
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     onClick={() => { if (!isConnected) void connectPopularConnector(c.slug) }}
                     disabled={anyBusy || isConnected}
-                    className="mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) text-[11px] font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-100 disabled:hover:bg-(--surface-elevated)"
+                    className={unstyledButton(`mt-auto inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-(--border) bg-(--surface-elevated) text-[11px] font-medium text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-100 disabled:hover:bg-(--surface-elevated)`)}
                   >
                     {isConnected ? (
                       <>
@@ -636,35 +638,35 @@ function ConnectToolsStep({ onFinish }: { onFinish: () => void }) {
                         Connect
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
               )
             })}
           </div>
 
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => setIntegrationsPickerOpen(true)}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-(--border) bg-(--surface-muted)/60 py-3 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-muted)"
+            className={unstyledButton(`mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-(--border) bg-(--surface-muted)/60 py-3 text-xs font-medium text-(--foreground) transition-colors hover:bg-(--surface-muted)`)}
           >
             <Plus size={16} strokeWidth={2} className="text-(--muted)" aria-hidden />
             Add integration
-          </button>
+          </Button>
 
           <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={onFinish} className={DIALOG_SECONDARY_CLASS}>
+            <Button variant="ghost" type="button" onClick={onFinish} className={unstyledButton(DIALOG_SECONDARY_CLASS)}>
               Skip
-            </button>
-            <button
+            </Button>
+            <Button variant="ghost"
               type="button"
               onClick={() => {
                 router.push('/app/tools')
                 onFinish()
               }}
-              className={`${DIALOG_PRIMARY_CLASS} flex items-center gap-1.5`}
+              className={unstyledButton(`${DIALOG_PRIMARY_CLASS} flex items-center gap-1.5`)}
             >
               Open Extensions
-            </button>
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -792,48 +794,48 @@ function TourOverlay({
             <span className="text-[11px] font-medium tabular-nums text-(--muted)">
               {currentStep + 1} / {stepsCount}
             </span>
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onSkip}
-              className="rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`rounded-sm p-0.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
               aria-label="Close tour"
             >
               <X size={14} />
-            </button>
+            </Button>
           </div>
 
           <h3 className="mb-1.5 text-base font-semibold text-(--foreground)">{step.title}</h3>
           <p className="mb-5 text-sm leading-relaxed text-(--muted)">{step.description}</p>
 
           <div className="flex items-center justify-between">
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onSkip}
-              className="text-sm text-(--muted) hover:text-(--foreground)"
+              className={unstyledButton(`text-sm text-(--muted) hover:text-(--foreground)`)}
             >
               Skip tour
-            </button>
+            </Button>
             <div className="flex gap-2">
               {currentStep > 0 && (
-                <button
+                <Button variant="ghost"
                   type="button"
                   onClick={onBack}
-                  className="rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-sm font-medium text-(--foreground) hover:bg-(--surface-elevated)"
+                  className={unstyledButton(`rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-sm font-medium text-(--foreground) hover:bg-(--surface-elevated)`)}
                 >
                   Back
-                </button>
+                </Button>
               )}
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={isLast ? onComplete : onNext}
-                className="flex items-center gap-1.5 rounded-lg bg-(--foreground) px-4 py-1.5 text-sm font-medium text-(--background)"
+                className={unstyledButton(`flex items-center gap-1.5 rounded-lg bg-(--foreground) px-4 py-1.5 text-sm font-medium text-(--background)`)}
               >
                 {isLast ? (
                   <>Get started</>
                 ) : (
                   <>Next <ArrowRight size={13} /></>
                 )}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

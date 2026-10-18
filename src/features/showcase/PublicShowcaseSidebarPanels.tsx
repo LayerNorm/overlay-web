@@ -1,8 +1,9 @@
 'use client'
+import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { File, Workflow } from 'lucide-react'
-import { SidebarResourceList } from '@overlay/ui/primitives'
+import { SidebarResourceList, Button } from '@overlay/ui/primitives'
 import {
   SHOWCASE_AUTOMATIONS,
   SHOWCASE_KNOWLEDGE_NODES,
@@ -19,10 +20,10 @@ export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: ()
   return (
     <SidebarResourceList>
       {SHOWCASE_KNOWLEDGE_NODES.map((file) => (
-        <button
+        <Button variant="ghost"
           key={file._id}
           type="button"
-          className={`${rowClass} ${activeId === file._id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+          className={unstyledButton(`${rowClass} ${activeId === file._id ? 'bg-(--surface-subtle)' : ''}`)}
           onClick={() => {
             router.push(`/app/files?${new URLSearchParams({ showcase: '1', file: file._id }).toString()}`)
             onNavigate?.()
@@ -30,7 +31,7 @@ export function PublicShowcaseFilesInlinePanel({ onNavigate }: { onNavigate?: ()
         >
           <File size={12} className="shrink-0" />
           <span className="truncate">{file.name}</span>
-        </button>
+        </Button>
       ))}
     </SidebarResourceList>
   )
@@ -46,10 +47,10 @@ export function PublicShowcaseAutomationsInlinePanel({ onNavigate }: { onNavigat
       {SHOWCASE_AUTOMATIONS.map((automation) => {
         const id = `showcase-${automation.id}`
         return (
-          <button
+          <Button variant="ghost"
             key={id}
             type="button"
-            className={`${rowClass} ${activeId === id ? 'bg-(--surface-subtle) text-(--foreground)' : ''}`}
+            className={unstyledButton(`${rowClass} ${activeId === id ? 'bg-(--surface-subtle)' : ''}`)}
             onClick={() => {
               router.push(`/app/automations?${new URLSearchParams({ showcase: '1', automationId: id }).toString()}`)
               onNavigate?.()
@@ -57,7 +58,7 @@ export function PublicShowcaseAutomationsInlinePanel({ onNavigate }: { onNavigat
           >
             <Workflow size={12} className="shrink-0" />
             <span className="truncate">{automation.name}</span>
-          </button>
+          </Button>
         )
       })}
     </SidebarResourceList>

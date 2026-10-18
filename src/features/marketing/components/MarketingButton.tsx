@@ -1,5 +1,6 @@
 "use client";
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { ArrowRight, ArrowUpRight, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { CSSProperties, MouseEventHandler, ReactNode } from "react";
@@ -17,7 +18,7 @@ import type { CSSProperties, MouseEventHandler, ReactNode } from "react";
  * Supports three render modes:
  *  - `href` + `external`  → `<a target="_blank">`
  *  - `href` (internal)    → Next.js `<Link>`
- *  - `onClick` / no href  → `<button>`
+ *  - `onClick` / no href  → `Button`
  */
 export type MarketingButtonVariant = "primary" | "secondary" | "ghost";
 export type MarketingButtonSize = "sm" | "md" | "lg";
@@ -64,7 +65,7 @@ export interface MarketingButtonProps {
   className?: string;
   /** Optional inline style (e.g. `fontFamily`). */
   style?: CSSProperties;
-  /** Pass-through for `<button>` type. */
+  /** Pass-through for `Button` type. */
   type?: "button" | "submit" | "reset";
   "aria-label"?: string;
 }
@@ -116,15 +117,15 @@ export function MarketingButton({
   }
 
   return (
-    <button
+    <Button variant="ghost"
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={classes}
+      className={unstyledButton(classes)}
       style={style}
       aria-label={rest["aria-label"]}
     >
       {content}
-    </button>
+    </Button>
   );
 }

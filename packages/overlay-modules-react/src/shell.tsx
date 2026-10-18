@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
@@ -87,10 +88,10 @@ function RightPanelOverlay({
     visible ? 'opacity-100' : 'pointer-events-none opacity-0',
   )
   return onClose ? (
-    <button
+    <Button variant="ghost"
       type="button"
       aria-label="Close side panel"
-      className={className}
+      className={unstyledButton(className)}
       onClick={onClose}
     />
   ) : (
@@ -468,17 +469,17 @@ function AppScreenSidePanelDefaultHeader({
         <div className="flex shrink-0 items-center gap-1.5">
           {actions}
           {onClose ? (
-            <button
+            <Button variant="ghost"
               type="button"
               aria-label={closeLabel}
-              className={cn(
+              className={unstyledButton(cn(
                 'inline-flex items-center justify-center text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)',
                 compact ? 'h-7 w-7 rounded-md' : 'h-8 w-8 rounded-lg',
-              )}
+              ))}
               onClick={onClose}
             >
               <X size={compact ? 14 : 16} strokeWidth={1.8} />
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}

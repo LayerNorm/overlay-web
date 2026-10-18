@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
@@ -611,7 +613,7 @@ export function SlackImportPanel({ onBack }: { onBack?: () => void } = {}) {
           title="Connect Slack"
           description="Connect your Slack workspace to import channel history into Overlay conversations. Messages, threads, and files are imported deterministically — no AI processing."
           action={
-            <Button size="sm" onClick={() => void handleConnect()} disabled={oauthPolling}>
+            <Button variant="ghost" size="sm" onClick={() => void handleConnect()} disabled={oauthPolling}>
               {oauthPolling ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
               {oauthPolling ? 'Waiting for connection…' : 'Connect Slack'}
             </Button>
@@ -700,9 +702,9 @@ function ImportErrorBanner({ error, onDismiss }: { error: string; onDismiss?: ()
       <AlertCircle size={14} className="mt-0.5 shrink-0" />
       <span>{error}</span>
       {onDismiss ? (
-        <button type="button" aria-label="Dismiss error" className="ml-auto shrink-0" onClick={onDismiss}>
+        <Button variant="ghost" type="button" aria-label="Dismiss error" className={unstyledButton(`ml-auto shrink-0`)} onClick={onDismiss}>
           <X size={12} />
-        </button>
+        </Button>
       ) : null}
     </div>
   )
@@ -785,7 +787,7 @@ function SlackUserListContent({ usersLoading, usersError, onRetryUsers, users, s
         title="Could not load Slack users"
         description={usersError}
         action={
-          <Button size="sm" onClick={onRetryUsers}>
+          <Button variant="ghost" size="sm" onClick={onRetryUsers}>
             <RefreshCw size={12} />
             Try again
           </Button>
@@ -874,7 +876,7 @@ function SlackPeopleStep({ error, onDismissError, usersLoading, usersError, onRe
           >
             Skip
           </Button>
-          <Button
+          <Button variant="ghost"
             size="sm"
             onClick={onInvite}
             disabled={selectedUserIds.size === 0 || inviting}
@@ -901,13 +903,13 @@ function JobsSummaryBar({ jobs, onShowActiveJob }: {
         <CheckCircle2 size={12} />
         {jobs.filter((j) => j.status === 'completed').length} completed import(s).
         {jobs.some((j) => ACTIVE_JOB_STATUSES.has(j.status)) && (
-          <button
+          <Button variant="ghost"
             type="button"
-            className="text-(--foreground) underline"
+            className={unstyledButton(`text-(--foreground) underline`)}
             onClick={onShowActiveJob}
           >
             View active job
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -955,22 +957,22 @@ function ChannelSelectionControls({ selectedCount, onSelectAllPublic, onClearSel
 }) {
   return (
     <div className="mb-3 flex items-center gap-2 text-xs">
-      <button
+      <Button variant="ghost"
         type="button"
-        className="text-(--foreground) underline"
+        className={unstyledButton(`text-(--foreground) underline`)}
         onClick={onSelectAllPublic}
       >
         Select all public
-      </button>
+      </Button>
       <span className="text-(--muted-light)">·</span>
-      <button
+      <Button variant="ghost"
         type="button"
-        className="text-(--muted) underline"
+        className={unstyledButton(`text-(--muted) underline`)}
         onClick={onClearSelection}
         disabled={selectedCount === 0}
       >
         Clear
-      </button>
+      </Button>
       <span className="ml-auto text-(--muted)">
         {selectedCount} selected
       </span>
@@ -1008,7 +1010,7 @@ function ChannelListContent({ channelsLoading, channelsError, onRefreshChannels,
         title="Could not load channels"
         description={channelsError}
         action={
-          <Button size="sm" onClick={onRefreshChannels}>
+          <Button variant="ghost" size="sm" onClick={onRefreshChannels}>
             <RefreshCw size={12} />
             Try again
           </Button>
@@ -1103,7 +1105,7 @@ function SlackChannelsStep({ jobs, onShowActiveJob, channelsLoading, channelsErr
       {/* Start import button */}
       {hasChannels ? (
         <div className="mt-4 flex items-center justify-end gap-2 border-t border-(--border) pt-4">
-          <Button
+          <Button variant="ghost"
             size="sm"
             onClick={onStartImport}
             disabled={selectedChannelIds.size === 0 || starting}
@@ -1141,14 +1143,14 @@ function ImportFlow({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-(--border) px-5 pb-3 pt-4">
         <div className="flex items-center gap-2">
           {onBack ? (
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onBack}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+              className={unstyledButton(`inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
             >
               <ArrowLeft size={13} />
               All services
-            </button>
+            </Button>
           ) : null}
           <span className="text-sm font-semibold text-(--foreground)">Import from {serviceLabel}</span>
         </div>
@@ -1202,14 +1204,14 @@ function JobProgressHeader({ job, isActive, totalChats, cancelling, onCancel, on
   const isCancelled = job.status === 'cancelled'
   return (
     <div className="mb-4 flex items-center gap-3">
-      <button
+      <Button variant="ghost"
         type="button"
         aria-label="Back to channel picker"
         onClick={onBackToPicker}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+        className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
       >
         <ArrowLeft size={14} />
-      </button>
+      </Button>
       <div className="min-w-0 flex-1">
         <h3 className="text-sm font-semibold text-(--foreground)">
           {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Importing…'}
@@ -1329,7 +1331,7 @@ function JobProgressView({
       {/* Back to picker */}
       {!isActive ? (
         <div className="mt-4 border-t border-(--border) pt-4">
-          <Button size="sm" onClick={onBackToPicker}>
+          <Button variant="ghost" size="sm" onClick={onBackToPicker}>
             <Download size={13} />
             Import more channels
           </Button>
@@ -1389,14 +1391,14 @@ function JobDoneView({
   return (
     <div className="px-5 py-4">
       <div className="mb-4 flex items-center gap-3">
-        <button
+        <Button variant="ghost"
           type="button"
           aria-label="Back to channel picker"
           onClick={onBackToPicker}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className={unstyledButton(`inline-flex h-7 w-7 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
         >
           <ArrowLeft size={14} />
-        </button>
+        </Button>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-(--foreground)">
             {isCompleted ? 'Import complete' : isFailed ? 'Import failed' : isCancelled ? 'Import cancelled' : 'Import finished'}
@@ -1423,7 +1425,7 @@ function JobDoneView({
       ) : null}
 
       <div className="mt-4 flex items-center gap-2 border-t border-(--border) pt-4">
-        <Button size="sm" onClick={onBackToPicker}>
+        <Button variant="ghost" size="sm" onClick={onBackToPicker}>
           <Download size={13} />
           Import more channels
         </Button>

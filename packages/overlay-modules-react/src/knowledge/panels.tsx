@@ -154,7 +154,9 @@ export function HiddenKnowledgeFileInputs({
 }) {
   return (
     <>
+      {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file input provides the browser file chooser and FileList. */}
       <input ref={fileUploadRef} type="file" className="hidden" onChange={onFileChange} />
+      {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native directory picker provides webkitdirectory folder selection and FileList. */}
       <input
         ref={folderUploadRef}
         type="file"

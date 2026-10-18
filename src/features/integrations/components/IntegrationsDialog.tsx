@@ -1,4 +1,6 @@
 'use client'
+import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState, useEffect, useCallback, useRef, type UIEvent } from 'react'
 import Image from 'next/image'
@@ -212,27 +214,27 @@ export function IntegrationsDialog({
               Search integrations available from the configured provider
             </p>
           </div>
-          <button
+          <Button variant="ghost"
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className='rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
+            className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)`)}
           >
             <X size={16} />
-          </button>
+          </Button>
         </div>
 
         <div className="border-b border-(--border) px-5 py-3">
           <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2">
             <Search size={13} className="shrink-0 text-(--muted-light)" />
-            <input
+            <Input
               type="text"
               aria-label="Search integrations"
               value={queryInput}
               onChange={(e) => setQueryInput(e.target.value)}
               placeholder="Search integrations..."
               data-autofocus
-              className="flex-1 bg-transparent text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light)"
+              className={unstyledInput(`flex-1 bg-transparent text-sm text-(--foreground) outline-hidden placeholder:text-(--muted-light)`)}
             />
           </div>
         </div>
@@ -290,31 +292,31 @@ export function IntegrationsDialog({
                   </p>
                 </div>
                 {item.isConnected ? (
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     onClick={() => void handleDisconnect(item.slug)}
                     disabled={isActing || disconnectUnavailable}
-                    className="shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
+                    className={unstyledButton(`shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50`)}
                   >
                     {isActing ? (
                       <Loader2 size={11} className='animate-spin' />
                     ) : (
                       actionLabel
                     )}
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     onClick={() => void handleConnect(item.slug)}
                     disabled={isActing}
-                    className="shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50"
+                    className={unstyledButton(`shrink-0 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border) disabled:opacity-50`)}
                   >
                     {isActing ? (
                       <Loader2 size={11} className='animate-spin' />
                     ) : (
                       actionLabel
                     )}
-                  </button>
+                  </Button>
                 )}
               </div>
             )

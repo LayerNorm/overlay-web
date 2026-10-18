@@ -29,6 +29,8 @@ export interface AgentAdapterSession {
   approve(requestKey: string, optionId: string): Promise<void>
   elicit(requestKey: string, action: 'accept' | 'decline' | 'cancel', content?: Record<string, unknown>): Promise<void>
   cancel(reason?: string): Promise<void>
+  /** Must describe a specific executing process, not just a loaded session record. */
+  observe?(): Promise<'live' | 'lost' | 'unknown'>
   resume(): Promise<void>
   stop(reason?: string): Promise<void>
 }

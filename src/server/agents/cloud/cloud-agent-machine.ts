@@ -39,9 +39,10 @@ function shellQuote(value: string): string {
 }
 
 /** Starts a detached host process that outlives the provider's command call. */
-function detached(command: string): string {
+function detached(command: string, env: Record<string, string | undefined>): string {
   return `mkdir -p ${shellQuote(CLOUD_AGENT_WORKSPACE)} ${shellQuote(CLOUD_AGENT_STATE_DIR)} && `
     // acpx ignores ~/.claude (skills, commands, subagents, settings) unless told to; an imported profile lives there.
+    + (env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? 'OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION=2 ' : '')
     + `ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1 nohup ${command} >> ${shellQuote(CLOUD_AGENT_LOG_PATH)} 2>&1 < /dev/null &`
 }
 
@@ -51,7 +52,7 @@ export function cloudAgentConnectCommand(args: {
   serverUrl: string
   name: string
   adapterId: CloudAgentAdapterId
-}): string {
+}, env: Record<string, string | undefined> = process.env): string {
   return detached([
     'overlay-agent-host connect', shellQuote(args.enrollmentCode),
     '--server', shellQuote(args.serverUrl),
@@ -60,7 +61,7 @@ export function cloudAgentConnectCommand(args: {
     '--name', shellQuote(args.name),
     '--state-dir', shellQuote(CLOUD_AGENT_STATE_DIR),
     '--run',
-  ].join(' '))
+  ].join(' '), env)
 }
 
 /**
@@ -72,6 +73,6 @@ export function cloudAgentStopHostCommand(): string {
 }
 
 /** After a resume the host process is gone (the machine stopped). Restart it from saved state. */
-export function cloudAgentRunCommand(): string {
-  return detached(`overlay-agent-host run --config ${shellQuote(CLOUD_AGENT_CONFIG_PATH)}`)
+export function cloudAgentRunCommand(env: Record<string, string | undefined> = process.env): string {
+  return detached(`overlay-agent-host run --config ${shellQuote(CLOUD_AGENT_CONFIG_PATH)}`, env)
 }

@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { CircleAlert } from 'lucide-react'
@@ -45,13 +48,13 @@ function WorkspaceHydrationBoundary({ children }: { children: ReactNode }) {
           <p className="mt-1.5 text-xs leading-relaxed text-(--muted)">
             {error ?? 'Workspace not found or you no longer have access.'}
           </p>
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => void refresh()}
-            className="mt-4 h-8 rounded-md border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground)"
+            className={unstyledButton(`mt-4 h-8 rounded-md border border-(--border) bg-(--surface-subtle) px-3 text-xs font-medium text-(--foreground)`)}
           >
             Try again
-          </button>
+          </Button>
         </div>
       </div>
     )

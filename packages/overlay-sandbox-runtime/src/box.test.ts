@@ -63,6 +63,16 @@ test('create always provisions no-env, maps size and ttl, and sets the name via 
   assert.equal(await instance.status(), 'running')
 })
 
+test('a scoped Boat environment stays attached without injecting account credentials', async () => {
+  const { calls, fetch } = recorder(() => ({ ok: true, sandbox: { id: 'bx_preview', state: 'ready' } }))
+  const rt = new BoxSandboxRuntime({ apiKey: 'preview-key', environment: 'overlay-preview', fetch })
+  await rt.create(request())
+  assert.deepEqual(calls[0].body, {
+    type: 'small', ttlSeconds: 600, env: { OVERLAY_WORKSPACE_ID: 'ws-1' },
+    noEnv: true, environment: 'overlay-preview',
+  })
+})
+
 test('create maps default/large sizes and infinite ttl, and restore uses from', async () => {
   const { calls, fetch } = recorder(() => ({ ok: true, sandbox: { id: 'bx_1', state: 'ready' } }))
   const rt = runtime(fetch)

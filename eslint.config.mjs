@@ -1,23 +1,23 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import { fixupPluginRules } from "@eslint/compat";
-import reactPlugin from "eslint-plugin-react";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
 
-// Patch eslint-plugin-react and eslint-plugin-react-hooks in-place before
-// eslint-config-next imports them. ESLint v10 removed context.getFilename()
-// which these plugins still use. fixupPluginRules restores the deprecated
-// context methods so the plugins work under ESLint v10.
-const patchedReact = fixupPluginRules(reactPlugin);
+// Patch eslint-plugin-react-hooks before eslint-config-next imports it.
+// ESLint v10 removed context.getFilename(), which this plugin still uses.
 const patchedReactHooks = fixupPluginRules(reactHooksPlugin);
-// Mutate the original module exports so eslint-config-next picks up the fixup.
-for (const key of Object.keys(patchedReact)) {
-  reactPlugin[key] = patchedReact[key];
-}
 for (const key of Object.keys(patchedReactHooks)) {
   reactHooksPlugin[key] = patchedReactHooks[key];
 }
 
-const nextVitals = (await import("eslint-config-next/core-web-vitals")).default;
+const nextVitals = (await import("eslint-config-next/core-web-vitals")).default.map((config) => {
+  if (!config.plugins?.["react-hooks"]) return config;
+
+  return {
+    ...config,
+    plugins: { ...config.plugins, "react-hooks": reactHooksPlugin },
+    rules: { ...config.rules, ...reactHooksPlugin.configs.recommended.rules },
+  };
+});
 const nextTs = (await import("eslint-config-next/typescript")).default;
 const { createArchitectureBoundaryConfigs } = await import("./scripts/ci/eslint-boundary-rules.mjs");
 
@@ -113,11 +113,50 @@ const serverGuardrailRules = {
   },
 };
 
+
+const rawInteractiveControlRules = {
+  files: [
+    "src/**/*.{tsx,jsx}",
+    "packages/overlay-chat-react/src/**/*.{tsx,jsx}",
+    "packages/overlay-modules-react/src/**/*.{tsx,jsx}",
+  ],
+  ignores: [
+    "**/*.test.{tsx,jsx}",
+    "**/*.spec.{tsx,jsx}",
+    "**/*.stories.{tsx,jsx}",
+    "**/fixtures/**",
+    "**/__fixtures__/**",
+    "**/__mocks__/**",
+  ],
+  rules: {
+    "no-restricted-syntax": [
+      "error",
+      {
+        selector: "JSXOpeningElement[name.name='button']",
+        message: "Use @overlay/ui Button instead of a raw <button>.",
+      },
+      {
+        selector: "JSXOpeningElement[name.name='input']",
+        message: "Use @overlay/ui Input instead of a raw <input>. Browser-semantics exceptions need an overlay:raw-control comment with the reason and an adjacent ESLint suppression.",
+      },
+      {
+        selector: "JSXOpeningElement[name.name='textarea']",
+        message: "Use @overlay/ui Textarea instead of a raw <textarea>.",
+      },
+      {
+        selector: "JSXOpeningElement[name.name='select']",
+        message: "Use @overlay/ui Select instead of a raw <select>.",
+      },
+    ],
+  },
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   sharedIsomorphicRules,
   serverGuardrailRules,
+  rawInteractiveControlRules,
   ...createArchitectureBoundaryConfigs(),
   // Override default ignores of eslint-config-next.
   globalIgnores([
