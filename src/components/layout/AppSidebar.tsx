@@ -7,6 +7,7 @@ import { AppSidebarPrimaryRail } from './sidebar/AppSidebarPrimaryRail'
 import { AppSidebarSecondaryPanel } from './sidebar/AppSidebarSecondaryPanel'
 import {
   DesktopAccountSlot,
+  MobileDrawer,
   MobileSidebar,
   MobileTopBar,
   SecondaryPanelResourceList,
@@ -223,31 +224,53 @@ export default function AppSidebar({
       </>
       ) : null}
 
-      <MobileSidebar
-        open={s.mobileMenuOpen}
-        hidden={s.hideTemporaryChatChrome}
-        onClose={s.closeMobileDrawer}
-        view={s.mobileView}
-        showPanel={s.routeState.showSecondaryPanel}
-        onBack={() => s.setMobileView('nav')}
-        panelTitle={s.panelTitle}
-        panelNav={s.panelNav}
-        panelAction={s.panelAction}
-        panelSearch={s.panelSearch}
-        panelChildren={panelChildren}
-        brandLink={brandLink}
-        navItems={s.mobileNavItems}
-        onSelectItem={s.onSelectMobileNavItem}
-        showcaseLinks={s.showcasePrimaryLinks}
-        menuRef={s.mobileMenuRef}
-        isGuestConfirmed={s.isGuestConfirmed}
-        workspace={workspace}
-        displayName={s.displayName}
-        accountMenuOpen={s.accountMenuOpen}
-        onAccountMenuOpenChange={s.setAccountMenuOpen}
-        accountMenu={accountMenuContent}
-        onSignIn={() => s.requireAuth('send')}
-      />
+      {classicLayout ? (
+        <MobileSidebar
+          open={s.mobileMenuOpen}
+          hidden={s.hideTemporaryChatChrome}
+          onClose={s.closeMobileDrawer}
+          view={s.mobileView}
+          showPanel={s.routeState.showSecondaryPanel}
+          onBack={() => s.setMobileView('nav')}
+          panelTitle={s.panelTitle}
+          panelNav={s.panelNav}
+          panelAction={s.panelAction}
+          panelSearch={s.panelSearch}
+          panelChildren={panelChildren}
+          brandLink={brandLink}
+          navItems={s.mobileNavItems}
+          onSelectItem={s.onSelectMobileNavItem}
+          showcaseLinks={s.showcasePrimaryLinks}
+          menuRef={s.mobileMenuRef}
+          isGuestConfirmed={s.isGuestConfirmed}
+          workspace={workspace}
+          displayName={s.displayName}
+          accountMenuOpen={s.accountMenuOpen}
+          onAccountMenuOpenChange={s.setAccountMenuOpen}
+          accountMenu={accountMenuContent}
+          onSignIn={() => s.requireAuth('send')}
+        />
+      ) : (
+        <MobileDrawer open={s.mobileMenuOpen} hidden={s.hideTemporaryChatChrome} onClose={s.closeMobileDrawer}>
+          <UnifiedSidebar
+            brand={brandLink}
+            collapsed={false}
+            onCollapsedChange={s.closeMobileDrawer}
+            items={s.railItems.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
+            footerItems={s.railFooterItems?.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
+            panelKind={s.routeState.panelKind}
+            panelNav={s.panelNav}
+            panelAction={s.panelAction}
+            onSearch={publicShowcase ? () => s.requireAuth('history') : () => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
+            scope={s.routeState.scope}
+            solo={solo}
+            account={desktopAccountSlot}
+            className="h-full w-full bg-transparent"
+          >
+            {panelChildren}
+          </UnifiedSidebar>
+        </MobileDrawer>
+      )}
 
       <GlobalSearchDialog
         open={s.globalSearchOpen}
