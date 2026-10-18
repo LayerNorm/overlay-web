@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
-import { Hash, Mail, MessageSquare } from 'lucide-react'
+import { Hash, Mail, MessageSquare, X } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AppSidebarPrimaryRail } from './AppSidebarPrimaryRail'
 
@@ -23,6 +23,35 @@ test('primary navigation destinations render as links for modifier-click', () =>
   )
   assert.match(html, /href="\/app\/chat"/)
   assert.doesNotMatch(html, /<button[^>]*aria-label="Chats"/)
+})
+
+test('button navigation entries keep their rail layout through the raw-control reset', () => {
+  const html = renderToStaticMarkup(
+    <AppSidebarPrimaryRail
+      brand={<span>Overlay</span>}
+      items={[{
+        id: 'settings-close',
+        label: 'Settings',
+        icon: X,
+        active: true,
+        onSelect: () => undefined,
+      }]}
+      account={<span>Account</span>}
+      expanded
+    />,
+  )
+  const button = html.match(/<button\b[^>]*aria-label="Settings"[^>]*>/)?.[0]
+  assert.ok(button)
+  const className = button.match(/\bclass="([^"]*)"/)?.[1]
+  assert.ok(className)
+  const classes = new Set(className.split(/\s+/))
+
+  for (const expected of ['flex', 'h-9', 'w-full', 'items-center', 'gap-2.5', 'px-3']) {
+    assert.equal(classes.has(expected), true, `${expected} should be preserved`)
+  }
+  for (const reset of ['inline-block', 'h-auto', 'w-auto', 'gap-0', 'rounded-none']) {
+    assert.equal(classes.has(reset), false, `${reset} should be overridden`)
+  }
 })
 
 const SECTION_NAV = {

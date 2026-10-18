@@ -1,5 +1,6 @@
 'use client'
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
 import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
@@ -13,7 +14,7 @@ export type ScopeChange =
   | { action: 'restore' }
 
 const ICON_BUTTON =
-  'shrink-0 rounded-sm p-1 text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50'
+  'shrink-0 rounded-sm p-1 transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-50'
 const TEXT_BUTTON =
   'inline-flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-50'
 
@@ -87,10 +88,10 @@ export function ScopeItemActions({
     return (
       <div className="flex flex-wrap items-center gap-2">
         {items.map(({ key, label, icon: Icon, onClick }) => (
-          <button key={key} type="button" disabled={busy} onClick={onClick} className={TEXT_BUTTON}>
+          <Button variant="ghost" key={key} type="button" disabled={busy} onClick={onClick} className={unstyledButton(TEXT_BUTTON)}>
             <Icon size={13} />
             {label}
-          </button>
+          </Button>
         ))}
         {error ? <span role="alert" className="text-xs text-red-500">{error}</span> : null}
       </div>
@@ -99,7 +100,7 @@ export function ScopeItemActions({
   return (
     <>
       {items.map(({ key, label, icon: Icon, onClick }) => (
-        <button
+        <Button variant="ghost"
           key={key}
           type="button"
           title={error ?? label}
@@ -109,10 +110,10 @@ export function ScopeItemActions({
             event.stopPropagation()
             onClick()
           }}
-          className={`${ICON_BUTTON}${error ? ' text-red-500' : ''}`}
+          className={unstyledButton(`${ICON_BUTTON} ${error ? 'text-red-500' : 'text-(--muted-light)'}`)}
         >
           <Icon size={12} />
-        </button>
+        </Button>
       ))}
     </>
   )

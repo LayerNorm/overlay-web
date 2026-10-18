@@ -11,7 +11,8 @@ check here first — the answer is usually "use the existing pattern".
 Connected-agent output uses formatted chunks and one bottom loading indicator. Streaming
 Markdown may close an actual unfinished emphasis span, but identifiers and inline-code
 filenames keep their literal underscores; completion must not remove synthetic visible text.
-Preview-only timing diagnostics use a Lucide download control in the existing message toolbar,
+Preview-only timing diagnostics use a Lucide download control through the shared Button primitive
+and style reset in the existing message toolbar,
 with recording/stopped/error in its accessible label. They require both the branch build opt-in
 and conversation query, and remain absent from Production.
 
@@ -156,6 +157,13 @@ from `@overlay/ui`; `SelectRoot` exposes the canonical root without colliding
 with the compatibility `Select`. Trigger dimensions, option rows, Overlay CSS
 variables and portalled `z-10090` remain unchanged. `portal=false` stays inline
 at `z-50`, with Radix collision handling in both modes.
+
+## Primitive style resets
+
+When migrating a control while preserving its existing visual contract, import
+`unstyledButton`, `unstyledInput`, or `unstyledTextarea` from
+`@overlay/ui/control-reset`. Apply the helper at the existing control so local
+classes and native semantics remain explicit.
 
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,

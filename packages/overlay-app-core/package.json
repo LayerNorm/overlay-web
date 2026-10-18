@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./app-shell": "./src/app-shell.ts",
     "./automations": "./src/automations.ts",
+    "./automations/run-status": "./src/automations/run-status.ts",
     "./capabilities": "./src/capabilities.ts",
     "./contracts": "./src/contracts.ts",
     "./extensions": "./src/extensions.ts",

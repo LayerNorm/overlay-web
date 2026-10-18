@@ -4,6 +4,7 @@ import type React from 'react'
 import {
   ChevronDown,
 } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '../DelayedTooltip'
 import { PersonalMentionConversionPrompt } from '../PersonalMentionConversionPrompt'
 import type { useChatExperienceController } from './useChatExperienceController'
@@ -125,14 +126,16 @@ export function buildChatExperienceViewProps(
             messagesEndRef: c.messagesEndRef,
             floatingControl: c.showScrollToBottomControl ? (
               <DelayedTooltip label="Jump to latest" side="top">
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
                   type="button"
                   aria-label="Jump to latest message"
                   onClick={() => c.scrollToConversationBottom('smooth')}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) shadow-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+                  className="h-9 w-9 rounded-full border border-(--border) bg-(--surface-elevated) p-0 text-(--muted) shadow-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 >
                   <ChevronDown size={17} strokeWidth={1.9} />
-                </button>
+                </Button>
               </DelayedTooltip>
             ) : null,
             showLoadingState: c.showChatLoadingState,

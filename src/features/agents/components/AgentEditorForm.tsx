@@ -1,5 +1,7 @@
 'use client'
 
+import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
+
 import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
@@ -33,14 +35,14 @@ export function OptionRow({ checked, onSelect, label, description, icon, labelle
   disabled?: boolean
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       role="radio"
       aria-checked={checked}
       aria-label={labelledBy ?? label}
       disabled={disabled}
       onClick={onSelect}
-      className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-(--muted) bg-(--surface-subtle)' : 'border-(--border) hover:bg-(--surface-subtle)'}`}
+      className={unstyledButton(`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'border-(--muted) bg-(--surface-subtle)' : 'border-(--border) hover:bg-(--surface-subtle)'}`)}
     >
       <span
         className={`relative mt-0.5 h-4 w-4 shrink-0 rounded-full border ${checked ? 'border-(--foreground)' : 'border-(--muted-light)'}`}
@@ -62,7 +64,7 @@ export function OptionRow({ checked, onSelect, label, description, icon, labelle
           </span>
         ) : null}
       </span>
-    </button>
+    </Button>
   )
 }
 
@@ -204,19 +206,19 @@ export function AgentMemoriesSection({ agentPrincipalId }: { agentPrincipalId: s
               </p>
             </div>
             {row.canDelete && (
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={() => void remove(row.memoryId)}
                 disabled={deletingId === row.memoryId}
                 aria-label="Delete memory"
-                className="shrink-0 text-(--muted-light) opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40"
+                className={unstyledButton(`shrink-0 text-(--muted-light) opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 disabled:opacity-40`)}
               >
                 {deletingId === row.memoryId ? (
                   <Loader2 size={13} className='animate-spin' />
                 ) : (
                   <Trash2 size={13} />
                 )}
-              </button>
+              </Button>
             )}
           </div>
         ))}
@@ -516,14 +518,14 @@ export function AgentSurfacesSection({
                   ) : null}
                 </div>
                 {canBind ? (
-                  <button
+                  <Button variant="ghost"
                     type="button"
                     onClick={() => onToggleChannelPicker(connection.id)}
                     disabled={!hasAgent || connection.status !== 'active'}
-                    className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50"
+                    className={unstyledButton(`flex shrink-0 items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50`)}
                   >
                     <Plus size={11} />Add channel
-                  </button>
+                  </Button>
                 ) : null}
               </div>
 
@@ -538,14 +540,14 @@ export function AgentSurfacesSection({
                     </p>
                   </div>
                   {canBind ? (
-                    <button
+                    <Button variant="ghost"
                       type="button"
                       onClick={() => onRemoveBinding(binding.id)}
                       disabled={busyId !== null}
-                      className="shrink-0 text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50"
+                      className={unstyledButton(`shrink-0 text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50`)}
                     >
                       {busyId === binding.id ? 'Removing…' : 'Remove'}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               ))}
@@ -586,14 +588,14 @@ export function AgentSurfacesSection({
 
         {canBind && slackConnections.length > 0 ? (
           <div className="border-b border-(--border) py-2.5 last:border-b-0">
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={onConnectSlack}
               disabled={!hasAgent}
-              className="text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50"
+              className={unstyledButton(`text-[11px] text-(--muted) transition-colors hover:text-(--foreground) disabled:opacity-50`)}
             >
               Connect another Slack workspace
-            </button>
+            </Button>
           </div>
         ) : null}
 
@@ -763,11 +765,11 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
     <>
       <label className='block text-xs font-medium'>
         Agent instructions
-        <textarea
+        <Textarea
           value={instructions}
           onChange={(event) => onInstructionsChange(event.target.value)}
           placeholder='Describe what this agent should do, how it should respond, and when it should stop.'
-          className='mt-1.5 min-h-36 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2.5 text-sm leading-5 outline-hidden focus:border-(--muted)'
+          className={unstyledTextarea(`mt-1.5 min-h-36 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2.5 text-sm leading-5 outline-hidden focus:border-(--muted)`)}
         />
       </label>
       <label className='block text-xs font-medium'>
@@ -812,14 +814,14 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
           ))}
         </div>
       </div>
-      <button
+      <Button variant="ghost"
         type='button'
         onClick={() => onAdvancedChange(!advanced)}
-        className='flex items-center gap-1.5 text-xs font-medium text-(--muted)'
+        className={unstyledButton(`flex items-center gap-1.5 text-xs font-medium text-(--muted)`)}
       >
         Advanced{' '}
         <ChevronDown size={13} className={advanced ? 'rotate-180' : ''} />
-      </button>
+      </Button>
       {advanced ? (
         <div className='rounded-lg border border-(--border) bg-(--surface-subtle) p-3 text-[11px] leading-4 text-(--muted)'>
           Mention-first is enforced. One-to-one agent DMs invoke implicitly
@@ -1000,13 +1002,13 @@ function ConnectMachineFields({ command, environmentBusy, onBeginConnection, set
       ) : (
         <div className="space-y-2.5">
           <div className="grid grid-cols-2 gap-1 rounded-lg bg-(--surface-subtle) p-1" role="radiogroup" aria-label="Setup mode">
-            <button type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`}><Sparkles size={12} /> Automatic setup</button>
-            <button type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`}><Terminal size={12} /> Manual setup</button>
+            <Button variant="ghost" type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={unstyledButton(`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`)}><Sparkles size={12} /> Automatic setup</Button>
+            <Button variant="ghost" type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={unstyledButton(`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`)}><Terminal size={12} /> Manual setup</Button>
           </div>
           {setupMode === 'paste' ? (
             <SetupPromptPane setupPrompt={setupPrompt} copiedPrompt={copiedPrompt} onCopyPrompt={onCopyPrompt} />
           ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--background) p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-(--foreground)">{command}</code><button type="button" aria-label="Copy connection command" onClick={onCopyCommand} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">{copied ? <Check size={14} /> : <Copy size={14} />}</button></div>
+            <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--background) p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-(--foreground)">{command}</code><Button variant="ghost" type="button" aria-label="Copy connection command" onClick={onCopyCommand} className={unstyledButton(`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>{copied ? <Check size={14} /> : <Copy size={14} />}</Button></div>
           )}
         </div>
       )}
@@ -1049,7 +1051,7 @@ export function EnvironmentApprovalPanel({
       </div>
       <label className='block text-xs font-medium'>
         Approved project roots
-        <textarea
+        <Textarea
           value={roots}
           onChange={(event) => onRootsChange(event.target.value)}
           placeholder={
@@ -1057,7 +1059,7 @@ export function EnvironmentApprovalPanel({
               ? '/workspace'
               : '/Users/you/Projects'
           }
-          className='mt-1.5 min-h-20 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:border-(--muted)'
+          className={unstyledTextarea(`mt-1.5 min-h-20 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
         />
       </label>
       <p className='text-[11px] leading-4 text-(--muted)'>

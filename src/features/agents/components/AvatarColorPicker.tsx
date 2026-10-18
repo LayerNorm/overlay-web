@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledInput } from '@overlay/ui/control-reset'
+import { Input } from '@overlay/ui/primitives'
+
 import { useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { hexToHsv, hsvToHex, normalizeHex, type Hsv } from '../lib/color-utils'
 
@@ -104,7 +107,7 @@ export function AvatarColorPicker({ color, onChange }: { color: string; onChange
             style={{ left: `${(hsv.h / 360) * 100}%`, backgroundColor: hueColor }}
           />
         </div>
-        <input
+        <Input
           value={text}
           onChange={(event) => {
             setText(event.target.value)
@@ -119,7 +122,7 @@ export function AvatarColorPicker({ color, onChange }: { color: string; onChange
           spellCheck={false}
           autoComplete="off"
           aria-label="Hex color"
-          className="h-8 w-22 rounded-lg border border-(--border) bg-(--surface-subtle) px-2 text-center font-mono text-xs uppercase text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)"
+          className={unstyledInput(`h-8 w-22 rounded-lg border border-(--border) bg-(--surface-subtle) px-2 text-center font-mono text-xs uppercase text-(--foreground) outline-hidden focus:ring-1 focus:ring-(--foreground)`)}
         />
       </div>
     </div>

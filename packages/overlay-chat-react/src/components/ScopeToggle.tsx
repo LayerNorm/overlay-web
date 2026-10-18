@@ -1,3 +1,5 @@
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 import type { BrowserScope } from '@overlay/chat-core'
 
 interface ScopeToggleProps {
@@ -16,18 +18,18 @@ export function ScopeToggle({ scope, onChange }: ScopeToggleProps) {
       {OPTIONS.map((item) => {
         const active = item.value === scope
         return (
-          <button
+          <Button variant="ghost"
             key={item.value}
             type="button"
             onClick={() => onChange(item.value)}
-            className={`min-w-0 flex-1 truncate rounded-md px-2 py-1 text-[11px] transition-colors sm:px-2.5 sm:text-xs ${
+            className={unstyledButton(`min-w-0 flex-1 truncate rounded-md px-2 py-1 text-[11px] transition-colors sm:px-2.5 sm:text-xs ${
               active
                 ? 'bg-(--surface-elevated) font-medium text-(--foreground) shadow-xs'
                 : 'text-(--muted) hover:text-(--foreground)'
-            }`}
+            }`)}
           >
             {item.label}
-          </button>
+          </Button>
         )
       })}
     </div>

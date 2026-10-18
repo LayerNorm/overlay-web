@@ -1,4 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
 import { lazy, Suspense, type ComponentProps, type ReactNode } from 'react'
 import type {
   AssistantVisualSegment,
@@ -240,14 +242,14 @@ function FilePreviewButton({
   children: ReactNode
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onOpen}
-      className="rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)"
+      className={unstyledButton(`rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)`)}
       title="Open attachment"
     >
       {children}
-    </button>
+    </Button>
   )
 }
 

@@ -1,5 +1,6 @@
 "use client";
-
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { AnimatePresence, domAnimation, LazyMotion, m } from "framer-motion";
 import { Github, Menu, MoonStar, SunMedium, X } from "lucide-react";
 import { OverlayMark } from "@/components/orb/Orb";
@@ -102,18 +103,18 @@ function DesktopActions({
   return (
     <div className="hidden items-center gap-2 md:flex">
       {landing ? (
-        <button
+        <Button variant="ghost"
           type="button"
           onClick={landing.toggleLandingTheme}
           aria-label="Toggle theme"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)"
+          className={unstyledButton("inline-flex h-9 w-9 items-center justify-center rounded-full text-(--muted) transition-colors hover:bg-(--surface-muted) hover:text-(--foreground)")}
         >
           {landing.landingTheme === "dark" ? (
             <SunMedium className="h-4 w-4" />
           ) : (
             <MoonStar className="h-4 w-4" />
           )}
-        </button>
+        </Button>
       ) : null}
       <a
         href={MARKETING_GITHUB_URL}
@@ -218,10 +219,10 @@ function MobileNavMenu({
 
             <div className="mt-1 flex items-center gap-2">
               {landing ? (
-                <button
+                <Button variant="ghost"
                   type="button"
                   onClick={landing.toggleLandingTheme}
-                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-(--border) px-4 py-2.5 ${navText} text-(--foreground) transition-colors hover:bg-(--surface-muted)`}
+                  className={unstyledButton(`inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-(--border) px-4 py-2.5 ${navText} text-(--foreground) transition-colors hover:bg-(--surface-muted)`)}
                   style={serif}
                 >
                   {landing.landingTheme === "dark" ? (
@@ -232,7 +233,7 @@ function MobileNavMenu({
                   <span>
                     {landing.landingTheme === "dark" ? "Light" : "Dark"}
                   </span>
-                </button>
+                </Button>
               ) : null}
               <Link
                 href={appHref}
@@ -296,21 +297,21 @@ export function MarketingNavbar() {
             appHref={appHref}
           />
 
-          <button
+          <Button variant="ghost"
             type="button"
             aria-expanded={mobileMenuOpen}
             aria-label={
               mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
             }
             onClick={() => setMobileMenuOpen((v) => !v)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--foreground) md:hidden"
+            className={unstyledButton("inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--foreground) md:hidden")}
           >
             {mobileMenuOpen ? (
               <X className="h-4 w-4" />
             ) : (
               <Menu className="h-4 w-4" />
             )}
-          </button>
+          </Button>
         </nav>
       </div>
 

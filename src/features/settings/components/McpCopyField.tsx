@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 
@@ -17,14 +20,14 @@ export function McpCopyField({ value, label, multiline = false }: { value: strin
       {multiline
         ? <pre aria-label={label} className="min-w-0 flex-1 overflow-x-auto whitespace-pre text-xs text-(--foreground)">{value}</pre>
         : <code aria-label={label} className="min-w-0 flex-1 truncate text-xs leading-5 text-(--foreground)">{value}</code>}
-      <button
+      <Button variant="ghost"
         type="button"
         aria-label={`Copy ${label}`}
         onClick={copy}
-        className="mt-0.5 shrink-0 text-(--muted) transition-colors hover:text-(--foreground)"
+        className={unstyledButton(`mt-0.5 shrink-0 text-(--muted) transition-colors hover:text-(--foreground)`)}
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}
-      </button>
+      </Button>
     </div>
   )
 }

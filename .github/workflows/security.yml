@@ -136,6 +136,8 @@ jobs:
           git diff --exit-code package-lock.json package.json
       - name: Lint
         run: npm run lint
+      - name: Raw interactive control guardrail
+        run: npm run check:raw-controls
       - name: Web complexity ratchet
         run: npm run check:web-complexity
       - name: Generate current route types

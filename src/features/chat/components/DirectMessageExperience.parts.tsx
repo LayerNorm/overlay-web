@@ -18,7 +18,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react'
-import { FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { AgentCreature } from '@/components/orb/Creature'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
@@ -219,12 +219,13 @@ function AgentDesktopButton({ desktop }: { desktop: ReturnType<typeof useAgentDe
   const { agentComputer, desktopOpenBusy, openAgentDesktop } = desktop
   if (!agentComputer || (agentComputer.status !== 'ready' && agentComputer.status !== 'stopped')) return null
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={openAgentDesktop}
       disabled={desktopOpenBusy}
       title={agentComputer.status === 'stopped' ? 'View desktop — resumes the machine' : 'View desktop'}
-      className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-60"
+      className="h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:opacity-60"
     >
       <span className="relative">
         <Monitor size={14} />
@@ -235,7 +236,7 @@ function AgentDesktopButton({ desktop }: { desktop: ReturnType<typeof useAgentDe
         />
       </span>
       <span className="hidden sm:inline">{desktopOpenBusy ? 'Opening…' : 'Desktop'}</span>
-    </button>
+    </Button>
   )
 }
 
@@ -275,52 +276,57 @@ export function RoomHeaderActions({
       <AgentDesktopButton desktop={desktop} />
       {headerActions}
       {collab.pins.length > 0 ? (
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => setRoomPanel((current) => (current === 'pinned' ? null : 'pinned'))}
           aria-pressed={roomPanel === 'pinned'}
           title="Pinned messages"
-          className={`inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+          className={`h-8 gap-1 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
             roomPanel === 'pinned' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
           }`}
         >
           <Pin size={13} />
           {collab.pins.length}
-        </button>
+        </Button>
       ) : null}
       {!showcase && currentParticipant?.role === 'moderator' ? (
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={onShare}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          className="h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
         >
           <Share2 size={14} />
           <span className="hidden sm:inline">Share</span>
-        </button>
+        </Button>
       ) : null}
-      <button
+      <Button
+        variant="ghost"
         type="button"
         onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
         aria-pressed={roomPanel === 'people'}
         title="People in this room"
-        className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+        className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
           roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
         }`}
       >
         <UsersRound size={14} />
         {roster.participants.length}
-      </button>
+      </Button>
       <FloatingMenu
         kind="menu"
         trigger={
-          <button
+          <Button
             ref={menuTriggerRef}
+            variant="ghost"
+            size="icon"
             type="button"
             aria-label="Conversation options"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+            className="h-8 w-8 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
           >
             <MoreHorizontal size={15} />
-          </button>
+          </Button>
         }
         anchorRef={menuTriggerRef}
         open={menuOpen}
@@ -394,7 +400,7 @@ export function RoomNoticeBar({
   return (
     <div className="flex items-center justify-between border-b border-(--border) bg-(--surface-subtle) px-4 py-2 text-xs text-(--muted)">
       <span>{notice}</span>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss"><X size={13} /></button>
+      <Button variant="ghost" size="icon" type="button" onClick={onDismiss} aria-label="Dismiss" className="h-auto w-auto p-0 text-inherit hover:bg-transparent hover:text-current"><X size={13} /></Button>
     </div>
   )
 }
@@ -579,14 +585,15 @@ export function RoomTranscript({
   return (
     <div className="overlay-chat-surface relative min-h-0 flex-1">
       {newMessageCount > 0 && !stickToBottom ? (
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={onJumpToLatest}
           data-testid="jump-to-latest"
-          className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--border) bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
+          className="absolute bottom-4 left-1/2 z-10 h-auto -translate-x-1/2 rounded-full border border-(--border) bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
         >
           {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
-        </button>
+        </Button>
       ) : null}
       <div
         ref={listRef}
@@ -595,14 +602,15 @@ export function RoomTranscript({
       >
         <div className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
           {hasMoreMessages ? (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={onLoadOlder}
               disabled={loadingOlderMessages}
-              className="mx-auto my-2 rounded-lg border border-(--border) px-3 py-1.5 text-xs text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-60"
+              className="mx-auto my-2 h-auto rounded-lg border border-(--border) px-3 py-1.5 text-xs font-normal text-(--muted) hover:bg-(--surface-subtle) disabled:opacity-60"
             >
               {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
-            </button>
+            </Button>
           ) : null}
           {loading ? (
             <div className="space-y-3 py-4" aria-label="Loading messages">

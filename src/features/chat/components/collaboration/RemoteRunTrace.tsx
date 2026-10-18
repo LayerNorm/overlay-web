@@ -2,6 +2,8 @@
 
 import {useEffect, useEffectEvent, useState, useSyncExternalStore} from 'react'
 import {AlertTriangle, Download} from 'lucide-react'
+import {unstyledButton} from '@overlay/ui/control-reset'
+import {Button} from '@overlay/ui/primitives'
 import {publicEnv} from '@/shared/env/public-env'
 import {roomMessageDomId} from './room-message-view'
 import {recordRemoteUiTrace} from './remote-ui-trace-recorder'
@@ -56,10 +58,10 @@ export function RemoteRunTrace({runId, messageId, state}: {runId: string; messag
     } catch { setStatus('error') }
   }
   if (!enabled) return null
-  return <button type="button" onClick={() => void download()}
+  return <Button variant="ghost" type="button" onClick={() => void download()}
     aria-label={`Export timing trace (${status})`}
     title={`${status === 'error' ? 'Timing recording failed or unavailable; export is incomplete' : `Export local timing trace (${status})`}${capacity ? `. ${capacity}` : ''}`}
-    className="rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)">
+    className={unstyledButton("rounded-md p-1.5 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)")}>
     {status === 'error' ? <AlertTriangle size={14} strokeWidth={1.75} /> : <Download size={14} strokeWidth={1.75} />}
-  </button>
+  </Button>
 }

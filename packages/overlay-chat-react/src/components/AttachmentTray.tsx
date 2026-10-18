@@ -1,5 +1,8 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+
 import { FileText, Image as ImageIcon, Loader2, X } from 'lucide-react'
 import type { AttachmentDraft } from '@overlay/chat-core'
 
@@ -45,14 +48,14 @@ export function AttachmentTray({
           ) : attachment.sizeBytes ? (
             <span className="text-(--muted)">{formatSize(attachment.sizeBytes)}</span>
           ) : null}
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => onRemoveAttachment(attachment.id)}
-            className="text-(--muted) transition-colors hover:text-(--foreground)"
+            className={unstyledButton(`text-(--muted) transition-colors hover:text-(--foreground)`)}
             aria-label={`Remove ${attachment.name}`}
           >
             <X size={11} strokeWidth={2} />
-          </button>
+          </Button>
         </div>
       ))}
     </div>

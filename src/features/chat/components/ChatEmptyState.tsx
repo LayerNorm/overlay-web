@@ -2,6 +2,7 @@
 
 import { AnimatePresence, domAnimation, LazyMotion, m } from 'framer-motion'
 import { Globe2, Image as ImageIcon, PenLine, Zap, type LucideIcon } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 
 export type EmptyChatSuggestionId = 'image' | 'write' | 'lookup'
@@ -78,10 +79,11 @@ export function ChatEmptyState({
           >
             <div className="flex items-center gap-2 max-md:flex-nowrap max-md:justify-start max-md:overflow-x-auto max-md:overflow-y-hidden max-md:scrollbar-none max-md:[&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center">
               {suggestions.map(({ id, label, Icon }) => (
-                <button
+                <Button
+                  variant="ghost"
                   key={id}
                   type="button"
-                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border border-(--border) bg-transparent px-3.5 text-sm text-(--foreground) transition-colors hover:bg-(--surface-muted)"
+                  className="h-9 shrink-0 gap-2 rounded-2xl border border-(--border) bg-transparent px-3.5 text-sm font-normal text-(--foreground) transition-colors hover:bg-(--surface-muted)"
                   onClick={() => {
                     if (mode === 'automate') {
                       onAutomateSuggestion?.(id as EmptyAutomateSuggestionId)
@@ -92,7 +94,7 @@ export function ChatEmptyState({
                 >
                   <Icon size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
                   <span>{label}</span>
-                </button>
+                </Button>
               ))}
             </div>
           </m.div>

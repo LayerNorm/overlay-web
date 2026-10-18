@@ -1,9 +1,11 @@
 'use client'
 
+import { unstyledButton } from '@overlay/ui/control-reset'
+
 import { useCallback, useEffect, useState } from 'react'
 import type { ComputerSize } from '@overlay/workspace-contracts'
 import type { ProviderAccountResource } from '@overlay/api-client'
-import { ListboxSelect, SegmentedControl } from '@overlay/ui/primitives'
+import { ListboxSelect, SegmentedControl, Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SELECTABLE_AGENT_PROVIDER_IDS, AGENT_PROVIDERS } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
@@ -85,14 +87,14 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
           <div>
             <FieldLabel info={`The ${AGENT_PROVIDERS[other.adapterId].label} sign-in this agent uses. Stored encrypted; sent to the agent only while it works. It is also saved under Settings → Agent accounts.`}>Account</FieldLabel>
             {accounts !== null && matching.length === 0 ? (
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={() => setConnecting(true)}
-                className="flex w-full items-center justify-between rounded-xl border border-(--border) px-3 py-2.5 text-left text-sm text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
+                className={unstyledButton(`flex w-full items-center justify-between rounded-xl border border-(--border) px-3 py-2.5 text-left text-sm text-(--foreground) transition-colors hover:bg-(--surface-subtle)`)}
               >
                 <span>Connect {AGENT_PROVIDERS[other.adapterId].label}</span>
                 <span className="text-xs text-(--muted)">{other.adapterId === 'codex' ? 'Sign in with ChatGPT' : 'Sign in or add a key'}</span>
-              </button>
+              </Button>
             ) : (
               <ListboxSelect
                 aria-label="Account"
@@ -122,9 +124,9 @@ export function OtherAgentFields({ other, size, onChange, onSizeChange, onOpenMa
       ) : (
         <div className="rounded-xl border border-(--border) p-3 text-xs text-(--muted)">
           Connecting your own computer takes a short command and an approval.{' '}
-          <button type="button" onClick={onOpenMachineSetup} className="font-medium text-(--foreground) underline underline-offset-2">
+          <Button variant="ghost" type="button" onClick={onOpenMachineSetup} className={unstyledButton(`font-medium text-(--foreground) underline underline-offset-2`)}>
             Set it up
-          </button>
+          </Button>
         </div>
       )}
       {connecting ? (
