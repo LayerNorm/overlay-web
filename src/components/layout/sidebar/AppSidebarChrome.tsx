@@ -15,7 +15,19 @@ import {
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { FloatingMenu, SidebarNav, SidebarSection, Sheet, SheetContent, SheetTitle, SidebarShell, type SidebarResourceAction, type SidebarResourceSearch, Button } from '@overlay/ui/primitives'
+import {
+  FloatingMenu,
+  SidebarMenuButton,
+  SidebarNav,
+  SidebarSection,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SidebarShell,
+  type SidebarResourceAction,
+  type SidebarResourceSearch,
+  Button,
+} from '@overlay/ui/primitives'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { OverlayMark } from '@/components/orb/Orb'
 import { FilesInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
@@ -266,9 +278,6 @@ function DesktopAccountFallback({
   accountMenu: ReactNode
   onSignIn: () => void
 }) {
-  const rowClass = `flex h-9 w-full items-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
-    railExpanded ? 'gap-2.5 px-3' : 'justify-center'
-  }`
   const label = railExpanded ? (
     <span className="min-w-0 flex-1 truncate text-left text-sm">{displayName}</span>
   ) : null
@@ -278,16 +287,17 @@ function DesktopAccountFallback({
         <FloatingMenu
           aria-label="Account"
           trigger={
-            <Button variant="ghost"
+            <SidebarMenuButton
+              size="lg"
               type="button"
-              className={unstyledButton(rowClass)}
+              className={railExpanded ? 'gap-2.5 px-3' : 'justify-center px-0'}
               aria-label="Account menu"
               aria-expanded={accountMenuOpen}
               title={displayName}
             >
               <User size={15} className="shrink-0" />
               {label}
-            </Button>
+            </SidebarMenuButton>
           }
           anchorRef={menuRef}
           open={accountMenuOpen}
@@ -301,10 +311,11 @@ function DesktopAccountFallback({
     )
   }
   return (
-    <Button variant="ghost"
+    <SidebarMenuButton
+      size="lg"
       type="button"
       onClick={onSignIn}
-      className={unstyledButton(rowClass)}
+      className={railExpanded ? 'gap-2.5 px-3' : 'justify-center px-0'}
       aria-label="Sign in"
       title="Sign in"
     >
@@ -312,7 +323,7 @@ function DesktopAccountFallback({
       {railExpanded ? (
         <span className="min-w-0 flex-1 truncate text-left text-sm">Sign in</span>
       ) : null}
-    </Button>
+    </SidebarMenuButton>
   )
 }
 

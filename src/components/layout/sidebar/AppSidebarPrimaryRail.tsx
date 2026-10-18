@@ -1,10 +1,21 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
+
+import { cn } from '@overlay/ui'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
 import { Loader2 } from 'lucide-react'
-import { SidebarShell, Button } from '@overlay/ui/primitives'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSeparator,
+} from '@overlay/ui/primitives'
 import type { InlineNavItem } from '@/components/layout/AppSidebarInlinePanels'
 
 export interface PrimaryRailItem {
@@ -20,19 +31,6 @@ export interface PrimaryRailItem {
   title?: string
   dataTour?: string
   onSelect: () => void
-}
-
-function railButtonClassName(item: PrimaryRailItem, expanded: boolean) {
-  const { active, disabled } = item
-  return `relative flex h-9 w-full items-center rounded-md transition-colors ${
-        expanded ? 'gap-2.5 px-3' : 'justify-center px-0'
-      } ${
-        disabled
-          ? 'cursor-not-allowed text-(--muted-light)'
-          : active
-            ? 'bg-(--surface-subtle) text-(--foreground)'
-            : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
-      }`
 }
 
 function RailBadge({ count, expanded }: { count: number; expanded: boolean }) {
@@ -71,41 +69,48 @@ function RailButton({
   expanded: boolean
 }) {
   const { label, active, disabled, href, title, dataTour, onSelect } = item
-  const sharedProps = {
-    title: title ?? label,
-    'aria-current': active ? 'page' as const : undefined,
-    'data-tour': dataTour,
-    className: railButtonClassName(item, expanded),
-  }
+  const className = cn(
+    'relative',
+    expanded ? 'gap-2.5 px-3' : 'justify-center px-0',
+    disabled && 'cursor-not-allowed text-(--muted-light) hover:bg-transparent hover:text-(--muted-light) disabled:pointer-events-auto disabled:opacity-100',
+  )
   const content = <RailButtonContent item={item} expanded={expanded} />
 
   if (href && !disabled) {
     return (
-      <Link
-        href={href}
-        onClick={(event) => {
-          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-          event.preventDefault()
-          onSelect()
-        }}
-        aria-label={label}
-        {...sharedProps}
-      >
-        {content}
-      </Link>
+      <SidebarMenuButton asChild size="lg" isActive={active} className={className}>
+        <Link
+          href={href}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+            event.preventDefault()
+            onSelect()
+          }}
+          aria-label={label}
+          title={title ?? label}
+          aria-current={active ? 'page' : undefined}
+          data-tour={dataTour}
+        >
+          {content}
+        </Link>
+      </SidebarMenuButton>
     )
   }
 
   return (
-    <Button variant="ghost"
-      type="button"
+    <SidebarMenuButton
+      size="lg"
+      isActive={active && !disabled}
       onClick={onSelect}
       disabled={disabled}
       aria-label={disabled ? `${label} (coming soon)` : label}
-      {...sharedProps}
-     className={unstyledButton(sharedProps.className)}>
+      title={title ?? label}
+      aria-current={active ? 'page' : undefined}
+      data-tour={dataTour}
+      className={className}
+    >
       {content}
-    </Button>
+    </SidebarMenuButton>
   )
 }
 
@@ -161,40 +166,47 @@ export function AppSidebarPrimaryRail({
     : []
   const showSectionItems = sectionItems.length > 0
   return (
-    <SidebarShell className={className}>
-      <div
-        className={`flex h-16 min-h-16 shrink-0 items-center border-b border-(--border) ${
-          // Match nav `px-2` so the brand mark lines up with rail icons (same
-          // inset as SidebarNav + button `px-3` on main).
-          expanded ? 'justify-between gap-2 px-2' : 'justify-center'
-        }`}
-      >
-        {brand}
-      </div>
-      <nav
-        aria-label="Primary"
-        className={`flex min-h-0 flex-1 flex-col space-y-0.5 overflow-y-auto py-3 ${
-          expanded ? 'px-2' : 'px-2'
-        }`}
-      >
-        {items.map((item) => (
-          <RailButton key={item.id} item={item} expanded={expanded} />
-        ))}
-        {showSectionItems ? (
-          <>
-            <div className="my-2 border-t border-(--border)" role="presentation" />
-            {sectionItems.map((item) => (
-              <RailButton key={`section-${item.id}`} item={item} expanded={expanded} />
-            ))}
-          </>
-        ) : null}
-      </nav>
-      <div className={`shrink-0 space-y-0.5 border-t border-(--border) py-3 ${expanded ? 'px-2' : 'px-2'}`}>
-        {footerItems.map((item) => (
-          <RailButton key={item.id} item={item} expanded={expanded} />
-        ))}
-        {account}
-      </div>
-    </SidebarShell>
+    <SidebarProvider open={expanded}>
+      <Sidebar className={className}>
+        <SidebarHeader className={expanded ? 'justify-between px-2' : 'justify-center gap-0 px-0'}>
+          {brand}
+        </SidebarHeader>
+        <SidebarContent className="py-3">
+          <nav aria-label="Primary" className="px-2">
+            <SidebarMenu>
+              {items.map((item) => (
+                <SidebarMenuItem key={item.id}>
+                  <RailButton item={item} expanded={expanded} />
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+            {showSectionItems ? (
+              <>
+                <SidebarSeparator className="mx-0 mb-2 mt-2.5" />
+                <SidebarMenu>
+                  {sectionItems.map((item) => (
+                    <SidebarMenuItem key={`section-${item.id}`}>
+                      <RailButton item={item} expanded={expanded} />
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </>
+            ) : null}
+          </nav>
+        </SidebarContent>
+        <SidebarFooter className="gap-0.5">
+          {footerItems.length ? (
+            <SidebarMenu>
+              {footerItems.map((item) => (
+                <SidebarMenuItem key={item.id}>
+                  <RailButton item={item} expanded={expanded} />
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          ) : null}
+          {account}
+        </SidebarFooter>
+      </Sidebar>
+    </SidebarProvider>
   )
 }
