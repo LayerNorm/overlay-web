@@ -60,7 +60,7 @@ const TOUR_STEPS: TourStep[] = [
     target: 'model-picker',
     title: 'Talk to the best models',
     description:
-      'Pick any AI model from the dropdown — or run multiple in parallel to compare answers side by side.',
+      'Pick any AI model from the dropdown, or run several in parallel to compare answers side by side.',
     placement: 'right',
   },
   {
