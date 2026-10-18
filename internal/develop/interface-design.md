@@ -64,6 +64,10 @@ Connected-agent drive status sits below the answer without modifying provider Ma
 and unsaved states use a quiet status line. Saved file/folder counts expand to at most 32 authorized
 Files links, with a link to Files for larger results. Folders navigate by folder id; files open by
 file id using the current workspace route. Successful turn completion waits for the final save.
+Markdown deliverable viewers resolve sibling and descendant file links under the current file's
+parent using authenticated metadata in the same scope. Unknown or ambiguous targets remain
+unavailable rather than navigating to a guessed app path. The source Markdown stays unchanged.
+
 Provider Markdown links resolve relative or Cloud Drive paths only when they exactly match
 one saved entry. Render the canonical Files URL without rewriting provider text; preserve
 ordinary external links, and leave unknown, ambiguous or traversing paths unresolved.

@@ -9,7 +9,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Discover model, effort and permission choices from the bound agent account before the first task; persist and apply the selected settings across native recovery.
 - Add execution-fenced workspace-tool calls and resumable approval delivery with one decision card, signed expiry and current-access checks. Show approval expiry and ongoing machine costs.
 - Add guarded Drive synchronization with exact revisions, immutable upload receipts, full-byte verification, bounded hydration and conflict preservation. Save incrementally and wait for final file settlement before reporting completion.
-- Open saved agent deliverables in Files by verified file ids, including relative links in answers, and load text uploads with their complete stored content.
+- Open saved agent deliverables in Files by verified file ids, including relative links in answers and scoped sibling/descendant links inside Markdown deliverables, and load text uploads with their complete stored content.
 - Add opt-in same-conversation recovery for lifecycle-v2 Claude Code and Codex hosts. Fence replacement execution, reconcile interrupted writes before hydration, preserve selected settings and reject uncertain starts or unresolved approvals.
 - Confirm native termination before releasing ownership; drain buffered output and active writes during shutdown. Keep Stop available during startup and final saving, and settle interrupted action timers after recovery.
 - Report enrollment failures and connection limits accurately, retain account setup after machine deletion, and keep fresh-machine hydration authorized without claiming provider liveness prematurely.

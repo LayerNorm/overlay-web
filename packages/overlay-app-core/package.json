@@ -16,6 +16,7 @@
     "./extensions": "./src/extensions.ts",
     "./file-parity-fixtures": "./src/file-parity-fixtures.ts",
     "./file-viewer": "./src/file-viewer.ts",
+    "./file-markdown-links": "./src/file-markdown-links.ts",
     "./knowledge": "./src/knowledge.ts",
     "./knowledge-migration": "./src/knowledge-migration.ts",
     "./knowledge-surface": "./src/knowledge-surface.ts",

@@ -1455,6 +1455,10 @@ before enabling the feature.
 Provider Markdown paths resolve only against those saved entries, using the current workspace's
 file/folder id routes. Relative and Cloud Drive paths are supported without rewriting source text;
 unknown, ambiguous, external and traversing paths receive no filesystem lookup or additional access.
+Inside a Markdown deliverable, the web Files viewer resolves sibling and descendant links against
+the opened file's parent through authenticated, scope-bound metadata pages. It does not rewrite
+source bytes or follow parent traversal; unavailable or ambiguous paths stay disabled. Ordinary
+external links retain their existing behavior.
 Native terminal intent stops provider-health probes before the host drains pending text and files;
 an already-running probe must recheck that boundary before reporting loss. Final saving uses the
 execution-fenced `finalizing` phase with a fixed five-minute limit capped by the original task deadline.

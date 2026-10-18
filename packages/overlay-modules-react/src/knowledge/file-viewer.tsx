@@ -36,6 +36,7 @@ export interface FileViewerProps {
   operations?: FileViewerOperations
   /** Injected fetch implementation so the presentational module does not call global fetch directly. */
   fetchImpl?: typeof fetch
+  resolveFileHref?: (href: string) => string | undefined
 }
 
 function previewSource(name: string, content: string, url?: string): string {
@@ -122,13 +123,19 @@ export const FILE_MARKDOWN_PROSE_CLASS =
 export function FileMarkdown({
   content,
   className,
+  resolveFileHref,
 }: {
   content: string
   className?: string
+  resolveFileHref?: (href: string) => string | undefined
 }) {
   return (
     <div className={[FILE_MARKDOWN_PROSE_CLASS, className].filter(Boolean).join(' ')}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href = '', children, title }) => {
+        const target = resolveFileHref ? resolveFileHref(href) : href
+        return target ? <a href={target} title={title}>{children}</a>
+          : <span aria-disabled="true" title="File link is unavailable">{children}</span>
+      } }}>{content}</ReactMarkdown>
     </div>
   )
 }
@@ -239,11 +246,11 @@ function ViewerOperationButtons({
   )
 }
 
-export function FileViewer({ name, content, url, operations, fetchImpl }: FileViewerProps) {
+export function FileViewer({ name, content, url, operations, fetchImpl, resolveFileHref }: FileViewerProps) {
   const type = getFileType(name)
   const source = previewSource(name, content, url)
 
-  if (type === 'markdown') return <MarkdownViewer content={content} />
+  if (type === 'markdown') return <MarkdownViewer content={content} resolveFileHref={resolveFileHref} />
   if (type === 'text') return <TextViewer content={content} />
   if (type === 'html') return <HtmlViewer name={name} source={source} />
   if (type === 'csv') return <CsvViewer content={content} />
@@ -266,10 +273,10 @@ export function FileViewer({ name, content, url, operations, fetchImpl }: FileVi
   return <BinaryViewer name={name} content={content} url={url} operations={operations} />
 }
 
-function MarkdownViewer({ content }: { content: string }) {
+function MarkdownViewer({ content, resolveFileHref }: Pick<FileViewerProps, 'content' | 'resolveFileHref'>) {
   return (
     <div className="overlay-file-viewer overlay-file-viewer--markdown flex-1 overflow-y-auto px-8 py-6">
-      <FileMarkdown content={content} />
+      <FileMarkdown content={content} resolveFileHref={resolveFileHref} />
     </div>
   )
 }
@@ -613,6 +620,7 @@ export function FileViewerPanel({
 }
 
 export interface OutputViewerProps {
+  resolveFileHref?: (href: string) => string | undefined
   name: string
   content?: string
   url?: string
@@ -647,6 +655,7 @@ export function OutputViewer({
   createdAt,
   headerLeft,
   operations,
+  resolveFileHref,
 }: OutputViewerProps) {
   const metadata = [modelId, outputType || mimeType, formatOutputDate(createdAt)].filter(Boolean)
   const safeDownloadUrl = resolveSafeViewerUrl(url, 'download')
@@ -674,7 +683,7 @@ export function OutputViewer({
             {prompt ? <p className="mt-2 max-w-3xl text-sm leading-relaxed text-(--muted)">{prompt}</p> : null}
           </div>
         ) : null}
-        <FileViewer name={name} content={content} url={url} operations={operations} />
+        <FileViewer name={name} content={content} url={url} operations={operations} resolveFileHref={resolveFileHref} />
       </AppScreenBody>
     </AppScreenShell>
   )
