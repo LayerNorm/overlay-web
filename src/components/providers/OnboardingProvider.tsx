@@ -20,6 +20,7 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { isStartingWorkspaceName } from '@/shared/workspaces/default-name'
 import { peopleInWorkspace } from '@/shared/workspaces/solo-workspace'
+import { buildWorkspaceHref, resolveWorkspaceSurface } from '@/shared/workspaces/routing'
 
 const NameWorkspaceStep = dynamic(() =>
   import('@/features/workspaces/components/NameWorkspaceStep').then((mod) => ({ default: mod.NameWorkspaceStep })),
@@ -36,6 +37,24 @@ function onboardingCompleteLsKey(userId: string) {
   return `${ONBOARDING_COMPLETE_LS_KEY}:${userId}`
 }
 
+function hasCompletionHint(userId: string): boolean {
+  try {
+    return localStorage.getItem(onboardingCompleteLsKey(userId)) === '1'
+      || localStorage.getItem(ONBOARDING_COMPLETE_LS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function recordCompletionHint(userId: string) {
+  try {
+    localStorage.setItem(onboardingCompleteLsKey(userId), '1')
+    localStorage.removeItem(ONBOARDING_COMPLETE_LS_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 const TOUR_STEPS: TourStep[] = [
   {
     target: 'model-picker',
@@ -45,17 +64,22 @@ const TOUR_STEPS: TourStep[] = [
     placement: 'right',
   },
   {
-    target: 'generation-mode-toggle',
+    // Anchors to the picker + its open panel: the generation-mode toggle only
+    // exists inside the open dropdown, so pointing at the whole menu is both
+    // accurate and can never dead-end when the toggle is unmounted.
+    target: 'model-picker',
     title: 'Generate images & video',
     description:
-      'Switch between Text, Image, and Video generation right from the composer. The best generative models are one tap away.',
-    placement: 'bottom',
+      'Switch between Text, Image, and Video generation inside this menu. The best generative models are one tap away.',
+    placement: 'right',
   },
   {
+    // Anchors to the Files rail item: memories and connectors moved out, so the
+    // copy describes what this surface actually holds (notes, files, outputs).
     target: 'nav-knowledge',
-    title: 'All your knowledge in one place',
+    title: 'Files and notes',
     description:
-      "Store memories, files, connectors, skills, and MCPs — your AI's long-term context and extensions, always at hand.",
+      'Uploads, notes, and everything your AI generates live here.',
     placement: 'right',
   },
 ]
@@ -79,12 +103,7 @@ async function markComplete(userId: string | undefined) {
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean }
     if (data.ok === false) return
     if (!userId) return
-    try {
-      localStorage.setItem(onboardingCompleteLsKey(userId), '1')
-      localStorage.removeItem(ONBOARDING_COMPLETE_LS_KEY)
-    } catch {
-      // ignore
-    }
+    recordCompletionHint(userId)
   } catch {
     // non-fatal
   }
@@ -135,6 +154,14 @@ function MobileWelcomeCard({ onDismiss }: { onDismiss: () => void }) {
   )
 }
 
+/**
+ * First-run onboarding is a sequence, not an armed overlay: an optional
+ * name-your-workspace step, then the guided tour on the chat surface (where its
+ * spotlight targets exist). The tour never sits invisible on a page that cannot
+ * render it, so it cannot pop up mid-exploration.
+ */
+type OnboardingPhase = 'idle' | 'name' | 'tour'
+
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth()
   const router = useRouter()
@@ -146,14 +173,27 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       : TOUR_STEPS.filter((step) => step.target !== 'nav-knowledge'),
     [capabilities.files],
   )
-  const { activeWorkspace } = useWorkspace()
-  const [active, setActive] = useState(false)
-  const [workspaceNamed, setWorkspaceNamed] = useState(false)
+  const { activeWorkspace, activeWorkspaceId, status: workspaceStatus } = useWorkspace()
+  const [phase, setPhase] = useState<OnboardingPhase>('idle')
   const [isClosing, setIsClosing] = useState(false)
   const [currentStep, setCurrentStep] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
   const checkedRef = useRef(false)
   const prevUserIdRef = useRef<string | undefined>(undefined)
+  // Whether this app load arrived via the post-signup redirect. Captured once so
+  // a fast navigation during workspace loading cannot lose the trigger.
+  const [enteredFromSignup] = useState(
+    () => typeof window !== 'undefined'
+      && new URLSearchParams(window.location.search).get('onboarding') === '1',
+  )
+
+  const onInvitationRoute = Boolean(pathname?.startsWith('/app/invitations'))
+  // 'error' never onboards: the workspace gate already owns that screen.
+  const workspaceReady = workspaceStatus === 'ready' || workspaceStatus === 'idle'
+
+  const chatHref = activeWorkspaceId
+    ? buildWorkspaceHref(activeWorkspaceId, '/app/chat')
+    : '/app/chat'
 
   useEffect(() => {
     if (user?.id !== prevUserIdRef.current) {
@@ -171,141 +211,146 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
-  // One-shot onboarding check; checkedRef prevents overlapping runs.
-  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
+  /** onboarding=1 / tour=replay are one-shot triggers; drop them so a refresh cannot refire. */
+  const stripOnboardingParams = useCallback(() => {
+    const url = new URL(window.location.href)
+    let changed = false
+    for (const key of ['onboarding', 'tour']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key)
+        changed = true
+      }
+    }
+    if (changed) router.replace(`${url.pathname}${url.search}${url.hash}`)
+  }, [router])
+
+  const beginTour = useCallback(() => {
+    setCurrentStep(0)
+    // Tour targets live on the chat surface; go there first. The tour chrome
+    // itself only mounts once a chat surface is live (see showTourChrome), so
+    // it can never sit invisible on a page that cannot render it. The mobile
+    // welcome card is not anchored, so it needs no navigation.
+    if (!isMobile && pathname && resolveWorkspaceSurface(pathname) !== 'chat') {
+      router.push(chatHref)
+    }
+    setPhase('tour')
+  }, [chatHref, isMobile, pathname, router])
+
+  const workspaceNeedsName = Boolean(
+    activeWorkspace
+    && activeWorkspace.role === 'owner'
+    && (peopleInWorkspace(activeWorkspace) ?? 1) <= 1
+    && isStartingWorkspaceName(activeWorkspace.name),
+  )
+
+  const beginOnboarding = useCallback(() => {
+    // Naming leads the flow only while the workspace still has its generated name.
+    if (workspaceNeedsName) {
+      setPhase('name')
+      return
+    }
+    beginTour()
+  }, [beginTour, workspaceNeedsName])
+
+  // If the workspace is renamed or switched out from under the name step, keep the flow going.
   useEffect(() => {
-    if (isLoading || !isAuthenticated || !user?.id || checkedRef.current) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (phase === 'name' && !workspaceNeedsName) beginTour()
+  }, [phase, workspaceNeedsName, beginTour])
+
+  // One-shot onboarding check; checkedRef prevents overlapping runs.
+  // Onboarding only fires on an explicit trigger (the post-signup ?onboarding=1
+  // redirect or a ?tour=replay): it never reads the server flag to start by
+  // itself, so nothing can appear mid-session.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !user?.id || !workspaceReady || checkedRef.current) return
     // Invitation accept must stay fully interactive; the tour's full-screen
     // click shield would block "Accept invitation" when targets are missing.
-    if (pathname?.startsWith('/app/invitations')) return
+    if (onInvitationRoute) return
     checkedRef.current = true
 
-    const params = new URLSearchParams(window.location.search)
-    const fromCallback = params.get('onboarding') === '1'
-    const uid = user.id
+    if (!enteredFromSignup) return
 
-    if (fromCallback) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCurrentStep(0)
-      setActive(true)
+    if (hasCompletionHint(user.id)) {
+      stripOnboardingParams()
       return
     }
 
-    try {
-      if (localStorage.getItem(onboardingCompleteLsKey(uid)) === '1') {
-        return
-      }
-      if (localStorage.getItem(ONBOARDING_COMPLETE_LS_KEY) === '1') {
-        return
-      }
-    } catch {
-      // ignore
-    }
-
-    // Check server flag for returning users on fresh page loads
-    void (async () => {
-      try {
-        const res = await overlayAppClient.onboarding.statusResponse({ credentials: 'include' })
-        if (!res.ok) return
-        const data = (await res.json()) as { hasSeenOnboarding: boolean }
-        if (data.hasSeenOnboarding) {
-          try {
-            localStorage.setItem(onboardingCompleteLsKey(uid), '1')
-            localStorage.removeItem(ONBOARDING_COMPLETE_LS_KEY)
-          } catch {
-            // ignore
-          }
-          return
-        }
-        setCurrentStep(0)
-        setActive(true)
-      } catch {
-        // non-fatal
-      }
-    })()
-  }, [isLoading, isAuthenticated, user?.id, pathname])
+    stripOnboardingParams()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    beginOnboarding()
+  }, [
+    isLoading,
+    isAuthenticated,
+    user?.id,
+    workspaceReady,
+    onInvitationRoute,
+    enteredFromSignup,
+    beginOnboarding,
+    stripOnboardingParams,
+  ])
 
   // Replay from settings: ?tour=replay can arrive at any time (no checkedRef guard)
   useEffect(() => {
+    if (!isAuthenticated || onInvitationRoute) return
     const params = new URLSearchParams(window.location.search)
-    if (!isAuthenticated || params.get('tour') !== 'replay') return
-    if (pathname?.startsWith('/app/invitations')) return
+    if (params.get('tour') !== 'replay') return
+    stripOnboardingParams()
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCurrentStep(0)
-    setActive(true)
-  }, [isAuthenticated, pathname])
+    beginTour()
+  }, [isAuthenticated, onInvitationRoute, beginTour, stripOnboardingParams])
 
   const startTour = useCallback(() => {
-    setCurrentStep(0)
-    setActive(true)
-  }, [])
+    beginTour()
+  }, [beginTour])
 
   const closeTour = useCallback(() => {
-    if (currentStep === 0) {
-      window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
-    }
     setIsClosing(true)
     void markComplete(user?.id)
     setTimeout(() => {
-      setActive(false)
+      setPhase('idle')
       setIsClosing(false)
     }, 220)
-  }, [currentStep, user?.id])
+  }, [user?.id])
 
-  // Steps 0 and 1 require /app/chat (model picker + generation mode toggle).
-  const CHAT_PATH = '/app/chat'
+  // Steps 0 and 1 require the chat surface (model picker + generation mode toggle).
   const navigateForStep = useCallback(
     (step: number) => {
-      if ((step === 0 || step === 1) && !pathname?.startsWith(CHAT_PATH)) {
-        router.push(CHAT_PATH)
+      if ((step === 0 || step === 1) && pathname && resolveWorkspaceSurface(pathname) !== 'chat') {
+        router.push(chatHref)
       }
     },
-    [pathname, router],
+    [chatHref, pathname, router],
   )
 
-  // Dispatch model picker open/close events when entering/leaving step 0.
   const handleNext = useCallback(() => {
     const next = currentStep + 1
-    if (currentStep === 0) {
-      window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
-    }
-    if (next === 0) {
-      window.dispatchEvent(new Event('overlay:tour:open-model-picker'))
-    }
     navigateForStep(next)
     setCurrentStep(next)
   }, [currentStep, navigateForStep])
 
   const handleBack = useCallback(() => {
     const prev = currentStep - 1
-    if (currentStep === 0) {
-      window.dispatchEvent(new Event('overlay:tour:close-model-picker'))
-    }
-    if (prev === 0) {
-      window.dispatchEvent(new Event('overlay:tour:open-model-picker'))
-    }
     navigateForStep(prev)
     setCurrentStep(prev)
   }, [currentStep, navigateForStep])
 
   const onboardingValue = useMemo(() => ({ startTour }), [startTour])
 
-  const onInvitationRoute = Boolean(pathname?.startsWith('/app/invitations'))
-  // Never mount the tour over invitation accept — missing tour targets used to
-  // paint a full-screen click shield that made Accept invitation unclickable.
-  // A new person names their workspace first, when it is theirs alone and still has its starting name.
-  const askWorkspaceName = active
-    && !workspaceNamed
+  // The tour only mounts where its spotlight targets exist. Mounting it in the
+  // same tick as the navigation above would measure an empty target set and
+  // leave it armed but invisible forever, so the chrome waits for a live chat
+  // surface. If navigation never lands on chat, nothing renders rather than a
+  // broken takeover.
+  const onChatSurface = Boolean(pathname && resolveWorkspaceSurface(pathname) === 'chat')
+  const showTourChrome = (phase === 'tour' || isClosing)
     && !onInvitationRoute
-    && activeWorkspace?.role === 'owner'
-    && (peopleInWorkspace(activeWorkspace) ?? 1) <= 1
-    && isStartingWorkspaceName(activeWorkspace.name)
-  const showTourChrome = (active || isClosing) && !onInvitationRoute && !askWorkspaceName
+    && (isMobile || onChatSurface)
 
   return (
     <OnboardingContext.Provider value={onboardingValue}>
       {children}
-      {askWorkspaceName ? <NameWorkspaceStep onDone={() => setWorkspaceNamed(true)} /> : null}
+      {phase === 'name' && !onInvitationRoute ? <NameWorkspaceStep onDone={beginTour} /> : null}
       {showTourChrome && isMobile && (
         <MobileWelcomeCard onDismiss={closeTour} />
       )}
