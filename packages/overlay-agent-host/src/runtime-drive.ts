@@ -1,6 +1,7 @@
+import type { AgentHostRuntimeOptions } from './runtime.js'
 import { createHash } from 'node:crypto'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { driveCredentialsResponseSchema, type DriveCredentialsResponse, type DriveSavedEntry, type FilesystemGrant } from '@layernorm/overlay-agent-bridge-protocol'
+import { driveStartDescriptorSchema, type AgentHostCommand, type AgentHostEvent, driveCredentialsResponseSchema, type DriveCredentialsResponse, type DriveSavedEntry, type FilesystemGrant } from '@layernorm/overlay-agent-bridge-protocol'
 import { AgentDriveCache } from './drive-cache.js'
 import { AgentDriveClient } from './drive-client.js'
 import { SqliteDriveJournal, type DriveJournalContext } from './drive-journal.js'
@@ -110,4 +111,28 @@ function assertCreationAllowed(grant: FilesystemGrant, requested: string) {
     const tail = relative(resolve(root), resolve(requested))
     return tail === '' || !isAbsolute(tail) && tail !== '..' && !tail.startsWith(`..${sep}`)
   })) throw Error('DRIVE_OUTSIDE_FILESYSTEM_GRANT')
+}
+
+
+/** Refresh the approved grant before preparing the command's exact run-scoped Drive. */
+export async function prepareRuntimeDrive(
+  host: Pick<AgentHostRuntimeOptions, 'drive' | 'controlPlane' | 'filesystem' | 'environmentId' | 'workspaceId'>,
+  command: Extract<AgentHostCommand, {type: 'start'}>, execution: AgentHostEvent['execution'],
+): Promise<RuntimeDrive | undefined> {
+    const input = command.payload.metadata.overlayDrive
+    if (input === undefined) return undefined
+    const descriptor = driveStartDescriptorSchema.parse(input)
+    const options = host.drive, controlPlane = host.controlPlane
+    if (!options || !controlPlane.refreshFilesystemGrant || !controlPlane.fetchDriveCredentials) throw Error('DRIVE_HOST_UPGRADE_REQUIRED')
+    const fetchDriveCredentials = controlPlane.fetchDriveCredentials.bind(controlPlane)
+    host.filesystem = await controlPlane.refreshFilesystemGrant()
+    const request = { runId: command.runId, sessionId: descriptor.sessionId,
+      ...(execution ? { execution: { attemptId: execution.attemptId, generation: execution.generation } } : {}) }
+    return (options.create ?? createRuntimeDrive)({ environmentId: host.environmentId, workspaceId: host.workspaceId,
+      ...request, location: descriptor.location, filesystem: host.filesystem,
+      ...(command.payload.restore ? {previousExecution: {attemptId: command.payload.restore.previousExecution.attemptId,
+        generation: command.payload.restore.previousExecution.generation}} : {}),
+      approvedWorkingDirectory: command.payload.workingDirectory, stateDirectory: options.stateDirectory, apiUrl: options.apiUrl,
+      credentials: () => fetchDriveCredentials(request), ...(options.fetch ? {fetch: options.fetch} : {}),
+    })
 }

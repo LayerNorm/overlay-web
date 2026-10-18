@@ -9,10 +9,9 @@ import {
   type AgentHostCommand,
   type AgentHostEvent,
   type FilesystemGrant,
-  driveStartDescriptorSchema,
   filesystemGrantSchema,
 } from '@layernorm/overlay-agent-bridge-protocol'
-import { createRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
+import { createRuntimeDrive, prepareRuntimeDrive, type RuntimeDrive } from './runtime-drive.js'
 import { RuntimeDriveController } from './runtime-drive-controller.js'
 import {createNativeTerminalIntent, observeActiveNativeRuns, withNativeTerminalBoundary} from './runtime-terminal-boundary.js'
 import { HostHeartbeat } from './host-heartbeat.js'
@@ -358,7 +357,7 @@ export class AgentHostRuntime {
     const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true, Boolean(restored))
     if (credentials === 'unavailable') return
     preparationSignal?.throwIfAborted()
-    const drive = await this.prepareDrive(command)
+    const drive = await prepareRuntimeDrive(this.options, command, this.executions.get(command.runId))
     const scope = drive ? { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
       : await resolveFilesystemScope(this.options.filesystem, command.payload.workingDirectory)
     if (restored && scope.workingDirectory !== restored.workingDirectory) {
@@ -419,26 +418,6 @@ export class AgentHostRuntime {
     return
   }
 
-
-  private async prepareDrive(command: Extract<AgentHostCommand, { type: 'start' }>): Promise<RuntimeDrive | undefined> {
-    const input = command.payload.metadata.overlayDrive
-    if (input === undefined) return undefined
-    const descriptor = driveStartDescriptorSchema.parse(input)
-    const options = this.options.drive, controlPlane = this.options.controlPlane
-    if (!options || !controlPlane.refreshFilesystemGrant || !controlPlane.fetchDriveCredentials) throw Error('DRIVE_HOST_UPGRADE_REQUIRED')
-    const fetchDriveCredentials = controlPlane.fetchDriveCredentials.bind(controlPlane)
-    this.options.filesystem = await controlPlane.refreshFilesystemGrant()
-    const execution = this.executions.get(command.runId)
-    const request = { runId: command.runId, sessionId: descriptor.sessionId,
-      ...(execution ? { execution: { attemptId: execution.attemptId, generation: execution.generation } } : {}) }
-    return (options.create ?? createRuntimeDrive)({ environmentId: this.options.environmentId, workspaceId: this.options.workspaceId,
-      ...request, location: descriptor.location, filesystem: this.options.filesystem,
-      ...(command.payload.restore ? {previousExecution: {attemptId: command.payload.restore.previousExecution.attemptId,
-        generation: command.payload.restore.previousExecution.generation}} : {}),
-      approvedWorkingDirectory: command.payload.workingDirectory, stateDirectory: options.stateDirectory, apiUrl: options.apiUrl,
-      credentials: () => fetchDriveCredentials(request), ...(options.fetch ? {fetch: options.fetch} : {}),
-    })
-  }
 
   private async requireSession(runId: string, requestedRemoteSessionId?: string): Promise<AgentAdapterSession> {
     const active = this.sessions.get(runId)

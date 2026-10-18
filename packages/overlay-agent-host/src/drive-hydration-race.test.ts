@@ -171,7 +171,7 @@ test('warm hydration does not inventory the entire cache once per unchanged entr
   const {AgentDriveCache} = await import('./drive-cache.js')
   const original = AgentDriveCache.prototype.inventory
   let inventories = 0
-  t.mock.method(AgentDriveCache.prototype, 'inventory', function (this: InstanceType<typeof AgentDriveCache>) {
+  t.mock.method(AgentDriveCache.prototype, 'inventory', function (this: Awaited<ReturnType<typeof AgentDriveCache.create>>) {
     inventories++
     return original.call(this)
   })
